@@ -1295,6 +1295,11 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    uint32_t TerminalWindow::TabCount() const
+    {
+        return _root ? _root->TabCount() : 0;
+    }
+
     bool TerminalWindow::ShouldImmediatelyHandoffToElevated()
     {
         return _root != nullptr ? _root->ShouldImmediatelyHandoffToElevated(_settings) : false;

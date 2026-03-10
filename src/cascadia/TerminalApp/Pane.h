@@ -145,6 +145,17 @@ public:
     bool FocusPane(const std::shared_ptr<Pane> pane);
     std::shared_ptr<Pane> FindPane(const uint32_t id);
 
+    // Globally unique pane ID for the terminal protocol. Assigned once at
+    // construction and stable for the pane's lifetime, even across tab moves.
+    // Separate from Id() which is per-tab and can be reassigned.
+    uint32_t ProtocolId() const noexcept { return _protocolId; }
+    std::shared_ptr<Pane> FindPaneByProtocolId(const uint32_t protocolId);
+
+    // Session variables for protocol support
+    std::optional<winrt::hstring> GetSessionVariable(const winrt::hstring& name) const;
+    void SetSessionVariable(const winrt::hstring& name, const winrt::hstring& value);
+    void RemoveSessionVariable(const winrt::hstring& name);
+
     void FinalizeConfigurationGivenDefault();
 
     bool ContainsReadOnly() const;
@@ -247,8 +258,14 @@ private:
 #pragma endregion
 
     std::optional<uint32_t> _id;
+    uint32_t _protocolId;
     std::weak_ptr<Pane> _parentChildPath{};
     bool _lastActive{ false };
+
+    // Session variables for protocol support (per-pane key-value store)
+    std::unordered_map<std::wstring, std::wstring> _sessionVariables;
+
+    static std::atomic<uint32_t> s_nextProtocolId;
     winrt::event_token _firstClosedToken{ 0 };
     winrt::event_token _secondClosedToken{ 0 };
 

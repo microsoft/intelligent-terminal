@@ -83,6 +83,7 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(Boolean, DisablePartialInvalidation);
         INHERITABLE_SETTING(Boolean, SoftwareRendering);
         INHERITABLE_SETTING(Microsoft.Terminal.Control.TextMeasurement, TextMeasurement);
+        INHERITABLE_SETTING(Microsoft.Terminal.Control.AmbiguousWidth, AmbiguousWidth);
         INHERITABLE_SETTING(Boolean, UseBackgroundImageForWindow);
         INHERITABLE_SETTING(Boolean, DebugFeaturesEnabled);
         INHERITABLE_SETTING(Boolean, AlwaysOnTop);
@@ -108,6 +109,14 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(String, SearchWebDefaultQueryUrl);
         INHERITABLE_SETTING(String, AgentCliPath);
         INHERITABLE_SETTING(String, AgentPanePosition);
+
+        // AI Integration settings
+        INHERITABLE_SETTING(Boolean, AiCoordinatorEnabled);
+        INHERITABLE_SETTING(String, AiCoordinatorCommandline);
+        INHERITABLE_SETTING(String, AiCoordinatorProfile);
+        INHERITABLE_SETTING(String, AiConfirmationReadOps);
+        INHERITABLE_SETTING(String, AiConfirmationCreateOps);
+        INHERITABLE_SETTING(String, AiConfirmationInputOps);
 
         Windows.Foundation.Collections.IMapView<String, ColorScheme> ColorSchemes();
         void AddColorScheme(ColorScheme scheme);

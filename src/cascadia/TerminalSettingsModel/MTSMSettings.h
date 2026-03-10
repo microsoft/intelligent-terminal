@@ -30,6 +30,7 @@ Author(s):
     X(bool, DisablePartialInvalidation, "rendering.disablePartialInvalidation", false)                                                                                                                \
     X(bool, SoftwareRendering, "rendering.software", false)                                                                                                                                           \
     X(winrt::Microsoft::Terminal::Control::TextMeasurement, TextMeasurement, "compatibility.textMeasurement")                                                                                         \
+    X(winrt::Microsoft::Terminal::Control::AmbiguousWidth, AmbiguousWidth, "compatibility.ambiguousWidth", winrt::Microsoft::Terminal::Control::AmbiguousWidth::Narrow)                               \
     X(winrt::Microsoft::Terminal::Control::DefaultInputScope, DefaultInputScope, "defaultInputScope")                                                                                                 \
     X(bool, UseBackgroundImageForWindow, "experimental.useBackgroundImageForWindow", false)                                                                                                           \
     X(bool, TrimBlockSelection, "trimBlockSelection", true)                                                                                                                                           \
@@ -70,9 +71,15 @@ Author(s):
     X(winrt::Windows::Foundation::Collections::IVector<Model::NewTabMenuEntry>, NewTabMenu, "newTabMenu", winrt::single_threaded_vector<Model::NewTabMenuEntry>({ Model::RemainingProfilesEntry{} })) \
     X(bool, AllowHeadless, "compatibility.allowHeadless", false)                                                                                                                                      \
     X(hstring, SearchWebDefaultQueryUrl, "searchWebDefaultQueryUrl", L"https://www.bing.com/search?q=%22%s%22")                                                                                       \
-    X(bool, ShowTabsFullscreen, "showTabsFullscreen", false)                                                                                                                                    \
-    X(hstring, AgentCliPath, "agentCliPath", L"")                                                                                                                                                     \
-    X(hstring, AgentPanePosition, "agentPanePosition", L"right")
+    X(bool, ShowTabsFullscreen, "showTabsFullscreen", false)                                                                                                                                            \
+    X(hstring, AgentCliPath, "agentCliPath", L"")                                                                                                                                                       \
+    X(hstring, AgentPanePosition, "agentPanePosition", L"right")                                                                                                                                        \
+    X(bool, AiCoordinatorEnabled, "aiIntegration.coordinator.enabled", true)                                                                                                                           \
+    X(hstring, AiCoordinatorCommandline, "aiIntegration.coordinator.commandline", L"")                                                                                                                  \
+    X(hstring, AiCoordinatorProfile, "aiIntegration.coordinator.profile", L"{fd19208a-412b-4857-8a2d-9ca592b4b16e}")                                                                                   \
+    X(hstring, AiConfirmationReadOps, "aiIntegration.confirmation.readOperations", L"auto")                                                                                                             \
+    X(hstring, AiConfirmationCreateOps, "aiIntegration.confirmation.createOperations", L"auto")                                                                                                         \
+    X(hstring, AiConfirmationInputOps, "aiIntegration.confirmation.inputOperations", L"auto")
 
 // Also add these settings to:
 // * Profile.idl

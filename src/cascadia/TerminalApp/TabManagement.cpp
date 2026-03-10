@@ -61,7 +61,7 @@ namespace winrt::TerminalApp::implementation
     // - existingConnection: An optional connection that is already established to a PTY
     //   for this tab to host instead of creating one.
     //   If not defined, the tab will create the connection.
-    HRESULT TerminalPage::_OpenNewTab(const INewContentArgs& newContentArgs)
+    HRESULT TerminalPage::_OpenNewTab(const INewContentArgs& newContentArgs, bool openInBackground)
     try
     {
         if (const auto& newTerminalArgs{ newContentArgs.try_as<NewTerminalArgs>() })
@@ -87,7 +87,7 @@ namespace winrt::TerminalApp::implementation
 
         // This call to _MakePane won't return nullptr, we already checked that
         // case above with the _maybeElevate call.
-        _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr));
+        _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
         return S_OK;
     }
     CATCH_RETURN();
@@ -97,7 +97,7 @@ namespace winrt::TerminalApp::implementation
     // Arguments:
     // - newTabImpl: the uninitialized tab.
     // - insertPosition: Optional parameter to indicate the position of tab.
-    void TerminalPage::_InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition)
+    void TerminalPage::_InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition, bool openInBackground)
     {
         newTabImpl->Initialize();
 
@@ -191,7 +191,20 @@ namespace winrt::TerminalApp::implementation
 
         // This kicks off TabView::SelectionChanged, in response to which
         // we'll attach the terminal's Xaml control to the Xaml root.
-        _tabView.SelectedItem(tabViewItem);
+        if (!openInBackground)
+        {
+            _tabView.SelectedItem(tabViewItem);
+        }
+        else
+        {
+            // Add to visual tree hidden so TermControl initializes
+            // (gets layout, creates TextBuffer, starts connection).
+            // Cleaned up by _UpdatedSelectedTab on next tab switch.
+            auto content = newTabImpl->Content();
+            content.Opacity(0);
+            content.IsHitTestVisible(false);
+            _tabContent.Children().Append(content);
+        }
     }
 
     // Method Description:
@@ -199,12 +212,12 @@ namespace winrt::TerminalApp::implementation
     // Arguments:
     // - pane: The pane to use as the root.
     // - insertPosition: Optional parameter to indicate the position of tab.
-    TerminalApp::Tab TerminalPage::_CreateNewTabFromPane(std::shared_ptr<Pane> pane, uint32_t insertPosition)
+    TerminalApp::Tab TerminalPage::_CreateNewTabFromPane(std::shared_ptr<Pane> pane, uint32_t insertPosition, bool openInBackground)
     {
         if (pane)
         {
             auto newTabImpl = winrt::make_self<Tab>(pane);
-            _InitializeTab(newTabImpl, insertPosition);
+            _InitializeTab(newTabImpl, insertPosition, openInBackground);
             return *newTabImpl;
         }
         return nullptr;
@@ -976,7 +989,10 @@ namespace winrt::TerminalApp::implementation
         try
         {
             _tabContent.Children().Clear();
-            _tabContent.Children().Append(tab.Content());
+            auto content = tab.Content();
+            content.Opacity(1.0);
+            content.IsHitTestVisible(true);
+            _tabContent.Children().Append(content);
 
             // GH#7409: If the tab switcher is open, then we _don't_ want to
             // automatically focus the new tab here. The tab switcher wants

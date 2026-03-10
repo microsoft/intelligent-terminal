@@ -103,5 +103,22 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<Object, RequestReceiveContentArgs> RequestReceiveContent;
 
         event Windows.Foundation.TypedEventHandler<Object, LaunchPositionRequest> RequestLaunchPosition;
+
+        // Terminal Protocol Bridge Methods
+        UInt32 TabCount { get; };
+        Windows.Foundation.IReference<UInt32> FocusedTabIndex { get; };
+        String GetProtocolActivePaneJson();
+        String GetProtocolTabsJson();
+        String GetProtocolPanesJson(String tabIdFilter);
+        String ReadProtocolPaneOutput(String paneId, String source, Int32 maxLines);
+        String GetProtocolProcessStatus(String paneId);
+        String GetProtocolSessionVariable(String paneId, String name);
+        Boolean SetProtocolSessionVariable(String paneId, String name, String value);
+        void SetPendingProtocolEnv(String key, String value);
+        void ClearPendingProtocolEnv();
+        String CreateProtocolTab(Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
+        String SplitProtocolPane(String paneId, Microsoft.Terminal.Settings.Model.SplitDirection direction, Single size, Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
+        Boolean CloseProtocolPane(String paneId);
+        Boolean SendProtocolInput(String paneId, String text);
     }
 }

@@ -140,5 +140,8 @@ namespace TerminalApp
 
         void AttachContent(String content, UInt32 tabIndex);
         void SendContentToOther(RequestReceiveContentArgs args);
+
+        // Protocol bridge
+        UInt32 TabCount { get; };
     }
 }

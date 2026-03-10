@@ -18,6 +18,9 @@ using namespace winrt::TerminalApp;
 static const int PaneBorderSize = 2;
 static const int CombinedPaneBorderSize = 2 * PaneBorderSize;
 
+// Process-global counter for protocol pane IDs.
+std::atomic<uint32_t> Pane::s_nextProtocolId{ 1 };
+
 // WARNING: Don't do this! This won't work
 //   Duration duration{ std::chrono::milliseconds{ 200 } };
 // Instead, make a duration from a TimeSpan from the time in millis
@@ -28,6 +31,7 @@ static const int AnimationDurationInMilliseconds = 200;
 static const Duration AnimationDuration = DurationHelper::FromTimeSpan(winrt::Windows::Foundation::TimeSpan(std::chrono::milliseconds(AnimationDurationInMilliseconds)));
 
 Pane::Pane(IPaneContent content, const bool lastFocused) :
+    _protocolId{ s_nextProtocolId.fetch_add(1) },
     _lastActive{ lastFocused }
 {
     _setPaneContent(std::move(content));
@@ -60,6 +64,7 @@ Pane::Pane(std::shared_ptr<Pane> first,
     _secondChild{ second },
     _splitState{ splitState },
     _desiredSplitPosition{ splitPosition },
+    _protocolId{ s_nextProtocolId.fetch_add(1) },
     _lastActive{ lastFocused }
 {
     _CreateRowColDefinitions();
@@ -1424,6 +1429,7 @@ void Pane::_CloseChild(const bool closeFirst)
             return;
         }
         _id = remainingChild->Id();
+        _protocolId = remainingChild->_protocolId;
 
         // Revoke the old event handlers. Remove both the handlers for the panes
         // themselves closing, and remove their handlers for their controls
@@ -2306,6 +2312,8 @@ std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> Pane::_Split(SplitDirect
         //   Move our control, guid, isDefTermSession into the first one.
         _firstChild = std::make_shared<Pane>(_takePaneContent());
         _firstChild->_broadcastEnabled = _broadcastEnabled;
+        // Preserve the protocol ID so the coordinator can still track this pane.
+        _firstChild->_protocolId = _protocolId;
     }
 
     _splitState = actualSplitType;
@@ -2439,6 +2447,26 @@ void Pane::Id(uint32_t id) noexcept
     _id = id;
 }
 
+std::optional<winrt::hstring> Pane::GetSessionVariable(const winrt::hstring& name) const
+{
+    const auto it = _sessionVariables.find(std::wstring{ name });
+    if (it != _sessionVariables.end())
+    {
+        return winrt::hstring{ it->second };
+    }
+    return std::nullopt;
+}
+
+void Pane::SetSessionVariable(const winrt::hstring& name, const winrt::hstring& value)
+{
+    _sessionVariables[std::wstring{ name }] = std::wstring{ value };
+}
+
+void Pane::RemoveSessionVariable(const winrt::hstring& name)
+{
+    _sessionVariables.erase(std::wstring{ name });
+}
+
 // Method Description:
 // - Recursive function that focuses a pane with the given ID
 // Arguments:
@@ -2513,6 +2541,11 @@ winrt::TerminalApp::TerminalPaneContent Pane::_getTerminalContent() const
 std::shared_ptr<Pane> Pane::FindPane(const uint32_t id)
 {
     return _FindPane([=](const auto& p) { return p->_IsLeaf() && p->_id == id; });
+}
+
+std::shared_ptr<Pane> Pane::FindPaneByProtocolId(const uint32_t protocolId)
+{
+    return _FindPane([=](const auto& p) { return p->_IsLeaf() && p->_protocolId == protocolId; });
 }
 
 // Method Description:

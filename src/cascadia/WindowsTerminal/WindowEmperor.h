@@ -18,9 +18,13 @@ Abstract:
 #pragma once
 
 class AppHost;
+class TerminalProtocolServer;
+class ProtocolRequestHandler;
 
 class WindowEmperor
 {
+    friend class ProtocolRequestHandler;
+
 public:
     enum UserMessages : UINT
     {
@@ -30,11 +34,18 @@ public:
         WM_NOTIFY_FROM_NOTIFICATION_AREA,
     };
 
+    WindowEmperor();
+    ~WindowEmperor();
+
     HWND GetMainWindow() const noexcept;
     AppHost* GetWindowById(uint64_t id) const noexcept;
     AppHost* GetWindowByName(std::wstring_view name) const noexcept;
     void CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args);
     void HandleCommandlineArgs(int nCmdShow);
+
+    // Protocol server access
+    const std::wstring& GetProtocolPipeName() const noexcept { return _protocolPipeName; }
+    const std::string& GetMcpToken() const noexcept { return _mcpToken; }
 
 private:
     struct SummonWindowSelectionArgs
@@ -72,6 +83,13 @@ private:
     wil::unique_hwnd _window;
     winrt::TerminalApp::App _app{ nullptr };
     std::vector<std::shared_ptr<::AppHost>> _windows;
+
+    // Protocol server for AI CLI integration
+    std::wstring _protocolPipeName;
+    std::string _mcpToken;
+    std::unique_ptr<ProtocolRequestHandler> _protocolHandler;
+    std::unique_ptr<TerminalProtocolServer> _protocolServer;
+    void _initializeProtocolServer();
     std::vector<winrt::Microsoft::Terminal::Settings::Model::GlobalSummonArgs> _hotkeys;
     NOTIFYICONDATA _notificationIcon{};
     UINT WM_TASKBARCREATED = 0;

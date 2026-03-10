@@ -13,10 +13,16 @@
 #include <sddl.h>
 
 #include "AppHost.h"
+#include "TerminalProtocolServer.h"
+#include "ProtocolRequestHandler.h"
 #include "resource.h"
 #include "VirtualDesktopUtils.h"
 #include "../../types/inc/User32Utils.hpp"
 #include "../../types/inc/utils.hpp"
+
+#include <bcrypt.h>
+#include <fstream>
+#pragma comment(lib, "bcrypt.lib")
 
 using namespace winrt;
 using namespace winrt::Microsoft::Terminal;
@@ -25,6 +31,11 @@ using namespace winrt::Windows::Foundation;
 using namespace ::Microsoft::Console;
 using namespace std::chrono_literals;
 using VirtualKeyModifiers = winrt::Windows::System::VirtualKeyModifiers;
+
+// Constructor and destructor must be defined here where TerminalProtocolServer
+// and ProtocolRequestHandler are complete types (unique_ptr needs this).
+WindowEmperor::WindowEmperor() = default;
+WindowEmperor::~WindowEmperor() = default;
 
 #ifdef _WIN64
 static constexpr ULONG_PTR TERMINAL_HANDOFF_MAGIC = 0x4c414e494d524554; // 'TERMINAL'
@@ -371,6 +382,9 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
     _setupGlobalHotkeys();
     _checkWindowsForNotificationIcon();
     _setupSessionPersistence(_app.Logic().Settings().GlobalSettings().ShouldUsePersistedLayout());
+
+    // Initialize the protocol server for AI CLI integration.
+    _initializeProtocolServer();
 
     // When the settings change, we'll want to update our global hotkeys
     // and our notification icon based on the new settings.
@@ -1451,3 +1465,39 @@ void WindowEmperor::_checkWindowsForNotificationIcon()
 }
 
 #pragma endregion
+
+// ============================================================================
+// Protocol Server
+// ============================================================================
+
+void WindowEmperor::_initializeProtocolServer()
+{
+    // Generate a random 32-byte hex token for MCP authentication.
+    {
+        BYTE tokenBytes[32];
+        const auto status = BCryptGenRandom(nullptr, tokenBytes, sizeof(tokenBytes), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+        if (!BCRYPT_SUCCESS(status))
+        {
+            LOG_WIN32(HRESULT_FROM_NT(status));
+            return; // Protocol server won't start without a token.
+        }
+
+        _mcpToken.reserve(sizeof(tokenBytes) * 2);
+        for (size_t i = 0; i < sizeof(tokenBytes); ++i)
+        {
+            char hex[3];
+            sprintf_s(hex, "%02x", tokenBytes[i]);
+            _mcpToken += hex;
+        }
+    }
+
+    // Create the named pipe name using the process ID for uniqueness.
+    _protocolPipeName = fmt::format(L"\\\\.\\pipe\\WindowsTerminal-{}", GetCurrentProcessId());
+
+    // Create the handler and server.
+    _protocolHandler = std::make_unique<ProtocolRequestHandler>(*this);
+    _protocolHandler->SetAuthToken(_mcpToken);
+
+    _protocolServer = std::make_unique<TerminalProtocolServer>(_protocolPipeName, _mcpToken, *_protocolHandler);
+    _protocolServer->Start();
+}

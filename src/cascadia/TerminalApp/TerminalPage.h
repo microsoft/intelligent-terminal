@@ -176,6 +176,23 @@ namespace winrt::TerminalApp::implementation
 
         uint32_t NumberOfTabs() const;
 
+        // Terminal Protocol Bridge Methods
+        uint32_t TabCount() const;
+        Windows::Foundation::IReference<uint32_t> FocusedTabIndex() const;
+        hstring GetProtocolActivePaneJson();
+        hstring GetProtocolTabsJson();
+        hstring GetProtocolPanesJson(hstring tabIdFilter);
+        hstring ReadProtocolPaneOutput(hstring paneId, hstring source, int32_t maxLines);
+        hstring GetProtocolProcessStatus(hstring paneId);
+        hstring GetProtocolSessionVariable(hstring paneId, hstring name);
+        bool SetProtocolSessionVariable(hstring paneId, hstring name, hstring value);
+        void SetPendingProtocolEnv(hstring key, hstring value);
+        void ClearPendingProtocolEnv();
+        hstring CreateProtocolTab(Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
+        hstring SplitProtocolPane(hstring paneId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
+        bool CloseProtocolPane(hstring paneId);
+        bool SendProtocolInput(hstring paneId, hstring text);
+
         til::property_changed_event PropertyChanged;
 
         // -------------------------------- WinRT Events ---------------------------------
@@ -241,6 +258,10 @@ namespace winrt::TerminalApp::implementation
         bool _isFullscreen{ false };
         bool _isMaximized{ false };
         bool _isAlwaysOnTop{ false };
+
+        // Temporary env vars to inject into the next pane created via protocol.
+        // Set before calling _OpenNewTab/_SplitPane, cleared after.
+        std::optional<std::unordered_map<std::wstring, std::wstring>> _pendingProtocolEnvVars;
         bool _showTabsFullscreen{ false };
 
         std::optional<uint32_t> _loadFromPersistedLayoutIdx{};
@@ -318,8 +339,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _CreateNewTabFlyoutAction(const winrt::hstring& actionId, const winrt::hstring& iconPathOverride);
 
         void _OpenNewTabDropdown();
-        HRESULT _OpenNewTab(const Microsoft::Terminal::Settings::Model::INewContentArgs& newContentArgs);
-        TerminalApp::Tab _CreateNewTabFromPane(std::shared_ptr<Pane> pane, uint32_t insertPosition = -1);
+        HRESULT _OpenNewTab(const Microsoft::Terminal::Settings::Model::INewContentArgs& newContentArgs, bool openInBackground = false);
+        TerminalApp::Tab _CreateNewTabFromPane(std::shared_ptr<Pane> pane, uint32_t insertPosition = -1, bool openInBackground = false);
 
         std::wstring _evaluatePathForCwd(std::wstring_view path);
 
@@ -358,7 +379,7 @@ namespace winrt::TerminalApp::implementation
         void _RemoveTab(const winrt::TerminalApp::Tab& tab);
         safe_void_coroutine _RemoveTabs(const std::vector<winrt::TerminalApp::Tab> tabs);
 
-        void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1);
+        void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);
         void _RegisterTabEvents(Tab& hostingTab);
 
@@ -415,7 +436,8 @@ namespace winrt::TerminalApp::implementation
         void _SplitPane(const winrt::com_ptr<Tab>& tab,
                         const Microsoft::Terminal::Settings::Model::SplitDirection splitType,
                         const float splitSize,
-                        std::shared_ptr<Pane> newPane);
+                        std::shared_ptr<Pane> newPane,
+                        bool focusNewPane = true);
         void _ResizePane(const Microsoft::Terminal::Settings::Model::ResizeDirection& direction);
         void _ToggleSplitOrientation();
 
