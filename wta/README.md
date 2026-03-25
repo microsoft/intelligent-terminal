@@ -1,6 +1,6 @@
 # WTA -- Windows Terminal Agent
 
-A Rust TUI client and MCP tool server that connects AI agents to Windows Terminal.
+A Rust TUI client, MCP tool server, and tmux-like CLI that connects AI agents to Windows Terminal.
 
 ## Quick Start
 
@@ -29,6 +29,10 @@ wta "list all open tabs"
 wta --agent "claude-agent-acp --stdio"
 ```
 
+When ACP mode is connected to Windows Terminal, the current agent-facing contract is the local `wta` CLI.
+The agent is expected to shell out to commands like `wta active-pane --json`, `wta list-panes --json`, and `wta send-keys --json`.
+The CLI then talks to Windows Terminal over the named pipe.
+
 ### Run (MCP server mode)
 
 Headless -- intended to be spawned by an agent as an MCP tool server.
@@ -48,7 +52,7 @@ wta list-tabs                             # list tabs in first window
 wta list-panes                            # list panes in first tab
 wta active-pane                           # show focused pane
 wta new-tab -c "pwsh.exe" -n "Build"      # create tab running pwsh
-wta split-pane -h -c "pwsh.exe"           # split horizontal
+wta split-pane -H -c "pwsh.exe"           # split horizontal
 wta send-keys -t 3 "cargo build" Enter    # send keys to pane 3
 wta capture-pane -t 3 -l 50              # read last 50 lines from pane 3
 wta kill-pane -t 3                        # close pane 3
@@ -163,7 +167,7 @@ tail -f wta-pipe-debug.log wta-acp-debug.log wta-mcp-debug.log
 
 ## Debugging MCP Protocol
 
-When wta runs in ACP mode, it auto-spawns a `wta --mcp` subprocess for the agent. The MCP traffic flows through three layers:
+When `wta mcp` is used as a headless tool server, the MCP traffic flows through three layers:
 
 ```
 Agent CLI  <--MCP/stdio-->  wta --mcp  <--named pipe-->  Windows Terminal
@@ -290,5 +294,5 @@ target/debug/wta.exe --pipe-name '\\.\pipe\WindowsTerminal-12345'
 - **Pipe discovery priority**: `--pipe-name` CLI flag > VT OSC 9001 > `WT_PIPE_NAME` env var
 - **CLI subcommands** are thin wrappers over `PipeChannel::request()` -- no ShellManager needed
 - **Pane identity** is discovered at startup via PID matching (list all panes, find ours)
-- **MCP config injection**: In ACP mode with WT connected, WTA generates a temp MCP config file pointing to `wta --mcp` and injects it into the agent's command line so the agent gets WT tools automatically. The `--pipe-name` override propagates to the spawned MCP server via the config.
+- **ACP WT contract**: In ACP mode with WT connected, WTA adds prompt context that tells the agent to use local `wta` CLI commands for WT inspection/control. MCP remains a separate headless server mode.
 - **Graceful degradation**: If the WT pipe is unavailable, WTA falls back to local-only mode (no WT tools, just local shell operations)

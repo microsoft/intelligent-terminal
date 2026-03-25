@@ -1,4 +1,4 @@
-use std::io::{Read, Write, IsTerminal};
+use std::io::{IsTerminal, Read, Write};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -50,6 +50,12 @@ pub fn discover_connection_info() -> Option<ConnectionInfo> {
 /// reads the response `\x1b]9001;WtaRes;{json}\x1b\\` from stdin,
 /// and parses pipe name + token from the JSON response.
 fn try_vt_discover() -> Option<ConnectionInfo> {
+    // MCP stdio mode uses stdin/stdout as a protocol transport, not a real terminal.
+    // Emitting VT discovery bytes there corrupts the stream and breaks handshake.
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        return None;
+    }
+
     // Enable raw mode so we can read the terminal's response from stdin
     crossterm::terminal::enable_raw_mode().ok()?;
 
@@ -84,10 +90,7 @@ fn try_vt_discover_inner() -> Option<ConnectionInfo> {
                 Ok(1) => {
                     buf.push(byte[0]);
                     // Check for ST: last two bytes are \x1b and '\\'
-                    if buf.len() >= 2
-                        && buf[buf.len() - 2] == 0x1b
-                        && buf[buf.len() - 1] == b'\\'
-                    {
+                    if buf.len() >= 2 && buf[buf.len() - 2] == 0x1b && buf[buf.len() - 1] == b'\\' {
                         let _ = tx.send(buf);
                         return;
                     }

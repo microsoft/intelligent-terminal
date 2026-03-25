@@ -6,14 +6,18 @@ use crate::theme;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let title = if app.state == ConnectionState::Connected {
-        " > "
+        if app.recommendations.is_some() && app.input.is_empty() {
+            " Enter executes selected recommendation "
+        } else {
+            " > "
+        }
     } else {
         " (not connected) "
     };
 
     let block = Block::default().borders(Borders::ALL).title(title);
 
-    let paragraph = Paragraph::new(Span::styled(&app.input, theme::USER_PROMPT)).block(block);
+    let paragraph = Paragraph::new(Span::styled(&app.input, theme::INPUT_TEXT)).block(block);
 
     frame.render_widget(paragraph, area);
 

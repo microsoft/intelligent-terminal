@@ -91,7 +91,7 @@ wta new-tab -c "python server.py" -n "Server"
 wta split-pane -v
 
 # Split a specific pane horizontally, running a command
-wta split-pane -t <PANE_ID> -h -c "npm run dev"
+wta split-pane -t <PANE_ID> -H -c "npm run dev"
 ```
 
 ## Asking the User (Quick Pick)

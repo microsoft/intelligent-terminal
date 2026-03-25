@@ -45,7 +45,9 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let scroll = if app.debug_scroll == 0 {
         total_lines.saturating_sub(visible)
     } else {
-        total_lines.saturating_sub(visible).saturating_sub(app.debug_scroll as u16)
+        total_lines
+            .saturating_sub(visible)
+            .saturating_sub(app.debug_scroll as u16)
     };
 
     let paragraph = Paragraph::new(lines)

@@ -1,9 +1,9 @@
+pub mod pipe_channel;
 pub(crate) mod types;
 pub mod vt_channel;
-pub mod pipe_channel;
 
 pub use pipe_channel::PipeChannel;
-pub use vt_channel::{ConnectionInfo, DiscoverySource, discover_connection_info};
+pub use vt_channel::{discover_connection_info, ConnectionInfo, DiscoverySource};
 
 /// Channel for communicating with the Windows Terminal protocol server.
 ///

@@ -581,97 +581,10 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
-    void TerminalPage::InitializeCoordinator(NewTerminalArgs args)
-    {
-        _runOnUIThreadVoid(*this, [&]() {
-            if (_coordinatorInitialized)
-            {
-                return;
-            }
-
-            // Resolve the profile and create terminal settings.
-            const auto profile = _settings.GetProfileForArgs(args);
-            const auto controlSettings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, args);
-
-            // Create the connection (this picks up _pendingProtocolEnvVars).
-            auto connection = _CreateConnectionFromSettings(profile, *controlSettings.DefaultSettings(), false);
-            _pendingProtocolEnvVars.reset();
-
-            // Create the TermControl.
-            _coordinatorControl = _CreateNewControlAndContent(controlSettings, connection);
-
-            // Host the control in the sidecar container.
-            CoordinatorContainer().Children().Clear();
-            CoordinatorContainer().Children().Append(_coordinatorControl);
-
-            _coordinatorInitialized = true;
-        });
-    }
-
     void TerminalPage::ToggleCoordinator()
     {
         _runOnUIThreadVoid(*this, [&]() {
-            // Lazily initialize the coordinator panel if it hasn't been set up yet.
-            // This allows the toggle command to work even when the coordinator
-            // wasn't started automatically (e.g. no commandline configured).
-            if (!_coordinatorInitialized)
-            {
-                const auto& globals = _settings.GlobalSettings();
-                auto commandline = std::wstring{ globals.AiCoordinatorCommandline() };
-
-                // Fall back to the default shell if no coordinator CLI is configured.
-                if (commandline.empty())
-                {
-                    commandline = L"cmd.exe";
-                }
-
-                // No cmd.exe wrapper needed — WT_PIPE_NAME is inherited from
-                // the process environment, set in WindowEmperor::_startProtocolServer().
-                NewTerminalArgs newTermArgs;
-                newTermArgs.Commandline(winrt::hstring{ commandline });
-
-                const auto profile = globals.AiCoordinatorProfile();
-                if (!profile.empty())
-                {
-                    newTermArgs.Profile(profile);
-                }
-
-                newTermArgs.TabTitle(L"AI Assistant");
-                newTermArgs.SuppressApplicationTitle(true);
-
-                InitializeCoordinator(newTermArgs);
-            }
-
-            const auto border = CoordinatorBorder();
-            if (border.Visibility() == winrt::Windows::UI::Xaml::Visibility::Visible)
-            {
-                border.Visibility(winrt::Windows::UI::Xaml::Visibility::Collapsed);
-                // Return focus to the active pane in the current tab.
-                if (const auto tab = _GetFocusedTab())
-                {
-                    tab.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
-                }
-            }
-            else
-            {
-                border.Visibility(winrt::Windows::UI::Xaml::Visibility::Visible);
-                // Focus the coordinator when showing it.
-                if (_coordinatorControl)
-                {
-                    _coordinatorControl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
-                }
-            }
-        });
-    }
-
-    bool TerminalPage::CoordinatorVisible()
-    {
-        return _runOnUIThread(*this, [&]() -> bool {
-            if (!_coordinatorInitialized)
-            {
-                return false;
-            }
-            return CoordinatorBorder().Visibility() == winrt::Windows::UI::Xaml::Visibility::Visible;
+            _OpenOrReuseAgentPane(L"");
         });
     }
 

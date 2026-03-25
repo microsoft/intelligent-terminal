@@ -49,6 +49,8 @@ namespace winrt::TerminalApp::implementation
         til::property_changed_event PropertyChanged;
 
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, VirtualWorkingDirectory, PropertyChanged.raise, L"");
+        WINRT_PROPERTY(winrt::hstring, ProtocolPipeName, L"");
+        WINRT_PROPERTY(winrt::hstring, McpToken, L"");
 
     public:
         // Used for setting the initial CWD, before we have XAML set up for property change notifications.

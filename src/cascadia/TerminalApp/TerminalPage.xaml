@@ -249,16 +249,5 @@
                            Text="" />
             </mux:TeachingTip.Content>
         </mux:TeachingTip>
-        <!-- Coordinator bottom panel -->
-        <Border x:Name="CoordinatorBorder"
-                Grid.Row="3"
-                Height="400"
-                HorizontalAlignment="Stretch"
-                BorderBrush="{ThemeResource SystemControlForegroundBaseMediumBrush}"
-                BorderThickness="0,1,0,0"
-                Visibility="Collapsed">
-            <Grid x:Name="CoordinatorContainer"
-                  Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" />
-        </Border>
     </Grid>
 </Page>

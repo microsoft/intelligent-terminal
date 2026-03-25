@@ -41,6 +41,8 @@ namespace TerminalApp
 
         String VirtualWorkingDirectory { get; set; };
         String VirtualEnvVars { get; set; };
+        String ProtocolPipeName { get; set; };
+        String McpToken { get; set; };
 
         Boolean IsQuakeWindow();
     };
@@ -121,8 +123,6 @@ namespace TerminalApp
         Boolean CloseProtocolPane(String paneId);
         Boolean SendProtocolInput(String paneId, String text);
         String ShowProtocolQuickPick(String title, String choicesJson, Boolean allowFreeInput);
-        void InitializeCoordinator(Microsoft.Terminal.Settings.Model.NewTerminalArgs args);
         void ToggleCoordinator();
-        Boolean CoordinatorVisible { get; };
     }
 }

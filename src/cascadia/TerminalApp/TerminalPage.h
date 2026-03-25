@@ -193,9 +193,7 @@ namespace winrt::TerminalApp::implementation
         bool CloseProtocolPane(hstring paneId);
         bool SendProtocolInput(hstring paneId, hstring text);
         hstring ShowProtocolQuickPick(hstring title, hstring choicesJson, bool allowFreeInput);
-        void InitializeCoordinator(Microsoft::Terminal::Settings::Model::NewTerminalArgs args);
         void ToggleCoordinator();
-        bool CoordinatorVisible();
 
         til::property_changed_event PropertyChanged;
 
@@ -275,9 +273,6 @@ namespace winrt::TerminalApp::implementation
         };
         std::shared_ptr<QuickPickState> _quickPickState;
 
-        // Coordinator sidecar state
-        winrt::Microsoft::Terminal::Control::TermControl _coordinatorControl{ nullptr };
-        bool _coordinatorInitialized{ false };
         bool _showTabsFullscreen{ false };
 
         std::optional<uint32_t> _loadFromPersistedLayoutIdx{};
@@ -512,7 +507,7 @@ namespace winrt::TerminalApp::implementation
         // Agent pane helpers
         winrt::hstring _DetectAgentCli() const;
         winrt::hstring _DetectWtaPath() const;
-        winrt::Microsoft::Terminal::Control::TermControl _FindAgentPaneControlInCurrentTab();
+        std::shared_ptr<Pane> _FindAgentPaneInCurrentTab();
         std::shared_ptr<Pane> _CreateAcpAgentPane(const winrt::hstring& startingDirectory,
                                                    const winrt::hstring& agentCliPath,
                                                    const winrt::hstring& initialPrompt);

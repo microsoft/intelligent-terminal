@@ -1,9 +1,11 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tokio::io::AsyncReadExt;
 use tokio::process::Child;
 use tokio::process::Command;
 
+use super::wt_channel::ConnectionInfo;
 use super::wt_channel::WtChannel;
 
 /// Configuration for creating a new terminal.
@@ -18,6 +20,18 @@ pub struct TerminalConfig {
 pub struct TerminalOutput {
     pub data: String,
     pub exit_status: Option<u32>,
+}
+
+/// Snapshot of the active Windows Terminal pane plus its recent visible content.
+pub struct ActivePaneSnapshot {
+    pub window_id: String,
+    pub tab_id: String,
+    pub pane_id: String,
+    pub title: Option<String>,
+    pub profile: Option<String>,
+    pub content: Option<String>,
+    pub line_count: Option<u64>,
+    pub truncated: bool,
 }
 
 /// A local subprocess terminal.
@@ -47,19 +61,34 @@ pub struct ShellManager {
     terminals: Mutex<HashMap<String, Terminal>>,
     next_id: Mutex<u64>,
     wt_channel: Option<Arc<dyn WtChannel>>,
+    wt_connection_info: Option<ConnectionInfo>,
 }
 
 impl ShellManager {
+    fn value_to_string(value: Option<&serde_json::Value>) -> Option<String> {
+        match value {
+            Some(serde_json::Value::String(s)) => Some(s.clone()),
+            Some(serde_json::Value::Number(n)) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             terminals: Mutex::new(HashMap::new()),
             next_id: Mutex::new(1),
             wt_channel: None,
+            wt_connection_info: None,
         }
     }
 
     pub fn with_wt_channel(mut self, channel: Arc<dyn WtChannel>) -> Self {
         self.wt_channel = Some(channel);
+        self
+    }
+
+    pub fn with_wt_connection_info(mut self, info: ConnectionInfo) -> Self {
+        self.wt_connection_info = Some(info);
         self
     }
 
@@ -81,7 +110,14 @@ impl ShellManager {
 
     /// Create a terminal. Routes to WT pane if available, else local subprocess.
     /// Falls back to local if WT fails.
-    pub async fn create_terminal(&self, config: TerminalConfig) -> anyhow::Result<String> {
+    pub async fn create_terminal(&self, mut config: TerminalConfig) -> anyhow::Result<String> {
+        // Nested `wta` CLI commands are control helpers, not interactive jobs.
+        // Run them locally so they don't create background WT tabs.
+        if self.should_force_local(&config) {
+            self.inject_wt_env(&mut config);
+            return self.create_terminal_local(config).await;
+        }
+
         if self.has_wt_channel() {
             match self.create_terminal_wt(&config).await {
                 Ok(id) => return Ok(id),
@@ -92,6 +128,41 @@ impl ShellManager {
             }
         }
         self.create_terminal_local(config).await
+    }
+
+    fn should_force_local(&self, config: &TerminalConfig) -> bool {
+        let file_name = Path::new(&config.command)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&config.command);
+
+        file_name.eq_ignore_ascii_case("wta") || file_name.eq_ignore_ascii_case("wta.exe")
+    }
+
+    fn inject_wt_env(&self, config: &mut TerminalConfig) {
+        let Some(info) = &self.wt_connection_info else {
+            return;
+        };
+
+        if !config
+            .env
+            .iter()
+            .any(|(key, _)| key.eq_ignore_ascii_case("WT_PIPE_NAME"))
+        {
+            config
+                .env
+                .push(("WT_PIPE_NAME".to_string(), info.pipe_name.clone()));
+        }
+
+        if !config
+            .env
+            .iter()
+            .any(|(key, _)| key.eq_ignore_ascii_case("WT_MCP_TOKEN"))
+        {
+            config
+                .env
+                .push(("WT_MCP_TOKEN".to_string(), info.token.clone()));
+        }
     }
 
     /// Create a WT pane-backed terminal via the pipe protocol.
@@ -134,10 +205,10 @@ impl ShellManager {
             .ok_or_else(|| anyhow::anyhow!("create_tab response missing pane_id: {}", result))?
             .to_string();
 
-        self.terminals.lock().unwrap().insert(
-            id.clone(),
-            Terminal::WtPane(WtPaneTerminal { pane_id }),
-        );
+        self.terminals
+            .lock()
+            .unwrap()
+            .insert(id.clone(), Terminal::WtPane(WtPaneTerminal { pane_id }));
 
         Ok(id)
     }
@@ -348,7 +419,10 @@ impl ShellManager {
 
             if !is_running {
                 // Process exited but no exit code available
-                return Ok(result.get("exit_code").and_then(|v| v.as_u64()).unwrap_or(0) as u32);
+                return Ok(result
+                    .get("exit_code")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32);
             }
 
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -537,10 +611,7 @@ impl ShellManager {
     }
 
     /// Get process status for a pane.
-    pub async fn wt_get_process_status(
-        &self,
-        pane_id: &str,
-    ) -> anyhow::Result<serde_json::Value> {
+    pub async fn wt_get_process_status(&self, pane_id: &str) -> anyhow::Result<serde_json::Value> {
         self.wt()?
             .request(
                 "get_process_status",
@@ -554,6 +625,50 @@ impl ShellManager {
         self.wt()?
             .request("get_active_pane", serde_json::json!({}))
             .await
+    }
+
+    /// Capture the current active pane and a snapshot of its recent output.
+    pub async fn wt_active_pane_snapshot(
+        &self,
+        max_lines: Option<u32>,
+    ) -> anyhow::Result<ActivePaneSnapshot> {
+        let active = self.wt_get_active_pane().await?;
+        let pane_id = Self::value_to_string(active.get("pane_id"))
+            .ok_or_else(|| anyhow::anyhow!("active pane response missing pane_id"))?;
+        let tab_id = Self::value_to_string(active.get("tab_id"))
+            .ok_or_else(|| anyhow::anyhow!("active pane response missing tab_id"))?;
+        let window_id = Self::value_to_string(active.get("window_id"))
+            .ok_or_else(|| anyhow::anyhow!("active pane response missing window_id"))?;
+
+        let output = self.wt_read_pane_output(&pane_id, max_lines).await.ok();
+
+        Ok(ActivePaneSnapshot {
+            window_id,
+            tab_id,
+            pane_id,
+            title: active
+                .get("title")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            profile: active
+                .get("profile")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            content: output
+                .as_ref()
+                .and_then(|val| val.get("content"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            line_count: output
+                .as_ref()
+                .and_then(|val| val.get("line_count"))
+                .and_then(|v| v.as_u64()),
+            truncated: output
+                .as_ref()
+                .and_then(|val| val.get("truncated"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+        })
     }
 
     /// Show a quick-pick dialog in WT and return the user's selection.

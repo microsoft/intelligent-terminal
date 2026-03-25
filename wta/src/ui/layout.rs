@@ -2,7 +2,7 @@ use ratatui::prelude::*;
 
 use crate::app::App;
 
-use super::{chat, debug_panel, input, permission, status_bar};
+use super::{chat, debug_panel, input, permission, recommendations, status_bar};
 
 pub fn render(frame: &mut Frame, app: &App) {
     let area = frame.area();
@@ -18,19 +18,27 @@ pub fn render(frame: &mut Frame, app: &App) {
         (area, None)
     };
 
-    // Layout: status bar (1 line) | chat (fill) | input (3 lines)
+    let recommendations_height = if app.recommendations.is_some() {
+        Constraint::Length(8)
+    } else {
+        Constraint::Length(0)
+    };
+
+    // Layout: status bar | recommendations | chat | input
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),  // status bar
+            Constraint::Length(1), // status bar
+            recommendations_height,
             Constraint::Min(1),    // chat area
             Constraint::Length(3), // input box
         ])
         .split(main_area);
 
     status_bar::render(frame, app, chunks[0]);
-    chat::render(frame, app, chunks[1]);
-    input::render(frame, app, chunks[2]);
+    recommendations::render(frame, app, chunks[1]);
+    chat::render(frame, app, chunks[2]);
+    input::render(frame, app, chunks[3]);
 
     // Debug panel (right side)
     if let Some(debug_area) = debug_area {

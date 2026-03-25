@@ -760,19 +760,19 @@ namespace winrt::TerminalApp::implementation
     // Arguments:
     // - <none>
     // Return Value:
-    // - The TermControl of an existing agent pane in the current tab, or nullptr if none found.
-    TermControl TerminalPage::_FindAgentPaneControlInCurrentTab()
+    // - The pane for an existing agent session in the current tab, or nullptr if none found.
+    std::shared_ptr<Pane> TerminalPage::_FindAgentPaneInCurrentTab()
     {
         const auto tab = _GetFocusedTabImpl();
         if (!tab)
         {
-            return nullptr;
+            return {};
         }
 
         const auto rootPane = tab->GetRootPane();
         if (!rootPane)
         {
-            return nullptr;
+            return {};
         }
 
         // Walk through tracked agent panes, pruning expired weak_ptrs
@@ -796,12 +796,11 @@ namespace winrt::TerminalApp::implementation
 
             if (found)
             {
-                // Return the terminal control from this pane
-                return pane->GetTerminalControl();
+                return pane;
             }
             ++it;
         }
-        return nullptr;
+        return {};
     }
 
     // Method Description:
@@ -848,23 +847,62 @@ namespace winrt::TerminalApp::implementation
         OutputDebugStringW(fmt::format(FMT_COMPILE(L"[AgentPane] _OpenOrReuseAgentPane called, prompt='{}'\n"),
                                        std::wstring_view{ prompt }).c_str());
 
-        // 1. Detect WTA. WTA is the preferred launcher because it auto-injects
-        //    MCP config, giving the agent access to Windows Terminal MCP tools
-        //    (pane management, send-keys, capture-pane, etc.).
-        auto wtaPath = _DetectWtaPath();
-        if (wtaPath.empty())
+        const auto& globals = _settings.GlobalSettings();
+        std::wstring cmdline;
+
+        // 1. Build the command line. WTA is preferred because it connects the
+        //    assistant to the Windows Terminal control plane. If WTA is not
+        //    available, fall back to the configured coordinator command line.
+        if (const auto wtaPath = _DetectWtaPath(); !wtaPath.empty())
         {
-            OutputDebugStringW(L"[AgentPane] wta.exe not found on PATH\n");
+            cmdline = std::wstring{ wtaPath };
+
+            auto agentCliPath = globals.AgentCliPath();
+            if (agentCliPath.empty())
+            {
+                agentCliPath = _DetectAgentCli();
+            }
+
+            if (!agentCliPath.empty())
+            {
+                std::wstring agentStr{ agentCliPath };
+                for (size_t pos = 0; (pos = agentStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
+                {
+                    agentStr.replace(pos, 1, L"\"\"");
+                }
+                cmdline += fmt::format(FMT_COMPILE(L" --agent \"{}\""), agentStr);
+            }
+        }
+        else
+        {
+            cmdline = std::wstring{ globals.AiCoordinatorCommandline() };
+        }
+
+        if (cmdline.empty())
+        {
+            OutputDebugStringW(L"[AgentPane] no AI assistant command line configured\n");
             return;
         }
 
         // 2. Try to reuse an existing agent pane in the current tab.
-        auto existingControl = _FindAgentPaneControlInCurrentTab();
-        if (existingControl)
+        if (const auto existingPane = _FindAgentPaneInCurrentTab())
         {
-            if (!prompt.empty())
+            const auto activeTab = _GetFocusedTabImpl();
+            if (activeTab)
             {
-                existingControl.SendInput(prompt + L"\r");
+                if (const auto paneId = existingPane->Id())
+                {
+                    activeTab->FocusPane(paneId.value());
+                }
+            }
+
+            if (const auto existingControl = existingPane->GetTerminalControl())
+            {
+                if (!prompt.empty())
+                {
+                    existingControl.SendInput(prompt + L"\r");
+                }
+                existingControl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
             }
             return;
         }
@@ -902,28 +940,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // 4. Build the WTA command line. We launch WTA as a normal ConPTY
-        //    process so it gets full terminal I/O and can auto-discover the WT
-        //    pipe via VT OSC 9001.
-        //
-        //    Format: wta.exe [--agent "cli"] ["prompt"]
-        //
-        //    Prompt escaping: embedded double-quotes are doubled ("") per
-        //    Windows command-line quoting convention.
-        std::wstring cmdline{ wtaPath };
-
-        // If the user has a custom agent CLI configured, pass it through.
-        auto agentCliPath = _settings.GlobalSettings().AgentCliPath();
-        if (!agentCliPath.empty())
-        {
-            std::wstring agentStr{ agentCliPath };
-            for (size_t pos = 0; (pos = agentStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
-            {
-                agentStr.replace(pos, 1, L"\"\"");
-            }
-            cmdline += fmt::format(FMT_COMPILE(L" --agent \"{}\""), agentStr);
-        }
-
+        // 4. Append the initial prompt for the assistant process if provided.
         if (!prompt.empty())
         {
             std::wstring escapedPrompt{ prompt };
@@ -938,13 +955,55 @@ namespace winrt::TerminalApp::implementation
                                        std::wstring_view{ startingDirectory },
                                        cmdline).c_str());
 
-        // 5. Create a normal ConPTY pane running WTA via NewTerminalArgs.
+        const auto activeTab = _GetFocusedTabImpl();
+        const auto focusedTabIndex = _GetFocusedTabIndex();
+
+        // 5. Inject protocol credentials and source-pane context into the next
+        //    assistant pane process before creating the ConPTY connection.
+        if (const auto pipeName = _WindowProperties.ProtocolPipeName(); !pipeName.empty())
+        {
+            SetPendingProtocolEnv(L"WT_PIPE_NAME", pipeName);
+        }
+        if (const auto token = _WindowProperties.McpToken(); !token.empty())
+        {
+            SetPendingProtocolEnv(L"WT_MCP_TOKEN", token);
+        }
+        if (const auto windowId = _WindowProperties.WindowId(); windowId != 0)
+        {
+            SetPendingProtocolEnv(L"WTA_SOURCE_WINDOW_ID", winrt::hstring{ std::to_wstring(windowId) });
+        }
+        if (focusedTabIndex.has_value())
+        {
+            SetPendingProtocolEnv(L"WTA_SOURCE_TAB_ID", winrt::hstring{ std::to_wstring(focusedTabIndex.value()) });
+        }
+        if (activeTab)
+        {
+            if (const auto sourcePane = activeTab->GetActivePane())
+            {
+                SetPendingProtocolEnv(L"WTA_SOURCE_PANE_ID", winrt::hstring{ std::to_wstring(sourcePane->ProtocolId()) });
+            }
+        }
+        if (!startingDirectory.empty())
+        {
+            SetPendingProtocolEnv(L"WTA_SOURCE_CWD", startingDirectory);
+        }
+        auto clearPendingProtocolEnv = wil::scope_exit([&]() {
+            ClearPendingProtocolEnv();
+        });
+
+        // 6. Create a normal ConPTY pane running WTA via NewTerminalArgs.
         NewTerminalArgs newTerminalArgs;
         newTerminalArgs.Commandline(winrt::hstring{ cmdline });
         if (!startingDirectory.empty())
         {
             newTerminalArgs.StartingDirectory(startingDirectory);
         }
+        if (const auto profile = globals.AiCoordinatorProfile(); !profile.empty())
+        {
+            newTerminalArgs.Profile(profile);
+        }
+        newTerminalArgs.TabTitle(L"AI Assistant");
+        newTerminalArgs.SuppressApplicationTitle(true);
 
         auto newPane = _MakeTerminalPane(newTerminalArgs, nullptr, nullptr);
         if (!newPane)
@@ -954,9 +1013,15 @@ namespace winrt::TerminalApp::implementation
 
         _agentPanes.push_back(newPane);
 
-        // 6. Split the active tab with the agent pane
-        const auto& activeTab = _GetFocusedTabImpl();
-        const auto positionSetting = _settings.GlobalSettings().AgentPanePosition();
+        // 7. Split the active tab with the agent pane. If there is no active
+        //    tab yet, fall back to opening the assistant as a new tab.
+        if (!activeTab)
+        {
+            _CreateNewTabFromPane(newPane, -1, false);
+            return;
+        }
+
+        const auto positionSetting = globals.AgentPanePosition();
         const auto splitDirection = (positionSetting == L"bottom")
                                         ? SplitDirection::Down
                                         : SplitDirection::Right;

@@ -100,31 +100,24 @@ Steps 1–9 refactored WTA from an ACP-only client into the dual-mode architectu
 
 ---
 
-## Part 2: Windows Terminal Integration (IN PROGRESS)
+## Part 2: Windows Terminal Integration (DONE, named-pipe-first)
 
-Add a bidirectional channel between WTA and Windows Terminal using custom OSC 9001 escape sequences. WTA (child process) sends requests via stdout; WT responds via WTA's stdin.
+The current implementation talks to Windows Terminal primarily through the named-pipe protocol server.
+VT OSC 9001 is still relevant, but mainly for pipe discovery/bootstrap and future in-pane integration, not as the main control channel.
 
 ```
 WTA (Rust, child process)                Windows Terminal (C++)
 ─────────────────────────                ─────────────────────────
 
- ShellManager                            VT Parser
+ ShellManager                         ProtocolRequestHandler
     │                                        │
-    ├── Local (existing)                     │ OSC 9001
+    ├── Local (existing)                     │ named pipe server
     │                                        ▼
-    └── WtChannel (trait)                adaptDispatch::DoWTAction()
-         │                                   │ "WtaReq" branch
-         ├── VtChannel (OSC 9001)            ▼
-         │    │                          HandleWtaRequest()
-         │    ├── stdout: \x1b]9001;         │
-         │    │   WtaReq;{json}\x07          │ process request
-         │    │          ─────────►          │
-         │    │                              │
-         │    └── stdin:  \x1b]9001;         │
-         │        WtaRes;{json}\x07          │
-         │               ◄─────────     _ReturnOscResponse()
+    └── WtChannel (trait)              \\.\pipe\WindowsTerminal-<PID>
          │
-         └── PipeChannel (future stub)
+         ├── PipeChannel (primary transport)
+         │
+         └── VtChannel (discovery/future integration)
 ```
 
 ### WTA Rust-Side Steps
@@ -133,12 +126,11 @@ WTA (Rust, child process)                Windows Terminal (C++)
 |------|-------------|--------|
 | 10 | Create `shell/wt_channel/types.rs` — WtAction enum, WtRequest, WtResponse structs | Done |
 | 11 | Create `shell/wt_channel/mod.rs` — WtChannel trait (`request`, `is_available`) | Done |
-| 12 | Create `shell/wt_channel/vt_channel.rs` — OSC 9001 transport (stdout write, oneshot response routing) | Done |
-| 13 | Create `shell/wt_channel/pipe_channel.rs` — named pipe stub (returns "not implemented") | Done |
-| 14 | Enhance `shell_manager.rs` — add `wt_channel: Option<Arc<dyn WtChannel>>`, dispatch to WT or local, add tab/pane/query ops | **Next** |
-| 15 | Update `main.rs` — add `--wt` flag, wire VtChannel + response channel | Pending |
-| 16 | Update `event.rs` — add `wt_tx` parameter for OSC response interception (Phase 1: stub) | Pending |
-| — | Verify with `cargo build` | Pending |
+| 12 | Create `shell/wt_channel/vt_channel.rs` — VT discovery helper | Done |
+| 13 | Create `shell/wt_channel/pipe_channel.rs` — named pipe transport | Done |
+| 14 | Enhance `shell_manager.rs` — add `wt_channel: Option<Arc<dyn WtChannel>>`, dispatch to WT or local, add tab/pane/query ops | Done |
+| 15 | Update `main.rs` — wire CLI subcommands and pipe discovery | Done |
+| 16 | Verify with `cargo build` and CLI/manual testing | Done |
 
 ### WtAction Enum (Defined in types.rs)
 
@@ -186,11 +178,11 @@ pub struct ShellManager {
 - Existing ops (`create_terminal`, `get_output`, etc.) try WT channel first, fall back to local
 - New WT-only ops: `new_tab`, `split_pane`, `focus_pane`, `close_pane`, `get_cwd`, `get_scrollback`, `get_shell_marks`
 
-### Stdin Multiplexing (Phased Approach)
+### VT / OSC Follow-Up
 
-1. **Phase 1 (current):** Stub — VtChannel writes OSC requests but stdin response parsing is deferred. Test with mock channel.
-2. **Phase 2:** Accumulate synthetic key events in `event.rs`, detect `\x1b]9001;WtaRes;` prefix, buffer until `\x07`, parse, route to `wt_tx`.
-3. **Phase 3:** PipeChannel bypasses stdin entirely (cleanest long-term solution).
+1. Keep VT OSC 9001 for discovery/bootstrap where it is useful.
+2. Treat named pipes as the stable control path for CLI, ACP, and MCP integrations.
+3. Add deeper VT request/response handling later only if an in-pane control channel becomes necessary.
 
 ---
 

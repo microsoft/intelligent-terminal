@@ -188,6 +188,32 @@ WTA discovers which WT pane it's running in via PID matching:
 4. Store `(pane_id, tab_id, window_id)` in App state
 5. Displayed in status bar as `pane:X tab:Y`
 
+## Logging
+
+WTA log files are written to the **current working directory of the `wta` process**. They are not written to a fixed app-data directory.
+
+Current log files:
+
+- `wta-acp-debug.log` -- ACP client / agent session log
+- `wta-mcp-debug.log` -- MCP server startup and tool log
+- `wta-pipe-debug.log` -- Windows Terminal named-pipe request/response log
+
+This matters when WTA is launched from a pane:
+
+- If `wta` is launched while the pane cwd is `C:\Users\kaitao`, logs will be written under `C:\Users\kaitao\`
+- If `wta` is launched while the pane cwd is `C:\Users\kaitao\codes\agentic-terminal\wta`, logs will be written there instead
+
+For the March 24, 2026 run, the logs were found at:
+
+- `C:\Users\kaitao\wta-acp-debug.log`
+- `C:\Users\kaitao\wta-pipe-debug.log`
+
+Rule of thumb: if a log is "missing" from the repo, check the directory from which the pane launched `wta` first.
+
+Current limitation:
+
+- ACP child-process stderr is currently discarded, so some crashes can appear in the UI as a generic ACP shutdown error without a full root-cause trace in the debug logs.
+
 ## Key Crates
 
 | Crate | Version | Purpose |

@@ -1,25 +1,27 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 
 use anyhow::{bail, Context};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::windows::named_pipe::ClientOptions;
 use tokio::sync::{mpsc, Mutex};
 
-use crate::app::DebugMessage;
 use super::types::{WireRequest, WireResponse};
 use super::WtChannel;
+use crate::app::DebugMessage;
 
 /// Named-pipe channel to the Windows Terminal protocol server.
 ///
 /// Connects to `\\.\pipe\WindowsTerminal-<PID>` using env var `WT_PIPE_NAME`.
 /// `WT_MCP_TOKEN` is optional — if missing, sends empty string (dev bypass).
-/// Debug logging to `wta-pipe-debug.log` is enabled by default.
+/// Debug logging to `wta-pipe-debug.log` is opt-in via `WTA_DEBUG_LOG=1`.
 pub struct PipeChannel {
     pipe: Mutex<tokio::net::windows::named_pipe::NamedPipeClient>,
     next_id: AtomicU64,
     available: AtomicBool,
     debug_log: Option<Mutex<std::fs::File>>,
     debug_tx: Option<mpsc::UnboundedSender<DebugMessage>>,
+    debug_enabled: Option<Arc<AtomicBool>>,
 }
 
 impl PipeChannel {
@@ -27,10 +29,11 @@ impl PipeChannel {
     ///
     /// Reads `WT_PIPE_NAME` from environment (required).
     /// `WT_MCP_TOKEN` is optional — defaults to empty string for dev bypass.
-    /// Debug log is always written to `wta-pipe-debug.log` unless `WTA_DEBUG_LOG=0`.
+    /// Debug log is written to `wta-pipe-debug.log` only when `WTA_DEBUG_LOG=1`.
     pub async fn connect() -> anyhow::Result<Self> {
-        let pipe_name = std::env::var("WT_PIPE_NAME")
-            .context("WT_PIPE_NAME not set. Must run inside a Windows Terminal pane with protocol access.")?;
+        let pipe_name = std::env::var("WT_PIPE_NAME").context(
+            "WT_PIPE_NAME not set. Must run inside a Windows Terminal pane with protocol access.",
+        )?;
         // Token is optional for dev — empty string triggers the dev bypass in WT.
         let token = std::env::var("WT_MCP_TOKEN").unwrap_or_default();
 
@@ -44,16 +47,15 @@ impl PipeChannel {
             .open(pipe_name)
             .context(format!("Failed to connect to pipe: {}", pipe_name))?;
 
-        // Debug log is ON by default. Set WTA_DEBUG_LOG=0 to disable.
-        let debug_log = if std::env::var("WTA_DEBUG_LOG").as_deref() == Ok("0") {
-            None
-        } else {
+        let debug_log = if std::env::var("WTA_DEBUG_LOG").as_deref() == Ok("1") {
             let file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open("wta-pipe-debug.log")
                 .ok();
             file.map(Mutex::new)
+        } else {
+            None
         };
 
         let channel = Self {
@@ -62,6 +64,7 @@ impl PipeChannel {
             available: AtomicBool::new(false),
             debug_log,
             debug_tx: None,
+            debug_enabled: None,
         };
 
         channel
@@ -90,12 +93,23 @@ impl PipeChannel {
     }
 
     /// Attach a debug message sender for the TUI debug panel.
-    pub fn with_debug_sender(mut self, tx: mpsc::UnboundedSender<DebugMessage>) -> Self {
+    pub fn with_debug_sender(
+        mut self,
+        tx: mpsc::UnboundedSender<DebugMessage>,
+        enabled: Arc<AtomicBool>,
+    ) -> Self {
         self.debug_tx = Some(tx);
+        self.debug_enabled = Some(enabled);
         self
     }
 
     fn emit_debug(&self, direction: crate::app::DebugDir, content: String) {
+        let Some(enabled) = &self.debug_enabled else {
+            return;
+        };
+        if !enabled.load(Ordering::Relaxed) {
+            return;
+        }
         if let Some(ref tx) = self.debug_tx {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

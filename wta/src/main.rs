@@ -1,4 +1,5 @@
 mod app;
+mod coordinator;
 mod event;
 mod protocol;
 mod shell;
@@ -14,6 +15,7 @@ use crossterm::{
 use ratatui::prelude::*;
 use serde_json::json;
 use std::io;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use shell::wt_channel::{PipeChannel, WtChannel};
@@ -117,13 +119,29 @@ enum Command {
         #[arg(short = 't', long)]
         target: Option<String>,
 
-        /// Split horizontally (panes side by side)
-        #[arg(short = 'h', long)]
+        /// Split horizontally (panes stacked, new pane below)
+        #[arg(short = 'H', long)]
         horizontal: bool,
 
-        /// Split vertically (panes stacked)
+        /// Split vertically (panes side by side, new pane to the right)
         #[arg(short = 'v', long)]
         vertical: bool,
+
+        /// Split with the new pane to the right
+        #[arg(long)]
+        right: bool,
+
+        /// Split with the new pane to the left
+        #[arg(long)]
+        left: bool,
+
+        /// Split with the new pane below
+        #[arg(long)]
+        down: bool,
+
+        /// Split with the new pane above
+        #[arg(long)]
+        up: bool,
 
         /// Size as fraction (0.0-1.0)
         #[arg(short = 's', long)]
@@ -267,10 +285,7 @@ async fn main() -> Result<()> {
             print_output(&result, json_mode, format_tabs_human);
             Ok(())
         }
-        Some(Command::ListPanes {
-            tab_id,
-            window_id,
-        }) => {
+        Some(Command::ListPanes { tab_id, window_id }) => {
             let channel = connect_channel(&pipe_override).await?;
             let tid = match tab_id {
                 Some(id) => id,
@@ -313,15 +328,29 @@ async fn main() -> Result<()> {
             target,
             horizontal,
             vertical,
+            right,
+            left,
+            down,
+            up,
             size,
             command,
         }) => {
             let channel = connect_channel(&pipe_override).await?;
             let pane_id = resolve_pane_id(&channel, &target).await?;
-            let split_dir = if horizontal {
-                "horizontal"
+            let split_dir = if right {
+                "right"
+            } else if left {
+                "left"
+            } else if down {
+                "down"
+            } else if up {
+                "up"
+            } else if horizontal {
+                // WT "horizontal split" means a horizontal divider, so the new pane is below.
+                "down"
             } else if vertical {
-                "vertical"
+                // WT "vertical split" means a vertical divider, so the new pane is to the right.
+                "right"
             } else {
                 "automatic"
             };
@@ -409,10 +438,7 @@ async fn main() -> Result<()> {
             let start = std::time::Instant::now();
             loop {
                 let result = channel
-                    .request(
-                        "get_process_status",
-                        json!({ "pane_id": target }),
-                    )
+                    .request("get_process_status", json!({ "pane_id": target }))
                     .await?;
 
                 let is_running = result
@@ -427,7 +453,11 @@ async fn main() -> Result<()> {
                 }
 
                 if timeout > 0 && start.elapsed().as_secs() >= timeout {
-                    bail!("Timeout after {}s waiting for pane {} to exit", timeout, target);
+                    bail!(
+                        "Timeout after {}s waiting for pane {} to exit",
+                        timeout,
+                        target
+                    );
                 }
 
                 tokio::time::sleep(std::time::Duration::from_millis(interval)).await;
@@ -435,14 +465,10 @@ async fn main() -> Result<()> {
         }
 
         // ── Pipe discovery ──
-        Some(Command::PipeId) => {
-            run_pipe_id(&pipe_override, json_mode)
-        }
+        Some(Command::PipeId) => run_pipe_id(&pipe_override, json_mode),
 
         // ── Set environment variables ──
-        Some(Command::SetEnv { shell }) => {
-            run_set_env(&pipe_override, &shell)
-        }
+        Some(Command::SetEnv { shell }) => run_set_env(&pipe_override, &shell),
 
         // ── Quick pick ──
         Some(Command::QuickPick {
@@ -451,8 +477,10 @@ async fn main() -> Result<()> {
             free_input,
         }) => {
             let channel = connect_channel(&pipe_override).await?;
-            let choices_json: Vec<serde_json::Value> =
-                choices.iter().map(|c| serde_json::Value::String(c.clone())).collect();
+            let choices_json: Vec<serde_json::Value> = choices
+                .iter()
+                .map(|c| serde_json::Value::String(c.clone()))
+                .collect();
             let result = channel
                 .request(
                     "quick_pick",
@@ -463,7 +491,10 @@ async fn main() -> Result<()> {
                     }),
                 )
                 .await?;
-            let cancelled = result.get("cancelled").and_then(|v| v.as_bool()).unwrap_or(false);
+            let cancelled = result
+                .get("cancelled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             if cancelled {
                 std::process::exit(1);
             }
@@ -488,7 +519,7 @@ struct PipeOverride {
 
 /// Resolve pipe connection info. Priority: CLI args > VT discovery > env vars.
 fn resolve_pipe_info(po: &PipeOverride) -> Option<shell::wt_channel::ConnectionInfo> {
-    use shell::wt_channel::{ConnectionInfo, DiscoverySource, discover_connection_info};
+    use shell::wt_channel::{discover_connection_info, ConnectionInfo, DiscoverySource};
 
     // 1. CLI override — highest priority
     if let Some(ref name) = po.pipe_name {
@@ -513,7 +544,11 @@ async fn connect_channel(po: &PipeOverride) -> Result<PipeChannel> {
 }
 
 /// Single-shot: connect + call + return JSON
-async fn wt_call(po: &PipeOverride, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
+async fn wt_call(
+    po: &PipeOverride,
+    method: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value> {
     let channel = connect_channel(po).await?;
     channel.request(method, params).await
 }
@@ -531,7 +566,9 @@ async fn resolve_pane_id(channel: &PipeChannel, target: &Option<String>) -> Resu
                     serde_json::Value::Number(n) => Some(n.to_string()),
                     _ => None,
                 })
-                .ok_or_else(|| anyhow::anyhow!("No active pane found. Use -t to specify a pane ID."))?;
+                .ok_or_else(|| {
+                    anyhow::anyhow!("No active pane found. Use -t to specify a pane ID.")
+                })?;
             Ok(pane_id)
         }
     }
@@ -628,10 +665,7 @@ fn format_windows_human(val: &serde_json::Value) {
         println!("{:<12} {:<30} {}", "WINDOW_ID", "TITLE", "FOCUSED");
         for w in windows {
             let id = json_str_or_num(w, "window_id");
-            let title = w
-                .get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("-");
+            let title = w.get("title").and_then(|v| v.as_str()).unwrap_or("-");
             let focused = w
                 .get("is_focused")
                 .and_then(|v| v.as_bool())
@@ -828,7 +862,10 @@ fn run_set_env(po: &PipeOverride, shell_type: &str) -> Result<()> {
             eprintln!("# Run: wta set-env -s fish | source");
         }
         other => {
-            bail!("Unknown shell type '{}'. Use: bash, powershell, cmd, fish", other);
+            bail!(
+                "Unknown shell type '{}'. Use: bash, powershell, cmd, fish",
+                other
+            );
         }
     }
 
@@ -838,46 +875,182 @@ fn run_set_env(po: &PipeOverride, shell_type: &str) -> Result<()> {
 // ─── Default ACP TUI mode ───────────────────────────────────────────────────
 
 async fn run_default_tui(cli: Cli, po: PipeOverride) -> Result<()> {
+    fn acp_startup_log(msg: &str) {
+        use std::io::Write;
+        if std::env::var("WTA_DEBUG_LOG").as_deref() != Ok("1") {
+            return;
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("wta-acp-debug.log")
+        {
+            let elapsed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            let _ = writeln!(f, "[{:.3}] {}", elapsed.as_secs_f64(), msg);
+            let _ = f.flush();
+        }
+    }
+
+    let startup = std::time::Instant::now();
+    acp_startup_log(&format!(
+        "run_default_tui start pid={} cwd={} agent={} (t+{:.3}s)",
+        std::process::id(),
+        std::env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "<unknown>".to_string()),
+        cli.agent,
+        startup.elapsed().as_secs_f64()
+    ));
+
+    let debug_capture_enabled = Arc::new(AtomicBool::new(false));
+
     // Debug channel for TUI debug panel (pipe traffic viewer)
     let (debug_tx, debug_rx) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
+    acp_startup_log(&format!(
+        "run_default_tui debug channel ready (t+{:.3}s)",
+        startup.elapsed().as_secs_f64()
+    ));
 
     // Try to connect to the Windows Terminal pipe.
     let mut shell_mgr = ShellManager::new();
-    let wt_connected = match connect_to_wt_pipe(&po, debug_tx.clone()).await {
-        Ok(channel) => {
-            eprintln!("[wta] Connected to Windows Terminal pipe");
-            shell_mgr = shell_mgr.with_wt_channel(Arc::new(channel));
-            true
-        }
-        Err(e) => {
-            eprintln!("[wta] No WT pipe (local-only mode): {}", e);
-            false
-        }
-    };
+    acp_startup_log(&format!(
+        "run_default_tui connecting WT pipe (t+{:.3}s)",
+        startup.elapsed().as_secs_f64()
+    ));
+    let wt_connected =
+        match connect_to_wt_pipe(&po, debug_tx.clone(), debug_capture_enabled.clone()).await {
+            Ok((info, channel)) => {
+                eprintln!("[wta] Connected to Windows Terminal pipe");
+                shell_mgr = shell_mgr
+                    .with_wt_connection_info(info)
+                    .with_wt_channel(Arc::new(channel));
+                acp_startup_log(&format!(
+                    "run_default_tui WT pipe connected (t+{:.3}s)",
+                    startup.elapsed().as_secs_f64()
+                ));
+                true
+            }
+            Err(e) => {
+                eprintln!("[wta] No WT pipe (local-only mode): {}", e);
+                acp_startup_log(&format!(
+                    "run_default_tui WT pipe unavailable: {} (t+{:.3}s)",
+                    e,
+                    startup.elapsed().as_secs_f64()
+                ));
+                false
+            }
+        };
     let shell_mgr = Arc::new(shell_mgr);
+    acp_startup_log(&format!(
+        "run_default_tui shell manager ready wt_connected={} (t+{:.3}s)",
+        wt_connected,
+        startup.elapsed().as_secs_f64()
+    ));
 
     // Try to discover our own pane identity by PID matching
     let pane_identity = if wt_connected {
-        discover_pane_identity(&shell_mgr).await
+        acp_startup_log(&format!(
+            "run_default_tui discovering pane identity (t+{:.3}s)",
+            startup.elapsed().as_secs_f64()
+        ));
+        let pane_identity = discover_pane_identity(&shell_mgr).await;
+        acp_startup_log(&format!(
+            "run_default_tui pane identity discovered: {:?} (t+{:.3}s)",
+            pane_identity,
+            startup.elapsed().as_secs_f64()
+        ));
+        pane_identity
     } else {
+        acp_startup_log(&format!(
+            "run_default_tui skipping pane identity discovery (t+{:.3}s)",
+            startup.elapsed().as_secs_f64()
+        ));
         None
     };
 
-    run_acp_tui_mode(cli, shell_mgr, wt_connected, debug_rx, pane_identity).await
+    acp_startup_log(&format!(
+        "run_default_tui entering ACP TUI mode (t+{:.3}s)",
+        startup.elapsed().as_secs_f64()
+    ));
+    run_acp_tui_mode(
+        cli,
+        shell_mgr,
+        wt_connected,
+        debug_rx,
+        debug_capture_enabled,
+        pane_identity,
+    )
+    .await
 }
 
 async fn run_mcp_mode(po: &PipeOverride) -> Result<()> {
+    fn mcp_startup_log(msg: &str) {
+        use std::io::Write;
+        if std::env::var("WTA_DEBUG_LOG").as_deref() == Ok("0") {
+            return;
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("wta-mcp-debug.log")
+        {
+            let elapsed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            let _ = writeln!(f, "[{:.3}] {}", elapsed.as_secs_f64(), msg);
+            let _ = f.flush();
+        }
+    }
+
+    let startup = std::time::Instant::now();
+    mcp_startup_log(&format!(
+        "run_mcp_mode start pid={} cwd={}",
+        std::process::id(),
+        std::env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "<unknown>".to_string())
+    ));
+
     // Need a ShellManager with WT channel for MCP server
     let mut shell_mgr = ShellManager::new();
+    let resolved_pipe = resolve_pipe_info(po);
+    mcp_startup_log(&format!("resolved pipe info: {:?}", resolved_pipe));
+    mcp_startup_log("connecting WT channel for MCP server...");
     match connect_channel(po).await {
         Ok(channel) => {
+            mcp_startup_log(&format!(
+                "WT channel connected for MCP server (t+{:.3}s)",
+                startup.elapsed().as_secs_f64()
+            ));
             shell_mgr = shell_mgr.with_wt_channel(Arc::new(channel));
         }
         Err(e) => {
+            mcp_startup_log(&format!(
+                "WT channel unavailable for MCP server (t+{:.3}s): {}",
+                startup.elapsed().as_secs_f64(),
+                e
+            ));
             eprintln!("[wta] No WT pipe for MCP: {}", e);
         }
     }
+    mcp_startup_log(&format!(
+        "starting MCP stdio server (t+{:.3}s)",
+        startup.elapsed().as_secs_f64()
+    ));
     protocol::mcp::server::run_mcp_server(Arc::new(shell_mgr)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::CommandFactory;
+
+    #[test]
+    fn cli_configuration_has_no_conflicting_flags() {
+        Cli::command().debug_assert();
+    }
 }
 
 // ─── Existing functions (preserved) ─────────────────────────────────────────
@@ -925,20 +1098,78 @@ async fn run_acp_tui_mode(
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     debug_rx: tokio::sync::mpsc::UnboundedReceiver<app::DebugMessage>,
+    debug_capture_enabled: Arc<AtomicBool>,
     pane_identity: Option<(String, String, String)>,
 ) -> Result<()> {
+    fn acp_startup_log(msg: &str) {
+        use std::io::Write;
+        if std::env::var("WTA_DEBUG_LOG").as_deref() != Ok("1") {
+            return;
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("wta-acp-debug.log")
+        {
+            let elapsed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            let _ = writeln!(f, "[{:.3}] {}", elapsed.as_secs_f64(), msg);
+            let _ = f.flush();
+        }
+    }
+
+    let startup = std::time::Instant::now();
+    acp_startup_log(&format!(
+        "run_acp_tui_mode start wt_connected={} pane_identity={:?} (t+{:.3}s)",
+        wt_connected,
+        pane_identity,
+        startup.elapsed().as_secs_f64()
+    ));
     enable_raw_mode()?;
+    acp_startup_log(&format!(
+        "run_acp_tui_mode raw mode enabled (t+{:.3}s)",
+        startup.elapsed().as_secs_f64()
+    ));
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
+    acp_startup_log(&format!(
+        "run_acp_tui_mode entered alternate screen (t+{:.3}s)",
+        startup.elapsed().as_secs_f64()
+    ));
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
+    acp_startup_log(&format!(
+        "run_acp_tui_mode terminal initialized (t+{:.3}s)",
+        startup.elapsed().as_secs_f64()
+    ));
 
-    let result =
-        run_acp_app(&mut terminal, cli, shell_mgr, wt_connected, debug_rx, pane_identity).await;
+    acp_startup_log(&format!(
+        "run_acp_tui_mode starting run_acp_app (t+{:.3}s)",
+        startup.elapsed().as_secs_f64()
+    ));
+    let result = run_acp_app(
+        &mut terminal,
+        cli,
+        shell_mgr,
+        wt_connected,
+        debug_rx,
+        debug_capture_enabled,
+        pane_identity,
+    )
+    .await;
+    acp_startup_log(&format!(
+        "run_acp_tui_mode run_acp_app returned (t+{:.3}s)",
+        startup.elapsed().as_secs_f64()
+    ));
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
+    acp_startup_log(&format!(
+        "run_acp_tui_mode terminal restored (t+{:.3}s)",
+        startup.elapsed().as_secs_f64()
+    ));
 
     if let Err(e) = result {
         eprintln!("Error: {e:?}");
@@ -973,7 +1204,11 @@ async fn run_test_pipe(po: &PipeOverride) -> Result<()> {
 async fn connect_to_wt_pipe(
     po: &PipeOverride,
     debug_tx: tokio::sync::mpsc::UnboundedSender<app::DebugMessage>,
-) -> Result<shell::wt_channel::PipeChannel> {
+    debug_capture_enabled: Arc<AtomicBool>,
+) -> Result<(
+    shell::wt_channel::ConnectionInfo,
+    shell::wt_channel::PipeChannel,
+)> {
     use shell::wt_channel::PipeChannel;
 
     if let Some(info) = resolve_pipe_info(po) {
@@ -982,7 +1217,10 @@ async fn connect_to_wt_pipe(
             info.source, info.pipe_name
         );
         let channel = PipeChannel::connect_with(&info.pipe_name, &info.token).await?;
-        return Ok(channel.with_debug_sender(debug_tx));
+        return Ok((
+            info,
+            channel.with_debug_sender(debug_tx, debug_capture_enabled),
+        ));
     }
 
     bail!("Cannot find Windows Terminal pipe. Use --pipe-name or set WT_PIPE_NAME.");
@@ -1058,10 +1296,7 @@ async fn run_info_mode(po: &PipeOverride) -> Result<()> {
                             };
 
                             if let Ok(panes) = channel
-                                .request(
-                                    "list_panes",
-                                    serde_json::json!({ "tab_id": tab_id_str }),
-                                )
+                                .request("list_panes", serde_json::json!({ "tab_id": tab_id_str }))
                                 .await
                             {
                                 if let Some(panes_arr) =
@@ -1070,14 +1305,11 @@ async fn run_info_mode(po: &PipeOverride) -> Result<()> {
                                     total_panes += panes_arr.len() as u32;
 
                                     for pane in panes_arr {
-                                        if let Some(pid) =
-                                            pane.get("pid").and_then(|v| v.as_u64())
+                                        if let Some(pid) = pane.get("pid").and_then(|v| v.as_u64())
                                         {
                                             if pid == our_pid as u64 {
                                                 let pane_id = match pane.get("pane_id") {
-                                                    Some(serde_json::Value::String(s)) => {
-                                                        s.clone()
-                                                    }
+                                                    Some(serde_json::Value::String(s)) => s.clone(),
                                                     Some(serde_json::Value::Number(n)) => {
                                                         n.to_string()
                                                     }
@@ -1119,110 +1351,128 @@ async fn run_info_mode(po: &PipeOverride) -> Result<()> {
     Ok(())
 }
 
-/// Generate an MCP config JSON file that points to `wta --mcp`,
-/// passing through pipe name and token so the MCP server can connect
-/// to the same WT pipe. Uses resolved pipe info (CLI override > VT > env).
-fn write_wta_mcp_config(po: &PipeOverride) -> Result<std::path::PathBuf> {
-    let wta_exe = std::env::current_exe()?
-        .to_string_lossy()
-        .replace('\\', "/");
-
-    // Use resolved pipe info so --pipe-name propagates to spawned MCP server
-    let (pipe_name, token) = match resolve_pipe_info(po) {
-        Some(info) => (info.pipe_name.replace('\\', "/"), info.token),
-        None => (
-            std::env::var("WT_PIPE_NAME")
-                .unwrap_or_default()
-                .replace('\\', "/"),
-            std::env::var("WT_MCP_TOKEN").unwrap_or_default(),
-        ),
-    };
-
-    let config = serde_json::json!({
-        "mcpServers": {
-            "windows-terminal": {
-                "type": "stdio",
-                "command": wta_exe,
-                "args": ["--mcp"],
-                "env": {
-                    "WT_PIPE_NAME": pipe_name,
-                    "WT_MCP_TOKEN": token
-                }
-            }
-        }
-    });
-
-    let config_path = std::env::temp_dir().join("wta-mcp-config.json");
-    std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
-    Ok(config_path)
-}
-
 async fn run_acp_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     cli: Cli,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     mut debug_rx: tokio::sync::mpsc::UnboundedReceiver<app::DebugMessage>,
+    debug_capture_enabled: Arc<AtomicBool>,
     pane_identity: Option<(String, String, String)>,
 ) -> Result<()> {
-    let po = PipeOverride {
-        pipe_name: cli.pipe_name.clone(),
-        pipe_token: cli.pipe_token.clone(),
-    };
-    let agent_cmd = if wt_connected {
-        match write_wta_mcp_config(&po) {
-            Ok(config_path) => {
-                let config_str = config_path.to_string_lossy();
-                let base = &cli.agent;
-                if base.contains("copilot") {
-                    format!("{} --additional-mcp-config @{}", base, config_str)
-                } else if base.contains("claude") {
-                    format!("{} --mcp-config {}", base, config_str)
-                } else {
-                    format!("{} --additional-mcp-config @{}", base, config_str)
-                }
-            }
-            Err(e) => {
-                eprintln!("[wta] Failed to write MCP config: {}", e);
-                cli.agent.clone()
-            }
+    fn acp_startup_log(msg: &str) {
+        use std::io::Write;
+        if std::env::var("WTA_DEBUG_LOG").as_deref() != Ok("1") {
+            return;
         }
-    } else {
-        cli.agent.clone()
-    };
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("wta-acp-debug.log")
+        {
+            let elapsed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            let _ = writeln!(f, "[{:.3}] {}", elapsed.as_secs_f64(), msg);
+            let _ = f.flush();
+        }
+    }
+
+    let startup = std::time::Instant::now();
+    let agent_cmd = cli.agent.clone();
+    acp_startup_log(&format!(
+        "run_acp_app start agent={} wt_connected={} pane_identity={:?} (t+{:.3}s)",
+        agent_cmd,
+        wt_connected,
+        pane_identity,
+        startup.elapsed().as_secs_f64()
+    ));
 
     let local_set = tokio::task::LocalSet::new();
+    acp_startup_log(&format!(
+        "run_acp_app LocalSet created (t+{:.3}s)",
+        startup.elapsed().as_secs_f64()
+    ));
     local_set
         .run_until(async move {
+            acp_startup_log(&format!(
+                "run_acp_app LocalSet entered (t+{:.3}s)",
+                startup.elapsed().as_secs_f64()
+            ));
+            let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel();
             let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
             let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+            let (recommendation_tx, recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+            acp_startup_log(&format!(
+                "run_acp_app channels created (t+{:.3}s)",
+                startup.elapsed().as_secs_f64()
+            ));
 
-            let evt_tx = event_tx.clone();
-            tokio::task::spawn_local(event::read_crossterm_events(evt_tx));
+            tokio::task::spawn_local(event::read_crossterm_events(ui_tx));
+            acp_startup_log(&format!(
+                "run_acp_app crossterm reader spawned (t+{:.3}s)",
+                startup.elapsed().as_secs_f64()
+            ));
 
             let dbg_event_tx = event_tx.clone();
+            let dbg_capture = debug_capture_enabled.clone();
             tokio::task::spawn_local(async move {
                 while let Some(msg) = debug_rx.recv().await {
-                    let _ = dbg_event_tx.send(app::AppEvent::DebugPipeMessage(msg));
+                    if dbg_capture.load(Ordering::Relaxed) {
+                        let _ = dbg_event_tx.send(app::AppEvent::DebugPipeMessage(msg));
+                    }
                 }
             });
+            acp_startup_log(&format!(
+                "run_acp_app debug forwarder spawned (t+{:.3}s)",
+                startup.elapsed().as_secs_f64()
+            ));
+
+            let executor_event_tx = event_tx.clone();
+            let executor_shell_mgr = shell_mgr.clone();
+            tokio::task::spawn_local(coordinator::run_recommendation_executor(
+                recommendation_rx,
+                executor_event_tx,
+                executor_shell_mgr,
+                coordinator::default_delegate_agent_runtimes(),
+            ));
+            acp_startup_log(&format!(
+                "run_acp_app recommendation executor spawned (t+{:.3}s)",
+                startup.elapsed().as_secs_f64()
+            ));
 
             let acp_event_tx = event_tx.clone();
+            let acp_shell_mgr = shell_mgr.clone();
             tokio::task::spawn_local(protocol::acp::client::run_acp_client(
                 agent_cmd,
                 cli.prompt.clone(),
                 acp_event_tx,
                 prompt_rx,
-                shell_mgr,
+                acp_shell_mgr,
+                wt_connected,
+                pane_identity.clone(),
+            ));
+            acp_startup_log(&format!(
+                "run_acp_app ACP client task spawned (t+{:.3}s)",
+                startup.elapsed().as_secs_f64()
             ));
 
-            let mut app_state = app::App::new(prompt_tx, wt_connected);
+            let mut app_state = app::App::new(
+                prompt_tx,
+                recommendation_tx,
+                debug_capture_enabled.clone(),
+                wt_connected,
+            );
             if let Some((pane_id, tab_id, window_id)) = pane_identity {
                 app_state.pane_id = Some(pane_id);
                 app_state.tab_id = Some(tab_id);
                 app_state.window_id = Some(window_id);
             }
-            app_state.run(terminal, event_rx).await
+            acp_startup_log(&format!(
+                "run_acp_app app state ready; entering UI loop (t+{:.3}s)",
+                startup.elapsed().as_secs_f64()
+            ));
+            app_state.run(terminal, ui_rx, event_rx).await
         })
         .await
 }

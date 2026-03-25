@@ -131,6 +131,8 @@ void AppHost::_HandleCommandlineArgs(const winrt::TerminalApp::WindowRequestedAr
     // We did want to make a window, so let's instantiate it here.
     // We don't have XAML yet, but we do have other stuff.
     _windowLogic = _appLogic.CreateNewWindow();
+    _windowLogic.WindowProperties().ProtocolPipeName(winrt::hstring{ _windowManager->GetProtocolPipeName() });
+    _windowLogic.WindowProperties().McpToken(winrt::to_hstring(_windowManager->GetMcpToken()));
 
     if (const auto content = windowArgs.Content(); !content.empty())
     {

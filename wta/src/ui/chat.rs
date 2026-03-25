@@ -30,6 +30,12 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                     lines.push(Line::default());
                 }
             }
+            ChatMessage::System(text) => {
+                for line_text in text.lines() {
+                    lines.push(Line::from(Span::styled(line_text, theme::SYSTEM_TEXT)));
+                }
+                lines.push(Line::default());
+            }
             ChatMessage::ToolCall { title, status, .. } => {
                 lines.push(Line::from(Span::styled(
                     format!("[{}] {}", title, status),
