@@ -23,6 +23,9 @@ public:
     // Called from the pipe I/O thread.
     Json::Value HandleRequest(const Json::Value& request, bool& isAuthenticated);
 
+    // Accessor for the canonical supported-methods list.
+    static const std::vector<std::string>& GetSupportedMethods() noexcept { return _supportedMethods; }
+
     // Set the auth token for validation.
     void SetAuthToken(const std::string& token);
 

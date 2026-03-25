@@ -22,10 +22,10 @@ class WindowEmperor;
 struct __declspec(uuid(__CLSID_TerminalProtocolServer))
 TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::ClassicCom>, ITerminalProtocolServer>
 {
-    // ITerminalProtocolServer — JSON fallback
-    STDMETHODIMP HandleRequest(BSTR requestJson, BSTR* responseJson) override;
+    // ITerminalProtocolServer
+    STDMETHODIMP HandleRequest(BSTR requestJson, BSTR* responseJson) override; // JSON fallback (retained during transition)
 
-    // ITerminalProtocolServer — typed methods
+    // Typed methods
     STDMETHODIMP Authenticate(BSTR token, BOOL* authenticated, BSTR* protocolVersion) override;
     STDMETHODIMP GetCapabilities(BSTR* protocolVersion, BSTR* supportedMethodsJson) override;
 

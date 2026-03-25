@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{bail, Context};
 use tokio::sync::mpsc;
 use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface, PCWSTR};
-use windows::Win32::Foundation::SysAllocString;
+use windows::Win32::Foundation::{SysAllocString, SysStringLen};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSIDFromString, CoTaskMemFree,
     CLSCTX_LOCAL_SERVER, COINIT_MULTITHREADED,
@@ -91,7 +91,12 @@ pub struct ProtocolTabCreationResult {
 
 /// Create a BSTR from a Rust &str via SysAllocString. Returns the raw pointer.
 /// The caller must free with bstr_free() or BSTR::from_raw().
-/// Returns null for empty strings (matches COM convention).
+///
+/// Returns null for empty strings. The automation proxy (oleautomation marshaling)
+/// does not correctly marshal non-null empty BSTRs created by `BSTR::from("")`
+/// in the `windows` crate. Returning null for empty is standard COM convention,
+/// and the C++ server handles null BSTR `[in]` params gracefully (e.g.
+/// `token ? winrt::to_string(...) : std::string{}`).
 unsafe fn bstr_alloc(s: &str) -> *const u16 {
     if s.is_empty() {
         return std::ptr::null();
@@ -115,12 +120,9 @@ unsafe fn bstr_to_string(ptr: *mut u16) -> String {
     if ptr.is_null() {
         return String::new();
     }
-    // BSTR layout: 4-byte length (in bytes) at ptr-4, then UTF-16 chars at ptr.
-    let byte_len = *(ptr as *const u8).offset(-4) as u32
-        | (*(ptr as *const u8).offset(-3) as u32) << 8
-        | (*(ptr as *const u8).offset(-2) as u32) << 16
-        | (*(ptr as *const u8).offset(-1) as u32) << 24;
-    let char_len = byte_len as usize / 2;
+    // Wrap in ManuallyDrop so BSTR::from_raw doesn't free the pointer on drop.
+    let bstr = std::mem::ManuallyDrop::new(BSTR::from_raw(ptr));
+    let char_len = SysStringLen(&*bstr) as usize;
     let slice = std::slice::from_raw_parts(ptr, char_len);
     String::from_utf16_lossy(slice)
 }
@@ -255,6 +257,18 @@ impl ProtocolServerProxy {
     }
 
     // ── Typed method wrappers ──
+
+    unsafe fn get_capabilities(&self) -> anyhow::Result<serde_json::Value> {
+        let vt = self.vtbl();
+        let mut ver_ptr: *mut u16 = std::ptr::null_mut();
+        let mut methods_ptr: *mut u16 = std::ptr::null_mut();
+        (vt.GetCapabilities)(self.ptr, &mut ver_ptr, &mut methods_ptr)
+            .ok().context("GetCapabilities failed")?;
+        let version = bstr_to_string_free(ver_ptr);
+        let methods_json = bstr_to_string_free(methods_ptr);
+        let methods: serde_json::Value = serde_json::from_str(&methods_json).unwrap_or_default();
+        Ok(serde_json::json!({ "protocol_version": version, "methods": methods }))
+    }
 
     unsafe fn authenticate(&self, token: &str) -> anyhow::Result<(bool, String)> {
         let vt = self.vtbl();
@@ -584,7 +598,12 @@ impl ComChannel {
 
         let server = tokio::task::spawn_blocking(move || -> anyhow::Result<ProtocolServerProxy> {
             unsafe {
-                let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+                CoInitializeEx(None, COINIT_MULTITHREADED)
+                    .ok()
+                    .map_err(|e| anyhow::anyhow!(
+                        "CoInitializeEx failed (thread may have incompatible COM apartment): {}",
+                        e.message()
+                    ))?;
 
                 let clsid_wide: Vec<u16> = clsid_str.encode_utf16().chain(std::iter::once(0)).collect();
                 let clsid = CLSIDFromString(windows::core::PCWSTR(clsid_wide.as_ptr()))
@@ -645,17 +664,7 @@ impl WtChannel for ComChannel {
                     let (auth, version) = self.server.authenticate(token)?;
                     serde_json::json!({ "authenticated": auth, "protocol_version": version })
                 }
-                "get_capabilities" => {
-                    let vt = self.server.vtbl();
-                    let mut ver_ptr: *mut u16 = std::ptr::null_mut();
-                    let mut methods_ptr: *mut u16 = std::ptr::null_mut();
-                    (vt.GetCapabilities)(self.server.ptr, &mut ver_ptr, &mut methods_ptr)
-                        .ok().context("GetCapabilities failed")?;
-                    let version = bstr_to_string_free(ver_ptr);
-                    let methods_json = bstr_to_string_free(methods_ptr);
-                    let methods: serde_json::Value = serde_json::from_str(&methods_json).unwrap_or_default();
-                    serde_json::json!({ "protocol_version": version, "methods": methods })
-                }
+                "get_capabilities" => self.server.get_capabilities()?,
                 "get_active_pane" => self.server.get_active_pane()?,
                 "list_windows" => self.server.list_windows()?,
                 "list_tabs" => {

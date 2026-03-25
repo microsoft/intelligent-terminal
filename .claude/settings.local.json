@@ -14,7 +14,9 @@
       "Bash(grep:*)",
       "Bash(cargo check:*)",
       "Bash(cargo build:*)",
-      "Bash(find . -name *.exe -o -name *.pdb -o -name *.d -o -name *.fingerprint)"
+      "Bash(find . -name *.exe -o -name *.pdb -o -name *.d -o -name *.fingerprint)",
+      "WebFetch(domain:github.com)",
+      "Bash(git log:*)"
     ]
   }
 }

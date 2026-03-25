@@ -174,16 +174,15 @@ try
 
     *protocolVersion = SysAllocString(L"1.0");
 
-    // Build JSON array of method names.
+    // Build JSON array of method names from the canonical list in ProtocolRequestHandler.
+    // "quick_pick" is intentionally excluded — it blocks the UI thread and isn't
+    // supported over the COM transport yet.
     Json::Value methods(Json::arrayValue);
-    static const char* methodNames[] = {
-        "authenticate", "get_capabilities", "get_active_pane", "list_windows",
-        "list_tabs", "list_panes", "read_pane_output", "get_process_status",
-        "get_session_variable", "get_settings", "create_tab", "split_pane",
-        "close_pane", "send_input", "set_session_variable", "set_settings"
-    };
-    for (const auto& m : methodNames)
-        methods.append(m);
+    for (const auto& m : ProtocolRequestHandler::GetSupportedMethods())
+    {
+        if (m != "quick_pick")
+            methods.append(m);
+    }
 
     Json::StreamWriterBuilder wb;
     wb["indentation"] = "";
@@ -246,6 +245,10 @@ try
 
     // Count windows first.
     std::vector<PROTOCOL_WINDOW_INFO> items;
+    auto cleanupItems = wil::scope_exit([&]() {
+        for (auto& i : items) { SysFreeString(i.WindowId); SysFreeString(i.Title); }
+    });
+
     for (const auto& host : s_emperor->GetWindows())
     {
         const auto logic = host->Logic();
@@ -268,6 +271,7 @@ try
     *results = static_cast<PROTOCOL_WINDOW_INFO*>(CoTaskMemAlloc(items.size() * sizeof(PROTOCOL_WINDOW_INFO)));
     RETURN_HR_IF_NULL(E_OUTOFMEMORY, *results);
     memcpy(*results, items.data(), items.size() * sizeof(PROTOCOL_WINDOW_INFO));
+    cleanupItems.release();
     return S_OK;
 }
 CATCH_RETURN()
@@ -284,6 +288,10 @@ try
     const auto filter = windowIdFilter ? winrt::to_string(std::wstring_view(windowIdFilter, SysStringLen(windowIdFilter))) : std::string{};
 
     std::vector<PROTOCOL_TAB_INFO> items;
+    auto cleanupItems = wil::scope_exit([&]() {
+        for (auto& i : items) { SysFreeString(i.TabId); SysFreeString(i.WindowId); SysFreeString(i.Title); }
+    });
+
     for (const auto& host : s_emperor->GetWindows())
     {
         const auto logic = host->Logic();
@@ -323,6 +331,7 @@ try
     *results = static_cast<PROTOCOL_TAB_INFO*>(CoTaskMemAlloc(items.size() * sizeof(PROTOCOL_TAB_INFO)));
     RETURN_HR_IF_NULL(E_OUTOFMEMORY, *results);
     memcpy(*results, items.data(), items.size() * sizeof(PROTOCOL_TAB_INFO));
+    cleanupItems.release();
     return S_OK;
 }
 CATCH_RETURN()
@@ -340,6 +349,14 @@ try
     const auto tabFilter = tabIdFilter ? winrt::to_string(std::wstring_view(tabIdFilter, SysStringLen(tabIdFilter))) : std::string{};
 
     std::vector<PROTOCOL_PANE_INFO> items;
+    auto cleanupItems = wil::scope_exit([&]() {
+        for (auto& i : items)
+        {
+            SysFreeString(i.PaneId); SysFreeString(i.TabId); SysFreeString(i.WindowId);
+            SysFreeString(i.Title); SysFreeString(i.Profile);
+        }
+    });
+
     for (const auto& host : s_emperor->GetWindows())
     {
         const auto logic = host->Logic();
@@ -383,6 +400,7 @@ try
     *results = static_cast<PROTOCOL_PANE_INFO*>(CoTaskMemAlloc(items.size() * sizeof(PROTOCOL_PANE_INFO)));
     RETURN_HR_IF_NULL(E_OUTOFMEMORY, *results);
     memcpy(*results, items.data(), items.size() * sizeof(PROTOCOL_PANE_INFO));
+    cleanupItems.release();
     return S_OK;
 }
 CATCH_RETURN()
