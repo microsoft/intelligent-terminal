@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 import "TaskbarState.idl";
 import "Remoting.idl";
+// Microsoft.Terminal.Protocol types are available via project reference (.winmd)
 
 namespace TerminalApp
 {
@@ -50,59 +51,7 @@ namespace TerminalApp
         Microsoft.Terminal.Settings.Model.LaunchPosition Position;
     }
 
-    // ── Protocol structs for typed IPC across the DLL boundary ──
-
-    struct ProtocolCreationResult
-    {
-        String TabId;
-        String PaneId;
-        UInt32 Pid;
-    };
-
-    struct ProtocolPaneInfo
-    {
-        String PaneId;
-        String TabId;
-        String Title;
-        String Profile;
-        Boolean IsActive;
-        UInt32 Pid;
-        Int32 Rows;
-        Int32 Columns;
-    };
-
-    struct ProtocolTabInfo
-    {
-        String TabId;
-        String Title;
-        Boolean IsActive;
-        UInt32 PaneCount;
-    };
-
-    struct ProtocolPaneOutput
-    {
-        String PaneId;
-        String Content;
-        Int32 LineCount;
-        Boolean Truncated;
-    };
-
-    struct ProtocolProcessStatus
-    {
-        String PaneId;
-        String State;
-        UInt32 Pid;
-        Int32 ExitCode;
-        Boolean HasExitCode;
-    };
-
-    struct ProtocolSessionVariable
-    {
-        String PaneId;
-        String Name;
-        String Value;
-        Boolean Exists;
-    };
+    // ── Protocol structs moved to Microsoft.Terminal.Protocol.TerminalProtocol.idl ──
 
     [default_interface] runtimeclass TerminalPage : Windows.UI.Xaml.Controls.Page, Windows.UI.Xaml.Data.INotifyPropertyChanged, Microsoft.Terminal.UI.IDirectKeyListener
     {
@@ -161,17 +110,17 @@ namespace TerminalApp
         // Terminal Protocol Bridge Methods
         UInt32 TabCount { get; };
         Windows.Foundation.IReference<UInt32> FocusedTabIndex { get; };
-        ProtocolPaneInfo GetProtocolActivePane();
-        Windows.Foundation.Collections.IVector<ProtocolTabInfo> GetProtocolTabs();
-        Windows.Foundation.Collections.IVector<ProtocolPaneInfo> GetProtocolPanes(String tabIdFilter);
-        ProtocolPaneOutput ReadProtocolPaneOutput(String paneId, String source, Int32 maxLines);
-        ProtocolProcessStatus GetProtocolProcessStatus(String paneId);
-        ProtocolSessionVariable GetProtocolSessionVariable(String paneId, String name);
+        Microsoft.Terminal.Protocol.PaneInfo GetProtocolActivePane();
+        Windows.Foundation.Collections.IVector<Microsoft.Terminal.Protocol.TabInfo> GetProtocolTabs();
+        Windows.Foundation.Collections.IVector<Microsoft.Terminal.Protocol.PaneInfo> GetProtocolPanes(String tabIdFilter);
+        Microsoft.Terminal.Protocol.PaneOutput ReadProtocolPaneOutput(String paneId, String source, Int32 maxLines);
+        Microsoft.Terminal.Protocol.ProcessStatus GetProtocolProcessStatus(String paneId);
+        Microsoft.Terminal.Protocol.SessionVariable GetProtocolSessionVariable(String paneId, String name);
         Boolean SetProtocolSessionVariable(String paneId, String name, String value);
         void SetPendingProtocolEnv(String key, String value);
         void ClearPendingProtocolEnv();
-        ProtocolCreationResult CreateProtocolTab(Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
-        ProtocolCreationResult SplitProtocolPane(String paneId, Microsoft.Terminal.Settings.Model.SplitDirection direction, Single size, Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
+        Microsoft.Terminal.Protocol.TabCreationResult CreateProtocolTab(Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
+        Microsoft.Terminal.Protocol.TabCreationResult SplitProtocolPane(String paneId, Microsoft.Terminal.Settings.Model.SplitDirection direction, Single size, Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
         Boolean CloseProtocolPane(String paneId);
         Boolean SendProtocolInput(String paneId, String text);
         String ShowProtocolQuickPick(String title, String choicesJson, Boolean allowFreeInput);

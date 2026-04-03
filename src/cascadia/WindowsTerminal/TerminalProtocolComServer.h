@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include "ITerminalProtocolServer.h" // MIDL-generated from src/host/proxy/ITerminalProtocolServer.idl
-
 #include <mutex>
 #include <vector>
 
@@ -19,44 +17,81 @@
 #define __CLSID_TerminalProtocolServer "D5B7C9E1-4F6A-4B8C-D9E0-F1A2B3C4D5E6"
 #endif
 
+namespace Protocol = winrt::Microsoft::Terminal::Protocol;
+
 class WindowEmperor;
 
+// Class factory for CoRegisterClassObject — creates instances of T
+// via winrt::make.  Metadata Based Marshaling (MBM) handles cross-process
+// marshaling automatically; no proxy/stub DLL is needed.
+template<typename T>
+struct Factory : winrt::implements<Factory<T>, IClassFactory, winrt::no_module_lock>
+{
+    HRESULT __stdcall CreateInstance(IUnknown* outer, GUID const& iid, void** result) noexcept final
+    {
+        *result = nullptr;
+        if (outer)
+            return CLASS_E_NOAGGREGATION;
+        try
+        {
+            return winrt::make<T>().as(iid, result);
+        }
+        catch (...)
+        {
+            return winrt::to_hresult();
+        }
+    }
+
+    HRESULT __stdcall LockServer(BOOL) noexcept final
+    {
+        return S_OK;
+    }
+};
+
 struct __declspec(uuid(__CLSID_TerminalProtocolServer))
-TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::ClassicCom>, ITerminalProtocolServer>
+TerminalProtocolComServer : winrt::implements<TerminalProtocolComServer, Protocol::IProtocolServer>
 {
     ~TerminalProtocolComServer();
 
-    // ITerminalProtocolServer — typed methods
-    STDMETHODIMP Authenticate(BSTR token, BOOL* authenticated, BSTR* protocolVersion) override;
-    STDMETHODIMP GetCapabilities(BSTR* protocolVersion, BSTR* supportedMethodsJson) override;
+    // ── IProtocolServer ──
+    Protocol::AuthResult Authenticate(winrt::hstring const& token);
+    winrt::hstring GetCapabilities();
+    Protocol::PaneInfo GetActivePane();
+    winrt::com_array<Protocol::WindowInfo> ListWindows();
+    winrt::com_array<Protocol::TabInfo> ListTabs(winrt::hstring const& windowIdFilter);
+    winrt::com_array<Protocol::PaneInfo> ListPanes(winrt::hstring const& windowIdFilter,
+                                                    winrt::hstring const& tabIdFilter);
+    Protocol::PaneOutput ReadPaneOutput(winrt::hstring const& paneId,
+                                         winrt::hstring const& source,
+                                         int32_t maxLines);
+    Protocol::ProcessStatus GetProcessStatus(winrt::hstring const& paneId);
+    Protocol::SessionVariable GetSessionVariable(winrt::hstring const& paneId,
+                                                   winrt::hstring const& name);
+    winrt::hstring GetSettings();
 
-    STDMETHODIMP GetActivePane(PROTOCOL_PANE_INFO* result) override;
-    STDMETHODIMP ListWindows(UINT32* count, PROTOCOL_WINDOW_INFO** results) override;
-    STDMETHODIMP ListTabs(BSTR windowIdFilter, UINT32* count, PROTOCOL_TAB_INFO** results) override;
-    STDMETHODIMP ListPanes(BSTR windowIdFilter, BSTR tabIdFilter, UINT32* count, PROTOCOL_PANE_INFO** results) override;
-    STDMETHODIMP ReadPaneOutput(BSTR paneId, BSTR source, INT32 maxLines, PROTOCOL_PANE_OUTPUT* result) override;
-    STDMETHODIMP GetProcessStatus(BSTR paneId, PROTOCOL_PROCESS_STATUS* result) override;
-    STDMETHODIMP GetSessionVariable(BSTR paneId, BSTR name, PROTOCOL_SESSION_VARIABLE* result) override;
-    STDMETHODIMP GetSettings(BSTR* settingsJson) override;
-
-    STDMETHODIMP CreateTab(BSTR windowId, BSTR profile, BSTR commandline, BSTR title,
-                           BOOL suppressAppTitle, BOOL injectMcpCredentials, BOOL background,
-                           PROTOCOL_TAB_CREATION_RESULT* result) override;
-    STDMETHODIMP SplitPane(BSTR paneId, BSTR direction, float size, BSTR profile, BSTR commandline,
-                           BOOL injectMcpCredentials, BOOL background,
-                           PROTOCOL_TAB_CREATION_RESULT* result) override;
-    STDMETHODIMP ClosePane(BSTR paneId) override;
-    STDMETHODIMP SendInput(BSTR paneId, BSTR text) override;
-    STDMETHODIMP SetSessionVariable(BSTR paneId, BSTR name, BSTR value) override;
-    STDMETHODIMP SetSettings(BSTR settingsContent, BSTR* backupPath) override;
-
-    // Interactive
-    STDMETHODIMP QuickPick(BSTR title, UINT32 choiceCount, BSTR* choices,
-                           BOOL allowFreeInput, BOOL* cancelled, BSTR* selected) override;
-
-    // Events — push-based via callback
-    STDMETHODIMP Subscribe(ITerminalEventCallback* callback) override;
-    STDMETHODIMP Unsubscribe() override;
+    Protocol::TabCreationResult CreateTab(winrt::hstring const& windowId,
+                                           winrt::hstring const& profile,
+                                           winrt::hstring const& commandline,
+                                           winrt::hstring const& title,
+                                           bool suppressAppTitle,
+                                           bool injectMcpCredentials,
+                                           bool background);
+    Protocol::TabCreationResult SplitPane(winrt::hstring const& paneId,
+                                           winrt::hstring const& direction,
+                                           float size,
+                                           winrt::hstring const& profile,
+                                           winrt::hstring const& commandline,
+                                           bool injectMcpCredentials,
+                                           bool background);
+    void ClosePane(winrt::hstring const& paneId);
+    void SendInput(winrt::hstring const& paneId, winrt::hstring const& text);
+    void SetSessionVariable(winrt::hstring const& paneId,
+                            winrt::hstring const& name,
+                            winrt::hstring const& value);
+    winrt::hstring SetSettings(winrt::hstring const& settingsContent);
+    Protocol::QuickPickResult QuickPick(winrt::hstring const& title,
+                                         winrt::array_view<winrt::hstring const> choices,
+                                         bool allowFreeInput);
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;
@@ -64,15 +99,15 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::
     static HRESULT s_StartListening();
     static HRESULT s_StopListening();
 
-    // Deliver an event to all subscribed COM clients.
+    // Deliver an event to all connected COM clients.
     static void s_NotifyEventToComClients(const std::string& eventJson);
 
 private:
     bool _authenticated = false;
 
-    // Per-instance event callback
-    std::mutex _callbackMutex;
-    Microsoft::WRL::ComPtr<ITerminalEventCallback> _callback;
+    // Event tracking for push-based notifications to COM clients.
+    winrt::event<winrt::Windows::Foundation::TypedEventHandler<
+        winrt::Windows::Foundation::IInspectable, winrt::hstring>> _eventReceived;
 
     // Static tracking of live COM instances for event delivery
     static std::mutex s_instancesMutex;
@@ -85,9 +120,3 @@ private:
 
     static WindowEmperor* s_emperor;
 };
-
-#pragma warning(push)
-#pragma warning(disable : 26477)
-#pragma warning(disable : 26476)
-CoCreatableClass(TerminalProtocolComServer);
-#pragma warning(pop)

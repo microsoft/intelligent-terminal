@@ -99,14 +99,18 @@
     </ProjectReference>
   </ItemGroup>
 
-  <!-- Manually add a reference to Core here. We need this so MDMERGE will know
-  where the Core types are defined. However, we need to do it exactly like this,
-  because the Core project is a lib not a dll, so it can't be ProjectReference'd
-  like everything else. It does get built into TerminalControl.dll, so we don't
-  need to worry about that. -->
+  <!-- Manually add references to libs that produce .winmd files. Lib projects
+  can't be ProjectReference'd for WinRT metadata resolution. The .winmd gets
+  resolved by cppwinrt/mdmerge via this HintPath. -->
   <ItemGroup>
     <Reference Include="Microsoft.Terminal.Core">
       <HintPath>$(OpenConsoleCommonOutDir)TerminalCore\Microsoft.Terminal.Core.winmd</HintPath>
+      <IsWinMDFile>true</IsWinMDFile>
+      <Private>false</Private>
+      <CopyLocalSatelliteAssemblies>false</CopyLocalSatelliteAssemblies>
+    </Reference>
+    <Reference Include="Microsoft.Terminal.Protocol">
+      <HintPath>$(OpenConsoleCommonOutDir)TerminalProtocol\Microsoft.Terminal.Protocol.winmd</HintPath>
       <IsWinMDFile>true</IsWinMDFile>
       <Private>false</Private>
       <CopyLocalSatelliteAssemblies>false</CopyLocalSatelliteAssemblies>

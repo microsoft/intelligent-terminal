@@ -179,17 +179,17 @@ namespace winrt::TerminalApp::implementation
         // Terminal Protocol Bridge Methods
         uint32_t TabCount() const;
         Windows::Foundation::IReference<uint32_t> FocusedTabIndex() const;
-        TerminalApp::ProtocolPaneInfo GetProtocolActivePane();
-        Windows::Foundation::Collections::IVector<TerminalApp::ProtocolTabInfo> GetProtocolTabs();
-        Windows::Foundation::Collections::IVector<TerminalApp::ProtocolPaneInfo> GetProtocolPanes(hstring tabIdFilter);
-        TerminalApp::ProtocolPaneOutput ReadProtocolPaneOutput(hstring paneId, hstring source, int32_t maxLines);
-        TerminalApp::ProtocolProcessStatus GetProtocolProcessStatus(hstring paneId);
-        TerminalApp::ProtocolSessionVariable GetProtocolSessionVariable(hstring paneId, hstring name);
+        Microsoft::Terminal::Protocol::PaneInfo GetProtocolActivePane();
+        Windows::Foundation::Collections::IVector<Microsoft::Terminal::Protocol::TabInfo> GetProtocolTabs();
+        Windows::Foundation::Collections::IVector<Microsoft::Terminal::Protocol::PaneInfo> GetProtocolPanes(hstring tabIdFilter);
+        Microsoft::Terminal::Protocol::PaneOutput ReadProtocolPaneOutput(hstring paneId, hstring source, int32_t maxLines);
+        Microsoft::Terminal::Protocol::ProcessStatus GetProtocolProcessStatus(hstring paneId);
+        Microsoft::Terminal::Protocol::SessionVariable GetProtocolSessionVariable(hstring paneId, hstring name);
         bool SetProtocolSessionVariable(hstring paneId, hstring name, hstring value);
         void SetPendingProtocolEnv(hstring key, hstring value);
         void ClearPendingProtocolEnv();
-        TerminalApp::ProtocolCreationResult CreateProtocolTab(Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
-        TerminalApp::ProtocolCreationResult SplitProtocolPane(hstring paneId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
+        Microsoft::Terminal::Protocol::TabCreationResult CreateProtocolTab(Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
+        Microsoft::Terminal::Protocol::TabCreationResult SplitProtocolPane(hstring paneId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
         bool CloseProtocolPane(hstring paneId);
         bool SendProtocolInput(hstring paneId, hstring text);
         hstring ShowProtocolQuickPick(hstring title, hstring choicesJson, bool allowFreeInput);

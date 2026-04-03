@@ -23,6 +23,7 @@ using namespace winrt::Microsoft::Terminal;
 using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Microsoft::Terminal::TerminalConnection;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
+namespace Protocol = winrt::Microsoft::Terminal::Protocol;
 
 namespace winrt::TerminalApp::implementation
 {
@@ -149,10 +150,10 @@ namespace winrt::TerminalApp::implementation
     // Queries — return typed WinRT structs
     // ============================================================================
 
-    TerminalApp::ProtocolPaneInfo TerminalPage::GetProtocolActivePane()
+    Protocol::PaneInfo TerminalPage::GetProtocolActivePane()
     {
-        return _runOnUIThread(*this, [&]() -> TerminalApp::ProtocolPaneInfo {
-            TerminalApp::ProtocolPaneInfo result{};
+        return _runOnUIThread(*this, [&]() -> Protocol::PaneInfo {
+            Protocol::PaneInfo result{};
 
             const auto focusedTabIdx = _GetFocusedTabIndex();
             if (!focusedTabIdx.has_value())
@@ -183,10 +184,10 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
-    Windows::Foundation::Collections::IVector<TerminalApp::ProtocolTabInfo> TerminalPage::GetProtocolTabs()
+    Windows::Foundation::Collections::IVector<Protocol::TabInfo> TerminalPage::GetProtocolTabs()
     {
-        return _runOnUIThread(*this, [&]() -> Windows::Foundation::Collections::IVector<TerminalApp::ProtocolTabInfo> {
-            auto tabs = winrt::single_threaded_vector<TerminalApp::ProtocolTabInfo>();
+        return _runOnUIThread(*this, [&]() -> Windows::Foundation::Collections::IVector<Protocol::TabInfo> {
+            auto tabs = winrt::single_threaded_vector<Protocol::TabInfo>();
             const auto focusedIdx = _GetFocusedTabIndex();
 
             for (uint32_t i = 0; i < _tabs.Size(); ++i)
@@ -196,7 +197,7 @@ namespace winrt::TerminalApp::implementation
                 if (!tabImpl)
                     continue;
 
-                TerminalApp::ProtocolTabInfo info{};
+                Protocol::TabInfo info{};
                 info.TabId = winrt::to_hstring(std::to_string(i));
                 info.Title = tab.Title();
                 info.IsActive = focusedIdx.has_value() && (focusedIdx.value() == i);
@@ -208,10 +209,10 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
-    Windows::Foundation::Collections::IVector<TerminalApp::ProtocolPaneInfo> TerminalPage::GetProtocolPanes(hstring tabIdFilter)
+    Windows::Foundation::Collections::IVector<Protocol::PaneInfo> TerminalPage::GetProtocolPanes(hstring tabIdFilter)
     {
-        return _runOnUIThread(*this, [&]() -> Windows::Foundation::Collections::IVector<TerminalApp::ProtocolPaneInfo> {
-            auto panes = winrt::single_threaded_vector<TerminalApp::ProtocolPaneInfo>();
+        return _runOnUIThread(*this, [&]() -> Windows::Foundation::Collections::IVector<Protocol::PaneInfo> {
+            auto panes = winrt::single_threaded_vector<Protocol::PaneInfo>();
             const auto tabIdFilterStr = winrt::to_string(tabIdFilter);
 
             for (uint32_t tabIdx = 0; tabIdx < _tabs.Size(); ++tabIdx)
@@ -235,7 +236,7 @@ namespace winrt::TerminalApp::implementation
                     if (!pane->GetContent())
                         return; // Skip branch nodes
 
-                    TerminalApp::ProtocolPaneInfo info{};
+                    Protocol::PaneInfo info{};
                     info.PaneId = winrt::to_hstring(std::to_string(pane->ContentId().value()));
                     info.TabId = winrt::to_hstring(tabIdStr);
                     info.IsActive = (activePane == pane);
@@ -267,10 +268,10 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
-    TerminalApp::ProtocolPaneOutput TerminalPage::ReadProtocolPaneOutput(hstring paneId, hstring source, int32_t maxLines)
+    Protocol::PaneOutput TerminalPage::ReadProtocolPaneOutput(hstring paneId, hstring source, int32_t maxLines)
     {
-        return _runOnUIThread(*this, [&]() -> TerminalApp::ProtocolPaneOutput {
-            TerminalApp::ProtocolPaneOutput result{};
+        return _runOnUIThread(*this, [&]() -> Protocol::PaneOutput {
+            Protocol::PaneOutput result{};
             const auto paneIdVal = static_cast<uint32_t>(std::stoul(winrt::to_string(paneId)));
             const auto sourceStr = winrt::to_string(source);
             if (maxLines <= 0)
@@ -365,10 +366,10 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
-    TerminalApp::ProtocolProcessStatus TerminalPage::GetProtocolProcessStatus(hstring paneId)
+    Protocol::ProcessStatus TerminalPage::GetProtocolProcessStatus(hstring paneId)
     {
-        return _runOnUIThread(*this, [&]() -> TerminalApp::ProtocolProcessStatus {
-            TerminalApp::ProtocolProcessStatus result{};
+        return _runOnUIThread(*this, [&]() -> Protocol::ProcessStatus {
+            Protocol::ProcessStatus result{};
             const auto paneIdVal = static_cast<uint32_t>(std::stoul(winrt::to_string(paneId)));
 
             for (uint32_t tabIdx = 0; tabIdx < _tabs.Size(); ++tabIdx)
@@ -437,10 +438,10 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
-    TerminalApp::ProtocolSessionVariable TerminalPage::GetProtocolSessionVariable(hstring paneId, hstring name)
+    Protocol::SessionVariable TerminalPage::GetProtocolSessionVariable(hstring paneId, hstring name)
     {
-        return _runOnUIThread(*this, [&]() -> TerminalApp::ProtocolSessionVariable {
-            TerminalApp::ProtocolSessionVariable result{};
+        return _runOnUIThread(*this, [&]() -> Protocol::SessionVariable {
+            Protocol::SessionVariable result{};
             const auto paneIdVal = static_cast<uint32_t>(std::stoul(winrt::to_string(paneId)));
 
             for (uint32_t tabIdx = 0; tabIdx < _tabs.Size(); ++tabIdx)
@@ -531,10 +532,10 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
-    TerminalApp::ProtocolCreationResult TerminalPage::CreateProtocolTab(NewTerminalArgs args, bool background)
+    Protocol::TabCreationResult TerminalPage::CreateProtocolTab(NewTerminalArgs args, bool background)
     {
-        return _runOnUIThread(*this, [&]() -> TerminalApp::ProtocolCreationResult {
-            TerminalApp::ProtocolCreationResult result{};
+        return _runOnUIThread(*this, [&]() -> Protocol::TabCreationResult {
+            Protocol::TabCreationResult result{};
 
             auto pane = _MakePane(args, nullptr);
             _pendingProtocolEnvVars.reset();
@@ -567,10 +568,10 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
-    TerminalApp::ProtocolCreationResult TerminalPage::SplitProtocolPane(hstring paneId, SplitDirection direction, float size, NewTerminalArgs args, bool background)
+    Protocol::TabCreationResult TerminalPage::SplitProtocolPane(hstring paneId, SplitDirection direction, float size, NewTerminalArgs args, bool background)
     {
-        return _runOnUIThread(*this, [&]() -> TerminalApp::ProtocolCreationResult {
-            TerminalApp::ProtocolCreationResult result{};
+        return _runOnUIThread(*this, [&]() -> Protocol::TabCreationResult {
+            Protocol::TabCreationResult result{};
             const auto paneIdVal = static_cast<uint32_t>(std::stoul(winrt::to_string(paneId)));
 
             for (uint32_t tabIdx = 0; tabIdx < _tabs.Size(); ++tabIdx)

@@ -1059,4 +1059,5 @@
     </Project>
   </Folder>
   <Project Path="src/tools/wtcli/wtcli.vcxproj" Id="8a3b5e2f-1c4d-4f6a-9b8c-0d1e2f3a4b5c" />
+  <Project Path="src/cascadia/TerminalProtocol/TerminalProtocol.vcxproj" Id="f1a2b3c4-d5e6-4f7a-8b9c-0d1e2f3a4b5d" />
 </Solution>

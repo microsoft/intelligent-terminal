@@ -94,6 +94,15 @@
     </ProjectReference>
   </ItemGroup>
 
+  <!-- Deploy the TerminalProtocol .winmd into the package for MBM (Metadata Based Marshaling).
+       The WinRT runtime needs this file to marshal IProtocolServer cross-process. -->
+  <ItemGroup>
+    <Content Include="$(SolutionDir)bin\$(Platform)\$(Configuration)\TerminalProtocol\Microsoft.Terminal.Protocol.winmd">
+      <Link>Microsoft.Terminal.Protocol.winmd</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
   <Target Name="OpenConsoleStompSourceProjectForWapProject" BeforeTargets="_ConvertItems">
     <ItemGroup>
       <!-- Stomp all "SourceProject" values for all incoming dependencies to flatten the package. -->
