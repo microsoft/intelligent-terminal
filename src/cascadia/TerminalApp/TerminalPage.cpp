@@ -408,6 +408,24 @@ namespace winrt::TerminalApp::implementation
         // Hookup our event handlers to the ShortcutActionDispatch
         _RegisterActionCallbacks();
 
+        // Initialize the bottom bar agent selector text with the current setting,
+        // and populate the flyout when it opens.
+        if (auto selectorText = AgentSelectorText())
+        {
+            auto agentName = _settings.GlobalSettings().AcpAgent();
+            selectorText.Text(agentName.empty() ? L"Copilot" : agentName);
+        }
+        if (auto selectorBtn = AgentSelectorButton())
+        {
+            if (auto flyout = selectorBtn.Flyout().try_as<Controls::MenuFlyout>())
+            {
+                flyout.Opening([this](const auto&, const auto&) {
+                    _PopulateAgentSelectorFlyout();
+                });
+            }
+        }
+        _UpdateBottomBarState();
+
         //Event Bindings (Early)
         _newTabButton.Click([weakThis{ get_weak() }](auto&&, auto&&) {
             if (auto page{ weakThis.get() })
@@ -1476,6 +1494,7 @@ namespace winrt::TerminalApp::implementation
                             {
                                 existingControl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
                             }
+                            _UpdateBottomBarState();
                         }
                         else
                         {
@@ -1489,6 +1508,7 @@ namespace winrt::TerminalApp::implementation
                                 _priorPaneId.reset();
                             }
                             _FocusCurrentTab(true);
+                            _UpdateBottomBarState();
                         }
                     }
                 }
@@ -1616,6 +1636,8 @@ namespace winrt::TerminalApp::implementation
         {
             content.Focus(FocusState::Programmatic);
         }
+
+        _UpdateBottomBarState();
     }
 
     // Method Description:
@@ -2699,6 +2721,205 @@ namespace winrt::TerminalApp::implementation
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
+    // ─── Bottom Bar (AI toolbar) button handlers ───────────────────────
+
+    void TerminalPage::_AgentToggleButtonOnClick(const IInspectable& /*sender*/,
+                                                  const RoutedEventArgs& /*eventArgs*/)
+    {
+        _OpenOrReuseAgentPane(L"");
+        _UpdateBottomBarState();
+    }
+
+    void TerminalPage::_DiagnosticsButtonOnClick(const IInspectable& /*sender*/,
+                                                  const RoutedEventArgs& /*eventArgs*/)
+    {
+        // Open or focus the agent pane so WTA can show autofix results.
+        // The autofix pipeline already triggers automatically via maybe_trigger_autofix
+        // in WTA — this button ensures the pane is visible.
+        _OpenOrReuseAgentPane(L"");
+        _diagnostics.unacknowledgedErrors = 0;
+        _UpdateBottomBarState();
+    }
+
+    void TerminalPage::_PromptButtonOnClick(const IInspectable& /*sender*/,
+                                             const RoutedEventArgs& /*eventArgs*/)
+    {
+        // Open command palette in action mode. The user types "?" to enter
+        // agent foreground mode for sending prompts to the AI assistant.
+        auto p = LoadCommandPalette();
+        p.EnableCommandPaletteMode(CommandPaletteLaunchMode::Action);
+        p.Visibility(Visibility::Visible);
+    }
+
+    void TerminalPage::_HistoryButtonOnClick(const IInspectable& /*sender*/,
+                                              const RoutedEventArgs& /*eventArgs*/)
+    {
+        // Stub — session history not yet implemented.
+        // Future: query WTA for session history via protocol.
+    }
+
+    void TerminalPage::_AgentSettingsButtonOnClick(const IInspectable& /*sender*/,
+                                                    const RoutedEventArgs& /*eventArgs*/)
+    {
+        // Open settings UI and navigate directly to the AI Agents page.
+        OpenSettingsUI();
+        if (_settingsMainPage)
+        {
+            _settingsMainPage.NavigateToAIAgents();
+        }
+    }
+
+    // Updates the bottom bar visual state based on whether the agent pane
+    // is currently visible in the active tab, and the diagnostic error count.
+    // The bottom bar is hidden entirely on non-terminal tabs (e.g. Settings).
+    void TerminalPage::_UpdateBottomBarState()
+    {
+        // Hide the bottom bar on non-terminal tabs (Settings, Scratchpad, etc.)
+        // by checking the active content type directly.
+        if (auto bottomBar = BottomBar())
+        {
+            bool isTerminalTab = true;
+            if (const auto tab = _GetFocusedTabImpl())
+            {
+                if (const auto content = tab->GetActiveContent())
+                {
+                    isTerminalTab = content.try_as<TerminalApp::TerminalPaneContent>() != nullptr;
+                }
+            }
+            bottomBar.Visibility(isTerminalTab ? Visibility::Visible : Visibility::Collapsed);
+            if (!isTerminalTab)
+            {
+                return;
+            }
+        }
+
+        const auto existingPane = _FindAgentPaneInCurrentTab();
+        _agentPaneVisible = existingPane && !existingPane->IsHidden();
+
+        // Toggle expanded vs collapsed state
+        if (auto agentSelector = AgentSelectorPanel())
+        {
+            agentSelector.Visibility(_agentPaneVisible ? Visibility::Visible : Visibility::Collapsed);
+        }
+        if (auto actionButtons = ActionButtonsPanel())
+        {
+            actionButtons.Visibility(_agentPaneVisible ? Visibility::Visible : Visibility::Collapsed);
+        }
+
+        // Update AI toggle button visual — use a subtle highlight when active.
+        if (auto toggleBtn = AgentToggleButton())
+        {
+            if (_agentPaneVisible)
+            {
+                // Subtle white overlay for both light and dark themes
+                toggleBtn.Background(SolidColorBrush{
+                    ColorHelper::FromArgb(30, 255, 255, 255) });
+            }
+            else
+            {
+                toggleBtn.Background(SolidColorBrush{ Colors::Transparent() });
+            }
+        }
+
+        // Update diagnostics button
+        if (auto diagBtn = DiagnosticsButton())
+        {
+            if (_diagnostics.unacknowledgedErrors > 0)
+            {
+                diagBtn.Opacity(1.0);
+                diagBtn.IsEnabled(true);
+            }
+            else
+            {
+                diagBtn.Opacity(0.5);
+                diagBtn.IsEnabled(false);
+            }
+        }
+    }
+
+    void TerminalPage::_IncrementDiagnosticErrors(const std::wstring& paneId,
+                                                    const std::wstring& summary)
+    {
+        _diagnostics.unacknowledgedErrors++;
+        _diagnostics.lastErrorPaneId = paneId;
+        _diagnostics.lastErrorSummary = summary;
+        _UpdateBottomBarState();
+    }
+
+    void TerminalPage::_PopulateAgentSelectorFlyout()
+    {
+        auto selectorBtn = AgentSelectorButton();
+        if (!selectorBtn)
+            return;
+        auto flyout = selectorBtn.Flyout().try_as<Controls::MenuFlyout>();
+        if (flyout)
+        {
+            flyout.Items().Clear();
+
+            const auto& globals = _settings.GlobalSettings();
+            const auto currentAgent = globals.AcpAgent();
+
+            // Helper to add a menu item
+            auto addItem = [&](const winrt::hstring& name, const winrt::hstring& value) {
+                Windows::UI::Xaml::Controls::MenuFlyoutItem item;
+                item.Text(name);
+                if (value == currentAgent)
+                {
+                    // Mark the current selection with a bullet
+                    Windows::UI::Xaml::Controls::FontIcon icon;
+                    icon.Glyph(L"\xE73E"); // CheckMark
+                    icon.FontFamily(Windows::UI::Xaml::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
+                    item.Icon(icon);
+                }
+                item.Click([this, value](const auto&, const auto&) {
+                    auto globals2 = _settings.GlobalSettings();
+                    globals2.AcpAgent(value);
+                    // Update the selector text
+                    if (auto selectorText = AgentSelectorText())
+                    {
+                        selectorText.Text(value);
+                    }
+                    // Close and recreate the agent pane with the new agent
+                    if (const auto existingPane = _FindAgentPaneInCurrentTab())
+                    {
+                        if (const auto tab = _GetFocusedTabImpl())
+                        {
+                            const auto rootPane = tab->GetRootPane();
+                            if (rootPane)
+                            {
+                                rootPane->HidePane(existingPane);
+                            }
+                        }
+                    }
+                    _OpenOrReuseAgentPane(L"");
+                    _UpdateBottomBarState();
+                });
+                flyout.Items().Append(item);
+            };
+
+            // Always offer built-in agent names. Users can install them later.
+            addItem(L"Copilot", L"copilot");
+            addItem(L"Claude", L"claude");
+            addItem(L"Gemini", L"gemini");
+
+            if (!globals.AcpCustomCommand().empty())
+            {
+                addItem(L"Custom", L"custom");
+            }
+
+            // Separator + Settings
+            Windows::UI::Xaml::Controls::MenuFlyoutSeparator sep;
+            flyout.Items().Append(sep);
+
+            Windows::UI::Xaml::Controls::MenuFlyoutItem settingsItem;
+            settingsItem.Text(L"AI Agent Settings...");
+            settingsItem.Click([this](const auto&, const auto&) {
+                _AgentSettingsButtonOnClick(nullptr, nullptr);
+            });
+            flyout.Items().Append(settingsItem);
+        }
+    }
+
     // Method Description:
     // - Called when the users pressed keyBindings while CommandPaletteElement is open.
     // - As of GH#8480, this is also bound to the TabRowControl's KeyUp event.
@@ -3060,6 +3281,29 @@ namespace winrt::TerminalApp::implementation
                                         *page,
                                         winrt::to_hstring(Json::writeString(wb, evt)));
                                     return; // Don't also emit as raw vt_sequence
+                                }
+                            }
+
+                            // Track command failures for the bottom bar diagnostics button.
+                            // OSC 133;D;N with N>0 means the last command failed.
+                            // seqStr format: "osc:133;D;1"
+                            static constexpr std::string_view osc133Prefix = "osc:133;";
+                            if (seqStr.starts_with(osc133Prefix))
+                            {
+                                auto rest = seqStr.substr(osc133Prefix.size());
+                                // rest is e.g. "D;1" or "D;0"
+                                if (rest.starts_with("D;"))
+                                {
+                                    auto codeStr = rest.substr(2);
+                                    int exitCode = 0;
+                                    try { exitCode = std::stoi(codeStr); } catch (...) {}
+                                    if (exitCode != 0)
+                                    {
+                                        auto widePaneId = std::wstring(paneIdStr.begin(), paneIdStr.end());
+                                        auto summary = fmt::format(FMT_COMPILE(L"Command failed in pane {} (exit code {})"),
+                                                                   widePaneId, exitCode);
+                                        page->_IncrementDiagnosticErrors(widePaneId, summary);
+                                    }
                                 }
                             }
 
@@ -5530,6 +5774,7 @@ namespace winrt::TerminalApp::implementation
         // Create the SUI pane content
         auto settingsContent{ winrt::make_self<SettingsPaneContent>(_settings) };
         auto sui = settingsContent->SettingsUI();
+        _settingsMainPage = sui;
 
         if (_hostingHwnd)
         {
@@ -5576,6 +5821,7 @@ namespace winrt::TerminalApp::implementation
         {
             _tabView.SelectedItem(_settingsTab.TabViewItem());
         }
+
     }
 
     // Method Description:

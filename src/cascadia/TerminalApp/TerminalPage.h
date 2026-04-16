@@ -254,6 +254,7 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTabIndices();
 
         TerminalApp::Tab _settingsTab{ nullptr };
+        winrt::Microsoft::Terminal::Settings::Editor::MainPage _settingsMainPage{ nullptr };
 
         bool _isInFocusMode{ false };
         bool _isFullscreen{ false };
@@ -297,6 +298,25 @@ namespace winrt::TerminalApp::implementation
         // Agent pane tracking - weak pointers to agent panes for reuse.
         // Expired entries are pruned lazily during lookup.
         std::vector<std::weak_ptr<Pane>> _agentPanes;
+
+        // --- Bottom bar (AI toolbar) ---
+        struct DiagnosticState
+        {
+            uint32_t unacknowledgedErrors{ 0 };
+            std::wstring lastErrorSummary;
+            std::wstring lastErrorPaneId;
+        };
+        DiagnosticState _diagnostics;
+        bool _agentPaneVisible{ false };
+
+        void _AgentToggleButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _DiagnosticsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _PromptButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _HistoryButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _AgentSettingsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _UpdateBottomBarState();
+        void _IncrementDiagnosticErrors(const std::wstring& paneId, const std::wstring& summary);
+        void _PopulateAgentSelectorFlyout();
 
         // Pane that was focused before the agent pane was shown, so we can
         // restore focus on toggle-off.

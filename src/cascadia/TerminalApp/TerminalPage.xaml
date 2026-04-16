@@ -65,6 +65,143 @@
             </Grid.Background>
         </Grid>
 
+        <!-- Bottom Bar: AI agent toolbar
+             Figma: bg rgba(45,45,48,0.3), top border rgba(255,255,255,0.05) @ 0.667px -->
+        <Grid x:Name="BottomBar"
+              Grid.Row="2"
+              Height="31"
+              Padding="12,0,12,0"
+              BorderThickness="0,0.667,0,0"
+              VerticalAlignment="Bottom"
+              HorizontalAlignment="Stretch">
+            <Grid.Background>
+                <SolidColorBrush Color="#2D2D30"
+                                 Opacity="0.3" />
+            </Grid.Background>
+            <Grid.BorderBrush>
+                <SolidColorBrush Color="White"
+                                 Opacity="0.05" />
+            </Grid.BorderBrush>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Button 1: AI toggle -->
+            <Button x:Name="AgentToggleButton"
+                    Grid.Column="0"
+                    Width="30"
+                    Height="30"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    ToolTipService.ToolTip="Toggle AI Assistant"
+                    Click="_AgentToggleButtonOnClick">
+                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="16"
+                          Glyph="&#xE756;" />
+            </Button>
+
+            <!-- Button 2: Diagnostics / Warning -->
+            <Button x:Name="DiagnosticsButton"
+                    Grid.Column="1"
+                    Width="30"
+                    Height="30"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    Opacity="0.5"
+                    IsEnabled="False"
+                    ToolTipService.ToolTip="Diagnostics"
+                    Click="_DiagnosticsButtonOnClick">
+                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="16"
+                          Glyph="&#xE7BA;" />
+            </Button>
+
+            <!-- Center: Agent selector (visible when agent pane is open) -->
+            <StackPanel x:Name="AgentSelectorPanel"
+                        Grid.Column="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        Margin="8,0,0,0"
+                        Visibility="Collapsed">
+                <Button x:Name="AgentSelectorButton"
+                        Height="24"
+                        Padding="8,2,4,2"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="6">
+                        <TextBlock x:Name="AgentSelectorText"
+                                   Text="Copilot"
+                                   FontSize="12"
+                                   VerticalAlignment="Center" />
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  FontSize="8"
+                                  Glyph="&#xE70D;"
+                                  VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Button.Flyout>
+                        <MenuFlyout Placement="Top" />
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+
+            <!-- Right: Action buttons (visible when agent pane is open) -->
+            <StackPanel x:Name="ActionButtonsPanel"
+                        Grid.Column="3"
+                        Orientation="Horizontal"
+                        Spacing="2"
+                        Visibility="Collapsed">
+                <!-- Prompt button: opens command palette in ? mode -->
+                <Button x:Name="PromptButton"
+                        Width="30"
+                        Height="30"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        ToolTipService.ToolTip="Send prompt to agent"
+                        Click="_PromptButtonOnClick">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="14"
+                              Glyph="&#xE8BD;" />
+                </Button>
+
+                <!-- History button -->
+                <Button x:Name="HistoryButton"
+                        Width="30"
+                        Height="30"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        ToolTipService.ToolTip="History"
+                        Click="_HistoryButtonOnClick">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="14"
+                              Glyph="&#xE81C;" />
+                </Button>
+
+                <!-- Settings button -->
+                <Button x:Name="SettingsButton"
+                        Width="30"
+                        Height="30"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        ToolTipService.ToolTip="AI Agent settings"
+                        Click="_AgentSettingsButtonOnClick">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="14"
+                              Glyph="&#xE713;" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
         <!--
             GH#12775 et. al: After switching to ControlsV2, it seems that
             delay-loading a dialog causes the ContentDialog to be assigned a

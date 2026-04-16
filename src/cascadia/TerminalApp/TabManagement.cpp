@@ -1076,6 +1076,8 @@ namespace winrt::TerminalApp::implementation
                 const auto tab{ _tabs.GetAt(selectedIndex) };
                 _UpdatedSelectedTab(tab);
             }
+            // Refresh the bottom bar state for the newly focused tab
+            _UpdateBottomBarState();
         }
     }
 

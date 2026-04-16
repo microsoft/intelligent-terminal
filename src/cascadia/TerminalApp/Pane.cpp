@@ -3378,10 +3378,6 @@ winrt::Windows::UI::Xaml::Media::SolidColorBrush Pane::_ComputeBorderColor()
 {
     if (_lastActive)
     {
-        if (_isAgentPane && _themeResources.agentFocusedBorderBrush)
-        {
-            return _themeResources.agentFocusedBorderBrush;
-        }
         return _themeResources.focusedBorderBrush;
     }
 

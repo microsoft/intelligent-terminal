@@ -60,5 +60,7 @@ namespace Microsoft.Terminal.Settings.Editor
         ActionsViewModel ActionsVM { get; };
 
         Windows.UI.Xaml.Media.Brush BackgroundBrush { get; };
+
+        void NavigateToAIAgents();
     }
 }
