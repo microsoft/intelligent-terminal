@@ -746,6 +746,17 @@ void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
     auto jsonStr = winrt::to_string(eventJson);
     Json::Value evt;
     THROW_HR_IF(E_INVALIDARG, !_parseJson(jsonStr, evt));
+
+    // autofix_state is a direct WTA → TerminalPage signal (no broadcast to
+    // other wtcli clients). Marshal to the UI thread and call the page.
+    if (evt.isMember("method") && evt["method"].isString() &&
+        evt["method"].asString() == "autofix_state")
+    {
+        _dispatchAutofixStateToPage(eventJson);
+        return;
+    }
+
+    // Legacy path: params.event is required for agent_event broadcasts.
     THROW_HR_IF(E_INVALIDARG, !evt.isMember("params") || !evt["params"].isMember("event"));
 
     // Normalize the envelope
@@ -756,4 +767,42 @@ void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
     Json::StreamWriterBuilder wb;
     wb["indentation"] = "";
     s_NotifyEventToComClients(Json::writeString(wb, evt));
+}
+
+void TerminalProtocolComServer::_dispatchAutofixStateToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // Find any window's TerminalPage and dispatch to its UI thread. The
+    // bottom bar state is per-window; for v1 we fan out to every window so
+    // whichever is focused shows the update.
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        // SendEvent runs on an arbitrary COM MTA thread; XAML requires the
+        // UI thread. Capture by value so the lambda owns the hstring/page.
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnAutofixStateChanged(eventJson);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
 }

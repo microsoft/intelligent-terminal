@@ -103,6 +103,7 @@ static constexpr std::string_view OpenAboutKey{ "openAbout" };
 static constexpr std::string_view QuickFixKey{ "quickFix" };
 static constexpr std::string_view OpenCWDKey{ "openCWD" };
 static constexpr std::string_view OpenAgentPaneKey{ "openAgentPane" };
+static constexpr std::string_view TriggerAutofixKey{ "triggerAutofix" };
 static constexpr std::string_view ShowProtocolInfoKey{ "showProtocolInfo" };
 static constexpr std::string_view InitShellIntegrationKey{ "initShellIntegration" };
 

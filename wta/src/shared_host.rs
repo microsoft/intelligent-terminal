@@ -1,7 +1,7 @@
 use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 use std::io;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -90,6 +90,14 @@ pub enum HostClientRequest {
     },
     SelectRecommendation {
         choice: usize,
+    },
+    /// Host-internal only (client_id == u64::MAX). Used when the user clicks
+    /// the bottom-bar autofix icon / presses Ctrl+. while no attach TUI is
+    /// running. Host picks the recommended choice from its state, auto-fills
+    /// `parent` on Send actions with `source_pane_id`, runs it, and emits
+    /// autofix_state:cleared.
+    ExecuteArmedAutofix {
+        source_pane_id: String,
     },
     RespondPermission {
         option_id: String,
@@ -436,12 +444,37 @@ pub async fn run_attach_client(
     }
 }
 
+/// Host-internal autofix commands from main.rs when no attach TUI is present.
+///
+/// `Trigger`: run the full flow for a failing pane — submit the diagnose
+/// prompt, emit pending, and (via finalize_agent_response) eventually emit
+/// armed with the fix preview.
+///
+/// `Execute`: the user pressed Ctrl+. (or clicked the status bar) — take the
+/// currently armed recommendation and run it against the failing pane.
+#[derive(Debug, Clone)]
+pub enum HostAutofixCommand {
+    Trigger {
+        pane_id: String,
+        summary: String,
+        source_cwd: Option<String>,
+    },
+    Execute {
+        pane_id: String,
+    },
+}
+
 pub async fn run_host_server(
     host_pipe_name: String,
     agent_cmd: String,
     delegate_agent_cmd: Option<String>,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
+    // If Some, caller injects autofix commands here. run_host_server forwards
+    // them to host_command_tx as synthetic requests with a reserved client_id
+    // so the existing state/prompt machinery handles them identically to
+    // pipe-client requests.
+    autofix_cmd_rx: Option<mpsc::UnboundedReceiver<HostAutofixCommand>>,
 ) -> Result<()> {
     host_log(&format!(
         "starting shared host pipe={} wt_connected={}",
@@ -453,6 +486,91 @@ pub async fn run_host_server(
         host_pipe_name.clone(),
         host_command_tx.clone(),
     ));
+
+    // Shared attach-client count. Host-side autofix trigger skips when > 0 so
+    // the attach TUI (which has its own maybe_trigger_autofix) stays the
+    // single autofix initiator in that mode. Host only takes over when no
+    // attach is connected (agent pane closed or never opened).
+    let attach_count = Arc::new(AtomicUsize::new(0));
+
+    // Host-internal autofix bridge. Routes main.rs-originated commands
+    // through host_command_tx so they go through the same state machine
+    // as pipe-client requests.
+    if let Some(mut cmd_rx) = autofix_cmd_rx {
+        let command_tx = host_command_tx.clone();
+        let attach_count_trigger = attach_count.clone();
+        tokio::spawn(async move {
+            while let Some(cmd) = cmd_rx.recv().await {
+                let active_attaches = attach_count_trigger.load(Ordering::Relaxed);
+                if active_attaches > 0 {
+                    host_log(&format!(
+                        "autofix cmd skipped (attach_count={}): attach TUI will handle: {:?}",
+                        active_attaches, cmd
+                    ));
+                    continue;
+                }
+                match cmd {
+                    HostAutofixCommand::Trigger {
+                        pane_id,
+                        summary,
+                        source_cwd,
+                    } => {
+                        host_log(&format!(
+                            "autofix_trigger received: pane={} summary={}",
+                            pane_id, summary
+                        ));
+                        // Publish pending UI state right away.
+                        let pending_evt = serde_json::json!({
+                            "type": "event",
+                            "method": "autofix_state",
+                            "params": {
+                                "state": "pending",
+                                "pane_id": pane_id,
+                                "summary": summary,
+                            }
+                        });
+                        crate::app::send_wt_protocol_event(pending_evt.to_string());
+
+                        let pane_context = PaneContext {
+                            pane_id: None,
+                            tab_id: None,
+                            window_id: None,
+                            cwd: source_cwd,
+                            source_pane_id: Some(pane_id.clone()),
+                        };
+                        let prompt_text =
+                            format!("{}\nDiagnose the error and suggest a fix.", summary);
+                        let sub = PromptSubmission::new_autofix(
+                            prompt_text.clone(),
+                            Some(pane_context.clone()),
+                        );
+                        let _ = command_tx.send(HostCommand::ClientRequest {
+                            client_id: u64::MAX,
+                            request: HostClientRequest::SubmitPrompt {
+                                prompt_id: sub.id,
+                                submitted_at_unix_s: sub.submitted_at_unix_s,
+                                text: prompt_text,
+                                pane_context: Some(pane_context),
+                                is_autofix: true,
+                            },
+                        });
+                    }
+                    HostAutofixCommand::Execute { pane_id } => {
+                        host_log(&format!("autofix_execute received: pane={}", pane_id));
+                        // run_host_service will read state.recommendations,
+                        // pick the recommended choice, run it against the
+                        // failing pane, and emit autofix_state:cleared.
+                        let _ = command_tx.send(HostCommand::ClientRequest {
+                            client_id: u64::MAX,
+                            request: HostClientRequest::ExecuteArmedAutofix {
+                                source_pane_id: pane_id,
+                            },
+                        });
+                    }
+                }
+            }
+        });
+    }
 
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let (prompt_tx, prompt_rx) = mpsc::unbounded_channel::<PromptSubmission>();
@@ -484,6 +602,7 @@ pub async fn run_host_server(
         prompt_tx,
         recommendation_tx,
         wt_connected,
+        attach_count,
     )
     .await
 }
@@ -784,6 +903,7 @@ async fn run_host_service(
     prompt_tx: mpsc::UnboundedSender<PromptSubmission>,
     recommendation_tx: mpsc::UnboundedSender<crate::coordinator::ChoiceExecution>,
     wt_connected: bool,
+    attach_count: Arc<AtomicUsize>,
 ) -> Result<()> {
     let mut clients: HashMap<u64, AttachedClient> = HashMap::new();
     let mut state = HostSessionState::new(wt_connected);
@@ -798,6 +918,10 @@ async fn run_host_service(
                     &prompt_tx,
                     &recommendation_tx,
                 );
+                // Keep attach_count in sync with the clients map so the
+                // host-side autofix trigger knows whether an attach TUI is
+                // currently responsible for initiating autofix.
+                attach_count.store(clients.len(), Ordering::Relaxed);
             }
 
             Some(event) = event_rx.recv() => {
@@ -895,6 +1019,7 @@ fn handle_host_command(
                     text.clone(),
                     effective_context.clone(),
                     submitted_at_unix_s,
+                    is_autofix,
                 );
                 // Auto-fix prompts are synthesized by the client when a
                 // command fails — the client already renders its own
@@ -993,6 +1118,77 @@ fn handle_host_command(
                         },
                     );
                 }
+            }
+            HostClientRequest::ExecuteArmedAutofix { source_pane_id } => {
+                // Emit cleared unconditionally — whatever happens below, the
+                // bottom-bar state should return to Idle so a stale Armed
+                // badge doesn't linger.
+                let emit_cleared = || {
+                    let evt = serde_json::json!({
+                        "type": "event",
+                        "method": "autofix_state",
+                        "params": {
+                            "state": "cleared",
+                            "pane_id": source_pane_id,
+                        }
+                    });
+                    crate::app::send_wt_protocol_event(evt.to_string());
+                };
+
+                let maybe_choice = state
+                    .recommendations
+                    .as_ref()
+                    .and_then(|set| {
+                        let idx = set
+                            .recommended_choice
+                            .unwrap_or(0)
+                            .min(set.choices.len().saturating_sub(1));
+                        set.choices.get(idx)
+                    })
+                    .cloned();
+
+                let Some(mut selected) = maybe_choice else {
+                    host_log(&format!(
+                        "execute_armed_autofix: no recommendation available for pane {}",
+                        source_pane_id
+                    ));
+                    emit_cleared();
+                    return;
+                };
+
+                // Fill `parent` on Send actions with the failing pane id so
+                // the fix runs in the right place.
+                for action in &mut selected.actions {
+                    if let crate::coordinator::RecommendedAction::Send {
+                        ref mut parent, ..
+                    } = action
+                    {
+                        if parent.is_empty() {
+                            *parent = source_pane_id.clone();
+                        }
+                    }
+                }
+
+                state.commit_pending_completed_turn();
+                state.clear_recommendations();
+                state.push_execution_info(format!(
+                    "Auto-executing choice {} for pane {}.",
+                    selected.choice, source_pane_id
+                ));
+                broadcast_snapshot(clients, &state.snapshot());
+                if recommendation_tx
+                    .send(crate::coordinator::ChoiceExecution {
+                        choice: selected,
+                        insert_only: false,
+                    })
+                    .is_err()
+                {
+                    state.push_system_message(
+                        "recommendation executor is unavailable".to_string(),
+                    );
+                    broadcast_snapshot(clients, &state.snapshot());
+                }
+                emit_cleared();
             }
             HostClientRequest::RespondPermission { option_id } => {
                 if let Some(responder) = state.permission_responder.take() {
@@ -1246,6 +1442,10 @@ struct HostSessionState {
     recommendations: Option<RecommendationSet>,
     current_prompt_pane_context: Option<PaneContext>,
     current_prompt_text: Option<String>,
+    // Set when the in-flight prompt was synthesized by auto-fix.
+    // Used to emit `autofix_state:armed` directly from the host when the
+    // attach TUI isn't running (agent pane closed / never opened).
+    current_prompt_is_autofix: bool,
     current_prompt_submitted_at_unix_s: Option<f64>,
     pending_completed_turn: Option<CompletedTurn>,
     agent_streaming: bool,
@@ -1274,6 +1474,7 @@ impl HostSessionState {
             recommendations: None,
             current_prompt_pane_context: None,
             current_prompt_text: None,
+            current_prompt_is_autofix: false,
             current_prompt_submitted_at_unix_s: None,
             pending_completed_turn: None,
             agent_streaming: false,
@@ -1318,11 +1519,13 @@ impl HostSessionState {
         text: String,
         pane_context: Option<PaneContext>,
         submitted_at_unix_s: f64,
+        is_autofix: bool,
     ) {
         self.clear_chat_history();
         self.current_prompt_pane_context = pane_context;
         self.current_prompt_text = Some(text.clone());
         self.current_prompt_submitted_at_unix_s = Some(submitted_at_unix_s);
+        self.current_prompt_is_autofix = is_autofix;
         self.prompt_in_flight = true;
         self.agent_streaming = false;
         self.progress_status = Some("Preparing context...".to_string());
@@ -1569,6 +1772,11 @@ impl HostSessionState {
         }
 
         let text = std::mem::take(&mut self.pending_agent_response);
+        let is_autofix = self.current_prompt_is_autofix;
+        let autofix_source_pane = self
+            .current_prompt_pane_context
+            .as_ref()
+            .and_then(|ctx| ctx.source_pane_id.clone());
         match parse_recommendation_set(&text) {
             Ok(recommendations) => {
                 match validate_recommendation_set_for_coordinator_target(
@@ -1578,11 +1786,45 @@ impl HostSessionState {
                         .and_then(|context| context.pane_id.as_deref()),
                 ) {
                     Ok(filtered) => {
+                        // When no attach TUI is running, this host is the
+                        // only process that sees the recommendation become
+                        // ready — so it must emit autofix_state:armed.
+                        if is_autofix {
+                            if let Some(pane_id) = autofix_source_pane.as_ref() {
+                                let preview = crate::app::armed_fix_preview(&filtered);
+                                let evt = serde_json::json!({
+                                    "type": "event",
+                                    "method": "autofix_state",
+                                    "params": {
+                                        "state": "armed",
+                                        "pane_id": pane_id,
+                                        "fix_preview": preview,
+                                        "hotkey_hint": "Ctrl+Alt+.",
+                                    }
+                                });
+                                crate::app::send_wt_protocol_event(evt.to_string());
+                            }
+                            self.current_prompt_is_autofix = false;
+                        }
                         self.stage_completed_turn(text);
                         self.recommendations = Some(filtered);
                         FinalizeOutcome::SelectionReady
                     }
                     Err(_) => {
+                        if is_autofix {
+                            if let Some(pane_id) = autofix_source_pane.as_ref() {
+                                let evt = serde_json::json!({
+                                    "type": "event",
+                                    "method": "autofix_state",
+                                    "params": {
+                                        "state": "cleared",
+                                        "pane_id": pane_id,
+                                    }
+                                });
+                                crate::app::send_wt_protocol_event(evt.to_string());
+                            }
+                            self.current_prompt_is_autofix = false;
+                        }
                         self.recommendations = None;
                         self.pending_completed_turn = None;
                         self.stage_completed_turn(text);
@@ -1593,6 +1835,20 @@ impl HostSessionState {
                 }
             }
             Err(_) => {
+                if is_autofix {
+                    if let Some(pane_id) = autofix_source_pane.as_ref() {
+                        let evt = serde_json::json!({
+                            "type": "event",
+                            "method": "autofix_state",
+                            "params": {
+                                "state": "cleared",
+                                "pane_id": pane_id,
+                            }
+                        });
+                        crate::app::send_wt_protocol_event(evt.to_string());
+                    }
+                    self.current_prompt_is_autofix = false;
+                }
                 self.recommendations = None;
                 self.pending_completed_turn = None;
                 self.stage_completed_turn(text);

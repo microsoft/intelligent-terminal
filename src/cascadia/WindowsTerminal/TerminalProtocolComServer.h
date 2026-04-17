@@ -124,5 +124,9 @@ private:
     void _removeInstance();
     static void _ensurePageEventsRegistered();
 
+    // Dispatch an {method:"autofix_state"} payload to every window's
+    // TerminalPage on its UI thread.
+    static void _dispatchAutofixStateToPage(const winrt::hstring& eventJson);
+
     static WindowEmperor* s_emperor;
 };

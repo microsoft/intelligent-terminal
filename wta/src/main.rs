@@ -1176,12 +1176,21 @@ async fn run_ensure_host(
                 delegate_agent_cmd.as_deref(),
             );
             host_log(&format!("Host pipe: {}", host_pipe_name));
-            // Spawn background listener for agent_prompt events from the WT pipe.
+
+            // Autofix command channel. The host-side WT event listener pushes
+            // Trigger on actionable failures and Execute when the user clicks
+            // the bottom-bar icon / presses Ctrl+. without an attach TUI
+            // running. run_host_server routes them into host_command_tx so
+            // the existing state machine handles both cases.
+            let (autofix_cmd_tx, autofix_cmd_rx) = tokio::sync::mpsc::unbounded_channel::<shared_host::HostAutofixCommand>();
+
+            // Spawn background listener for WT events.
             if let Some(mut wt_rx) = wt_event_rx {
                 let sm = Arc::clone(&shell_mgr);
                 let agent_for_recs = agent_cmd.clone();
                 let delegate_for_recs = delegate_agent_cmd.clone();
                 let delegate_model_for_recs = delegate_model.clone();
+                let host_autofix_tx = autofix_cmd_tx.clone();
                 tokio::task::spawn_local(async move {
                     // Create a recommendation executor for delegation.
                     let (rec_tx, rec_rx) =
@@ -1208,11 +1217,22 @@ async fn run_ensure_host(
                         let method = event_json
                             .get("method")
                             .and_then(|v| v.as_str())
-                            .unwrap_or("");
+                            .unwrap_or("")
+                            .to_string();
+                        let pane_id = event_json
+                            .get("params")
+                            .and_then(|p| p.get("pane_id"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let params = event_json
+                            .get("params")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null);
+
                         if method == "agent_prompt" {
-                            let prompt = event_json
-                                .get("params")
-                                .and_then(|p| p.get("prompt"))
+                            let prompt = params
+                                .get("prompt")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
@@ -1238,6 +1258,46 @@ async fn run_ensure_host(
                                     insert_only: false,
                                 });
                             }
+                            continue;
+                        }
+
+                        // User pressed Ctrl+. or clicked the bottom-bar
+                        // autofix icon — execute the armed recommendation.
+                        if method == "autofix_execute" {
+                            host_log(&format!(
+                                "host autofix_execute: pane={}",
+                                pane_id
+                            ));
+                            let _ = host_autofix_tx.send(
+                                shared_host::HostAutofixCommand::Execute {
+                                    pane_id: pane_id.clone(),
+                                },
+                            );
+                            continue;
+                        }
+
+                        // Classify any other event — if actionable (OSC 133;D
+                        // non-zero exit, connection failures, etc.), fire the
+                        // host-side autofix pipeline so the bottom bar goes
+                        // from Idle → Pending → Armed even when no attach
+                        // TUI (agent pane) is running.
+                        let note = crate::app::classify_wt_event(&method, &pane_id, &params);
+                        if note.severity == crate::app::WtEventSeverity::Actionable
+                            && method != "agent_prompt"
+                        {
+                            host_log(&format!(
+                                "host autofix trigger: pane={} summary={}",
+                                pane_id, note.summary
+                            ));
+                            let _ = host_autofix_tx.send(
+                                shared_host::HostAutofixCommand::Trigger {
+                                    pane_id: pane_id.clone(),
+                                    summary: note.summary.clone(),
+                                    source_cwd: std::env::var("WTA_SOURCE_CWD")
+                                        .ok()
+                                        .filter(|s| !s.is_empty()),
+                                },
+                            );
                         }
                     }
                 });
@@ -1251,6 +1311,7 @@ async fn run_ensure_host(
                 delegate_agent_cmd,
                 shell_mgr,
                 true, // wt_connected
+                Some(autofix_cmd_rx),
             )
             .await
             {

@@ -1665,6 +1665,18 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
+    void TerminalPage::_HandleTriggerAutofix(const IInspectable& /*sender*/,
+                                              const ActionEventArgs& args)
+    {
+        // Only act when a fix is actually armed. In Pending/Idle the hotkey
+        // does nothing, so the chord can fall through to other consumers.
+        if (_diagnostics.autofixState == AutofixState::Armed)
+        {
+            _TriggerAutofix();
+            args.Handled(true);
+        }
+    }
+
     void TerminalPage::_HandleShowProtocolInfo(const IInspectable& /*sender*/,
                                                const ActionEventArgs& args)
     {

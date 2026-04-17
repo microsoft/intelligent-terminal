@@ -684,6 +684,32 @@ int main()
         }
     });
 
+    // ── publish ──
+    // Low-level "pass this JSON through to IProtocolServer::SendEvent verbatim"
+    // escape hatch, for event shapes that don't fit the legacy send-event
+    // envelope (method=agent_event, params.event required). Examples:
+    // autofix_state updates from WTA that the COM server dispatches directly
+    // to TerminalPage rather than broadcasting.
+    std::string publishJson;
+    auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to IProtocolServer::SendEvent");
+    publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})")->required();
+    publishCmd->callback([&]() {
+        auto server = connect();
+        if (!server)
+        {
+            return;
+        }
+        try
+        {
+            server.SendEvent(winrt::to_hstring(publishJson));
+        }
+        catch (const winrt::hresult_error& e)
+        {
+            fprintf(stderr, "publish failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
+            exitCode = 1;
+        }
+    });
+
     // ── send-event ──
     std::string sendEventType, sendEventJson, sendEventPaneTarget;
     auto* sendEventCmd = app.add_subcommand("send-event", "Publish an event to all listeners")->alias("se");

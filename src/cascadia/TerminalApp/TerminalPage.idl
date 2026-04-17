@@ -122,5 +122,9 @@ namespace TerminalApp
         Windows.Foundation.IAsyncOperation<Boolean> SendProtocolInput(UInt32 paneId, String text);
         Windows.Foundation.IAsyncOperation<String> ShowProtocolQuickPick(String title, String choicesJson, Boolean allowFreeInput);
         event Windows.Foundation.TypedEventHandler<Object, String> ProtocolVtSequenceReceived;
+
+        // Inbound event from WTA carrying {method:"autofix_state",params:{state,pane_id,...}}
+        // Called by the COM server on the UI thread after receiving a SendEvent from WTA.
+        void OnAutofixStateChanged(String eventJson);
     }
 }

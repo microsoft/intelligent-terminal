@@ -118,7 +118,7 @@ impl WtNotification {
 }
 
 /// Classify a WT protocol event into a notification.
-fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value) -> WtNotification {
+pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value) -> WtNotification {
     match method {
         "connection_state" => {
             let state = params
@@ -821,6 +821,16 @@ impl App {
                     method, pane_id, self.pane_id
                 ));
 
+                // autofix_execute is an inbound UI action ("run the armed
+                // fix now") from TerminalPage. pane_id is the failing
+                // pane — NOT our own — so this check must run before the
+                // same-pane skip below. Ignore the event if we don't
+                // actually have a cached autofix for that pane.
+                if method == "autofix_execute" {
+                    self.handle_autofix_execute_request(&pane_id);
+                    return;
+                }
+
                 // Skip events from our own pane
                 if self.pane_id.as_deref() == Some(pane_id.as_str()) {
                     autofix_log("skipped: own pane");
@@ -1045,7 +1055,7 @@ impl App {
                                 }
                             }
                         }
-                        self.autofix_pane_id = None;
+                        let armed_pane = self.autofix_pane_id.take();
                         self.commit_pending_completed_turn();
                         self.clear_recommendations();
                         let label = if insert_only { "Inserting" } else { "Executing" };
@@ -1053,6 +1063,11 @@ impl App {
                         let _ = self.recommendation_tx.send(
                             crate::coordinator::ChoiceExecution { choice, insert_only }
                         );
+                        // Clear the bottom-bar Armed state — the fix has been
+                        // dispatched to the source pane.
+                        if let Some(pane_id) = armed_pane {
+                            self.emit_autofix_state_cleared(&pane_id);
+                        }
                     }
                 } else if self.history_navigation_enabled() {
                     self.toggle_selected_history_turn();
@@ -1354,6 +1369,120 @@ impl App {
         self.current_prompt_submitted_at_unix_s = Some(prompt.submitted_at_unix_s);
         autofix_log(&format!("sending auto-fix prompt for pane {}", notification.pane_id));
         let _ = self.prompt_tx.send(prompt);
+
+        // Light up the bottom-bar diagnostic icon in "Pending" state — the
+        // user knows something went wrong even before the agent responds.
+        self.emit_autofix_state_pending(&notification.pane_id, &notification.summary);
+    }
+
+    // ── autofix_state signalling ───────────────────────────────────────────
+    //
+    // Notifies the TerminalPage about autofix progress via a JSON event on
+    // the SendEvent bus. The COM server special-cases method=="autofix_state"
+    // and dispatches to TerminalPage.OnAutofixStateChanged (UI thread).
+
+    fn emit_autofix_state_pending(&self, pane_id: &str, summary: &str) {
+        let evt = serde_json::json!({
+            "type": "event",
+            "method": "autofix_state",
+            "params": {
+                "state": "pending",
+                "pane_id": pane_id,
+                "summary": summary,
+            }
+        });
+        send_wt_protocol_event(evt.to_string());
+    }
+
+    fn emit_autofix_state_armed(&self, pane_id: &str, fix_preview: &str) {
+        let evt = serde_json::json!({
+            "type": "event",
+            "method": "autofix_state",
+            "params": {
+                "state": "armed",
+                "pane_id": pane_id,
+                "fix_preview": fix_preview,
+                "hotkey_hint": "Ctrl+Alt+.",
+            }
+        });
+        send_wt_protocol_event(evt.to_string());
+    }
+
+    /// Execute the currently armed autofix on behalf of the user (they
+    /// clicked the bottom-bar button or pressed Ctrl+. in the terminal
+    /// window). Mirrors the Enter-key path in the recommendations handler
+    /// but without requiring the agent pane to be focused.
+    fn handle_autofix_execute_request(&mut self, requested_pane_id: &str) {
+        autofix_log(&format!(
+            "autofix_execute received: requested_pane={} armed_pane={:?} has_recs={}",
+            requested_pane_id,
+            self.autofix_pane_id,
+            self.recommendations.is_some()
+        ));
+        // Only execute if we have a cached autofix for the requested pane.
+        // The pane_id check prevents a stale UI click from running against
+        // an unrelated, more recent error.
+        let armed_pane = match self.autofix_pane_id.clone() {
+            Some(p) if p == requested_pane_id => p,
+            _ => {
+                autofix_log("autofix_execute: no armed fix for this pane");
+                // Tell the UI anyway so it returns to Idle.
+                self.emit_autofix_state_cleared(requested_pane_id);
+                return;
+            }
+        };
+        let rec = match self.recommendations.clone() {
+            Some(r) => r,
+            None => {
+                self.emit_autofix_state_cleared(&armed_pane);
+                self.autofix_pane_id = None;
+                return;
+            }
+        };
+        let idx = rec
+            .recommended_choice
+            .unwrap_or(self.selected_recommendation)
+            .min(rec.choices.len().saturating_sub(1));
+        let Some(mut choice) = rec.choices.get(idx).cloned() else {
+            self.emit_autofix_state_cleared(&armed_pane);
+            self.autofix_pane_id = None;
+            return;
+        };
+        // Auto-fill parent for Send actions, same as Enter path.
+        for action in &mut choice.actions {
+            if let crate::coordinator::RecommendedAction::Send { ref mut parent, .. } = action {
+                if parent.is_empty() {
+                    *parent = armed_pane.clone();
+                }
+            }
+        }
+        self.autofix_pane_id = None;
+        self.commit_pending_completed_turn();
+        self.clear_recommendations();
+        self.push_execution_info(format!("Auto-executing choice {}.", choice.choice));
+        let _ = self
+            .recommendation_tx
+            .send(crate::coordinator::ChoiceExecution {
+                choice,
+                insert_only: false,
+            });
+        self.emit_autofix_state_cleared(&armed_pane);
+    }
+
+    fn emit_autofix_state_cleared(&self, pane_id: &str) {
+        let evt = serde_json::json!({
+            "type": "event",
+            "method": "autofix_state",
+            "params": {
+                "state": "cleared",
+                "pane_id": pane_id,
+            }
+        });
+        send_wt_protocol_event(evt.to_string());
+    }
+
+    fn armed_fix_preview(rec: &crate::coordinator::RecommendationSet) -> String {
+        armed_fix_preview(rec)
     }
 
     fn prepare_for_new_prompt(&mut self, prompt_text: &str) {
@@ -1510,6 +1639,13 @@ impl App {
                         recommendations.recommended_choice
                     ),
                 );
+                // Promote bottom-bar state to Armed when this recommendation
+                // was produced by an auto-fix prompt. armed_fix_preview reads
+                // the recommended choice's first Send action.
+                if let Some(pane_id) = self.autofix_pane_id.clone() {
+                    let preview = Self::armed_fix_preview(&recommendations);
+                    self.emit_autofix_state_armed(&pane_id, &preview);
+                }
                 self.recommendations = Some(recommendations);
                 self.selection_visible_pending = true;
                 FinalizeOutcome::SelectionReady
@@ -1526,6 +1662,12 @@ impl App {
                         error_text
                     ),
                 );
+                // If this was an auto-fix that couldn't be parsed into
+                // actions, clear the bottom-bar state so the user isn't
+                // left staring at a Pending icon forever.
+                if let Some(pane_id) = self.autofix_pane_id.clone() {
+                    self.emit_autofix_state_cleared(&pane_id);
+                }
                 // For normal (user-driven) prompts we wrap the failed
                 // response into a completed turn and clear the in-flight
                 // chat state. For auto-fix (no current_prompt_text) there's
@@ -1581,6 +1723,28 @@ impl App {
                 .unwrap_or(0);
             if self.recommendations.is_some() {
                 self.selection_visible_pending = true;
+                // Shared-mode counterpart to the finalize_turn armed emit:
+                // when the host shares a fresh recommendation and we're in
+                // an auto-fix flow, light up the bottom-bar icon as Armed.
+                if let Some(pane_id) = self.autofix_pane_id.clone() {
+                    if let Some(rec) = self.recommendations.as_ref() {
+                        let preview = Self::armed_fix_preview(rec);
+                        autofix_log(&format!(
+                            "apply_shared_snapshot: recs ready, emitting armed for pane {}",
+                            pane_id
+                        ));
+                        self.emit_autofix_state_armed(&pane_id, &preview);
+                    }
+                }
+            } else if self.autofix_pane_id.is_some() {
+                // Recommendations were cleared (agent retry / dismissal) —
+                // bring the bottom bar back to Idle so it doesn't stay armed.
+                let pane_id = self.autofix_pane_id.clone().unwrap();
+                autofix_log(&format!(
+                    "apply_shared_snapshot: recs cleared, emitting cleared for pane {}",
+                    pane_id
+                ));
+                self.emit_autofix_state_cleared(&pane_id);
             }
         }
 
@@ -1663,6 +1827,64 @@ fn append_thought_preview(buffer: &mut String, chunk: &str) {
         .skip(char_count.saturating_sub(THOUGHT_PREVIEW_MAX_CHARS))
         .collect();
     *buffer = format!("...{tail}");
+}
+
+/// Extract a short preview string from the recommended choice's first
+/// Send action, for display in the bottom-bar tooltip on Armed state.
+/// Free function so both `App` (attach TUI) and the shared host can call it.
+pub fn armed_fix_preview(rec: &crate::coordinator::RecommendationSet) -> String {
+    let idx = rec
+        .recommended_choice
+        .unwrap_or(0)
+        .min(rec.choices.len().saturating_sub(1));
+    let Some(choice) = rec.choices.get(idx).or_else(|| rec.choices.first()) else {
+        return String::new();
+    };
+    for action in &choice.actions {
+        use crate::coordinator::RecommendedAction;
+        match action {
+            RecommendedAction::Send { input, .. } => {
+                let cleaned = input.trim().replace(['\r', '\n'], " ");
+                return truncate(&cleaned, 80);
+            }
+            RecommendedAction::OpenAndSend { input, .. } => {
+                let cleaned = input.trim().replace(['\r', '\n'], " ");
+                return truncate(&cleaned, 80);
+            }
+        }
+    }
+    truncate(&choice.title, 80)
+}
+
+/// Publish a raw JSON event via `wtcli publish`. The event flows through
+/// IProtocolServer::SendEvent; our modified COM server special-cases
+/// method=="autofix_state" and dispatches directly to TerminalPage.
+/// Intentionally spawned detached: the caller doesn't wait for wtcli.
+pub fn send_wt_protocol_event(json_payload: String) {
+    let exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("wtcli.exe")))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| std::path::PathBuf::from("wtcli.exe"));
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg("publish").arg(&json_payload);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    // Drop stdout/stderr so wtcli doesn't block on the pipes.
+    cmd.stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null());
+    match cmd.spawn() {
+        Ok(_child) => autofix_log(&format!("published event: {}", truncate(&json_payload, 200))),
+        Err(err) => autofix_log(&format!("publish failed to spawn: {err}")),
+    }
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max { s.to_string() } else { format!("{}…", &s[..max]) }
 }
 
 fn autofix_log(msg: &str) {

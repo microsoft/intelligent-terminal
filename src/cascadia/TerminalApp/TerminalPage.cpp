@@ -284,12 +284,26 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::SetSettings(CascadiaSettings settings, bool needRefreshUI)
     {
         assert(Dispatcher().HasThreadAccess());
-        if (_settings == nullptr)
+        const bool firstLoad = (_settings == nullptr);
+        if (firstLoad)
         {
             // Create this only on the first time we load the settings.
             _terminalSettingsCache = std::make_shared<TerminalSettingsCache>(settings);
         }
         _settings = settings;
+
+        // Seed the agent-settings baseline on first load so that later
+        // in-memory mutations (e.g. the bottom-bar agent selector click,
+        // which mutates AcpAgent *before* calling _RebuildAgentStack) are
+        // correctly diffed against the startup state. Without this, the
+        // very first _RebuildAgentStack invocation would take the lazy
+        // "seed-and-skip" branch with the *already-mutated* value and the
+        // real rebuild would never run.
+        if (firstLoad)
+        {
+            _lastAgentSettings = _CaptureAgentSettingsSnapshot();
+            _agentSettingsSnapshotInitialized = true;
+        }
 
         // Make sure to call SetCommands before _RefreshUIForSettingsReload.
         // SetCommands will make sure the KeyChordText of Commands is updated, which needs
@@ -2964,12 +2978,22 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_DiagnosticsButtonOnClick(const IInspectable& /*sender*/,
                                                   const RoutedEventArgs& /*eventArgs*/)
     {
-        // Open or focus the agent pane so WTA can show autofix results.
-        // The autofix pipeline already triggers automatically via maybe_trigger_autofix
-        // in WTA — this button ensures the pane is visible.
-        _OpenOrReuseAgentPane(L"");
-        _diagnostics.unacknowledgedErrors = 0;
-        _UpdateBottomBarState();
+        switch (_diagnostics.autofixState)
+        {
+        case AutofixState::Armed:
+            // Fix ready — execute it.
+            _TriggerAutofix();
+            break;
+        case AutofixState::Pending:
+            // Analysis in flight — show the agent pane so the user can watch
+            // progress. Keep Pending state until WTA confirms armed/cleared.
+            _OpenOrReuseAgentPane(L"");
+            break;
+        case AutofixState::Idle:
+        default:
+            // Button is disabled in Idle, but if reached anyway just no-op.
+            break;
+        }
     }
 
     void TerminalPage::_PromptButtonOnClick(const IInspectable& /*sender*/,
@@ -3052,18 +3076,107 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Update diagnostics button
+        // Update diagnostics button + label based on the autofix state.
+        //   Idle    : dim icon, no label        — not clickable
+        //   Pending : lit icon (neutral), label "Error detected: analyzing…"
+        //             — not clickable (WTA is still generating the fix)
+        //   Armed   : lit icon (accent), label "Error detected: <hotkey> to fix"
+        //             — clickable, click/hotkey executes the cached fix
         if (auto diagBtn = DiagnosticsButton())
         {
-            if (_diagnostics.unacknowledgedErrors > 0)
+            auto label = DiagnosticsLabel();
+            auto icon = DiagnosticsIcon();
+
+            switch (_diagnostics.autofixState)
+            {
+            case AutofixState::Pending:
+            {
+                diagBtn.Opacity(1.0);
+                diagBtn.IsEnabled(false);
+                ToolTipService::SetToolTip(
+                    diagBtn,
+                    box_value(winrt::hstring{ L"Analyzing error…" }));
+                if (icon)
+                {
+                    icon.Foreground(
+                        SolidColorBrush{ ColorHelper::FromArgb(255, 0xD6, 0xB7, 0x00) });
+                }
+                if (label)
+                {
+                    label.Text(L"Error detected: analyzing…");
+                    label.Foreground(
+                        SolidColorBrush{ ColorHelper::FromArgb(255, 0xD6, 0xB7, 0x00) });
+                    label.Visibility(Visibility::Visible);
+                }
+                break;
+            }
+            case AutofixState::Armed:
             {
                 diagBtn.Opacity(1.0);
                 diagBtn.IsEnabled(true);
+
+                const auto hotkey = _diagnostics.hotkeyHint.empty()
+                                        ? std::wstring{ L"Ctrl+Alt+." }
+                                        : _diagnostics.hotkeyHint;
+                std::wstring labelText = L"Error detected: " + hotkey + L" to fix";
+                label.Text(winrt::hstring{ labelText });
+
+                // Yellow warning color.
+                const auto accent = SolidColorBrush{
+                    ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
+                };
+                if (icon)
+                {
+                    icon.Foreground(accent);
+                }
+                if (label)
+                {
+                    label.Foreground(accent);
+                    label.Visibility(Visibility::Visible);
+                }
+
+                std::wstring tooltip = L"Fix ready — " + hotkey + L" to apply";
+                if (!_diagnostics.fixPreview.empty())
+                {
+                    tooltip += L": ";
+                    if (_diagnostics.fixPreview.size() > 120)
+                    {
+                        tooltip.append(_diagnostics.fixPreview, 0, 120);
+                        tooltip += L"…";
+                    }
+                    else
+                    {
+                        tooltip += _diagnostics.fixPreview;
+                    }
+                }
+                ToolTipService::SetToolTip(
+                    diagBtn,
+                    box_value(winrt::hstring{ tooltip }));
+                break;
             }
-            else
+            case AutofixState::Idle:
+            default:
             {
                 diagBtn.Opacity(0.5);
                 diagBtn.IsEnabled(false);
+                ToolTipService::SetToolTip(
+                    diagBtn,
+                    box_value(winrt::hstring{ L"Diagnostics" }));
+                if (icon)
+                {
+                    // Neutral gray — Opacity=0.5 already makes it barely
+                    // visible; picking a concrete brush avoids leaving an
+                    // accent color from the previous Armed state.
+                    icon.Foreground(
+                        SolidColorBrush{ ColorHelper::FromArgb(255, 0xB0, 0xB0, 0xB0) });
+                }
+                if (label)
+                {
+                    label.Visibility(Visibility::Collapsed);
+                    label.Text(L"");
+                }
+                break;
+            }
             }
         }
     }
@@ -3074,6 +3187,100 @@ namespace winrt::TerminalApp::implementation
         _diagnostics.unacknowledgedErrors++;
         _diagnostics.lastErrorPaneId = paneId;
         _diagnostics.lastErrorSummary = summary;
+        // Optimistically flip to Pending — WTA will upgrade to Armed once
+        // the agent has a concrete fix, or back to Idle via autofix_state:cleared.
+        if (_diagnostics.autofixState == AutofixState::Idle)
+        {
+            _diagnostics.autofixState = AutofixState::Pending;
+        }
+        _UpdateBottomBarState();
+    }
+
+    // Inbound event from WTA carrying an autofix_state update. Called by the
+    // COM server on the UI thread. Payload shape:
+    //   {"type":"event","method":"autofix_state",
+    //    "params":{"state":"pending|armed|cleared",
+    //              "pane_id":"...", "summary":"...",
+    //              "fix_preview":"...", "hotkey_hint":"Ctrl+."}}
+    void TerminalPage::OnAutofixStateChanged(hstring eventJson)
+    {
+        Json::Value evt;
+        Json::CharReaderBuilder rb;
+        std::istringstream ss(winrt::to_string(eventJson));
+        std::string errs;
+        if (!Json::parseFromStream(rb, ss, &evt, &errs))
+        {
+            return;
+        }
+        const auto& params = evt["params"];
+        if (!params.isObject() || !params.isMember("state"))
+        {
+            return;
+        }
+        const auto state = params["state"].asString();
+        if (state == "pending")
+        {
+            _diagnostics.autofixState = AutofixState::Pending;
+        }
+        else if (state == "armed")
+        {
+            _diagnostics.autofixState = AutofixState::Armed;
+        }
+        else if (state == "cleared")
+        {
+            _diagnostics.autofixState = AutofixState::Idle;
+            _diagnostics.unacknowledgedErrors = 0;
+            _diagnostics.fixPreview.clear();
+        }
+        if (params.isMember("pane_id") && params["pane_id"].isString())
+        {
+            const auto s = params["pane_id"].asString();
+            _diagnostics.lastErrorPaneId.assign(s.begin(), s.end());
+        }
+        if (params.isMember("summary") && params["summary"].isString())
+        {
+            const auto s = params["summary"].asString();
+            _diagnostics.lastErrorSummary.assign(s.begin(), s.end());
+        }
+        if (params.isMember("fix_preview") && params["fix_preview"].isString())
+        {
+            const auto s = params["fix_preview"].asString();
+            _diagnostics.fixPreview.assign(s.begin(), s.end());
+        }
+        if (params.isMember("hotkey_hint") && params["hotkey_hint"].isString())
+        {
+            const auto s = params["hotkey_hint"].asString();
+            _diagnostics.hotkeyHint.assign(s.begin(), s.end());
+        }
+        _UpdateBottomBarState();
+    }
+
+    // Send {method:"autofix_execute",params:{pane_id}} over the outbound
+    // protocol bus. WTA (as a wtcli subscriber) receives this via its
+    // listen --json event stream and executes the cached fix.
+    void TerminalPage::_TriggerAutofix()
+    {
+        if (_diagnostics.autofixState != AutofixState::Armed)
+        {
+            return;
+        }
+        Json::Value evt;
+        evt["type"] = "event";
+        evt["method"] = "autofix_execute";
+        Json::Value params;
+        params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
+        evt["params"] = params;
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        ProtocolVtSequenceReceived.raise(
+            *this,
+            winrt::to_hstring(Json::writeString(wb, evt)));
+
+        // Optimistically return to Idle. WTA will also emit autofix_state:cleared
+        // but flipping immediately avoids a double-click racing the round trip.
+        _diagnostics.autofixState = AutofixState::Idle;
+        _diagnostics.unacknowledgedErrors = 0;
+        _diagnostics.fixPreview.clear();
         _UpdateBottomBarState();
     }
 

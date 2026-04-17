@@ -547,6 +547,7 @@
         { "command": { "action": "showSuggestions", "source": "all"}, "id": "Terminal.Suggestions" },
         { "command": "openCWD", "id": "Terminal.OpenCWD" },
         { "command": "openAgentPane", "id": "Terminal.OpenAgentPane" },
+        { "command": "triggerAutofix", "id": "Terminal.TriggerAutofix" },
         { "command": { "action": "initShellIntegration", "target": "pwsh" }, "id": "Terminal.InitShellIntegrationPwsh" },
         { "command": { "action": "initShellIntegration", "target": "windowsPowerShell" }, "id": "Terminal.InitShellIntegrationWindowsPowerShell" },
 
@@ -740,6 +741,7 @@
         { "keys": "win+sc(41)", "id": "Terminal.QuakeMode" },
         { "keys": "alt+space", "id": "Terminal.OpenSystemMenu" },
         { "keys": "ctrl+shift+period", "id": "Terminal.OpenAgentPane" },
+        { "keys": "ctrl+alt+period", "id": "Terminal.TriggerAutofix" },
 
         // Tab Management
         // "command": "closeTab" is unbound by default.

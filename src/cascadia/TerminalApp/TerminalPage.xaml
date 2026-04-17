@@ -95,7 +95,7 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <!-- Button 1: AI toggle -->
+            <!-- Button 1: AI toggle (dock/collapse bottom pane) -->
             <Button x:Name="AgentToggleButton"
                     Grid.Column="0"
                     Width="30"
@@ -103,29 +103,55 @@
                     Padding="0"
                     Background="Transparent"
                     BorderBrush="Transparent"
-                    ToolTipService.ToolTip="Toggle AI Assistant"
                     Click="_AgentToggleButtonOnClick">
-                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="16"
-                          Glyph="&#xE756;" />
+                <ToolTipService.ToolTip>
+                    <ToolTip>
+                        <StackPanel>
+                            <TextBlock Text="Toggle agent chat pane"
+                                       FontFamily="Segoe UI Variable"
+                                       FontSize="12"
+                                       FontWeight="Normal"
+                                       LineHeight="16" />
+                            <TextBlock Text="Ctrl+Shift+."
+                                       FontFamily="Segoe UI Variable"
+                                       FontSize="12"
+                                       FontWeight="Normal"
+                                       LineHeight="16"
+                                       Opacity="0.7" />
+                        </StackPanel>
+                    </ToolTip>
+                </ToolTipService.ToolTip>
+                <PathIcon Width="16"
+                          Height="16"
+                          Data="M1 4.625C1 3.17526 2.17526 2 3.625 2H12.375C13.8248 2 15 3.17526 15 4.625V10.75C15 12.1998 13.8248 13.375 12.375 13.375H3.625C2.17526 13.375 1 12.1998 1 10.75V4.625ZM3.625 2.875C2.6585 2.875 1.875 3.6585 1.875 4.625V9H14.125V4.625C14.125 3.6585 13.3415 2.875 12.375 2.875H3.625Z" />
             </Button>
 
-            <!-- Button 2: Diagnostics / Warning -->
-            <Button x:Name="DiagnosticsButton"
-                    Grid.Column="1"
-                    Width="30"
-                    Height="30"
-                    Padding="0"
-                    Background="Transparent"
-                    BorderBrush="Transparent"
-                    Opacity="0.5"
-                    IsEnabled="False"
-                    ToolTipService.ToolTip="Diagnostics"
-                    Click="_DiagnosticsButtonOnClick">
-                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="16"
-                          Glyph="&#xE7BA;" />
-            </Button>
+            <!-- Button 2: Diagnostics / Warning — clickable once a fix is armed -->
+            <StackPanel x:Name="DiagnosticsGroup"
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Spacing="6">
+                <Button x:Name="DiagnosticsButton"
+                        Width="30"
+                        Height="30"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        Opacity="0.5"
+                        IsEnabled="False"
+                        ToolTipService.ToolTip="Diagnostics"
+                        Click="_DiagnosticsButtonOnClick">
+                    <FontIcon x:Name="DiagnosticsIcon"
+                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="16"
+                              Glyph="&#xE7BA;" />
+                </Button>
+                <TextBlock x:Name="DiagnosticsLabel"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Visibility="Collapsed" />
+            </StackPanel>
 
             <!-- Center: Agent selector (visible when agent pane is open) -->
             <StackPanel x:Name="AgentSelectorPanel"

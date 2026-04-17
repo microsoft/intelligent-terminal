@@ -192,6 +192,7 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(uint32_t paneId);
         Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(uint32_t paneId, hstring text);
         Windows::Foundation::IAsyncOperation<hstring> ShowProtocolQuickPick(hstring title, hstring choicesJson, bool allowFreeInput);
+        void OnAutofixStateChanged(hstring eventJson);
 
         til::property_changed_event PropertyChanged;
 
@@ -300,11 +301,20 @@ namespace winrt::TerminalApp::implementation
         std::vector<std::weak_ptr<Pane>> _agentPanes;
 
         // --- Bottom bar (AI toolbar) ---
+        enum class AutofixState
+        {
+            Idle,    // no error pending
+            Pending, // error detected, WTA is generating a fix
+            Armed,   // fix ready — click or Ctrl+. executes it
+        };
         struct DiagnosticState
         {
             uint32_t unacknowledgedErrors{ 0 };
             std::wstring lastErrorSummary;
             std::wstring lastErrorPaneId;
+            AutofixState autofixState{ AutofixState::Idle };
+            std::wstring fixPreview;
+            std::wstring hotkeyHint;
         };
         DiagnosticState _diagnostics;
         bool _agentPaneVisible{ false };
@@ -317,6 +327,7 @@ namespace winrt::TerminalApp::implementation
         void _UpdateBottomBarState();
         void _IncrementDiagnosticErrors(const std::wstring& paneId, const std::wstring& summary);
         void _PopulateAgentSelectorFlyout();
+        void _TriggerAutofix();
 
         // Pane that was focused before the agent pane was shown, so we can
         // restore focus on toggle-off.

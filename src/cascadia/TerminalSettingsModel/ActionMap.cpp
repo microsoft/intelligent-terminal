@@ -109,6 +109,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 { ShortcutAction::NextTab, USES_RESOURCE(L"NextTabCommandKey") },
                 { ShortcutAction::OpenAbout, USES_RESOURCE(L"OpenAboutCommandKey") },
                 { ShortcutAction::OpenAgentPane, USES_RESOURCE(L"OpenAgentPaneCommandKey") },
+                { ShortcutAction::TriggerAutofix, USES_RESOURCE(L"TriggerAutofixCommandKey") },
                 { ShortcutAction::InitShellIntegration, USES_RESOURCE(L"InitShellIntegrationCommandKey") },
                 { ShortcutAction::OpenCWD, USES_RESOURCE(L"OpenCWDCommandKey") },
                 { ShortcutAction::OpenNewTabDropdown, USES_RESOURCE(L"OpenNewTabDropdownCommandKey") },
