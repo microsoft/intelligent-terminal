@@ -122,7 +122,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
   </data>
   <data name="AppNameDev" xml:space="preserve">
-    <value>Terminal Dev</value>
+    <value>Agentic Terminal</value>
     <comment>{Locked} The dev build will never be seen in multiple languages</comment>
   </data>
   <data name="AppNameCan" xml:space="preserve">
@@ -138,7 +138,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
   </data>
   <data name="AppStoreNameDev" xml:space="preserve">
-    <value>Windows Terminal Dev</value>
+    <value>Agentic Terminal</value>
     <comment>{Locked} The dev build will never be seen in multiple languages</comment>
   </data>
   <data name="AppStoreNameCan" xml:space="preserve">
@@ -154,7 +154,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
   </data>
   <data name="AppShortNameDev" xml:space="preserve">
-    <value>Terminal Dev</value>
+    <value>Agentic Terminal</value>
     <comment>{Locked} The dev build will never be seen in multiple languages</comment>
   </data>
   <data name="AppShortNameCan" xml:space="preserve">
@@ -169,7 +169,7 @@
     <value>The New Windows Terminal</value>
   </data>
   <data name="AppDescriptionDev" xml:space="preserve">
-    <value>The Windows Terminal, but Unofficial</value>
+    <value>AI-native terminal — agents can understand, fix, and automate terminal workflows</value>
     <comment>{Locked} The dev build will never be seen in multiple languages</comment>
   </data>
   <data name="AppDescriptionCan" xml:space="preserve">
@@ -180,7 +180,7 @@
     <value>Windows Terminal with a preview of upcoming features</value>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem_Dev" xml:space="preserve">
-    <value>Open in Terminal (&amp;Dev)</value>
+    <value>Open in Agentic Terminal</value>
     <comment>{Locked} The dev build will never be seen in multiple languages</comment>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem_Canary" xml:space="preserve">

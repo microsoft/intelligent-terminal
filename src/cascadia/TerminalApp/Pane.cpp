@@ -18,6 +18,10 @@ using namespace winrt::TerminalApp;
 static const int PaneBorderSize = 2;
 static const int CombinedPaneBorderSize = 2 * PaneBorderSize;
 
+// Total hit-test thickness (in DIPs) of the transparent overlay used for
+// mouse drag-resize. Split evenly on both sides of the pane boundary.
+static constexpr double SplitterHitThickness = 8.0;
+
 // Process-global counter for content IDs (assigned to leaf panes only).
 std::atomic<uint32_t> Pane::s_nextContentId{ 1 };
 
@@ -2058,6 +2062,7 @@ void Pane::_ApplySplitDefinitions()
         _firstChild->_ApplySplitDefinitions();
         _secondChild->_ApplySplitDefinitions();
     }
+    _PositionSplitter();
     _UpdateBorders();
 }
 
@@ -2574,6 +2579,8 @@ void Pane::Restore(std::shared_ptr<Pane> zoomedPane)
 
             _root.Children().Append(_borderFirst);
             _root.Children().Append(_borderSecond);
+
+            _PositionSplitter();
         }
 
         // Always recurse into both children. If the (un)zoomed pane was one of
@@ -3378,10 +3385,6 @@ winrt::Windows::UI::Xaml::Media::SolidColorBrush Pane::_ComputeBorderColor()
 {
     if (_lastActive)
     {
-        if (_isAgentPane && _themeResources.agentFocusedBorderBrush)
-        {
-            return _themeResources.agentFocusedBorderBrush;
-        }
         return _themeResources.focusedBorderBrush;
     }
 
@@ -3402,4 +3405,205 @@ void Pane::_borderTappedHandler(const winrt::Windows::Foundation::IInspectable& 
 {
     _FocusFirstChild();
     e.Handled(true);
+}
+
+// Lazily creates the transparent splitter overlay and wires up its pointer
+// handlers. Called from the parent-pane constructor before the first layout.
+void Pane::_InstallSplitter()
+{
+    if (_splitter)
+    {
+        return;
+    }
+
+    _splitter = Controls::Border{};
+    // Transparent brush (not null) — required for the element to receive
+    // pointer hit-tests.
+    _splitter.Background(Media::SolidColorBrush{ winrt::Windows::UI::Colors::Transparent() });
+    _splitter.IsHitTestVisible(true);
+
+    _splitter.PointerEntered({ this, &Pane::_splitterPointerEntered });
+    _splitter.PointerExited({ this, &Pane::_splitterPointerExited });
+    _splitter.PointerPressed({ this, &Pane::_splitterPointerPressed });
+    _splitter.PointerMoved({ this, &Pane::_splitterPointerMoved });
+    _splitter.PointerReleased({ this, &Pane::_splitterPointerReleased });
+    _splitter.PointerCaptureLost({ this, &Pane::_splitterPointerCaptureLost });
+    _splitter.PointerCanceled({ this, &Pane::_splitterPointerCaptureLost });
+}
+
+// Places the splitter overlay centered on the current split boundary and
+// ensures it sits on top of the child borders in z-order.
+void Pane::_PositionSplitter()
+{
+    if (_splitState == SplitState::None)
+    {
+        if (_splitter)
+        {
+            uint32_t idx = 0;
+            if (_root.Children().IndexOf(_splitter, idx))
+            {
+                _root.Children().RemoveAt(idx);
+            }
+        }
+        return;
+    }
+
+    // A leaf pane transformed into a parent via `_Split` never runs the parent
+    // constructor, so create the splitter lazily here the first time we need it.
+    _InstallSplitter();
+
+    const auto half = SplitterHitThickness / 2.0;
+
+    if (_splitState == SplitState::Vertical)
+    {
+        // Sit in the first column, hugging its right edge, with a negative
+        // right margin so the hit area straddles the column boundary.
+        Controls::Grid::SetColumn(_splitter, 0);
+        Controls::Grid::SetRow(_splitter, 0);
+        _splitter.HorizontalAlignment(winrt::Windows::UI::Xaml::HorizontalAlignment::Right);
+        _splitter.VerticalAlignment(winrt::Windows::UI::Xaml::VerticalAlignment::Stretch);
+        _splitter.Width(SplitterHitThickness);
+        _splitter.Height(std::numeric_limits<double>::quiet_NaN());
+        _splitter.Margin(winrt::Windows::UI::Xaml::Thickness{ 0, 0, -half, 0 });
+    }
+    else // Horizontal
+    {
+        Controls::Grid::SetRow(_splitter, 0);
+        Controls::Grid::SetColumn(_splitter, 0);
+        _splitter.VerticalAlignment(winrt::Windows::UI::Xaml::VerticalAlignment::Bottom);
+        _splitter.HorizontalAlignment(winrt::Windows::UI::Xaml::HorizontalAlignment::Stretch);
+        _splitter.Height(SplitterHitThickness);
+        _splitter.Width(std::numeric_limits<double>::quiet_NaN());
+        _splitter.Margin(winrt::Windows::UI::Xaml::Thickness{ 0, 0, 0, -half });
+    }
+
+    // Re-append so the splitter is on top of the two child borders.
+    uint32_t idx = 0;
+    if (_root.Children().IndexOf(_splitter, idx))
+    {
+        _root.Children().RemoveAt(idx);
+    }
+    _root.Children().Append(_splitter);
+}
+
+void Pane::_SetSplitterCursor(bool /*resizing*/)
+{
+    const auto cw = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread();
+    if (!cw)
+    {
+        return;
+    }
+    const auto cursorType = (_splitState == SplitState::Vertical)
+                                ? winrt::Windows::UI::Core::CoreCursorType::SizeWestEast
+                                : winrt::Windows::UI::Core::CoreCursorType::SizeNorthSouth;
+    if (!_splitterPriorCursor)
+    {
+        _splitterPriorCursor = cw.PointerCursor();
+    }
+    cw.PointerCursor(winrt::Windows::UI::Core::CoreCursor{ cursorType, 0 });
+}
+
+void Pane::_RestoreSplitterCursor()
+{
+    if (!_splitterPriorCursor)
+    {
+        return;
+    }
+    if (const auto cw = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread())
+    {
+        cw.PointerCursor(_splitterPriorCursor);
+    }
+    _splitterPriorCursor = nullptr;
+}
+
+void Pane::_splitterPointerEntered(const winrt::Windows::Foundation::IInspectable& /*sender*/,
+                                   const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& /*e*/)
+{
+    _SetSplitterCursor(false);
+}
+
+void Pane::_splitterPointerExited(const winrt::Windows::Foundation::IInspectable& /*sender*/,
+                                  const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& /*e*/)
+{
+    if (!_splitterDragging)
+    {
+        _RestoreSplitterCursor();
+    }
+}
+
+void Pane::_splitterPointerPressed(const winrt::Windows::Foundation::IInspectable& /*sender*/,
+                                   const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e)
+{
+    if (_splitState == SplitState::None || !_splitter)
+    {
+        return;
+    }
+
+    const auto point = e.GetCurrentPoint(_root);
+    // Only react to the left mouse button (or touch/pen primary).
+    if (point.Properties().IsRightButtonPressed() || point.Properties().IsMiddleButtonPressed())
+    {
+        return;
+    }
+
+    _splitterDragging = _splitter.CapturePointer(e.Pointer());
+    if (!_splitterDragging)
+    {
+        return;
+    }
+
+    _splitterDragStartPosition = _desiredSplitPosition;
+    _splitterDragStartPointer = point.Position();
+    _SetSplitterCursor(true);
+    e.Handled(true);
+}
+
+void Pane::_splitterPointerMoved(const winrt::Windows::Foundation::IInspectable& /*sender*/,
+                                 const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e)
+{
+    if (!_splitterDragging || _splitState == SplitState::None)
+    {
+        return;
+    }
+
+    const auto point = e.GetCurrentPoint(_root).Position();
+    const auto changeWidth = _splitState == SplitState::Vertical;
+    const auto totalSize = changeWidth ? _root.ActualWidth() : _root.ActualHeight();
+    if (totalSize <= 0)
+    {
+        return;
+    }
+
+    const auto delta = changeWidth
+                           ? (point.X - _splitterDragStartPointer.X)
+                           : (point.Y - _splitterDragStartPointer.Y);
+
+    const auto requested = _splitterDragStartPosition + static_cast<float>(delta / totalSize);
+    const auto clamped = _ClampSplitPosition(changeWidth, requested, static_cast<float>(totalSize));
+
+    if (clamped != _desiredSplitPosition)
+    {
+        _desiredSplitPosition = clamped;
+        _CreateRowColDefinitions();
+    }
+    e.Handled(true);
+}
+
+void Pane::_splitterPointerReleased(const winrt::Windows::Foundation::IInspectable& /*sender*/,
+                                    const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e)
+{
+    if (_splitterDragging && _splitter)
+    {
+        _splitter.ReleasePointerCapture(e.Pointer());
+    }
+    _splitterDragging = false;
+    _RestoreSplitterCursor();
+    e.Handled(true);
+}
+
+void Pane::_splitterPointerCaptureLost(const winrt::Windows::Foundation::IInspectable& /*sender*/,
+                                       const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& /*e*/)
+{
+    _splitterDragging = false;
+    _RestoreSplitterCursor();
 }

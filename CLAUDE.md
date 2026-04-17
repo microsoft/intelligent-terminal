@@ -139,3 +139,14 @@ package identity to activate it via `CoCreateInstance`. This is why:
 If autofix or the agent pane stops working after a debug launch, check
 `%TEMP%\wta-ensure-host.log` for the `0x80073D54` error — it means
 the wrong (unpackaged) `wta.exe` was used.
+
+## Installer
+
+See **[doc/building-installer.md](doc/building-installer.md)** for full details.
+
+Two distribution formats:
+
+| Format | Script | Output |
+|--------|--------|--------|
+| **MSIX ZIP** (packaged) | Manual assembly from MSBuild output | `artifacts/local-installer/*-msix.zip` |
+| **Self-extracting EXE** (unpackaged) | `build/scripts/New-WtaLocalInstaller.ps1` | `artifacts/local-installer/*-setup.exe` |

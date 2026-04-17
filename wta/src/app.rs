@@ -338,6 +338,7 @@ pub struct App {
     pub agent_streaming: bool,
     pub recommendations: Option<RecommendationSet>,
     pub selected_recommendation: usize,
+    pub selected_button: usize, // 0 = Insert/left, 1 = Run/right (or 0 = sole button for OpenAndSend)
     pub should_quit: bool,
     pub prompt_in_flight: bool,
     pub shared_mode: bool,
@@ -345,7 +346,7 @@ pub struct App {
     current_prompt_submitted_at_unix_s: Option<f64>,
     selection_visible_pending: bool,
     prompt_tx: mpsc::UnboundedSender<PromptSubmission>,
-    recommendation_tx: mpsc::UnboundedSender<RecommendationChoice>,
+    recommendation_tx: mpsc::UnboundedSender<crate::coordinator::ChoiceExecution>,
     permission_tx: mpsc::UnboundedSender<String>,
     pub pending_thought_response: String,
     pub pending_agent_response: String,
@@ -376,7 +377,7 @@ pub struct App {
 impl App {
     pub fn new(
         prompt_tx: mpsc::UnboundedSender<PromptSubmission>,
-        recommendation_tx: mpsc::UnboundedSender<RecommendationChoice>,
+        recommendation_tx: mpsc::UnboundedSender<crate::coordinator::ChoiceExecution>,
         permission_tx: mpsc::UnboundedSender<String>,
         debug_capture_enabled: Arc<AtomicBool>,
         wt_connected: bool,
@@ -406,6 +407,7 @@ impl App {
             agent_streaming: false,
             recommendations: None,
             selected_recommendation: 0,
+            selected_button: 1, // default to "Run" button
             should_quit: false,
             prompt_in_flight: false,
             shared_mode,
@@ -1056,13 +1058,25 @@ impl App {
             KeyCode::Up if self.input.is_empty() && self.recommendations.is_some() => {
                 if self.selected_recommendation > 0 {
                     self.selected_recommendation -= 1;
+                    self.selected_button = 1; // reset to Run on card change
                 }
             }
             KeyCode::Down if self.input.is_empty() && self.recommendations.is_some() => {
                 if let Some(recs) = &self.recommendations {
                     if self.selected_recommendation + 1 < recs.choices.len() {
                         self.selected_recommendation += 1;
+                        self.selected_button = 1; // reset to Run on card change
                     }
+                }
+            }
+            KeyCode::Left | KeyCode::Right | KeyCode::Tab
+                if self.input.is_empty() && self.recommendations.is_some() =>
+            {
+                // Toggle button focus within the selected card.
+                // Send cards have 2 buttons (Insert=0, Run=1); OpenAndSend has 1 button.
+                let button_count = self.button_count_for_selected();
+                if button_count > 1 {
+                    self.selected_button = if self.selected_button == 0 { 1 } else { 0 };
                 }
             }
             KeyCode::Up if self.history_navigation_enabled() => {
@@ -1118,7 +1132,9 @@ impl App {
                     && self.recommendations.is_some()
                 {
                     if let Some(mut choice) = self.selected_recommendation().cloned() {
-                        autofix_log(&format!("Executing choice {} actions={}", choice.choice, choice.actions.len()));
+                        let insert_only = self.selected_button == 0
+                            && self.is_send_choice(&choice);
+                        autofix_log(&format!("Executing choice {} actions={} insert_only={}", choice.choice, choice.actions.len(), insert_only));
                         // Auto-fill parent for Send actions from auto-fix.
                         if let Some(ref pane_id) = self.autofix_pane_id {
                             for action in &mut choice.actions {
@@ -1135,8 +1151,11 @@ impl App {
                         self.autofix_pane_id = None;
                         self.commit_pending_completed_turn();
                         self.clear_recommendations();
-                        self.push_execution_info(format!("Executing choice {}.", choice.choice));
-                        let _ = self.recommendation_tx.send(choice);
+                        let label = if insert_only { "Inserting" } else { "Executing" };
+                        self.push_execution_info(format!("{} choice {}.", label, choice.choice));
+                        let _ = self.recommendation_tx.send(
+                            crate::coordinator::ChoiceExecution { choice, insert_only }
+                        );
                     }
                 } else if self.history_navigation_enabled() {
                     self.toggle_selected_history_turn();
@@ -1319,6 +1338,7 @@ impl App {
     fn clear_recommendations(&mut self) {
         self.recommendations = None;
         self.selected_recommendation = 0;
+        self.selected_button = 1;
     }
 
     pub fn history_navigation_enabled(&self) -> bool {
@@ -1578,6 +1598,19 @@ impl App {
         self.recommendations
             .as_ref()
             .and_then(|recs| recs.choices.get(self.selected_recommendation))
+    }
+
+    /// Returns the number of buttons for the currently selected choice card.
+    /// Send actions have 2 buttons (Insert, Run); OpenAndSend has 1 button.
+    fn button_count_for_selected(&self) -> usize {
+        self.selected_recommendation()
+            .map(|c| if self.is_send_choice(c) { 2 } else { 1 })
+            .unwrap_or(1)
+    }
+
+    /// Returns true if the choice's primary action is Send (shell command).
+    fn is_send_choice(&self, choice: &RecommendationChoice) -> bool {
+        choice.actions.iter().any(|a| matches!(a, crate::coordinator::RecommendedAction::Send { .. }))
     }
 
     fn finalize_agent_response(&mut self) -> FinalizeOutcome {

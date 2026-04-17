@@ -554,6 +554,11 @@ namespace winrt::TerminalApp::implementation
             _rearrangeFrom = std::nullopt;
             _rearrangeTo = std::nullopt;
         }
+
+        // The _removing guard on _OnTabSelectionChanged suppresses the bottom-bar
+        // refresh during tab removal. Ensure it runs here so the bar's visibility
+        // matches the newly-focused tab (e.g. shows again after closing Settings).
+        _UpdateBottomBarState();
     }
 
     // Method Description:
@@ -1076,6 +1081,8 @@ namespace winrt::TerminalApp::implementation
                 const auto tab{ _tabs.GetAt(selectedIndex) };
                 _UpdatedSelectedTab(tab);
             }
+            // Refresh the bottom bar state for the newly focused tab
+            _UpdateBottomBarState();
         }
     }
 

@@ -19,6 +19,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <local:TabRowControl x:Name="TabRow"
@@ -56,6 +57,16 @@
             </mux:InfoBar>
         </StackPanel>
 
+        <!-- Solid filler behind TabContent so any transparent edge pixels
+             (pane border, padding rounding, etc.) between the pane and the
+             BottomBar read as a seamless continuation of the BottomBar
+             instead of showing the desktop behind the window. Uses the
+             BottomBar color so the gap — if any — visually merges into
+             the bar. Declared before TabContent so it sits behind. -->
+        <Border Grid.Row="2"
+                Background="#161616"
+                IsHitTestVisible="False" />
+
         <Grid x:Name="TabContent"
               Grid.Row="2"
               HorizontalAlignment="Stretch"
@@ -63,6 +74,138 @@
             <Grid.Background>
                 <ImageBrush />
             </Grid.Background>
+        </Grid>
+
+        <!-- Bottom Bar: AI agent toolbar. VerticalAlignment="Top" is required
+             — without it, the Grid's default stretch-with-explicit-height
+             behavior leaves a transparent strip at the top of Row 3. -->
+        <Grid x:Name="BottomBar"
+              Grid.Row="3"
+              Height="31"
+              Padding="12,0,12,0"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Top">
+            <Grid.Background>
+                <SolidColorBrush Color="#161616" />
+            </Grid.Background>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Button 1: AI toggle -->
+            <Button x:Name="AgentToggleButton"
+                    Grid.Column="0"
+                    Width="30"
+                    Height="30"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    ToolTipService.ToolTip="Toggle AI Assistant"
+                    Click="_AgentToggleButtonOnClick">
+                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="16"
+                          Glyph="&#xE756;" />
+            </Button>
+
+            <!-- Button 2: Diagnostics / Warning -->
+            <Button x:Name="DiagnosticsButton"
+                    Grid.Column="1"
+                    Width="30"
+                    Height="30"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    Opacity="0.5"
+                    IsEnabled="False"
+                    ToolTipService.ToolTip="Diagnostics"
+                    Click="_DiagnosticsButtonOnClick">
+                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="16"
+                          Glyph="&#xE7BA;" />
+            </Button>
+
+            <!-- Center: Agent selector (visible when agent pane is open) -->
+            <StackPanel x:Name="AgentSelectorPanel"
+                        Grid.Column="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        Margin="8,0,0,0"
+                        Visibility="Collapsed">
+                <Button x:Name="AgentSelectorButton"
+                        Height="24"
+                        Padding="8,2,4,2"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="6">
+                        <TextBlock x:Name="AgentSelectorText"
+                                   Text="Copilot"
+                                   FontSize="12"
+                                   VerticalAlignment="Center" />
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  FontSize="8"
+                                  Glyph="&#xE70D;"
+                                  VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Button.Flyout>
+                        <MenuFlyout Placement="Top" />
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+
+            <!-- Right: Action buttons (visible when agent pane is open) -->
+            <StackPanel x:Name="ActionButtonsPanel"
+                        Grid.Column="3"
+                        Orientation="Horizontal"
+                        Spacing="2"
+                        Visibility="Collapsed">
+                <!-- Prompt button: opens command palette in ? mode -->
+                <Button x:Name="PromptButton"
+                        Width="30"
+                        Height="30"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        ToolTipService.ToolTip="Send prompt to agent"
+                        Click="_PromptButtonOnClick">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="14"
+                              Glyph="&#xE8BD;" />
+                </Button>
+
+                <!-- History button -->
+                <Button x:Name="HistoryButton"
+                        Width="30"
+                        Height="30"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        ToolTipService.ToolTip="History"
+                        Click="_HistoryButtonOnClick">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="14"
+                              Glyph="&#xE81C;" />
+                </Button>
+
+                <!-- Settings button -->
+                <Button x:Name="SettingsButton"
+                        Width="30"
+                        Height="30"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        ToolTipService.ToolTip="AI Agent settings"
+                        Click="_AgentSettingsButtonOnClick">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="14"
+                              Glyph="&#xE713;" />
+                </Button>
+            </StackPanel>
         </Grid>
 
         <!--

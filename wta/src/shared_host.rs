@@ -410,7 +410,7 @@ pub async fn run_attach_client(
     host_pipe_name: String,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     mut prompt_rx: mpsc::UnboundedReceiver<PromptSubmission>,
-    mut recommendation_rx: mpsc::UnboundedReceiver<RecommendationChoice>,
+    mut recommendation_rx: mpsc::UnboundedReceiver<crate::coordinator::ChoiceExecution>,
     mut permission_rx: mpsc::UnboundedReceiver<String>,
     pane_context: PaneContext,
     initial_prompt: Option<String>,
@@ -496,7 +496,7 @@ async fn run_attach_client_inner(
     host_pipe_name: String,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     prompt_rx: &mut mpsc::UnboundedReceiver<PromptSubmission>,
-    recommendation_rx: &mut mpsc::UnboundedReceiver<RecommendationChoice>,
+    recommendation_rx: &mut mpsc::UnboundedReceiver<crate::coordinator::ChoiceExecution>,
     permission_rx: &mut mpsc::UnboundedReceiver<String>,
     pane_context: PaneContext,
     initial_prompt: Option<String>,
@@ -608,13 +608,13 @@ async fn run_attach_client_inner(
                 ).await?;
             }
 
-            Some(choice) = recommendation_rx.recv() => {
+            Some(exec) = recommendation_rx.recv() => {
                 send_host_request(
                     &event_tx,
                     &debug_capture_enabled,
                     &mut writer,
                     &HostClientRequest::SelectRecommendation {
-                        choice: choice.choice,
+                        choice: exec.choice.choice,
                     },
                 ).await?;
             }
@@ -784,7 +784,7 @@ async fn run_host_service(
     mut host_command_rx: mpsc::UnboundedReceiver<HostCommand>,
     mut event_rx: mpsc::UnboundedReceiver<AppEvent>,
     prompt_tx: mpsc::UnboundedSender<PromptSubmission>,
-    recommendation_tx: mpsc::UnboundedSender<RecommendationChoice>,
+    recommendation_tx: mpsc::UnboundedSender<crate::coordinator::ChoiceExecution>,
     wt_connected: bool,
 ) -> Result<()> {
     let mut clients: HashMap<u64, AttachedClient> = HashMap::new();
@@ -829,7 +829,7 @@ fn handle_host_command(
     clients: &mut HashMap<u64, AttachedClient>,
     state: &mut HostSessionState,
     prompt_tx: &mpsc::UnboundedSender<PromptSubmission>,
-    recommendation_tx: &mpsc::UnboundedSender<RecommendationChoice>,
+    recommendation_tx: &mpsc::UnboundedSender<crate::coordinator::ChoiceExecution>,
 ) {
     match command {
         HostCommand::AttachClient {
@@ -967,7 +967,10 @@ fn handle_host_command(
                     state.clear_recommendations();
                     state.push_execution_info(format!("Executing choice {}.", selected.choice));
                     broadcast_snapshot(clients, &state.snapshot());
-                    if recommendation_tx.send(selected).is_err() {
+                    if recommendation_tx.send(crate::coordinator::ChoiceExecution {
+                        choice: selected,
+                        insert_only: false,
+                    }).is_err() {
                         state.push_system_message(
                             "recommendation executor is unavailable".to_string(),
                         );

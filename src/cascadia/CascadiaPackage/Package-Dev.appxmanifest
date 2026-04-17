@@ -20,11 +20,11 @@
   <Identity
     Name="AgenticTerminal"
     Publisher="CN=Agentic Terminal Dev"
-    Version="0.0.4.5" />
+    Version="0.0.5.0" />
 
   <Properties>
     <DisplayName>ms-resource:AppStoreNameDev</DisplayName>
-    <PublisherDisplayName>A Lone Developer</PublisherDisplayName>
+    <PublisherDisplayName>Agentic Terminal</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
     <!-- Older versions of Windows 10 respect this -->
     <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
@@ -88,8 +88,8 @@
         <uap3:Extension Category="windows.appExtension">
             <uap3:AppExtension Name="com.microsoft.windows.console.host"
                 Id="OpenConsole-Dev"
-                DisplayName="OpenConsole Dev"
-                Description="Console host built from microsoft/terminal open source repository"
+                DisplayName="OpenConsole"
+                Description="Console host for Agentic Terminal"
                 PublicFolder="Public">
                 <uap3:Properties>
                     <Clsid>{1F9F2BF5-5BC3-4F17-B0E6-912413F1F451}</Clsid>
@@ -99,8 +99,8 @@
         <uap3:Extension Category="windows.appExtension">
             <uap3:AppExtension Name="com.microsoft.windows.terminal.host"
                 Id="Terminal-Dev"
-                DisplayName="Terminal Dev"
-                Description="Terminal host built from microsoft/terminal open source repository"
+                DisplayName="Agentic Terminal"
+                Description="AI-native terminal host"
                 PublicFolder="Public">
                 <uap3:Properties>
                     <Clsid>{051F34EE-C1FD-4B19-AF75-9BA54648434C}</Clsid>

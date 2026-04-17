@@ -1226,7 +1226,10 @@ async fn run_ensure_host(
                                         },
                                     ],
                                 };
-                                let _ = rec_tx.send(choice);
+                                let _ = rec_tx.send(crate::coordinator::ChoiceExecution {
+                                    choice,
+                                    insert_only: false,
+                                });
                             }
                         }
                     }

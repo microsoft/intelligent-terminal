@@ -61,14 +61,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    let mut lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
-
-    if lines.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "Type a message and press Enter to begin.",
-            theme::DIM,
-        )));
-    }
+    let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
     let total_lines = lines.len();
     let scroll = total_lines.saturating_sub(visible_height.saturating_add(app.scroll_offset));
@@ -224,11 +217,20 @@ fn build_message_lines<'a>(
             lines.push(Line::default());
         }
         ChatMessage::Agent(text) => {
-            for line_text in text.lines() {
-                lines.push(Line::from(Span::styled(
-                    truncate_render_text(line_text),
-                    theme::AGENT_TEXT,
-                )));
+            for (i, line_text) in text.lines().enumerate() {
+                if i == 0 {
+                    // First line gets green dot indicator
+                    lines.push(Line::from(vec![
+                        Span::styled("● ", theme::DOT_AGENT),
+                        Span::styled(truncate_render_text(line_text), theme::AGENT_TEXT),
+                    ]));
+                } else {
+                    // Subsequent lines indented to align with text after dot
+                    lines.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(truncate_render_text(line_text), theme::AGENT_TEXT),
+                    ]));
+                }
             }
             if !agent_streaming || !is_last_message {
                 lines.push(Line::default());
@@ -270,11 +272,23 @@ fn build_message_lines<'a>(
         }
         ChatMessage::Error(text) => {
             for (i, line_text) in text.lines().enumerate() {
-                let prefix = if i == 0 { "Error: " } else { "  " };
-                lines.push(Line::from(Span::styled(
-                    format!("{}{}", prefix, truncate_render_text(line_text)),
-                    theme::ERROR_STYLE,
-                )));
+                if i == 0 {
+                    lines.push(Line::from(vec![
+                        Span::styled("● ", theme::DOT_ERROR),
+                        Span::styled(
+                            truncate_render_text(line_text),
+                            theme::ERROR_STYLE,
+                        ),
+                    ]));
+                } else {
+                    lines.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(
+                            truncate_render_text(line_text),
+                            theme::ERROR_STYLE,
+                        ),
+                    ]));
+                }
             }
             lines.push(Line::default());
         }

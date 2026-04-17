@@ -79,6 +79,14 @@ pub enum RecommendedAction {
     },
 }
 
+/// Wraps a chosen recommendation with execution options (e.g. insert-only mode).
+#[derive(Debug, Clone)]
+pub struct ChoiceExecution {
+    pub choice: RecommendationChoice,
+    /// When true, Send actions paste text without a trailing Enter (insert-only).
+    pub insert_only: bool,
+}
+
 pub fn default_supported_delegate_agents() -> Vec<SupportedDelegateAgent> {
     agent_registry::supported_delegate_agents()
 }
@@ -195,18 +203,18 @@ pub fn recommended_choice_index(set: &RecommendationSet) -> usize {
 }
 
 pub async fn run_recommendation_executor(
-    mut rx: mpsc::UnboundedReceiver<RecommendationChoice>,
+    mut rx: mpsc::UnboundedReceiver<ChoiceExecution>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     shell_mgr: Arc<ShellManager>,
     delegate_agents: Vec<DelegateAgentRuntime>,
 ) {
-    while let Some(choice) = rx.recv().await {
-        match execute_choice(&choice, &shell_mgr, &delegate_agents, &event_tx).await {
+    while let Some(exec) = rx.recv().await {
+        match execute_choice(&exec.choice, exec.insert_only, &shell_mgr, &delegate_agents, &event_tx).await {
             Ok(()) => {}
             Err(err) => {
                 let _ = event_tx.send(AppEvent::SystemMessage(format!(
                     "Choice {} failed: {:#}",
-                    choice.choice, err
+                    exec.choice.choice, err
                 )));
             }
         }
@@ -215,6 +223,7 @@ pub async fn run_recommendation_executor(
 
 async fn execute_choice(
     choice: &RecommendationChoice,
+    insert_only: bool,
     shell_mgr: &ShellManager,
     delegate_agents: &[DelegateAgentRuntime],
     event_tx: &mpsc::UnboundedSender<AppEvent>,
@@ -225,28 +234,35 @@ async fn execute_choice(
                 ensure_non_empty("parent", parent)?;
                 ensure_non_empty("input", input)?;
                 coordinator_log(&format!(
-                    "send begin parent={} input_chars={} input_preview={:?}",
+                    "send begin parent={} insert_only={} input_chars={} input_preview={:?}",
                     parent,
+                    insert_only,
                     input.chars().count(),
                     truncate_for_log(input, 120)
                 ));
+                let action_label = if insert_only { "Inserting" } else { "Sending" };
                 let _ = event_tx.send(AppEvent::ExecutionInfo(format!(
-                    "Sending input to pane {}.",
-                    parent
+                    "{} input to pane {}.",
+                    action_label, parent
                 )));
-                let payload = format!("{input}\r");
+                let payload = if insert_only {
+                    input.clone()
+                } else {
+                    format!("{input}\r")
+                };
                 let result = shell_mgr
                     .wt_send_input(parent, &payload)
                     .await
                     .with_context(|| format!("failed to send input to pane {}", parent))?;
+                let done_label = if insert_only { "Inserted" } else { "Sent" };
                 coordinator_log(&format!(
                     "send success parent={} response={}",
                     parent,
                     summarize_json_for_log(&result)
                 ));
                 let _ = event_tx.send(AppEvent::ExecutionInfo(format!(
-                    "Sent input to pane {}.",
-                    parent
+                    "{} input to pane {}.",
+                    done_label, parent
                 )));
             }
             RecommendedAction::OpenAndSend {

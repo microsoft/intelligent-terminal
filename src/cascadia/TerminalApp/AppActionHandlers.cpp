@@ -1851,14 +1851,12 @@ if (-not $Global:__ShellInteg_Installed) {
         $prefix = ''
         $suffix = ''
 
-        # ── Previous command finished (OSC 133;D with optional exit code) ──
-        if ($Global:__ShellInteg_LastHistoryId -ne -1) {
-            if ($entry -and $entry.Id -ne $Global:__ShellInteg_LastHistoryId) {
-                $prefix += "${E}]133;D;${gle}${B}"
-            } else {
-                # No new history entry (ctrl+c, blank enter) — no exit code
-                $prefix += "${E}]133;D${B}"
-            }
+        # ── Previous command finished (OSC 133;D with exit code) ──
+        # Only emit when a genuinely new history entry exists — this avoids:
+        #   • missing the 1st command (old sentinel -1 blocked the whole block)
+        #   • stale error on empty Enter (no command ran, no completion to report)
+        if ($entry -and $entry.Id -ne $Global:__ShellInteg_LastHistoryId) {
+            $prefix += "${E}]133;D;${gle}${B}"
         }
 
         # ── Prompt started (OSC 133;A) ──
@@ -1873,7 +1871,7 @@ if (-not $Global:__ShellInteg_Installed) {
         # ── Delegate to the user's ORIGINAL prompt — visual output is theirs ──
         $originalOutput = & $Global:__ShellInteg_OriginalPrompt
 
-        $Global:__ShellInteg_LastHistoryId = if ($entry) { $entry.Id } else { 0 }
+        $Global:__ShellInteg_LastHistoryId = if ($entry) { $entry.Id } else { -1 }
 
         return "${prefix}${originalOutput}${suffix}"
     }

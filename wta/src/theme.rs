@@ -26,6 +26,18 @@ pub const DEBUG_SENT: Style = Style::new().fg(Color::Green);
 pub const DEBUG_RECEIVED: Style = Style::new().fg(Color::Cyan);
 pub const RECOMMENDATION_TITLE: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
 pub const RECOMMENDATION_DETAIL: Style = Style::new().fg(Color::Gray);
+// Card-style recommendation UI
+pub const CARD_BORDER: Style = Style::new().fg(Color::DarkGray);
+pub const CARD_BORDER_SELECTED: Style = Style::new().fg(Color::White);
+pub const CARD_CODE: Style = Style::new().fg(Color::White);
+pub const BUTTON: Style = Style::new().fg(Color::DarkGray);
+pub const BUTTON_FOCUSED: Style = Style::new()
+    .fg(Color::Black)
+    .bg(Color::White)
+    .add_modifier(Modifier::BOLD);
+// Chat message dot indicators
+pub const DOT_ERROR: Style = Style::new().fg(Color::Red).add_modifier(Modifier::BOLD);
+pub const DOT_AGENT: Style = Style::new().fg(Color::Green).add_modifier(Modifier::BOLD);
 // Notification badge/banner styles
 pub const BADGE_CRITICAL: Style = Style::new().fg(Color::Red).add_modifier(Modifier::BOLD);
 pub const BADGE_ACTIONABLE: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);

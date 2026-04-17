@@ -278,6 +278,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _UpdateSearchIndex();
     }
 
+    void MainPage::NavigateToAIAgents()
+    {
+        // Select the AI Agents nav item and navigate to it.
+        if (auto navItem = AIAgentsNavItem())
+        {
+            SettingsNav().SelectedItem(navItem);
+            _Navigate(navItem.Tag(), BreadcrumbSubPage::None);
+        }
+    }
+
     void MainPage::SetHostingWindow(uint64_t hostingWindow) noexcept
     {
         _hostingHwnd.emplace(reinterpret_cast<HWND>(hostingWindow));

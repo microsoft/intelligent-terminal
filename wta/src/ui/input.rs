@@ -26,25 +26,30 @@ struct WrappedInput {
 }
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
-    let title = if app.state == ConnectionState::Connected {
-        if app.recommendations.is_some() && app.input.is_empty() {
-            " Enter executes selected recommendation "
-        } else if app.history_navigation_enabled() {
-            " Enter expands selected turn "
-        } else {
-            " > "
-        }
-    } else {
-        " (not connected) "
-    };
-
-    let block = Block::default().borders(Borders::ALL).title(title);
+    let block = Block::default().borders(Borders::ALL);
     let viewport = input_viewport(&app.input, app.cursor_pos, area.width);
-    let lines = viewport
-        .visible_lines
-        .iter()
-        .map(|line| Line::from(Span::styled(line.clone(), theme::INPUT_TEXT)))
-        .collect::<Vec<_>>();
+
+    let lines: Vec<Line> = if app.input.is_empty() {
+        // Show a placeholder reflecting connection state.
+        let placeholder = match &app.state {
+            ConnectionState::Connected => ">  Ask anything, / for commands..".to_string(),
+            ConnectionState::Connecting(_) => "connecting...".to_string(),
+            ConnectionState::Disconnected => "disconnect".to_string(),
+            ConnectionState::Failed(_) => "disconnect".to_string(),
+        };
+        let mut placeholder_lines = vec![Line::from(Span::styled(placeholder, theme::DIM))];
+        // Keep the same number of visible rows so layout doesn't jump.
+        while placeholder_lines.len() < viewport.visible_lines.len() {
+            placeholder_lines.push(Line::default());
+        }
+        placeholder_lines
+    } else {
+        viewport
+            .visible_lines
+            .iter()
+            .map(|line| Line::from(Span::styled(line.clone(), theme::INPUT_TEXT)))
+            .collect()
+    };
 
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);

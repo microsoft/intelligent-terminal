@@ -258,6 +258,9 @@ private:
     winrt::Windows::UI::Xaml::Controls::Grid _root{};
     winrt::Windows::UI::Xaml::Controls::Border _borderFirst{};
     winrt::Windows::UI::Xaml::Controls::Border _borderSecond{};
+    // Thin transparent overlay on the split boundary that handles mouse
+    // drag-to-resize. Lazily created the first time we need it.
+    winrt::Windows::UI::Xaml::Controls::Border _splitter{ nullptr };
 
     PaneResources _themeResources;
 
@@ -293,6 +296,12 @@ private:
     bool _broadcastEnabled{ false };
     bool _isAgentPane{ false };
     bool _isSourceOfAgentPane{ false };
+
+    // Mouse drag-to-resize state on the splitter.
+    bool _splitterDragging{ false };
+    float _splitterDragStartPosition{ 0.0f };
+    winrt::Windows::Foundation::Point _splitterDragStartPointer{ 0.0f, 0.0f };
+    winrt::Windows::UI::Core::CoreCursor _splitterPriorCursor{ nullptr };
 
     bool _IsLeaf() const noexcept;
     bool _HasFocusedChild() const noexcept;
@@ -347,6 +356,17 @@ private:
     SplitState _convertAutomaticOrDirectionalSplitState(const winrt::Microsoft::Terminal::Settings::Model::SplitDirection& splitType) const;
 
     void _borderTappedHandler(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::TappedRoutedEventArgs& e);
+
+    void _InstallSplitter();
+    void _PositionSplitter();
+    void _SetSplitterCursor(bool resizing);
+    void _RestoreSplitterCursor();
+    void _splitterPointerEntered(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+    void _splitterPointerExited(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+    void _splitterPointerPressed(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+    void _splitterPointerMoved(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+    void _splitterPointerReleased(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+    void _splitterPointerCaptureLost(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
 
     // Function Description:
     // - Returns true if the given direction can be used with the given split

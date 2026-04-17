@@ -65,6 +65,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         uint64_t GetHostingWindow() const noexcept;
 
         winrt::Windows::UI::Xaml::Media::Brush BackgroundBrush();
+        void NavigateToAIAgents();
 
         Windows::Foundation::Collections::IObservableVector<IInspectable> Breadcrumbs() noexcept;
         Editor::ExtensionsViewModel ExtensionsVM() const noexcept { return _extensionsVM; }
