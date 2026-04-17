@@ -61,14 +61,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    let mut lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
-
-    if lines.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "Type a message and press Enter to begin.",
-            theme::DIM,
-        )));
-    }
+    let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
     let total_lines = lines.len();
     let scroll = total_lines.saturating_sub(visible_height.saturating_add(app.scroll_offset));
