@@ -1238,6 +1238,23 @@ async fn run_ensure_host(
                             continue;
                         }
 
+                        // autofix_state:cleared emitted by Terminal C++ (ProtocolVtSequenceReceived)
+                        // when a successful command ran in the armed pane. Route to ClearAutofixForPane
+                        // to clean up WTA's recommendation state.
+                        // Note: autofix_state events from WTA itself go through SendEvent →
+                        // _dispatchAutofixStateToPage and are NOT broadcast here, so no feedback loop.
+                        if method == "autofix_state" {
+                            if let Some("cleared") = params.get("state").and_then(|v| v.as_str()) {
+                                tracing::info!(pane_id = %pane_id, "host autofix_state:cleared from terminal");
+                                let _ = host_autofix_tx.send(
+                                    shared_host::HostAutofixCommand::ClearOnSuccess {
+                                        pane_id: pane_id.clone(),
+                                    },
+                                );
+                            }
+                            continue;
+                        }
+
                         // Classify any other event — if actionable (OSC 133;D
                         // non-zero exit, connection failures, etc.), fire the
                         // host-side autofix pipeline so the bottom bar goes

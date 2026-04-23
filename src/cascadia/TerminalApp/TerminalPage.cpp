@@ -3800,7 +3800,36 @@ namespace winrt::TerminalApp::implementation
                                                                    widePaneId, exitCode);
                                         page->_IncrementDiagnosticErrors(widePaneId, summary);
                                     }
-                                    // exit_code=0 is handled by WTA via autofix_state:cleared event.
+                                    else
+                                    {
+                                        // exit_code=0: if this pane had an armed fix, clear the bottom
+                                        // bar immediately and notify WTA via ProtocolVtSequenceReceived
+                                        // (the vt_sequence path alone isn't reliable enough because
+                                        // autofix_state events go through SendEvent which does NOT
+                                        // broadcast to wtcli listeners).
+                                        auto widePaneId = std::wstring(paneIdStr.begin(), paneIdStr.end());
+                                        if (page->_diagnostics.autofixState != AutofixState::Idle &&
+                                            page->_diagnostics.lastErrorPaneId == widePaneId)
+                                        {
+                                            page->_diagnostics.autofixState = AutofixState::Idle;
+                                            page->_diagnostics.unacknowledgedErrors = 0;
+                                            page->_diagnostics.fixPreview.clear();
+                                            page->_UpdateBottomBarState();
+
+                                            Json::Value clearEvt;
+                                            clearEvt["type"] = "event";
+                                            clearEvt["method"] = "autofix_state";
+                                            Json::Value clearParams;
+                                            clearParams["state"] = "cleared";
+                                            clearParams["pane_id"] = paneIdStr;
+                                            clearEvt["params"] = clearParams;
+                                            Json::StreamWriterBuilder clearWb;
+                                            clearWb["indentation"] = "";
+                                            page->ProtocolVtSequenceReceived.raise(
+                                                *page,
+                                                winrt::to_hstring(Json::writeString(clearWb, clearEvt)));
+                                        }
+                                    }
                                 }
                             }
 

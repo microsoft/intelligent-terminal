@@ -1627,7 +1627,11 @@ impl HostSessionState {
         self.prompt_in_flight = true;
         self.agent_streaming = false;
         self.progress_status = Some("Preparing context...".to_string());
-        self.messages.push(ChatMessage::User(text));
+        // For autofix prompts, don't push a visible user message — the TUI shows
+        // the error dot from the WtEvent path, not the raw "Diagnose..." prompt text.
+        if !is_autofix {
+            self.messages.push(ChatMessage::User(text));
+        }
         self.bump();
     }
 

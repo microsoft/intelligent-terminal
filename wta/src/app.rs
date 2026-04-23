@@ -1067,6 +1067,22 @@ impl App {
                                 self.inflight_autofix_generation = None;
                                 self.emit_autofix_state_cleared(&pane);
                             }
+                        } else if method == "autofix_state" {
+                            // autofix_state:cleared emitted by Terminal C++ via ProtocolVtSequenceReceived
+                            // (not via SendEvent). Clear local state without re-emitting to avoid loops.
+                            if let Some("cleared") = params.get("state").and_then(|v| v.as_str()) {
+                                let same_pane = self.autofix_pane_id.as_deref() == Some(pane_id.as_str());
+                                if same_pane || self.recommendations.is_some() {
+                                    self.autofix_generation = self.autofix_generation.wrapping_add(1);
+                                    self.autofix_pane_id = None;
+                                    self.clear_recommendations();
+                                    self.prompt_in_flight = false;
+                                    self.agent_streaming = false;
+                                    self.progress_status = None;
+                                    self.inflight_autofix_generation = None;
+                                    // Terminal C++ already updated the bottom bar; no need to re-emit.
+                                }
+                            }
                         }
                     }
                 }
