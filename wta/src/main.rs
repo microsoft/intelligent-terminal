@@ -1264,10 +1264,6 @@ async fn run_ensure_host(
                             && note.severity == crate::app::WtEventSeverity::Informational
                         {
                             if let Some(seq) = params.get("sequence").and_then(|v| v.as_str()) {
-                                // Log every osc:133;D sequence (success or failure) to aid diagnosis.
-                                if seq.contains("133;D") {
-                                    tracing::info!(pane_id = %pane_id, seq = %seq, "host osc133D received");
-                                }
                                 let is_exit_zero = seq.strip_prefix("osc:133;")
                                     .and_then(|rest| rest.strip_prefix("D;"))
                                     .and_then(|code| code.trim().parse::<i32>().ok())
