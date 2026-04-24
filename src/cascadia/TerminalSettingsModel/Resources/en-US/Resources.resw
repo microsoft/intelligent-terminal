@@ -991,10 +991,4 @@
   <data name="PromptActionArgumentLocalized" xml:space="preserve">
     <value>Prompt</value>
   </data>
-  <data name="IsAcpAgentActionArgumentLocalized" xml:space="preserve">
-    <value>Is ACP agent</value>
-  </data>
-  <data name="AgentPromptActionArgumentLocalized" xml:space="preserve">
-    <value>Agent prompt</value>
-  </data>
 </root>

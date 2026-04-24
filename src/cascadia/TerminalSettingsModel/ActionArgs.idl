@@ -193,9 +193,6 @@ namespace Microsoft.Terminal.Settings.Model
 
         UInt64 ContentId{ get; set; };
 
-        Boolean IsAcpAgent;
-        String AgentPrompt;
-
         String ToCommandline();
     };
 

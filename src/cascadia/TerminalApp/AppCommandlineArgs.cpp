@@ -202,10 +202,6 @@ void AppCommandlineArgs::_buildParser()
                     _loadPersistedLayoutIdx,
                     RS_A(L"CmdSavedLayoutArgDesc"));
 
-    _app.add_option("--agent",
-                    _agentPrompt,
-                    RS_A(L"CmdAgentPromptArgDesc"));
-
     // Subcommands
     _buildNewTabParser();
     _buildSplitPaneParser();
@@ -757,13 +753,6 @@ NewTerminalArgs AppCommandlineArgs::_getNewTerminalArgs(AppCommandlineArgs::NewT
     }
     args.ReloadEnvironmentVariables(!inheritEnv);
 
-    // If --agent was provided as a global option, flow it into NewTerminalArgs
-    if (!_agentPrompt.empty())
-    {
-        args.IsAcpAgent(true);
-        args.AgentPrompt(winrt::to_hstring(_agentPrompt));
-    }
-
     return args;
 }
 
@@ -827,8 +816,6 @@ void AppCommandlineArgs::_resetStateToDefault()
 
     _focusPaneTarget = -1;
     _loadPersistedLayoutIdx = -1;
-
-    // DON'T clear _agentPrompt here - it's a global option like _windowTarget.
 
     // DON'T clear _launchMode here! This will get called once for every
     // subcommand, so we don't want `wt -F new-tab ; split-pane` clearing out
@@ -1189,7 +1176,6 @@ void AppCommandlineArgs::FullResetState()
     _shouldExitEarly = false;
 
     _windowTarget = {};
-    _agentPrompt = {};
 }
 
 std::string_view AppCommandlineArgs::GetTargetWindow() const noexcept

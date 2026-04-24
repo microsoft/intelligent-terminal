@@ -348,9 +348,6 @@
   <data name="CmdFocusPaneTargetArgDesc" xml:space="preserve">
     <value>Focus the pane at the given index</value>
   </data>
-  <data name="CmdAgentPromptArgDesc" xml:space="preserve">
-    <value>Open an AI agent pane with an optional prompt</value>
-  </data>
   <data name="CmdProfileArgDesc" xml:space="preserve">
     <value>Open with the given profile. Accepts either the name or GUID of a profile</value>
   </data>

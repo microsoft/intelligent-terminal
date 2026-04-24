@@ -727,8 +727,6 @@ namespace winrt::TerminalApp::implementation
     // Method Description:
     // - Auto-detects an installed agent CLI by searching the system PATH.
     //   Checks for known CLIs in priority order: copilot, claude.
-    //   NOTE: This is used by the AcpConnection path (_CreateAcpAgentPane).
-    //   The command palette agent path now uses WTA instead — see _DetectWtaPath.
     // Arguments:
     // - <none>
     // Return Value:
@@ -917,45 +915,6 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
-    }
-
-    // Method Description:
-    // - Creates a new pane running an ACP agent connection.
-    //   NOTE: This is no longer used by the command palette agent path.
-    //   The command palette now launches WTA via a normal ConPTY pane (see
-    //   _OpenOrReuseAgentPane), which gives the agent access to Windows
-    //   Terminal Protocol tools. This method is retained for other callers that
-    //   may still create AcpConnection-based panes directly.
-    // Arguments:
-    // - startingDirectory - the working directory (passed as cwd in session/new)
-    // - agentCliPath - path or name of the ACP agent executable
-    // - initialPrompt - optional first prompt to send after session/new
-    // Return Value:
-    // - A new Pane hosting the ACP agent, or nullptr on failure.
-    std::shared_ptr<Pane> TerminalPage::_CreateAcpAgentPane(const winrt::hstring& startingDirectory,
-                                                             const winrt::hstring& agentCliPath,
-                                                             const winrt::hstring& initialPrompt)
-    {
-        // Create AcpConnection with settings
-        auto connection = TerminalConnection::AcpConnection{};
-        Windows::Foundation::Collections::ValueSet connSettings;
-        connSettings.Insert(L"agentCliPath", Windows::Foundation::PropertyValue::CreateString(agentCliPath));
-        connSettings.Insert(L"startingDirectory", Windows::Foundation::PropertyValue::CreateString(startingDirectory));
-        connSettings.Insert(L"initialPrompt", Windows::Foundation::PropertyValue::CreateString(initialPrompt));
-        connection.Initialize(connSettings);
-
-        // Use default profile for appearance settings
-        auto profile = _settings.GetProfileForArgs(nullptr);
-        auto controlSettings = Settings::TerminalSettings::CreateWithProfile(_settings, profile);
-
-        if (!startingDirectory.empty())
-        {
-            controlSettings.DefaultSettings()->StartingDirectory(startingDirectory);
-        }
-
-        const auto control = _CreateNewControlAndContent(controlSettings, connection);
-        auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
-        return std::make_shared<Pane>(paneContent);
     }
 
     static void _agentPaneLog(const std::string& msg)
@@ -1336,8 +1295,7 @@ namespace winrt::TerminalApp::implementation
     //   A. Settings (hot-swappable)
     //   B. Shared WTA host process (per window, started once)
     //   C. Agent panes (per tab, ConPTY running `wta attach`), each of which
-    //      spawns an AcpConnection → agent CLI subprocess with the model flag
-    //      baked into argv at spawn time.
+    //      spawns an agent CLI subprocess with the model flag baked into argv at spawn time.
     //
     // When any of the 6 agent-identity settings change, layers B+C must be
     // torn down and rebuilt. `_RebuildAgentStack` is the single entry point;
@@ -1381,7 +1339,7 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Close every tracked agent pane across all tabs. Pane::Close() tears
-    // down the content (ConPTY, AcpConnection, agent subprocess) and raises
+    // down the content (ConPTY, agent subprocess) and raises
     // the Closed event which removes the pane node from its tab's tree.
     // The weak_ptrs in _agentPanes are pruned lazily by _FindAgentPaneInCurrentTab.
     void TerminalPage::_TeardownAgentPanes()
@@ -5478,27 +5436,7 @@ namespace winrt::TerminalApp::implementation
         const auto hasSessionId = sessionId != winrt::guid{};
 
         TerminalConnection::ITerminalConnection connection{ nullptr };
-        if (newTerminalArgs && newTerminalArgs.IsAcpAgent())
-        {
-            // Create an AcpConnection instead of ConPTY when --agent is specified.
-            // NOTE: The command palette agent path no longer uses this branch.
-            // It now launches WTA via a normal ConPTY pane (see _OpenOrReuseAgentPane)
-            // which provides Terminal Protocol tool access via wtcli. This branch is still used by callers
-            // that set IsAcpAgent directly (e.g. CLI startup actions).
-            const auto agentCliPath = _ResolveEffectiveAgentCliPath(
-                _settings.GlobalSettings(), [this]() { return _DetectAgentCli(); });
-
-            auto acpConn = TerminalConnection::AcpConnection{};
-            Windows::Foundation::Collections::ValueSet connSettings;
-            connSettings.Insert(L"agentCliPath", Windows::Foundation::PropertyValue::CreateString(agentCliPath));
-            connSettings.Insert(L"startingDirectory", Windows::Foundation::PropertyValue::CreateString(
-                controlSettings.DefaultSettings()->StartingDirectory()));
-            connSettings.Insert(L"initialPrompt", Windows::Foundation::PropertyValue::CreateString(
-                newTerminalArgs.AgentPrompt()));
-            acpConn.Initialize(connSettings);
-            connection = acpConn;
-        }
-        else if (existingConnection)
+        if (existingConnection)
         {
             connection = existingConnection;
             connection.Resize(controlSettings.DefaultSettings()->InitialRows(), controlSettings.DefaultSettings()->InitialCols());

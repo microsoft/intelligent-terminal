@@ -125,7 +125,6 @@ private:
     int _focusPaneTarget{ -1 };
     std::string _saveInputName;
     std::string _keyChordOption;
-    std::string _agentPrompt;
     // Are you adding more args here? Make sure to reset them in _resetStateToDefault
 
     const Commandline* _currentCommandline{ nullptr };
