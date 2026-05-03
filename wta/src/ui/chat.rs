@@ -292,6 +292,22 @@ fn build_message_lines<'a>(
             }
             lines.push(Line::default());
         }
+        ChatMessage::AgentEvent(text) => {
+            for (i, line_text) in text.lines().enumerate() {
+                if i == 0 {
+                    lines.push(Line::from(Span::styled(
+                        truncate_render_text(line_text),
+                        theme::AGENT_EVENT_HEADER,
+                    )));
+                } else {
+                    lines.push(Line::from(Span::styled(
+                        truncate_render_text(line_text),
+                        theme::AGENT_EVENT_DETAIL,
+                    )));
+                }
+            }
+            lines.push(Line::default());
+        }
     }
     lines
 }

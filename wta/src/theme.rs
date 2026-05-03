@@ -46,6 +46,9 @@ pub const BADGE_CRITICAL: Style = Style::new().fg(Color::Red).add_modifier(Modif
 pub const BADGE_ACTIONABLE: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
 pub const BADGE_INFO: Style = Style::new().fg(Color::DarkGray);
 pub const BANNER_HINT: Style = Style::new().fg(Color::DarkGray);
+// Agent hook event styles
+pub const AGENT_EVENT_HEADER: Style = Style::new().fg(Color::Magenta);
+pub const AGENT_EVENT_DETAIL: Style = Style::new().fg(Color::DarkGray);
 // Input box
 pub const INPUT_BG: Color = Color::Black;
 pub const INPUT_BORDER: Style = Style::new().fg(Color::Rgb(50, 50, 50));

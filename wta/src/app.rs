@@ -57,6 +57,7 @@ pub enum ChatMessage {
     },
     Plan(Vec<PlanEntry>),
     Error(String),
+    AgentEvent(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -409,6 +410,9 @@ pub struct App {
     // same pane (signal that they've moved on) or when a new autofix triggers.
     pub suggested_session_id: Option<String>,
     pub autofix_enabled: bool,
+    /// When true, display agent hook events in the chat area.
+    /// Controlled by WTA_LOG_AGENT_EVENT env var.
+    pub log_agent_events: bool,
     // Generation counter: incremented on every new trigger or cancel.
     // AgentMessageEnd responses whose generation doesn't match are discarded.
     autofix_generation: u64,
@@ -429,6 +433,7 @@ impl App {
         debug_capture_enabled: Arc<AtomicBool>,
         wt_connected: bool,
         autofix_enabled: bool,
+        log_agent_events: bool,
     ) -> Self {
         Self {
             mode: AppMode::Chat,
@@ -485,6 +490,7 @@ impl App {
             autofix_session_id: None,
             suggested_session_id: None,
             autofix_enabled,
+            log_agent_events,
             autofix_generation: 0,
             inflight_autofix_generation: None,
             tab_sessions: HashMap::new(),
@@ -1043,6 +1049,20 @@ impl App {
                         tracing::warn!(target: "tab_session", "tab_changed: missing tab_id in params");
                     }
                     return;
+                }
+
+                // Agent hook events (from wt-agent-hooks plugin) — display if enabled.
+                // Must check before same-pane skip: agent events originate from
+                // hooks in the agent's own pane, so session_id would match ours.
+                if method == "agent_event" {
+                    if let Some(event_type) = params.get("event").and_then(|v| v.as_str()) {
+                        if event_type.starts_with("agent.") {
+                            if self.log_agent_events {
+                                self.display_agent_hook_event(event_type, &params);
+                            }
+                            return;
+                        }
+                    }
                 }
 
                 // Skip events from our own pane
@@ -1904,6 +1924,11 @@ impl App {
         // Store the failing session ID so we can auto-fill `parent` on execution.
         self.autofix_session_id = Some(notification.session_id.clone());
 
+        // Push the error line (red dot) so the user sees it directly.
+        self.messages
+            .push(ChatMessage::Error(notification.summary.clone()));
+        self.scroll_to_bottom();
+
         self.prompt_in_flight = true;
         self.inflight_autofix_generation = Some(self.autofix_generation);
         self.progress_status = Some("Preparing context...".to_string());
@@ -2425,6 +2450,118 @@ impl App {
 
         self.normalize_history_state();
     }
+
+    /// Format and display an agent hook event as a chat message.
+    fn display_agent_hook_event(&mut self, event_type: &str, params: &serde_json::Value) {
+        let cli_source = params
+            .get("cli_source")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+
+        // Raw hook JSON is nested under "payload" (scripts pass stdin as-is)
+        let payload = params.get("payload").unwrap_or(params);
+
+        // Helper: truncate by chars (not bytes) to avoid panicking on UTF-8 boundaries
+        let truncate = |s: &str, max: usize| -> String {
+            if s.chars().count() <= max {
+                s.to_string()
+            } else {
+                s.chars().take(max).collect::<String>() + "…"
+            }
+        };
+
+        let detail = match event_type {
+            "agent.tool.starting" => {
+                let tool = payload.get("tool_name")
+                    .or_else(|| payload.get("toolName"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                let args = payload.get("tool_input")
+                    .or_else(|| payload.get("toolArgs"))
+                    .map(|v| v.to_string())
+                    .unwrap_or_default();
+                format!("─ {} ─\n  Tool: {}\n  Args: {}\n  Source: {}", event_type, tool, truncate(&args, 80), cli_source)
+            }
+            "agent.tool.finished" | "agent.tool.completed" | "agent.tool.failed" => {
+                let tool = payload.get("tool_name")
+                    .or_else(|| payload.get("toolName"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                let result = if event_type == "agent.tool.failed" {
+                    "failed"
+                } else if payload.get("tool_response")
+                    .and_then(|r| r.get("interrupted"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                {
+                    "interrupted"
+                } else {
+                    payload.get("toolResult")
+                        .and_then(|r| r.get("resultType"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("completed")
+                };
+                let summary = payload.get("toolResult")
+                    .and_then(|r| r.get("textResultForLlm"))
+                    .or_else(|| payload.get("tool_response").and_then(|r| r.get("stdout")))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let summary_trunc = truncate(summary, 80);
+                if summary_trunc.is_empty() {
+                    format!("─ {} ─\n  Tool: {}\n  Result: {}\n  Source: {}", event_type, tool, result, cli_source)
+                } else {
+                    format!("─ {} ─\n  Tool: {}\n  Result: {}\n  Output: {}\n  Source: {}", event_type, tool, result, summary_trunc, cli_source)
+                }
+            }
+            "agent.prompt.submit" => {
+                let prompt = payload.get("prompt")
+                    .or_else(|| payload.get("initialPrompt"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let prompt_trunc = truncate(prompt, 120);
+                if prompt_trunc.is_empty() {
+                    format!("─ {} ─\n  Source: {}", event_type, cli_source)
+                } else {
+                    format!("─ {} ─\n  Prompt: {}\n  Source: {}", event_type, prompt_trunc, cli_source)
+                }
+            }
+            "agent.session.start" => {
+                let cwd = payload.get("cwd")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                format!("─ {} ─\n  CWD: {}\n  Source: {}", event_type, cwd, cli_source)
+            }
+            "agent.session.end" | "agent.stop" | "agent.subagent.stop"
+            | "agent.session.stopped" | "agent.session" => {
+                let reason = payload.get("reason")
+                    .or_else(|| payload.get("stopReason"))
+                    .or_else(|| payload.get("hook_event_name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                format!("─ {} ─\n  Reason: {}\n  Source: {}", event_type, reason, cli_source)
+            }
+            "agent.error" => {
+                let err = payload.get("error")
+                    .map(|v| v.to_string())
+                    .unwrap_or_default();
+                let err_trunc = truncate(&err, 120);
+                format!("─ {} ─\n  Error: {}\n  Source: {}", event_type, err_trunc, cli_source)
+            }
+            "agent.notification" => {
+                let msg = payload.get("notification")
+                    .or_else(|| payload.get("message"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                format!("─ {} ─\n  {}\n  Source: {}", event_type, msg, cli_source)
+            }
+            _ => {
+                format!("─ {} ─\n  Source: {}", event_type, cli_source)
+            }
+        };
+
+        self.messages.push(ChatMessage::AgentEvent(detail));
+        self.scroll_to_bottom();
+    }
 }
 
 impl App {
@@ -2769,7 +2906,7 @@ mod tests {
         let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
         let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
         let debug_capture = Arc::new(AtomicBool::new(false));
-        App::new(prompt_tx, recommendation_tx, permission_tx, debug_capture, true, false)
+        App::new(prompt_tx, recommendation_tx, permission_tx, debug_capture, true, true, false)
     }
 
     // ─── word boundary helpers ──────────────────────────────────────────────
@@ -2966,15 +3103,17 @@ mod tests {
     }
 
     #[test]
-    fn wt_event_actionable_shows_banner_and_system_message() {
+    fn wt_event_actionable_shows_banner_and_triggers_autofix() {
         let mut app = test_app();
+        app.state = ConnectionState::Connected;
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             session_id: "5".to_string(),
             params: json!({"session_id": "5", "state": "closed"}),
         });
         assert!(app.show_notification_banner);
-        assert!(app.messages.iter().any(|m| matches!(m, ChatMessage::System(_))));
+        // Actionable events go through maybe_trigger_autofix which pushes Error (red dot)
+        assert!(app.messages.iter().any(|m| matches!(m, ChatMessage::Error(_))));
     }
 
     #[test]
@@ -3128,6 +3267,7 @@ mod tests {
     #[test]
     fn multiple_events_different_panes() {
         let mut app = test_app();
+        app.state = ConnectionState::Connected;
         // Informational from pane 1
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
@@ -3152,7 +3292,53 @@ mod tests {
         assert_eq!(app.unacknowledged_count(), 2);
         // Banner should show (due to critical + actionable)
         assert!(app.show_notification_banner);
-        // Chat should have 2 messages (critical error + actionable system msg)
+        // Chat should have 2 messages (critical Error + actionable autofix Error)
         assert_eq!(app.messages.len(), 2);
+    }
+
+    // ─── agent_event hook payload rendering ─────────────────────────────────
+
+    #[test]
+    fn agent_event_tool_starting_renders_tool_name_from_payload() {
+        let mut app = test_app();
+        app.log_agent_events = true;
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_event".to_string(),
+            session_id: "abc".to_string(),
+            params: json!({
+                "event": "agent.tool.starting",
+                "cli_source": "copilot",
+                "payload": { "tool_name": "Bash", "tool_input": { "command": "ls" } },
+            }),
+        });
+        let rendered = app.messages.iter().find_map(|m| {
+            if let ChatMessage::AgentEvent(s) = m { Some(s.clone()) } else { None }
+        }).expect("should have rendered an AgentEvent");
+        assert!(rendered.contains("Bash"), "expected tool name in: {}", rendered);
+        assert!(rendered.contains("ls"), "expected tool_input in: {}", rendered);
+        assert!(rendered.contains("copilot"), "expected cli_source in: {}", rendered);
+    }
+
+    #[test]
+    fn agent_event_tool_finished_event_name_is_recognized() {
+        // agent.tool.finished should hit a real arm, not fall through to default.
+        let mut app = test_app();
+        app.log_agent_events = true;
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_event".to_string(),
+            session_id: "abc".to_string(),
+            params: json!({
+                "event": "agent.tool.finished",
+                "cli_source": "copilot",
+                "payload": { "tool_name": "Bash" },
+            }),
+        });
+        let rendered = app.messages.iter().find_map(|m| {
+            if let ChatMessage::AgentEvent(s) = m { Some(s.clone()) } else { None }
+        }).expect("should have rendered an AgentEvent");
+        // Real arm includes "Tool:" and "Result:"; default fall-through does not.
+        assert!(rendered.contains("Bash"), "expected tool name in: {}", rendered);
+        assert!(rendered.contains("Tool:"), "expected Tool: line (not default arm) in: {}", rendered);
+        assert!(rendered.contains("Result:"), "expected Result: line (not default arm) in: {}", rendered);
     }
 }

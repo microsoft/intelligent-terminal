@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# PreToolUse hook — forward tool-starting event to Windows Terminal
+set -euo pipefail
+
+[ -z "${WT_COM_CLSID:-}" ] && exit 0
+command -v wtcli >/dev/null 2>&1 || exit 0
+
+INPUT="$(cat)"
+[ -z "$INPUT" ] && exit 0
+
+# Detect CLI source
+if [ -n "${COPILOT_CLI:-}" ]; then SRC="copilot"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then SRC="claude"
+else SRC="unknown"; fi
+
+# Pass raw hook JSON to WTA — all field extraction happens in Rust
+wtcli send-event -e "agent.tool.starting" "{\"cli_source\":\"$SRC\",\"payload\":$INPUT}" 2>/dev/null || true
+exit 0

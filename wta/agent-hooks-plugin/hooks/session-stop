@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Stop / SubagentStop hook — forward session-ended event to Windows Terminal
+set -euo pipefail
+
+[ -z "${WT_COM_CLSID:-}" ] && exit 0
+command -v wtcli >/dev/null 2>&1 || exit 0
+
+INPUT="$(cat)"
+
+if [ -n "${COPILOT_CLI:-}" ]; then SRC="copilot"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then SRC="claude"
+else SRC="unknown"; fi
+
+if [ -n "$INPUT" ]; then
+  wtcli send-event -e "agent.session.stopped" "{\"cli_source\":\"$SRC\",\"payload\":$INPUT}" 2>/dev/null || true
+else
+  wtcli send-event -e "agent.session.stopped" "{\"cli_source\":\"$SRC\"}" 2>/dev/null || true
+fi
+exit 0

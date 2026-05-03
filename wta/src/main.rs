@@ -1365,6 +1365,9 @@ async fn run_attach_tui(
     }
 
     let autofix_enabled = !no_autofix;
+    let log_agent_events = std::env::var("WTA_LOG_AGENT_EVENT")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false);
 
     // ── Preflight: check agent CLI before connecting to shared host ──
     let preflight_result = preflight::check_agent(&agent).await;
@@ -1469,6 +1472,7 @@ async fn run_attach_tui(
                 debug_capture_enabled.clone(),
                 wt_connected,
                 autofix_enabled,
+                log_agent_events,
             );
             let _ = dismiss_autofix_tx; // was used for shared_mode dismiss; no longer needed
 
@@ -1945,7 +1949,10 @@ async fn run_acp_app(
             ));
 
             let autofix_enabled = !cli.no_autofix;
-            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, debug_capture_enabled, wt_connected, autofix_enabled);
+            let log_agent_events = std::env::var("WTA_LOG_AGENT_EVENT")
+                .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
+                .unwrap_or(false);
+            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, debug_capture_enabled, wt_connected, autofix_enabled, log_agent_events);
             app_state.set_install_request_tx(install_req_tx);
 
             // If preflight failed, start in Setup mode
