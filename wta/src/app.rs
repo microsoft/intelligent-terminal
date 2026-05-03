@@ -193,6 +193,11 @@ pub fn route_agent_event_to_registry(
         });
     }
 
+    // Real agent.session.started supersedes any synthetic placeholder.
+    if event == "agent.session.started" && !asid.is_empty() {
+        reg.drop_synthetic_for_pane(pane_session_id);
+    }
+
     let ev = match event {
         "agent.session.started" => SessionEvent::SessionStarted {
             key,
@@ -1386,12 +1391,10 @@ impl App {
                     let cur = self.agents_list_state.selected().unwrap_or(0);
                     let next = if count == 0 { 0 } else { (cur + 1).min(count - 1) };
                     self.agents_list_state.select(Some(next));
-                    return;
                 }
                 crossterm::event::KeyCode::Up => {
                     let cur = self.agents_list_state.selected().unwrap_or(0);
                     self.agents_list_state.select(Some(cur.saturating_sub(1)));
-                    return;
                 }
                 crossterm::event::KeyCode::Enter => {
                     if let Some(idx) = self.agents_list_state.selected() {
@@ -1403,7 +1406,6 @@ impl App {
                             self.activate_session(&s);
                         }
                     }
-                    return;
                 }
                 crossterm::event::KeyCode::Delete => {
                     if let Some(idx) = self.agents_list_state.selected() {
@@ -1418,10 +1420,13 @@ impl App {
                             }
                         }
                     }
-                    return;
+                }
+                crossterm::event::KeyCode::Esc => {
+                    self.current_view = View::Chat;
                 }
                 _ => {}
             }
+            return;
         }
 
         // If in setup mode, route keys to setup handler
@@ -2964,6 +2969,11 @@ impl App {
     }
 
     fn dispatch_resume(&mut self, s: &crate::agent_sessions::AgentSession) {
+        // Synthetic placeholder: we never knew the upstream session id, so
+        // resume is not feasible. Silently no-op (matches the empty-resume_flag contract).
+        if s.key.starts_with("pane:") {
+            return;
+        }
         let cli_id = match s.cli_source {
             crate::agent_sessions::CliSource::Claude  => "claude",
             crate::agent_sessions::CliSource::Copilot => "copilot",
@@ -3303,6 +3313,53 @@ mod tests {
 
         app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
         assert!(app.agent_sessions.has_session(&"k".to_string()));
+    }
+
+    // ─── Issue #1: Agents view key leak ─────────────────────────────────────
+
+    #[test]
+    fn agents_view_swallows_chat_input_keys() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.current_view = View::Agents;
+        let input_before = app.input.clone();
+        app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert_eq!(app.input, input_before, "Chat input must not change while in Agents view");
+    }
+
+    #[test]
+    fn agents_view_esc_returns_to_chat() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.current_view = View::Agents;
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.current_view, View::Chat);
+    }
+
+    // ─── Issue #4: Synthetic history row resume ────────────────────────────
+
+    #[test]
+    fn enter_on_synthetic_history_row_does_not_dispatch_resume() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use crate::agent_sessions::{CliSource, SessionEvent};
+        use std::path::PathBuf;
+        let mut app = test_app();
+        let pane = "00000000-0000-0000-0000-0000000000aa";
+        app.agent_sessions.apply(SessionEvent::SessionStarted {
+            key: format!("pane:{}", pane),
+            cli_source: CliSource::Claude,
+            pane_session_id: pane.into(),
+            cwd: PathBuf::from("/x"), title: "t".into(),
+        });
+        app.agent_sessions.apply(SessionEvent::PaneClosed { pane_session_id: pane.into() });
+        app.current_view = View::Agents;
+        app.agents_list_state.select(Some(0));
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(app.last_dispatched_command_for_test().is_none(),
+            "must not dispatch resume for synthetic pane:<guid> key");
     }
 
     // ─── word boundary helpers ──────────────────────────────────────────────

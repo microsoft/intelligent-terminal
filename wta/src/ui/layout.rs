@@ -80,6 +80,10 @@ pub fn input_cursor_position(app: &App, area: Rect) -> Option<Position> {
         return None;
     }
 
+    if app.current_view == crate::app::View::Agents {
+        return None;
+    }
+
     let main_area = if app.show_debug_panel {
         Layout::default()
             .direction(Direction::Horizontal)

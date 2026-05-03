@@ -101,6 +101,12 @@ impl AgentSessionRegistry {
                     attention_reason:  None,
                     log_path:          None,
                 });
+                // If we're rebinding to a different pane, drop the old pane's mapping first.
+                if let Some(old_pane) = entry.pane_session_id.take() {
+                    if old_pane != pane_session_id {
+                        self.active_by_pane.remove(&old_pane);
+                    }
+                }
                 entry.cli_source       = cli_source;
                 entry.title            = title;
                 entry.cwd              = cwd;
@@ -220,6 +226,19 @@ impl AgentSessionRegistry {
                 self.active_by_pane.remove(&pane);
             }
             self.dirty = true;
+        }
+    }
+
+    /// Drop any synthetic `pane:<guid>` session bound to the given pane.
+    /// Used when a real `agent.session.started` arrives to clean up the
+    /// placeholder created by an earlier tool event with no agent_session_id.
+    pub fn drop_synthetic_for_pane(&mut self, pane_session_id: &str) {
+        if let Some(key) = self.active_by_pane.get(pane_session_id).cloned() {
+            if key.starts_with("pane:") {
+                self.sessions.remove(&key);
+                self.active_by_pane.remove(pane_session_id);
+                self.dirty = true;
+            }
         }
     }
 }
@@ -392,5 +411,26 @@ mod tests {
         let reg = AgentSessionRegistry::new();
         let key = reg.resolve_or_synthesize_key("explicit", "anything");
         assert_eq!(key, "explicit");
+    }
+
+    // ─── Issue #2: SessionStarted rebinding pane leak ────────────────────────
+
+    #[test]
+    fn session_started_rebinding_to_new_pane_drops_old_pane_mapping() {
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Claude,
+            pane_session_id: pane("old"), cwd: PathBuf::from("/x"), title: "t".into(),
+        });
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Claude,
+            pane_session_id: pane("new"), cwd: PathBuf::from("/x"), title: "t".into(),
+        });
+        assert_eq!(reg.active_by_pane.get("new"), Some(&k("s")));
+        assert!(reg.active_by_pane.get("old").is_none(), "old pane mapping must be dropped");
+
+        // Closing the OLD pane must NOT mark the session ended.
+        reg.apply(SessionEvent::PaneClosed { pane_session_id: pane("old") });
+        assert_eq!(reg.sessions.get("s").unwrap().status, AgentStatus::Idle);
     }
 }
