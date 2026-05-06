@@ -88,3 +88,5 @@ workarounds
 WSLs
 XBox
 YBox
+changelists
+screenshots
