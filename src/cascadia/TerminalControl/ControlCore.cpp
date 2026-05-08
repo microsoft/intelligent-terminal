@@ -3092,8 +3092,16 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                               [](const ::MarkExtents& m) -> bool { return !m.HasOutput(); });
     }
 
-    void ControlCore::PreviewInput(std::wstring_view input)
+    void ControlCore::PreviewInput(std::wstring_view input, PreviewSource source)
     {
+        // Priority arbiter: higher numeric value = higher priority.
+        // Only allow preview from equal-or-higher priority source.
+        if (!input.empty() && static_cast<int>(source) < static_cast<int>(_activePreviewSource))
+            return; // higher-priority source is active, ignore lower
+        if (input.empty() && source != _activePreviewSource)
+            return; // can only clear your own preview
+
+        _activePreviewSource = input.empty() ? PreviewSource::None : source;
         _terminal->PreviewText(input);
     }
 }

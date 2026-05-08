@@ -63,6 +63,9 @@
     <ClInclude Include="XamlUiaTextRange.h" />
     <ClInclude Include="HwndTerminal.hpp" />
     <ClInclude Include="HwndTerminalAutomationPeer.hpp" />
+    <ClInclude Include="IInlineSuggestionProvider.h" />
+    <ClInclude Include="StubProvider.h" />
+    <ClInclude Include="InlineSuggestionController.h" />
   </ItemGroup>
   <!-- ========================= Cpp Files ======================== -->
   <ItemGroup>
@@ -104,6 +107,7 @@
     <ClCompile Include="XamlUiaTextRange.cpp" />
     <ClCompile Include="HwndTerminal.cpp" />
     <ClCompile Include="HwndTerminalAutomationPeer.cpp" />
+    <ClCompile Include="InlineSuggestionController.cpp" />
   </ItemGroup>
   <!-- ========================= idl Files ======================== -->
   <ItemGroup>

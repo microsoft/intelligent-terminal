@@ -124,6 +124,10 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(String, AiConfirmationCreateOps);
         INHERITABLE_SETTING(String, AiConfirmationInputOps);
 
+        // Inline suggestions settings
+        INHERITABLE_SETTING(Boolean, InlineSuggestionsEnabled);
+        INHERITABLE_SETTING(Int32, InlineSuggestionsDebounceMs);
+
         Windows.Foundation.Collections.IMapView<String, ColorScheme> ColorSchemes();
         void AddColorScheme(ColorScheme scheme);
         void RemoveColorScheme(String schemeName);

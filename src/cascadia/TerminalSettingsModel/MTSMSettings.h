@@ -85,7 +85,9 @@ Author(s):
     X(hstring, AiCoordinatorProfile, "aiIntegration.coordinator.profile", L"{fd19208a-412b-4857-8a2d-9ca592b4b16e}")                                                                                   \
     X(hstring, AiConfirmationReadOps, "aiIntegration.confirmation.readOperations", L"auto")                                                                                                             \
     X(hstring, AiConfirmationCreateOps, "aiIntegration.confirmation.createOperations", L"auto")                                                                                                         \
-    X(hstring, AiConfirmationInputOps, "aiIntegration.confirmation.inputOperations", L"auto")
+    X(hstring, AiConfirmationInputOps, "aiIntegration.confirmation.inputOperations", L"auto")                                                                                                         \
+    X(bool, InlineSuggestionsEnabled, "experimental.inlineSuggestions.enabled", true)                                                                                                                   \
+    X(int32_t, InlineSuggestionsDebounceMs, "experimental.inlineSuggestions.debounceMs", 300)
 
 // Also add these settings to:
 // * Profile.idl

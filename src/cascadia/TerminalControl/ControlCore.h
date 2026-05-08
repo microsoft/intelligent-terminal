@@ -269,7 +269,14 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         bool ShouldShowSelectCommand();
         bool ShouldShowSelectOutput();
 
-        void PreviewInput(std::wstring_view input);
+        enum class PreviewSource
+        {
+            None = 0,
+            InlineSuggestion = 1,
+            ActionPreview = 2,
+        };
+
+        void PreviewInput(std::wstring_view input, PreviewSource source = PreviewSource::ActionPreview);
 
         RUNTIME_SETTING(float, Opacity, _settings.Opacity());
         RUNTIME_SETTING(float, FocusedOpacity, FocusedAppearance().Opacity());
@@ -311,6 +318,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         // clang-format on
 
     private:
+        PreviewSource _activePreviewSource = PreviewSource::None;
+
         struct SharedState
         {
             std::unique_ptr<til::throttled_func<>> outputIdle;

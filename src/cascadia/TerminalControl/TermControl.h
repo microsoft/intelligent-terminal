@@ -11,6 +11,7 @@
 #include "../../tsf/Handle.h"
 
 #include "ControlInteractivity.h"
+#include "InlineSuggestionController.h"
 
 namespace Microsoft::Console::VirtualTerminal
 {
@@ -323,6 +324,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         bool _detached{ false };
         til::CoordType _searchScrollOffset = 0;
 
+        // Inline suggestion controller (ghost text completions)
+        std::unique_ptr<InlineSuggestionController> _inlineSuggestionController;
+        Control::ControlCore::EditLineStateChanged_revoker _editLineStateForInlineRevoker;
+        Control::ControlCore::CompletionsChanged_revoker _completionsForInlineRevoker;
+
         Windows::Foundation::Collections::IObservableVector<Windows::UI::Xaml::Controls::ICommandBarElement> _originalPrimaryElements{ nullptr };
         Windows::Foundation::Collections::IObservableVector<Windows::UI::Xaml::Controls::ICommandBarElement> _originalSecondaryElements{ nullptr };
         Windows::Foundation::Collections::IObservableVector<Windows::UI::Xaml::Controls::ICommandBarElement> _originalSelectedPrimaryElements{ nullptr };
@@ -343,6 +349,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         }
 
         void _initializeForAttach();
+        void _initializeInlineSuggestionController();
 
         void _UpdateSettingsFromUIThread();
         void _UpdateAppearanceFromUIThread(Control::IControlAppearance newAppearance);

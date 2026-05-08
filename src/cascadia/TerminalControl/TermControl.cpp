@@ -9,6 +9,7 @@
 #include "TermControlAutomationPeer.h"
 #include "../../renderer/atlas/AtlasEngine.h"
 #include "../../tsf/Handle.h"
+#include "StubProvider.h"
 
 #include "TermControl.g.cpp"
 
@@ -1441,7 +1442,49 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         // Likewise, run the event handlers outside of lock (they could
         // be reentrant)
         Initialized.raise(*this, nullptr);
+
+        // Initialize inline suggestion controller
+        _initializeInlineSuggestionController();
+
         return true;
+    }
+
+    void TermControl::_initializeInlineSuggestionController()
+    {
+        auto* coreImpl = winrt::get_self<ControlCore>(_core);
+        auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread();
+
+        _inlineSuggestionController = std::make_unique<InlineSuggestionController>(coreImpl, dispatcher);
+        _inlineSuggestionController->SetProvider(std::make_unique<StubProvider>());
+        _inlineSuggestionController->SetEnabled(true); // TODO: gate behind setting
+
+        // Wire EditLineStateChanged (fires from IO thread) with DispatcherQueue marshaling
+        _editLineStateForInlineRevoker = _core.EditLineStateChanged(winrt::auto_revoke,
+            [weak = get_weak(), dispatcher](auto&&, auto&&) {
+                dispatcher.TryEnqueue([weak]() {
+                    if (auto self = weak.get())
+                    {
+                        if (self->_inlineSuggestionController)
+                        {
+                            self->_inlineSuggestionController->OnEditLineStateChanged();
+                        }
+                    }
+                });
+            });
+
+        // Wire CompletionsChanged (fires from IO thread) — shell completion menu opened
+        _completionsForInlineRevoker = _core.CompletionsChanged(winrt::auto_revoke,
+            [weak = get_weak(), dispatcher](auto&&, auto&&) {
+                dispatcher.TryEnqueue([weak]() {
+                    if (auto self = weak.get())
+                    {
+                        if (self->_inlineSuggestionController)
+                        {
+                            self->_inlineSuggestionController->OnShellCompletionMenuOpened();
+                        }
+                    }
+                });
+            });
     }
 
     safe_void_coroutine TermControl::_restoreInBackground()
@@ -1498,6 +1541,14 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         if (keyStatus.IsExtendedKey)
         {
             modifiers |= ControlKeyStates::EnhancedKey;
+        }
+
+        // Notify inline suggestion controller about the typed character.
+        // This allows prefix-eating (shrink suggestion) or divergence (dismiss).
+        // The char always passes through to the shell regardless.
+        if (_inlineSuggestionController && _inlineSuggestionController->IsShowing())
+        {
+            _inlineSuggestionController->HandleChar(ch);
         }
 
         // Broadcast the character to all listeners
@@ -1789,6 +1840,15 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             _TryHandleKeyBinding(vkey, scanCode, modifiers))
         {
             return true;
+        }
+
+        // Inline suggestion accept/dismiss (only on keyDown, only for specific keys)
+        if (keyDown && _inlineSuggestionController)
+        {
+            if (_inlineSuggestionController->TryHandleKey(vkey, modifiers))
+            {
+                return true;
+            }
         }
 
         if (_TrySendKeyEvent(vkey, scanCode, modifiers, keyDown))
@@ -2396,6 +2456,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         RestorePointerCursor.raise(*this, nullptr);
 
         _focused = false;
+
+        // Dismiss inline suggestions on focus loss
+        if (_inlineSuggestionController)
+        {
+            _inlineSuggestionController->OnFocusLost();
+        }
 
         // This will disable the accessibility notifications, because the
         // UiaEngine lives in ControlInteractivity
@@ -3839,8 +3905,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     void TermControl::PreviewInput(const winrt::hstring& text)
     {
-        get_self<ControlCore>(_core)->PreviewInput(text);
+        get_self<ControlCore>(_core)->PreviewInput(text, ControlCore::PreviewSource::ActionPreview);
 
+        // Only announce Action Preview (user-initiated), not ephemeral inline suggestions
         if (!text.empty())
         {
             if (auto automationPeer{ FrameworkElementAutomationPeer::FromElement(*this) })
