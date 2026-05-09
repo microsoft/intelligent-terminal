@@ -21,6 +21,7 @@
 #include "App.h"
 #include "DebugTapConnection.h"
 #include "AgentPaneContent.h"
+#include "FreOverlay.h"
 #include "MarkdownPaneContent.h"
 #include "Remoting.h"
 #include "ScratchpadContent.h"
@@ -841,6 +842,45 @@ namespace winrt::TerminalApp::implementation
         return SplitDirection::Right;
     }
 
+    // ── First-run experience ──────────────────────────────────────────────
+
+    bool TerminalPage::_IsFreRequired() const
+    {
+        return !ApplicationState::SharedInstance().AgentFreCompleted();
+    }
+
+    void TerminalPage::_ShowFreOverlay()
+    {
+        if (auto overlay = FindName(L"FreOverlayElement").try_as<winrt::TerminalApp::FreOverlay>())
+        {
+            overlay.Completed({ get_weak(), &TerminalPage::_OnFreCompleted });
+            overlay.Visibility(Visibility::Visible);
+        }
+    }
+
+    void TerminalPage::_OnFreCompleted(const winrt::TerminalApp::FreOverlay& /*sender*/,
+                                       const winrt::Windows::Foundation::IInspectable& /*args*/)
+    {
+        // Hide the overlay
+        if (auto overlay = FreOverlayElement())
+        {
+            overlay.Visibility(Visibility::Collapsed);
+        }
+
+        // Persist: never show FRE again
+        ApplicationState::SharedInstance().AgentFreCompleted(true);
+
+        // Agent pane was already created during startup with --setup.
+        // Focus it so the user can interact with the Getting Started screen.
+        if (const auto agentPane = _FindAgentPane())
+        {
+            if (const auto& content = agentPane->GetContent())
+            {
+                content.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+            }
+        }
+    }
+
     // Repositions the agent pane to match the current AgentPanePosition setting.
     void TerminalPage::_RepositionAgentPanes()
     {
@@ -1501,6 +1541,8 @@ namespace winrt::TerminalApp::implementation
     // and autofix work in the background as long as the pane hasn't been closed.
     void TerminalPage::_AutoCreateHiddenAgentPane(winrt::com_ptr<Tab> tab)
     {
+        const bool isFirstRun = _IsFreRequired();
+
         // Already have a live pane — nothing to do.
         if (_agentPane.lock())
         {
@@ -1566,6 +1608,11 @@ namespace winrt::TerminalApp::implementation
         if (!globals.AutoFixEnabled())
         {
             cmdline += L" --no-autofix";
+        }
+
+        if (isFirstRun)
+        {
+            cmdline += L" --setup first-run";
         }
 
         _agentPaneLog("_AutoCreateHiddenAgentPane: cmdline=" + winrt::to_string(winrt::hstring{ cmdline }));
@@ -1708,8 +1755,10 @@ namespace winrt::TerminalApp::implementation
                 weakRootPane,
                 weakSelfForHide,
                 termControlWeak = winrt::make_weak(termControl),
-                tokenHolder
+                tokenHolder,
+                isFirstRun
             ](auto&& /*sender*/, auto&& /*args*/) {
+                _agentPaneLog("_AutoCreateHiddenAgentPane: TermControl Initialized");
                 if (const auto tc = termControlWeak.get())
                 {
                     tc.Initialized(*tokenHolder);
@@ -1722,12 +1771,20 @@ namespace winrt::TerminalApp::implementation
                 // Pre-warm has done its job: connection.Start() ran inside
                 // _InitializeTerminal just before this event, so wta.exe is
                 // launching. Drop the reconcile guard before doing anything
-                // else — from here on, _ReconcileAgentPaneForActiveTab is
+                // else -- from here on, _ReconcileAgentPaneForActiveTab is
                 // free to manage visibility normally.
                 self->_agentPanePreWarming = false;
 
+                // During first-run, keep the pane visible so the user sees
+                // the Getting Started screen behind the FRE dialog overlay.
+                if (isFirstRun)
+                {
+                    self->_UpdateBottomBarState();
+                    return;
+                }
+
                 // If the user already toggled the agent pane open before
-                // Initialized fired, don't hide it — that would leave the
+                // Initialized fired, don't hide it -- that would leave the
                 // bottom bar lit but no pane visible (the very first toggle
                 // after launch would silently fail).
                 bool anyTabWantsOpen = false;
@@ -1744,11 +1801,11 @@ namespace winrt::TerminalApp::implementation
                 }
                 if (anyTabWantsOpen)
                 {
-                    _agentPaneLog("_AutoCreateHiddenAgentPane: TermControl Initialized — user already opened pane, skipping hide");
+                    _agentPaneLog("_AutoCreateHiddenAgentPane: TermControl Initialized -- user already opened pane, skipping hide");
                     self->_UpdateBottomBarState();
                     return;
                 }
-                _agentPaneLog("_AutoCreateHiddenAgentPane: TermControl Initialized — hiding pane now");
+                _agentPaneLog("_AutoCreateHiddenAgentPane: TermControl Initialized -- hiding pane now");
                 if (auto rootPane = weakRootPane.lock())
                 {
                     if (auto pane = weakNewPane.lock())
@@ -1766,9 +1823,12 @@ namespace winrt::TerminalApp::implementation
             // behavior to avoid leaving a visible auto-created pane.
             _agentPaneLog("_AutoCreateHiddenAgentPane: no TermControl on new pane, hiding immediately");
             _agentPanePreWarming = false;
-            if (const auto rootPane = tab->GetRootPane())
+            if (!isFirstRun)
             {
-                rootPane->HidePane(newPane);
+                if (const auto rootPane = tab->GetRootPane())
+                {
+                    rootPane->HidePane(newPane);
+                }
             }
         }
 
@@ -2429,6 +2489,13 @@ namespace winrt::TerminalApp::implementation
             // initialization is finished. However, there are still a few frames
             // after the frame is displayed before the XAML content first draws,
             // so that didn't actually resolve any issues.
+            // Show the first-run experience overlay on the very first launch.
+            // This covers the terminal content until the user clicks Next.
+            if (_IsFreRequired())
+            {
+                _ShowFreOverlay();
+            }
+
             Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weak = get_weak()]() {
                 if (auto self{ weak.get() })
                 {

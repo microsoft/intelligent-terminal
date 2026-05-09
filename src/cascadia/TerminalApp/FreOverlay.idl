@@ -1,0 +1,28 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+namespace TerminalApp
+{
+    [default_interface] runtimeclass FreOverlay : Windows.UI.Xaml.Controls.UserControl
+    {
+        FreOverlay();
+
+        // x:Bind properties for localized strings
+        String FreTitle{ get; };
+        String Card1Title{ get; };
+        String Card1Description{ get; };
+        String Card2Title{ get; };
+        String Card2Description{ get; };
+        String Card3Title{ get; };
+        String Card3Description{ get; };
+        String Card4Title{ get; };
+        String Card4Description{ get; };
+        String DetailTitle{ get; };
+        String DetailDescription{ get; };
+        String DetailLink{ get; };
+        String NextButtonText{ get; };
+
+        // Raised when the user clicks "Start exploring" or the close button.
+        event Windows.Foundation.TypedEventHandler<FreOverlay, Object> Completed;
+    }
+}

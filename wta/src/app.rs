@@ -9,6 +9,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+struct DeferredAcpParams {
+    agent_cmd: String,
+    acp_model: Option<String>,
+    prompt_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>>,
+    cancel_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::CancelRequest>>,
+    new_session_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::NewSessionForTab>>,
+    restart_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::RestartRequest>>,
+    shell_mgr: Arc<crate::shell::ShellManager>,
+    wt_connected: bool,
+}
+
 use crate::commands::{self, CommandKind, CommandSpec, ParsedCommand};
 use crate::coordinator::{
     parse_autofix_response, parse_recommendation_set, recommended_choice_index,
@@ -36,6 +47,79 @@ pub struct DebugMessage {
     pub timestamp: f64,
     pub direction: DebugDir,
     pub content: String,
+}
+
+// --- Application mode ---
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppMode {
+    /// Normal agent chat (default).
+    Chat,
+    /// Setup / getting-started screen.
+    Setup,
+    /// Auth screen — agent selected but needs sign-in.
+    Auth,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthState {
+    pub agent_id: String,
+    pub agent_name: String,
+    pub auth_hint: String,
+    pub login_command: String,
+    pub checking: bool,
+    pub status_message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetupReason {
+    FirstRun,
+    AgentMissing,
+    AgentError,
+    SwitchAgent,
+}
+
+impl SetupReason {
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "first-run" => Self::FirstRun,
+            "agent-missing" => Self::AgentMissing,
+            "agent-error" => Self::AgentError,
+            "switch-agent" => Self::SwitchAgent,
+            _ => Self::FirstRun,
+        }
+    }
+
+    pub fn title(&self) -> &'static str {
+        match self {
+            Self::FirstRun => "Welcome to Intelligent Terminal!",
+            Self::AgentMissing => "Agent not found",
+            Self::AgentError => "Agent connection failed",
+            Self::SwitchAgent => "Switch agent",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SetupState {
+    pub reason: SetupReason,
+    pub agents: Vec<DetectedAgent>,
+    pub selected_index: usize,
+    /// Preflight result populated from `preflight::check_agent`.
+    pub preflight: PreflightResult,
+    /// True while a `winget install` task is running.
+    pub install_in_progress: bool,
+    /// Tail of the install command's output (last ~6 lines).
+    pub install_log: Vec<String>,
+    /// Error message from the most recent install attempt (cleared on retry).
+    pub install_error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DetectedAgent {
+    pub name: String,
+    pub status: String, // e.g. "Installed by default", "Detected", "Not found"
+    pub is_available: bool,
 }
 
 // --- State types ---
@@ -531,6 +615,14 @@ pub enum AppEvent {
         pane_id: String,
         params: serde_json::Value,
     },
+    /// Background agent install completed — refresh the detected agents list.
+    AgentInstallComplete(Vec<DetectedAgent>),
+    /// Auth check completed for the selected agent.
+    AuthCheckComplete(crate::auth::AuthCheckResult),
+    /// Login progress — device code received, display to user.
+    LoginProgress { device_code: String, verify_url: String },
+    /// Login flow completed.
+    LoginComplete { agent_id: String, success: bool },
     /// Result of `preflight::check_agent` run by main.rs before the TUI
     /// loop starts. If `all_passed()` is false the App switches into
     /// `AppMode::Setup` so the user can install / authenticate the CLI.
@@ -857,6 +949,14 @@ impl TabSession {
 // --- App ---
 
 pub struct App {
+    pub mode: AppMode,
+    pub setup: Option<SetupState>,
+    pub auth: Option<AuthState>,
+    /// Channel for spawning background tasks from event handlers.
+    event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
+    /// Set after login completes — consumed by main loop to spawn ACP client.
+    pub pending_acp_start: bool,
+    deferred_acp: Option<DeferredAcpParams>,
     pub state: ConnectionState,
     pub agent_name: String,
     pub agent_model: Option<String>,
@@ -954,10 +1054,6 @@ pub struct App {
     /// `ChatMessage::AgentEvent` for diagnostics. Controlled by the
     /// `WTA_LOG_AGENT_EVENT` env var (1/true/yes).
     pub log_agent_events: bool,
-    /// Top-level mode: Chat (normal) vs Setup (preflight failed).
-    pub mode: AppMode,
-    /// Active Setup wizard state (Some iff `mode == AppMode::Setup`).
-    pub setup: Option<SetupState>,
     /// Spinner tick counter used by Setup mode (per-tab `activity_frame`
     /// drives chat-mode spinners; this one is for the wizard view which
     /// has no tab context). Bumped from the Tick handler when in Setup.
@@ -977,36 +1073,6 @@ impl Default for View {
     }
 }
 
-/// App-level mode. Setup mode covers the whole pane (no chat/input/agents)
-/// while we wait for the user to install / authenticate the agent CLI.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AppMode {
-    /// Normal agent chat / Agents view.
-    Chat,
-    /// Setup wizard (agent CLI missing or not authenticated).
-    Setup,
-}
-
-impl Default for AppMode {
-    fn default() -> Self {
-        AppMode::Chat
-    }
-}
-
-/// State for the setup wizard screen, populated from `preflight::check_agent`.
-#[derive(Debug, Clone)]
-pub struct SetupState {
-    pub preflight: PreflightResult,
-    /// Which check row is currently selected (0 = CLI, 1 = Auth).
-    pub selected_index: usize,
-    /// True while a `winget install` task is running.
-    pub install_in_progress: bool,
-    /// Tail of the install command's output (last ~6 lines).
-    pub install_log: Vec<String>,
-    /// Error message from the most recent install attempt (cleared on retry).
-    pub install_error: Option<String>,
-}
-
 impl App {
     pub fn new(
         prompt_tx: mpsc::UnboundedSender<PromptSubmission>,
@@ -1022,6 +1088,12 @@ impl App {
         let mut tab_sessions = HashMap::new();
         tab_sessions.insert(DEFAULT_TAB_ID.to_string(), TabSession::default());
         Self {
+            mode: AppMode::Chat,
+            setup: None,
+            auth: None,
+            event_tx: None,
+            pending_acp_start: false,
+            deferred_acp: None,
             state: ConnectionState::Connecting("Starting agent...".to_string()),
             agent_name: String::new(),
             agent_model: None,
@@ -1067,14 +1139,73 @@ impl App {
             source_session_id: None,
             source_cwd: None,
             log_agent_events: false,
-            mode: AppMode::Chat,
-            setup: None,
             activity_frame: 0,
         }
     }
 
+    /// Store ACP launch parameters for deferred start (after login).
+    pub fn set_acp_params(
+        &mut self,
+        agent_cmd: String,
+        acp_model: Option<String>,
+        prompt_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>,
+        cancel_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::CancelRequest>,
+        new_session_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::NewSessionForTab>,
+        restart_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::RestartRequest>,
+        shell_mgr: Arc<crate::shell::ShellManager>,
+        wt_connected: bool,
+    ) {
+        self.deferred_acp = Some(DeferredAcpParams {
+            agent_cmd,
+            acp_model,
+            prompt_rx: Some(prompt_rx),
+            cancel_rx: Some(cancel_rx),
+            new_session_rx: Some(new_session_rx),
+            restart_rx: Some(restart_rx),
+            shell_mgr,
+            wt_connected,
+        });
+    }
+
+    /// Try to start the ACP client if login just completed.
+    pub fn try_start_acp(&mut self) {
+        if !self.pending_acp_start {
+            return;
+        }
+        self.pending_acp_start = false;
+
+        if let (Some(ref tx), Some(ref mut params)) = (&self.event_tx, &mut self.deferred_acp) {
+            if let (Some(prompt_rx), Some(cancel_rx), Some(new_session_rx), Some(restart_rx)) = (
+                params.prompt_rx.take(),
+                params.cancel_rx.take(),
+                params.new_session_rx.take(),
+                params.restart_rx.take(),
+            ) {
+                // Resolve the agent executable path (bare "copilot" may not
+                // be on PATH in packaged apps — use WinGet Links fallback).
+                let agent_cmd = resolve_agent_cmd(&params.agent_cmd);
+                let acp_model = params.acp_model.clone();
+                let event_tx = tx.clone();
+                let shell_mgr = Arc::clone(&params.shell_mgr);
+                let wt_connected = params.wt_connected;
+
+                tokio::task::spawn_local(crate::protocol::acp::client::run_acp_client(
+                    agent_cmd,
+                    acp_model,
+                    event_tx,
+                    prompt_rx,
+                    cancel_rx,
+                    new_session_rx,
+                    restart_rx,
+                    shell_mgr,
+                    wt_connected,
+                ));
+            }
+        }
+    }
+
     /// Wire a sender that signals main.rs to run the agent-hooks installer
-    /// (Settings UI → Install button → main.rs spawns
+    /// (Settings UI -> Install button -> main.rs spawns
     /// `agent_hooks_installer::ensure_installed`).
     pub fn set_install_request_tx(&mut self, tx: mpsc::UnboundedSender<()>) {
         self.install_request_tx = Some(tx);
@@ -1263,6 +1394,217 @@ impl App {
         self.last_dispatched_command.clone()
     }
 
+    /// Update the deferred ACP params to use the selected agent's command.
+    fn update_deferred_acp_agent(&mut self, agent_id: &str) {
+        if agent_id.is_empty() {
+            return;
+        }
+        let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+        let new_cmd = if !profile.acp_launch_command.is_empty() {
+            profile.acp_launch_command.to_string()
+        } else {
+            let exe = crate::auth::find_agent_exe(profile);
+            let mut cmd = exe;
+            for flag in profile.acp_flags {
+                cmd.push(' ');
+                cmd.push_str(flag);
+            }
+            cmd
+        };
+        // Resolve to full path
+        let resolved = resolve_agent_cmd(&new_cmd);
+        if let Some(ref mut params) = self.deferred_acp {
+            tracing::info!("Updating ACP agent command: {} -> {}", params.agent_cmd, resolved);
+            params.agent_cmd = resolved;
+        }
+    }
+
+    pub fn set_event_tx(&mut self, tx: mpsc::UnboundedSender<AppEvent>) {
+        self.event_tx = Some(tx);
+    }
+
+    fn spawn_login(&self, agent_id: &str, login_command: &str) {
+        if let Some(ref tx) = self.event_tx {
+            let tx = tx.clone();
+            let cmd = login_command.to_string();
+            let id = agent_id.to_string();
+            tokio::task::spawn_local(async move {
+                let progress_tx = tx.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    use std::io::BufRead;
+
+                    // Parse command into exe + args (e.g. "C:\path\copilot.exe login")
+                    // Handle quoted paths: "C:\path with spaces\copilot.exe" login
+                    let (exe, args) = if cmd.starts_with('"') {
+                        // Quoted path: find closing quote
+                        if let Some(end) = cmd[1..].find('"') {
+                            let exe = &cmd[1..end + 1];
+                            let rest = cmd[end + 2..].trim();
+                            (exe.to_string(), rest.split_whitespace().map(String::from).collect::<Vec<_>>())
+                        } else {
+                            (cmd.clone(), vec![])
+                        }
+                    } else {
+                        let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
+                        (parts[0].to_string(), parts.get(1).map(|s| s.split_whitespace().map(String::from).collect()).unwrap_or_default())
+                    };
+
+                    let mut child = match std::process::Command::new(&exe)
+                        .args(&args)
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped())
+                        .stdin(std::process::Stdio::null())
+                        .spawn()
+                    {
+                        Ok(c) => c,
+                        Err(e) => {
+                            tracing::warn!("spawn_login: failed to spawn '{}': {}", exe, e);
+                            return false;
+                        }
+                    };
+
+                    // Read both stdout and stderr — copilot login may
+                    // write to either depending on buffering/version.
+                    let stdout = child.stdout.take();
+                    let stderr = child.stderr.take();
+
+                    let progress_tx2 = progress_tx.clone();
+                    let stderr_handle = std::thread::spawn(move || {
+                        let mut found_success = false;
+                        if let Some(stderr) = stderr {
+                            let reader = std::io::BufReader::new(stderr);
+                            for line in reader.lines().map_while(Result::ok) {
+                                tracing::debug!("login stderr: {}", line);
+                                if line.contains("enter code") {
+                                    if let Some(code) = line.split("enter code ").nth(1) {
+                                        let code = code.trim_end_matches('.');
+                                        let _ = progress_tx2.send(AppEvent::LoginProgress {
+                                            device_code: code.to_string(),
+                                            verify_url: "https://github.com/login/device".to_string(),
+                                        });
+                                    }
+                                }
+                                if line.contains("Signed in successfully")
+                                    || line.contains("already logged in")
+                                {
+                                    found_success = true;
+                                    break;
+                                }
+                            }
+                        }
+                        found_success
+                    });
+
+                    let mut found_success = false;
+                    if let Some(stdout) = stdout {
+                        let reader = std::io::BufReader::new(stdout);
+                        for line in reader.lines().map_while(Result::ok) {
+                            tracing::debug!("login stdout: {}", line);
+                            if line.contains("enter code") {
+                                if let Some(code) = line.split("enter code ").nth(1) {
+                                    let code = code.trim_end_matches('.');
+                                    let _ = progress_tx.send(AppEvent::LoginProgress {
+                                        device_code: code.to_string(),
+                                        verify_url: "https://github.com/login/device".to_string(),
+                                    });
+                                }
+                            }
+                            if line.contains("Signed in successfully")
+                                || line.contains("already logged in")
+                            {
+                                found_success = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    let stderr_success = stderr_handle.join().unwrap_or(false);
+                    found_success = found_success || stderr_success;
+
+                    if !found_success {
+                        // Wait for process and check exit code
+                        found_success = child.wait().map(|s| s.success()).unwrap_or(false);
+                    } else {
+                        let _ = child.wait();
+                    }
+                    found_success
+                })
+                .await;
+
+                let success = result.unwrap_or(false);
+                let _ = tx.send(AppEvent::LoginComplete { agent_id: id, success });
+            });
+        }
+    }
+
+    fn spawn_auth_check(&self, agent_id: &str) {
+        if let Some(ref tx) = self.event_tx {
+            let tx = tx.clone();
+            let id = agent_id.to_string();
+            tokio::task::spawn_local(async move {
+                let result = crate::auth::check_auth(&id).await;
+                let _ = tx.send(AppEvent::AuthCheckComplete(result));
+            });
+        }
+    }
+
+    /// FRE setup key handler — agent selection + auth trigger.
+    fn handle_fre_setup_key(&mut self, key: KeyEvent) {
+        if let Some(ref mut setup) = self.setup {
+            let agent_count = setup.agents.len();
+            match key.code {
+                KeyCode::Up => {
+                    if setup.selected_index > 0 {
+                        setup.selected_index -= 1;
+                    }
+                }
+                KeyCode::Down => {
+                    if setup.selected_index < agent_count.saturating_sub(1) {
+                        setup.selected_index += 1;
+                    }
+                }
+                KeyCode::Enter => {
+                    if let Some(agent) = setup.agents.get(setup.selected_index) {
+                        let agent_name = agent.name.clone();
+                        let agent_id = crate::agent_registry::KNOWN_AGENTS
+                            .iter()
+                            .find(|p| p.display_name == agent_name)
+                            .map(|p| p.id.to_string())
+                            .unwrap_or_else(|| "copilot".to_string());
+
+                        if agent.is_available {
+                            self.mode = AppMode::Auth;
+                            self.auth = Some(AuthState {
+                                agent_id: agent_id.clone(),
+                                agent_name,
+                                auth_hint: String::new(),
+                                login_command: String::new(),
+                                checking: true,
+                                status_message: String::new(),
+                            });
+                            self.spawn_auth_check(&agent_id);
+                        } else {
+                            let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
+                            self.mode = AppMode::Auth;
+                            self.auth = Some(AuthState {
+                                agent_id: agent_id.clone(),
+                                agent_name,
+                                auth_hint: format!("Install: {}", profile.install_hint),
+                                login_command: String::new(),
+                                checking: false,
+                                status_message: format!("{} is not installed. {}", profile.display_name, profile.install_hint),
+                            });
+                        }
+                    }
+                }
+                KeyCode::Esc => {
+                    self.should_quit = true;
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Setup-mode key handler. Active when `mode == AppMode::Setup`.
     /// Esc / Ctrl+C quit; Up/Down move between rows; Enter on the CLI
     /// row (when missing) signals install_request_tx; 'O' opens the
@@ -1366,7 +1708,7 @@ impl App {
     }
 
     /// Resolve a `SessionId` to the tab that owns it. Returns the active
-    /// tab as a fallback when the session is unknown — covers events
+    /// tab as a fallback when the session is unknown -- covers events
     /// emitted before a session was attached (rare) or pre-session
     /// startup events.
     fn tab_for_session(&self, session_id: &str) -> String {
@@ -1483,6 +1825,9 @@ impl App {
                 }
             }
 
+            // Deferred ACP start after login completes
+            self.try_start_acp();
+
             if self.should_quit {
                 break;
             }
@@ -1581,6 +1926,10 @@ impl App {
             AppEvent::SystemMessage(_) => "system_message",
             AppEvent::DebugPipeMessage(_) => "debug_pipe_message",
             AppEvent::WtEvent { .. } => "wt_event",
+            AppEvent::AgentInstallComplete(_) => "agent_install_complete",
+            AppEvent::AuthCheckComplete(_) => "auth_check_complete",
+            AppEvent::LoginProgress { .. } => "login_progress",
+            AppEvent::LoginComplete { .. } => "login_complete",
             AppEvent::PreflightComplete(_) => "preflight_complete",
             AppEvent::AgentSessionEvent(_) => "agent_session_event",
         }
@@ -1925,6 +2274,8 @@ impl App {
                 if !result.all_passed() {
                     self.mode = AppMode::Setup;
                     self.setup = Some(SetupState {
+                        reason: SetupReason::AgentMissing,
+                        agents: Vec::new(),
                         preflight: result,
                         selected_index: 0,
                         install_in_progress: false,
@@ -2184,6 +2535,71 @@ impl App {
                     self.wt_notifications.pop_front();
                 }
             }
+            AppEvent::AgentInstallComplete(agents) => {
+                if let Some(ref mut setup) = self.setup {
+                    setup.agents = agents;
+                }
+            }
+            AppEvent::LoginProgress { device_code, verify_url } => {
+                if let Some(ref mut auth) = self.auth {
+                    auth.status_message = format!(
+                        "Visit {} and enter code: {}",
+                        verify_url, device_code
+                    );
+                }
+                // Copy device code to clipboard
+                #[cfg(windows)]
+                {
+                    let _ = std::process::Command::new("cmd")
+                        .args(["/C", &format!("echo {}| clip", device_code)])
+                        .spawn();
+                }
+            }
+            AppEvent::LoginComplete { success, .. } => {
+                if success {
+                    // Login succeeded → transition to Chat and start ACP
+                    self.mode = AppMode::Chat;
+                    self.setup = None;
+                    self.state = ConnectionState::Connecting("Starting agent...".to_string());
+                    // Update ACP command to use the selected agent
+                    let agent_id = self.auth.as_ref().map(|a| a.agent_id.clone()).unwrap_or_default();
+                    self.update_deferred_acp_agent(&agent_id);
+                    self.pending_acp_start = true;
+                    self.auth = None;
+                } else {
+                    // Login failed — show auth screen again
+                    if let Some(ref mut auth) = self.auth {
+                        auth.checking = false;
+                    }
+                }
+            }
+            AppEvent::AuthCheckComplete(result) => {
+                use crate::auth::AuthStatus;
+                match result.status {
+                    AuthStatus::Authenticated => {
+                        // Auth OK — transition to Chat and start ACP
+                        let agent_id = self.auth.as_ref().map(|a| a.agent_id.clone()).unwrap_or_default();
+                        self.update_deferred_acp_agent(&agent_id);
+                        self.mode = AppMode::Chat;
+                        self.state = ConnectionState::Connecting("Starting agent...".to_string());
+                        self.pending_acp_start = true;
+                        self.auth = None;
+                        self.setup = None;
+                    }
+                    AuthStatus::NeedsAuth | AuthStatus::Unknown => {
+                        // Show auth screen
+                        self.mode = AppMode::Auth;
+                        self.auth = Some(AuthState {
+                            agent_id: String::new(), // filled by caller
+                            agent_name: result.agent_name,
+                            auth_hint: result.auth_hint,
+                            login_command: result.login_command,
+                            checking: false,
+                            status_message: String::new(),
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -2208,16 +2624,48 @@ impl App {
             "key received"
         );
 
-        // Setup mode (preflight failed): route everything to the setup key
-        // handler. No agent / chat keybindings apply in this mode.
+        // Setup mode: FRE agent selection or preflight wizard
         if self.mode == AppMode::Setup {
-            self.handle_setup_key(key);
+            let is_fre = self.setup.as_ref().map_or(false, |s| s.reason == SetupReason::FirstRun);
+            if is_fre {
+                self.handle_fre_setup_key(key);
+            } else {
+                self.handle_setup_key(key);
+            }
+            return;
+        }
+
+        // Auth mode: Enter to sign in, Esc to go back
+        if self.mode == AppMode::Auth {
+            match key.code {
+                KeyCode::Enter => {
+                    // Extract values before borrowing self again
+                    let login_info = self.auth.as_ref().and_then(|a| {
+                        if !a.checking && !a.login_command.is_empty() {
+                            Some((a.agent_id.clone(), a.login_command.clone()))
+                        } else {
+                            None
+                        }
+                    });
+                    if let Some((agent_id, login_cmd)) = login_info {
+                        if let Some(ref mut auth) = self.auth {
+                            auth.checking = true;
+                        }
+                        self.spawn_login(&agent_id, &login_cmd);
+                    }
+                }
+                KeyCode::Esc => {
+                    self.mode = AppMode::Setup;
+                    self.auth = None;
+                }
+                _ => {}
+            }
             return;
         }
 
         // Agents view (F2): list navigation + Enter to focus pane + Delete
         // to evict an Ended/Historical row. Captures all input while open
-        // — including Esc which closes the view.
+        // -- including Esc which closes the view.
         if self.current_view == View::Agents {
             let count = self.agent_sessions.iter_sorted().len();
             match key.code {
@@ -3572,6 +4020,42 @@ fn publish_event_blocking(json_payload: &str) {
         }
         Err(_) => {},
     }
+}
+
+/// Resolve an agent command like "copilot --acp --stdio" to use the full
+/// path if the bare executable isn't on PATH (common in packaged apps).
+fn resolve_agent_cmd(cmd: &str) -> String {
+    let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
+    let exe = parts[0];
+    let rest = parts.get(1).copied().unwrap_or("");
+
+    // Already a full path?
+    if exe.contains('\\') || exe.contains('/') {
+        return cmd.to_string();
+    }
+
+    // Check WinGet Links + npm global
+    let search_dirs: Vec<std::path::PathBuf> = [
+        std::env::var("LOCALAPPDATA").ok().map(|l| std::path::PathBuf::from(l).join("Microsoft").join("WinGet").join("Links")),
+        std::env::var("APPDATA").ok().map(|a| std::path::PathBuf::from(a).join("npm")),
+        std::env::var("USERPROFILE").ok().map(|h| std::path::PathBuf::from(h).join(".claude-cli").join("CurrentVersion")),
+    ].into_iter().flatten().collect();
+
+    for dir in &search_dirs {
+        for ext in &[".exe", ".cmd"] {
+            let full = dir.join(format!("{}{}", exe, ext));
+            if full.exists() {
+                return if rest.is_empty() {
+                    full.to_string_lossy().to_string()
+                } else {
+                    format!("{} {}", full.to_string_lossy(), rest)
+                };
+            }
+        }
+    }
+
+    // Fallback: return as-is
+    cmd.to_string()
 }
 
 fn truncate(s: &str, max: usize) -> String {

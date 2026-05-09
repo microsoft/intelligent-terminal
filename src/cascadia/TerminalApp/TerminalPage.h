@@ -617,6 +617,11 @@ namespace winrt::TerminalApp::implementation
         void _RepositionAgentPanes();
         static winrt::Microsoft::Terminal::Settings::Model::SplitDirection _AgentPanePositionToSplitDirection(const winrt::hstring& position);
 
+        // First-run experience
+        bool _IsFreRequired() const;
+        void _ShowFreOverlay();
+        void _OnFreCompleted(const winrt::TerminalApp::FreOverlay& sender, const winrt::Windows::Foundation::IInspectable& args);
+
         void _Find(const Tab& tab);
 
         winrt::Microsoft::Terminal::Control::TermControl _CreateNewControlAndContent(const winrt::Microsoft::Terminal::Settings::TerminalSettingsCreateResult& settings,

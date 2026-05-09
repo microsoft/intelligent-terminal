@@ -2,6 +2,7 @@ mod agent_registry;
 mod agent_sessions;
 mod agent_hooks_installer;
 mod app;
+mod auth;
 mod commands;
 mod coordinator;
 mod event;
@@ -71,6 +72,12 @@ struct Cli {
     /// Disable auto-fix on command failure
     #[arg(long)]
     no_autofix: bool,
+
+    /// Enter setup mode with the given reason. The agent pane shows a
+    /// Getting Started screen instead of connecting directly.
+    /// Values: first-run, agent-missing, agent-error, switch-agent
+    #[arg(long)]
+    setup: Option<String>,
 
     // Legacy flags (hidden, backward compat)
     #[arg(long, hide = true)]
@@ -1641,20 +1648,24 @@ async fn run_acp_app(
             // respawns from scratch. State is cleaned up on both sides.
             let (restart_tx, restart_rx) = tokio::sync::mpsc::unbounded_channel();
 
-            // Spawn the ACP client directly. If the agent isn't installed or
-            // fails to authenticate, the error surfaces inline as a Failed
-            // connection state — no FRE / setup wizard.
-            tokio::task::spawn_local(protocol::acp::client::run_acp_client(
-                agent_cmd.clone(),
-                cli.acp_model.clone(),
-                event_tx.clone(),
-                prompt_rx,
-                cancel_rx,
-                new_session_rx,
-                restart_rx,
-                Arc::clone(&shell_mgr),
-                wt_connected,
-            ));
+            // Spawn the ACP client -- but not in setup mode, where the user
+            // hasn't chosen an agent yet. Store params for deferred start.
+            let deferred_channels = if cli.setup.is_none() {
+                tokio::task::spawn_local(protocol::acp::client::run_acp_client(
+                    agent_cmd.clone(),
+                    cli.acp_model.clone(),
+                    event_tx.clone(),
+                    prompt_rx,
+                    cancel_rx,
+                    new_session_rx,
+                    restart_rx,
+                    Arc::clone(&shell_mgr),
+                    wt_connected,
+                ));
+                None
+            } else {
+                Some((cancel_rx, new_session_rx, restart_rx))
+            };
 
             let (recommendation_tx, recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
             let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1679,19 +1690,19 @@ async fn run_acp_app(
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, restart_tx, debug_capture_enabled, wt_connected, autofix_enabled);
 
             // ── Preflight: check the agent CLI before connecting ──────────
-            // If the CLI is missing or unauthenticated we surface the
-            // Setup wizard via AppEvent::PreflightComplete. Sent before
-            // the run loop drains the channel so the wizard appears on
-            // first frame.
-            let preflight_result = preflight::check_agent(&agent_cmd).await;
-            tracing::info!(
-                target: "preflight",
-                agent_id = %preflight_result.agent_id,
-                cli = ?preflight_result.cli_status,
-                auth = ?preflight_result.auth_status,
-                "preflight done"
-            );
-            let _ = event_tx.send(app::AppEvent::PreflightComplete(preflight_result));
+            // Skip preflight when FRE is active — FRE has its own agent
+            // selection + auth flow and doesn't need the preflight wizard.
+            if cli.setup.is_none() {
+                let preflight_result = preflight::check_agent(&agent_cmd).await;
+                tracing::info!(
+                    target: "preflight",
+                    agent_id = %preflight_result.agent_id,
+                    cli = ?preflight_result.cli_status,
+                    auth = ?preflight_result.auth_status,
+                    "preflight done"
+                );
+                let _ = event_tx.send(app::AppEvent::PreflightComplete(preflight_result));
+            }
 
             // ── install-hooks request channel ─────────────────────────────
             // The Settings UI / in-TUI install button signals via this
@@ -1725,6 +1736,91 @@ async fn run_acp_app(
                 .agent_sessions
                 .merge_historical(history_loader::load_all());
 
+            // Enter setup mode if --setup <reason> was passed.
+            tracing::info!("cli.setup = {:?}", cli.setup);
+            if let Some(ref reason_str) = cli.setup {
+                tracing::info!("Entering FRE setup mode: reason={}", reason_str);
+                let reason = app::SetupReason::from_str(reason_str);
+                // Detect available agents on PATH
+                let mut agents = detect_agents();
+
+                // First-run: auto-install Copilot in background if not found
+                if reason == app::SetupReason::FirstRun {
+                    let copilot_found = agents.iter().any(|a| a.name == "GitHub Copilot" && a.is_available);
+                    if !copilot_found {
+                        // Show "Installing..." while winget runs
+                        for agent in &mut agents {
+                            if agent.name == "GitHub Copilot" {
+                                agent.status = "Installing...".to_string();
+                            }
+                        }
+                        let install_tx = event_tx.clone();
+                        tokio::task::spawn_local(async move {
+                            tracing::info!("first-run: Copilot not found, installing via winget...");
+                            let result = tokio::task::spawn_blocking(|| {
+                                std::process::Command::new("winget")
+                                    .args(["install", "GitHub.Copilot", "--accept-source-agreements", "--accept-package-agreements"])
+                                    .stdout(std::process::Stdio::null())
+                                    .stderr(std::process::Stdio::null())
+                                    .status()
+                            })
+                            .await;
+
+                            match result {
+                                Ok(Ok(status)) if status.success() => {
+                                    tracing::info!("first-run: Copilot installed successfully");
+                                }
+                                _ => {
+                                    tracing::warn!("first-run: Copilot install failed or timed out");
+                                }
+                            }
+
+                            // Re-detect agents — detect_agents() checks both PATH
+                            // and WinGet Links, so it will find the fresh install.
+                            let updated = detect_agents();
+                            let _ = install_tx.send(app::AppEvent::AgentInstallComplete(updated));
+                        });
+                    }
+                }
+
+                app_state.mode = app::AppMode::Setup;
+                app_state.setup = Some(app::SetupState {
+                    reason,
+                    agents,
+                    selected_index: 0,
+                    preflight: preflight::PreflightResult {
+                        agent_id: String::new(),
+                        display_name: String::new(),
+                        cli_status: preflight::CheckStatus::Skipped,
+                        cli_path: None,
+                        auth_status: preflight::CheckStatus::Skipped,
+                        install_hint: String::new(),
+                        install_url: String::new(),
+                        auth_hint: String::new(),
+                    },
+                    install_in_progress: false,
+                    install_log: Vec::new(),
+                    install_error: None,
+                });
+            }
+
+            app_state.set_event_tx(event_tx.clone());
+
+            // If in setup mode, store ACP params for deferred start after login.
+            if let Some((cancel_rx, new_session_rx, restart_rx)) = deferred_channels {
+                let (_deferred_prompt_tx, deferred_prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+                app_state.set_acp_params(
+                    agent_cmd.clone(),
+                    cli.acp_model.clone(),
+                    deferred_prompt_rx,
+                    cancel_rx,
+                    new_session_rx,
+                    restart_rx,
+                    Arc::clone(&shell_mgr),
+                    wt_connected,
+                );
+            }
+
             if let Some((pane_id, tab_id, window_id)) = pane_identity {
                 app_state.pane_id = Some(pane_id);
                 app_state.tab_id = Some(tab_id);
@@ -1755,4 +1851,84 @@ async fn run_acp_app(
             app_state.run(terminal, event_rx, ui_event_rx).await
         })
         .await
+}
+
+/// Detect which agent CLIs are available.
+/// Checks both the current process PATH (`where`) and the WinGet Links
+/// directory, since the latter may not be in PATH for packaged apps or
+/// when an agent was just installed in the same session.
+fn detect_agents() -> Vec<app::DetectedAgent> {
+    use crate::agent_registry::KNOWN_AGENTS;
+
+    let winget_links = std::env::var("LOCALAPPDATA")
+        .ok()
+        .map(|local| {
+            std::path::PathBuf::from(local)
+                .join("Microsoft")
+                .join("WinGet")
+                .join("Links")
+        });
+
+    // npm global bin (where `npm install -g` puts executables)
+    let npm_global = std::env::var("APPDATA")
+        .ok()
+        .map(|appdata| std::path::PathBuf::from(appdata).join("npm"));
+
+    // Claude Code custom install path
+    let claude_cli = std::env::var("USERPROFILE")
+        .ok()
+        .map(|home| std::path::PathBuf::from(home).join(".claude-cli").join("CurrentVersion"));
+
+    KNOWN_AGENTS
+        .iter()
+        .map(|profile| {
+            let found = profile.exe_search_order.iter().any(|ext| {
+                let exe_name = format!("{}{}", profile.id, ext);
+
+                // 1. Check current process PATH
+                let on_path = std::process::Command::new("where")
+                    .arg(&exe_name)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false);
+
+                // 2. Check WinGet Links directory (covers packaged apps
+                //    and freshly-installed agents in the same session)
+                let in_winget = winget_links
+                    .as_ref()
+                    .map(|dir| dir.join(&exe_name).exists())
+                    .unwrap_or(false);
+
+                // 3. Check npm global bin (npm install -g puts .cmd files here)
+                let in_npm = npm_global
+                    .as_ref()
+                    .map(|dir| dir.join(&exe_name).exists())
+                    .unwrap_or(false);
+
+                // 4. Check Claude CLI custom path (~/.claude-cli/CurrentVersion/)
+                let in_claude_cli = claude_cli
+                    .as_ref()
+                    .map(|dir| dir.join(&exe_name).exists())
+                    .unwrap_or(false);
+
+                on_path || in_winget || in_npm || in_claude_cli
+            });
+
+            let status = if profile.id == "copilot" && found {
+                "Installed by default".to_string()
+            } else if found {
+                "Detected".to_string()
+            } else {
+                "Not found".to_string()
+            };
+
+            app::DetectedAgent {
+                name: profile.display_name.to_string(),
+                status,
+                is_available: found,
+            }
+        })
+        .collect()
 }

@@ -279,6 +279,15 @@
                                   PreviewKeyDown="_KeyDownHandler"
                                   Visibility="Collapsed" />
 
+        <!--  First-run experience overlay. Covers the terminal content area
+              until the user clicks Next. Lazy-loaded to avoid startup cost.  -->
+        <local:FreOverlay x:Name="FreOverlayElement"
+                          Grid.Row="2"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          x:Load="False"
+                          Visibility="Collapsed" />
+
         <!--
             A TeachingTip with IsLightDismissEnabled="True" will immediately
             dismiss itself if the window is unfocused (In Xaml Islands). This is

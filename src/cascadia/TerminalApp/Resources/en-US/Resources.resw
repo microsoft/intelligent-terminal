@@ -963,4 +963,61 @@
   <data name="AgentNotConfiguredSubtitle" xml:space="preserve">
     <value>No AI agent could be found. Install an agent CLI (e.g. copilot, gemini) and make sure it is on your PATH, or configure one in Settings &gt; AI Agents.</value>
   </data>
+  <data name="FreOverlay_Title" xml:space="preserve">
+    <value>New in Intelligent Terminal</value>
+  </data>
+  <data name="FreOverlay_Card1Title" xml:space="preserve">
+    <value>Welcome to Intelligent Terminal</value>
+  </data>
+  <data name="FreOverlay_Card1Description" xml:space="preserve">
+    <value>Set up your built-in assistant to help you right where you work</value>
+  </data>
+  <data name="FreOverlay_Card2Title" xml:space="preserve">
+    <value>Auto error detection</value>
+  </data>
+  <data name="FreOverlay_Card2Description" xml:space="preserve">
+    <value>Agent pane always has context and is ready with your favorite agent CLI</value>
+  </data>
+  <data name="FreOverlay_Card3Title" xml:space="preserve">
+    <value>Session management</value>
+  </data>
+  <data name="FreOverlay_Card3Description" xml:space="preserve">
+    <value>Session management helps you track agents and jump back into prior sessions</value>
+  </data>
+  <data name="FreOverlay_Card4Title" xml:space="preserve">
+    <value>Quick agent commands</value>
+  </data>
+  <data name="FreOverlay_Card4Description" xml:space="preserve">
+    <value>Command palette can kick off background tabs</value>
+  </data>
+  <data name="FreOverlay_DetailTitle" xml:space="preserve">
+    <value>Welcome to Intelligent Terminal</value>
+  </data>
+  <data name="FreOverlay_DetailDescription" xml:space="preserve">
+    <value>Set up your built-in assistant to help you explain errors, draft commands, and unblock tasks right where you work.</value>
+  </data>
+  <data name="FreOverlay_Detail2Title" xml:space="preserve">
+    <value>Auto error detection</value>
+  </data>
+  <data name="FreOverlay_Detail2Description" xml:space="preserve">
+    <value>Agent pane always has context and is ready with your favorite agent CLI.</value>
+  </data>
+  <data name="FreOverlay_Detail3Title" xml:space="preserve">
+    <value>Session management</value>
+  </data>
+  <data name="FreOverlay_Detail3Description" xml:space="preserve">
+    <value>Session management helps you track agents and jump back into prior sessions.</value>
+  </data>
+  <data name="FreOverlay_Detail4Title" xml:space="preserve">
+    <value>Quick agent commands</value>
+  </data>
+  <data name="FreOverlay_Detail4Description" xml:space="preserve">
+    <value>Use the command palette to quickly run agent-powered tasks from anywhere in your terminal.</value>
+  </data>
+  <data name="FreOverlay_DetailLink" xml:space="preserve">
+    <value>Learn more about Intelligent Terminal.</value>
+  </data>
+  <data name="FreOverlay_NextButton" xml:space="preserve">
+    <value>Start exploring</value>
+  </data>
 </root>

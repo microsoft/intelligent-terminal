@@ -42,7 +42,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     ]));
     lines.push(Line::default());
 
-    // ΓöÇΓöÇ Check 1: CLI installed ΓöÇΓöÇ
+    // ── Check 1: CLI installed ──
     let cli_indicator = if setup.selected_index == 0 { ">" } else { " " };
     let cli_indicator_style = if setup.selected_index == 0 {
         SELECTED_INDICATOR
@@ -56,10 +56,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 Some(path) => format!("Found at {}", path),
                 None => "Installed".to_string(),
             };
-            ("Γ£ô", PASS_STYLE, detail)
+            ("\u{2714}", PASS_STYLE, detail)
         }
-        CheckStatus::Failed(reason) => ("Γ£ù", FAIL_STYLE, reason.clone()),
-        CheckStatus::Checking => ("Γáï", CHECK_STYLE, "Checking...".to_string()),
+        CheckStatus::Failed(reason) => ("\u{2717}", FAIL_STYLE, reason.clone()),
+        CheckStatus::Checking => ("\u{280B}", CHECK_STYLE, "Checking...".to_string()),
         CheckStatus::Skipped => ("-", SKIP_STYLE, "Skipped".to_string()),
     };
 
@@ -77,7 +77,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     if matches!(pf.cli_status, CheckStatus::Failed(_)) {
         if setup.install_in_progress {
             // Spinner + "installing" message
-            let spinner_frames = ["Γáï", "ΓáÖ", "Γá╣", "Γá╕", "Γá╝", "Γá┤", "Γáª", "Γáº", "Γáç", "ΓáÅ"];
+            let spinner_frames = ["\u{280B}", "\u{2819}", "\u{2839}", "\u{2838}", "\u{283C}", "\u{2834}", "\u{2826}", "\u{2827}", "\u{2807}", "\u{280F}"];
             let frame = spinner_frames[(app.activity_frame as usize) % spinner_frames.len()];
             lines.push(Line::from(vec![
                 Span::styled("      ", HINT_STYLE),
@@ -138,7 +138,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
     lines.push(Line::default());
 
-    // ΓöÇΓöÇ Check 2: Authentication ΓöÇΓöÇ
+    // ── Check 2: Authentication ──
     let auth_indicator = if setup.selected_index == 1 { ">" } else { " " };
     let auth_indicator_style = if setup.selected_index == 1 {
         SELECTED_INDICATOR
@@ -147,9 +147,9 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let (auth_icon, auth_icon_style, auth_detail) = match &pf.auth_status {
-        CheckStatus::Passed => ("Γ£ô", PASS_STYLE, "Authenticated".to_string()),
-        CheckStatus::Failed(reason) => ("Γ£ù", FAIL_STYLE, reason.clone()),
-        CheckStatus::Checking => ("Γáï", CHECK_STYLE, "Checking...".to_string()),
+        CheckStatus::Passed => ("\u{2714}", PASS_STYLE, "Authenticated".to_string()),
+        CheckStatus::Failed(reason) => ("\u{2717}", FAIL_STYLE, reason.clone()),
+        CheckStatus::Checking => ("\u{280B}", CHECK_STYLE, "Checking...".to_string()),
         CheckStatus::Skipped => {
             let reason = if matches!(pf.cli_status, CheckStatus::Failed(_)) {
                 "(requires CLI first)".to_string()
@@ -179,16 +179,16 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
     lines.push(Line::default());
 
-    // ΓöÇΓöÇ Separator and actions ΓöÇΓöÇ
+    // ── Separator and actions ──
     let separator_width = area.width.saturating_sub(4) as usize;
     lines.push(Line::from(Span::styled(
-        format!("  {}", "ΓöÇ".repeat(separator_width.min(40))),
+        format!("  {}", "\u{2500}".repeat(separator_width.min(40))),
         HINT_STYLE,
     )));
 
     // Footer hint
     let footer = if matches!(pf.cli_status, CheckStatus::Failed(_)) && pf.agent_id == "copilot" {
-        "  Use Γåæ/Γåô to navigate. Press Enter to install. Esc to quit."
+        "  Use \u{2193}/\u{2191} to navigate. Press Enter to install. Esc to quit."
     } else {
         "  After fixing, close and reopen Windows Terminal."
     };

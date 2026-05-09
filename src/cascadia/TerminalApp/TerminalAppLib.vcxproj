@@ -83,6 +83,9 @@
     <Page Include="AgentPaneContent.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="FreOverlay.xaml">
+      <SubType>Designer</SubType>
+    </Page>
   </ItemGroup>
   <!-- ========================= Headers ======================== -->
   <ItemGroup>
@@ -186,6 +189,9 @@
     </ClInclude>
     <ClInclude Include="AgentPaneContent.h">
       <DependentUpon>AgentPaneContent.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="FreOverlay.h">
+      <DependentUpon>FreOverlay.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="WindowsPackageManagerFactory.h" />
     <ClInclude Include="WtaProcessLauncher.h" />
@@ -313,6 +319,10 @@
       <DependentUpon>AgentPaneContent.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
+    <ClCompile Include="FreOverlay.cpp">
+      <DependentUpon>FreOverlay.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </ClCompile>
 
   </ItemGroup>
   <!-- ========================= idl Files ======================== -->
@@ -386,6 +396,10 @@
     </Midl>
     <Midl Include="AgentPaneContent.idl">
       <DependentUpon>AgentPaneContent.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Midl>
+    <Midl Include="FreOverlay.idl">
+      <DependentUpon>FreOverlay.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Midl>
   </ItemGroup>
