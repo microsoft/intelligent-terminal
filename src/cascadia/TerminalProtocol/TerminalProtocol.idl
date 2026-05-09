@@ -24,7 +24,7 @@ namespace Microsoft.Terminal.Protocol
 
     struct PaneInfo
     {
-        UInt32 PaneId;
+        Guid SessionId;
         UInt32 TabId;
         UInt64 WindowId;
         String Title;
@@ -42,7 +42,7 @@ namespace Microsoft.Terminal.Protocol
 
     struct PaneOutput
     {
-        UInt32 PaneId;
+        Guid SessionId;
         String Content;
         Int32 LineCount;
         Boolean Truncated;
@@ -55,7 +55,7 @@ namespace Microsoft.Terminal.Protocol
 
     struct ProcessStatus
     {
-        UInt32 PaneId;
+        Guid SessionId;
         String State;
         UInt32 Pid;
         Int32 ExitCode;
@@ -64,7 +64,7 @@ namespace Microsoft.Terminal.Protocol
 
     struct SessionVariable
     {
-        UInt32 PaneId;
+        Guid SessionId;
         String Name;
         String Value;
         Boolean Exists;
@@ -73,7 +73,7 @@ namespace Microsoft.Terminal.Protocol
     struct TabCreationResult
     {
         UInt32 TabId;
-        UInt32 PaneId;
+        Guid SessionId;
         UInt64 WindowId;
         UInt32 Pid;
     };
@@ -111,21 +111,21 @@ namespace Microsoft.Terminal.Protocol
         WindowInfo[] ListWindows();
         TabInfo[] ListTabs(UInt64 windowIdFilter);
         PaneInfo[] ListPanes(UInt64 windowIdFilter, UInt32 tabIdFilter);
-        PaneOutput ReadPaneOutput(UInt32 paneId, String source, Int32 maxLines);
-        ProcessStatus GetProcessStatus(UInt32 paneId);
-        SessionVariable GetSessionVariable(UInt32 paneId, String name);
+        PaneOutput ReadPaneOutput(Guid sessionId, String source, Int32 maxLines);
+        ProcessStatus GetProcessStatus(Guid sessionId);
+        SessionVariable GetSessionVariable(Guid sessionId, String name);
         String GetSettings();
 
         // Mutations
         TabCreationResult CreateTab(UInt64 windowId, String profile, String commandline, String title, String startingDirectory, Boolean suppressAppTitle, Boolean background);
-        TabCreationResult SplitPane(UInt32 paneId, String direction, Single size, String profile, String commandline, Boolean background);
-        void ClosePane(UInt32 paneId);
+        TabCreationResult SplitPane(Guid sessionId, String direction, Single size, String profile, String commandline, Boolean background);
+        void ClosePane(Guid sessionId);
         // SendInput moved off the COM interface — see TerminalProtocolPipeServer.
         // Only the wta processes WT itself launches (with an inherited pipe pair)
         // can drive SendInput. Any caller that needs keystroke injection must
         // route through that wta — wtcli's send-keys verb has been removed.
-        void FocusPane(UInt32 paneId);
-        void SetSessionVariable(UInt32 paneId, String name, String value);
+        void FocusPane(Guid sessionId);
+        void SetSessionVariable(Guid sessionId, String name, String value);
         String SetSettings(String settingsContent);
 
         // Interactive

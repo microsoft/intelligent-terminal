@@ -58,6 +58,22 @@ namespace winrt::TerminalApp::implementation
         return 0;
     }
 
+    // Get the connection SessionId for a terminal pane, or empty guid for non-terminal panes.
+    static winrt::guid _getSessionIdFromPane(const std::shared_ptr<Pane>& pane)
+    {
+        if (const auto termContent = pane->GetContent().try_as<TerminalApp::TerminalPaneContent>())
+        {
+            if (const auto control = termContent.GetTermControl())
+            {
+                if (const auto conn = control.Connection())
+                {
+                    return conn.SessionId();
+                }
+            }
+        }
+        return {};
+    }
+
     uint32_t TerminalPage::TabCount() const
     {
         return [this]() -> IAsyncOperation<uint32_t> {
@@ -118,7 +134,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        result.PaneId = effectivePane->ContentId().value();
+        result.SessionId = _getSessionIdFromPane(effectivePane);
         result.TabId = focusedTabIdx.value();
         result.IsActive = true;
         result.IsAgentPane = effectivePane->IsAgentPane();
@@ -167,7 +183,16 @@ namespace winrt::TerminalApp::implementation
             info.TabId = i;
             info.Title = tab.Title();
             info.IsActive = focusedIdx.has_value() && (focusedIdx.value() == i);
-            info.PaneCount = tabImpl->GetLeafPaneCount();
+            // Count terminal panes only (those with a SessionId).
+            uint32_t terminalPaneCount = 0;
+            if (const auto rootPane = tabImpl->GetRootPane())
+            {
+                rootPane->WalkTree([&](const auto& pane) {
+                    if (_getSessionIdFromPane(pane) != winrt::guid{})
+                        terminalPaneCount++;
+                });
+            }
+            info.PaneCount = terminalPaneCount;
             tabs.Append(info);
         }
 
@@ -203,11 +228,14 @@ namespace winrt::TerminalApp::implementation
                 if (!pane->GetContent())
                     return; // Skip branch nodes
 
+                const auto sid = _getSessionIdFromPane(pane);
+                if (sid == winrt::guid{})
+                    return; // Skip non-terminal panes
+
                 Protocol::PaneInfo info{};
-                info.PaneId = pane->ContentId().value();
+                info.SessionId = sid;
                 info.TabId = tabIdx;
                 info.IsAgentPane = pane->IsAgentPane();
-                // When the active pane is an agent, report the source pane as active instead.
                 info.IsActive = activeIsAgent
                     ? pane->IsSourceOfAgentPane()
                     : (activePane == pane);
@@ -235,11 +263,6 @@ namespace winrt::TerminalApp::implementation
                         info.Cwd = termControl.CurrentWorkingDirectory();
                     }
                 }
-                else
-                {
-                    info.Title = pane->GetContent().Title();
-                    info.Profile = L"";
-                }
 
                 panes.Append(info);
             });
@@ -248,7 +271,7 @@ namespace winrt::TerminalApp::implementation
         co_return panes;
     }
 
-    IAsyncOperation<Protocol::PaneOutput> TerminalPage::ReadProtocolPaneOutput(uint32_t paneId, hstring source, int32_t maxLines)
+    IAsyncOperation<Protocol::PaneOutput> TerminalPage::ReadProtocolPaneOutput(winrt::guid sessionId, hstring source, int32_t maxLines)
     {
         auto strong = get_strong();
         const auto sourceStr = winrt::to_string(source);
@@ -271,13 +294,13 @@ namespace winrt::TerminalApp::implementation
             if (!rootPane)
                 continue;
 
-            const auto foundPane = rootPane->FindPaneByContentId(paneId);
+            const auto foundPane = rootPane->FindPaneBySessionId(sessionId);
             if (!foundPane)
                 continue;
 
             const auto termControl = foundPane->GetTerminalControl();
             if (!termControl)
-                co_return result; // PaneId == 0 signals not-ready
+                co_return result; // empty SessionId signals not-ready
 
             try
             {
@@ -287,7 +310,7 @@ namespace winrt::TerminalApp::implementation
                     // shell prompt (command + output, bracketed by FTCS
                     // marks). Avoids leaking arbitrary trailing buffer
                     // content (older commands, secrets) to external agents.
-                    result.PaneId = paneId;
+                    result.SessionId = sessionId;
                     const auto lastPrompt = termControl.ReadLastPrompt();
                     auto lastPromptStr = winrt::to_string(lastPrompt);
                     if (lastPromptStr.empty())
@@ -319,14 +342,14 @@ namespace winrt::TerminalApp::implementation
             }
             catch (...)
             {
-                co_return result; // PaneId == 0 signals error
+                co_return result; // empty SessionId signals error
             }
 
-            result.PaneId = paneId;
+            result.SessionId = sessionId;
             break;
         }
 
-        if (result.PaneId == 0)
+        if (result.SessionId == winrt::guid{})
             co_return result; // not found
 
         // Move off UI thread for string processing.
@@ -386,7 +409,7 @@ namespace winrt::TerminalApp::implementation
         co_return result;
     }
 
-    IAsyncOperation<Protocol::ProcessStatus> TerminalPage::GetProtocolProcessStatus(uint32_t paneId)
+    IAsyncOperation<Protocol::ProcessStatus> TerminalPage::GetProtocolProcessStatus(winrt::guid sessionId)
     {
         auto strong = get_strong();
 
@@ -404,11 +427,11 @@ namespace winrt::TerminalApp::implementation
             if (!rootPane)
                 continue;
 
-            const auto foundPane = rootPane->FindPaneByContentId(paneId);
+            const auto foundPane = rootPane->FindPaneBySessionId(sessionId);
             if (!foundPane)
                 continue;
 
-            result.PaneId = paneId;
+            result.SessionId = sessionId;
 
             const auto termControl = foundPane->GetTerminalControl();
             if (!termControl)
@@ -456,10 +479,10 @@ namespace winrt::TerminalApp::implementation
             co_return result;
         }
 
-        co_return result; // empty PaneId = not found
+        co_return result; // empty SessionId = not found
     }
 
-    IAsyncOperation<Protocol::SessionVariable> TerminalPage::GetProtocolSessionVariable(uint32_t paneId, hstring name)
+    IAsyncOperation<Protocol::SessionVariable> TerminalPage::GetProtocolSessionVariable(winrt::guid sessionId, hstring name)
     {
         auto strong = get_strong();
 
@@ -477,11 +500,11 @@ namespace winrt::TerminalApp::implementation
             if (!rootPane)
                 continue;
 
-            const auto foundPane = rootPane->FindPaneByContentId(paneId);
+            const auto foundPane = rootPane->FindPaneBySessionId(sessionId);
             if (!foundPane)
                 continue;
 
-            result.PaneId = paneId;
+            result.SessionId = sessionId;
             result.Name = name;
 
             const auto value = foundPane->GetSessionVariable(name);
@@ -499,14 +522,14 @@ namespace winrt::TerminalApp::implementation
             co_return result;
         }
 
-        co_return result; // empty PaneId = not found
+        co_return result; // empty SessionId = not found
     }
 
     // ============================================================================
     // Mutations — return typed structs or bool
     // ============================================================================
 
-    IAsyncOperation<bool> TerminalPage::SetProtocolSessionVariable(uint32_t paneId, hstring name, hstring value)
+    IAsyncOperation<bool> TerminalPage::SetProtocolSessionVariable(winrt::guid sessionId, hstring name, hstring value)
     {
         auto strong = get_strong();
 
@@ -522,7 +545,7 @@ namespace winrt::TerminalApp::implementation
             if (!rootPane)
                 continue;
 
-            const auto foundPane = rootPane->FindPaneByContentId(paneId);
+            const auto foundPane = rootPane->FindPaneBySessionId(sessionId);
             if (!foundPane)
                 continue;
 
@@ -564,7 +587,7 @@ namespace winrt::TerminalApp::implementation
             const auto rootPane = tabImpl->GetRootPane();
             if (rootPane)
             {
-                result.PaneId = rootPane->ContentId().value();
+                result.SessionId = _getSessionIdFromPane(rootPane);
                 result.Pid = _getPidFromPane(rootPane);
             }
         }
@@ -572,7 +595,7 @@ namespace winrt::TerminalApp::implementation
         co_return result;
     }
 
-    IAsyncOperation<Protocol::TabCreationResult> TerminalPage::SplitProtocolPane(uint32_t paneId, SplitDirection direction, float size, NewTerminalArgs args, bool background)
+    IAsyncOperation<Protocol::TabCreationResult> TerminalPage::SplitProtocolPane(winrt::guid sessionId, SplitDirection direction, float size, NewTerminalArgs args, bool background)
     {
         auto strong = get_strong();
 
@@ -591,7 +614,7 @@ namespace winrt::TerminalApp::implementation
             if (!rootPane)
                 continue;
 
-            const auto foundPane = rootPane->FindPaneByContentId(paneId);
+            const auto foundPane = rootPane->FindPaneBySessionId(sessionId);
             if (!foundPane)
                 continue;
 
@@ -604,15 +627,14 @@ namespace winrt::TerminalApp::implementation
             if (!newPane)
                 co_return result;
 
-            // Capture new pane info before moving it into the split.
-            const auto newPaneContentId = newPane->ContentId().value();
             const auto newPanePid = _getPidFromPane(newPane);
+            auto newPaneRef = newPane; // copy shared_ptr before move
 
             _SplitPane(tabImpl, direction, size, std::move(newPane), /*focusNewPane=*/!background);
             _tabContent.UpdateLayout(); // Force synchronous terminal initialization
 
             result.TabId = tabIdx;
-            result.PaneId = newPaneContentId;
+            result.SessionId = _getSessionIdFromPane(newPaneRef);
             result.Pid = newPanePid;
             co_return result;
         }
@@ -620,7 +642,7 @@ namespace winrt::TerminalApp::implementation
         co_return result;
     }
 
-    IAsyncOperation<bool> TerminalPage::CloseProtocolPane(uint32_t paneId)
+    IAsyncOperation<bool> TerminalPage::CloseProtocolPane(winrt::guid sessionId)
     {
         auto strong = get_strong();
 
@@ -636,7 +658,7 @@ namespace winrt::TerminalApp::implementation
             if (!rootPane)
                 continue;
 
-            const auto foundPane = rootPane->FindPaneByContentId(paneId);
+            const auto foundPane = rootPane->FindPaneBySessionId(sessionId);
             if (!foundPane)
                 continue;
 
@@ -647,7 +669,7 @@ namespace winrt::TerminalApp::implementation
         co_return false;
     }
 
-    IAsyncOperation<bool> TerminalPage::SendProtocolInput(uint32_t paneId, hstring text)
+    IAsyncOperation<bool> TerminalPage::SendProtocolInput(winrt::guid sessionId, hstring text)
     {
         auto strong = get_strong();
         // Replace \n with \r — shells expect carriage return (Enter key)
@@ -667,7 +689,7 @@ namespace winrt::TerminalApp::implementation
             if (!rootPane)
                 continue;
 
-            const auto foundPane = rootPane->FindPaneByContentId(paneId);
+            const auto foundPane = rootPane->FindPaneBySessionId(sessionId);
             if (!foundPane)
                 continue;
 
@@ -682,11 +704,11 @@ namespace winrt::TerminalApp::implementation
         co_return false;
     }
 
-    // Switch focus to `paneId`: if it lives in a non-active tab, switch tabs
+    // Switch focus to `sessionId`: if it lives in a non-active tab, switch tabs
     // first; then focus the pane within its tab and programmatically focus
     // its TermControl. Used by the recommendation executor so that hitting
     // "Run" follows focus to the destination pane.
-    IAsyncOperation<bool> TerminalPage::FocusProtocolPane(uint32_t paneId)
+    IAsyncOperation<bool> TerminalPage::FocusProtocolPane(winrt::guid sessionId)
     {
         auto strong = get_strong();
 
@@ -702,12 +724,16 @@ namespace winrt::TerminalApp::implementation
             if (!rootPane)
                 continue;
 
-            const auto foundPane = rootPane->FindPaneByContentId(paneId);
+            const auto foundPane = rootPane->FindPaneBySessionId(sessionId);
             if (!foundPane)
                 continue;
 
+            const auto paneId = foundPane->Id();
+            if (!paneId)
+                co_return false;
+
             _SetFocusedTab(tab);
-            if (!tabImpl->FocusPane(paneId))
+            if (!tabImpl->FocusPane(paneId.value()))
                 co_return false;
 
             if (const auto termControl = foundPane->GetTerminalControl())

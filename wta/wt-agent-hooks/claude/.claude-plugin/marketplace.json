@@ -1,0 +1,15 @@
+{
+  "name": "wt-local",
+  "description": "Local marketplace populated by wta",
+  "owner": {
+    "name": "Agentic Terminal"
+  },
+  "plugins": [
+    {
+      "name": "wt-agent-hooks",
+      "description": "Forward CLI agent hook events to Windows Terminal for WTA display",
+      "version": "0.1.0",
+      "source": "./wt-agent-hooks"
+    }
+  ]
+}

@@ -180,7 +180,7 @@ impl ShellManager {
 
         // Extract the pane_id from the response
         let pane_id = result
-            .get("pane_id")
+            .get("session_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("create_tab response missing pane_id: {}", result))?
             .to_string();
@@ -304,7 +304,7 @@ impl ShellManager {
         let output_result = wt
             .request(
                 "read_pane_output",
-                serde_json::json!({ "pane_id": pane_id }),
+                serde_json::json!({ "session_id": pane_id }),
             )
             .await?;
 
@@ -318,7 +318,7 @@ impl ShellManager {
         let status_result = wt
             .request(
                 "get_process_status",
-                serde_json::json!({ "pane_id": pane_id }),
+                serde_json::json!({ "session_id": pane_id }),
             )
             .await?;
 
@@ -444,7 +444,7 @@ impl ShellManager {
                 }
             };
             let wt = self.wt()?;
-            wt.request("close_pane", serde_json::json!({ "pane_id": pane_id }))
+            wt.request("close_pane", serde_json::json!({ "session_id": pane_id }))
                 .await?;
         } else {
             let terminals = self.terminals.lock().unwrap();
@@ -530,7 +530,7 @@ impl ShellManager {
         size: Option<f64>,
     ) -> anyhow::Result<serde_json::Value> {
         let mut params = serde_json::Map::new();
-        params.insert("pane_id".into(), pane_id.into());
+        params.insert("session_id".into(), pane_id.into());
         if let Some(cmd) = commandline {
             params.insert("commandline".into(), cmd.into());
         }
@@ -557,7 +557,7 @@ impl ShellManager {
         self.wt()?
             .request(
                 "send_input",
-                serde_json::json!({ "pane_id": pane_id, "text": input }),
+                serde_json::json!({ "session_id": pane_id, "text": input }),
             )
             .await
     }
@@ -569,7 +569,7 @@ impl ShellManager {
         max_lines: Option<u32>,
     ) -> anyhow::Result<serde_json::Value> {
         let mut params = serde_json::Map::new();
-        params.insert("pane_id".into(), pane_id.into());
+        params.insert("session_id".into(), pane_id.into());
         if let Some(n) = max_lines {
             params.insert("max_lines".into(), n.into());
         }
@@ -587,7 +587,7 @@ impl ShellManager {
         pane_id: &str,
     ) -> anyhow::Result<serde_json::Value> {
         let params = serde_json::json!({
-            "pane_id": pane_id,
+            "session_id": pane_id,
             "source": "last_prompt",
         });
         self.wt()?.request("read_pane_output", params).await
@@ -596,7 +596,7 @@ impl ShellManager {
     /// Switch focus to a pane (switching tab if needed).
     pub async fn wt_focus_pane(&self, pane_id: &str) -> anyhow::Result<serde_json::Value> {
         self.wt()?
-            .request("focus_pane", serde_json::json!({ "pane_id": pane_id }))
+            .request("focus_pane", serde_json::json!({ "session_id": pane_id }))
             .await
     }
 

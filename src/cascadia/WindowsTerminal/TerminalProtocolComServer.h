@@ -61,11 +61,11 @@ TerminalProtocolComServer : winrt::implements<TerminalProtocolComServer, Protoco
     winrt::com_array<Protocol::TabInfo> ListTabs(uint64_t windowIdFilter);
     winrt::com_array<Protocol::PaneInfo> ListPanes(uint64_t windowIdFilter,
                                                     uint32_t tabIdFilter);
-    Protocol::PaneOutput ReadPaneOutput(uint32_t paneId,
+    Protocol::PaneOutput ReadPaneOutput(winrt::guid sessionId,
                                          winrt::hstring const& source,
                                          int32_t maxLines);
-    Protocol::ProcessStatus GetProcessStatus(uint32_t paneId);
-    Protocol::SessionVariable GetSessionVariable(uint32_t paneId,
+    Protocol::ProcessStatus GetProcessStatus(winrt::guid sessionId);
+    Protocol::SessionVariable GetSessionVariable(winrt::guid sessionId,
                                                    winrt::hstring const& name);
     winrt::hstring GetSettings();
 
@@ -76,17 +76,17 @@ TerminalProtocolComServer : winrt::implements<TerminalProtocolComServer, Protoco
                                            winrt::hstring const& startingDirectory,
                                            bool suppressAppTitle,
                                            bool background);
-    Protocol::TabCreationResult SplitPane(uint32_t paneId,
+    Protocol::TabCreationResult SplitPane(winrt::guid sessionId,
                                            winrt::hstring const& direction,
                                            float size,
                                            winrt::hstring const& profile,
                                            winrt::hstring const& commandline,
                                            bool background);
-    void ClosePane(uint32_t paneId);
+    void ClosePane(winrt::guid sessionId);
     // SendInput intentionally removed from COM. Keystroke injection is now
     // confined to per-wta secure pipes (TerminalProtocolPipeServer).
-    void FocusPane(uint32_t paneId);
-    void SetSessionVariable(uint32_t paneId,
+    void FocusPane(winrt::guid sessionId);
+    void SetSessionVariable(winrt::guid sessionId,
                             winrt::hstring const& name,
                             winrt::hstring const& value);
     winrt::hstring SetSettings(winrt::hstring const& settingsContent);

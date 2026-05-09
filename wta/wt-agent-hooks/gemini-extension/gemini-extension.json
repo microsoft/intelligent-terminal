@@ -1,0 +1,5 @@
+{
+  "name": "wt-agent-hooks",
+  "version": "0.1.0",
+  "description": "Forward Gemini CLI hook events to Windows Terminal for WTA display"
+}

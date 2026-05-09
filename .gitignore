@@ -294,3 +294,5 @@ profiles.json
 /MSBuildCacheLogs/
 
 tmpclaude-*
+# Per-issue git worktrees created locally
+.worktree/

@@ -25,6 +25,7 @@
 #include <thread>
 #include <unordered_map>
 #include <wil/resource.h>
+#include <winrt/Windows.Foundation.h>
 
 namespace winrt::Microsoft::Terminal::Protocol
 {
@@ -35,7 +36,7 @@ namespace TerminalProtocol
     // Handler for "send_input" — returns true on success, false on
     // pane-not-found / read-only / etc. Throws on protocol error (caller
     // converts to JSON-RPC error envelope).
-    using SendInputHandler = std::function<bool(uint32_t paneId, std::wstring_view text)>;
+    using SendInputHandler = std::function<bool(winrt::guid sessionId, std::wstring_view text)>;
 
     class PipeServer
     {

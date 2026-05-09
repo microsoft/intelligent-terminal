@@ -749,6 +749,26 @@
     <value>Where the agent pane opens relative to your terminal.</value>
     <comment>Supplementary description for the pane position setting.</comment>
   </data>
+  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
+    <value>Agent Hooks</value>
+    <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment>
+  </data>
+  <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
+    <value>Install agent hook scripts</value>
+    <comment>Header for the Agent Hooks install section.</comment>
+  </data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
+    <value>Required for agent session management. Installs hooks into each detected CLI (Copilot, Claude, Gemini) so they report sessions and status to the agent pane. Restart any open agent CLIs after installing.</value>
+    <comment>Description for the Agent Hooks install section.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
+    <value>Install hooks</value>
+    <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment>
+  </data>
+  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
+    <value>Refresh</value>
+    <comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment>
+  </data>
   <data name="Profile_OpacitySlider.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Background opacity</value>
     <comment>Name for a control to determine the level of opacity for the background of the control. The user can choose to make the background of the app more or less opaque.</comment>

@@ -3,6 +3,7 @@ mod pipe_channel;
 mod routed_channel;
 
 pub use cli_channel::CliChannel;
+pub use cli_channel::spawn_wtcli_focus_pane;
 pub use pipe_channel::PipeChannel;
 pub use routed_channel::RoutedChannel;
 pub(crate) use cli_channel::resolve_wtcli_path;

@@ -141,6 +141,20 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+  <!-- Deploy the static wt-agent-hooks bundle next to wta.exe.
+       wta resolves <exe-dir>/wt-agent-hooks/ at runtime via
+       agent_hooks_installer::bundle::candidate_roots(), feeds the per-CLI
+       subfolder directly to `<cli> plugin marketplace add` /
+       `gemini extensions install`, and skips its embedded fallback when
+       the loose copy is present. Excludes hook-debug/ (dev utility, not
+       part of the install bundle) and *.md (developer docs). -->
+  <ItemGroup>
+    <Content Include="$(SolutionDir)wta\wt-agent-hooks\**"
+             Exclude="$(SolutionDir)wta\wt-agent-hooks\hook-debug\**;$(SolutionDir)wta\wt-agent-hooks\**\*.md">
+      <Link>wt-agent-hooks\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
   <Target Name="OpenConsoleStompSourceProjectForWapProject" BeforeTargets="_ConvertItems">
     <ItemGroup>
       <!-- Stomp all "SourceProject" values for all incoming dependencies to flatten the package. -->

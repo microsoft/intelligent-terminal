@@ -228,7 +228,7 @@ Protocol::PaneInfo TerminalProtocolComServer::GetActivePane()
     THROW_HR_IF(E_FAIL, !page);
 
     auto info = page.GetProtocolActivePane().get();
-    THROW_HR_IF(E_FAIL, info.PaneId == 0);
+    THROW_HR_IF(E_FAIL, info.SessionId == winrt::guid{});
 
     // TerminalPage doesn't know the window ID — fill it in here.
     const auto& props = host->Logic().WindowProperties();
@@ -282,9 +282,10 @@ Protocol::AuthResult TerminalProtocolComServer::Authenticate(winrt::hstring cons
 
     Protocol::AuthResult result{};
     result.Authenticated = _authenticated;
-    // 2.0 — IProtocolServer no longer exposes SendInput. Keystroke injection
+    // 2.1 — IProtocolServer no longer exposes SendInput. Keystroke injection
     // is restricted to per-wta secure pipes (TerminalProtocolPipeServer).
-    result.ProtocolVersion = L"2.0";
+    // Pane identifiers are GUIDs (WT_SESSION) instead of UInt32 pane ids.
+    result.ProtocolVersion = L"2.1";
     return result;
 }
 
@@ -395,7 +396,7 @@ winrt::com_array<Protocol::PaneInfo> TerminalProtocolComServer::ListPanes(
 }
 
 Protocol::PaneOutput TerminalProtocolComServer::ReadPaneOutput(
-    uint32_t paneId,
+    winrt::guid sessionId,
     winrt::hstring const& source,
     int32_t maxLines)
 {
@@ -409,8 +410,8 @@ Protocol::PaneOutput TerminalProtocolComServer::ReadPaneOutput(
         if (!page)
             continue;
 
-        auto info = page.ReadProtocolPaneOutput(paneId, effectiveSource, maxLines).get();
-        if (info.PaneId != 0)
+        auto info = page.ReadProtocolPaneOutput(sessionId, effectiveSource, maxLines).get();
+        if (info.SessionId != winrt::guid{})
             return info;
     }
 
@@ -418,7 +419,7 @@ Protocol::PaneOutput TerminalProtocolComServer::ReadPaneOutput(
 }
 
 Protocol::ProcessStatus TerminalProtocolComServer::GetProcessStatus(
-    uint32_t paneId)
+    winrt::guid sessionId)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
@@ -428,8 +429,8 @@ Protocol::ProcessStatus TerminalProtocolComServer::GetProcessStatus(
         if (!page)
             continue;
 
-        auto info = page.GetProtocolProcessStatus(paneId).get();
-        if (info.PaneId != 0)
+        auto info = page.GetProtocolProcessStatus(sessionId).get();
+        if (info.SessionId != winrt::guid{})
             return info;
     }
 
@@ -437,7 +438,7 @@ Protocol::ProcessStatus TerminalProtocolComServer::GetProcessStatus(
 }
 
 Protocol::SessionVariable TerminalProtocolComServer::GetSessionVariable(
-    uint32_t paneId,
+    winrt::guid sessionId,
     winrt::hstring const& name)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
@@ -448,8 +449,8 @@ Protocol::SessionVariable TerminalProtocolComServer::GetSessionVariable(
         if (!page)
             continue;
 
-        auto info = page.GetProtocolSessionVariable(paneId, name).get();
-        if (info.PaneId != 0)
+        auto info = page.GetProtocolSessionVariable(sessionId, name).get();
+        if (info.SessionId != winrt::guid{})
             return info;
     }
 
@@ -510,7 +511,7 @@ Protocol::TabCreationResult TerminalProtocolComServer::CreateTab(
     }
 
     auto cr = page.CreateProtocolTab(newTermArgs, background).get();
-    THROW_HR_IF(E_FAIL, cr.PaneId == 0);
+    THROW_HR_IF(E_FAIL, cr.SessionId == winrt::guid{});
 
     const auto& props = targetHost->Logic().WindowProperties();
     cr.WindowId = props.WindowId();
@@ -518,7 +519,7 @@ Protocol::TabCreationResult TerminalProtocolComServer::CreateTab(
 }
 
 Protocol::TabCreationResult TerminalProtocolComServer::SplitPane(
-    uint32_t paneId,
+    winrt::guid sessionId,
     winrt::hstring const& direction,
     float size,
     winrt::hstring const& profile,
@@ -526,7 +527,7 @@ Protocol::TabCreationResult TerminalProtocolComServer::SplitPane(
     bool background)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    THROW_HR_IF(E_INVALIDARG, paneId == 0);
+    THROW_HR_IF(E_INVALIDARG, sessionId == winrt::guid{});
 
     // Map direction string to SplitDirection enum.
     // Accepts: "right" (default), "left", "up", "down", "auto"/"automatic".
@@ -566,8 +567,8 @@ Protocol::TabCreationResult TerminalProtocolComServer::SplitPane(
         if (!page)
             continue;
 
-        auto cr = page.SplitProtocolPane(paneId, splitDir, size, newTermArgs, background).get();
-        if (cr.PaneId == 0)
+        auto cr = page.SplitProtocolPane(sessionId, splitDir, size, newTermArgs, background).get();
+        if (cr.SessionId == winrt::guid{})
             continue; // pane not in this window
 
         const auto& props = host->Logic().WindowProperties();
@@ -578,10 +579,10 @@ Protocol::TabCreationResult TerminalProtocolComServer::SplitPane(
     winrt::throw_hresult(E_FAIL);
 }
 
-void TerminalProtocolComServer::ClosePane(uint32_t paneId)
+void TerminalProtocolComServer::ClosePane(winrt::guid sessionId)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    THROW_HR_IF(E_INVALIDARG, paneId == 0);
+    THROW_HR_IF(E_INVALIDARG, sessionId == winrt::guid{});
 
     for (const auto& host : s_emperor->GetWindows())
     {
@@ -589,17 +590,17 @@ void TerminalProtocolComServer::ClosePane(uint32_t paneId)
         if (!page)
             continue;
 
-        if (page.CloseProtocolPane(paneId).get())
+        if (page.CloseProtocolPane(sessionId).get())
             return;
     }
 
     winrt::throw_hresult(E_FAIL);
 }
 
-void TerminalProtocolComServer::FocusPane(uint32_t paneId)
+void TerminalProtocolComServer::FocusPane(winrt::guid sessionId)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    THROW_HR_IF(E_INVALIDARG, paneId == 0);
+    THROW_HR_IF(E_INVALIDARG, sessionId == winrt::guid{});
 
     for (const auto& host : s_emperor->GetWindows())
     {
@@ -607,7 +608,7 @@ void TerminalProtocolComServer::FocusPane(uint32_t paneId)
         if (!page)
             continue;
 
-        if (page.FocusProtocolPane(paneId).get())
+        if (page.FocusProtocolPane(sessionId).get())
             return;
     }
 
@@ -615,12 +616,12 @@ void TerminalProtocolComServer::FocusPane(uint32_t paneId)
 }
 
 void TerminalProtocolComServer::SetSessionVariable(
-    uint32_t paneId,
+    winrt::guid sessionId,
     winrt::hstring const& name,
     winrt::hstring const& value)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    THROW_HR_IF(E_INVALIDARG, paneId == 0);
+    THROW_HR_IF(E_INVALIDARG, sessionId == winrt::guid{});
     THROW_HR_IF(E_INVALIDARG, name.empty());
 
     for (const auto& host : s_emperor->GetWindows())
@@ -629,7 +630,7 @@ void TerminalProtocolComServer::SetSessionVariable(
         if (!page)
             continue;
 
-        if (page.SetProtocolSessionVariable(paneId, name, value).get())
+        if (page.SetProtocolSessionVariable(sessionId, name, value).get())
             return;
     }
 

@@ -16,6 +16,7 @@ use crate::coordinator::{
     RecommendationSet,
 };
 use crate::pane_context::PaneContext;
+use crate::preflight::{CheckStatus, PreflightResult};
 use crate::protocol::acp::client::{
     prompt_timing_log, CancelRequest, NewSessionForTab, PromptSubmission, RestartRequest,
 };
@@ -59,6 +60,10 @@ pub enum ChatMessage {
     },
     Plan(Vec<PlanEntry>),
     Error(String),
+    /// Informational WT event surfaced inline in the chat (e.g. shell exit
+    /// codes, OSC sequences). Distinct from `Error` so we can theme it
+    /// differently and skip autofix wiring.
+    AgentEvent(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -123,6 +128,152 @@ impl WtNotification {
     pub fn should_auto_dismiss(&self) -> bool {
         self.severity == WtEventSeverity::Informational && self.age_ticks > 42
     }
+}
+
+/// Open a URL in the user's default browser. Used by Setup mode's
+/// "press O to open install URL" key handler.
+fn open_url_in_browser(url: &str) -> std::io::Result<()> {
+    std::process::Command::new("cmd")
+        .args(["/c", "start", "", url])
+        .spawn()?;
+    Ok(())
+}
+
+/// Route a parsed `agent_event` payload into the AgentSessionRegistry.
+///
+/// `pane_session_id` is the **WT pane GUID** ($env:WT_SESSION in the
+/// originating pane), carried in the COM broadcast as
+/// `params.session_id`. It is NOT the CLI agent's own session id.
+/// The agent's session id arrives as `params.agent_session_id` (the
+/// `asid` local) and is what we use as the registry key when known —
+/// see the module-level docs in `agent_sessions.rs` for the
+/// distinction.
+///
+/// Returns `true` if the registry was updated and the UI should redraw.
+pub fn route_agent_event_to_registry(
+    reg: &mut crate::agent_sessions::AgentSessionRegistry,
+    pane_session_id: &str,
+    params: &serde_json::Value,
+) -> bool {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    use std::path::PathBuf;
+
+    let event = params.get("event").and_then(|v| v.as_str()).unwrap_or("");
+    if !event.starts_with("agent.") {
+        tracing::debug!(target: "agent_route", event = %event, "skipped: not agent.*");
+        return false;
+    }
+
+    let cli_source = CliSource::parse(params.get("cli_source").and_then(|v| v.as_str()));
+    let asid       = params.get("agent_session_id").and_then(|v| v.as_str()).unwrap_or("");
+    let key        = reg.resolve_or_synthesize_key(asid, pane_session_id);
+    let key_for_refresh = key.clone();
+    tracing::info!(
+        target: "agent_route",
+        event = %event,
+        asid = %asid,
+        key = %key,
+        pane_session_id = %pane_session_id,
+        cli_source = ?cli_source,
+        "routing"
+    );
+
+    let payload = params.get("payload").cloned().unwrap_or(serde_json::Value::Null);
+    let cwd = payload.get("cwd")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let cwd_label = cwd.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+
+    let session_known = reg.has_session(&key);
+    let synth_title: String = if session_known {
+        String::new()
+    } else {
+        cwd_label.clone()
+    };
+    let needs_synthetic_start = event != "agent.session.started" && !session_known;
+    if needs_synthetic_start {
+        reg.apply(SessionEvent::SessionStarted {
+            key: key.clone(),
+            cli_source: cli_source.clone(),
+            pane_session_id: pane_session_id.to_string(),
+            cwd: cwd.clone(),
+            title: synth_title.clone(),
+        });
+    }
+
+    if event == "agent.session.started" && !asid.is_empty() {
+        reg.drop_synthetic_for_pane(pane_session_id);
+    }
+
+    let ev = match event {
+        "agent.session.started" | "agent.session.start" => SessionEvent::SessionStarted {
+            key,
+            cli_source,
+            pane_session_id: pane_session_id.to_string(),
+            cwd,
+            title: synth_title,
+        },
+        "agent.tool.starting" => {
+            let tool_name = payload.get("tool_name").or_else(|| payload.get("toolName"))
+                .and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if crate::agent_sessions::is_user_input_tool(&tool_name) {
+                reg.apply(SessionEvent::ToolStarting { key: key.clone(), tool_name });
+                let message = payload.get("tool_input")
+                    .and_then(|ti| ti.get("question")
+                        .or_else(|| ti.get("prompt"))
+                        .or_else(|| ti.get("message")))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("waiting for user input")
+                    .to_string();
+                SessionEvent::Notification { key, message }
+            } else {
+                SessionEvent::ToolStarting { key, tool_name }
+            }
+        },
+        "agent.prompt.submit" => SessionEvent::ToolStarting {
+            key,
+            tool_name: "prompt".to_string(),
+        },
+        "agent.tool.completed" | "agent.tool.finished" | "agent.tool.failed"
+        | "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
+        "agent.notification"   => SessionEvent::Notification {
+            key,
+            message: payload.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        },
+        "agent.session.stopped" | "agent.session.end" => SessionEvent::SessionStopped {
+            key,
+            reason: payload.get("reason").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        },
+        "agent.error" => SessionEvent::ConnectionFailed {
+            pane_session_id: pane_session_id.to_string(),
+            reason: payload.get("error").and_then(|v| v.as_str())
+                .or_else(|| payload.get("message").and_then(|v| v.as_str()))
+                .unwrap_or("agent error").to_string(),
+        },
+        _ => return reg.take_dirty(),
+    };
+
+    reg.apply(ev);
+
+    // Upgrade synthetic title from disk if the CLI has now written one.
+    if reg.title_is_synthetic(&key_for_refresh) {
+        if let Some(cli) = reg.cli_source_for(&key_for_refresh) {
+            if let Some(disk_title) = crate::history_loader::lookup_title_for_session(cli, &key_for_refresh) {
+                reg.upgrade_title_if_synthetic(&key_for_refresh, &disk_title);
+            }
+        }
+    }
+
+    let dirty = reg.take_dirty();
+    tracing::info!(
+        target: "agent_route",
+        event = %event,
+        dirty = dirty,
+        session_count = reg.iter_sorted().len(),
+        "applied"
+    );
+    dirty
 }
 
 /// Classify a WT protocol event into a notification.
@@ -361,6 +512,10 @@ pub enum AppEvent {
         pane_id: String,
         params: serde_json::Value,
     },
+    /// Result of `preflight::check_agent` run by main.rs before the TUI
+    /// loop starts. If `all_passed()` is false the App switches into
+    /// `AppMode::Setup` so the user can install / authenticate the CLI.
+    PreflightComplete(PreflightResult),
 }
 
 // --- Per-tab session storage ---
@@ -743,6 +898,77 @@ pub struct App {
     // a `session_id`, the App looks up the owning tab and writes to that
     // `TabSession`. Replaces M1's `inflight_tab_id` slot.
     session_to_tab: HashMap<String, String>,
+    // ── Agent management view state (re-applied on top of theirs) ──
+    /// Live & historical CLI agent sessions. Populated from `agent_event`
+    /// hook payloads via `route_agent_event_to_registry`.
+    pub agent_sessions: crate::agent_sessions::AgentSessionRegistry,
+    /// Current top-level view: chat (default) vs the F2 Agents picker.
+    pub current_view: View,
+    /// Selection state for the Agents view list widget.
+    pub agents_list_state: ratatui::widgets::ListState,
+    // Onboarding: signals main.rs to install agent hook plugins on demand.
+    install_request_tx: Option<mpsc::UnboundedSender<()>>,
+    /// Source pane GUID (set from `WTA_SOURCE_SESSION_ID` env var by the
+    /// launching pane). Used by autofix to attribute which pane originated
+    /// the failing command we're about to fix.
+    pub source_session_id: Option<String>,
+    /// Source pane working directory (set from `WTA_SOURCE_CWD`).
+    pub source_cwd: Option<String>,
+    /// When true, surface raw `agent_event` payloads in the chat as
+    /// `ChatMessage::AgentEvent` for diagnostics. Controlled by the
+    /// `WTA_LOG_AGENT_EVENT` env var (1/true/yes).
+    pub log_agent_events: bool,
+    /// Top-level mode: Chat (normal) vs Setup (preflight failed).
+    pub mode: AppMode,
+    /// Active Setup wizard state (Some iff `mode == AppMode::Setup`).
+    pub setup: Option<SetupState>,
+    /// Spinner tick counter used by Setup mode (per-tab `activity_frame`
+    /// drives chat-mode spinners; this one is for the wizard view which
+    /// has no tab context). Bumped from the Tick handler when in Setup.
+    pub activity_frame: u8,
+}
+
+/// Top-level UI view selector. Toggled with F2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    Chat,
+    Agents,
+}
+
+impl Default for View {
+    fn default() -> Self {
+        View::Chat
+    }
+}
+
+/// App-level mode. Setup mode covers the whole pane (no chat/input/agents)
+/// while we wait for the user to install / authenticate the agent CLI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppMode {
+    /// Normal agent chat / Agents view.
+    Chat,
+    /// Setup wizard (agent CLI missing or not authenticated).
+    Setup,
+}
+
+impl Default for AppMode {
+    fn default() -> Self {
+        AppMode::Chat
+    }
+}
+
+/// State for the setup wizard screen, populated from `preflight::check_agent`.
+#[derive(Debug, Clone)]
+pub struct SetupState {
+    pub preflight: PreflightResult,
+    /// Which check row is currently selected (0 = CLI, 1 = Auth).
+    pub selected_index: usize,
+    /// True while a `winget install` task is running.
+    pub install_in_progress: bool,
+    /// Tail of the install command's output (last ~6 lines).
+    pub install_log: Vec<String>,
+    /// Error message from the most recent install attempt (cleared on retry).
+    pub install_error: Option<String>,
 }
 
 impl App {
@@ -795,6 +1021,136 @@ impl App {
             inflight_autofix_generation: None,
             tab_sessions,
             session_to_tab: HashMap::new(),
+            agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
+            current_view: View::Chat,
+            agents_list_state: ratatui::widgets::ListState::default(),
+            install_request_tx: None,
+            source_session_id: None,
+            source_cwd: None,
+            log_agent_events: false,
+            mode: AppMode::Chat,
+            setup: None,
+            activity_frame: 0,
+        }
+    }
+
+    /// Wire a sender that signals main.rs to run the agent-hooks installer
+    /// (Settings UI → Install button → main.rs spawns
+    /// `agent_hooks_installer::ensure_installed`).
+    pub fn set_install_request_tx(&mut self, tx: mpsc::UnboundedSender<()>) {
+        self.install_request_tx = Some(tx);
+    }
+
+    /// Trigger an install-hooks request. No-op if no channel is wired
+    /// (e.g. running outside the packaged app).
+    #[allow(dead_code)]
+    pub fn request_install_hooks(&self) {
+        if let Some(tx) = &self.install_request_tx {
+            let _ = tx.send(());
+        }
+    }
+
+    /// Enter handler for the F2 Agents view: focus the underlying WT pane
+    /// for the selected row. For terminal-state rows (Ended / Historical)
+    /// we currently no-op — resume support requires per-CLI flag handling
+    /// (see `dispatch_resume` in HEAD) and will be re-applied separately.
+    fn activate_agent_session(&mut self, s: &crate::agent_sessions::AgentSession) {
+        use crate::agent_sessions::AgentStatus::*;
+        tracing::info!(
+            target: "agents_view",
+            key = %s.key,
+            status = ?s.status,
+            pane_session_id = ?s.pane_session_id,
+            cli = ?s.cli_source,
+            "activate_agent_session: Enter on row",
+        );
+        match s.status {
+            Idle | Working | Attention | Error => {
+                if let Some(pane) = &s.pane_session_id {
+                    crate::shell::wt_channel::spawn_wtcli_focus_pane(pane);
+                } else {
+                    tracing::warn!(
+                        target: "agents_view",
+                        key = %s.key,
+                        "live row has no pane_session_id; Enter is a no-op",
+                    );
+                }
+            }
+            Ended | Historical => {
+                tracing::debug!(
+                    target: "agents_view",
+                    key = %s.key,
+                    "Enter on terminal-state row: resume not yet wired in this build",
+                );
+            }
+        }
+    }
+
+    /// Setup-mode key handler. Active when `mode == AppMode::Setup`.
+    /// Esc / Ctrl+C quit; Up/Down move between rows; Enter on the CLI
+    /// row (when missing) signals install_request_tx; 'O' opens the
+    /// install URL in the system browser.
+    fn handle_setup_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.should_quit = true;
+            }
+            KeyCode::Esc => {
+                self.should_quit = true;
+            }
+            KeyCode::Enter => {
+                let should_install = self
+                    .setup
+                    .as_ref()
+                    .map(|s| {
+                        s.selected_index == 0
+                            && s.preflight.cli_status != CheckStatus::Passed
+                            && !s.install_in_progress
+                            && s.preflight.agent_id == "copilot"
+                    })
+                    .unwrap_or(false);
+
+                if should_install {
+                    if let Some(tx) = &self.install_request_tx {
+                        let _ = tx.send(());
+                        if let Some(ref mut setup) = self.setup {
+                            setup.install_in_progress = true;
+                            setup.install_error = None;
+                            setup.install_log.clear();
+                            setup
+                                .install_log
+                                .push("Starting GitHub Copilot installation...".to_string());
+                        }
+                    }
+                }
+            }
+            KeyCode::Char('o') | KeyCode::Char('O') => {
+                if let Some(ref setup) = self.setup {
+                    if setup.selected_index == 0
+                        && setup.preflight.cli_status != CheckStatus::Passed
+                    {
+                        let url = setup.preflight.install_url.clone();
+                        if !url.is_empty() {
+                            let _ = open_url_in_browser(&url);
+                        }
+                    }
+                }
+            }
+            KeyCode::Up => {
+                if let Some(ref mut setup) = self.setup {
+                    if setup.selected_index > 0 {
+                        setup.selected_index -= 1;
+                    }
+                }
+            }
+            KeyCode::Down => {
+                if let Some(ref mut setup) = self.setup {
+                    if setup.selected_index < 1 {
+                        setup.selected_index += 1;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1048,6 +1404,7 @@ impl App {
             AppEvent::SystemMessage(_) => "system_message",
             AppEvent::DebugPipeMessage(_) => "debug_pipe_message",
             AppEvent::WtEvent { .. } => "wt_event",
+            AppEvent::PreflightComplete(_) => "preflight_complete",
         }
     }
 
@@ -1122,6 +1479,11 @@ impl App {
                     {
                         tab.activity_frame = (tab.activity_frame + 1) % 10;
                     }
+                }
+                // Setup-mode spinner: ticks while we're showing the wizard
+                // (e.g. spinning during a `winget install` background job).
+                if self.mode == AppMode::Setup {
+                    self.activity_frame = self.activity_frame.wrapping_add(1);
                 }
                 // Age and auto-dismiss notifications
                 for n in self.wt_notifications.iter_mut() {
@@ -1374,12 +1736,54 @@ impl App {
                     self.debug_messages.remove(0);
                 }
             }
+            AppEvent::PreflightComplete(result) => {
+                tracing::info!(
+                    target: "preflight",
+                    agent = %result.agent_id,
+                    cli_status = ?result.cli_status,
+                    auth_status = ?result.auth_status,
+                    "preflight result received"
+                );
+                if !result.all_passed() {
+                    self.mode = AppMode::Setup;
+                    self.setup = Some(SetupState {
+                        preflight: result,
+                        selected_index: 0,
+                        install_in_progress: false,
+                        install_log: Vec::new(),
+                        install_error: None,
+                    });
+                }
+            }
             AppEvent::WtEvent {
                 method,
                 pane_id,
                 params,
             } => {
                 tracing::debug!(target: "autofix", method = %method, pane_id = %pane_id, self_pane_id = ?self.pane_id, "WtEvent");
+
+                // Hook bridge events: fire-and-forget into the agent registry
+                // so the F2 Agents view stays current. Unrelated to autofix /
+                // tab routing; runs before the same-pane skip because we want
+                // to record events from our own pane too.
+                if method == "agent_event" {
+                    let _ = route_agent_event_to_registry(
+                        &mut self.agent_sessions,
+                        pane_id.as_str(),
+                        &params,
+                    );
+                    // Diagnostics aid: surface the raw event payload in the
+                    // active tab's chat so a developer can correlate hook
+                    // wire-format with registry behavior. Off by default.
+                    if self.log_agent_events {
+                        let detail = serde_json::to_string(&params)
+                            .unwrap_or_else(|_| "<unserializable>".to_string());
+                        self.current_tab_mut()
+                            .messages
+                            .push(ChatMessage::AgentEvent(detail));
+                    }
+                    return;
+                }
 
                 // autofix_execute is an inbound UI action ("run the armed
                 // fix now") from TerminalPage. pane_id is the failing
@@ -1529,6 +1933,74 @@ impl App {
             selected_turn = ?self.current_tab().selected_completed_turn_idx,
             "key received"
         );
+
+        // Setup mode (preflight failed): route everything to the setup key
+        // handler. No agent / chat keybindings apply in this mode.
+        if self.mode == AppMode::Setup {
+            self.handle_setup_key(key);
+            return;
+        }
+
+        // Agents view (F2): list navigation + Enter to focus pane + Delete
+        // to evict an Ended/Historical row. Captures all input while open
+        // — including Esc which closes the view.
+        if self.current_view == View::Agents {
+            let count = self.agent_sessions.iter_sorted().len();
+            match key.code {
+                KeyCode::Down => {
+                    let cur = self.agents_list_state.selected().unwrap_or(0);
+                    let next = if count == 0 { 0 } else { (cur + 1).min(count - 1) };
+                    self.agents_list_state.select(Some(next));
+                }
+                KeyCode::Up => {
+                    let cur = self.agents_list_state.selected().unwrap_or(0);
+                    self.agents_list_state.select(Some(cur.saturating_sub(1)));
+                }
+                KeyCode::Enter => {
+                    if let Some(idx) = self.agents_list_state.selected() {
+                        let selected = self
+                            .agent_sessions
+                            .iter_sorted()
+                            .get(idx)
+                            .map(|s| (*s).clone());
+                        if let Some(s) = selected {
+                            self.activate_agent_session(&s);
+                        }
+                    }
+                }
+                KeyCode::Delete => {
+                    if let Some(idx) = self.agents_list_state.selected() {
+                        let target = self
+                            .agent_sessions
+                            .iter_sorted()
+                            .get(idx)
+                            .map(|s| (s.key.clone(), s.status.clone()));
+                        if let Some((key, status)) = target {
+                            use crate::agent_sessions::AgentStatus::*;
+                            // Evicting a live session would orphan its pane,
+                            // so restrict Delete to terminal states. Live
+                            // rows transition to Ended via SessionStopped.
+                            if matches!(status, Ended | Historical) {
+                                self.agent_sessions.remove(&key);
+                                // Keep the cursor in-bounds after eviction.
+                                let new_count = self.agent_sessions.iter_sorted().len();
+                                if new_count == 0 {
+                                    self.agents_list_state.select(None);
+                                } else if idx >= new_count {
+                                    self.agents_list_state.select(Some(new_count - 1));
+                                }
+                            }
+                        }
+                    }
+                }
+                KeyCode::Esc => {
+                    self.current_view = View::Chat;
+                }
+                _ => {}
+            }
+            return;
+        }
+
         // If permission modal is showing, route keys there
         if let Some(ref mut perm) = self.current_tab_mut().permission {
             match key.code {
@@ -1645,6 +2117,22 @@ impl App {
                 if button_count > 1 {
                     self.current_tab_mut().selected_button = (self.current_tab_mut().selected_button + button_count - 1) % button_count;
                 }
+            }
+            KeyCode::F(2) => {
+                // Toggle between Chat (default) and the Agents picker.
+                self.current_view = match self.current_view {
+                    View::Chat => {
+                        // Seed selection on first open if there's anything to select.
+                        if self.agents_list_state.selected().is_none()
+                            && !self.agent_sessions.iter_sorted().is_empty()
+                        {
+                            self.agents_list_state.select(Some(0));
+                        }
+                        View::Agents
+                    }
+                    View::Agents => View::Chat,
+                };
+                return;
             }
             KeyCode::F(12) => {
                 self.show_debug_panel = !self.show_debug_panel;
@@ -2287,7 +2775,7 @@ impl App {
             "method": "autofix_state",
             "params": {
                 "state": "pending",
-                "pane_id": pane_id,
+                "session_id": pane_id,
                 "summary": summary,
             }
         });
@@ -2300,7 +2788,7 @@ impl App {
             "method": "autofix_state",
             "params": {
                 "state": "armed",
-                "pane_id": pane_id,
+                "session_id": pane_id,
                 "fix_preview": fix_preview,
                 "hotkey_hint": "Ctrl+Alt+.",
             }
@@ -2370,7 +2858,7 @@ impl App {
             "method": "autofix_state",
             "params": {
                 "state": "cleared",
-                "pane_id": pane_id,
+                "session_id": pane_id,
             }
         });
         send_wt_protocol_event(evt.to_string());
@@ -2385,7 +2873,7 @@ impl App {
             "method": "autofix_state",
             "params": {
                 "state": "suggested",
-                "pane_id": pane_id,
+                "session_id": pane_id,
                 "suggestion_title": title,
             }
         });
@@ -2971,7 +3459,7 @@ mod tests {
 
     #[test]
     fn classify_connection_failed_is_critical() {
-        let params = json!({"pane_id": "3", "state": "failed"});
+        let params = json!({"session_id": "3", "state": "failed"});
         let n = classify_wt_event("connection_state", "3", &params);
         assert_eq!(n.severity, WtEventSeverity::Critical);
         assert!(n.summary.contains("failed"));
@@ -2980,7 +3468,7 @@ mod tests {
 
     #[test]
     fn classify_connection_closed_is_actionable() {
-        let params = json!({"pane_id": "5", "state": "closed"});
+        let params = json!({"session_id": "5", "state": "closed"});
         let n = classify_wt_event("connection_state", "5", &params);
         assert_eq!(n.severity, WtEventSeverity::Actionable);
         assert!(n.summary.contains("exited"));
@@ -2988,7 +3476,7 @@ mod tests {
 
     #[test]
     fn classify_connection_connected_is_informational() {
-        let params = json!({"pane_id": "1", "state": "connected"});
+        let params = json!({"session_id": "1", "state": "connected"});
         let n = classify_wt_event("connection_state", "1", &params);
         assert_eq!(n.severity, WtEventSeverity::Informational);
         assert!(n.summary.contains("connected"));
@@ -2996,7 +3484,7 @@ mod tests {
 
     #[test]
     fn classify_osc133_command_failed_is_actionable() {
-        let params = json!({"pane_id": "2", "sequence": "osc:133;D;1"});
+        let params = json!({"session_id": "2", "sequence": "osc:133;D;1"});
         let n = classify_wt_event("vt_sequence", "2", &params);
         assert_eq!(n.severity, WtEventSeverity::Actionable);
         assert!(n.summary.contains("Command failed"));
@@ -3005,14 +3493,14 @@ mod tests {
 
     #[test]
     fn classify_osc133_command_success_is_silent() {
-        let params = json!({"pane_id": "2", "sequence": "osc:133;D;0"});
+        let params = json!({"session_id": "2", "sequence": "osc:133;D;0"});
         let n = classify_wt_event("vt_sequence", "2", &params);
         assert!(n.acknowledged); // auto-dismissed
     }
 
     #[test]
     fn classify_osc133_high_exit_code() {
-        let params = json!({"pane_id": "2", "sequence": "osc:133;D;127"});
+        let params = json!({"session_id": "2", "sequence": "osc:133;D;127"});
         let n = classify_wt_event("vt_sequence", "2", &params);
         assert_eq!(n.severity, WtEventSeverity::Actionable);
         assert!(n.summary.contains("exit 127"));
@@ -3021,21 +3509,21 @@ mod tests {
     #[test]
     fn classify_osc133_prompt_marker_is_silent() {
         // OSC 133;A is a prompt marker, not a command finish
-        let params = json!({"pane_id": "2", "sequence": "osc:133;A"});
+        let params = json!({"session_id": "2", "sequence": "osc:133;A"});
         let n = classify_wt_event("vt_sequence", "2", &params);
         assert!(n.acknowledged); // silenced
     }
 
     #[test]
     fn classify_normal_vt_sequence_is_silent() {
-        let params = json!({"pane_id": "7", "sequence": "osc:0;title"});
+        let params = json!({"session_id": "7", "sequence": "osc:0;title"});
         let n = classify_wt_event("vt_sequence", "7", &params);
         assert!(n.acknowledged); // silenced
     }
 
     #[test]
     fn classify_unknown_method_is_informational() {
-        let params = json!({"pane_id": "1"});
+        let params = json!({"session_id": "1"});
         let n = classify_wt_event("something_new", "1", &params);
         assert_eq!(n.severity, WtEventSeverity::Informational);
     }
@@ -3090,7 +3578,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
-            params: json!({"pane_id": "3", "state": "failed"}),
+            params: json!({"session_id": "3", "state": "failed"}),
         });
         assert!(app.show_notification_banner);
         assert_eq!(app.wt_notifications.len(), 1);
@@ -3105,7 +3593,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "5".to_string(),
-            params: json!({"pane_id": "5", "state": "closed"}),
+            params: json!({"session_id": "5", "state": "closed"}),
         });
         assert!(app.show_notification_banner);
         assert!(app.current_tab().messages.iter().any(|m| matches!(m, ChatMessage::System(_))));
@@ -3117,7 +3605,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "1".to_string(),
-            params: json!({"pane_id": "1", "state": "connected"}),
+            params: json!({"session_id": "1", "state": "connected"}),
         });
         assert!(!app.show_notification_banner);
         assert!(app.current_tab().messages.is_empty());
@@ -3131,7 +3619,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "42".to_string(),
-            params: json!({"pane_id": "42", "state": "failed"}),
+            params: json!({"session_id": "42", "state": "failed"}),
         });
         // Events from our own pane should be completely ignored
         assert!(!app.show_notification_banner);
@@ -3145,7 +3633,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
-            params: json!({"pane_id": "3", "state": "failed"}),
+            params: json!({"session_id": "3", "state": "failed"}),
         });
         assert!(app.show_notification_banner);
         assert_eq!(app.unacknowledged_count(), 1);
@@ -3163,13 +3651,13 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "1".to_string(),
-            params: json!({"pane_id": "1", "state": "closed"}),
+            params: json!({"session_id": "1", "state": "closed"}),
         });
         // Second event (more recent)
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "2".to_string(),
-            params: json!({"pane_id": "2", "state": "failed"}),
+            params: json!({"session_id": "2", "state": "failed"}),
         });
 
         let (summary, severity) = app.notification_badge().unwrap();
@@ -3185,7 +3673,7 @@ mod tests {
             app.handle_event(AppEvent::WtEvent {
                 method: "connection_state".to_string(),
                 pane_id: format!("{}", i),
-                params: json!({"pane_id": format!("{}", i), "state": "connected"}),
+                params: json!({"session_id": format!("{}", i), "state": "connected"}),
             });
         }
         assert_eq!(app.wt_notifications.len(), 20);
@@ -3197,7 +3685,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "1".to_string(),
-            params: json!({"pane_id": "1", "state": "connected"}),
+            params: json!({"session_id": "1", "state": "connected"}),
         });
         assert_eq!(app.wt_notifications.len(), 1);
         assert_eq!(app.wt_notifications[0].age_ticks, 0);
@@ -3216,7 +3704,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
-            params: json!({"pane_id": "3", "state": "failed"}),
+            params: json!({"session_id": "3", "state": "failed"}),
         });
         // Simulate many ticks
         for _ in 0..200 {
@@ -3233,7 +3721,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
-            params: json!({"pane_id": "3", "state": "failed"}),
+            params: json!({"session_id": "3", "state": "failed"}),
         });
         assert!(app.show_notification_banner);
 
@@ -3251,7 +3739,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
-            params: json!({"pane_id": "3", "state": "closed"}),
+            params: json!({"session_id": "3", "state": "closed"}),
         });
         assert!(app.active_notification().is_some());
 
@@ -3266,19 +3754,19 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "1".to_string(),
-            params: json!({"pane_id": "1", "state": "connected"}),
+            params: json!({"session_id": "1", "state": "connected"}),
         });
         // Critical from pane 2
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "2".to_string(),
-            params: json!({"pane_id": "2", "state": "failed"}),
+            params: json!({"session_id": "2", "state": "failed"}),
         });
         // Actionable from pane 3
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
-            params: json!({"pane_id": "3", "state": "closed"}),
+            params: json!({"session_id": "3", "state": "closed"}),
         });
 
         assert_eq!(app.wt_notifications.len(), 3);

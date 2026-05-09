@@ -79,5 +79,22 @@ namespace Microsoft.Terminal.Settings.Editor
 
         IInspectable CurrentAgentPanePosition;
         Windows.Foundation.Collections.IObservableVector<EnumEntry> AgentPanePositionList { get; };
+
+        // ── Agent Hooks ──────────────────────────────────────────────────
+        // Detection of each supported CLI on PATH and whether the
+        // wt-agent-hooks plugin / extension is currently installed for it.
+        // Hidden behind a single primary "Install hooks" button that
+        // delegates to `wta.exe install-hooks`.
+        Boolean IsCopilotCliDetected { get; };
+        Boolean IsClaudeCliDetected { get; };
+        Boolean IsGeminiCliDetected { get; };
+        Boolean IsAnyAgentCliDetected { get; };
+        String CopilotHooksStatusText { get; };
+        String ClaudeHooksStatusText { get; };
+        String GeminiHooksStatusText { get; };
+        Boolean IsInstallingAgentHooks { get; };
+        String AgentHooksInstallSummary { get; };
+        void RefreshAgentHooksStatus();
+        void InstallAgentHooks();
     }
 }

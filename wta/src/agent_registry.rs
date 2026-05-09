@@ -69,6 +69,9 @@ pub struct AgentProfile {
     pub auth_check_command: &'static str,
     /// Human-readable auth instructions shown when not logged in.
     pub auth_hint: &'static str,
+    /// Flag the CLI uses to resume a session, e.g. `"--resume"` for Claude.
+    /// Empty when resume is unsupported.
+    pub resume_flag: &'static str,
 }
 
 // ─── Registry ────────────────────────────────────────────────────────────────
@@ -87,6 +90,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         install_url: "https://github.com/github/copilot-cli",
         auth_check_command: "",
         auth_hint: "Run 'copilot' to launch the CLI, then type /login to sign in.",
+        resume_flag: "--resume",
     },
     AgentProfile {
         id: "claude",
@@ -104,6 +108,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         install_url: "https://docs.anthropic.com/en/docs/claude-code",
         auth_check_command: "",
         auth_hint: "Run: claude login",
+        resume_flag: "--resume",
     },
     AgentProfile {
         id: "codex",
@@ -118,6 +123,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         install_hint: "npm install -g @openai/codex",
         install_url: "https://github.com/openai/codex",
         auth_check_command: "",
+        resume_flag: "",
         auth_hint: "Run: codex auth (or set OPENAI_API_KEY)",
     },
     AgentProfile {
@@ -133,6 +139,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         install_url: "https://github.com/google-gemini/gemini-cli",
         auth_check_command: "",
         auth_hint: "Authentication is handled in-protocol during connection.",
+        resume_flag: "--resume",
     },
 ];
 
@@ -149,6 +156,7 @@ pub const DEFAULT_PROFILE: AgentProfile = AgentProfile {
     install_url: "",
     auth_check_command: "",
     auth_hint: "",
+    resume_flag: "",
 };
 
 /// Default ACP command used when no agent is configured.
@@ -321,6 +329,32 @@ pub fn resolve_bare_agent_name(bare_name: &str) -> String {
     bare_name.to_string()
 }
 
+/// Check whether a bare agent CLI (e.g. "gemini") is installed and reachable
+/// via PATH using its profile's preferred extension order. Returns `true` if
+/// at least one matching executable exists. Used to pre-flight resume launches
+/// so missing CLIs surface a friendly error in the UI instead of failing
+/// silently in CreateProcess.
+pub fn is_cli_available(bare_name: &str) -> bool {
+    let trimmed = bare_name.trim().trim_matches('"');
+    if trimmed.is_empty() {
+        return false;
+    }
+    let path_var = match std::env::var("PATH") {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let profile = lookup_profile(trimmed);
+    for ext in profile.exe_search_order {
+        let candidate = format!("{}{}", trimmed, ext);
+        for dir in std::env::split_paths(&path_var) {
+            if dir.join(&candidate).is_file() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 // ─── Display ─────────────────────────────────────────────────────────────────
 
 /// Human-friendly display name for an agent executable.
@@ -364,4 +398,21 @@ pub fn supported_delegate_agents() -> Vec<crate::coordinator::SupportedDelegateA
             ),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_cli_available_handles_empty_string() {
+        assert!(!is_cli_available(""));
+        assert!(!is_cli_available("   "));
+    }
+
+    #[test]
+    fn is_cli_available_returns_false_for_obviously_bogus_name() {
+        // A 64-char random-looking name will not exist on any sane PATH.
+        assert!(!is_cli_available("zzzzz_does_not_exist_anywhere_qqqqq_82h3kf9"));
+    }
 }

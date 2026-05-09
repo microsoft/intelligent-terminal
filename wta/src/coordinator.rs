@@ -828,7 +828,7 @@ async fn send_input_to_new_pane(
     input: &str,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
 ) -> Result<()> {
-    ensure_non_empty("pane_id", pane_id)?;
+    ensure_non_empty("session_id", pane_id)?;
     ensure_non_empty("input", input)?;
     coordinator_log(&format!(
         "open_and_send send_input_begin pane_id={} wait_ms=700 input_chars={} input_preview={:?}",
@@ -940,7 +940,7 @@ fn ensure_non_empty(field: &str, value: &str) -> Result<()> {
 }
 
 fn resolve_created_pane_id(result: &serde_json::Value, action_name: &str) -> Result<String> {
-    value_to_string(result.get("pane_id"))
+    value_to_string(result.get("session_id"))
         .filter(|pane_id| !pane_id.trim().is_empty())
         .ok_or_else(|| {
             anyhow!(
@@ -1629,7 +1629,7 @@ mod tests {
 
     #[test]
     fn resolve_created_pane_id_accepts_numeric_ids() {
-        let result = json!({ "pane_id": 42 });
+        let result = json!({ "session_id": 42 });
 
         let pane_id = resolve_created_pane_id(&result, "create_tab").unwrap();
 

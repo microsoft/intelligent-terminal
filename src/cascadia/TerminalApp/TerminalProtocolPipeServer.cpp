@@ -239,31 +239,25 @@ namespace TerminalProtocol
 
             if (method == "send_input")
             {
-                // pane_id may arrive as either a JSON number or a string
-                // (the wta side passes it through verbatim from agent JSON).
-                uint32_t paneId = 0;
-                if (params.isMember("pane_id"))
+                // session_id is required and must be a string-formatted GUID
+                // (the WT_SESSION env value of the target pane). Pane ids are
+                // GUIDs end-to-end since the PaneId→SessionId migration.
+                winrt::guid sessionId{};
+                if (!params.isMember("session_id") || !params["session_id"].isString())
                 {
-                    const auto& pid = params["pane_id"];
-                    if (pid.isIntegral())
-                    {
-                        paneId = pid.asUInt();
-                    }
-                    else if (pid.isString())
-                    {
-                        try
-                        {
-                            paneId = static_cast<uint32_t>(std::stoul(pid.asString()));
-                        }
-                        catch (...)
-                        {
-                            paneId = 0;
-                        }
-                    }
+                    return _serializeJson(_makeError(id, -32602, "Invalid params: session_id"));
                 }
-                if (paneId == 0)
+                try
                 {
-                    return _serializeJson(_makeError(id, -32602, "Invalid params: pane_id"));
+                    sessionId = winrt::guid{ params["session_id"].asString() };
+                }
+                catch (...)
+                {
+                    return _serializeJson(_makeError(id, -32602, "Invalid params: session_id"));
+                }
+                if (sessionId == winrt::guid{})
+                {
+                    return _serializeJson(_makeError(id, -32602, "Invalid params: session_id"));
                 }
                 if (!params.isMember("text") || !params["text"].isString())
                 {
@@ -275,7 +269,7 @@ namespace TerminalProtocol
                     return _serializeJson(_makeError(id, -32603, "send_input not wired"));
                 }
                 const auto wide = _utf8ToWide(text);
-                const bool ok = _sendInput(paneId, wide);
+                const bool ok = _sendInput(sessionId, wide);
                 Json::Value r;
                 r["ok"] = ok;
                 return _serializeJson(_makeResult(id, std::move(r)));

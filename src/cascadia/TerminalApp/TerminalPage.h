@@ -187,15 +187,15 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneInfo> GetProtocolActivePane();
         Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVector<Microsoft::Terminal::Protocol::TabInfo>> GetProtocolTabs();
         Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVector<Microsoft::Terminal::Protocol::PaneInfo>> GetProtocolPanes(uint32_t tabIdFilter);
-        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneOutput> ReadProtocolPaneOutput(uint32_t paneId, hstring source, int32_t maxLines);
-        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::ProcessStatus> GetProtocolProcessStatus(uint32_t paneId);
-        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::SessionVariable> GetProtocolSessionVariable(uint32_t paneId, hstring name);
-        Windows::Foundation::IAsyncOperation<bool> SetProtocolSessionVariable(uint32_t paneId, hstring name, hstring value);
+        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneOutput> ReadProtocolPaneOutput(winrt::guid sessionId, hstring source, int32_t maxLines);
+        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::ProcessStatus> GetProtocolProcessStatus(winrt::guid sessionId);
+        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::SessionVariable> GetProtocolSessionVariable(winrt::guid sessionId, hstring name);
+        Windows::Foundation::IAsyncOperation<bool> SetProtocolSessionVariable(winrt::guid sessionId, hstring name, hstring value);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> CreateProtocolTab(Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
-        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> SplitProtocolPane(uint32_t paneId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
-        Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(uint32_t paneId);
-        Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(uint32_t paneId, hstring text);
-        Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(uint32_t paneId);
+        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> SplitProtocolPane(winrt::guid sessionId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
+        Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
+        Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(winrt::guid sessionId, hstring text);
+        Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<hstring> ShowProtocolQuickPick(hstring title, hstring choicesJson, bool allowFreeInput);
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
@@ -323,7 +323,7 @@ namespace winrt::TerminalApp::implementation
         };
         struct DiagnosticState
         {
-            std::wstring lastErrorPaneId;
+            std::wstring lastErrorSessionId;
             AutofixState autofixState{ AutofixState::Idle };
             std::wstring fixPreview;        // Armed
             std::wstring hotkeyHint;        // Armed
@@ -456,7 +456,7 @@ namespace winrt::TerminalApp::implementation
 
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);
-        std::string _FindPaneIdForControl(const Microsoft::Terminal::Control::TermControl& control);
+        std::string _FindSessionIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         void _RegisterTabEvents(Tab& hostingTab);
 
         void _DismissTabContextMenus();

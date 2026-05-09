@@ -871,7 +871,7 @@ async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String>
         return None;
     }
 
-    let target_pane_id = json_str_or_num(active.get("pane_id"))?;
+    let target_pane_id = json_str_or_num(active.get("session_id"))?;
     let target_window_title = active
         .get("title")
         .and_then(|v| v.as_str())

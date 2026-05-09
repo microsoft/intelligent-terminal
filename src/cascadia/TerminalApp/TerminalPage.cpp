@@ -1038,7 +1038,7 @@ namespace winrt::TerminalApp::implementation
             entry->pipeServer = std::make_shared<TerminalProtocol::PipeServer>(
                 std::move(wtRead),
                 std::move(wtWrite),
-                [weakThis](uint32_t paneId, std::wstring_view text) -> bool {
+                [weakThis](winrt::guid sessionId, std::wstring_view text) -> bool {
                     auto strong = weakThis.get();
                     if (!strong)
                     {
@@ -1046,7 +1046,7 @@ namespace winrt::TerminalApp::implementation
                     }
                     try
                     {
-                        return strong->SendProtocolInput(paneId, winrt::hstring{ text }).get();
+                        return strong->SendProtocolInput(sessionId, winrt::hstring{ text }).get();
                     }
                     catch (...)
                     {
@@ -1183,7 +1183,7 @@ namespace winrt::TerminalApp::implementation
             entry->pipeServer = std::make_shared<TerminalProtocol::PipeServer>(
                 std::move(launchResult.wtRead),
                 std::move(launchResult.wtWrite),
-                [weakThis](uint32_t paneId, std::wstring_view text) -> bool {
+                [weakThis](winrt::guid sessionId, std::wstring_view text) -> bool {
                     auto strong = weakThis.get();
                     if (!strong)
                     {
@@ -1191,7 +1191,7 @@ namespace winrt::TerminalApp::implementation
                     }
                     try
                     {
-                        return strong->SendProtocolInput(paneId, winrt::hstring{ text }).get();
+                        return strong->SendProtocolInput(sessionId, winrt::hstring{ text }).get();
                     }
                     catch (...)
                     {
@@ -3559,7 +3559,7 @@ namespace winrt::TerminalApp::implementation
     // COM server on the UI thread. Payload shape:
     //   {"type":"event","method":"autofix_state",
     //    "params":{"state":"pending|armed|cleared",
-    //              "pane_id":"...", "summary":"...",
+    //              "session_id":"...", "summary":"...",
     //              "fix_preview":"...", "hotkey_hint":"Ctrl+."}}
     void TerminalPage::OnAutofixStateChanged(hstring eventJson)
     {
@@ -3595,10 +3595,10 @@ namespace winrt::TerminalApp::implementation
             _diagnostics.fixPreview.clear();
             _diagnostics.suggestionTitle.clear();
         }
-        if (params.isMember("pane_id") && params["pane_id"].isString())
+        if (params.isMember("session_id") && params["session_id"].isString())
         {
-            const auto s = params["pane_id"].asString();
-            _diagnostics.lastErrorPaneId.assign(s.begin(), s.end());
+            const auto s = params["session_id"].asString();
+            _diagnostics.lastErrorSessionId.assign(s.begin(), s.end());
         }
         if (params.isMember("fix_preview") && params["fix_preview"].isString())
         {
@@ -3731,7 +3731,7 @@ namespace winrt::TerminalApp::implementation
         evt["type"] = "event";
         evt["method"] = "autofix_execute";
         Json::Value params;
-        params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
+        params["session_id"] = winrt::to_string(_diagnostics.lastErrorSessionId);
         evt["params"] = params;
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
@@ -3978,31 +3978,23 @@ namespace winrt::TerminalApp::implementation
     //      on the right thread
     // Arguments:
     // - term: The newly created TermControl to connect the events for
-    std::string TerminalPage::_FindPaneIdForControl(const TermControl& control)
+    std::string TerminalPage::_FindSessionIdForControl(const TermControl& control)
     {
-        for (uint32_t tabIdx = 0; tabIdx < _tabs.Size(); ++tabIdx)
+        if (const auto conn = control.Connection())
         {
-            const auto tabImpl = _GetTabImpl(_tabs.GetAt(tabIdx));
-            if (!tabImpl)
-                continue;
-            const auto rootPane = tabImpl->GetRootPane();
-            if (!rootPane)
-                continue;
-
-            std::string found;
-            rootPane->WalkTree([&](const auto& pane) {
-                if (!found.empty())
-                    return;
-                if (const auto tc = pane->GetTerminalControl())
-                {
-                    if (tc == control && pane->ContentId().has_value())
-                    {
-                        found = std::to_string(pane->ContentId().value());
-                    }
-                }
-            });
-            if (!found.empty())
-                return found;
+            const auto sid = conn.SessionId();
+            if (sid != winrt::guid{})
+            {
+                // Format as plain GUID string (no braces), matching WT_SESSION.
+                wchar_t buf[40]{};
+                StringFromGUID2(sid, buf, ARRAYSIZE(buf));
+                // StringFromGUID2 produces {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}
+                // Strip braces for plain format.
+                std::wstring ws(buf);
+                if (ws.size() > 2 && ws.front() == L'{' && ws.back() == L'}')
+                    ws = ws.substr(1, ws.size() - 2);
+                return winrt::to_string(winrt::hstring{ ws });
+            }
         }
         return {};
     }
@@ -4039,13 +4031,13 @@ namespace winrt::TerminalApp::implementation
         // Forward VT sequences and connection state changes to protocol clients.
         // This is unconditional — if no pipe client is listening, the event raise is a noop.
         //
-        // We capture a weak ref to the TermControl and resolve the Pane's ContentId
+        // We capture a weak ref to the TermControl and resolve the connection SessionId
         // at event-fire time, because at _RegisterTerminalEvents time the Pane hasn't
         // been created yet (TermControl is set up before the Pane wraps it).
         //
         // VtSequenceReceived fires on the connection reader thread (background).
-        // _FindPaneIdForControl accesses _tabs which has UI thread affinity,
-        // so we dispatch the pane ID lookup + event raise to the UI thread.
+        // _FindSessionIdForControl accesses _tabs which has UI thread affinity,
+        // so we dispatch the session ID lookup + event raise to the UI thread.
         {
             winrt::weak_ref<TermControl> weakTerm{ term };
 
@@ -4055,7 +4047,7 @@ namespace winrt::TerminalApp::implementation
                     if (!strongThis)
                         return;
 
-                    // Dispatch to UI thread: _FindPaneIdForControl accesses _tabs
+                    // Dispatch to UI thread: _FindSessionIdForControl accesses _tabs
                     // which has UI thread affinity.  Fire-and-forget — don't block
                     // the connection reader thread.
                     strongThis->Dispatcher().RunAsync(
@@ -4070,8 +4062,8 @@ namespace winrt::TerminalApp::implementation
                             if (!page->_settings.GlobalSettings().AutoFixEnabled())
                                 return;
 
-                            const auto paneIdStr = page->_FindPaneIdForControl(term2);
-                            if (paneIdStr.empty())
+                            const auto sessionIdStr = page->_FindSessionIdForControl(term2);
+                            if (sessionIdStr.empty())
                                 return;
 
                             auto seqStr = winrt::to_string(seq);
@@ -4090,7 +4082,7 @@ namespace winrt::TerminalApp::implementation
                                     agentParams.isMember("event") &&
                                     agentParams["event"].isString())
                                 {
-                                    agentParams["pane_id"] = paneIdStr;
+                                    agentParams["session_id"] = sessionIdStr;
 
                                     Json::Value evt;
                                     evt["type"] = "event";
@@ -4127,7 +4119,7 @@ namespace winrt::TerminalApp::implementation
                             evt["type"] = "event";
                             evt["method"] = "vt_sequence";
                             Json::Value params;
-                            params["pane_id"] = paneIdStr;
+                            params["session_id"] = sessionIdStr;
                             params["sequence"] = seqStr;
                             evt["params"] = params;
                             Json::StreamWriterBuilder wb;
@@ -4139,31 +4131,39 @@ namespace winrt::TerminalApp::implementation
                 });
 
             term.ConnectionStateChanged(
-                [weakThis = get_weak(), weakTerm](const auto& sender, auto&&) {
+                [weakThis = get_weak(), weakTerm](const auto& /*sender*/, auto&&) {
                     auto strongThis = weakThis.get();
                     if (!strongThis)
                         return;
 
-                    std::string stateStr = "unknown";
-                    if (const auto control = sender.try_as<winrt::Microsoft::Terminal::Control::TermControl>())
+                    // NOTE: `sender` here is NOT the TermControl. TermControl
+                    // bubble-forwards this event from its inner ControlCore via
+                    // BUBBLED_FORWARDED_TYPED_EVENT, which passes the original
+                    // sender through unchanged. So `sender` is the ControlCore
+                    // and `try_as<TermControl>()` always returns null, which
+                    // would leave stateStr permanently "unknown" and the switch
+                    // dead code. Read state from the captured weakTerm instead.
+                    auto control = weakTerm.get();
+                    if (!control)
+                        return;
+
+                    std::string stateStr;
+                    switch (control.ConnectionState())
                     {
-                        switch (control.ConnectionState())
-                        {
-                        case ConnectionState::Connected:
-                            stateStr = "connected";
-                            break;
-                        case ConnectionState::Closed:
-                            stateStr = "closed";
-                            break;
-                        case ConnectionState::Failed:
-                            stateStr = "failed";
-                            break;
-                        default:
-                            return;
-                        }
+                    case ConnectionState::Connected:
+                        stateStr = "connected";
+                        break;
+                    case ConnectionState::Closed:
+                        stateStr = "closed";
+                        break;
+                    case ConnectionState::Failed:
+                        stateStr = "failed";
+                        break;
+                    default:
+                        return;
                     }
 
-                    // Dispatch to UI thread: _FindPaneIdForControl accesses _tabs.
+                    // Dispatch to UI thread: _FindSessionIdForControl accesses _tabs.
                     strongThis->Dispatcher().RunAsync(
                         winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
                         [weakThis, weakTerm, stateStr]() {
@@ -4172,21 +4172,23 @@ namespace winrt::TerminalApp::implementation
                             if (!page)
                                 return;
 
-                            // Autofix pipeline: skip forwarding if disabled at runtime.
-                            if (!page->_settings.GlobalSettings().AutoFixEnabled())
-                                return;
-
-                            const auto paneIdStr = term2
-                                ? page->_FindPaneIdForControl(term2)
+                            // connection_state is pane-lifecycle plumbing that
+                            // wta needs regardless of AutoFix being enabled —
+                            // it drives F2 session-list demotion (PaneClosed)
+                            // when an agent CLI exits and the pane is closed.
+                            // Volume is low (a handful of events per pane
+                            // lifecycle), so always forward.
+                            const auto sessionIdStr = term2
+                                ? page->_FindSessionIdForControl(term2)
                                 : std::string{};
-                            if (paneIdStr.empty())
+                            if (sessionIdStr.empty())
                                 return;
 
                             Json::Value evt;
                             evt["type"] = "event";
                             evt["method"] = "connection_state";
                             Json::Value params;
-                            params["pane_id"] = paneIdStr;
+                            params["session_id"] = sessionIdStr;
                             params["state"] = stateStr;
                             evt["params"] = params;
                             Json::StreamWriterBuilder wb;

@@ -2819,6 +2819,29 @@ std::shared_ptr<Pane> Pane::FindPaneByContentId(const uint32_t contentId)
     return _FindPane([=](const auto& p) { return p->_contentId.has_value() && *p->_contentId == contentId; });
 }
 
+std::shared_ptr<Pane> Pane::FindPaneBySessionId(const winrt::guid& sessionId)
+{
+    if (sessionId == winrt::guid{})
+    {
+        return nullptr;
+    }
+    return _FindPane([&](const auto& p) {
+        if (!p->_IsLeaf() || !p->_content)
+            return false;
+        if (const auto termContent = p->_content.try_as<winrt::TerminalApp::TerminalPaneContent>())
+        {
+            if (const auto control = termContent.GetTermControl())
+            {
+                if (const auto conn = control.Connection())
+                {
+                    return conn.SessionId() == sessionId;
+                }
+            }
+        }
+        return false;
+    });
+}
+
 // Method Description:
 // - Gets the size in pixels of each of our children, given the full size they
 //   should fill. Since these children own their own separators (borders), this

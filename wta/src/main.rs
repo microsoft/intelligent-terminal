@@ -1,9 +1,14 @@
 mod agent_registry;
+mod agent_sessions;
+mod agent_hooks_installer;
 mod app;
 mod commands;
 mod coordinator;
 mod event;
+mod history_loader;
 mod logging;
+mod osc52;
+mod preflight;
 mod protocol;
 mod runtime_paths;
 mod pane_context;
@@ -276,6 +281,55 @@ enum Command {
         #[arg(long)]
         free_input: bool,
     },
+
+    /// Manage the wt-agent-hooks bridge for supported CLI agents
+    /// (Copilot / Claude / Gemini). See `agent_hooks_installer` for
+    /// what each action does.
+    Hooks {
+        #[command(subcommand)]
+        action: HooksAction,
+    },
+}
+
+/// Subcommands for `wta hooks`.
+#[derive(Subcommand, Debug)]
+enum HooksAction {
+    /// (Re-)install the wt-agent-hooks bridge for every supported CLI.
+    Install,
+
+    /// Print per-CLI install state. Returns JSON with `--json`,
+    /// or a human-readable table by default.
+    Status,
+
+    /// Uninstall the bridge for one or all CLIs. Best-effort: missing
+    /// CLIs are skipped at info level. With `--json` returns a structured
+    /// per-CLI result report.
+    Uninstall {
+        /// Which CLI(s) to uninstall for. Default: `all`.
+        #[arg(long, value_enum, default_value_t = HooksCliFilter::All)]
+        cli: HooksCliFilter,
+    },
+}
+
+/// `--cli` filter for `wta hooks uninstall`.
+#[derive(Copy, Clone, Debug, clap::ValueEnum)]
+enum HooksCliFilter {
+    All,
+    Copilot,
+    Claude,
+    Gemini,
+}
+
+impl HooksCliFilter {
+    fn into_scope(self) -> agent_hooks_installer::CliScope {
+        use agent_hooks_installer::{CliKind, CliScope};
+        match self {
+            HooksCliFilter::All => CliScope::All,
+            HooksCliFilter::Copilot => CliScope::One(CliKind::Copilot),
+            HooksCliFilter::Claude => CliScope::One(CliKind::Claude),
+            HooksCliFilter::Gemini => CliScope::One(CliKind::Gemini),
+        }
+    }
 }
 
 // ─── Entry Point ────────────────────────────────────────────────────────────
@@ -381,7 +435,7 @@ async fn main() -> Result<()> {
                 "automatic"
             };
             let mut params = json!({
-                "pane_id": pane_id,
+                "session_id": pane_id,
                 "direction": split_dir,
             });
             if let Some(s) = size {
@@ -401,7 +455,7 @@ async fn main() -> Result<()> {
             let pane_id = resolve_pane_id(&channel, &target).await?;
             let text = translate_keys(&keys);
             channel
-                .request("send_input", json!({ "pane_id": pane_id, "text": text }))
+                .request("send_input", json!({ "session_id": pane_id, "text": text }))
                 .await?;
             Ok(())
         }
@@ -410,7 +464,7 @@ async fn main() -> Result<()> {
         Some(Command::CapturePane { target, max_lines, last_prompt }) => {
             let channel = connect_channel(&pipe_override).await?;
             let pane_id = resolve_pane_id(&channel, &target).await?;
-            let mut params = json!({ "pane_id": pane_id });
+            let mut params = json!({ "session_id": pane_id });
             if let Some(n) = max_lines {
                 params["max_lines"] = json!(n);
             }
@@ -431,7 +485,7 @@ async fn main() -> Result<()> {
             let channel = connect_channel(&pipe_override).await?;
             let pane_id = resolve_pane_id(&channel, &target).await?;
             channel
-                .request("close_pane", json!({ "pane_id": pane_id }))
+                .request("close_pane", json!({ "session_id": pane_id }))
                 .await?;
             if !json_mode {
                 println!("Pane {} closed.", pane_id);
@@ -451,7 +505,7 @@ async fn main() -> Result<()> {
             let channel = connect_channel(&pipe_override).await?;
             let pane_id = resolve_pane_id(&channel, &target).await?;
             let result = channel
-                .request("get_process_status", json!({ "pane_id": pane_id }))
+                .request("get_process_status", json!({ "session_id": pane_id }))
                 .await?;
             print_output(&result, json_mode, format_pane_status);
             Ok(())
@@ -554,9 +608,130 @@ async fn main() -> Result<()> {
             run_listen(&pipe_override, target.as_deref()).await
         }
 
+        // ── Manage agent hooks (install/status/uninstall) ──
+        Some(Command::Hooks { action }) => match action {
+            HooksAction::Install => run_hooks_install(),
+            HooksAction::Status => run_hooks_status(json_mode),
+            HooksAction::Uninstall { cli } => run_hooks_uninstall(cli, json_mode),
+        },
+
         // ── No subcommand = ACP TUI mode (default) ──
         None => run_default_tui(cli, pipe_override).await,
     }
+}
+
+// ─── Hooks subcommand handlers ──────────────────────────────────────────────
+
+fn run_hooks_install() -> Result<()> {
+    // Initialize logging so the install attempt is observable in
+    // %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.
+    let _guard = logging::init("install-hooks");
+    agent_hooks_installer::ensure_installed();
+    println!(
+        "wt-agent-hooks install attempted (idempotent). \
+         Run `wta hooks status` to inspect the result. \
+         Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+    );
+    Ok(())
+}
+
+fn run_hooks_status(json_mode: bool) -> Result<()> {
+    let report = agent_hooks_installer::status();
+    if json_mode {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .unwrap_or_else(|_| serde_json::to_string(&report).unwrap_or_default())
+        );
+    } else {
+        format_hooks_status_human(&report);
+    }
+    Ok(())
+}
+
+fn run_hooks_uninstall(cli: HooksCliFilter, json_mode: bool) -> Result<()> {
+    let report = agent_hooks_installer::uninstall(cli.into_scope());
+    if json_mode {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .unwrap_or_else(|_| serde_json::to_string(&report).unwrap_or_default())
+        );
+    } else {
+        format_hooks_uninstall_human(&report);
+    }
+    Ok(())
+}
+
+fn format_hooks_status_human(r: &agent_hooks_installer::StatusReport) {
+    println!(
+        "bundle source: {}{}",
+        r.bundle_source.kind,
+        r.bundle_source
+            .path
+            .as_deref()
+            .map(|p| format!(" ({})", p))
+            .unwrap_or_default(),
+    );
+    println!();
+    for c in &r.clis {
+        let summary = if !c.binary_on_path {
+            "✗ CLI not on PATH".to_string()
+        } else if c.plugin_installed && c.plugin_enabled && c.marketplace_path_valid {
+            "✓ installed".to_string()
+        } else if c.plugin_installed && !c.marketplace_path_valid {
+            "⚠ marketplace path stale".to_string()
+        } else if c.plugin_installed {
+            "⚠ installed but disabled".to_string()
+        } else {
+            "✗ not installed".to_string()
+        };
+        let detail = format!(
+            "marketplace={}, path_valid={}, plugin={}, enabled={}{}",
+            yn(c.marketplace_registered),
+            yn(c.marketplace_path_valid),
+            yn(c.plugin_installed),
+            yn(c.plugin_enabled),
+            c.detection_fallback
+                .map(|m| format!(", detection={}", m))
+                .unwrap_or_default(),
+        );
+        println!("  {:<10} {:<28}  ({})", c.name, summary, detail);
+        if let Some(p) = c.marketplace_path.as_deref() {
+            println!("    path: {}", p);
+        }
+    }
+}
+
+fn format_hooks_uninstall_human(r: &agent_hooks_installer::UninstallReport) {
+    for c in &r.clis {
+        let summary = if !c.attempted {
+            "skipped (CLI not on PATH)".to_string()
+        } else {
+            let plugin = c
+                .plugin_uninstalled
+                .map(|b| if b { "ok" } else { "failed" })
+                .unwrap_or("-");
+            let mkt = c
+                .marketplace_removed
+                .map(|b| if b { "ok" } else { "failed" })
+                .unwrap_or("-");
+            format!(
+                "plugin={} marketplace={} staging={}",
+                plugin,
+                mkt,
+                if c.staging_dir_removed { "ok" } else { "failed" },
+            )
+        };
+        println!("  {:<10} {}", c.name, summary);
+        for m in &c.messages {
+            println!("    · {}", m);
+        }
+    }
+}
+
+fn yn(b: bool) -> &'static str {
+    if b { "yes" } else { "no" }
 }
 
 // ─── Pipe override (CLI --pipe-name / --pipe-token) ─────────────────────────
@@ -607,7 +782,7 @@ async fn resolve_pane_id(channel: &CliChannel, target: &Option<String>) -> Resul
         None => {
             let result = channel.request("get_active_pane", json!({})).await?;
             let pane_id = result
-                .get("pane_id")
+                .get("session_id")
                 .and_then(|v| match v {
                     serde_json::Value::String(s) => Some(s.clone()),
                     serde_json::Value::Number(n) => Some(n.to_string()),
@@ -767,7 +942,7 @@ fn format_panes_human(val: &serde_json::Value) {
             "PANE_ID", "PID", "ACTIVE", "ROWS", "COLS"
         );
         for p in panes {
-            let id = json_str_or_num(p, "pane_id");
+            let id = json_str_or_num(p, "session_id");
             let pid = p
                 .get("pid")
                 .and_then(|v| v.as_u64())
@@ -803,7 +978,7 @@ fn format_panes_human(val: &serde_json::Value) {
 }
 
 fn format_active_pane(val: &serde_json::Value) {
-    let id = json_str_or_num(val, "pane_id");
+    let id = json_str_or_num(val, "session_id");
     let tab = json_str_or_num(val, "tab_id");
     let win = json_str_or_num(val, "window_id");
     println!("Active pane: {} (tab: {}, window: {})", id, tab, win);
@@ -834,12 +1009,12 @@ fn format_pane_status(val: &serde_json::Value) {
 
 fn format_created_tab(val: &serde_json::Value) {
     let tab_id = json_str_or_num(val, "tab_id");
-    let pane_id = json_str_or_num(val, "pane_id");
+    let pane_id = json_str_or_num(val, "session_id");
     println!("Created tab {} (pane {})", tab_id, pane_id);
 }
 
 fn format_created_pane(val: &serde_json::Value) {
-    let pane_id = json_str_or_num(val, "pane_id");
+    let pane_id = json_str_or_num(val, "session_id");
     println!("Created pane {}", pane_id);
 }
 
@@ -945,7 +1120,7 @@ async fn run_listen(po: &PipeOverride, pane_filter: Option<&str>) -> Result<()> 
         if let Some(filter) = pane_filter {
             let pane_id = msg
                 .get("params")
-                .and_then(|p| p.get("pane_id"))
+                .and_then(|p| p.get("session_id"))
                 .and_then(|v| v.as_str());
             if pane_id != Some(filter) {
                 continue;
@@ -1002,7 +1177,7 @@ async fn delegate_with_context(
     let active = shell_mgr.wt_get_active_pane().await.ok();
     let active_pane_id = active
         .as_ref()
-        .and_then(|v| v.get("pane_id"))
+        .and_then(|v| v.get("session_id"))
         .and_then(|v| match v {
             serde_json::Value::String(s) => Some(s.clone()),
             serde_json::Value::Number(n) => Some(n.to_string()),
@@ -1160,7 +1335,7 @@ async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, Str
             for pane in panes_arr {
                 if let Some(pid) = pane.get("pid").and_then(|v| v.as_u64()) {
                     if pid == our_pid as u64 {
-                        let pane_id = match pane.get("pane_id") {
+                        let pane_id = match pane.get("session_id") {
                             Some(serde_json::Value::String(s)) => s.clone(),
                             Some(serde_json::Value::Number(n)) => n.to_string(),
                             _ => continue,
@@ -1332,7 +1507,7 @@ async fn run_info_mode(po: &PipeOverride) -> Result<()> {
                                             pane.get("pid").and_then(|v| v.as_u64())
                                         {
                                             if pid == our_pid as u64 {
-                                                let pane_id = match pane.get("pane_id") {
+                                                let pane_id = match pane.get("session_id") {
                                                     Some(serde_json::Value::String(s)) => {
                                                         s.clone()
                                                     }
@@ -1434,7 +1609,7 @@ async fn run_acp_app(
                             .to_string();
                         let pane_id = event_json
                             .get("params")
-                            .and_then(|p| p.get("pane_id"))
+                            .and_then(|p| p.get("session_id"))
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
@@ -1503,11 +1678,66 @@ async fn run_acp_app(
             let autofix_enabled = !cli.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, restart_tx, debug_capture_enabled, wt_connected, autofix_enabled);
 
+            // ── Preflight: check the agent CLI before connecting ──────────
+            // If the CLI is missing or unauthenticated we surface the
+            // Setup wizard via AppEvent::PreflightComplete. Sent before
+            // the run loop drains the channel so the wizard appears on
+            // first frame.
+            let preflight_result = preflight::check_agent(&agent_cmd).await;
+            tracing::info!(
+                target: "preflight",
+                agent_id = %preflight_result.agent_id,
+                cli = ?preflight_result.cli_status,
+                auth = ?preflight_result.auth_status,
+                "preflight done"
+            );
+            let _ = event_tx.send(app::AppEvent::PreflightComplete(preflight_result));
+
+            // ── install-hooks request channel ─────────────────────────────
+            // The Settings UI / in-TUI install button signals via this
+            // channel; main.rs runs `agent_hooks_installer::ensure_installed`
+            // off the UI thread so the TUI stays responsive.
+            let (install_req_tx, mut install_req_rx) =
+                tokio::sync::mpsc::unbounded_channel::<()>();
+            tokio::task::spawn_local(async move {
+                while let Some(()) = install_req_rx.recv().await {
+                    tracing::info!(target: "install_hooks", "received install request");
+                    // Run the (potentially slow, IO-bound) installer on the
+                    // blocking pool so we don't park the LocalSet.
+                    let _ = tokio::task::spawn_blocking(|| {
+                        agent_hooks_installer::ensure_installed();
+                    })
+                    .await;
+                }
+            });
+            app_state.set_install_request_tx(install_req_tx);
+
+            // ── seed Agents view from on-disk history ─────────────────────
+            // history_loader scans Claude/Copilot/Gemini per-CLI session
+            // dirs and returns historical AgentSession rows. merge_historical
+            // inserts only those whose key isn't already live.
+            app_state
+                .agent_sessions
+                .merge_historical(history_loader::load_all());
+
             if let Some((pane_id, tab_id, window_id)) = pane_identity {
                 app_state.pane_id = Some(pane_id);
                 app_state.tab_id = Some(tab_id);
                 app_state.window_id = Some(window_id);
             }
+
+            // ── source-pane context (autofix attribution) ─────────────────
+            app_state.source_session_id = std::env::var("WTA_SOURCE_SESSION_ID")
+                .ok()
+                .filter(|s| !s.is_empty());
+            app_state.source_cwd = std::env::var("WTA_SOURCE_CWD")
+                .ok()
+                .filter(|s| !s.is_empty());
+
+            // ── env-gated raw agent_event chat logging (diagnostics) ──────
+            app_state.log_agent_events = std::env::var("WTA_LOG_AGENT_EVENT")
+                .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
+                .unwrap_or(false);
 
             // If a prompt was passed via CLI arg (e.g., from command palette creating
             // a new agent pane), delegate it to a new tab agent on startup.

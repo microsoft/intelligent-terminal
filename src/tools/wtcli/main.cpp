@@ -73,12 +73,33 @@ static Protocol::IProtocolServer ConnectToTerminal(Protocol::AuthResult* outAuth
     }
 }
 
-static uint32_t ResolvePaneId(const Protocol::IProtocolServer& server, const std::string& target)
+static winrt::guid ResolveSessionId(const Protocol::IProtocolServer& server, const std::string& target)
 {
     if (!target.empty())
-        return static_cast<uint32_t>(std::stoul(target));
+    {
+        // Accept both plain and braced GUID formats
+        auto wstr = winrt::to_hstring(target);
+        std::wstring guidStr{ wstr };
+        if (!guidStr.empty() && guidStr[0] != L'{')
+            guidStr = L"{" + guidStr + L"}";
+        GUID g{};
+        if (SUCCEEDED(CLSIDFromString(guidStr.c_str(), &g)))
+            return winrt::guid{ g };
+        fprintf(stderr, "[wtcli] Invalid session ID: %s\n", target.c_str());
+        return {};
+    }
     auto info = server.GetActivePane();
-    return info.PaneId;
+    return info.SessionId;
+}
+
+static std::string GuidToString(const winrt::guid& g)
+{
+    wchar_t buf[40]{};
+    StringFromGUID2(g, buf, ARRAYSIZE(buf));
+    std::wstring ws(buf);
+    if (ws.size() > 2 && ws.front() == L'{' && ws.back() == L'}')
+        ws = ws.substr(1, ws.size() - 2);
+    return winrt::to_string(winrt::hstring{ ws });
 }
 
 static uint64_t GetFirstWindowId(const Protocol::IProtocolServer& server)
@@ -241,7 +262,7 @@ int main()
     int captureMaxLines = 200;
     bool captureLastPrompt = false;
     auto* capturePaneCmd = app.add_subcommand("capture-pane", "Capture pane output")->alias("capturep");
-    capturePaneCmd->add_option("-t,--target", capturePaneTarget, "Pane ID");
+    capturePaneCmd->add_option("-t,--target", capturePaneTarget, "Session ID (GUID)");
     capturePaneCmd->add_option("-l,--max-lines", captureMaxLines, "Max lines");
     capturePaneCmd->add_flag("--last-prompt", captureLastPrompt,
         "Only return the most recent completed shell prompt (command + output, requires OSC 133 shell integration)");
@@ -250,9 +271,9 @@ int main()
         if (!server) return;
         try
         {
-            auto paneId = ResolvePaneId(server, capturePaneTarget);
+            auto sessionId = ResolveSessionId(server, capturePaneTarget);
             const auto sourceArg = captureLastPrompt ? L"last_prompt" : L"scrollback";
-            auto output = server.ReadPaneOutput(paneId, sourceArg, captureMaxLines);
+            auto output = server.ReadPaneOutput(sessionId, sourceArg, captureMaxLines);
             if (jsonMode)
             {
                 PrintJson(PaneOutputToJson(output));
@@ -273,18 +294,18 @@ int main()
     // ── pane-status ──
     std::string paneStatusTarget;
     auto* paneStatusCmd = app.add_subcommand("pane-status", "Show pane process status");
-    paneStatusCmd->add_option("-t,--target", paneStatusTarget, "Pane ID");
+    paneStatusCmd->add_option("-t,--target", paneStatusTarget, "Session ID (GUID)");
     paneStatusCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
         try
         {
-            auto paneId = ResolvePaneId(server, paneStatusTarget);
-            auto status = server.GetProcessStatus(paneId);
+            auto sessionId = ResolveSessionId(server, paneStatusTarget);
+            auto status = server.GetProcessStatus(sessionId);
             if (jsonMode)
             {
                 Json::Value v;
-                v["pane_id"] = static_cast<Json::UInt>(status.PaneId);
+                v["session_id"] = GuidToString(status.SessionId);
                 v["state"] = winrt::to_string(status.State);
                 v["pid"] = static_cast<Json::UInt>(status.Pid);
                 if (status.HasExitCode) v["exit_code"] = status.ExitCode;
@@ -341,7 +362,7 @@ int main()
     bool splitHorizontal = false, splitVertical = false;
     double splitSize = 0.5;
     auto* splitPaneCmd = app.add_subcommand("split-pane", "Split a pane")->alias("splitw");
-    splitPaneCmd->add_option("-t,--target", splitPaneTarget, "Pane ID");
+    splitPaneCmd->add_option("-t,--target", splitPaneTarget, "Session ID (GUID)");
     splitPaneCmd->add_option("-d,--direction", splitPaneDirection, "Split direction: right|left|up|down|auto");
     splitPaneCmd->add_flag("-H,--horizontal", splitHorizontal, "Split horizontally (legacy alias for --direction down)");
     splitPaneCmd->add_flag("-v,--vertical", splitVertical, "Split vertically (legacy alias for --direction right)");
@@ -352,7 +373,7 @@ int main()
         if (!server) return;
         try
         {
-            uint32_t paneId = ResolvePaneId(server, splitPaneTarget);
+            auto sessionId = ResolveSessionId(server, splitPaneTarget);
             // --direction wins over the legacy boolean flags. If neither is
             // given, send "automatic" so the COM server picks the longer
             // dimension (matches the WT default for `splitPane`).
@@ -366,7 +387,7 @@ int main()
             else
                 dir = L"automatic";
             auto result = server.SplitPane(
-                paneId, winrt::hstring{ dir }, static_cast<float>(splitSize),
+                sessionId, winrt::hstring{ dir }, static_cast<float>(splitSize),
                 L"", winrt::to_hstring(splitPaneCommand), true);
             if (jsonMode)
                 PrintJson(CreationResultToJson(result));
@@ -383,24 +404,24 @@ int main()
     // ── kill-pane ──
     std::string killPaneTarget;
     auto* killPaneCmd = app.add_subcommand("kill-pane", "Close a pane")->alias("killp");
-    killPaneCmd->add_option("-t,--target", killPaneTarget, "Pane ID");
+    killPaneCmd->add_option("-t,--target", killPaneTarget, "Session ID (GUID)");
     killPaneCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
         try
         {
-            auto paneId = ResolvePaneId(server, killPaneTarget);
-            server.ClosePane(paneId);
+            auto sessionId = ResolveSessionId(server, killPaneTarget);
+            server.ClosePane(sessionId);
             if (jsonMode)
             {
                 Json::Value v;
                 v["ok"] = true;
-                v["pane_id"] = static_cast<Json::UInt>(paneId);
+                v["session_id"] = GuidToString(sessionId);
                 PrintJson(v);
             }
             else
             {
-                printf("Pane %u closed.\n", paneId);
+                printf("Session %s closed.\n", GuidToString(sessionId).c_str());
             }
         }
         catch (const winrt::hresult_error& e)
@@ -413,24 +434,24 @@ int main()
     // ── focus-pane ──
     std::string focusPaneTarget;
     auto* focusPaneCmd = app.add_subcommand("focus-pane", "Switch focus to a pane")->alias("focusp");
-    focusPaneCmd->add_option("-t,--target", focusPaneTarget, "Pane ID");
+    focusPaneCmd->add_option("-t,--target", focusPaneTarget, "Session ID (GUID)");
     focusPaneCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
         try
         {
-            auto paneId = ResolvePaneId(server, focusPaneTarget);
-            server.FocusPane(paneId);
+            auto sessionId = ResolveSessionId(server, focusPaneTarget);
+            server.FocusPane(sessionId);
             if (jsonMode)
             {
                 Json::Value v;
                 v["ok"] = true;
-                v["pane_id"] = static_cast<Json::UInt>(paneId);
+                v["session_id"] = GuidToString(sessionId);
                 PrintJson(v);
             }
             else
             {
-                printf("Focused pane %u.\n", paneId);
+                printf("Focused pane %s.\n", GuidToString(sessionId).c_str());
             }
         }
         catch (const winrt::hresult_error& e)
@@ -552,20 +573,21 @@ int main()
     int waitInterval = 500;
     int waitTimeout = 0;
     auto* waitForCmd = app.add_subcommand("wait-for", "Wait for a pane to exit");
-    waitForCmd->add_option("-t,--target", waitForTarget, "Pane ID")->required();
+    waitForCmd->add_option("-t,--target", waitForTarget, "Session ID (GUID)")->required();
     waitForCmd->add_option("--interval", waitInterval, "Poll interval (ms)");
     waitForCmd->add_option("--timeout", waitTimeout, "Timeout (seconds, 0=forever)");
     waitForCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        uint32_t paneId = static_cast<uint32_t>(std::stoul(waitForTarget));
+        // Parse target as GUID
+        auto sessionId = ResolveSessionId(server, waitForTarget);
         auto start = std::chrono::steady_clock::now();
 
         while (true)
         {
             try
             {
-                auto status = server.GetProcessStatus(paneId);
+                auto status = server.GetProcessStatus(sessionId);
                 auto state = winrt::to_string(status.State);
                 if (state == "exited")
                 {
@@ -706,7 +728,7 @@ int main()
     // ── send-event ──
     std::string sendEventType, sendEventJson, sendEventPaneTarget;
     auto* sendEventCmd = app.add_subcommand("send-event", "Publish an event to all listeners")->alias("se");
-    sendEventCmd->add_option("-p,--pane", sendEventPaneTarget, "Source pane ID");
+    sendEventCmd->add_option("-p,--pane", sendEventPaneTarget, "Source session ID (GUID)");
     sendEventCmd->add_option("-e,--event", sendEventType, "Event type (e.g. agent.task.started)")->required();
     sendEventCmd->add_option("json", sendEventJson, "Event params as JSON object");
     sendEventCmd->callback([&]() {
@@ -735,9 +757,9 @@ int main()
 
             params["event"] = sendEventType;
             if (!sendEventPaneTarget.empty())
-                params["pane_id"] = sendEventPaneTarget;
+                params["session_id"] = sendEventPaneTarget;
             else
-                params["pane_id"] = std::to_string(ResolvePaneId(server, ""));
+                params["session_id"] = GuidToString(ResolveSessionId(server, ""));
 
             evt["params"] = params;
 
@@ -756,7 +778,7 @@ int main()
     std::string listenTarget;
     std::string listenEventFilter;
     auto* listenCmd = app.add_subcommand("listen", "Stream real-time events from Windows Terminal");
-    listenCmd->add_option("-t,--target", listenTarget, "Filter by pane ID");
+    listenCmd->add_option("-t,--target", listenTarget, "Filter by session ID (GUID)");
     listenCmd->add_option("--event", listenEventFilter, "Filter by event type (supports trailing wildcard, e.g. agent.*)");
     listenCmd->callback([&]() {
         auto server = ConnectToTerminal();
@@ -786,8 +808,8 @@ int main()
                 {
                     if (!listenTarget.empty())
                     {
-                        auto paneId = ev["params"].get("pane_id", "").asString();
-                        if (paneId != listenTarget)
+                        auto sessionId = ev["params"].get("session_id", "").asString();
+                        if (sessionId != listenTarget)
                             return;
                     }
 

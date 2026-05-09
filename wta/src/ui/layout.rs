@@ -1,10 +1,23 @@
 use ratatui::prelude::*;
-use crate::app::App;
+use crate::app::{App, AppMode, View};
 
-use super::{chat, command_popup, debug_panel, input, permission, recommendations};
+use super::{agents_view, chat, command_popup, debug_panel, input, permission, recommendations, setup};
 
-pub fn render(frame: &mut Frame, app: &App) {
+pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
+
+    // Setup mode (preflight failed): full-pane wizard, nothing else drawn.
+    if app.mode == AppMode::Setup {
+        setup::render(frame, app, area);
+        return;
+    }
+
+    // Agents view (F2) takes over the full pane area; chat / input / debug
+    // panel are not drawn in this mode.
+    if app.current_view == View::Agents {
+        agents_view::render(frame, area, &app.agent_sessions, &mut app.agents_list_state);
+        return;
+    }
 
     let (main_area, debug_area) = if app.show_debug_panel {
         let h = Layout::default()
@@ -72,6 +85,11 @@ pub fn render(frame: &mut Frame, app: &App) {
 }
 
 pub fn input_cursor_position(app: &App, area: Rect) -> Option<Position> {
+    // Agents view / Setup view: no input box, so no cursor.
+    if app.current_view == View::Agents || app.mode == AppMode::Setup {
+        return None;
+    }
+
     let main_area = if app.show_debug_panel {
         Layout::default()
             .direction(Direction::Horizontal)

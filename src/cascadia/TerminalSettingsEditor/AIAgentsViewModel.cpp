@@ -8,6 +8,7 @@
 #include "AgentEntry.g.cpp"
 #include "EnumEntry.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentHooksStatus.h"
 
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Foundation::Collections;
@@ -187,6 +188,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _agentPanePositionMap.Insert(winrt::hstring{ value }, entry);
         }
         _agentPanePositionList = winrt::single_threaded_observable_vector<Editor::EnumEntry>(std::move(posEntries));
+
+        // Populate the Agent Hooks section's per-CLI detection + install
+        // state so the UI displays meaningful labels on first paint. The
+        // actual status query shells out to `wta hooks status --json`
+        // off the UI thread; seed a placeholder until it returns so the
+        // user sees something other than empty rows.
+        const winrt::hstring detecting{ L"Detecting…" };
+        _copilotHooksStatus = detecting;
+        _claudeHooksStatus = detecting;
+        _geminiHooksStatus = detecting;
+        RefreshAgentHooksStatus();
     }
 
     AIAgentsViewModel::~AIAgentsViewModel()
@@ -608,5 +620,313 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 _NotifyChanges(L"CurrentAgentPanePosition");
             }
         }
+    }
+
+    // ── Agent Hooks ──────────────────────────────────────────────────────
+    //
+    // Source of truth is `wta hooks status --json` (see Track 2 / wta's
+    // agent_hooks_installer.rs). We spawn it on a background thread,
+    // capture stdout, and feed the response into the pure parser at
+    // src/cascadia/inc/AgentHooksStatus.h. Same JSON contract that
+    // build/scripts/Verify-AgentHooks.ps1 consumes — so the Settings UI
+    // and the verify script can never disagree about install state.
+    //
+    // The single primary "Install hooks" button still delegates to
+    // `wta install-hooks`; afterwards we re-invoke the status query to
+    // refresh the rows.
+
+    std::wstring AIAgentsViewModel::_ResolveWtaExePath()
+    {
+        // Mirrors TerminalPage::_DetectWtaPath: prefer co-located wta.exe
+        // (MSIX-installed scenario), fall back to walking up the running
+        // module path looking for a dev build, then PATH.
+        const auto modulePath = std::filesystem::path{ wil::GetModuleFileNameW<std::wstring>(nullptr) };
+        const auto moduleDir = modulePath.parent_path();
+        std::error_code ec;
+        {
+            const auto sibling = moduleDir / L"wta.exe";
+            if (std::filesystem::exists(sibling, ec))
+            {
+                return sibling.lexically_normal().wstring();
+            }
+        }
+        auto cursor = moduleDir;
+        while (!cursor.empty())
+        {
+            for (const auto& relative : {
+                     std::filesystem::path{ L"wta\\target\\debug\\wta.exe" },
+                     std::filesystem::path{ L"wta\\target\\release\\wta.exe" },
+                 })
+            {
+                const auto candidate = cursor / relative;
+                if (std::filesystem::exists(candidate, ec))
+                {
+                    return candidate.lexically_normal().wstring();
+                }
+            }
+            const auto parent = cursor.parent_path();
+            if (parent == cursor) break;
+            cursor = parent;
+        }
+        wchar_t buffer[MAX_PATH];
+        if (SearchPathW(nullptr, L"wta", L".exe", MAX_PATH, buffer, nullptr) > 0)
+        {
+            return std::wstring{ buffer };
+        }
+        return {};
+    }
+
+    // Spawn `wta.exe <args>` and return its stdout on exit-0; empty
+    // string otherwise. Synchronous; intended to be called from a
+    // resume_background coroutine. Captures via an anonymous pipe with
+    // child's stdout/stderr both routed to it (stderr swallowed
+    // intentionally — we only care about the JSON payload, and any
+    // human-readable error text on stderr would just confuse the
+    // parser).
+    std::string AIAgentsViewModel::_RunWtaCaptureStdout(const std::wstring& wtaPath,
+                                                       const std::wstring& argsAfterExe,
+                                                       DWORD timeoutMs)
+    {
+        if (wtaPath.empty())
+        {
+            return {};
+        }
+
+        SECURITY_ATTRIBUTES sa{};
+        sa.nLength = sizeof(sa);
+        sa.bInheritHandle = TRUE;
+
+        wil::unique_handle readHandle;
+        wil::unique_handle writeHandle;
+        if (!CreatePipe(readHandle.addressof(), writeHandle.addressof(), &sa, 0))
+        {
+            return {};
+        }
+        // The read end must NOT be inherited by the child.
+        if (!SetHandleInformation(readHandle.get(), HANDLE_FLAG_INHERIT, 0))
+        {
+            return {};
+        }
+
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+        si.wShowWindow = SW_HIDE;
+        si.hStdOutput = writeHandle.get();
+        si.hStdError = writeHandle.get();
+        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+        std::wstring cmdline = L"\"" + wtaPath + L"\" " + argsAfterExe;
+        std::wstring mutableCmd = cmdline;
+
+        PROCESS_INFORMATION pi{};
+        const BOOL launched = CreateProcessW(
+            wtaPath.c_str(),
+            mutableCmd.data(),
+            nullptr,
+            nullptr,
+            TRUE, // inherit handles (so the child inherits writeHandle)
+            CREATE_NO_WINDOW,
+            nullptr,
+            nullptr,
+            &si,
+            &pi);
+        if (!launched)
+        {
+            return {};
+        }
+        wil::unique_handle proc{ pi.hProcess };
+        wil::unique_handle thread{ pi.hThread };
+
+        // Close our copy of the write end so the read pipe sees EOF
+        // when the child exits.
+        writeHandle.reset();
+
+        std::string captured;
+        captured.reserve(4096);
+        char buf[4096];
+        for (;;)
+        {
+            DWORD bytesRead = 0;
+            const BOOL ok = ReadFile(readHandle.get(), buf, sizeof(buf), &bytesRead, nullptr);
+            if (!ok || bytesRead == 0)
+            {
+                break;
+            }
+            captured.append(buf, bytesRead);
+        }
+
+        if (WaitForSingleObject(proc.get(), timeoutMs) != WAIT_OBJECT_0)
+        {
+            // Best-effort terminate on timeout — we still return what
+            // we captured (empty in practice).
+            TerminateProcess(proc.get(), 1);
+            WaitForSingleObject(proc.get(), 1000);
+            return {};
+        }
+        DWORD exitCode = 1;
+        GetExitCodeProcess(proc.get(), &exitCode);
+        if (exitCode != 0)
+        {
+            return {};
+        }
+        return captured;
+    }
+
+    void AIAgentsViewModel::_ApplyStatusReport(const std::optional<::Microsoft::Terminal::AgentHooks::StatusReport>& report)
+    {
+        namespace AgentHooks = ::Microsoft::Terminal::AgentHooks;
+        using AgentHooks::CliStatus;
+        using AgentHooks::FindCli;
+        using AgentHooks::FormatCliStatusLine;
+
+        // Display strings + per-CLI detected flags. When the report is
+        // missing (wta failed / not found / parse error) we surface a
+        // single explanatory line per row instead of crashing or
+        // silently leaving the previous text.
+        if (!report.has_value())
+        {
+            const winrt::hstring unavailable{ L"Hook detection unavailable (wta.exe not found or status query failed)" };
+            _copilotHooksStatus = unavailable;
+            _claudeHooksStatus = unavailable;
+            _geminiHooksStatus = unavailable;
+            _copilotCliDetected = false;
+            _claudeCliDetected = false;
+            _geminiCliDetected = false;
+        }
+        else
+        {
+            const auto* copilot = FindCli(*report, "copilot");
+            const auto* claude = FindCli(*report, "claude");
+            const auto* gemini = FindCli(*report, "gemini");
+
+            _copilotCliDetected = copilot && copilot->binaryOnPath;
+            _claudeCliDetected = claude && claude->binaryOnPath;
+            _geminiCliDetected = gemini && gemini->binaryOnPath;
+
+            const auto missing = [](std::wstring_view name) {
+                return winrt::hstring{ std::wstring{ name } + L" — not reported by wta" };
+            };
+            _copilotHooksStatus = copilot ? winrt::hstring{ FormatCliStatusLine(*copilot, L"Copilot CLI") } : missing(L"Copilot CLI");
+            _claudeHooksStatus = claude ? winrt::hstring{ FormatCliStatusLine(*claude, L"Claude Code") } : missing(L"Claude Code");
+            _geminiHooksStatus = gemini ? winrt::hstring{ FormatCliStatusLine(*gemini, L"Gemini CLI") } : missing(L"Gemini CLI");
+        }
+
+        _NotifyChanges(L"IsCopilotCliDetected",
+                       L"IsClaudeCliDetected",
+                       L"IsGeminiCliDetected",
+                       L"IsAnyAgentCliDetected",
+                       L"CopilotHooksStatusText",
+                       L"ClaudeHooksStatusText",
+                       L"GeminiHooksStatusText");
+    }
+
+    void AIAgentsViewModel::RefreshAgentHooksStatus()
+    {
+        if (_refreshingAgentHooks)
+        {
+            return;
+        }
+        _refreshingAgentHooks = true;
+        _RefreshAgentHooksStatusAsync();
+    }
+
+    winrt::fire_and_forget AIAgentsViewModel::_RefreshAgentHooksStatusAsync()
+    {
+        auto strongThis = get_strong();
+        auto dispatcher = winrt::Windows::UI::Xaml::Window::Current().Dispatcher();
+
+        co_await winrt::resume_background();
+
+        const auto wtaPath = _ResolveWtaExePath();
+        const auto stdoutText = _RunWtaCaptureStdout(wtaPath, L"hooks status --json", 30'000);
+        auto report = ::Microsoft::Terminal::AgentHooks::ParseStatusJson(stdoutText);
+
+        co_await wil::resume_foreground(dispatcher);
+
+        _ApplyStatusReport(report);
+        _refreshingAgentHooks = false;
+    }
+
+    void AIAgentsViewModel::InstallAgentHooks()
+    {
+        if (_installingAgentHooks) return;
+        _installingAgentHooks = true;
+        _agentHooksInstallSummary = winrt::hstring{ L"Installing hooks..." };
+        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary");
+        _RunHooksInstallerAsync();
+    }
+
+    winrt::fire_and_forget AIAgentsViewModel::_RunHooksInstallerAsync()
+    {
+        auto strongThis = get_strong();
+        // Capture dispatcher synchronously while we're still on the calling
+        // (UI) thread.
+        auto dispatcher = winrt::Windows::UI::Xaml::Window::Current().Dispatcher();
+
+        std::wstring summary;
+        bool ok = false;
+
+        co_await winrt::resume_background();
+
+        const auto wtaPath = _ResolveWtaExePath();
+        if (wtaPath.empty())
+        {
+            summary = L"Failed: could not locate wta.exe";
+        }
+        else
+        {
+            std::wstring cmdline = L"\"" + wtaPath + L"\" install-hooks";
+
+            STARTUPINFOW si{};
+            si.cb = sizeof(si);
+            si.dwFlags = STARTF_USESHOWWINDOW;
+            si.wShowWindow = SW_HIDE;
+            PROCESS_INFORMATION pi{};
+            std::wstring mutableCmd = cmdline;
+            const BOOL launched = CreateProcessW(
+                wtaPath.c_str(),
+                mutableCmd.data(),
+                nullptr,
+                nullptr,
+                FALSE,
+                CREATE_NO_WINDOW,
+                nullptr,
+                nullptr,
+                &si,
+                &pi);
+            if (!launched)
+            {
+                const auto err = GetLastError();
+                summary = L"Failed to launch installer (error " + std::to_wstring(err) + L")";
+            }
+            else
+            {
+                WaitForSingleObject(pi.hProcess, 60'000);
+                DWORD exitCode = 1;
+                GetExitCodeProcess(pi.hProcess, &exitCode);
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+                if (exitCode == 0)
+                {
+                    ok = true;
+                    summary = L"Hooks installed successfully. Restart any open agent CLIs to pick up the new hooks.";
+                }
+                else
+                {
+                    summary = L"Installer exited with code " + std::to_wstring(exitCode);
+                }
+            }
+        }
+
+        co_await wil::resume_foreground(dispatcher);
+
+        _installingAgentHooks = false;
+        _agentHooksInstallSummary = winrt::hstring{ summary };
+        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary");
+        // Refresh detection / install state regardless of success so the
+        // status rows reflect what's now on disk.
+        RefreshAgentHooksStatus();
+        (void)ok;
     }
 }

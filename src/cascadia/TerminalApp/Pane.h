@@ -157,6 +157,7 @@ public:
     // Separate from Id() which is per-tab and can be reassigned.
     std::optional<uint32_t> ContentId() const noexcept { return _contentId; }
     std::shared_ptr<Pane> FindPaneByContentId(const uint32_t contentId);
+    std::shared_ptr<Pane> FindPaneBySessionId(const winrt::guid& sessionId);
 
     // Session variables for protocol support
     std::optional<winrt::hstring> GetSessionVariable(const winrt::hstring& name) const;
