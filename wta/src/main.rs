@@ -1490,7 +1490,7 @@ async fn run_acp_app(
                 ));
                 None
             } else {
-                Some((cancel_rx, new_session_rx, restart_rx))
+                Some((prompt_rx, cancel_rx, new_session_rx, restart_rx))
             };
 
             let (recommendation_tx, recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1691,12 +1691,11 @@ async fn run_acp_app(
             app_state.set_event_tx(event_tx.clone());
 
             // If in setup mode, store ACP params for deferred start after login.
-            if let Some((cancel_rx, new_session_rx, restart_rx)) = deferred_channels {
-                let (_deferred_prompt_tx, deferred_prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+            if let Some((prompt_rx, cancel_rx, new_session_rx, restart_rx)) = deferred_channels {
                 app_state.set_acp_params(
                     agent_cmd.clone(),
                     cli.acp_model.clone(),
-                    deferred_prompt_rx,
+                    prompt_rx,
                     cancel_rx,
                     new_session_rx,
                     restart_rx,
