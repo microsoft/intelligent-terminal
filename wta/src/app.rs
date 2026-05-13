@@ -2417,9 +2417,7 @@ impl App {
                 let is_auth_error = lower.contains("authentication required")
                     || lower.contains("not logged in")
                     || lower.contains("unauthorized")
-                    || lower.contains("401")
-                    || lower.contains("apikey is missing")
-                    || lower.contains("api key");
+                    || lower.contains("401");
                 if is_auth_error {
                     tracing::info!("AgentError auth fallback: showing auth screen");
                     // Create auth info on the fly if not already stashed
@@ -3010,9 +3008,6 @@ impl App {
                     // Login failed — show auth screen again
                     if let Some(ref mut auth) = self.auth {
                         auth.checking = false;
-                        if !auth.login_command.contains("copilot") {
-                            auth.status_message = "Command copied — run it in another terminal, then press Enter to retry".to_string();
-                        }
                     }
                 }
             }
@@ -3063,42 +3058,10 @@ impl App {
                         }
                     });
                     if let Some((agent_id, login_cmd)) = login_info {
-                        if login_cmd.contains("copilot") {
-                            // Copilot: auto device-flow sign-in via piped stdio
-                            if let Some(ref mut auth) = self.auth {
-                                auth.checking = true;
-                            }
-                            self.spawn_login(&agent_id, &login_cmd);
-                        } else {
-                            // Non-Copilot agents: copy command to clipboard, re-check credential
-                            #[cfg(windows)]
-                            {
-                                let _ = std::process::Command::new("powershell")
-                                    .args(["-NoProfile", "-Command", &format!("Set-Clipboard '{}'", login_cmd.replace('\'', "''"))])
-                                    .stdin(std::process::Stdio::null())
-                                    .stdout(std::process::Stdio::null())
-                                    .stderr(std::process::Stdio::null())
-                                    .spawn();
-                            }
-
-                            if let Some(ref mut auth) = self.auth {
-                                auth.checking = true;
-                                auth.status_message = String::new();
-                            }
-
-                            // Re-check credential asynchronously
-                            if let Some(ref tx) = self.event_tx {
-                                let tx = tx.clone();
-                                let id = agent_id.clone();
-                                tokio::task::spawn_local(async move {
-                                    let result = tokio::task::spawn_blocking(move || {
-                                        crate::agent_check::has_credential(&id)
-                                    }).await;
-                                    let success = result.unwrap_or(false);
-                                    let _ = tx.send(AppEvent::LoginComplete { agent_id, success });
-                                });
-                            }
+                        if let Some(ref mut auth) = self.auth {
+                            auth.checking = true;
                         }
+                        self.spawn_login(&agent_id, &login_cmd);
                     }
                 }
                 KeyCode::Esc => {

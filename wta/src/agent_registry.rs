@@ -135,7 +135,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         acp_auth_flow: AcpAuthFlow::InProtocol,
         delegate_prompt_flag: PromptFlag::Positional,
         model_flags: &["--model", "-m"],
-        install_hint: "npm install -g @google/gemini-cli",
+        install_hint: "npm install -g @anthropic-ai/gemini-cli\n  or: pip install gemini-cli",
         install_url: "https://github.com/google-gemini/gemini-cli",
         auth_check_command: "",
         auth_hint: "Authentication is handled in-protocol during connection.",

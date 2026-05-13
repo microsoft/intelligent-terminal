@@ -115,12 +115,7 @@ pub fn has_credential(agent_id: &str) -> bool {
         "codex" => {
             std::env::var("OPENAI_API_KEY").is_ok() || home.join(".codex").exists()
         }
-        "gemini" => {
-            // Check GEMINI_API_KEY or GOOGLE_API_KEY env var, or OAuth token in ~/.gemini/
-            std::env::var("GEMINI_API_KEY").is_ok()
-                || std::env::var("GOOGLE_API_KEY").is_ok()
-                || home.join(".gemini").exists()
-        }
+        "gemini" => true, // InProtocol — always try connect
         _ => false,
     }
 }
@@ -155,17 +150,10 @@ pub fn build_login_cmd(agent_id: &str) -> String {
     let exe_path = find_exe(agent_id)
         .unwrap_or_else(|| agent_id.to_string());
 
-    // Agent-specific login subcommand
-    let subcommand = match agent_id {
-        "codex" => "auth",
-        "gemini" => "auth login",
-        _ => "login",
-    };
-
     if exe_path.contains(' ') {
-        format!("\"{}\" {}", exe_path, subcommand)
+        format!("\"{}\" login", exe_path)
     } else {
-        format!("{} {}", exe_path, subcommand)
+        format!("{} login", exe_path)
     }
 }
 
