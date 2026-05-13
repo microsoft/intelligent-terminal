@@ -49,12 +49,13 @@ if not defined VSWHERE (
 
 rem Add path to MSBuild Binaries
 rem
-rem We're going to always prefer prerelease version of VS. This lets people who
-rem are using VS 2022 use that from the commandline over the 2019 version. This
-rem will use whatever the newest version of VS is, regardless if it's stable or
-rem not.
+rem We're going to always prefer prerelease version of VS 2022. The -version
+rem range [17.0,18.0) ensures we pick VS 2022 (including previews) but not a
+rem newer major version whose toolset may be incompatible with our v143
+rem PlatformToolset. If you need VS 18+, update PlatformToolset in
+rem src\common.build.pre.props as well.
 rem
-for /f "usebackq tokens=*" %%B in (`%VSWHERE% -latest -prerelease -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe 2^>nul`) do (
+for /f "usebackq tokens=*" %%B in (`%VSWHERE% -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,18.0)" -find MSBuild\**\Bin\MSBuild.exe 2^>nul`) do (
     set MSBUILD=%%B
 )
 
