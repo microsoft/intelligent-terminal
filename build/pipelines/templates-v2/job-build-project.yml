@@ -206,7 +206,6 @@ jobs:
   # Create .cargo/config.toml for Azure Artifacts source replacement.
   # This is NOT checked into the repo because it would break local dev
   # (the feed requires CI-only auth tokens). It only exists during CI.
-  # TODO(wta): replace with our own microsoft/Dart Cargo feed once provisioned.
   # Cargo discovers .cargo/config.toml by walking from the current
   # working directory (repo root) up — NOT from the manifest directory.
   # The config must live at the repo root, not inside wta/.
@@ -215,7 +214,7 @@ jobs:
       New-Item -ItemType Directory -Path $configDir -Force | Out-Null
       @"
       [registries]
-      WindowsTerminalCargo = { index = "sparse+https://pkgs.dev.azure.com/microsoft/Dart/_packaging/sudo_public_cargo/Cargo/index/" }
+      WindowsTerminalCargo = { index = "sparse+https://pkgs.dev.azure.com/microsoft/Dart/_packaging/IntelligentTerminal_Cargo/Cargo/index/" }
 
       [source.crates-io]
       replace-with = "WindowsTerminalCargo"
