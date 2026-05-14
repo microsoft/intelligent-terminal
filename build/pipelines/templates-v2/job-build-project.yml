@@ -219,9 +219,6 @@ jobs:
 
       [source.crates-io]
       replace-with = "WindowsTerminalCargo"
-
-      [source.WindowsTerminalCargo]
-      registry = "sparse+https://pkgs.dev.azure.com/microsoft/Dart/_packaging/sudo_public_cargo/Cargo/index/"
       "@ | Set-Content "$configDir/config.toml" -Encoding utf8NoBOM
       Write-Host "Wrote $configDir/config.toml"
       Get-Content "$configDir/config.toml"
