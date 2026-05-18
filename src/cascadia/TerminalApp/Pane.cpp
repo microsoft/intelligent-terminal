@@ -157,7 +157,7 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
         ActionAndArgs actionAndArgs;
         actionAndArgs.Action(ShortcutAction::SplitPane);
         const auto terminalArgs{ newPane->GetTerminalArgsForPane(kind) };
-        // When creating a pane the split size is the size of the new pane
+        // When creating a pane, the split size is the size of the new pane
         // and not position.
         const auto splitDirection = _splitState == SplitState::Horizontal ? SplitDirection::Down : SplitDirection::Right;
         const auto splitSize = (kind != BuildStartupKind::None && _IsLeaf() ? 0.5f : 1.0f - _desiredSplitPosition);
@@ -1738,11 +1738,20 @@ void Pane::_CloseChildRoutine(const bool closeFirst)
 
     // GH#7252: If either child is zoomed, just skip the animation. It won't work.
     const auto eitherChildZoomed = _firstChild->_zoomed || _secondChild->_zoomed;
+    // Agent panes close synchronously: TerminalPage's rebuild path
+    // (_TeardownAgentPane → _AutoCreateHiddenAgentPane) mutates this same
+    // parent's children on the very next line, so a deferred _CloseChild
+    // would land on a tree that's already been re-split and crash inside
+    // its XAML re-parenting (observed: TerminalApp.dll AV / 0xC000041D on
+    // model switch). The close animation is barely visible on the small
+    // agent bar anyway, so dropping it for all agent-pane closes (not
+    // just the rebuild path) is an acceptable trade.
+    const auto closingChildIsAgent = (closeFirst ? _firstChild : _secondChild)->_isAgentPane;
     // If animations are disabled, just skip this and go straight to
     // _CloseChild. Curiously, the pane opening animation doesn't need this,
     // and will skip straight to Completed when animations are disabled, but
     // this one doesn't seem to.
-    if (!animationsEnabledInOS || !animationsEnabledInApp || eitherChildZoomed)
+    if (!animationsEnabledInOS || !animationsEnabledInApp || eitherChildZoomed || closingChildIsAgent)
     {
         _CloseChild(closeFirst);
         return;
@@ -2430,7 +2439,7 @@ SplitState Pane::_convertAutomaticOrDirectionalSplitState(const SplitDirection& 
 //   creates a new Pane to host the control, registers event handlers.
 // Arguments:
 // - splitType: what type of split we should create.
-// - splitSize: what fraction of the pane the new pane should get
+// - splitSize: the fraction of the pane that the new pane should get
 // - newPane: the pane to add as a child
 // Return Value:
 // - The two newly created Panes, with the original pane as the first pane.
@@ -2817,6 +2826,29 @@ std::shared_ptr<Pane> Pane::FindPane(const uint32_t id)
 std::shared_ptr<Pane> Pane::FindPaneByContentId(const uint32_t contentId)
 {
     return _FindPane([=](const auto& p) { return p->_contentId.has_value() && *p->_contentId == contentId; });
+}
+
+std::shared_ptr<Pane> Pane::FindPaneBySessionId(const winrt::guid& sessionId)
+{
+    if (sessionId == winrt::guid{})
+    {
+        return nullptr;
+    }
+    return _FindPane([&](const auto& p) {
+        if (!p->_IsLeaf() || !p->_content)
+            return false;
+        if (const auto termContent = p->_content.try_as<winrt::TerminalApp::TerminalPaneContent>())
+        {
+            if (const auto control = termContent.GetTermControl())
+            {
+                if (const auto conn = control.Connection())
+                {
+                    return conn.SessionId() == sessionId;
+                }
+            }
+        }
+        return false;
+    });
 }
 
 // Method Description:

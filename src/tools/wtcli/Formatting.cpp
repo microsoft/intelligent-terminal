@@ -4,6 +4,19 @@
 #include "Formatting.h"
 
 #include <cstdio>
+#include <combaseapi.h>
+
+// ── Helper ──
+
+static std::string GuidToStr(const winrt::guid& g)
+{
+    wchar_t buf[40]{};
+    StringFromGUID2(g, buf, ARRAYSIZE(buf));
+    std::wstring ws(buf);
+    if (ws.size() > 2 && ws.front() == L'{' && ws.back() == L'}')
+        ws = ws.substr(1, ws.size() - 2);
+    return winrt::to_string(winrt::hstring{ ws });
+}
 
 // ── JSON output ──
 
@@ -53,11 +66,12 @@ void FormatPanesHuman(const winrt::com_array<Protocol::PaneInfo>& panes)
         printf("No panes found.\n");
         return;
     }
-    printf("%-10s %-8s %-8s %-10s %s\n", "PANE_ID", "PID", "ACTIVE", "ROWS", "COLS");
+    printf("%-38s %-8s %-8s %-10s %s\n", "SESSION_ID", "PID", "ACTIVE", "ROWS", "COLS");
     for (const auto& p : panes)
     {
-        printf("%-10u %-8lu %-8s %-10d %d\n",
-               p.PaneId,
+        auto sid = GuidToStr(p.SessionId);
+        printf("%-38s %-8lu %-8s %-10d %d\n",
+               sid.c_str(),
                p.Pid,
                p.IsActive ? "*" : "",
                p.Rows,
@@ -67,7 +81,7 @@ void FormatPanesHuman(const winrt::com_array<Protocol::PaneInfo>& panes)
 
 void FormatActivePaneHuman(const Protocol::PaneInfo& info)
 {
-    printf("Active pane: %u (tab: %u, window: %llu)\n", info.PaneId, info.TabId, static_cast<unsigned long long>(info.WindowId));
+    printf("Active pane: %s (tab: %u, window: %llu)\n", GuidToStr(info.SessionId).c_str(), info.TabId, static_cast<unsigned long long>(info.WindowId));
 }
 
 void FormatPaneStatusHuman(const Protocol::ProcessStatus& status)
@@ -81,12 +95,12 @@ void FormatPaneStatusHuman(const Protocol::ProcessStatus& status)
 
 void FormatCreatedTabHuman(const Protocol::TabCreationResult& result)
 {
-    printf("Created tab %u (pane %u)\n", result.TabId, result.PaneId);
+    printf("Created tab %u (session %s)\n", result.TabId, GuidToStr(result.SessionId).c_str());
 }
 
 void FormatCreatedPaneHuman(const Protocol::TabCreationResult& result)
 {
-    printf("Created pane %u\n", result.PaneId);
+    printf("Created pane (session %s)\n", GuidToStr(result.SessionId).c_str());
 }
 
 // ── JSON serialization ──
@@ -115,7 +129,7 @@ Json::Value TabInfoToJson(const Protocol::TabInfo& t)
 Json::Value PaneInfoToJson(const Protocol::PaneInfo& p)
 {
     Json::Value v;
-    v["pane_id"] = static_cast<Json::UInt>(p.PaneId);
+    v["session_id"] = GuidToStr(p.SessionId);
     v["tab_id"] = static_cast<Json::UInt>(p.TabId);
     v["window_id"] = static_cast<Json::UInt64>(p.WindowId);
     v["title"] = winrt::to_string(p.Title);
@@ -132,7 +146,7 @@ Json::Value PaneInfoToJson(const Protocol::PaneInfo& p)
 Json::Value PaneOutputToJson(const Protocol::PaneOutput& o)
 {
     Json::Value v;
-    v["pane_id"] = static_cast<Json::UInt>(o.PaneId);
+    v["session_id"] = GuidToStr(o.SessionId);
     v["content"] = winrt::to_string(o.Content);
     v["line_count"] = o.LineCount;
     v["truncated"] = o.Truncated;
@@ -144,7 +158,7 @@ Json::Value CreationResultToJson(const Protocol::TabCreationResult& r)
 {
     Json::Value v;
     v["tab_id"] = static_cast<Json::UInt>(r.TabId);
-    v["pane_id"] = static_cast<Json::UInt>(r.PaneId);
+    v["session_id"] = GuidToStr(r.SessionId);
     v["window_id"] = static_cast<Json::UInt64>(r.WindowId);
     v["pid"] = static_cast<Json::UInt>(r.Pid);
     return v;

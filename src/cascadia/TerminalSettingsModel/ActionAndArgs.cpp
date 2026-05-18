@@ -104,6 +104,7 @@ static constexpr std::string_view QuickFixKey{ "quickFix" };
 static constexpr std::string_view OpenCWDKey{ "openCWD" };
 static constexpr std::string_view OpenAgentPaneKey{ "openAgentPane" };
 static constexpr std::string_view FocusAgentPaneKey{ "focusAgentPane" };
+static constexpr std::string_view OpenAgentSessionsKey{ "openAgentSessions" };
 static constexpr std::string_view TriggerAutofixKey{ "triggerAutofix" };
 static constexpr std::string_view ShowProtocolInfoKey{ "showProtocolInfo" };
 

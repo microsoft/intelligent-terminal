@@ -48,10 +48,24 @@ namespace winrt::TerminalApp::implementation
         Initialized = 2
     };
 
+    // Forward decls for the per-wta protocol pipe transport (Phase 1 — used by
+    // the delegation flow at present; will be extended to the agent pane).
+    struct AgentDelegationEntry;
+
     enum ScrollDirection : int
     {
         ScrollUp = 0,
         ScrollDown = 1
+    };
+
+    enum class ConfirmCloseDialogKind
+    {
+        Pane,
+        Tab,
+        MultiplePanes,
+        MultipleTabs,
+        Window,
+        CloseAll
     };
 
     struct RenameWindowRequestedArgs : RenameWindowRequestedArgsT<RenameWindowRequestedArgs>
@@ -169,6 +183,7 @@ namespace winrt::TerminalApp::implementation
 
         void OpenSettingsUI();
         void WindowActivated(const bool activated);
+        bool FocusTab(const winrt::TerminalApp::Tab& tab);
 
         bool OnDirectKeyEvent(const uint32_t vkey, const uint8_t scanCode, const bool down);
 
@@ -183,18 +198,20 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneInfo> GetProtocolActivePane();
         Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVector<Microsoft::Terminal::Protocol::TabInfo>> GetProtocolTabs();
         Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVector<Microsoft::Terminal::Protocol::PaneInfo>> GetProtocolPanes(uint32_t tabIdFilter);
-        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneOutput> ReadProtocolPaneOutput(uint32_t paneId, hstring source, int32_t maxLines);
-        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::ProcessStatus> GetProtocolProcessStatus(uint32_t paneId);
-        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::SessionVariable> GetProtocolSessionVariable(uint32_t paneId, hstring name);
-        Windows::Foundation::IAsyncOperation<bool> SetProtocolSessionVariable(uint32_t paneId, hstring name, hstring value);
+        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneOutput> ReadProtocolPaneOutput(winrt::guid sessionId, hstring source, int32_t maxLines);
+        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::ProcessStatus> GetProtocolProcessStatus(winrt::guid sessionId);
+        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::SessionVariable> GetProtocolSessionVariable(winrt::guid sessionId, hstring name);
+        Windows::Foundation::IAsyncOperation<bool> SetProtocolSessionVariable(winrt::guid sessionId, hstring name, hstring value);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> CreateProtocolTab(Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
-        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> SplitProtocolPane(uint32_t paneId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
-        Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(uint32_t paneId);
-        Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(uint32_t paneId, hstring text);
-        Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(uint32_t paneId);
-        Windows::Foundation::IAsyncOperation<hstring> ShowProtocolQuickPick(hstring title, hstring choicesJson, bool allowFreeInput);
+        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> SplitProtocolPane(winrt::guid sessionId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
+        Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
+        Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(winrt::guid sessionId, hstring text);
+        Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
+        void OnCloseAgentPaneRequested(hstring eventJson);
+        void OnAgentViewChanged(hstring eventJson);
+        void OnResumeInNewAgentTabRequested(hstring eventJson);
 
         til::property_changed_event PropertyChanged;
 
@@ -213,6 +230,7 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<IInspectable, IInspectable> IdentifyWindowsRequested;
         til::typed_event<IInspectable, winrt::TerminalApp::RenameWindowRequestedArgs> RenameWindowRequested;
         til::typed_event<IInspectable, IInspectable> SummonWindowRequested;
+        til::typed_event<IInspectable, winrt::TerminalApp::Tab> FocusTabRequested;
         til::typed_event<IInspectable, winrt::Microsoft::Terminal::Control::WindowSizeChangedEventArgs> WindowSizeChanged;
 
         til::typed_event<IInspectable, IInspectable> OpenSystemMenu;
@@ -275,7 +293,6 @@ namespace winrt::TerminalApp::implementation
 
         bool _activated{ false };
         bool _visible{ true };
-        std::atomic<bool> _quickPickInProgress{ false };
 
         std::vector<std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs>> _previouslyClosedPanesAndTabs{};
 
@@ -301,6 +318,14 @@ namespace winrt::TerminalApp::implementation
         // Single agent pane shared across all tabs in this window.
         std::weak_ptr<Pane> _agentPane;
 
+        // True from when _AutoCreateHiddenAgentPane splits the pane into the
+        // visual tree until its TermControl raises Initialized. While set,
+        // _ReconcileAgentPaneForActiveTab must NOT hide the pane: hiding it
+        // before SwapChainPanel.LayoutUpdated fires kills the chain that
+        // launches wta.exe (no LayoutUpdated -> no _InitializeTerminal -> no
+        // connection.Start()), defeating pre-warming.
+        bool _agentPanePreWarming{ false };
+
         // --- Bottom bar (AI toolbar) ---
         enum class AutofixState
         {
@@ -311,7 +336,7 @@ namespace winrt::TerminalApp::implementation
         };
         struct DiagnosticState
         {
-            std::wstring lastErrorPaneId;
+            std::wstring lastErrorSessionId;
             AutofixState autofixState{ AutofixState::Idle };
             std::wstring fixPreview;        // Armed
             std::wstring hotkeyHint;        // Armed
@@ -322,6 +347,7 @@ namespace winrt::TerminalApp::implementation
 
         void _AgentToggleButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _DiagnosticsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _SessionToggleButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _UpdateBottomBarState();
         void _TriggerAutofix();
 
@@ -340,11 +366,55 @@ namespace winrt::TerminalApp::implementation
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
         bool _agentRebuilding{ false };
+        // Set when a settings change wants a rebuild but the active
+        // tab can't host an agent pane (e.g. the Settings tab itself).
+        // _FlushPendingAgentRebuild runs the deferred rebuild from
+        // _OnTabSelectionChanged once a terminal tab is active.
+        bool _pendingAgentRebuild{ false };
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         void _TeardownAgentPane();
         void _RebuildAgentStack();
+        void _FlushPendingAgentRebuild();
         void _AutoCreateHiddenAgentPane(winrt::com_ptr<Tab> tab);
+        // Wraps the raw terminal pane's TerminalPaneContent in an
+        // AgentPaneContent so the leaf renders the 36px XAML agent bar
+        // above the wta TermControl. Returns a fresh Pane around the
+        // wrapper; falls back to the raw pane if the content isn't a
+        // TerminalPaneContent (shouldn't happen for a terminal-content
+        // pane). Both pane creation paths (_AutoCreateHiddenAgentPane on
+        // launch, _OpenOrReuseAgentPane after teardown) must go through
+        // this — otherwise post-teardown rebuilds end up with a bare
+        // pane and no title bar.
+        std::shared_ptr<Pane> _WrapInAgentPaneContent(std::shared_ptr<Pane> rawPane);
+
+        // Per-tab agent-pane state reconciliation. The single shared agent
+        // pane follows the active tab based on each tab's AgentPaneOpen()
+        // flag.
+        void _RelocateAgentPaneToTab(winrt::com_ptr<Tab> targetTab);
+        void _ReconcileAgentPaneForActiveTab();
+        void _ClearAllAgentPaneFlags();
+        // Tells wta which tab is currently active so it routes per-tab events
+        // (autofix triggers, prompt deliveries, ...) to the right TabSession.
+        // Deduped against _lastNotifiedAgentTabId so we only emit on change.
+        void _NotifyAgentTabChanged(const winrt::com_ptr<Tab>& targetTab);
+        // Tells wta that a tab is being destroyed so it can drop the matching
+        // TabSession and any session_to_tab entries pointing at it. Without
+        // this, the per-tab conversation history would leak across newly
+        // created tabs that reuse the closed tab's stable id (it doesn't, but
+        // the registry would still grow unboundedly).
+        void _NotifyAgentTabClosed(const winrt::hstring& tabId);
+        void _NotifyAgentTabReset(const winrt::hstring& tabId);
+        std::optional<winrt::hstring> _lastNotifiedAgentTabId{};
+
+        // Tracks whether the agent pane is currently displaying its Agents
+        // (session list) view. Drives Ctrl+Shift+/ toggle semantics: when
+        // true, the next press closes the pane; when false (chat or pane
+        // closed), the next press opens/switches to sessions view.
+        // Set whenever WT commands wta into a known view; cleared when the
+        // pane is closed. Note: F2 inside wta switches view without telling
+        // WT, so the flag can be briefly stale — one extra press resyncs.
+        bool _agentSessionsViewActive{ false };
 
         winrt::Windows::UI::Xaml::Controls::TextBox::LayoutUpdated_revoker _renamerLayoutUpdatedRevoker;
         int _renamerLayoutCount{ 0 };
@@ -373,8 +443,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowDialogHelper(const std::wstring_view& name);
 
         void _ShowAboutDialog();
-        winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowQuitDialog();
-        winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowCloseWarningDialog();
+        winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowConfirmCloseDialog(ConfirmCloseDialogKind kind);
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowCloseReadOnlyDialog();
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowMultiLinePasteWarningDialog();
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowLargePasteWarningDialog();
@@ -425,14 +494,14 @@ namespace winrt::TerminalApp::implementation
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
 
-        winrt::Windows::Foundation::IAsyncAction _HandleCloseTabRequested(winrt::TerminalApp::Tab tab);
+        winrt::Windows::Foundation::IAsyncAction _HandleCloseTabRequested(winrt::TerminalApp::Tab tab, bool skipConfirmClose = false);
         void _CloseTabAtIndex(uint32_t index);
         void _RemoveTab(const winrt::TerminalApp::Tab& tab);
         safe_void_coroutine _RemoveTabs(const std::vector<winrt::TerminalApp::Tab> tabs);
 
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);
-        std::string _FindPaneIdForControl(const Microsoft::Terminal::Control::TermControl& control);
+        std::string _FindSessionIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         void _RegisterTabEvents(Tab& hostingTab);
 
         void _DismissTabContextMenus();
@@ -477,9 +546,12 @@ namespace winrt::TerminalApp::implementation
         TerminalApp::Tab _GetTabByTabViewItem(const IInspectable& tabViewItem) const noexcept;
 
         void _HandleClosePaneRequested(std::shared_ptr<Pane> pane);
+        bool _ShouldWarnOnClose() const;
+        bool _ShouldWarnOnCloseTab(const winrt::com_ptr<Tab>& tab) const;
         safe_void_coroutine _SetFocusedTab(const winrt::TerminalApp::Tab tab);
         safe_void_coroutine _CloseFocusedPane();
-        void _ClosePanes(weak_ref<Tab> weakTab, std::vector<uint32_t> paneIds);
+        safe_void_coroutine _ClosePanes(weak_ref<Tab> weakTab, std::vector<uint32_t> paneIds);
+        void _CloseRemainingPanes(weak_ref<Tab> weakTab, std::vector<uint32_t> paneIds);
         winrt::Windows::Foundation::IAsyncOperation<bool> _PaneConfirmCloseReadOnly(std::shared_ptr<Pane> pane);
         void _AddPreviouslyClosedPaneOrTab(std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs>&& args);
 
@@ -490,7 +562,7 @@ namespace winrt::TerminalApp::implementation
                         const float splitSize,
                         std::shared_ptr<Pane> newPane,
                         bool focusNewPane = true);
-        void _ResizePane(const Microsoft::Terminal::Settings::Model::ResizeDirection& direction);
+        bool _ResizePane(const Microsoft::Terminal::Settings::Model::ResizeDirection& direction);
         void _ToggleSplitOrientation();
 
         void _ScrollPage(ScrollDirection scrollDirection);
@@ -500,8 +572,9 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine _PasteFromClipboardHandler(const IInspectable sender,
                                                        const Microsoft::Terminal::Control::PasteFromClipboardEventArgs eventArgs);
 
-        void _OpenHyperlinkHandler(const IInspectable sender, const Microsoft::Terminal::Control::OpenHyperlinkEventArgs eventArgs);
-        bool _IsUriSupported(const winrt::Windows::Foundation::Uri& parsedUri);
+        safe_void_coroutine _OpenHyperlinkHandler(const IInspectable sender, const Microsoft::Terminal::Control::OpenHyperlinkEventArgs eventArgs);
+        static bool _IsUriSupported(const winrt::Windows::Foundation::Uri& parsedUri);
+        static bool _IsUriConsideredSomewhatSafe(const winrt::Windows::Foundation::Uri& parsedUri);
 
         void _ShowCouldNotOpenDialog(winrt::hstring reason, winrt::hstring uri);
         bool _CopyText(bool dismissSelection, bool singleLine, bool withControlSequences, Microsoft::Terminal::Control::CopyFormat formats);
@@ -552,10 +625,52 @@ namespace winrt::TerminalApp::implementation
         winrt::com_ptr<Tab> _FindTabContainingAgentPane();
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
-        void _OpenOrReuseAgentPane(const winrt::hstring& prompt);
+
+        // Per-wta protocol pipe transport (delegation in-flight processes).
+        // Each entry pairs a PipeServer (IO thread + JSON-RPC dispatcher)
+        // with the spawned wta's process info; entries self-remove on IO
+        // thread exit (peer EOF or wta crash).
+        std::mutex _agentPipeServersMutex;
+        std::vector<std::shared_ptr<AgentDelegationEntry>> _agentPipeServers;
+        void _RemoveAgentPipeServer(AgentDelegationEntry* entry);
+
+        // Pending pipe handles for the next agent-pane wta launch. Set by
+        // _OpenOrReuseAgentPane just before _MakeTerminalPane runs, consumed
+        // by _CreateConnectionFromSettings when it builds the ConptyConnection
+        // valueSet. The unique_handles ensure exception-safe cleanup if the
+        // launch path bails before Initialize takes ownership.
+        struct PendingProtocolPipe
+        {
+            wil::unique_handle wtaRead;
+            wil::unique_handle wtaWrite;
+        };
+        std::optional<PendingProtocolPipe> _pendingProtocolPipeHandles;
+        void _ConsumePendingProtocolPipeIntoValueSet(
+            Windows::Foundation::Collections::ValueSet& valueSet);
+
+        // Set up the pending pipe pair for the next agent-pane wta launch.
+        // wtRead/wtWrite are the wt-side handles owned by the caller; the
+        // wta-side handles are stashed into _pendingProtocolPipeHandles.
+        // Returns false if pipe creation failed (caller proceeds without pipe).
+        bool _PrepareAgentPanePipe(wil::unique_handle& wtRead,
+                                   wil::unique_handle& wtWrite);
+
+        // After _MakeTerminalPane has run, attach a TerminalProtocolPipeServer
+        // backed by the wt-side handles. Caller already verified that
+        // _ConsumePendingProtocolPipeIntoValueSet did fire (i.e. the wta
+        // received the handles).
+        void _AttachAgentPanePipeServer(wil::unique_handle wtRead,
+                                        wil::unique_handle wtWrite);
+        void _OpenOrReuseAgentPane(const winrt::hstring& prompt, bool intoSessionsView = false);
         void _FocusAgentPane();
+        void _BroadcastAgentSetView(std::string_view view);
         void _RepositionAgentPanes();
         static winrt::Microsoft::Terminal::Settings::Model::SplitDirection _AgentPanePositionToSplitDirection(const winrt::hstring& position);
+
+        // First-run experience
+        bool _IsFreRequired() const;
+        void _ShowFreOverlay();
+        void _OnFreCompleted(const winrt::TerminalApp::FreOverlay& sender, const winrt::Windows::Foundation::IInspectable& args);
 
         void _Find(const Tab& tab);
 
@@ -661,6 +776,8 @@ namespace winrt::TerminalApp::implementation
 
         void _activePaneChanged(winrt::TerminalApp::Tab tab, Windows::Foundation::IInspectable args);
         safe_void_coroutine _doHandleSuggestions(Microsoft::Terminal::Settings::Model::SuggestionsArgs realArgs);
+
+        void _SendDesktopNotification(const winrt::hstring& tabTitle, const winrt::hstring& body, const winrt::com_ptr<Tab>& tab, const winrt::TerminalApp::IPaneContent& content);
 
 #pragma region ActionHandlers
         // These are all defined in AppActionHandlers.cpp

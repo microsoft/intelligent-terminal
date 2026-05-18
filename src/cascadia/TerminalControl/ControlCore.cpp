@@ -359,6 +359,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         }
     }
 
+    void ControlCore::HardResetWithoutErase()
+    {
+        const auto lock = _terminal->LockForWriting();
+        _terminal->HardResetWithoutErase();
+    }
+
     bool ControlCore::Initialize(const float actualWidth,
                                  const float actualHeight,
                                  const float compositionScale)
@@ -2079,7 +2085,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         //   the selection (we need to reset selection on double-click or
         //   triple-click, so it captures the word or the line, rather than
         //   extending the selection)
-        if (_terminal->IsSelectionActive() && (!shiftEnabled || isOnOriginalPosition))
+        // - GH#9608: VT mouse mode is enabled. In this mode, Shift is used
+        //   to override mouse input, so Shift+Click should start a fresh
+        //   selection rather than extending the previous one.
+        if (_terminal->IsSelectionActive() && (!shiftEnabled || isOnOriginalPosition || _terminal->IsTrackingMouseInput()))
         {
             // Reset the selection
             _terminal->ClearSelection();
@@ -2319,7 +2328,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             // The absolute cursor coordinate.
             const auto cursor = _terminal->GetViewportRelativeCursorPosition();
 
-            // GH#18732: Users want the row the cursor is on to be preserved across clears.
+            // GH#18732: Users want the row that the cursor is on to be preserved across clears.
             std::wstring sequence;
 
             if (clearType == ClearBufferType::Scrollback || clearType == ClearBufferType::All)
@@ -2498,11 +2507,6 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         context->CurrentCommandline(trimmedCurrentCommand);
         context->QuickFixes(_cachedQuickFixes);
         return *context;
-    }
-
-    winrt::hstring ControlCore::CurrentWorkingDirectory() const
-    {
-        return winrt::hstring{ _terminal->GetWorkingDirectory() };
     }
 
     bool ControlCore::QuickFixesAvailable() const noexcept
@@ -2938,7 +2942,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             if (markStart <= pos &&
                 markEnd >= pos)
             {
-                // ... select the part of the mark the caller told us about.
+                // ... select the part of the mark that the caller told us about.
                 _selectSpan(getSpan(m));
                 // And quick bail
                 return;

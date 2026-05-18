@@ -45,14 +45,7 @@ static int FuzzOneInput(const uint8_t* data, size_t size)
         ProtocolParsing::ClassifyPaneOutputSource(input);
     }
 
-    // ── Target 4: ValidateQuickPickChoices ──
-    // Feed fuzzed data as a JSON choices array.
-    {
-        Json::Value choices;
-        ProtocolParsing::ValidateQuickPickChoices(input, choices);
-    }
-
-    // ── Target 5: ValidateSettingsJson ──
+    // ── Target 4: ValidateSettingsJson ──
     // Feed fuzzed data as settings JSON content.
     {
         ProtocolParsing::ValidateSettingsJson(input);

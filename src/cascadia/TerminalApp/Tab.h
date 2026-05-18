@@ -56,7 +56,7 @@ namespace winrt::TerminalApp::implementation
                                                                                                         const float splitSize,
                                                                                                         winrt::Windows::Foundation::Size availableSpace) const;
 
-        void ResizePane(const winrt::Microsoft::Terminal::Settings::Model::ResizeDirection& direction);
+        bool ResizePane(const winrt::Microsoft::Terminal::Settings::Model::ResizeDirection& direction);
         bool NavigateFocus(const winrt::Microsoft::Terminal::Settings::Model::FocusDirection& direction);
         bool SwapPane(const winrt::Microsoft::Terminal::Settings::Model::FocusDirection& direction);
         bool FocusPane(const uint32_t id);
@@ -102,6 +102,19 @@ namespace winrt::TerminalApp::implementation
         std::shared_ptr<Pane> GetRootPane() const { return _rootPane; }
         std::vector<uint32_t> GetMruPanes() const { return _mruPanes; }
 
+        // Per-tab "user wants the agent pane open here" flag. The agent pane
+        // itself is a single shared resource that follows the active tab; this
+        // flag is the source of truth for whether reconciliation should make
+        // it visible when this tab is active.
+        bool AgentPaneOpen() const noexcept { return _agentPaneOpen; }
+        void AgentPaneOpen(bool value) noexcept { _agentPaneOpen = value; }
+
+        // Stable per-tab identifier (GUID string). Survives tab reordering
+        // and is unique across the window's lifetime, unlike the index in
+        // _tabs which is reused when tabs close. Used as the tab_id for
+        // wta's per-tab TabSession routing.
+        const winrt::hstring& StableId() const noexcept { return _stableId; }
+
         winrt::TerminalApp::TerminalTabStatus TabStatus()
         {
             return _tabStatus;
@@ -129,6 +142,7 @@ namespace winrt::TerminalApp::implementation
 
         til::typed_event<TerminalApp::Tab, IInspectable> ActivePaneChanged;
         til::event<winrt::delegate<>> TabRaiseVisualBell;
+        til::event<winrt::delegate<winrt::hstring /*title*/, winrt::hstring /*body*/, winrt::TerminalApp::IPaneContent /*content*/>> TabToastNotificationRequested;
         til::typed_event<IInspectable, IInspectable> TaskbarProgressChanged;
 
         // The TabViewIndex is the index this Tab object resides in TerminalPage's _tabs vector.
@@ -148,11 +162,17 @@ namespace winrt::TerminalApp::implementation
         static constexpr double HeaderRenameBoxWidthTitleLength{ std::numeric_limits<double>::infinity() };
 
         winrt::Windows::UI::Xaml::FocusState _focusState{ winrt::Windows::UI::Xaml::FocusState::Unfocused };
-        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeOtherTabsMenuItem{};
-        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeTabsAfterMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _duplicateTabMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _splitTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _moveToNewWindowMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _moveRightMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _moveLeftMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _exportTabMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _findMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _restartConnectionMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeOtherTabsMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeTabsAfterMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closePaneMenuItem{};
         winrt::TerminalApp::ShortcutActionDispatch _dispatch;
         Microsoft::Terminal::Settings::Model::IActionMapView _actionMap{ nullptr };
         winrt::hstring _keyChord{};
@@ -167,9 +187,6 @@ namespace winrt::TerminalApp::implementation
         std::shared_ptr<Pane> _activePane{ nullptr };
         std::shared_ptr<Pane> _zoomedPane{ nullptr };
         std::shared_ptr<Pane> _hiddenPane{ nullptr };
-
-        Windows::UI::Xaml::Controls::MenuFlyoutItem _closePaneMenuItem;
-        Windows::UI::Xaml::Controls::MenuFlyoutItem _restartConnectionMenuItem;
 
         winrt::Microsoft::Terminal::Settings::Model::IconStyle _lastIconStyle;
         winrt::hstring _lastIconPath{};
@@ -191,6 +208,7 @@ namespace winrt::TerminalApp::implementation
             winrt::TerminalApp::IPaneContent::ConnectionStateChanged_revoker ConnectionStateChanged;
             winrt::TerminalApp::IPaneContent::ReadOnlyChanged_revoker ReadOnlyChanged;
             winrt::TerminalApp::IPaneContent::FocusRequested_revoker FocusRequested;
+            winrt::TerminalApp::IPaneContent::NotificationRequested_revoker NotificationRequested;
 
             // These events literally only apply if the content is a TermControl.
             winrt::Microsoft::Terminal::Control::TermControl::KeySent_revoker KeySent;
@@ -209,6 +227,9 @@ namespace winrt::TerminalApp::implementation
         bool _receivedKeyDown{ false };
         bool _iconHidden{ false };
         bool _changingActivePane{ false };
+        bool _agentPaneOpen{ false };
+
+        winrt::hstring _stableId{};
 
         winrt::hstring _runtimeTabText{};
         bool _inRename{ false };
@@ -229,6 +250,7 @@ namespace winrt::TerminalApp::implementation
         void _AttachEventHandlersToPane(std::shared_ptr<Pane> pane);
 
         void _UpdateActivePane(std::shared_ptr<Pane> pane);
+        void _UpdateMenuItemStates();
 
         winrt::hstring _GetActiveTitle() const;
 
@@ -238,8 +260,6 @@ namespace winrt::TerminalApp::implementation
 
         void _UpdateConnectionClosedState();
         void _RestartActivePaneConnection();
-
-        void _DuplicateTab();
 
         winrt::Windows::UI::Xaml::Media::Brush _BackgroundBrush();
 

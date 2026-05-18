@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 //
 // Fuzzing harness for wtcli pure functions.
-// Targets: TranslateKeys, BuildSendEventJson, MatchesEventFilter.
+// Targets: BuildSendEventJson, MatchesEventFilter.
 //
 // Built under the Fuzzing MSBuild configuration with LibFuzzer
 // instrumentation; submittable to OneFuzz via the CI pipeline.
@@ -20,33 +20,7 @@ static int FuzzOneInput(const uint8_t* data, size_t size)
 
     const std::string input(reinterpret_cast<const char*>(data), size);
 
-    // ── Target 1: TranslateKeys ──
-    // Split fuzzed input on null bytes to create multiple key entries,
-    // exercising the key-name matching and multi-key path.
-    {
-        std::vector<std::string> keys;
-        size_t start = 0;
-        for (size_t i = 0; i < size; ++i)
-        {
-            if (data[i] == '\0')
-            {
-                keys.emplace_back(reinterpret_cast<const char*>(data + start), i - start);
-                start = i + 1;
-            }
-        }
-        if (start < size)
-        {
-            keys.emplace_back(reinterpret_cast<const char*>(data + start), size - start);
-        }
-        if (keys.empty())
-        {
-            keys.push_back(input);
-        }
-
-        wtcli::TranslateKeys(keys);
-    }
-
-    // ── Target 2: BuildSendEventJson ──
+    // ── Target 1: BuildSendEventJson ──
     // Feed fuzzed data as the paramsJson argument to exercise JSON parsing
     // and envelope construction.
     {
@@ -54,14 +28,14 @@ static int FuzzOneInput(const uint8_t* data, size_t size)
         wtcli::BuildSendEventJson("test.event", input, "42", evt);
     }
 
-    // ── Target 3: MatchesEventFilter ──
+    // ── Target 2: MatchesEventFilter ──
     // Exercise both directions: fuzzed data as the event JSON (with fixed
     // filters) and fuzzed data as the filter pattern (with valid event JSON).
     {
         wtcli::MatchesEventFilter(input, "42", "agent.*");
 
         static const std::string validEvent =
-            R"({"params":{"pane_id":"1","event":"agent.task.started"}})";
+            R"({"params":{"session_id":"1","event":"agent.task.started"}})";
         wtcli::MatchesEventFilter(validEvent, "", input);
     }
 

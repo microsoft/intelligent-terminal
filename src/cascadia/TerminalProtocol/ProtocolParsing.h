@@ -31,10 +31,13 @@ namespace Microsoft::Terminal::Protocol::Parsing
     // The three dispatch routes for IProtocolServer::SendEvent.
     enum class SendEventRoute
     {
-        AutofixState,  // Direct to TerminalPage, no broadcast
-        AgentStatus,   // Direct to TerminalPage, no broadcast
-        Broadcast,     // Normalize envelope + broadcast to all subscribers
-        Invalid        // Failed validation
+        AutofixState,      // Direct to TerminalPage, no broadcast
+        AgentStatus,       // Direct to TerminalPage, no broadcast
+        CloseAgentPane,    // Direct to TerminalPage, no broadcast
+        ViewChanged,       // Direct to TerminalPage, no broadcast
+        ResumeInNewAgentTab, // Direct to TerminalPage, no broadcast
+        Broadcast,         // Normalize envelope + broadcast to all subscribers
+        Invalid            // Failed validation
     };
 
     // Classify and validate a SendEvent JSON payload.
@@ -58,18 +61,30 @@ namespace Microsoft::Terminal::Protocol::Parsing
             return SendEventRoute::Invalid;
         }
 
-        // autofix_state — direct dispatch, no broadcast
-        if (outEvt.isMember("method") && outEvt["method"].isString() &&
-            outEvt["method"].asString() == "autofix_state")
+        // Check method-based direct dispatch routes
+        if (outEvt.isMember("method") && outEvt["method"].isString())
         {
-            return SendEventRoute::AutofixState;
-        }
-
-        // agent_status — direct dispatch, no broadcast
-        if (outEvt.isMember("method") && outEvt["method"].isString() &&
-            outEvt["method"].asString() == "agent_status")
-        {
-            return SendEventRoute::AgentStatus;
+            const auto method = outEvt["method"].asString();
+            if (method == "autofix_state")
+            {
+                return SendEventRoute::AutofixState;
+            }
+            if (method == "agent_status")
+            {
+                return SendEventRoute::AgentStatus;
+            }
+            if (method == "close_agent_pane")
+            {
+                return SendEventRoute::CloseAgentPane;
+            }
+            if (method == "view_changed")
+            {
+                return SendEventRoute::ViewChanged;
+            }
+            if (method == "resume_in_new_agent_tab")
+            {
+                return SendEventRoute::ResumeInNewAgentTab;
+            }
         }
 
         // Broadcast path: params.event is required
@@ -164,19 +179,6 @@ namespace Microsoft::Terminal::Protocol::Parsing
             return PaneOutputSource::Screen;
         }
         return PaneOutputSource::Scrollback;
-    }
-
-    // ── QuickPick choices validation ──
-
-    // Validate that a JSON string is a valid array (for QuickPick choices).
-    // On success, |outChoices| contains the parsed array.
-    inline bool ValidateQuickPickChoices(const std::string& choicesJson, Json::Value& outChoices)
-    {
-        if (!ParseJson(choicesJson, outChoices))
-        {
-            return false;
-        }
-        return outChoices.isArray();
     }
 
     // ── SetSettings validation ──

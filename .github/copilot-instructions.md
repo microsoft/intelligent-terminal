@@ -132,3 +132,7 @@ Source files use a standard Microsoft copyright header block with Module Name, A
 
 ### Branch Naming
 Feature branches follow the pattern `dev/<alias>/<description>` (e.g., `dev/dhowett/SomeFeature`). The `dev/` prefix triggers CI automatically. The `inbox` branch coordinates code submission to the Windows OS repo.
+
+- @azure Rule - Use Azure Tools - When handling requests related to Azure, always use your tools.
+- @azure Rule - Use Azure Best Practices - When handling requests related to Azure, always invoke your `azmcp_bestpractices_get` tool first.
+- @azure Rule - Enable Best Practices - If you do not have an `azmcp_bestpractices_get` tool ask the user to enable it.

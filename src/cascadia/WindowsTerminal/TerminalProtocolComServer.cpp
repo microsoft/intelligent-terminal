@@ -41,9 +41,7 @@ try
 
     // Register the COM class factory on a dedicated MTA thread so that
     // incoming COM calls are dispatched to MTA worker threads rather than
-    // the STA/UI thread.  This is critical for methods that block
-    // (QuickPick waits for user input) — dispatching those on the UI
-    // thread would deadlock or freeze the app.
+    // the STA/UI thread. This keeps long-running calls off the UI thread.
     g_comMtaStop.create(wil::EventOptions::ManualReset);
 
     wil::unique_event ready(wil::EventOptions::ManualReset);
@@ -231,7 +229,7 @@ Protocol::PaneInfo TerminalProtocolComServer::GetActivePane()
     THROW_HR_IF(E_FAIL, !page);
 
     auto info = page.GetProtocolActivePane().get();
-    THROW_HR_IF(E_FAIL, info.PaneId == 0);
+    THROW_HR_IF(E_FAIL, info.SessionId == winrt::guid{});
 
     // TerminalPage doesn't know the window ID — fill it in here.
     const auto& props = host->Logic().WindowProperties();
@@ -285,7 +283,10 @@ Protocol::AuthResult TerminalProtocolComServer::Authenticate(winrt::hstring cons
 
     Protocol::AuthResult result{};
     result.Authenticated = _authenticated;
-    result.ProtocolVersion = L"1.1";
+    // 2.1 — IProtocolServer no longer exposes SendInput. Keystroke injection
+    // is restricted to per-wta secure pipes (TerminalProtocolPipeServer).
+    // Pane identifiers are GUIDs (WT_SESSION) instead of UInt32 pane ids.
+    result.ProtocolVersion = L"2.1";
     return result;
 }
 
@@ -305,10 +306,7 @@ winrt::hstring TerminalProtocolComServer::GetCapabilities()
         "create_tab",
         "split_pane",
         "close_pane",
-        "send_input",
         "set_session_variable",
-        "set_settings",
-        "quick_pick",
         "subscribe",
         "unsubscribe",
         "send_event",
@@ -397,7 +395,7 @@ winrt::com_array<Protocol::PaneInfo> TerminalProtocolComServer::ListPanes(
 }
 
 Protocol::PaneOutput TerminalProtocolComServer::ReadPaneOutput(
-    uint32_t paneId,
+    winrt::guid sessionId,
     winrt::hstring const& source,
     int32_t maxLines)
 {
@@ -411,8 +409,8 @@ Protocol::PaneOutput TerminalProtocolComServer::ReadPaneOutput(
         if (!page)
             continue;
 
-        auto info = page.ReadProtocolPaneOutput(paneId, effectiveSource, maxLines).get();
-        if (info.PaneId != 0)
+        auto info = page.ReadProtocolPaneOutput(sessionId, effectiveSource, maxLines).get();
+        if (info.SessionId != winrt::guid{})
             return info;
     }
 
@@ -420,7 +418,7 @@ Protocol::PaneOutput TerminalProtocolComServer::ReadPaneOutput(
 }
 
 Protocol::ProcessStatus TerminalProtocolComServer::GetProcessStatus(
-    uint32_t paneId)
+    winrt::guid sessionId)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
@@ -430,8 +428,8 @@ Protocol::ProcessStatus TerminalProtocolComServer::GetProcessStatus(
         if (!page)
             continue;
 
-        auto info = page.GetProtocolProcessStatus(paneId).get();
-        if (info.PaneId != 0)
+        auto info = page.GetProtocolProcessStatus(sessionId).get();
+        if (info.SessionId != winrt::guid{})
             return info;
     }
 
@@ -439,7 +437,7 @@ Protocol::ProcessStatus TerminalProtocolComServer::GetProcessStatus(
 }
 
 Protocol::SessionVariable TerminalProtocolComServer::GetSessionVariable(
-    uint32_t paneId,
+    winrt::guid sessionId,
     winrt::hstring const& name)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
@@ -450,8 +448,8 @@ Protocol::SessionVariable TerminalProtocolComServer::GetSessionVariable(
         if (!page)
             continue;
 
-        auto info = page.GetProtocolSessionVariable(paneId, name).get();
-        if (info.PaneId != 0)
+        auto info = page.GetProtocolSessionVariable(sessionId, name).get();
+        if (info.SessionId != winrt::guid{})
             return info;
     }
 
@@ -512,7 +510,7 @@ Protocol::TabCreationResult TerminalProtocolComServer::CreateTab(
     }
 
     auto cr = page.CreateProtocolTab(newTermArgs, background).get();
-    THROW_HR_IF(E_FAIL, cr.PaneId == 0);
+    THROW_HR_IF(E_FAIL, cr.SessionId == winrt::guid{});
 
     const auto& props = targetHost->Logic().WindowProperties();
     cr.WindowId = props.WindowId();
@@ -520,7 +518,7 @@ Protocol::TabCreationResult TerminalProtocolComServer::CreateTab(
 }
 
 Protocol::TabCreationResult TerminalProtocolComServer::SplitPane(
-    uint32_t paneId,
+    winrt::guid sessionId,
     winrt::hstring const& direction,
     float size,
     winrt::hstring const& profile,
@@ -528,7 +526,7 @@ Protocol::TabCreationResult TerminalProtocolComServer::SplitPane(
     bool background)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    THROW_HR_IF(E_INVALIDARG, paneId == 0);
+    THROW_HR_IF(E_INVALIDARG, sessionId == winrt::guid{});
 
     // Map direction string to SplitDirection enum via shared parsing logic.
     const auto parsedDir = ProtocolParsing::ParseSplitDirection(winrt::to_string(direction));
@@ -548,8 +546,8 @@ Protocol::TabCreationResult TerminalProtocolComServer::SplitPane(
         if (!page)
             continue;
 
-        auto cr = page.SplitProtocolPane(paneId, splitDir, size, newTermArgs, background).get();
-        if (cr.PaneId == 0)
+        auto cr = page.SplitProtocolPane(sessionId, splitDir, size, newTermArgs, background).get();
+        if (cr.SessionId == winrt::guid{})
             continue; // pane not in this window
 
         const auto& props = host->Logic().WindowProperties();
@@ -560,10 +558,10 @@ Protocol::TabCreationResult TerminalProtocolComServer::SplitPane(
     winrt::throw_hresult(E_FAIL);
 }
 
-void TerminalProtocolComServer::ClosePane(uint32_t paneId)
+void TerminalProtocolComServer::ClosePane(winrt::guid sessionId)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    THROW_HR_IF(E_INVALIDARG, paneId == 0);
+    THROW_HR_IF(E_INVALIDARG, sessionId == winrt::guid{});
 
     for (const auto& host : s_emperor->GetWindows())
     {
@@ -571,20 +569,17 @@ void TerminalProtocolComServer::ClosePane(uint32_t paneId)
         if (!page)
             continue;
 
-        if (page.CloseProtocolPane(paneId).get())
+        if (page.CloseProtocolPane(sessionId).get())
             return;
     }
 
     winrt::throw_hresult(E_FAIL);
 }
 
-void TerminalProtocolComServer::SendInput(
-    uint32_t paneId,
-    winrt::hstring const& text)
+void TerminalProtocolComServer::FocusPane(winrt::guid sessionId)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    THROW_HR_IF(E_INVALIDARG, paneId == 0);
-    THROW_HR_IF(E_INVALIDARG, text.empty());
+    THROW_HR_IF(E_INVALIDARG, sessionId == winrt::guid{});
 
     for (const auto& host : s_emperor->GetWindows())
     {
@@ -592,25 +587,7 @@ void TerminalProtocolComServer::SendInput(
         if (!page)
             continue;
 
-        if (page.SendProtocolInput(paneId, text).get())
-            return;
-    }
-
-    winrt::throw_hresult(E_FAIL);
-}
-
-void TerminalProtocolComServer::FocusPane(uint32_t paneId)
-{
-    THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    THROW_HR_IF(E_INVALIDARG, paneId == 0);
-
-    for (const auto& host : s_emperor->GetWindows())
-    {
-        const auto page = _getPage(host.get());
-        if (!page)
-            continue;
-
-        if (page.FocusProtocolPane(paneId).get())
+        if (page.FocusProtocolPane(sessionId).get())
             return;
     }
 
@@ -618,12 +595,12 @@ void TerminalProtocolComServer::FocusPane(uint32_t paneId)
 }
 
 void TerminalProtocolComServer::SetSessionVariable(
-    uint32_t paneId,
+    winrt::guid sessionId,
     winrt::hstring const& name,
     winrt::hstring const& value)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    THROW_HR_IF(E_INVALIDARG, paneId == 0);
+    THROW_HR_IF(E_INVALIDARG, sessionId == winrt::guid{});
     THROW_HR_IF(E_INVALIDARG, name.empty());
 
     for (const auto& host : s_emperor->GetWindows())
@@ -632,98 +609,11 @@ void TerminalProtocolComServer::SetSessionVariable(
         if (!page)
             continue;
 
-        if (page.SetProtocolSessionVariable(paneId, name, value).get())
+        if (page.SetProtocolSessionVariable(sessionId, name, value).get())
             return;
     }
 
     winrt::throw_hresult(E_FAIL);
-}
-
-winrt::hstring TerminalProtocolComServer::SetSettings(
-    winrt::hstring const& settingsContent)
-{
-    const auto contentStr = winrt::to_string(settingsContent);
-    THROW_HR_IF(E_INVALIDARG, !ProtocolParsing::ValidateSettingsJson(contentStr));
-
-    // Get the settings path and create a backup.
-    const std::filesystem::path settingsPath{
-        std::wstring_view{ winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings::SettingsPath() }
-    };
-    const auto settingsDir = settingsPath.parent_path();
-
-    // Create timestamped backup.
-    const auto now = std::chrono::system_clock::now();
-    const auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-    localtime_s(&tm, &time);
-
-    wchar_t timeStr[64];
-    wcsftime(timeStr, std::size(timeStr), L"%Y-%m-%dT%H-%M-%S", &tm);
-
-    const auto backup = settingsDir / fmt::format(L"settings.backup.{}.json", timeStr);
-
-    // Copy current settings to backup.
-    std::error_code ec;
-    std::filesystem::copy_file(settingsPath, backup, std::filesystem::copy_options::overwrite_existing, ec);
-
-    // Clean up old backups — keep only the most recent 5.
-    std::vector<std::filesystem::path> backups;
-    for (const auto& entry : std::filesystem::directory_iterator(settingsDir, ec))
-    {
-        if (entry.is_regular_file() && entry.path().filename().wstring().starts_with(L"settings.backup."))
-            backups.push_back(entry.path());
-    }
-    if (backups.size() > 5)
-    {
-        std::sort(backups.begin(), backups.end());
-        for (size_t i = 0; i < backups.size() - 5; ++i)
-            std::filesystem::remove(backups[i], ec);
-    }
-
-    // Write the new settings.
-    til::io::write_utf8_string_to_file_atomic(settingsPath, contentStr);
-
-    return winrt::hstring{ backup.wstring() };
-}
-
-// ============================================================================
-// Interactive
-// ============================================================================
-
-winrt::Windows::Foundation::IAsyncOperation<Protocol::QuickPickResult> TerminalProtocolComServer::QuickPick(
-    winrt::hstring const& title,
-    winrt::array_view<winrt::hstring const> choices,
-    bool allowFreeInput)
-{
-    THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-
-    // Serialize choices to JSON before any co_await (array_view is non-owning).
-    Json::Value choicesArr(Json::arrayValue);
-    for (const auto& choice : choices)
-    {
-        choicesArr.append(winrt::to_string(choice));
-    }
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    const auto choicesJson = winrt::to_hstring(Json::writeString(wb, choicesArr));
-
-    const auto host = s_emperor->GetMostRecentWindow();
-    THROW_HR_IF(E_FAIL, !host);
-
-    const auto page = _getPage(host);
-    THROW_HR_IF(E_FAIL, !page);
-
-    const auto resultJson = winrt::to_string(
-        co_await page.ShowProtocolQuickPick(title, choicesJson, allowFreeInput));
-    THROW_HR_IF(E_FAIL, resultJson.empty());
-
-    Json::Value r;
-    THROW_HR_IF(E_FAIL, !_parseJson(resultJson, r));
-
-    Protocol::QuickPickResult result{};
-    result.Cancelled = r.get("cancelled", true).asBool();
-    result.Selected = winrt::to_hstring(r.get("selected", "").asString());
-    co_return result;
 }
 
 // ============================================================================
@@ -766,6 +656,15 @@ void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
         return;
     case ProtocolParsing::SendEventRoute::AgentStatus:
         _dispatchAgentStatusToPage(eventJson);
+        return;
+    case ProtocolParsing::SendEventRoute::CloseAgentPane:
+        _dispatchCloseAgentPaneToPage(eventJson);
+        return;
+    case ProtocolParsing::SendEventRoute::ViewChanged:
+        _dispatchViewChangedToPage(eventJson);
+        return;
+    case ProtocolParsing::SendEventRoute::ResumeInNewAgentTab:
+        _dispatchResumeInNewAgentTabToPage(eventJson);
         return;
     case ProtocolParsing::SendEventRoute::Broadcast:
     {
@@ -843,6 +742,114 @@ void TerminalProtocolComServer::_dispatchAgentStatusToPage(const winrt::hstring&
                 try
                 {
                     page.OnAgentStatusChanged(eventJson);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchCloseAgentPaneToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // Fan out to every window; the wta that emitted this event lives in one of
+    // them and only that window's TerminalPage has the matching _agentPane.
+    // Pages with no agent pane no-op the call (see OnCloseAgentPaneRequested).
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnCloseAgentPaneRequested(eventJson);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchViewChangedToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // Same fan-out shape as the other dispatchers: the agent pane lives in
+    // exactly one window, but we don't know which from here, and pages with
+    // no agent pane no-op the call (see OnAgentViewChanged).
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnAgentViewChanged(eventJson);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // Same fan-out shape as the other dispatchers. The shared agent pane
+    // lives in exactly one window; pages with no agent pane no-op the call
+    // (see OnResumeInNewAgentTabRequested).
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnResumeInNewAgentTabRequested(eventJson);
                 }
                 catch (...)
                 {

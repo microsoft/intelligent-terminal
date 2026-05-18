@@ -24,7 +24,7 @@
     "showAdminShield": true,
 
     // Miscellaneous
-    "confirmCloseAllTabs": true,
+    "warning.confirmOnClose": "automatic",
     "theme": "dark",
     "snapToGridOnResize": true,
     "disableAnimations": false,
@@ -558,6 +558,7 @@
         { "command": "openCWD", "id": "Terminal.OpenCWD" },
         { "command": "openAgentPane", "id": "Terminal.OpenAgentPane" },
         { "command": "focusAgentPane", "id": "Terminal.FocusAgentPane" },
+        { "command": "openAgentSessions", "id": "Terminal.OpenAgentSessions" },
         { "command": "triggerAutofix", "id": "Terminal.TriggerAutofix" },
         // Tab Management
         // "command": "closeTab" is unbound by default.
@@ -750,6 +751,7 @@
         { "keys": "alt+space", "id": "Terminal.OpenSystemMenu" },
         { "keys": "ctrl+shift+period", "id": "Terminal.OpenAgentPane" },
         { "keys": "ctrl+shift+i", "id": "Terminal.FocusAgentPane" },
+        { "keys": "ctrl+shift+/", "id": "Terminal.OpenAgentSessions" },
         { "keys": "ctrl+alt+period", "id": "Terminal.TriggerAutofix" },
 
         // Tab Management

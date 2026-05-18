@@ -1,0 +1,67 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": ".*",
+        "hooks": [{
+          "type": "command",
+          "command": "powershell -ExecutionPolicy Bypass -File \"${extensionPath}/hooks/send-event.ps1\" -CliSource gemini agent.session.start"
+        }]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": ".*",
+        "hooks": [{
+          "type": "command",
+          "command": "powershell -ExecutionPolicy Bypass -File \"${extensionPath}/hooks/send-event.ps1\" -CliSource gemini agent.session.end"
+        }]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "matcher": ".*",
+        "hooks": [{
+          "type": "command",
+          "command": "powershell -ExecutionPolicy Bypass -File \"${extensionPath}/hooks/send-event.ps1\" -CliSource gemini agent.prompt.submit"
+        }]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": ".*",
+        "hooks": [{
+          "type": "command",
+          "command": "powershell -ExecutionPolicy Bypass -File \"${extensionPath}/hooks/send-event.ps1\" -CliSource gemini agent.tool.starting"
+        }]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": ".*",
+        "hooks": [{
+          "type": "command",
+          "command": "powershell -ExecutionPolicy Bypass -File \"${extensionPath}/hooks/send-event.ps1\" -CliSource gemini agent.tool.finished"
+        }]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": ".*",
+        "hooks": [{
+          "type": "command",
+          "command": "powershell -ExecutionPolicy Bypass -File \"${extensionPath}/hooks/send-event.ps1\" -CliSource gemini agent.notification"
+        }]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "matcher": ".*",
+        "hooks": [{
+          "type": "command",
+          "command": "powershell -ExecutionPolicy Bypass -File \"${extensionPath}/hooks/send-event.ps1\" -CliSource gemini agent.stop"
+        }]
+      }
+    ]
+  }
+}

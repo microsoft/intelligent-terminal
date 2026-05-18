@@ -24,7 +24,7 @@ Keep the current flow, but add **pre-flight checks** and **error classifiers** t
 
 #### 1.1 Agent Registry: Add Setup Metadata
 
-**File:** `wta/src/agent_registry.rs`
+**File:** `tools/wta/src/agent_registry.rs`
 
 Add install/auth guidance fields to `AgentProfile`:
 
@@ -50,7 +50,7 @@ Per-agent values:
 
 #### 1.2 Pre-flight Check in `run_inner`
 
-**File:** `wta/src/protocol/acp/client.rs`
+**File:** `tools/wta/src/protocol/acp/client.rs`
 
 Before `Command::spawn()`, add an explicit existence check:
 
@@ -73,7 +73,7 @@ if !needs_cmd {
 
 #### 1.3 Auth Error Classifier
 
-**File:** `wta/src/protocol/acp/client.rs`
+**File:** `tools/wta/src/protocol/acp/client.rs`
 
 After spawn, monitor stderr for auth-related failures. When ACP init fails, check stderr output:
 
@@ -158,7 +158,7 @@ When the agent pane opens and prerequisites aren't met, instead of showing an er
 
 ### Design: New `AppMode` — Setup
 
-**File:** `wta/src/app.rs`
+**File:** `tools/wta/src/app.rs`
 
 Add a new application mode:
 
@@ -258,7 +258,7 @@ Then automatically transitions to `AppMode::Chat`.
 
 #### 2.1 Agent Registry: Add Setup Checks
 
-**File:** `wta/src/agent_registry.rs`
+**File:** `tools/wta/src/agent_registry.rs`
 
 ```rust
 pub struct AgentProfile {
@@ -272,7 +272,7 @@ pub struct AgentProfile {
 
 #### 2.2 Pre-flight Check Module
 
-**File:** `wta/src/preflight.rs` (new)
+**File:** `tools/wta/src/preflight.rs` (new)
 
 ```rust
 pub struct PreflightResult {
@@ -302,13 +302,13 @@ pub async fn check_agent(agent_id: &str) -> PreflightResult {
 
 #### 2.3 Setup UI
 
-**File:** `wta/src/ui/setup.rs` (new)
+**File:** `tools/wta/src/ui/setup.rs` (new)
 
 A new TUI view that renders the checklist and handles keyboard input (`Enter` to run actions, `R` to retry, `Esc` to close).
 
 #### 2.4 App Integration
 
-**File:** `wta/src/app.rs`
+**File:** `tools/wta/src/app.rs`
 
 In `App::new()`, start in `AppMode::Setup` instead of directly spawning the ACP client. Run pre-flight checks. If all pass, transition to `AppMode::Chat` and start the agent. If any fail, stay in `AppMode::Setup`.
 
@@ -351,8 +351,8 @@ Alternatively, **do both** — Approach 1 is a strict subset of Approach 2. The 
 ### Approach 1 (minimal)
 | File | Change |
 |---|---|
-| `wta/src/agent_registry.rs` | Add `install_hint`, `auth_hint` fields |
-| `wta/src/protocol/acp/client.rs` | Pre-flight binary check, auth error classifier |
+| `tools/wta/src/agent_registry.rs` | Add `install_hint`, `auth_hint` fields |
+| `tools/wta/src/protocol/acp/client.rs` | Pre-flight binary check, auth error classifier |
 | `src/cascadia/TerminalApp/TerminalPage.cpp` | InfoBar on silent failure |
 | `src/cascadia/TerminalApp/TerminalPage.xaml` | InfoBar XAML definition |
 
@@ -360,8 +360,8 @@ Alternatively, **do both** — Approach 1 is a strict subset of Approach 2. The 
 | File | Change |
 |---|---|
 | All Approach 1 files | Same |
-| `wta/src/preflight.rs` | New: pre-flight check logic |
-| `wta/src/ui/setup.rs` | New: setup wizard TUI view |
-| `wta/src/app.rs` | `AppMode` enum, `SetupState`, mode transitions |
-| `wta/src/ui/layout.rs` | Route rendering to `setup::render` when in Setup mode |
-| `wta/Cargo.toml` | Add `which` crate dependency |
+| `tools/wta/src/preflight.rs` | New: pre-flight check logic |
+| `tools/wta/src/ui/setup.rs` | New: setup wizard TUI view |
+| `tools/wta/src/app.rs` | `AppMode` enum, `SetupState`, mode transitions |
+| `tools/wta/src/ui/layout.rs` | Route rendering to `setup::render` when in Setup mode |
+| `tools/wta/Cargo.toml` | Add `which` crate dependency |

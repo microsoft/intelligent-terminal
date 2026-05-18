@@ -64,7 +64,7 @@
              BottomBar color so the gap — if any — visually merges into
              the bar. Declared before TabContent so it sits behind. -->
         <Border Grid.Row="2"
-                Background="#161616"
+                Background="#000000"
                 IsHitTestVisible="False" />
 
         <Grid x:Name="TabContent"
@@ -76,28 +76,47 @@
             </Grid.Background>
         </Grid>
 
-        <!-- Bottom Bar: AI agent toolbar. VerticalAlignment="Top" is required
-             — without it, the Grid's default stretch-with-explicit-height
-             behavior leaves a transparent strip at the top of Row 3. -->
+        <!-- Bottom Bar: AI agent toolbar. Wrapped in a Border so we can draw
+             a 1-pixel divider between the terminal pane and the bar.
+             The divider is a child Border (not BorderThickness) because
+             XAML's BorderBrush paints the thickness strip OUTSIDE the
+             Background fill — so a semi-transparent BorderBrush would
+             alpha-blend against the transparent window underneath instead
+             of the bar's black. Stacking a 1px Border on top of the
+             solid-black outer Border makes the alpha blend correctly. -->
+        <Border Grid.Row="3"
+                Background="#000000"
+                VerticalAlignment="Top">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="1" />
+                <RowDefinition Height="40" />
+            </Grid.RowDefinitions>
+
+            <!-- Divider: design spec #FFFFFF26 (= XAML #26FFFFFF, white 15% alpha).
+                 Sits on the outer Border's #000000, so it renders as a subtle
+                 dark-gray hairline. -->
+            <Border Grid.Row="0" Background="#26FFFFFF" />
+
         <Grid x:Name="BottomBar"
-              Grid.Row="3"
-              Height="31"
+              Grid.Row="1"
               Padding="12,0,12,0"
-              HorizontalAlignment="Stretch"
-              VerticalAlignment="Top">
+              HorizontalAlignment="Stretch">
             <Grid.Background>
-                <SolidColorBrush Color="#161616" />
+                <SolidColorBrush Color="#000000" />
             </Grid.Background>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <!-- Button 1: AI toggle (dock/collapse bottom pane) -->
             <Button x:Name="AgentToggleButton"
                     Grid.Column="0"
-                    Width="30"
-                    Height="30"
+                    Width="32"
+                    Height="32"
                     Padding="0"
                     Background="Transparent"
                     BorderBrush="Transparent"
@@ -139,8 +158,8 @@
                         VerticalAlignment="Center"
                         Spacing="6">
                 <Button x:Name="DiagnosticsButton"
-                        Width="30"
-                        Height="30"
+                        Width="32"
+                        Height="32"
                         Padding="0"
                         Background="Transparent"
                         BorderBrush="Transparent"
@@ -167,7 +186,50 @@
                            Visibility="Collapsed" />
             </StackPanel>
 
+            <!-- Button 3: Session list toggle — opens the agent pane (if needed)
+                 and switches wta into the Agents/sessions view. Mirrors the
+                 Ctrl+Shift+/ keybinding. Anchored to the right edge of the
+                 BottomBar via the spacer column (Column 2, Width="*"). -->
+            <Button x:Name="SessionToggleButton"
+                    Grid.Column="3"
+                    Width="32"
+                    Height="32"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    Click="_SessionToggleButtonOnClick">
+                <ToolTipService.ToolTip>
+                    <ToolTip>
+                        <StackPanel>
+                            <TextBlock Text="Show sessions"
+                                       FontFamily="Segoe UI Variable"
+                                       FontSize="12"
+                                       FontWeight="Normal"
+                                       LineHeight="16" />
+                            <TextBlock Text="Ctrl+Shift+/"
+                                       FontFamily="Segoe UI Variable"
+                                       FontSize="12"
+                                       FontWeight="Normal"
+                                       LineHeight="16"
+                                       Opacity="0.7" />
+                        </StackPanel>
+                    </ToolTip>
+                </ToolTipService.ToolTip>
+                <Image Width="16"
+                       Height="16"
+                       Opacity="0.7"
+                       Stretch="Uniform">
+                    <Image.Source>
+                        <SvgImageSource UriSource="ms-appx:///AgentIcons/session.svg"
+                                        RasterizePixelWidth="32"
+                                        RasterizePixelHeight="32" />
+                    </Image.Source>
+                </Image>
+            </Button>
+
         </Grid>
+        </Grid>
+        </Border>
 
         <!--
             GH#12775 et. al: After switching to ControlsV2, it seems that
@@ -190,17 +252,12 @@
                            Grid.Row="2"
                            x:Load="False" />
 
-        <ContentDialog x:Name="QuitDialog"
-                       x:Uid="QuitDialog"
+        <ContentDialog x:Name="ConfirmCloseDialog"
                        Grid.Row="2"
                        x:Load="False"
-                       DefaultButton="Primary" />
-
-        <ContentDialog x:Name="CloseAllDialog"
-                       x:Uid="CloseAllDialog"
-                       Grid.Row="2"
-                       x:Load="False"
-                       DefaultButton="Primary" />
+                       DefaultButton="Primary">
+            <CheckBox x:Uid="DontAskAgainCheckBox" />
+        </ContentDialog>
 
         <ContentDialog x:Name="CloseReadOnlyDialog"
                        x:Uid="CloseReadOnlyDialog"
@@ -248,17 +305,17 @@
             </TextBlock>
         </ContentDialog>
 
-        <ContentDialog x:Name="CouldNotOpenUriDialog"
-                       x:Uid="CouldNotOpenUriDialog"
+        <ContentDialog x:Name="UriErrorDialog"
+                       x:Uid="UriErrorDialog"
                        Grid.Row="2"
                        x:Load="False"
-                       DefaultButton="Primary">
+                       DefaultButton="Close">
             <TextBlock IsTextSelectionEnabled="True"
                        TextWrapping="WrapWholeWords">
                 <TextBlock.ContextFlyout>
                     <mtu:TextMenuFlyout />
                 </TextBlock.ContextFlyout>
-                <Run x:Name="CouldNotOpenUriReason" /> <LineBreak />
+                <Run x:Name="CouldNotOpenUriReason" /> <LineBreak /> <LineBreak />
                 <Run x:Name="UnopenedUri"
                      FontFamily="Cascadia Mono" />
             </TextBlock>
@@ -278,6 +335,16 @@
                                   x:Load="False"
                                   PreviewKeyDown="_KeyDownHandler"
                                   Visibility="Collapsed" />
+
+        <!--  First-run experience overlay. Covers the terminal content area
+              until the user clicks Next. Lazy-loaded to avoid startup cost.  -->
+        <local:FreOverlay x:Name="FreOverlayElement"
+                          Grid.Row="0"
+                          Grid.RowSpan="4"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          x:Load="False"
+                          Visibility="Collapsed" />
 
         <!--
             A TeachingTip with IsLightDismissEnabled="True" will immediately

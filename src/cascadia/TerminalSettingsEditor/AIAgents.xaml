@@ -28,18 +28,30 @@
                           x:DataType="local:EnumEntry">
                 <TextBlock Text="{x:Bind EnumName, Mode=OneWay}" />
             </DataTemplate>
+
+            <DataTemplate x:Key="AcpModelEntryTemplate"
+                          x:DataType="local:AcpModelEntry">
+                <TextBlock Text="{x:Bind DisplayName}" />
+            </DataTemplate>
         </ResourceDictionary>
     </Page.Resources>
 
     <StackPanel>
         <StackPanel Style="{StaticResource SettingsStackStyle}">
 
-            <!--  ═══ Agent Pane (ACP) Group ═══  -->
+            <!--  Page subtitle. The page title itself is rendered by the
+                  Settings BreadcrumbBar from Nav_AIAgents.Content, so we only
+                  add the subtitle below it here.  -->
+            <TextBlock x:Uid="AIAgents_PageSubtitle"
+                       Opacity="0.7"
+                       Margin="0,0,0,16" />
+
+            <!--  ═══ Agent pane group ═══  -->
             <TextBlock x:Uid="AIAgents_AcpGroupHeader"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        Margin="0,0,0,8" />
 
-            <!--  ACP Agent  -->
+            <!--  Agent (ACP CLI)  -->
             <local:SettingContainer x:Name="AcpAgent"
                                     x:Uid="AIAgents_AcpAgent">
                 <StackPanel>
@@ -79,21 +91,50 @@
                 </StackPanel>
             </local:SettingContainer>
 
-            <!--  ACP Model (only for built-in agents)  -->
+            <!--  Model (only for built-in agents)  -->
             <local:SettingContainer x:Name="AcpModel"
                                     x:Uid="AIAgents_AcpModel"
                                     Visibility="{x:Bind ViewModel.ShowAcpModel, Mode=OneWay}">
-                <TextBox Text="{x:Bind ViewModel.AcpModel, Mode=TwoWay}"
-                         PlaceholderText="default"
-                         Style="{StaticResource TextBoxSettingStyle}" />
+                <Grid>
+                    <!--  Dropdown: shown when wta has pushed a model list via agent_status  -->
+                    <ComboBox AutomationProperties.AccessibilityView="Content"
+                              ItemsSource="{x:Bind ViewModel.AcpModelList, Mode=OneWay}"
+                              ItemTemplate="{StaticResource AcpModelEntryTemplate}"
+                              SelectedItem="{x:Bind ViewModel.CurrentAcpModelEntry, Mode=TwoWay}"
+                              PlaceholderText="Auto"
+                              Style="{StaticResource ComboBoxSettingStyle}"
+                              Visibility="{x:Bind ViewModel.HasAcpModelList, Mode=OneWay}" />
+                    <!--  Free-form fallback: agent pane never connected, custom agent, or agent didn't advertise models  -->
+                    <TextBox Text="{x:Bind ViewModel.AcpModel, Mode=TwoWay}"
+                             PlaceholderText="Auto"
+                             Style="{StaticResource TextBoxSettingStyle}"
+                             Visibility="{x:Bind ViewModel.ShowAcpModelTextBox, Mode=OneWay}" />
+                </Grid>
             </local:SettingContainer>
 
-            <!--  ═══ Delegate Agent Group ═══  -->
+            <!--  Pane position  -->
+            <local:SettingContainer x:Name="AgentPanePosition"
+                                    x:Uid="AIAgents_PanePosition">
+                <ComboBox AutomationProperties.AccessibilityView="Content"
+                          ItemTemplate="{StaticResource EnumComboBoxTemplate}"
+                          ItemsSource="{x:Bind ViewModel.AgentPanePositionList, Mode=OneWay}"
+                          SelectedItem="{x:Bind ViewModel.CurrentAgentPanePosition, Mode=TwoWay}"
+                          Style="{StaticResource ComboBoxSettingStyle}" />
+            </local:SettingContainer>
+
+            <!--  Auto-error detection  -->
+            <local:SettingContainer x:Name="AutoFixEnabled"
+                                    x:Uid="AIAgents_AutoFix">
+                <ToggleSwitch IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
+                              Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+            </local:SettingContainer>
+
+            <!--  ═══ Command palette group ═══  -->
             <TextBlock x:Uid="AIAgents_DelegateGroupHeader"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        Margin="0,16,0,8" />
 
-            <!--  Delegate Agent  -->
+            <!--  Agent (delegate / on-demand CLI)  -->
             <local:SettingContainer x:Name="DelegateAgent"
                                     x:Uid="AIAgents_DelegateAgent">
                 <StackPanel>
@@ -131,35 +172,34 @@
                 </StackPanel>
             </local:SettingContainer>
 
-            <!--  Delegate Model (only for built-in agents)  -->
-            <local:SettingContainer x:Name="DelegateModel"
-                                    x:Uid="AIAgents_DelegateModel"
-                                    Visibility="{x:Bind ViewModel.ShowDelegateModel, Mode=OneWay}">
-                <TextBox Text="{x:Bind ViewModel.DelegateModel, Mode=TwoWay}"
-                         PlaceholderText="default"
-                         Style="{StaticResource TextBoxSettingStyle}" />
-            </local:SettingContainer>
-
-            <!--  ═══ General ═══  -->
-            <TextBlock x:Uid="AIAgents_GeneralGroupHeader"
+            <!--  ═══ Agent Hooks ═══  -->
+            <TextBlock x:Uid="AIAgents_HooksGroupHeader"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        Margin="0,16,0,8" />
 
-            <!--  Agent Pane Position  -->
-            <local:SettingContainer x:Name="AgentPanePosition"
-                                    x:Uid="AIAgents_PanePosition">
-                <ComboBox AutomationProperties.AccessibilityView="Content"
-                          ItemTemplate="{StaticResource EnumComboBoxTemplate}"
-                          ItemsSource="{x:Bind ViewModel.AgentPanePositionList, Mode=OneWay}"
-                          SelectedItem="{x:Bind ViewModel.CurrentAgentPanePosition, Mode=TwoWay}"
-                          Style="{StaticResource ComboBoxSettingStyle}" />
-            </local:SettingContainer>
-
-            <!--  Auto-Fix  -->
-            <local:SettingContainer x:Name="AutoFixEnabled"
-                                    x:Uid="AIAgents_AutoFix">
-                <ToggleSwitch IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
-                              Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+            <local:SettingContainer x:Name="AgentHooksInstall"
+                                    x:Uid="AIAgents_HooksInstall">
+                <StackPanel Orientation="Vertical" Spacing="8">
+                    <StackPanel Orientation="Vertical" Spacing="2">
+                        <TextBlock Text="{x:Bind ViewModel.CopilotHooksStatusText, Mode=OneWay}"
+                                   IsTextSelectionEnabled="True" />
+                        <TextBlock Text="{x:Bind ViewModel.ClaudeHooksStatusText, Mode=OneWay}"
+                                   IsTextSelectionEnabled="True" />
+                        <TextBlock Text="{x:Bind ViewModel.GeminiHooksStatusText, Mode=OneWay}"
+                                   IsTextSelectionEnabled="True" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button x:Uid="AIAgents_HooksInstallButton"
+                                Click="{x:Bind ViewModel.InstallAgentHooks}"
+                                IsEnabled="{x:Bind ViewModel.IsAnyAgentCliDetected, Mode=OneWay}"
+                                Style="{StaticResource AccentButtonStyle}" />
+                        <Button x:Uid="AIAgents_HooksRefreshButton"
+                                Click="{x:Bind ViewModel.RefreshAgentHooksStatus}" />
+                    </StackPanel>
+                    <TextBlock Text="{x:Bind ViewModel.AgentHooksInstallSummary, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               Opacity="0.8" />
+                </StackPanel>
             </local:SettingContainer>
 
         </StackPanel>

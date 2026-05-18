@@ -36,7 +36,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         std::pair{ extensionsTag, L"\xEA86" }, /* Puzzle */
         std::pair{ globalProfileTag, L"\xE81E" }, /* Map Layers */
         std::pair{ addProfileTag, L"\xE710" }, /* Add */
-        std::pair{ aiAgentsTag, L"\xE99A" }, /* Robot */
         std::pair{ openJsonTag, L"\xE713" }, /* Settings */
     };
 }

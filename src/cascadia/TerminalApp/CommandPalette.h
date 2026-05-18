@@ -25,7 +25,6 @@ namespace winrt::TerminalApp::implementation
         CommandlineMode,
         AgentForegroundMode,
         AgentBackgroundMode,
-        QuickPickMode,
     };
 
     struct CommandPalette : CommandPaletteT<CommandPalette>
@@ -50,8 +49,6 @@ namespace winrt::TerminalApp::implementation
         void EnableTabSwitcherMode(const uint32_t startIdx, Microsoft::Terminal::Settings::Model::TabSwitcherMode tabSwitcherMode);
         void EnableTabSearchMode();
 
-        void SetQuickPickCommands(Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::Command> const& commands);
-
         til::property_changed_event PropertyChanged;
         til::typed_event<winrt::TerminalApp::CommandPalette, winrt::TerminalApp::Tab> SwitchToTabRequested;
         til::typed_event<winrt::TerminalApp::CommandPalette, winrt::hstring> CommandLineExecutionRequested;
@@ -59,7 +56,6 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<Windows::Foundation::IInspectable, Microsoft::Terminal::Settings::Model::Command> PreviewAction;
         til::typed_event<winrt::TerminalApp::CommandPalette, winrt::hstring> AgentForegroundPromptRequested;
         til::typed_event<winrt::TerminalApp::CommandPalette, winrt::hstring> AgentBackgroundTaskRequested;
-        til::typed_event<winrt::TerminalApp::CommandPalette, winrt::hstring> QuickPickCompleted;
 
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, NoMatchesText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, SearchBoxPlaceholderText, PropertyChanged.raise);
@@ -151,7 +147,6 @@ namespace winrt::TerminalApp::implementation
         void _dispatchCommand(const winrt::TerminalApp::FilteredCommand& command);
         void _dispatchCommandline(const winrt::TerminalApp::FilteredCommand& command);
         void _dispatchAgentPrompt();
-        void _dispatchQuickPick(const winrt::TerminalApp::FilteredCommand& command);
         void _switchToTab(const winrt::TerminalApp::FilteredCommand& command);
         static std::optional<winrt::TerminalApp::FilteredCommand> _buildCommandLineCommand(const winrt::hstring& commandLine);
 

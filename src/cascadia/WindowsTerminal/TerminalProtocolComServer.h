@@ -61,11 +61,11 @@ TerminalProtocolComServer : winrt::implements<TerminalProtocolComServer, Protoco
     winrt::com_array<Protocol::TabInfo> ListTabs(uint64_t windowIdFilter);
     winrt::com_array<Protocol::PaneInfo> ListPanes(uint64_t windowIdFilter,
                                                     uint32_t tabIdFilter);
-    Protocol::PaneOutput ReadPaneOutput(uint32_t paneId,
+    Protocol::PaneOutput ReadPaneOutput(winrt::guid sessionId,
                                          winrt::hstring const& source,
                                          int32_t maxLines);
-    Protocol::ProcessStatus GetProcessStatus(uint32_t paneId);
-    Protocol::SessionVariable GetSessionVariable(uint32_t paneId,
+    Protocol::ProcessStatus GetProcessStatus(winrt::guid sessionId);
+    Protocol::SessionVariable GetSessionVariable(winrt::guid sessionId,
                                                    winrt::hstring const& name);
     winrt::hstring GetSettings();
 
@@ -76,22 +76,19 @@ TerminalProtocolComServer : winrt::implements<TerminalProtocolComServer, Protoco
                                            winrt::hstring const& startingDirectory,
                                            bool suppressAppTitle,
                                            bool background);
-    Protocol::TabCreationResult SplitPane(uint32_t paneId,
+    Protocol::TabCreationResult SplitPane(winrt::guid sessionId,
                                            winrt::hstring const& direction,
                                            float size,
                                            winrt::hstring const& profile,
                                            winrt::hstring const& commandline,
                                            bool background);
-    void ClosePane(uint32_t paneId);
-    void SendInput(uint32_t paneId, winrt::hstring const& text);
-    void FocusPane(uint32_t paneId);
-    void SetSessionVariable(uint32_t paneId,
+    void ClosePane(winrt::guid sessionId);
+    // SendInput intentionally removed from COM. Keystroke injection is now
+    // confined to per-wta secure pipes (TerminalProtocolPipeServer).
+    void FocusPane(winrt::guid sessionId);
+    void SetSessionVariable(winrt::guid sessionId,
                             winrt::hstring const& name,
                             winrt::hstring const& value);
-    winrt::hstring SetSettings(winrt::hstring const& settingsContent);
-    winrt::Windows::Foundation::IAsyncOperation<Protocol::QuickPickResult> QuickPick(winrt::hstring const& title,
-                                         winrt::array_view<winrt::hstring const> choices,
-                                         bool allowFreeInput);
 
     // Events — push-based via callback
     void Subscribe(Protocol::IProtocolEventCallback const& callback);
@@ -132,6 +129,21 @@ private:
 
     // Same shape as _dispatchAutofixStateToPage, for {method:"agent_status"}.
     static void _dispatchAgentStatusToPage(const winrt::hstring& eventJson);
+
+    // Same shape, for {method:"close_agent_pane"} emitted by the wta TUI when
+    // the user presses Ctrl+C twice. TerminalPage tears down the agent pane.
+    static void _dispatchCloseAgentPaneToPage(const winrt::hstring& eventJson);
+
+    // Same shape, for {method:"view_changed"} emitted by the wta TUI when its
+    // internal view flips (Esc out of Agents, `/sessions` slash command).
+    // TerminalPage mirrors the new view onto its agent bar + bottom bar state.
+    static void _dispatchViewChangedToPage(const winrt::hstring& eventJson);
+
+    // Same shape, for {method:"resume_in_new_agent_tab"} emitted by the wta
+    // TUI on Shift+Enter in the session view. TerminalPage creates a new
+    // tab, reconciles the shared agent pane onto it, then publishes a
+    // `load_session` event back to the wta TUI for the new tab's StableId.
+    static void _dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson);
 
     static WindowEmperor* s_emperor;
 };

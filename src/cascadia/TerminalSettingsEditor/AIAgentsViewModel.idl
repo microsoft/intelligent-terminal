@@ -17,6 +17,14 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean IsAddNew { get; };
     }
 
+    runtimeclass AcpModelEntry
+    {
+        AcpModelEntry(String id, String displayName, String description);
+        String Id { get; };
+        String DisplayName { get; };
+        String Description { get; };
+    }
+
     runtimeclass AIAgentsViewModel : Windows.UI.Xaml.Data.INotifyPropertyChanged
     {
         AIAgentsViewModel(Microsoft.Terminal.Settings.Model.GlobalAppSettings globalSettings);
@@ -47,6 +55,21 @@ namespace Microsoft.Terminal.Settings.Editor
         void DeleteCustomDelegateAgent();
 
         Boolean ShowAcpModel { get; };
+        // List of models the connected agent advertised at session start
+        // (via the ACP `models` field on NewSessionResponse). Empty when the
+        // agent pane has not connected yet, or when the agent doesn't
+        // expose a model list — XAML falls back to the free-form TextBox
+        // in that case so custom agents remain usable.
+        Windows.Foundation.Collections.IObservableVector<AcpModelEntry> AcpModelList { get; };
+        Boolean HasAcpModelList { get; };
+        // Convenience for XAML: true when the dropdown is empty so the
+        // free-form TextBox should take its place. Avoids needing a
+        // bool-to-bool converter resource in the page.
+        Boolean ShowAcpModelTextBox { get; };
+        // ComboBox SelectedItem binding target. Setter writes the entry's
+        // Id back to AcpModel; getter resolves AcpModel back to the
+        // matching entry (or null when AcpModel doesn't appear in the list).
+        AcpModelEntry CurrentAcpModelEntry;
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, AcpModel);
         Boolean ShowDelegateModel { get; };
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, DelegateModel);
@@ -56,5 +79,22 @@ namespace Microsoft.Terminal.Settings.Editor
 
         IInspectable CurrentAgentPanePosition;
         Windows.Foundation.Collections.IObservableVector<EnumEntry> AgentPanePositionList { get; };
+
+        // ── Agent Hooks ──────────────────────────────────────────────────
+        // Detection of each supported CLI on PATH and whether the
+        // wt-agent-hooks plugin / extension is currently installed for it.
+        // Hidden behind a single primary "Install hooks" button that
+        // delegates to `wta.exe install-hooks`.
+        Boolean IsCopilotCliDetected { get; };
+        Boolean IsClaudeCliDetected { get; };
+        Boolean IsGeminiCliDetected { get; };
+        Boolean IsAnyAgentCliDetected { get; };
+        String CopilotHooksStatusText { get; };
+        String ClaudeHooksStatusText { get; };
+        String GeminiHooksStatusText { get; };
+        Boolean IsInstallingAgentHooks { get; };
+        String AgentHooksInstallSummary { get; };
+        void RefreshAgentHooksStatus();
+        void InstallAgentHooks();
     }
 }

@@ -522,8 +522,8 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                _ResizePane(realArgs.ResizeDirection());
-                args.Handled(true);
+                const auto resizeSucceeded = _ResizePane(realArgs.ResizeDirection());
+                args.Handled(resizeSucceeded);
             }
         }
     }
@@ -824,7 +824,7 @@ namespace winrt::TerminalApp::implementation
 
             _RemoveTabs(tabsToRemove);
 
-            actionArgs.Handled(true);
+            actionArgs.Handled(!tabsToRemove.empty());
         }
     }
 
@@ -860,7 +860,7 @@ namespace winrt::TerminalApp::implementation
             // tab row, until you mouse over them. Probably has something to do
             // with tabs not resizing down until there's a mouse exit event.
 
-            actionArgs.Handled(true);
+            actionArgs.Handled(!tabsToRemove.empty());
         }
     }
 
@@ -1498,7 +1498,7 @@ namespace winrt::TerminalApp::implementation
                                       WI_IsAnyFlagSet(source, SuggestionsSource::CommandHistory | SuggestionsSource::QuickFixes);
         if (const auto& control{ _GetActiveControl() })
         {
-            currentWorkingDirectory = control.CurrentWorkingDirectory();
+            currentWorkingDirectory = control.WorkingDirectory();
 
             if (shouldGetContext)
             {
@@ -1661,7 +1661,29 @@ namespace winrt::TerminalApp::implementation
                                             const ActionEventArgs& args)
     {
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentPane called\n");
+
+        // Symmetric counterpart of _HandleOpenAgentSessions: when the pane
+        // is visible on the active tab and currently showing the sessions
+        // view, switch to chat (the "autofix agent pane") rather than
+        // closing. All other cases fall through to the legacy
+        // _OpenOrReuseAgentPane toggle (open/close/relocate).
+        const auto pane = _FindAgentPane();
+        const auto activeTab = _GetFocusedTabImpl();
+        const bool visibleOnActiveTab =
+            pane && activeTab && (_FindTabContainingAgentPane() == activeTab) && !pane->IsHidden();
+
+        if (visibleOnActiveTab && _agentSessionsViewActive)
+        {
+            OutputDebugStringW(L"[AgentPane] OpenAgentPane: switch to chat — pane visible and in sessions view\n");
+            _BroadcastAgentSetView("chat");
+            _agentSessionsViewActive = false;
+            _UpdateBottomBarState();
+            args.Handled(true);
+            return;
+        }
+
         _OpenOrReuseAgentPane(L"");
+        _UpdateBottomBarState();
         args.Handled(true);
     }
 
@@ -1670,6 +1692,47 @@ namespace winrt::TerminalApp::implementation
     {
         OutputDebugStringW(L"[AgentPane] _HandleFocusAgentPane called\n");
         _FocusAgentPane();
+        args.Handled(true);
+    }
+
+    void TerminalPage::_HandleOpenAgentSessions(const IInspectable& /*sender*/,
+                                                const ActionEventArgs& args)
+    {
+        OutputDebugStringW(L"[AgentPane] _HandleOpenAgentSessions called\n");
+
+        // Toggle semantics for the session-management view:
+        //   - Pane not visible on the active tab  → open + sessions view
+        //   - Pane visible AND already in sessions → close the pane
+        //   - Pane visible but in chat view       → switch to sessions
+        //
+        // "Visible on the active tab" requires the pane to exist, to live
+        // in the focused tab, and to not be hidden. The reuse path inside
+        // _OpenOrReuseAgentPane handles the "exists but on another tab /
+        // hidden" cases by relocating + showing the pane.
+        const auto pane = _FindAgentPane();
+        const auto activeTab = _GetFocusedTabImpl();
+        const bool visibleOnActiveTab =
+            pane && activeTab && (_FindTabContainingAgentPane() == activeTab) && !pane->IsHidden();
+
+        if (visibleOnActiveTab && _agentSessionsViewActive)
+        {
+            // Toggle off: close the pane on the active tab. Mirrors the
+            // closing half of the Ctrl+Shift+. toggle path.
+            OutputDebugStringW(L"[AgentPane] OpenAgentSessions: toggle close — pane visible and already in sessions view\n");
+            activeTab->AgentPaneOpen(false);
+            _ReconcileAgentPaneForActiveTab();
+            _agentSessionsViewActive = false;
+            _UpdateBottomBarState();
+            args.Handled(true);
+            return;
+        }
+
+        // Either the pane needs opening/relocating, or it's open in chat
+        // view and we want to switch it. Both go through the existing
+        // intoSessionsView=true code path, which sets _agentSessionsViewActive
+        // = true on success.
+        _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true);
+        _UpdateBottomBarState();
         args.Handled(true);
     }
 

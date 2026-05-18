@@ -293,7 +293,7 @@
     <comment>Header for a control to set the query URL when using the "search web" action.</comment>
   </data>
   <data name="Globals_SearchWebDefaultQueryUrl.HelpText" xml:space="preserve">
-    <value>The placeholder "%s" will replaced with the search query.</value>
+    <value>The placeholder "%s" will be replaced with the search query.</value>
     <comment>{Locked="%s"} Additional text presented near "Globals_SearchWebDefaultQueryUrl.Header".</comment>
   </data>
   <data name="Globals_TrimBlockSelection.Header" xml:space="preserve">
@@ -507,7 +507,7 @@
   </data>
   <data name="Globals_ShowTitlebar.Header" xml:space="preserve">
     <value>Hide the title bar (requires relaunch)</value>
-    <comment>Header for a control to toggle whether the title bar should be shown or not. Changing this setting requires the user to relaunch the app.</comment>
+    <comment>Header for a control to toggle whether or not the title bar should be shown. Changing this setting requires the user to relaunch the app.</comment>
   </data>
   <data name="Globals_ShowTitlebar.HelpText" xml:space="preserve">
     <value>When disabled, the title bar will appear above the tabs.</value>
@@ -694,68 +694,80 @@
     <comment>Header for the "extensions" menu item. This navigates to a page that lets you see and modify extensions for the app.</comment>
   </data>
   <data name="Nav_AIAgents.Content" xml:space="preserve">
-    <value>AI Agents</value>
-    <comment>Header for the "AI Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment>
+    <value>Agents</value>
+    <comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment>
+  </data>
+  <data name="AIAgents_PageSubtitle.Text" xml:space="preserve">
+    <value>Configure how agents work across your terminal experience</value>
+    <comment>Subtitle shown beneath the page title on the AI Agents settings page.</comment>
   </data>
   <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve">
-    <value>Agent Pane</value>
-    <comment>Section header for the ACP agent pane settings group.</comment>
+    <value>Agent pane</value>
+    <comment>Section header for the agent pane settings group.</comment>
   </data>
   <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve">
-    <value>Delegate Agent</value>
-    <comment>Section header for the delegate agent settings group.</comment>
-  </data>
-  <data name="AIAgents_GeneralGroupHeader.Text" xml:space="preserve">
-    <value>General</value>
-    <comment>Section header for general AI agent settings.</comment>
-  </data>
-  <data name="AIAgents_DelegateModel.Header" xml:space="preserve">
-    <value>Model</value>
-    <comment>Header for the setting that specifies an optional model override for the delegate agent.</comment>
-  </data>
-  <data name="AIAgents_DelegateModel.HelpText" xml:space="preserve">
-    <value>Optional model override for the delegate agent (e.g. claude-sonnet-4-20250514).</value>
-    <comment>Supplementary description for the delegate model setting.</comment>
+    <value>Command palette</value>
+    <comment>Section header for the command palette agent settings group.</comment>
   </data>
   <data name="AIAgents_AcpAgent.Header" xml:space="preserve">
-    <value>ACP Agent</value>
-    <comment>Header for the setting that specifies which AI agent powers the agent pane (e.g. copilot, gemini).</comment>
+    <value>Agent</value>
+    <comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment>
   </data>
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
-    <value>The AI agent that powers the agent pane (e.g. copilot, gemini).</value>
-    <comment>Supplementary description for the ACP agent setting.</comment>
+    <value>Choose the agent CLI used in the agent pane. Any compatible ACP CLI will be detected.</value>
+    <comment>Supplementary description for the agent pane CLI setting.</comment>
   </data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>Model</value>
-    <comment>Header for the setting that specifies an optional model override for the ACP agent.</comment>
+    <comment>Header for the setting that specifies the model used by the agent pane agent.</comment>
   </data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve">
-    <value>Optional model override (e.g. gpt-5, claude-haiku-4.5).</value>
+    <value>Choose the model used by this agent.</value>
     <comment>Supplementary description for the model setting.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
-    <value>Delegate Agent</value>
-    <comment>Header for the setting that specifies which agent CLI handles delegated tasks.</comment>
+    <value>Agent</value>
+    <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>Agent CLI for delegated tasks from the command palette (e.g. claude, codex).</value>
-    <comment>Supplementary description for the delegate agent setting.</comment>
+    <value>Choose the agent used for quick actions in the command palette.</value>
+    <comment>Supplementary description for the command palette agent setting.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>Auto-fix on command failure</value>
+    <value>Auto-error detection</value>
     <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
   </data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>When enabled, automatically suggest fixes when commands fail. Also installs OSC 133 shell integration into your PowerShell and Windows PowerShell profiles so command exit codes are detected. Restart PowerShell after enabling for changes to take effect.</value>
-    <comment>Supplementary description for the auto-fix setting. Explains that enabling also sets up shell integration in both PowerShell profiles.</comment>
+    <value>Detect command errors and suggest fixes automatically.</value>
+    <comment>Supplementary description for the auto-error-detection setting.</comment>
   </data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
-    <value>Agent Pane Position</value>
-    <comment>Header for the setting that controls where the agent pane appears (right or bottom).</comment>
+    <value>Pane position</value>
+    <comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment>
   </data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
-    <value>Where the agent pane opens relative to the active pane (right or bottom).</value>
+    <value>Where the agent pane opens relative to your terminal.</value>
     <comment>Supplementary description for the pane position setting.</comment>
+  </data>
+  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
+    <value>Agent Hooks</value>
+    <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment>
+  </data>
+  <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
+    <value>Install agent hook scripts</value>
+    <comment>Header for the Agent Hooks install section.</comment>
+  </data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
+    <value>Required for agent session management. Installs hooks into each detected CLI (Copilot, Claude, Gemini) so they report sessions and status to the agent pane. Restart any open agent CLIs after installing.</value>
+    <comment>Description for the Agent Hooks install section.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
+    <value>Install hooks</value>
+    <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment>
+  </data>
+  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
+    <value>Refresh</value>
+    <comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment>
   </data>
   <data name="Profile_OpacitySlider.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Background opacity</value>
@@ -1259,15 +1271,15 @@
   </data>
   <data name="Profile_StartingDirectory.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Starting directory</value>
-    <comment>Name for a control to determine the directory the session opens it at launch. This is on a text box that accepts folder paths.</comment>
+    <comment>Name for a control to determine the session's initial directory. This is on a text box that accepts folder paths.</comment>
   </data>
   <data name="Profile_StartingDirectory.Header" xml:space="preserve">
     <value>Starting directory</value>
-    <comment>Header for a control to determine the directory the session opens it at launch. This is on a text box that accepts folder paths.</comment>
+    <comment>Header for a control to determine the session's initial directory. This is on a text box that accepts folder paths.</comment>
   </data>
   <data name="Profile_StartingDirectoryBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Starting directory</value>
-    <comment>Name for a control to determine the directory the session opens it at launch. This is on a text box that accepts folder paths.</comment>
+    <comment>Name for a control to determine the session's initial directory. This is on a text box that accepts folder paths.</comment>
   </data>
   <data name="Profile_StartingDirectory.HelpText" xml:space="preserve">
     <value>The directory the profile starts in when it is loaded.</value>
@@ -1616,6 +1628,10 @@
   <data name="Profile_BellStyleWindow.Content" xml:space="preserve">
     <value>Flash window</value>
     <comment>An option to choose from for the "bell style" setting. When selected, a visual notification is used to notify the user. In this case, the window is flashed.</comment>
+  </data>
+  <data name="Profile_BellStyleNotification.Content" xml:space="preserve">
+    <value>Desktop notification</value>
+    <comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment>
   </data>
   <data name="ColorScheme_AddNewButton.Text" xml:space="preserve">
     <value>Add new</value>
@@ -2211,7 +2227,7 @@
   </data>
   <data name="KeyChordListener.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Shortcut</value>
-    <comment>The label for a "key chord listener" control that sets the keys a key binding is bound to.</comment>
+    <comment>The label for a "key chord listener" control that sets the keys to which a key binding is bound.</comment>
   </data>
   <data name="Appearance_TextFormattingHeader.Text" xml:space="preserve">
     <value>Text Formatting</value>
@@ -2260,6 +2276,26 @@
   <data name="Globals_ConfirmCloseAllTabs.Header" xml:space="preserve">
     <value>Warn when closing more than one tab</value>
     <comment>Header for a control to toggle whether to show a confirm dialog box when closing the application with multiple tabs open.</comment>
+  </data>
+  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
+    <value>Warn when closing</value>
+    <comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
+    <value>Controls when a confirmation dialog appears before closing tabs or windows. "Always" presents the dialog when closing any pane.</value>
+    <comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
+    <value>Never</value>
+    <comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
+    <value>Always</value>
+    <comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
+    <value>Multiple tabs or panes</value>
+    <comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment>
   </data>
   <data name="Globals_InputServiceWarning.Header" xml:space="preserve">
     <value>Warn when "Touch Keyboard and Handwriting Panel Service" is disabled</value>
@@ -2674,19 +2710,19 @@
     <comment>An option to choose from for the "path translation" setting.</comment>
   </data>
   <data name="Profile_PathTranslationStyleWsl.Content" xml:space="preserve">
-    <value>WSL (C:\ -&gt; /mnt/c)</value>
+    <value>WSL (C:\ 🡒 /mnt/c)</value>
     <comment>{Locked="WSL","C:\","/mnt/c"} An option to choose from for the "path translation" setting.</comment>
   </data>
   <data name="Profile_PathTranslationStyleCygwin.Content" xml:space="preserve">
-    <value>Cygwin (C:\ -&gt; /cygdrive/c)</value>
+    <value>Cygwin (C:\ 🡒 /cygdrive/c)</value>
     <comment>{Locked="Cygwin","C:\","/cygdrive/c"} An option to choose from for the "path translation" setting.</comment>
   </data>
   <data name="Profile_PathTranslationStyleMsys2.Content" xml:space="preserve">
-    <value>MSYS2 (C:\ -&gt; /c)</value>
+    <value>MSYS2 (C:\ 🡒 /c)</value>
     <comment>{Locked="MSYS2","C:\","/c"} An option to choose from for the "path translation" setting.</comment>
   </data>
   <data name="Profile_PathTranslationStyleMinGW.Content" xml:space="preserve">
-    <value>MinGW (C:\ -&gt; C:/)</value>
+    <value>MinGW (C:\ 🡒 C:/)</value>
     <comment>{Locked="MinGW","C:\","C:/"} An option to choose from for the "path translation" setting.</comment>
   </data>
   <data name="Profile_Delete_Orphaned.Header" xml:space="preserve">
@@ -2811,5 +2847,13 @@
   <data name="IconPicker_BuiltInIcon.PlaceholderText" xml:space="preserve">
     <value>Type to filter icons</value>
     <comment>Placeholder text for a text box to filter and select an icon.</comment>
+  </data>
+  <data name="Profile_DragDropDelimiter.Header" xml:space="preserve">
+    <value>Drag and drop delimiter</value>
+    <comment>Header for a control to set the delimiter used when dragging multiple files into the terminal.</comment>
+  </data>
+  <data name="Profile_DragDropDelimiter.HelpText" xml:space="preserve">
+    <value>This text will be inserted between the paths of multiple files dropped into the terminal.</value>
+    <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
 </root>

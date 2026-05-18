@@ -120,24 +120,38 @@
        Profile defaults to "debug" for Debug builds and "release" for everything
        else, so a Debug F5 picks up plain `cargo build` output. -->
   <ItemGroup>
-    <Content Include="$(SolutionDir)wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe"
-             Condition="Exists('$(SolutionDir)wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe')">
+    <Content Include="$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe"
+             Condition="Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe')">
       <Link>wta.exe</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(SolutionDir)wta\target\$(WtaRustProfile)\wta.exe"
-             Condition="!Exists('$(SolutionDir)wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe') And Exists('$(SolutionDir)wta\target\$(WtaRustProfile)\wta.exe')">
+    <Content Include="$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe"
+             Condition="!Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe') And Exists('$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe')">
       <Link>wta.exe</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(SolutionDir)wta\target\$(WtaRustTarget)\$(WtaRustFallbackProfile)\wta.exe"
-             Condition="!Exists('$(SolutionDir)wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe') And !Exists('$(SolutionDir)wta\target\$(WtaRustProfile)\wta.exe') And Exists('$(SolutionDir)wta\target\$(WtaRustTarget)\$(WtaRustFallbackProfile)\wta.exe')">
+    <Content Include="$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustFallbackProfile)\wta.exe"
+             Condition="!Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe') And !Exists('$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe') And Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustFallbackProfile)\wta.exe')">
       <Link>wta.exe</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(SolutionDir)wta\target\$(WtaRustFallbackProfile)\wta.exe"
-             Condition="!Exists('$(SolutionDir)wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe') And !Exists('$(SolutionDir)wta\target\$(WtaRustProfile)\wta.exe') And !Exists('$(SolutionDir)wta\target\$(WtaRustTarget)\$(WtaRustFallbackProfile)\wta.exe') And Exists('$(SolutionDir)wta\target\$(WtaRustFallbackProfile)\wta.exe')">
+    <Content Include="$(SolutionDir)tools\wta\target\$(WtaRustFallbackProfile)\wta.exe"
+             Condition="!Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe') And !Exists('$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe') And !Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustFallbackProfile)\wta.exe') And Exists('$(SolutionDir)tools\wta\target\$(WtaRustFallbackProfile)\wta.exe')">
       <Link>wta.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <!-- Deploy the static wt-agent-hooks bundle next to wta.exe.
+       wta resolves <exe-dir>/wt-agent-hooks/ at runtime via
+       agent_hooks_installer::bundle::candidate_roots(), feeds the per-CLI
+       subfolder directly to `<cli> plugin marketplace add` /
+       `gemini extensions install`, and skips its embedded fallback when
+       the loose copy is present. Excludes hook-debug/ (dev utility, not
+       part of the install bundle) and *.md (developer docs). -->
+  <ItemGroup>
+    <Content Include="$(SolutionDir)tools\wta\wt-agent-hooks\**"
+             Exclude="$(SolutionDir)tools\wta\wt-agent-hooks\hook-debug\**;$(SolutionDir)tools\wta\wt-agent-hooks\**\*.md">
+      <Link>wt-agent-hooks\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
@@ -150,7 +164,7 @@
         <!-- Blank the SourceProject here to vend all files into the root of the package. -->
         <SourceProject>
         </SourceProject>
-        <!-- Replace the filename for wt/wtd.exe with the one the manifest wants. -->
+        <!-- Replace the filename for wt/wtd.exe with the one that the manifest wants. -->
         <TargetPath Condition="'%(Filename)' == 'wt' and '%(Extension)' == '.exe'">$(OCExecutionAliasName).exe</TargetPath>
       </_FilteredNonWapProjProjectOutput>
     </ItemGroup>

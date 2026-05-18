@@ -26,6 +26,11 @@
       <DeploymentContent>true</DeploymentContent>
       <Link>ProfileGeneratorIcons\%(RecursiveDir)%(FileName)%(Extension)</Link>
     </Content>
+    <!-- Agent Logos (rendered in the agent pane bar via SvgImageSource) -->
+    <Content Include="$(OpenConsoleDir)src\cascadia\CascadiaPackage\AgentIcons\**\*">
+      <DeploymentContent>true</DeploymentContent>
+      <Link>AgentIcons\%(RecursiveDir)%(FileName)%(Extension)</Link>
+    </Content>
     <!-- Default Settings -->
     <Content Include="$(OpenConsoleDir)src\cascadia\TerminalSettingsModel\defaults.json">
       <DeploymentContent>true</DeploymentContent>

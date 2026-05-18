@@ -10,6 +10,7 @@ $outDir = "artifacts\local-installer\intelligent-terminal-${Version}-${archLower
 $depSrc = "$buildOut\Dependencies\${archLower}\Microsoft.UI.Xaml.2.8.appx"
 $cerSrc = "artifacts\local-installer\IntelligentTerminalDev.cer"
 $installSrc = "installer\Install-Msix.ps1"
+$freResetSrc = "tools\fre-test-reset.ps1"
 
 if (-not (Test-Path $cerSrc)) {
     Write-Error "Dev certificate not found at '$cerSrc'. Run: powershell -File build\scripts\New-DevSigningCert.ps1"
@@ -31,6 +32,13 @@ if (Test-Path $depSrc) {
 
 Copy-Item $cerSrc $outDir
 Copy-Item $installSrc $outDir
+
+# FRE test reset helper — testers run this to repeat the First Run Experience.
+if (Test-Path $freResetSrc) {
+    Copy-Item $freResetSrc $outDir
+} else {
+    Write-Warning "FRE reset script not found at '$freResetSrc' - skipping."
+}
 
 $zip = "artifacts\local-installer\intelligent-terminal-${Version}-${archLower}-msix.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }

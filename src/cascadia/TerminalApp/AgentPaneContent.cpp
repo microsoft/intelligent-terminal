@@ -5,12 +5,35 @@
 #include "AgentPaneContent.h"
 #include "AgentPaneContent.g.cpp"
 
+#include <algorithm>
+#include <cwctype>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.UI.Xaml.Media.Imaging.h>
+
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::TerminalApp::implementation
 {
+    namespace
+    {
+        // Map the agent's display name (case-insensitive substring) to the
+        // packaged white-filled SVG. Unknown agents fall back to Copilot.
+        std::wstring_view _logoFileForAgent(const winrt::hstring& name)
+        {
+            std::wstring lower{ name };
+            std::transform(lower.begin(), lower.end(), lower.begin(),
+                           [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+            if (lower.find(L"claude") != std::wstring::npos) return L"claude.svg";
+            if (lower.find(L"codex") != std::wstring::npos) return L"codex.svg";
+            if (lower.find(L"openai") != std::wstring::npos) return L"codex.svg";
+            if (lower.find(L"gpt") != std::wstring::npos) return L"codex.svg";
+            if (lower.find(L"gemini") != std::wstring::npos) return L"gemini.svg";
+            return L"copilot.svg";
+        }
+    }
+
     AgentPaneContent::AgentPaneContent(const winrt::TerminalApp::TerminalPaneContent& inner) :
         _inner{ inner }
     {
@@ -25,8 +48,9 @@ namespace winrt::TerminalApp::implementation
 
         _wireInnerEvents();
 
-        // Default label until wta sends an agent_status event.
+        // Default label + logo until wta sends an agent_status event.
         _refreshLabel();
+        _refreshLogo();
     }
 
     winrt::TerminalApp::TerminalPaneContent AgentPaneContent::GetTerminalContent()
@@ -48,15 +72,44 @@ namespace winrt::TerminalApp::implementation
                                              const winrt::hstring& model,
                                              const winrt::hstring& state)
     {
+        const bool nameChanged = _agentName != name;
         _agentName = name;
         _agentVersion = version;
         _agentModel = model;
         _agentState = state;
         _refreshLabel();
+        if (nameChanged)
+        {
+            _refreshLogo();
+        }
+    }
+
+    // Swap the bar between two modes:
+    //   * chat / connecting / etc. (active=false) — agent logo + "<name> <version>"
+    //   * session-management view  (active=true)  — no logo, "Agent sessions"
+    // Idempotent so callers don't need to dedupe.
+    void AgentPaneContent::SetSessionsView(bool active)
+    {
+        if (_isSessionsView == active)
+        {
+            return;
+        }
+        _isSessionsView = active;
+        _refreshLabel();
+        _refreshLogo();
     }
 
     void AgentPaneContent::_refreshLabel()
     {
+        // Session-management view takes over the bar — the wta TUI below no
+        // longer renders its own "Agent sessions" header, so this is where
+        // that title lives.
+        if (_isSessionsView)
+        {
+            AgentLabelText().Text(L"Agent sessions");
+            return;
+        }
+
         // Composition rule:
         //     "<name> <version>"   if version present (version may already include "v" prefix)
         //     "<name> <model>"     else if model present
@@ -65,7 +118,7 @@ namespace winrt::TerminalApp::implementation
         std::wstring text;
         if (_agentName.empty())
         {
-            text = L"Agent";
+            text = L"";
         }
         else
         {
@@ -82,6 +135,35 @@ namespace winrt::TerminalApp::implementation
             }
         }
         AgentLabelText().Text(winrt::hstring{ text });
+    }
+
+    void AgentPaneContent::_refreshLogo()
+    {
+        // Sessions view: the bar shows only the "Agent sessions" title
+        // (Figma node 912:70364 — no per-agent logo on the session list).
+        if (_isSessionsView)
+        {
+            AgentLogo().Source(nullptr);
+            return;
+        }
+
+        // No agent name yet → hide logo entirely (don't default to Copilot).
+        if (_agentName.empty())
+        {
+            AgentLogo().Source(nullptr);
+            return;
+        }
+
+        std::wstring uri{ L"ms-appx:///AgentIcons/" };
+        uri.append(_logoFileForAgent(_agentName));
+        const winrt::Windows::Foundation::Uri parsed{ winrt::hstring{ uri } };
+        winrt::Windows::UI::Xaml::Media::Imaging::SvgImageSource source{ parsed };
+        // Without an explicit raster size, SvgImageSource can render to a
+        // tiny fallback bitmap that shows up as a fuzzy/grey square. The
+        // bar gives us a 14-DIP slot, so 28px @ 2x DPI is plenty.
+        source.RasterizePixelWidth(28.0);
+        source.RasterizePixelHeight(28.0);
+        AgentLogo().Source(source);
     }
 
 #pragma region IPaneContent forwarding

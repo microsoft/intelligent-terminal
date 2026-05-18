@@ -480,44 +480,6 @@ natively from their tool-use loop:
 
 ## Orchestration Examples
 
-### Multi-agent coordination
-
-`wtcli listen` enables a supervisor process to react to agent events across panes:
-
-```bash
-# Supervisor script: wait for agent in pane 3 to finish, then trigger pane 5
-wtcli listen -t 3 --event agent.task.completed | while read -r event; do
-  EXIT_CODE=$(echo "$event" | jq -r '.params.exit_code')
-  if [ "$EXIT_CODE" = "0" ]; then
-    wtcli send-keys -t 5 "cargo deploy --prod" Enter
-  else
-    wtcli send-keys -t 5 "echo 'Build failed, skipping deploy'" Enter
-  fi
-done
-```
-
-### Agent-aware tab titles
-
-```bash
-# Update tab title based on agent state
-wtcli listen --event "agent.*" | while read -r event; do
-  PANE=$(echo "$event" | jq -r '.params.pane_id')
-  TYPE=$(echo "$event" | jq -r '.params.event')
-  case "$TYPE" in
-    agent.task.started)
-      DESC=$(echo "$event" | jq -r '.params.description')
-      wtcli send-keys -t "$PANE" "printf '\\e]0;Working: %s\\a' '$DESC'" Enter
-      ;;
-    agent.task.completed)
-      wtcli send-keys -t "$PANE" "printf '\\e]0;Done\\a'" Enter
-      ;;
-    agent.error)
-      wtcli send-keys -t "$PANE" "printf '\\e]0;Error\\a'" Enter
-      ;;
-  esac
-done
-```
-
 ### WTA TUI integration
 
 The `wta` TUI (ACP mode) can subscribe to the same event stream to render
@@ -547,7 +509,7 @@ agent status in its status bar — replacing the current `get_process_status` po
 ### Phase 2 — WT-native events (builds on shell integration work)
 
 Leverage the event types proposed in
-[terminal-acp-shell-integration.md](../../../wta/terminal-acp-shell-integration.md):
+[terminal-acp-shell-integration.md](../../../tools/wta/terminal-acp-shell-integration.md):
 
 - [ ] `pane.process.exited` — emitted by WT when a pane's child process exits
 - [ ] `pane.cwd.changed` — emitted when CWD changes (OSC 7 / OSC 9;9)

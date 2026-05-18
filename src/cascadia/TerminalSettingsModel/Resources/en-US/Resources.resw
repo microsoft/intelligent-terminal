@@ -708,7 +708,7 @@
     <comment>When enabled, input will go to all panes in this tab simultaneously</comment>
   </data>
   <data name="RestartConnectionKey" xml:space="preserve">
-    <value>Restart connection</value>
+    <value>Restart session</value>
   </data>
   <data name="OpenScratchpadKey" xml:space="preserve">
     <value>Open scratchpad</value>
@@ -751,6 +751,9 @@
   </data>
   <data name="FocusAgentPaneCommandKey" xml:space="preserve">
     <value>Focus AI assistant pane</value>
+  </data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
+    <value>Open AI assistant sessions list</value>
   </data>
   <data name="TriggerAutofixCommandKey" xml:space="preserve">
     <value>Trigger autofix</value>

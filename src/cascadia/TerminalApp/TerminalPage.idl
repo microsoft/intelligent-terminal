@@ -112,16 +112,15 @@ namespace TerminalApp
         Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.PaneInfo> GetProtocolActivePane();
         Windows.Foundation.IAsyncOperation<Windows.Foundation.Collections.IVector<Microsoft.Terminal.Protocol.TabInfo> > GetProtocolTabs();
         Windows.Foundation.IAsyncOperation<Windows.Foundation.Collections.IVector<Microsoft.Terminal.Protocol.PaneInfo> > GetProtocolPanes(UInt32 tabIdFilter);
-        Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.PaneOutput> ReadProtocolPaneOutput(UInt32 paneId, String source, Int32 maxLines);
-        Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.ProcessStatus> GetProtocolProcessStatus(UInt32 paneId);
-        Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.SessionVariable> GetProtocolSessionVariable(UInt32 paneId, String name);
-        Windows.Foundation.IAsyncOperation<Boolean> SetProtocolSessionVariable(UInt32 paneId, String name, String value);
+        Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.PaneOutput> ReadProtocolPaneOutput(Guid sessionId, String source, Int32 maxLines);
+        Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.ProcessStatus> GetProtocolProcessStatus(Guid sessionId);
+        Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.SessionVariable> GetProtocolSessionVariable(Guid sessionId, String name);
+        Windows.Foundation.IAsyncOperation<Boolean> SetProtocolSessionVariable(Guid sessionId, String name, String value);
         Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.TabCreationResult> CreateProtocolTab(Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
-        Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.TabCreationResult> SplitProtocolPane(UInt32 paneId, Microsoft.Terminal.Settings.Model.SplitDirection direction, Single size, Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
-        Windows.Foundation.IAsyncOperation<Boolean> CloseProtocolPane(UInt32 paneId);
-        Windows.Foundation.IAsyncOperation<Boolean> SendProtocolInput(UInt32 paneId, String text);
-        Windows.Foundation.IAsyncOperation<Boolean> FocusProtocolPane(UInt32 paneId);
-        Windows.Foundation.IAsyncOperation<String> ShowProtocolQuickPick(String title, String choicesJson, Boolean allowFreeInput);
+        Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.TabCreationResult> SplitProtocolPane(Guid sessionId, Microsoft.Terminal.Settings.Model.SplitDirection direction, Single size, Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
+        Windows.Foundation.IAsyncOperation<Boolean> CloseProtocolPane(Guid sessionId);
+        Windows.Foundation.IAsyncOperation<Boolean> SendProtocolInput(Guid sessionId, String text);
+        Windows.Foundation.IAsyncOperation<Boolean> FocusProtocolPane(Guid sessionId);
         event Windows.Foundation.TypedEventHandler<Object, String> ProtocolVtSequenceReceived;
 
         // Inbound event from WTA carrying {method:"autofix_state",params:{state,pane_id,...}}
@@ -132,5 +131,24 @@ namespace TerminalApp
         // Called by the COM server on the UI thread; the page forwards the values
         // to the AgentPaneContent so the XAML agent bar can refresh.
         void OnAgentStatusChanged(String eventJson);
+
+        // Inbound event from WTA carrying {method:"close_agent_pane",params:{...}}.
+        // Emitted when the user presses Ctrl+C twice in the agent pane TUI.
+        // The page tears down the shared agent pane; wta dies with its ConPty.
+        void OnCloseAgentPaneRequested(String eventJson);
+
+        // Inbound event from WTA carrying {method:"view_changed",params:{view}}.
+        // Emitted when the wta TUI flips its internal view (Esc out of Agents,
+        // `/sessions` slash command). Mirrors the new view onto C++ state so
+        // the agent bar title + bottom bar highlight stay in sync.
+        void OnAgentViewChanged(String eventJson);
+
+        // Inbound event from WTA carrying
+        // {method:"resume_in_new_agent_tab",params:{session_id,cwd}}.
+        // Emitted by the session view's Shift+Enter handler. The page
+        // creates a new tab, reconciles the shared agent pane onto it, then
+        // publishes a `load_session` event back to wta carrying the new
+        // tab's StableId so wta calls ACP `session/load` for that tab.
+        void OnResumeInNewAgentTabRequested(String eventJson);
     }
 }

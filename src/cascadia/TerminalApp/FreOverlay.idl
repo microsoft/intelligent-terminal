@@ -1,0 +1,28 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+namespace TerminalApp
+{
+    // Lightweight data class for the agent ComboBox in the FRE wizard.
+    runtimeclass FreAgentEntry
+    {
+        FreAgentEntry();
+        String Id;
+        String DisplayLabel;
+    }
+
+    [default_interface] runtimeclass FreOverlay : Windows.UI.Xaml.Controls.UserControl
+    {
+        FreOverlay();
+
+        // Initialize the wizard with settings so it can read defaults and
+        // populate the agent dropdown. Must be called before showing.
+        void Initialize(Microsoft.Terminal.Settings.Model.CascadiaSettings settings);
+
+        // Reset drag offset so the dialog appears centered.
+        void ResetDragOffset();
+
+        // Raised when the user clicks "Save" or the close button.
+        event Windows.Foundation.TypedEventHandler<FreOverlay, Object> Completed;
+    }
+}

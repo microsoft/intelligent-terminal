@@ -393,7 +393,7 @@ $unpackagedScript = Join-Path $repoRoot 'build\scripts\New-UnpackagedTerminalDis
 $installerScript = Join-Path $repoRoot 'installer\install-local-terminal.ps1'
 $installerCmd = Join-Path $repoRoot 'installer\install.cmd'
 $installerBootstrapManifest = Join-Path $repoRoot 'installer\bootstrap\Cargo.toml'
-$plannerPromptTemplate = Join-Path $repoRoot 'wta\prompts\terminal-agent.md'
+$plannerPromptTemplate = Join-Path $repoRoot 'tools\wta\prompts\terminal-agent.md'
 $devManifestPath = Join-Path $repoRoot 'src\cascadia\CascadiaPackage\Package-Dev.appxmanifest'
 
 if (-not (Test-Path $unpackagedScript -PathType Leaf)) {
@@ -497,9 +497,9 @@ if ($SkipWtaBuild) {
     $resolvedWtaExePath = Resolve-AbsolutePath -Path $WtaExePath
 } else {
     Write-Status "Building wta.exe for $rustTarget with a static CRT ..."
-    $manifestPath = Join-Path $repoRoot 'wta\Cargo.toml'
+    $manifestPath = Join-Path $repoRoot 'tools\wta\Cargo.toml'
     Invoke-RustBuild -CargoPath $cargoPath -ManifestPath $manifestPath -RustTarget $rustTarget
-    $resolvedWtaExePath = Join-Path $repoRoot ("wta\target\{0}\release\wta.exe" -f $rustTarget)
+    $resolvedWtaExePath = Join-Path $repoRoot ("tools\wta\target\{0}\release\wta.exe" -f $rustTarget)
 }
 
 if (-not (Test-Path $resolvedWtaExePath -PathType Leaf)) {

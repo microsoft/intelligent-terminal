@@ -28,6 +28,7 @@
   <ItemGroup>
     <!-- Only put headers for winrt types in here. Don't put other header files
     in here - put them in the lib's vcxproj instead! -->
+    <ClInclude Include="../AcpRuntimeState.h" />
     <ClInclude Include="../ActionArgs.h" />
     <ClInclude Include="../ActionMap.h" />
     <ClInclude Include="../CascadiaSettings.h" />
