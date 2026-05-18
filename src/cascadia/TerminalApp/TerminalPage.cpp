@@ -893,9 +893,12 @@ namespace winrt::TerminalApp::implementation
 
         // Now create the agent pane — settings are already configured.
         // No --setup first-run needed; WTA starts in normal mode.
+        // After FRE the pane should be visible so the user sees the
+        // welcome hint immediately.
         if (const auto tab = _GetFocusedTabImpl())
         {
             _AutoCreateHiddenAgentPane(tab);
+            _OpenOrReuseAgentPane(L"");
         }
     }
 

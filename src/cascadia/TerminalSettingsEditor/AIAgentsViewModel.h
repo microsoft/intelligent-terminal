@@ -167,10 +167,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _refreshingAgentHooks{ false };
         winrt::hstring _agentHooksInstallSummary;
 
-        static std::wstring _ResolveWtaExePath();
-        static std::string _RunWtaCaptureStdout(const std::wstring& wtaPath,
-                                                const std::wstring& argsAfterExe,
-                                                DWORD timeoutMs);
         void _ApplyStatusReport(const std::optional<::Microsoft::Terminal::AgentHooks::StatusReport>& report);
         winrt::fire_and_forget _RefreshAgentHooksStatusAsync();
         winrt::fire_and_forget _RunHooksInstallerAsync();

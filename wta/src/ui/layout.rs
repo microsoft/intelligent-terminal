@@ -75,6 +75,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         input::input_height(&tab.input, tab.cursor_pos, main_area.width)
     };
 
+    // Show shortcut hint above input when chat is empty (first-run welcome)
+    let show_hint = app.current_tab().completed_turns.is_empty()
+        && app.current_tab().messages.is_empty()
+        && app.state == crate::app::ConnectionState::Connected;
+    let hint_height = if show_hint { Constraint::Length(1) } else { Constraint::Length(0) };
+
     // The host (Windows Terminal) renders the agent bar in XAML above this
     // pane, so wta uses the full pane area for chat / recommendations / input.
     let chunks = Layout::default()
@@ -82,6 +88,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         .constraints([
             Constraint::Min(1),
             rec_height,
+            hint_height,
             Constraint::Length(input_height),
         ])
         .split(main_area);
@@ -98,7 +105,23 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     chat::render(frame, app, h_chat[1]);
     recommendations::render(frame, app, h_rec[1]);
-    input::render(frame, app, chunks[2]);
+
+    // Shortcut hint just above input
+    if show_hint {
+        let hint = ratatui::widgets::Paragraph::new(ratatui::text::Line::from(
+            ratatui::text::Span::styled(
+                "(Ctrl+Shift+. to show/hide agent pane \u{2022} Ctrl+Alt+/ to show/hide agent session)",
+                ratatui::style::Style::new().fg(ratatui::style::Color::DarkGray),
+            ),
+        ));
+        let h_hint = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)])
+            .split(chunks[2]);
+        frame.render_widget(hint, h_hint[1]);
+    }
+
+    input::render(frame, app, chunks[3]);
 
     if let Some(debug_area) = debug_area {
         debug_panel::render(frame, app, debug_area);

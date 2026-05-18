@@ -69,6 +69,23 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
 
+    // First-run welcome: shown when chat is empty and connected
+    if app.current_tab().completed_turns.is_empty()
+        && app.current_tab().messages.is_empty()
+        && app.state == crate::app::ConnectionState::Connected
+    {
+        let mut welcome_lines = vec![
+            Line::from(vec![
+                Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Welcome to Intelligent Terminal!",
+                    Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+                ),
+            ]),
+        ];
+        reversed_lines.extend(welcome_lines.drain(..).rev());
+    }
+
     let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
     let total_lines = lines.len();

@@ -39,6 +39,8 @@ namespace winrt::TerminalApp::implementation
                                 const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
         void _OnCloseButtonClick(const winrt::Windows::Foundation::IInspectable& sender,
                                  const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
+        void _OnAgentSelectionChanged(const winrt::Windows::Foundation::IInspectable& sender,
+                                      const winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs& args);
 
         // No-op kept for IDL compatibility.
         void ResetDragOffset();
@@ -46,8 +48,22 @@ namespace winrt::TerminalApp::implementation
     private:
         winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings _settings{ nullptr };
 
-        // Detect whether an agent CLI is on PATH.
+        // Detect whether an executable is on PATH.
         static bool _IsAgentInstalled(const wchar_t* name);
+        static bool _IsNodeInstalled();
+
+        // Run a winget install synchronously on a background thread.
+        // Returns true on success.
+        static winrt::Windows::Foundation::IAsyncOperation<bool> _WingetInstallAsync(winrt::hstring packageId);
+
+        // Run wta.exe hooks install on a background thread.
+        static winrt::Windows::Foundation::IAsyncAction _InstallHooksAsync();
+
+        // Check if hooks are installed for a given agent via `wta hooks status --json`.
+        static winrt::Windows::Foundation::IAsyncOperation<bool> _CheckHooksNeededAsync(winrt::hstring agentId);
+
+        // Perform the full save + install flow asynchronously.
+        winrt::Windows::Foundation::IAsyncAction _SaveAndInstallAsync();
     };
 }
 

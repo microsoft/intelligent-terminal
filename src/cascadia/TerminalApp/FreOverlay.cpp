@@ -7,6 +7,8 @@
 #include "FreOverlay.g.cpp"
 
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentHooksStatus.h"
+#include "../inc/WtaProcess.h"
 
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::UI::Xaml;
@@ -19,7 +21,7 @@ namespace winrt::TerminalApp::implementation
         InitializeComponent();
     }
 
-    // ── Agent detection ─────────────────────────────────────────────────
+    // ── Detection helpers ───────────────────────────────────────────────
 
     bool FreOverlay::_IsAgentInstalled(const wchar_t* name)
     {
@@ -28,6 +30,16 @@ namespace winrt::TerminalApp::implementation
             return true;
         const auto cmdName = std::wstring(name) + L".cmd";
         if (SearchPathW(nullptr, cmdName.c_str(), nullptr, MAX_PATH, buf, nullptr) > 0)
+            return true;
+        return false;
+    }
+
+    bool FreOverlay::_IsNodeInstalled()
+    {
+        wchar_t buf[MAX_PATH];
+        if (SearchPathW(nullptr, L"npx", L".cmd", MAX_PATH, buf, nullptr) > 0)
+            return true;
+        if (SearchPathW(nullptr, L"npx", L".exe", MAX_PATH, buf, nullptr) > 0)
             return true;
         return false;
     }
@@ -100,6 +112,23 @@ namespace winrt::TerminalApp::implementation
         AutoErrorToggle().IsOn(globals.AutoFixEnabled());
     }
 
+    // ── Agent selection changed ─────────────────────────────────────────
+
+    void FreOverlay::_OnAgentSelectionChanged(const IInspectable& /*sender*/,
+                                              const winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs& /*args*/)
+    {
+        // Show Node.js install hint for Claude/Codex (they use npx adapters)
+        if (const auto selected = AgentComboBox().SelectedItem())
+        {
+            if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
+            {
+                const auto id = entry.Id();
+                const bool needsNode = (id == L"claude" || id == L"codex");
+                AgentInstallHint().Visibility(needsNode ? Visibility::Visible : Visibility::Collapsed);
+            }
+        }
+    }
+
     // ── Page navigation ─────────────────────────────────────────────────
 
     void FreOverlay::_OnNextButtonClick(const IInspectable& /*sender*/,
@@ -109,28 +138,116 @@ namespace winrt::TerminalApp::implementation
         SettingsPage().Visibility(Visibility::Visible);
     }
 
-    // ── Save & complete ─────────────────────────────────────────────────
+    // ── Winget install helper ───────────────────────────────────────────
 
-    void FreOverlay::_OnSaveButtonClick(const IInspectable& /*sender*/,
-                                        const RoutedEventArgs& /*args*/)
+    IAsyncOperation<bool> FreOverlay::_WingetInstallAsync(winrt::hstring packageId)
     {
+        // Copy packageId before switching threads (coroutine parameter safety)
+        auto id = std::wstring{ packageId };
+
+        co_await winrt::resume_background();
+
+        auto cmdline = fmt::format(
+            L"winget install --id {} --exact --silent "
+            L"--accept-source-agreements --accept-package-agreements "
+            L"--disable-interactivity",
+            id);
+
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        PROCESS_INFORMATION pi{};
+
+        auto success = CreateProcessW(
+            nullptr,
+            cmdline.data(),
+            nullptr, nullptr, FALSE,
+            CREATE_NO_WINDOW,
+            nullptr, nullptr, &si, &pi);
+
+        if (!success)
+        {
+            co_return false;
+        }
+
+        WaitForSingleObject(pi.hProcess, 300000); // 5 min timeout
+        DWORD exitCode = 1;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        co_return exitCode == 0;
+    }
+
+    // ── Hooks status check ────────────────────────────────────────────
+
+    IAsyncOperation<bool> FreOverlay::_CheckHooksNeededAsync(winrt::hstring agentId)
+    {
+        auto id = winrt::to_string(agentId);
+
+        co_await winrt::resume_background();
+
+        namespace Wta = ::Microsoft::Terminal::WtaProcess;
+        namespace Hooks = ::Microsoft::Terminal::AgentHooks;
+
+        const auto wtaPath = Wta::ResolveWtaExePath();
+        const auto stdoutText = Wta::RunWtaCaptureStdout(wtaPath, L"hooks status --json", 30'000);
+        auto report = Hooks::ParseStatusJson(stdoutText);
+
+        if (!report.has_value())
+        {
+            co_return true; // can't determine — assume needed
+        }
+
+        for (const auto& cli : report->clis)
+        {
+            if (cli.name == id)
+            {
+                co_return !(cli.pluginInstalled && cli.pluginEnabled);
+            }
+        }
+
+        co_return true; // agent not in report — needs install
+    }
+
+    // ── Hooks install helper ────────────────────────────────────────────
+
+    IAsyncAction FreOverlay::_InstallHooksAsync()
+    {
+        co_await winrt::resume_background();
+
+        namespace Wta = ::Microsoft::Terminal::WtaProcess;
+
+        const auto wtaPath = Wta::ResolveWtaExePath();
+        // Extend PATH so freshly-installed CLIs (e.g. copilot via winget)
+        // are discoverable by the hooks installer.
+        auto envBlock = Wta::BuildExtendedPathEnvBlock();
+        Wta::RunWtaAndWait(wtaPath, L"hooks install", 60'000,
+                           envBlock.empty() ? nullptr : envBlock.data());
+    }
+
+    // ── Save + install flow ─────────────────────────────────────────────
+
+    IAsyncAction FreOverlay::_SaveAndInstallAsync()
+    {
+        auto weak = get_weak();
+
+        // 1. Read selections on the UI thread
+        winrt::hstring agentId;
+        if (const auto selected = AgentComboBox().SelectedItem())
+        {
+            if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
+            {
+                agentId = entry.Id();
+            }
+        }
+
         if (_settings)
         {
             const auto& globals = _settings.GlobalSettings();
-
-            // Save agent selection
-            if (const auto selected = AgentComboBox().SelectedItem())
-            {
-                if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
-                {
-                    globals.AcpAgent(entry.Id());
-                }
-            }
-
-            // Save auto-error detection
+            globals.AcpAgent(agentId);
             globals.AutoFixEnabled(AutoErrorToggle().IsOn());
 
-            // Save pane position
             const auto posIdx = PanePositionComboBox().SelectedIndex();
             switch (posIdx)
             {
@@ -141,7 +258,52 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        Completed.raise(*this, nullptr);
+        // 2. Disable button immediately to prevent double-clicks
+        SaveButton().Content(winrt::box_value(L"Setting up..."));
+        SaveButton().IsEnabled(false);
+
+        // 3. Install prerequisites if needed
+        const bool needsCopilot = (agentId == L"copilot") && !_IsAgentInstalled(L"copilot");
+        const bool needsNode = (agentId == L"claude" || agentId == L"codex") && !_IsNodeInstalled();
+
+        if (needsCopilot)
+        {
+            co_await _WingetInstallAsync(L"GitHub.Copilot");
+        }
+        if (needsNode)
+        {
+            co_await _WingetInstallAsync(L"OpenJS.NodeJS.LTS");
+        }
+
+        // 4. Install hooks if needed
+        {
+            auto self = weak.get();
+            if (!self) co_return;
+
+            const bool hooksNeeded = co_await _CheckHooksNeededAsync(agentId);
+            if (hooksNeeded)
+            {
+                co_await _InstallHooksAsync();
+            }
+        }
+
+        // 5. Back on UI thread — complete
+        {
+            auto self = weak.get();
+            if (!self) co_return;
+
+            SaveButton().Content(winrt::box_value(L"Save"));
+            SaveButton().IsEnabled(true);
+            Completed.raise(*this, nullptr);
+        }
+    }
+
+    // ── Button handlers ─────────────────────────────────────────────────
+
+    void FreOverlay::_OnSaveButtonClick(const IInspectable& /*sender*/,
+                                        const RoutedEventArgs& /*args*/)
+    {
+        _SaveAndInstallAsync();
     }
 
     void FreOverlay::_OnCloseButtonClick(const IInspectable& /*sender*/,

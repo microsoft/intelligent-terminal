@@ -188,9 +188,9 @@
                               HorizontalAlignment="Stretch"
                               VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="4">
-                        <!--  Agent + auto-install (grouped together)  -->
+                        <!--  Agent  -->
                         <Border Background="#19FFFFFF" CornerRadius="4" Padding="16,12">
-                            <StackPanel Spacing="10">
+                            <StackPanel Spacing="8">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -205,7 +205,8 @@
                                     </StackPanel>
                                     <ComboBox x:Name="AgentComboBox" Grid.Column="1"
                                               MinWidth="220"
-                                              VerticalAlignment="Center">
+                                              VerticalAlignment="Center"
+                                              SelectionChanged="_OnAgentSelectionChanged">
                                         <ComboBox.ItemTemplate>
                                             <DataTemplate x:DataType="local:FreAgentEntry">
                                                 <TextBlock Text="{x:Bind DisplayLabel}" />
@@ -213,11 +214,11 @@
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
                                 </Grid>
-                                <CheckBox x:Name="InstallToolsCheckBox" IsChecked="True"
-                                          Foreground="White" Margin="0,0,0,0">
-                                    <TextBlock FontSize="12" Foreground="#CCFFFFFF" TextWrapping="Wrap"
-                                               Text="Automatically install the required tools for agent session tracking. This also installs Node.js and NPX." />
-                                </CheckBox>
+                                <!--  Info hint: shown for Claude/Codex which need Node.js  -->
+                                <TextBlock x:Name="AgentInstallHint"
+                                           FontSize="12" Foreground="#99FFFFFF"
+                                           TextWrapping="Wrap" Visibility="Collapsed"
+                                           Text="ℹ This agent requires Node.js and NPX, which will be installed automatically if not already present." />
                             </StackPanel>
                         </Border>
 
@@ -243,22 +244,27 @@
 
                         <!--  Session management  -->
                         <Border Background="#19FFFFFF" CornerRadius="4" Padding="16,12">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Spacing="2">
-                                    <TextBlock FontSize="14" FontWeight="SemiBold"
-                                               Foreground="White" Text="Session management" />
-                                    <TextBlock FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap"
-                                               Text="Give Intelligent Terminal permission to track the status of your running or active agents." />
-                                </StackPanel>
-                                <ToggleSwitch x:Name="SessionManagementToggle" Grid.Column="1"
-                                              IsOn="True" VerticalAlignment="Center"
-                                              OnContent="On" OffContent="Off" />
-                            </Grid>
+                            <StackPanel Spacing="8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="White" Text="Session management" />
+                                        <TextBlock FontSize="12" Foreground="#99FFFFFF"
+                                                   TextWrapping="Wrap"
+                                                   Text="Give Intelligent Terminal permission to track the status of your running or active agents." />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="SessionManagementToggle" Grid.Column="1"
+                                                  IsOn="True" VerticalAlignment="Center"
+                                                  OnContent="On" OffContent="Off" />
+                                </Grid>
+                                <TextBlock FontSize="12" Foreground="#99FFFFFF"
+                                           TextWrapping="Wrap"
+                                           Text="ℹ Enabling this will install integration hooks to track sessions across your agent CLIs." />
+                            </StackPanel>
                         </Border>
 
                         <!--  Pane position  -->
