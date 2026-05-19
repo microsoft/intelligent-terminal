@@ -22,6 +22,7 @@
   - [Command Palette](#command-palette)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Configuration](#configuration)
+- [Data & Privacy](#data--privacy)
 - [Building the Code](#building-the-code)
 - [Additional Notes](#additional-notes)
 - [Feedback](#feedback)
@@ -159,6 +160,38 @@ Everything is configurable through terminal settings, under "Agent" settings.
 | Pane placement | Top, Bottom (default), Left, Right |
 | Permission | Always ask (default), Ask once per agent, Always allow |
 | Auto error detection | Give the agent pane the ability to catch and suggest fixes to errors automatically |
+
+---
+
+## Data & Privacy
+
+Intelligent Terminal is a **local transport layer**. It passes your prompts and shell context to your selected agent CLI over stdio/ACP. Terminal does not call any cloud APIs itself, does not store conversation data to disk, and does not mediate or inspect what the agent CLI does with your data.
+
+### What data flows through Terminal
+
+- Your prompts (what you type in the agent pane or command palette)
+- Shell output context (recent command output shared with the agent for context)
+- Basic environment metadata (shell type, OS version)
+
+All of this is held in memory for the active session only and discarded when the session ends.
+
+### Where your data goes depends on your agent CLI
+
+| Agent CLI | Data routing | Terms |
+|-----------|--------------|-------|
+| [GitHub Copilot](https://github.com/features/copilot/cli/) (default) | GitHub backend | [GitHub Copilot Trust Center](https://resources.github.com/copilot-trust-center/). Enterprise protections (e.g., zero data retention) apply for eligible plans. |
+| Third-party or custom agent CLIs | Determined by the agent vendor | Governed by that vendor's terms, not Microsoft or GitHub agreements. |
+
+> [!NOTE]
+> Terminal cannot guarantee data protections for third-party agent CLIs. When you select an agent, you're choosing where your data goes. Review your agent vendor's privacy policy before use.
+
+### Controls
+
+- Choose your agent CLI at any time in Settings > Agent
+- Disable auto error detection to prevent shell output from being sent automatically
+- Intelligent Terminal always asks before running commands on your behalf
+
+For more information, see the [Microsoft Privacy Statement](https://www.microsoft.com/en-us/privacy/privacystatement).
 
 ---
 
