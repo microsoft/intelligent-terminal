@@ -51,7 +51,7 @@ Everything else about Intelligent Terminal is the same as [Windows Terminal](htt
 > [!NOTE]
 > Intelligent Terminal requires Windows 10 version 22H2 or later, or Windows 11.
 
-You also need a supported agent CLI and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
+You also need a supported agent [CLI](https://github.com/resources/articles/what-is-a-cli) and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
 
 ### Microsoft Store
 
@@ -82,7 +82,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 ## Get Started
 
 1. Install Intelligent Terminal using one of the methods above.
-2. Open Intelligent Terminal. On first run, you'll be asked to select your agent. [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs already on your machine (Copilot, Codex, Gemini, and others) are detected automatically.
+2. Open Intelligent Terminal. On first run, you'll be asked to select your agent. [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs already on your machine (GitHub Copilot, Codex, Gemini, and others) are detected automatically. If no agent CLIs are detected, Intelligent Terminal will default to GitHub Copilot CLI and install it for you.
 3. If you aren't already signed in, the agent pane will prompt you to authenticate.
 4. Start asking questions. The agent has context on your shell output so there's no copy-pasting needed.
 
@@ -118,7 +118,7 @@ You'll see all your active agents and their current status, plus past sessions y
 
 When a command fails, Terminal picks it up. An indicator appears in the agent status bar: "Error detected." That opens the agent pane with the error context already loaded. The agent explains what happened and can suggest or auto-run the best fix.
 
-Intelligent Terminal has a permission model you control: "always ask" (default), "ask once per agent," or "always allow for trusted agents." Same suggest-and-confirm approach as VS Code Copilot.
+Intelligent Terminal has a permission model you control: "always ask" (default), "ask once per agent," or "always allow for trusted agents." Same suggest-and-confirm approach as VS Code GitHub Copilot.
 
 ### Command Palette
 
