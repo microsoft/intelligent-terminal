@@ -2689,7 +2689,7 @@ impl App {
                 tab.pending_agent_response.clear();
                 tab.pending_user_replay.clear();
                 tab.timing_note = None;
-                tab.pending_completed_turn = None;
+                tab.turn = TurnState::Idle;
                 tab.messages.push(ChatMessage::Error(message));
                 tab.scroll_to_bottom();
             }
@@ -5627,6 +5627,30 @@ fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
     }
 
     out
+}
+
+const THOUGHT_PREVIEW_MAX_CHARS: usize = 4096;
+
+/// Append a streamed thought chunk to the rolling preview buffer used by
+/// the "Thinking..." indicator. The buffer is capped at
+/// `THOUGHT_PREVIEW_MAX_CHARS`; once it grows past that, the head is
+/// trimmed and replaced with `...` so only the most recent text is kept.
+fn append_thought_preview(buffer: &mut String, chunk: &str) {
+    if chunk.is_empty() {
+        return;
+    }
+
+    buffer.push_str(chunk);
+    let char_count = buffer.chars().count();
+    if char_count <= THOUGHT_PREVIEW_MAX_CHARS {
+        return;
+    }
+
+    let tail: String = buffer
+        .chars()
+        .skip(char_count.saturating_sub(THOUGHT_PREVIEW_MAX_CHARS))
+        .collect();
+    *buffer = format!("...{tail}");
 }
 
 /// Extract a short preview string from the recommended choice's first
