@@ -1890,11 +1890,17 @@ impl App {
     /// `agent_sessions` via `AppEvent::HistoricalSessionsLoaded`. Subsequent
     /// calls are no-ops — the registry is cached for this wta's lifetime.
     ///
-    /// Called from the F2 toggle into the Agents view. Pre-F2 the scan
-    /// would be pure overhead — chat mode never reads historical entries —
-    /// and on a populated machine the scan is ~10s of disk I/O, so an
-    /// eager-load at startup would either block the LocalSet (slowing the
-    /// first agent_status event) or churn the disk on every model switch.
+    /// Called eagerly from `run_acp_app` right after `set_event_tx` so the
+    /// scan starts overlapping with ACP startup and is usually done by the
+    /// time the user first opens the Agents view. Also called defensively
+    /// from the F2 / `/sessions` toggle in case startup raced ahead of
+    /// `set_event_tx` (Setup/FRE mode — `event_tx` not yet wired, so the
+    /// eager call early-returns and the F2 press picks it up).
+    ///
+    /// Pre-eager-load this was strictly lazy because each wta restart
+    /// (model switch, new agent pane) re-pays the ~10s scan. The eager
+    /// kick is gated to the ACP TUI mode for the same reason — short-lived
+    /// modes (`delegate`, `mcp`, CLI helpers) never call this.
     pub fn ensure_history_loaded(&mut self) {
         if self.history_load_state != HistoryLoadState::NotStarted {
             return;
