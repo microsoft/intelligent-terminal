@@ -32,6 +32,7 @@ namespace winrt::TerminalApp::implementation
             if (lower.find(L"gemini") != std::wstring::npos) return L"gemini.svg";
             return L"copilot.svg";
         }
+
     }
 
     AgentPaneContent::AgentPaneContent(const winrt::TerminalApp::TerminalPaneContent& inner) :
@@ -103,10 +104,21 @@ namespace winrt::TerminalApp::implementation
     {
         // Session-management view takes over the bar — the wta TUI below no
         // longer renders its own "Agent sessions" header, so this is where
-        // that title lives.
+        // that title lives. The session list is filtered by the current
+        // agent's CLI source (see App::current_cli_filter), so we suffix
+        // the bar with the agent's display name to make the scope explicit
+        // (e.g. "Agent sessions · GitHub Copilot"). We use _agentName verbatim
+        // — it already carries the canonical product casing from the ACP
+        // initialize response.
         if (_isSessionsView)
         {
-            AgentLabelText().Text(L"Agent sessions");
+            std::wstring text{ L"Agent sessions" };
+            if (!_agentName.empty())
+            {
+                text += L": ";
+                text += std::wstring{ _agentName };
+            }
+            AgentLabelText().Text(winrt::hstring{ text });
             return;
         }
 

@@ -1867,6 +1867,18 @@ async fn run_acp_app(
 
             app_state.set_event_tx(event_tx.clone());
 
+            // Kick the historical-session scan immediately on agent-pane
+            // startup so the F2 sessions view is populated by the time the
+            // user opens it. The scan runs on a `spawn_blocking` thread and
+            // posts `HistoricalSessionsLoaded` back, so it never blocks the
+            // LocalSet or the first frame. Subsequent `ensure_history_loaded`
+            // calls (from F2 / `/sessions`) short-circuit on `Loading`/`Loaded`.
+            //
+            // Only the ACP TUI path reaches here — `wta delegate`, `wta mcp`,
+            // and CLI subcommands never construct an App that wires
+            // `event_tx`, so they don't pay this cost.
+            app_state.ensure_history_loaded();
+
             // If in setup mode, store ACP params for deferred start after login.
             if let Some((prompt_rx, cancel_rx, new_session_rx, load_session_rx, drop_session_rx, restart_rx)) = deferred_channels {
                 app_state.set_acp_params(
