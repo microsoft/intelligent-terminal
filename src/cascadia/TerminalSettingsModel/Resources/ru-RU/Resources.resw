@@ -976,4 +976,26 @@
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>Размер разделения</value>
   </data>
+  <data name="ShowProtocolInfoCommandKey" xml:space="preserve">
+    <value>Показать сведения о Terminal Protocol</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
+    <value>Показать/скрыть панель</value>
+  </data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve">
+    <value>Показать/скрыть ИИ-агента</value>
+  </data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve">
+    <value>Переместить фокус на панель ИИ-агента</value>
+  </data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
+    <value>Открыть список сеансов ИИ-агента</value>
+  </data>
+  <data name="TriggerAutofixCommandKey" xml:space="preserve">
+    <value>Запустить автоисправление</value>
+  </data>
+  <data name="PromptActionArgumentLocalized" xml:space="preserve">
+    <value>Запрос</value>
+  </data>
 </root>

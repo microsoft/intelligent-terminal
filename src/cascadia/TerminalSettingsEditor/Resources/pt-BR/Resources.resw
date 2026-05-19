@@ -2752,4 +2752,85 @@
     <value>Este texto será inserido entre os caminhos de vários arquivos descartados no terminal.</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
+  <data name="Nav_AIAgents.Content" xml:space="preserve">
+    <value>Agentes</value>
+  </data>
+  <data name="AIAgents_PageSubtitle.Text" xml:space="preserve">
+    <value>Configure como os agentes funcionam em toda a sua experiência no terminal</value>
+  </data>
+  <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve">
+    <value>Painel do agente</value>
+  </data>
+  <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve">
+    <value>Paleta de comandos</value>
+  </data>
+  <data name="AIAgents_AcpAgent.Header" xml:space="preserve">
+    <value>Agente</value>
+  </data>
+  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
+    <value>Escolha o CLI de agente usado no painel do agente. Qualquer CLI compatível com ACP será detectado.</value>
+    <comment>{Locked="ACP","CLI"}</comment>
+  </data>
+  <data name="AIAgents_AcpModel.Header" xml:space="preserve">
+    <value>Modelo</value>
+  </data>
+  <data name="AIAgents_AcpModel.HelpText" xml:space="preserve">
+    <value>Escolha o modelo usado por este agente.</value>
+  </data>
+  <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
+    <value>Agente</value>
+  </data>
+  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
+    <value>Escolha o agente usado para ações rápidas na paleta de comandos.</value>
+  </data>
+  <data name="AIAgents_AutoFix.Header" xml:space="preserve">
+    <value>Detecção automática de erros</value>
+  </data>
+  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
+    <value>Detecte erros de comando e sugira correções automaticamente.</value>
+  </data>
+  <data name="AIAgents_PanePosition.Header" xml:space="preserve">
+    <value>Posição do painel</value>
+  </data>
+  <data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
+    <value>Define onde o painel do agente é aberto em relação ao terminal.</value>
+  </data>
+  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
+    <value>Hooks de agente</value>
+  </data>
+  <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
+    <value>Instalar scripts de hook do agente</value>
+  </data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
+    <value>Necessário para o gerenciamento de sessões do agente. Instala hooks em cada CLI detectado (Copilot, Claude, Gemini) para que relatem sessões e status ao painel do agente. Reinicie todos os CLIs de agente abertos após a instalação.</value>
+    <comment>{Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
+    <value>Instalar hooks</value>
+  </data>
+  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
+    <value>Atualizar</value>
+  </data>
+  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
+    <value>Avisar ao fechar</value>
+  </data>
+  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
+    <value>Controla quando uma caixa de diálogo de confirmação aparece antes de fechar guias ou janelas. "Sempre" exibe a caixa de diálogo ao fechar qualquer painel.</value>
+  </data>
+  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
+    <value>Nunca</value>
+  </data>
+  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
+    <value>Sempre</value>
+  </data>
+  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
+    <value>Várias guias ou painéis</value>
+  </data>
+  <data name="Profile_BellStyleNotification.Content" xml:space="preserve">
+    <value>Notificação da área de trabalho</value>
+  </data>
+  <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
+    <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
+    <comment>{Locked}</comment>
+  </data>
 </root>

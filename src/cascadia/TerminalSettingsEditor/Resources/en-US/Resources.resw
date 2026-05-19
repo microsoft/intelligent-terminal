@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -703,11 +703,13 @@
   </data>
   <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve">
     <value>Agent pane</value>
-    <comment>Section header for the agent pane settings group.</comment>
+    <comment>Section header for the agent pane settings group. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve">
     <value>Command palette</value>
-    <comment>Section header for the command palette agent settings group.</comment>
+    <comment>Section header for the command palette agent settings group. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AcpAgent.Header" xml:space="preserve">
     <value>Agent</value>
@@ -715,11 +717,12 @@
   </data>
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
     <value>Choose the agent CLI used in the agent pane. Any compatible ACP CLI will be detected.</value>
-    <comment>Supplementary description for the agent pane CLI setting.</comment>
+    <comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment>
   </data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>Model</value>
-    <comment>Header for the setting that specifies the model used by the agent pane agent.</comment>
+    <comment>Header for the setting that specifies the model used by the agent pane agent. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve">
     <value>Choose the model used by this agent.</value>
@@ -727,39 +730,47 @@
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>Agent</value>
-    <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
+    <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
     <value>Choose the agent used for quick actions in the command palette.</value>
-    <comment>Supplementary description for the command palette agent setting.</comment>
+    <comment>Supplementary description for the command palette agent setting. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>Auto-error detection</value>
-    <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
+    <comment>Header for the toggle that enables automatic fix suggestions when commands fail. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
     <value>Detect command errors and suggest fixes automatically.</value>
-    <comment>Supplementary description for the auto-error-detection setting.</comment>
+    <comment>Supplementary description for the auto-error-detection setting. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Pane position</value>
-    <comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment>
+    <comment>Header for the setting that controls where the agent pane appears relative to the active pane. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
     <value>Where the agent pane opens relative to your terminal.</value>
-    <comment>Supplementary description for the pane position setting.</comment>
+    <comment>Supplementary description for the pane position setting. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
     <value>Agent Hooks</value>
-    <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment>
+    <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane). 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
     <value>Install agent hook scripts</value>
-    <comment>Header for the Agent Hooks install section.</comment>
+    <comment>Header for the Agent Hooks install section. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
     <value>Required for agent session management. Installs hooks into each detected CLI (Copilot, Claude, Gemini) so they report sessions and status to the agent pane. Restart any open agent CLIs after installing.</value>
-    <comment>Description for the Agent Hooks install section.</comment>
+    <comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment>
   </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Install hooks</value>

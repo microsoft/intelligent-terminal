@@ -2142,7 +2142,7 @@
     <comment>Help text directing users how to use the "KeyChordListener" control. Pressing a keyboard shortcut will be recorded by this control.</comment>
   </data>
   <data name="KeyChordListener.[using:Windows.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
-    <value>agente de escucha de acceso directo</value>
+    <value>escucha de acceso directo</value>
     <comment>The control type for a control that awaits keyboard input and records it.</comment>
   </data>
   <data name="KeyChordListener.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
@@ -2752,4 +2752,30 @@
     <value>Este texto se insertará entre las rutas de acceso de varios archivos colocados en el terminal.</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
+  <data name="Nav_AIAgents.Content" xml:space="preserve"><value>Agentes</value><comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment></data>
+  <data name="AIAgents_PageSubtitle.Text" xml:space="preserve"><value>Configura cómo funcionan los agentes en todo el terminal</value><comment>Subtitle shown beneath the page title on the AI Agents settings page.</comment></data>
+  <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>Panel del agente</value><comment>Section header for the agent pane settings group.</comment></data>
+  <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve"><value>Paleta de comandos</value><comment>Section header for the command palette agent settings group.</comment></data>
+  <data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>Agente</value><comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment></data>
+  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Elija la CLI de agente usada en el panel del agente. Se detectará cualquier CLI compatible con ACP.</value><comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment></data>
+  <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>Modelo</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data>
+  <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Elija el modelo usado por este agente.</value><comment>Supplementary description for the model setting.</comment></data>
+  <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Agente</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
+  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Elija el agente usado para acciones rápidas en la paleta de comandos.</value><comment>Supplementary description for the command palette agent setting.</comment></data>
+  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Detección automática de errores</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
+  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Detecta errores de comandos y sugiere correcciones automáticamente.</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>Posición del panel</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
+  <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>Dónde se abre el panel del agente con respecto a su terminal.</value><comment>Supplementary description for the pane position setting.</comment></data>
+  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>Hooks del agente</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>
+  <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>Instalar hooks del agente</value><comment>Header for the Agent Hooks install section.</comment></data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Necesario para la gestión de sesiones del agente. Instala hooks en cada CLI detectada (Copilot, Claude, Gemini) para que informen de las sesiones y del estado al panel del agente. Reinicie cualquier CLI de agente abierta después de la instalación.</value><comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment></data>
+  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Instalar hooks</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment></data>
+  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>Actualizar</value><comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment></data>
+  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>Advertir al cerrar</value><comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment></data>
+  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve"><value>Controla cuándo aparece un diálogo de confirmación antes de cerrar pestañas o ventanas. "Siempre" muestra el diálogo al cerrar cualquier panel.</value><comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment></data>
+  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve"><value>Nunca</value><comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment></data>
+  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve"><value>Siempre</value><comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment></data>
+  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>Varias pestañas o paneles</value><comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment></data>
+  <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>Notificación de escritorio</value><comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment></data>
+  <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://go.microsoft.com/fwlink/?linkid=2229086</value><comment>{Locked}</comment></data>
 </root>

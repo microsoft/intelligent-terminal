@@ -976,4 +976,26 @@
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>拆分大小</value>
   </data>
+  <data name="ShowProtocolInfoCommandKey" xml:space="preserve">
+    <value>显示 Terminal Protocol 信息</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
+    <value>切换窗格可见性</value>
+  </data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve">
+    <value>切换智能体</value>
+  </data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve">
+    <value>将焦点移至智能体窗格</value>
+  </data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
+    <value>打开智能体会话列表</value>
+  </data>
+  <data name="TriggerAutofixCommandKey" xml:space="preserve">
+    <value>触发自动修复</value>
+  </data>
+  <data name="PromptActionArgumentLocalized" xml:space="preserve">
+    <value>提示词</value>
+  </data>
 </root>

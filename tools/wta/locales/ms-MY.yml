@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Selamat datang ke Intelligent Terminal!"
+setup.title.agent_missing: "Ejen tidak ditemui"
+setup.title.agent_error: "Sambungan ejen gagal"
+setup.title.switch_agent: "Tukar ejen"

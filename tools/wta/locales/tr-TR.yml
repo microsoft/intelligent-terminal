@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Intelligent Terminal'e hoş geldiniz!"
+setup.title.agent_missing: "Aracı bulunamadı"
+setup.title.agent_error: "Aracı bağlantısı başarısız oldu"
+setup.title.switch_agent: "Aracı değiştir"

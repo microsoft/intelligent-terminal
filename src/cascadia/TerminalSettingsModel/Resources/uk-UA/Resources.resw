@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -976,4 +976,11 @@
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>Розмір розділення</value>
   </data>
+  <data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>Показати відомості про Terminal Protocol</value><comment>{Locked="Terminal Protocol"}</comment></data>
+  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>Перемкнути видимість панелі</value></data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Перемкнути агента ШІ</value></data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Перевести фокус на панель агента ШІ</value></data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Відкрити список сеансів агента ШІ</value></data>
+  <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Запустити автовиправлення</value></data>
+  <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Запит</value></data>
 </root>

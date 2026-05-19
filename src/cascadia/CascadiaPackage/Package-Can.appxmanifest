@@ -69,9 +69,9 @@
       </uap:VisualElements>
 
       <Extensions>
-        <uap3:Extension Category="windows.appExecutionAlias" Executable="wt.exe" EntryPoint="Windows.FullTrustApplication">
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="wtai.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:AppExecutionAlias>
-            <desktop:ExecutionAlias Alias="wt.exe" />
+            <desktop:ExecutionAlias Alias="wtai.exe" />
           </uap3:AppExecutionAlias>
         </uap3:Extension>
         <uap3:Extension Category="windows.appExtensionHost">

@@ -976,4 +976,11 @@
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>分割サイズ</value>
   </data>
+<data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>Terminal Protocol 情報を表示</value><comment>{Locked="Terminal Protocol"}</comment></data>
+  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>ペインの表示を切り替える</value></data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>AI エージェントを切り替える</value></data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>AI エージェント ペインにフォーカスする</value></data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>AI エージェント セッション一覧を開く</value></data>
+  <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>自動修正を実行する</value></data>
+  <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>プロンプト</value></data>
 </root>

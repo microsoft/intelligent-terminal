@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Välkommen till Intelligent Terminal!"
+setup.title.agent_missing: "Agenten hittades inte"
+setup.title.agent_error: "Anslutningen till agenten misslyckades"
+setup.title.switch_agent: "Byt agent"

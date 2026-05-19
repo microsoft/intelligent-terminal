@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Merħba fl-Intelligent Terminal!"
+setup.title.agent_missing: "L-aġent ma nstabx"
+setup.title.agent_error: "Il-konnessjoni mal-aġent falliet"
+setup.title.switch_agent: "Ibdel l-aġent"

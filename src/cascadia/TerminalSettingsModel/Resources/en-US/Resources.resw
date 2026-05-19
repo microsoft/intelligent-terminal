@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -458,6 +458,7 @@
   </data>
   <data name="ShowProtocolInfoCommandKey" xml:space="preserve">
     <value>Show Terminal Protocol Info</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
   </data>
   <data name="SuggestionsCommandKey" xml:space="preserve">
     <value>Open suggestions</value>
@@ -498,7 +499,7 @@
   </data>
   <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
     <value>Toggle pane visibility</value>
-  </data>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="TogglePaneReadOnlyCommandKey" xml:space="preserve">
     <value>Toggle pane read-only mode</value>
   </data>
@@ -748,16 +749,16 @@
   </data>
   <data name="OpenAgentPaneCommandKey" xml:space="preserve">
     <value>Toggle AI assistant</value>
-  </data>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="FocusAgentPaneCommandKey" xml:space="preserve">
     <value>Focus AI assistant pane</value>
-  </data>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
     <value>Open AI assistant sessions list</value>
-  </data>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="TriggerAutofixCommandKey" xml:space="preserve">
     <value>Trigger autofix</value>
-  </data>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="CloseTab" xml:space="preserve">
     <value>Close tab</value>
   </data>

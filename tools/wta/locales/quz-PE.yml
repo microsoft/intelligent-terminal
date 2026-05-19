@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Allillanchu Intelligent Terminal!"
+setup.title.agent_missing: "Mana agente tarikusqachu"
+setup.title.agent_error: "Agente t'inkiynin mana allinchu"
+setup.title.switch_agent: "Agente t'ikray"

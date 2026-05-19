@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "歡迎使用 Intelligent Terminal！"
+setup.title.agent_missing: "找不到代理"
+setup.title.agent_error: "代理連線失敗"
+setup.title.switch_agent: "切換代理"

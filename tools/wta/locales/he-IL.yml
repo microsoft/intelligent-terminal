@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "ברוכים הבאים ל-Intelligent Terminal!"
+setup.title.agent_missing: "הסוכן לא נמצא"
+setup.title.agent_error: "החיבור לסוכן נכשל"
+setup.title.switch_agent: "החלף סוכן"

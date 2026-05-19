@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Fáilte go Intelligent Terminal!"
+setup.title.agent_missing: "Nír aimsíodh an gníomhaire"
+setup.title.agent_error: "Theip ar cheangal an ghníomhaire"
+setup.title.switch_agent: "Athraigh gníomhaire"

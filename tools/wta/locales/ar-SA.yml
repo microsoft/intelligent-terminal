@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "مرحبًا بك في Intelligent Terminal!"
+setup.title.agent_missing: "لم يتم العثور على الوكيل"
+setup.title.agent_error: "فشل الاتصال بالوكيل"
+setup.title.switch_agent: "تبديل الوكيل"

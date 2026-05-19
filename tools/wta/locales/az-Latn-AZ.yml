@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Intelligent Terminal-a xoş gəlmisiniz!"
+setup.title.agent_missing: "Agent tapılmadı"
+setup.title.agent_error: "Agent bağlantısı uğursuz oldu"
+setup.title.switch_agent: "Agenti dəyiş"

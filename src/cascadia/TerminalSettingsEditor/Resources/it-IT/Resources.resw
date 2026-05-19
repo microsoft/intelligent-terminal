@@ -2752,4 +2752,30 @@
     <value>Questo testo verrà inserito tra i percorsi di più file trascinati nel terminale.</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
+  <data name="Nav_AIAgents.Content" xml:space="preserve"><value>Agenti AI</value></data>
+  <data name="AIAgents_PageSubtitle.Text" xml:space="preserve"><value>Configura il funzionamento degli agenti nel terminale</value></data>
+  <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>Riquadro agente</value></data>
+  <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve"><value>Riquadro comandi</value></data>
+  <data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>Agente</value></data>
+  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Scegli la CLI dell'agente usata nel riquadro agente. Verrà rilevata qualsiasi CLI ACP compatibile.</value><comment>{Locked="ACP","CLI"}</comment></data>
+  <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>Modello</value></data>
+  <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Scegli il modello usato da questo agente.</value></data>
+  <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Agente</value></data>
+  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Scegli l'agente usato per le azioni rapide nel riquadro comandi.</value></data>
+  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Rilevamento automatico degli errori</value></data>
+  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Rileva gli errori dei comandi e suggerisce automaticamente le correzioni.</value></data>
+  <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>Posizione del riquadro</value></data>
+  <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>Specifica dove si apre il riquadro agente rispetto al terminale.</value></data>
+  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>Hook degli agenti</value></data>
+  <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>Installa gli script hook degli agenti</value></data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Necessario per la gestione delle sessioni degli agenti. Installa gli hook in ogni CLI rilevata (Copilot, Claude, Gemini) in modo che segnali sessioni e stato al riquadro agente. Riavvia tutte le CLI degli agenti aperte dopo l'installazione.</value><comment>{Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment></data>
+  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Installa hook</value></data>
+  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>Aggiorna</value></data>
+  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>Avvisa in caso di chiusura</value></data>
+  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve"><value>Controlla quando viene visualizzata una finestra di conferma prima di chiudere schede o finestre. "Sempre" mostra la finestra di dialogo anche quando si chiude un solo riquadro.</value></data>
+  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve"><value>Mai</value></data>
+  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve"><value>Sempre</value></data>
+  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>Più schede o riquadri</value></data>
+  <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>Notifica desktop</value></data>
+  <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://go.microsoft.com/fwlink/?linkid=2229086</value><comment>{Locked}</comment></data>
 </root>

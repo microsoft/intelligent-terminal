@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "ইন্টেলিজেন্ট টার্মিনালে স্বাগতম!"
+setup.title.agent_missing: "এজেন্ট খুঁজে পাওয়া যায়নি"
+setup.title.agent_error: "এজেন্ট সংযোগ ব্যর্থ হয়েছে"
+setup.title.switch_agent: "এজেন্ট পরিবর্তন করুন"

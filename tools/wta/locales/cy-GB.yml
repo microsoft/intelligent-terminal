@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Croeso i Intelligent Terminal!"
+setup.title.agent_missing: "Ni chanfuwyd yr asiant"
+setup.title.agent_error: "Methwyd â chysylltu â'r asiant"
+setup.title.switch_agent: "Newid asiant"

@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Добродошли у Intelligent Terminal!"
+setup.title.agent_missing: "Агент није пронађен"
+setup.title.agent_error: "Повезивање са агентом није успјело"
+setup.title.switch_agent: "Промијени агента"

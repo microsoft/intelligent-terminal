@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "ഇന്റലിജന്റ് ടെർമിനലിലേക്ക് സ്വാഗതം!"
+setup.title.agent_missing: "ഏജന്റ് കണ്ടെത്തിയില്ല"
+setup.title.agent_error: "ഏജന്റ് കണക്ഷൻ പരാജയപ്പെട്ടു"
+setup.title.switch_agent: "ഏജന്റ് മാറ്റുക"

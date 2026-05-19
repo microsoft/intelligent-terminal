@@ -929,4 +929,152 @@
   <data name="InvalidRegex" xml:space="preserve">
     <value>Обнаружено недопустимое регулярное выражение.</value>
   </data>
+  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve">
+    <value>Отмена</value>
+  </data>
+  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve">
+    <value>Вы хотите закрыть все окна?</value>
+  </data>
+  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve">
+    <value>Закрыть все</value>
+  </data>
+  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve">
+    <value>Вы хотите закрыть все вкладки?</value>
+  </data>
+  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve">
+    <value>Закрыть все</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve">
+    <value>Вы хотите закрыть эту вкладку?</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve">
+    <value>Закрыть вкладку</value>
+  </data>
+  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve">
+    <value>Вы хотите закрыть эту панель?</value>
+  </data>
+  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve">
+    <value>Закрыть панель</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve">
+    <value>Вы хотите закрыть эти вкладки?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve">
+    <value>Закрыть вкладки</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve">
+    <value>Вы хотите закрыть эти панели?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve">
+    <value>Закрыть панели</value>
+  </data>
+  <data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve">
+    <value>Режим запроса к агенту</value>
+  </data>
+  <data name="CommandPaletteModeAnnouncement_AgentBackgroundMode" xml:space="preserve">
+    <value>Режим фоновой задачи агента</value>
+  </data>
+  <data name="CmdPalAgentForegroundPrompt" xml:space="preserve">
+    <value>Спросить агента...</value>
+  </data>
+  <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve">
+    <value>Запустить задачу агента в фоновом режиме...</value>
+  </data>
+  <data name="NotificationMessage_TabActivity" xml:space="preserve">
+    <value>Активность на вкладке "{0}"</value>
+  </data>
+  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">
+    <value>Активность на вкладке "{0}" (окно "{1}")</value>
+  </data>
+  <data name="InitShellIntegrationSuccessTitle" xml:space="preserve">
+    <value>Интеграция с оболочкой настроена</value>
+  </data>
+  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve">
+    <value>Интеграция с оболочкой настроена. Перезапустите сеанс PowerShell или откройте новую вкладку, чтобы изменения вступили в силу.</value>
+    <comment>{Locked="PowerShell"}</comment>
+  </data>
+  <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve">
+    <value>Интеграция с оболочкой уже настроена</value>
+  </data>
+  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve">
+    <value>Интеграция с оболочкой уже настроена в вашем профиле PowerShell.</value>
+    <comment>{Locked="PowerShell"}</comment>
+  </data>
+  <data name="InitShellIntegrationErrorTitle" xml:space="preserve">
+    <value>Ошибка интеграции с оболочкой</value>
+  </data>
+  <data name="InitShellIntegrationErrorMessage" xml:space="preserve">
+    <value>Не удалось инициализировать интеграцию с оболочкой. Не удалось определить путь к вашему профилю PowerShell. Убедитесь, что целевая оболочка установлена.</value>
+    <comment>{Locked="PowerShell"}</comment>
+  </data>
+  <data name="AgentNotConfiguredTitle" xml:space="preserve">
+    <value>ИИ-агент недоступен</value>
+  </data>
+  <data name="AgentNotConfiguredSubtitle" xml:space="preserve">
+    <value>Не удалось найти ни одного ИИ-агента. Установите CLI-агент (например, copilot, gemini) и убедитесь, что он доступен через PATH, либо настройте его в разделе Параметры &gt; Агенты.</value>
+    <comment>{Locked="CLI","PATH","copilot","gemini"}</comment>
+  </data>
+  <data name="FreOverlay_Title" xml:space="preserve">
+    <value>Новое в Intelligent Terminal</value>
+    <comment>{Locked="Intelligent Terminal"}</comment>
+  </data>
+  <data name="FreOverlay_Card1Title" xml:space="preserve">
+    <value>Добро пожаловать в Intelligent Terminal</value>
+    <comment>{Locked="Intelligent Terminal"}</comment>
+  </data>
+  <data name="FreOverlay_Card1Description" xml:space="preserve">
+    <value>Настройте встроенного ИИ-агента, чтобы он помогал вам прямо во время работы</value>
+  </data>
+  <data name="FreOverlay_Card2Title" xml:space="preserve">
+    <value>Автоматическое обнаружение ошибок</value>
+  </data>
+  <data name="FreOverlay_Card2Description" xml:space="preserve">
+    <value>Панель агента всегда знает контекст и готова к работе с вашим любимым CLI-агентом</value>
+    <comment>{Locked="CLI"}</comment>
+  </data>
+  <data name="FreOverlay_Card3Title" xml:space="preserve">
+    <value>Управление сеансами</value>
+  </data>
+  <data name="FreOverlay_Card3Description" xml:space="preserve">
+    <value>Управление сеансами помогает отслеживать агентов и быстро возвращаться к предыдущим сеансам</value>
+  </data>
+  <data name="FreOverlay_Card4Title" xml:space="preserve">
+    <value>Быстрые команды агента</value>
+  </data>
+  <data name="FreOverlay_Card4Description" xml:space="preserve">
+    <value>Из палитры команд можно запускать фоновые вкладки</value>
+  </data>
+  <data name="FreOverlay_DetailTitle" xml:space="preserve">
+    <value>Добро пожаловать в Intelligent Terminal</value>
+    <comment>{Locked="Intelligent Terminal"}</comment>
+  </data>
+  <data name="FreOverlay_DetailDescription" xml:space="preserve">
+    <value>Настройте встроенного ИИ-агента, чтобы он помогал объяснять ошибки, составлять команды и решать задачи прямо во время работы.</value>
+  </data>
+  <data name="FreOverlay_Detail2Title" xml:space="preserve">
+    <value>Автоматическое обнаружение ошибок</value>
+  </data>
+  <data name="FreOverlay_Detail2Description" xml:space="preserve">
+    <value>Панель агента всегда знает контекст и готова к работе с вашим любимым CLI-агентом.</value>
+    <comment>{Locked="CLI"}</comment>
+  </data>
+  <data name="FreOverlay_Detail3Title" xml:space="preserve">
+    <value>Управление сеансами</value>
+  </data>
+  <data name="FreOverlay_Detail3Description" xml:space="preserve">
+    <value>Управление сеансами помогает отслеживать агентов и быстро возвращаться к предыдущим сеансам.</value>
+  </data>
+  <data name="FreOverlay_Detail4Title" xml:space="preserve">
+    <value>Быстрые команды агента</value>
+  </data>
+  <data name="FreOverlay_Detail4Description" xml:space="preserve">
+    <value>Используйте палитру команд, чтобы быстро запускать задачи с помощью агента из любой точки терминала.</value>
+  </data>
+  <data name="FreOverlay_DetailLink" xml:space="preserve">
+    <value>Подробнее об Intelligent Terminal.</value>
+    <comment>{Locked="Intelligent Terminal"}</comment>
+  </data>
+  <data name="FreOverlay_NextButton" xml:space="preserve">
+    <value>Начать знакомство</value>
+  </data>
 </root>

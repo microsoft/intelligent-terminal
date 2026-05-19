@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -2475,4 +2475,29 @@
   <data name="Settings_ResetApplicationStateConfirmationButton.Content" xml:space="preserve">
     <value>Так, очистити кеш</value>
   </data>
+  <data name="Nav_AIAgents.Content" xml:space="preserve"><value>Агенти</value><comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment></data>
+  <data name="AIAgents_PageSubtitle.Text" xml:space="preserve"><value>Налаштуйте роботу агентів у всьому терміналі</value><comment>Subtitle shown beneath the page title on the AI Agents settings page.</comment></data>
+  <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>Панель агента</value><comment>Section header for the agent pane settings group.</comment></data>
+  <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve"><value>Палітра команд</value><comment>Section header for the command palette agent settings group.</comment></data>
+  <data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>Агент</value><comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment></data>
+  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Виберіть CLI, який використовується в панелі агента. Буде виявлено будь-який сумісний ACP CLI.</value><comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment></data>
+  <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>Модель</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data>
+  <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Виберіть модель, яку використовує цей агент.</value><comment>Supplementary description for the model setting.</comment></data>
+  <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Агент</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
+  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Виберіть агента, який використовується для швидких дій у палітрі команд.</value><comment>Supplementary description for the command palette agent setting.</comment></data>
+  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Автовиявлення помилок</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
+  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Автоматично виявляйте помилки команд і пропонуйте виправлення.</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>Розташування панелі</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
+  <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>Де відкриватиметься панель агента відносно вашого терміналу.</value><comment>Supplementary description for the pane position setting.</comment></data>
+  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>Hooks агента</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>
+  <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>Установити скрипти Hooks агента</value><comment>Header for the Agent Hooks install section.</comment></data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Потрібно для керування сеансами агентів. Установлює Hooks в кожен виявлений CLI (Copilot, Claude, Gemini), щоб вони передавали відомості про сеанси та стан до панелі агента. Після встановлення перезапустіть усі відкриті CLI агентів.</value><comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment></data>
+  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Установити Hooks</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment></data>
+  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>Оновити</value><comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment></data>
+  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>Попереджати під час закриття</value><comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment></data>
+  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve"><value>Керує тим, коли перед закриттям вкладок або вікон з'являється діалог підтвердження. Параметр "Завжди" показує діалог під час закриття будь-якої панелі.</value><comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment></data>
+  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve"><value>Ніколи</value><comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment></data>
+  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve"><value>Завжди</value><comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment></data>
+  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>Кілька вкладок або панелей</value><comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment></data>
+  <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>Сповіщення на робочому столі</value><comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment></data>
 </root>

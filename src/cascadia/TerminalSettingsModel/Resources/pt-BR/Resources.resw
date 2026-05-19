@@ -976,4 +976,26 @@
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>Tamanho da divisão</value>
   </data>
+  <data name="ShowProtocolInfoCommandKey" xml:space="preserve">
+    <value>Mostrar informações do Terminal Protocol</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
+    <value>Alternar visibilidade do painel</value>
+  </data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve">
+    <value>Alternar agente de IA</value>
+  </data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve">
+    <value>Focar painel do agente de IA</value>
+  </data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
+    <value>Abrir lista de sessões do agente de IA</value>
+  </data>
+  <data name="TriggerAutofixCommandKey" xml:space="preserve">
+    <value>Acionar correção automática</value>
+  </data>
+  <data name="PromptActionArgumentLocalized" xml:space="preserve">
+    <value>Solicitação</value>
+  </data>
 </root>

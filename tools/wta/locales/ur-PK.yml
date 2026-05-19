@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Intelligent Terminal میں خوش آمدید!"
+setup.title.agent_missing: "ایجنٹ نہیں ملا"
+setup.title.agent_error: "ایجنٹ کنیکشن ناکام"
+setup.title.switch_agent: "ایجنٹ تبدیل کریں"

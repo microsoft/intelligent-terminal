@@ -929,4 +929,152 @@
   <data name="InvalidRegex" xml:space="preserve">
     <value>Foi encontrada uma expressão regular inválida.</value>
   </data>
+  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve">
+    <value>Cancelar</value>
+  </data>
+  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve">
+    <value>Deseja fechar todas as janelas?</value>
+  </data>
+  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve">
+    <value>Fechar tudo</value>
+  </data>
+  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve">
+    <value>Deseja fechar todas as guias?</value>
+  </data>
+  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve">
+    <value>Fechar tudo</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve">
+    <value>Deseja fechar esta guia?</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve">
+    <value>Fechar guia</value>
+  </data>
+  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve">
+    <value>Deseja fechar este painel?</value>
+  </data>
+  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve">
+    <value>Fechar painel</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve">
+    <value>Deseja fechar estas guias?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve">
+    <value>Fechar guias</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve">
+    <value>Deseja fechar estes painéis?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve">
+    <value>Fechar painéis</value>
+  </data>
+  <data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve">
+    <value>Modo de solicitação ao agente</value>
+  </data>
+  <data name="CommandPaletteModeAnnouncement_AgentBackgroundMode" xml:space="preserve">
+    <value>Modo de tarefa em segundo plano do agente</value>
+  </data>
+  <data name="CmdPalAgentForegroundPrompt" xml:space="preserve">
+    <value>Perguntar ao agente...</value>
+  </data>
+  <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve">
+    <value>Executar tarefa do agente em segundo plano...</value>
+  </data>
+  <data name="NotificationMessage_TabActivity" xml:space="preserve">
+    <value>Atividade na guia "{0}"</value>
+  </data>
+  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">
+    <value>Atividade na guia "{0}" (janela "{1}")</value>
+  </data>
+  <data name="InitShellIntegrationSuccessTitle" xml:space="preserve">
+    <value>Integração de shell inicializada</value>
+  </data>
+  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve">
+    <value>A integração de shell foi configurada. Reinicie sua sessão do PowerShell ou abra uma nova guia para que as alterações entrem em vigor.</value>
+    <comment>{Locked="PowerShell"}</comment>
+  </data>
+  <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve">
+    <value>Integração de shell já configurada</value>
+  </data>
+  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve">
+    <value>A integração de shell já está configurada no seu perfil do PowerShell.</value>
+    <comment>{Locked="PowerShell"}</comment>
+  </data>
+  <data name="InitShellIntegrationErrorTitle" xml:space="preserve">
+    <value>Erro de integração de shell</value>
+  </data>
+  <data name="InitShellIntegrationErrorMessage" xml:space="preserve">
+    <value>Falha ao inicializar a integração de shell. Não foi possível determinar o caminho do seu perfil do PowerShell. Verifique se o shell de destino está instalado.</value>
+    <comment>{Locked="PowerShell"}</comment>
+  </data>
+  <data name="AgentNotConfiguredTitle" xml:space="preserve">
+    <value>O agente de IA não está disponível</value>
+  </data>
+  <data name="AgentNotConfiguredSubtitle" xml:space="preserve">
+    <value>Nenhum agente de IA foi encontrado. Instale um CLI de agente (por exemplo, copilot, gemini) e verifique se ele está no seu PATH ou configure um em Configurações &gt; Agentes de IA.</value>
+    <comment>{Locked="CLI","PATH","copilot","gemini"}</comment>
+  </data>
+  <data name="FreOverlay_Title" xml:space="preserve">
+    <value>Novidades no Intelligent Terminal</value>
+    <comment>{Locked="Intelligent Terminal"}</comment>
+  </data>
+  <data name="FreOverlay_Card1Title" xml:space="preserve">
+    <value>Boas-vindas ao Intelligent Terminal</value>
+    <comment>{Locked="Intelligent Terminal"}</comment>
+  </data>
+  <data name="FreOverlay_Card1Description" xml:space="preserve">
+    <value>Configure seu agente integrado para ajudar você exatamente onde trabalha.</value>
+  </data>
+  <data name="FreOverlay_Card2Title" xml:space="preserve">
+    <value>Detecção automática de erros</value>
+  </data>
+  <data name="FreOverlay_Card2Description" xml:space="preserve">
+    <value>O painel do agente sempre tem contexto e está pronto com o CLI de agente da sua preferência.</value>
+    <comment>{Locked="CLI"}</comment>
+  </data>
+  <data name="FreOverlay_Card3Title" xml:space="preserve">
+    <value>Gerenciamento de sessões</value>
+  </data>
+  <data name="FreOverlay_Card3Description" xml:space="preserve">
+    <value>O gerenciamento de sessões ajuda você a acompanhar os agentes e voltar rapidamente a sessões anteriores.</value>
+  </data>
+  <data name="FreOverlay_Card4Title" xml:space="preserve">
+    <value>Comandos rápidos do agente</value>
+  </data>
+  <data name="FreOverlay_Card4Description" xml:space="preserve">
+    <value>A paleta de comandos pode iniciar guias em segundo plano</value>
+  </data>
+  <data name="FreOverlay_DetailTitle" xml:space="preserve">
+    <value>Boas-vindas ao Intelligent Terminal</value>
+    <comment>{Locked="Intelligent Terminal"}</comment>
+  </data>
+  <data name="FreOverlay_DetailDescription" xml:space="preserve">
+    <value>Configure seu agente integrado para ajudar você a explicar erros, redigir comandos e destravar tarefas exatamente onde trabalha.</value>
+  </data>
+  <data name="FreOverlay_Detail2Title" xml:space="preserve">
+    <value>Detecção automática de erros</value>
+  </data>
+  <data name="FreOverlay_Detail2Description" xml:space="preserve">
+    <value>O painel do agente sempre tem contexto e está pronto com o CLI de agente da sua preferência.</value>
+    <comment>{Locked="CLI"}</comment>
+  </data>
+  <data name="FreOverlay_Detail3Title" xml:space="preserve">
+    <value>Gerenciamento de sessões</value>
+  </data>
+  <data name="FreOverlay_Detail3Description" xml:space="preserve">
+    <value>O gerenciamento de sessões ajuda você a acompanhar os agentes e voltar rapidamente a sessões anteriores.</value>
+  </data>
+  <data name="FreOverlay_Detail4Title" xml:space="preserve">
+    <value>Comandos rápidos do agente</value>
+  </data>
+  <data name="FreOverlay_Detail4Description" xml:space="preserve">
+    <value>Use a paleta de comandos para executar rapidamente tarefas com agentes de qualquer lugar do terminal.</value>
+  </data>
+  <data name="FreOverlay_DetailLink" xml:space="preserve">
+    <value>Saiba mais sobre o Intelligent Terminal.</value>
+    <comment>{Locked="Intelligent Terminal"}</comment>
+  </data>
+  <data name="FreOverlay_NextButton" xml:space="preserve">
+    <value>Começar a explorar</value>
+  </data>
 </root>

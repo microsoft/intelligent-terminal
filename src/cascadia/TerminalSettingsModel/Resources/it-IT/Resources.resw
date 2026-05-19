@@ -976,4 +976,11 @@
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>Dimensione divisione</value>
   </data>
+  <data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>Mostra informazioni su Terminal Protocol</value><comment>{Locked="Terminal Protocol"}</comment></data>
+  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>Attiva/disattiva visibilità del riquadro</value></data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Mostra/nascondi agente AI</value></data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Passa al riquadro dell'agente AI</value></data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Apri elenco sessioni dell'agente AI</value></data>
+  <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Esegui correzione automatica</value></data>
+  <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Prompt</value></data>
 </root>

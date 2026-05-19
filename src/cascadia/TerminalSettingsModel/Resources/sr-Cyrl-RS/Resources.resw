@@ -314,22 +314,22 @@
     <value>Наредна картица</value>
   </data>
   <data name="OpenBothSettingsFilesCommandKey" xml:space="preserve">
-    <value>Отвара и settings и default (JSON) фајлове подешавања</value>
+    <value>Отвори датотеке подешавања и подразумеваних подешавања (JSON)</value>
     <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>
   </data>
   <data name="OpenDefaultSettingsCommandKey" xml:space="preserve">
-    <value>Отвара default (JSON) фајл подешавања</value>
+    <value>Отвори датотеку подразумеваних подешавања (JSON)</value>
     <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>
   </data>
   <data name="OpenNewTabDropdownCommandKey" xml:space="preserve">
     <value>Отвори падајућу листу за нову картицу</value>
   </data>
   <data name="OpenSettingsCommandKey" xml:space="preserve">
-    <value>Отвори settings (JSON) фајл подешавања</value>
+    <value>Отвори датотеку подешавања (JSON)</value>
     <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>
   </data>
   <data name="SettingsFileOpenInExplorerCommandKey" xml:space="preserve">
-    <value>Отвори директоријум settings фајла</value>
+    <value>Отвори директоријум датотека подешавања</value>
   </data>
   <data name="OpenTabColorPickerCommandKey" xml:space="preserve">
     <value>Постави боју картице...</value>
@@ -455,7 +455,11 @@
   </data>
   <data name="ToggleCommandPaletteCommandKey" xml:space="preserve">
     <value>Укљ./искљ. палету команди</value>
+  </data><data name="ShowProtocolInfoCommandKey" xml:space="preserve">
+    <value>Прикажи информације о Terminal Protocol-у</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
   </data>
+  
   <data name="SuggestionsCommandKey" xml:space="preserve">
     <value>Отвори сугестије</value>
   </data>
@@ -492,7 +496,10 @@
   </data>
   <data name="TogglePaneZoomCommandKey" xml:space="preserve">
     <value>Укљ./искљ. зум у панел</value>
+  </data><data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
+    <value>Укључи/искључи видљивост панела</value>
   </data>
+  
   <data name="TogglePaneReadOnlyCommandKey" xml:space="preserve">
     <value>Укљ./искљ. режим панела само-за-читање</value>
   </data>
@@ -735,11 +742,23 @@
     <value>Сачувај одломак</value>
   </data>
   <data name="QuickFixCommandKey" xml:space="preserve">
-    <value>Отвори quick fix мени</value>
+    <value>Отвори мени за брзе исправке</value>
   </data>
   <data name="OpenCWDCommandKey" xml:space="preserve">
     <value>Отвори текући радни директоријум</value>
+  </data><data name="OpenAgentPaneCommandKey" xml:space="preserve">
+    <value>Укључи/искључи ВИ агента</value>
+  </data><data name="FocusAgentPaneCommandKey" xml:space="preserve">
+    <value>Фокусирај панел ВИ агента</value>
+  </data><data name="OpenAgentSessionsCommandKey" xml:space="preserve">
+    <value>Отвори листу сесија ВИ агента</value>
+  </data><data name="TriggerAutofixCommandKey" xml:space="preserve">
+    <value>Покрени аутоматску исправку</value>
   </data>
+  
+  
+  
+  
   <data name="CloseTab" xml:space="preserve">
     <value>Затвори картицу</value>
   </data>
@@ -975,5 +994,8 @@
   </data>
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>Величина поделе</value>
+  </data><data name="PromptActionArgumentLocalized" xml:space="preserve">
+    <value>Упит</value>
   </data>
+
 </root>

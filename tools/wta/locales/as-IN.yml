@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "ইন্টেলিজেণ্ট টাৰ্মিনেললৈ স্বাগতম!"
+setup.title.agent_missing: "এজেণ্ট পোৱা নগল"
+setup.title.agent_error: "এজেণ্ট সংযোগ বিফল হল"
+setup.title.switch_agent: "এজেণ্ট সলনি কৰক"

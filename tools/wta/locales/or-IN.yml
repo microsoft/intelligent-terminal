@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନଲ୍‌କୁ ସ୍ୱାଗତ!"
+setup.title.agent_missing: "ଏଜେଣ୍ଟ ମିଳିଲା ନାହିଁ"
+setup.title.agent_error: "ଏଜେଣ୍ଟ ସଂଯୋଗ ବିଫଳ ହେଲା"
+setup.title.switch_agent: "ଏଜେଣ୍ଟ ବଦଳାନ୍ତୁ"

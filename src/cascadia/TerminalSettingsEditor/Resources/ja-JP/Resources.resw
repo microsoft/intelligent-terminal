@@ -2752,4 +2752,30 @@
     <value>このテキストは、ターミナルにドロップされた複数のファイルのパスの間に挿入されます。</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
+<data name="Nav_AIAgents.Content" xml:space="preserve"><value>AI エージェント</value><comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment></data>
+  <data name="AIAgents_PageSubtitle.Text" xml:space="preserve"><value>ターミナル全体での AI エージェントの動作を設定します</value><comment>Subtitle shown beneath the page title on the AI Agents settings page.</comment></data>
+  <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>エージェント ペイン</value><comment>Section header for the agent pane settings group.</comment></data>
+  <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve"><value>コマンド パレット</value><comment>Section header for the command palette agent settings group.</comment></data>
+  <data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>エージェント</value><comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment></data>
+  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>エージェント ペインで使用するエージェント CLI を選択します。互換性のある ACP CLI は自動的に検出されます。</value><comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment></data>
+  <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>モデル</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data>
+  <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>このエージェントで使用するモデルを選択します。</value><comment>Supplementary description for the model setting.</comment></data>
+  <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>エージェント</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
+  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>コマンド パレットでのクイック アクションに使用するエージェントを選択します。</value><comment>Supplementary description for the command palette agent setting.</comment></data>
+  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>自動エラー検出</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
+  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>コマンド エラーを検出し、自動的に修正候補を提案します。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>ペインの位置</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
+  <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>エージェント ペインをターミナルのどこに開くかを指定します。</value><comment>Supplementary description for the pane position setting.</comment></data>
+  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>エージェント Hooks</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>
+  <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>エージェント Hook スクリプトのインストール</value><comment>Header for the Agent Hooks install section.</comment></data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>エージェントのセッション管理に必要です。検出された各 CLI (Copilot, Claude, Gemini) に Hooks をインストールし、セッションと状態をエージェント ペインに報告できるようにします。インストール後、開いているエージェント CLI を再起動してください。</value><comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment></data>
+  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Hooks をインストール</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment></data>
+  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>再読み込み</value><comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment></data>
+  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>閉じる前に警告する</value><comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment></data>
+  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve"><value>タブやウィンドウを閉じる前に確認ダイアログを表示する条件を制御します。"常に" を選ぶと、任意のペインを閉じるときにダイアログが表示されます。</value><comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment></data>
+  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve"><value>表示しない</value><comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment></data>
+  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve"><value>常に</value><comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment></data>
+  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>複数のタブまたはペイン</value><comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment></data>
+  <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>デスクトップ通知</value><comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment></data>
+  <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://go.microsoft.com/fwlink/?linkid=2229086</value><comment>{Locked}</comment></data>
 </root>

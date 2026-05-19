@@ -976,4 +976,12 @@
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>Taille fractionnée</value>
   </data>
+
+  <data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>Afficher les informations sur Terminal Protocol</value><comment>{Locked="Terminal Protocol"}</comment></data>
+  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>Afficher ou masquer le volet</value></data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Afficher ou masquer l'agent IA</value></data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Mettre le focus sur le volet de l'agent IA</value></data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Ouvrir la liste des sessions de l'agent IA</value></data>
+  <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Déclencher la correction automatique</value></data>
+  <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Prompt</value></data>
 </root>

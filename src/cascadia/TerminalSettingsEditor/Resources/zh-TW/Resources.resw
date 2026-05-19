@@ -2752,4 +2752,30 @@
     <value>這些文字會插入多個丟入終端機的檔案路徑之間。</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
+  <data name="Nav_AIAgents.Content" xml:space="preserve"><value>AI 代理</value><comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment></data>
+  <data name="AIAgents_PageSubtitle.Text" xml:space="preserve"><value>設定 AI 代理在整個終端機體驗中的運作方式</value><comment>Subtitle shown beneath the page title on the AI Agents settings page.</comment></data>
+  <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>代理窗格</value><comment>Section header for the agent pane settings group.</comment></data>
+  <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve"><value>命令選擇區</value><comment>Section header for the command palette agent settings group.</comment></data>
+  <data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>代理</value><comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment></data>
+  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>選擇要在代理窗格中使用的代理 CLI。系統會偵測任何相容的 ACP CLI。</value><comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment></data>
+  <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>模型</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data>
+  <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>選擇此代理使用的模型。</value><comment>Supplementary description for the model setting.</comment></data>
+  <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>代理</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
+  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>選擇要在命令選擇區中用於快速動作的代理。</value><comment>Supplementary description for the command palette agent setting.</comment></data>
+  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>自動錯誤偵測</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
+  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>自動偵測命令錯誤並提出修正建議。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>窗格位置</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
+  <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>指定代理窗格相對於終端機的開啟位置。</value><comment>Supplementary description for the pane position setting.</comment></data>
+  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>代理 Hooks</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>
+  <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>安裝代理 Hook 指令碼</value><comment>Header for the Agent Hooks install section.</comment></data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>代理工作階段管理需要此功能。系統會將 Hooks 安裝到每個偵測到的 CLI (Copilot, Claude, Gemini) 中，讓它們將工作階段與狀態回報給代理窗格。安裝完成後，請重新啟動所有已開啟的代理 CLIs。</value><comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment></data>
+  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>安裝 Hooks</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment></data>
+  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>重新整理</value><comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment></data>
+  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>關閉前警告</value><comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment></data>
+  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve"><value>控制在關閉索引標籤或視窗前何時顯示確認對話方塊。「一律」會在關閉任何窗格時顯示此對話方塊。</value><comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment></data>
+  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve"><value>永不</value><comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment></data>
+  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve"><value>一律</value><comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment></data>
+  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>多個索引標籤或窗格</value><comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment></data>
+  <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>桌面通知</value><comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment></data>
+  <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://go.microsoft.com/fwlink/?linkid=2229086</value><comment>{Locked}</comment></data>
 </root>

@@ -236,7 +236,7 @@
     <comment>The header for a control allowing users to choose the app's language.</comment>
   </data>
   <data name="Globals_Language.HelpText" xml:space="preserve">
-    <value>Избор језика приказа апликације. Ово ће да преиначи ваш подразумевани језик Windows интерфејса.</value>
+    <value>Бира језик приказа апликације. Ово ће заменити подразумевани језик интерфејса Windows-а.</value>
     <comment>A description explaining how this control changes the app's language. {Locked="Windows"}</comment>
   </data>
   <data name="Globals_LanguageDefault" xml:space="preserve">
@@ -293,7 +293,7 @@
     <comment>Header for a control to set the query URL when using the "search web" action.</comment>
   </data>
   <data name="Globals_SearchWebDefaultQueryUrl.HelpText" xml:space="preserve">
-    <value>Чувар места „%s” ће се заменити са упитом претраге.</value>
+    <value>Местоодржач „%s” биће замењен упитом за претрагу.</value>
     <comment>{Locked="%s"} Additional text presented near "Globals_SearchWebDefaultQueryUrl.Header".</comment>
   </data>
   <data name="Globals_TrimBlockSelection.Header" xml:space="preserve">
@@ -325,7 +325,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_GraphicsAPI.HelpText" xml:space="preserve">
-    <value>Direct3D 11 нуди боље перформансе и богатије искуство, док је Direct2D стабилнији. Подразумевана опција „Аутоматски” ће изабрати API који најбоље одговара вашем графичком хардверу. Ако искусите озбиљне проблеме, размотрите могућност да користите Direct2D.</value>
+    <value>Direct3D 11 нуди боље перформансе и богатије могућности, док је Direct2D стабилнији. Подразумевана опција „Аутоматски” изабраће API који најбоље одговара вашем графичком хардверу. Ако наиђете на озбиљне проблеме, размислите о томе да користите Direct2D.</value>
   </data>
   <data name="Globals_GraphicsAPI_Automatic.Text" xml:space="preserve">
     <value>Аутоматски</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>Ово мења начин на који се долазећи текст групише у ћелије. Опција „Скупине графема” је најмодернији, Unicode-исправни начин да се то ради, док је „wcswidth” уобичајен приступ на UNIX систему, а „Windows Console” реплицира начин на који је радило на Windows. Измена овог подешавања захтева поновно покретање програма Windows Терминал и примењује се само на апликације које су покренуте унутар њега.</value>
+    <value>Ово мења начин на који се долазни текст распоређује у ћелије. Опција „Скупине графема” је најсавременији и Unicode-исправан начин за то, док је „wcswidth” уобичајен приступ на UNIX системима, а „Windows Console” опонаша начин на који је то некада радило у Windows-у. Измена овог подешавања захтева поновно покретање програма Windows Терминал и примењује се само на апликације покренуте из њега.</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Скупине графема</value>
@@ -370,7 +370,22 @@
   </data>
   <data name="Globals_TextMeasurement_Console.Text" xml:space="preserve">
     <value>Windows Console</value>
+  </data><data name="Globals_AmbiguousWidth.Header" xml:space="preserve">
+    <value>Ширина двосмислених знакова</value>
+    <comment>A label for a drop down selector, referring to the East Asian Ambiguous Width Unicode specification.</comment>
+  </data><data name="Globals_AmbiguousWidth.HelpText" xml:space="preserve">
+    <value>Подешава ширину која се користи за источноазијске знакове двосмислене ширине. „Уско” (подразумевано) даје предност компатибилности, док „Широко” даје предност читљивости са многим CJK фонтовима. У режиму „Широко” неке апликације можда неће радити исправно и могу изазвати непредвидљиво померање курсора. Измена овог подешавања захтева поновно покретање програма Windows Терминал и примењује се само на апликације покренуте из њега.</value>
+  </data><data name="Globals_AmbiguousWidth_Narrow.Text" xml:space="preserve">
+    <value>Уско</value>
+    <comment>As in "narrow width". Refers to the East Asian Ambiguous Width Unicode specification.</comment>
+  </data><data name="Globals_AmbiguousWidth_Wide.Text" xml:space="preserve">
+    <value>Широко</value>
+    <comment>As in "wide width". Refers to the East Asian Ambiguous Width Unicode specification.</comment>
   </data>
+  
+  
+  
+  
   <data name="Globals_InitialCols.Text" xml:space="preserve">
     <value>Колоне</value>
     <comment>Header for a control to choose the number of columns in the terminal's text grid.</comment>
@@ -545,7 +560,11 @@
   <data name="Profile_ForceVTInput.Header" xml:space="preserve">
     <value>Користи стару верзију кодирања уноса</value>
     <comment>Header for a control to toggle legacy input encoding for the terminal.</comment>
+  </data><data name="Profile_AllowKittyKeyboardMode.Header" xml:space="preserve">
+    <value>Дозволи Kitty Keyboard протокол</value>
+    <comment>{Locked="Kitty"}Kitty is a moniker and its Keyboard Protocol is a protocol specification.</comment>
   </data>
+  
   <data name="Profile_AllowVtChecksumReport.Header" xml:space="preserve">
     <value>Дозволи DECRQCRA (Request Checksum of Rectangular Area)</value>
     <comment>{Locked="DECRQCRA"}{Locked="Request Checksum of Rectangular Area"}Header for a control to toggle support for the DECRQCRA control sequence.</comment>
@@ -571,7 +590,7 @@
     <comment>Additional description for what the "force vt input" setting does. Presented near "Globals_ForceVTInput.Header".</comment>
   </data>
   <data name="Globals_AllowHeadless.HelpText" xml:space="preserve">
-    <value>Ово омогућава да акције као што су Global Summon и Quake Режим раде чак и када нема отворених прозора.</value>
+    <value>Ово омогућава да акције као што су Global Summon и Quake режим раде чак и када нема отворених прозора.</value>
     <comment>Additional description for what the "allow headless" setting does. Presented near "Globals_AllowHeadless.Header".</comment>
   </data>
   <data name="Globals_TabWidthMode.Header" xml:space="preserve">
@@ -603,7 +622,7 @@
     <comment>An option to choose from for the "theme" setting. When selected, the app is in dark theme and darker colors are used throughout the app.</comment>
   </data>
   <data name="Globals_ThemeSystem.Content" xml:space="preserve">
-    <value>Користи Windows тему</value>
+    <value>Користи тему система Windows</value>
     <comment>An option to choose from for the "theme" setting. When selected, the app uses the theme selected in the Windows operating system.</comment>
   </data>
   <data name="Globals_ThemeLight.Content" xml:space="preserve">
@@ -615,7 +634,7 @@
     <comment>An option to choose from for the "theme" setting. When selected, the app is in dark theme and darker colors are used throughout the app. This is an older version of the "dark" theme</comment>
   </data>
   <data name="Globals_ThemeSystemLegacy.Content" xml:space="preserve">
-    <value>Користи Windows тему (старо)</value>
+    <value>Користи тему система Windows (застарело)</value>
     <comment>An option to choose from for the "theme" setting. When selected, the app uses the theme selected in the Windows operating system. This is an older version of the "Use Windows theme" theme</comment>
   </data>
   <data name="Globals_ThemeLightLegacy.Content" xml:space="preserve">
@@ -651,7 +670,7 @@
     <comment>Header for the "startup" menu item. This navigates to a page that lets you see and modify settings related to the app's launch experience (i.e. screen position, mode, etc.)</comment>
   </data>
   <data name="Nav_OpenJSON.Content" xml:space="preserve">
-    <value>Отвори JSON фајл</value>
+    <value>Отвори JSON датотеку</value>
     <comment>Header for a menu item. This opens the JSON file that is used to log the app's settings.</comment>
   </data>
   <data name="Nav_ProfileDefaults.Content" xml:space="preserve">
@@ -673,7 +692,83 @@
   <data name="Nav_Extensions.Content" xml:space="preserve">
     <value>Проширења</value>
     <comment>Header for the "extensions" menu item. This navigates to a page that lets you see and modify extensions for the app.</comment>
+  </data><data name="Nav_AIAgents.Content" xml:space="preserve">
+    <value>Агенти</value>
+    <comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment>
+  </data><data name="AIAgents_PageSubtitle.Text" xml:space="preserve">
+    <value>Подесите начин на који агенти раде у терминалу</value>
+    <comment>Subtitle shown beneath the page title on the AI Agents settings page.</comment>
+  </data><data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve">
+    <value>Панел агента</value>
+    <comment>Section header for the agent pane settings group.</comment>
+  </data><data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve">
+    <value>Палета команди</value>
+    <comment>Section header for the command palette agent settings group.</comment>
+  </data><data name="AIAgents_AcpAgent.Header" xml:space="preserve">
+    <value>Агент</value>
+    <comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment>
+  </data><data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
+    <value>Изаберите CLI агента који се користи у панелу агента. Биће откривен сваки компатибилан ACP CLI.</value>
+    <comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment>
+  </data><data name="AIAgents_AcpModel.Header" xml:space="preserve">
+    <value>Модел</value>
+    <comment>Header for the setting that specifies the model used by the agent pane agent.</comment>
+  </data><data name="AIAgents_AcpModel.HelpText" xml:space="preserve">
+    <value>Изаберите модел који овај агент користи.</value>
+    <comment>Supplementary description for the model setting.</comment>
+  </data><data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
+    <value>Агент</value>
+    <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
+  </data><data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
+    <value>Изаберите агента који се користи за брзе радње у палети команди.</value>
+    <comment>Supplementary description for the command palette agent setting.</comment>
+  </data><data name="AIAgents_AutoFix.Header" xml:space="preserve">
+    <value>Аутоматско откривање грешака</value>
+    <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
+  </data><data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
+    <value>Аутоматски открива грешке у командама и предлаже исправке.</value>
+    <comment>Supplementary description for the auto-error-detection setting.</comment>
+  </data><data name="AIAgents_PanePosition.Header" xml:space="preserve">
+    <value>Позиција панела</value>
+    <comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment>
+  </data><data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
+    <value>Где се панел агента отвара у односу на ваш терминал.</value>
+    <comment>Supplementary description for the pane position setting.</comment>
+  </data><data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
+    <value>Hooks агента</value>
+    <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment>
+  </data><data name="AIAgents_HooksInstall.Header" xml:space="preserve">
+    <value>Инсталирај Hook скрипте агента</value>
+    <comment>Header for the Agent Hooks install section.</comment>
+  </data><data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
+    <value>Неопходно за управљање сесијама агента. Инсталира Hooks у сваки откривени CLI (Copilot, Claude, Gemini) како би панелу агента пријављивали сесије и статус. Након инсталације поново покрените све отворене CLI-је агената.</value>
+    <comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment>
+  </data><data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
+    <value>Инсталирај Hooks</value>
+    <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment>
+  </data><data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
+    <value>Освежи</value>
+    <comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment>
   </data>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   <data name="Profile_OpacitySlider.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Непрозирност позадине</value>
     <comment>Name for a control to determine the level of opacity for the background of the control. The user can choose to make the background of the app more or less opaque.</comment>
@@ -1533,7 +1628,11 @@
   <data name="Profile_BellStyleWindow.Content" xml:space="preserve">
     <value>Трепери прозор</value>
     <comment>An option to choose from for the "bell style" setting. When selected, a visual notification is used to notify the user. In this case, the window is flashed.</comment>
+  </data><data name="Profile_BellStyleNotification.Content" xml:space="preserve">
+    <value>Обавештење радне површине</value>
+    <comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment>
   </data>
+  
   <data name="ColorScheme_AddNewButton.Text" xml:space="preserve">
     <value>Додај нову</value>
     <comment>Button label that creates a new color scheme.</comment>
@@ -1765,7 +1864,11 @@
   <data name="Actions_KeyBindingsListView.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Пречице тастатуре</value>
     <comment>Name for a control which contains the list of keybindings for the current command.</comment>
+  </data><data name="Actions_CommandDetails.Text" xml:space="preserve">
+    <value>Детаљи команде</value>
+    <comment>Label for the list of editable command details for the current command. This includes the command name and the shortcut action type.</comment>
   </data>
+  
   <data name="Actions_Arguments.Text" xml:space="preserve">
     <value>Додатни аргументи</value>
     <comment>Label for the list of editable arguments for the currently selected action.</comment>
@@ -1777,7 +1880,11 @@
   <data name="Actions_AddKeyChord.Text" xml:space="preserve">
     <value>Додај пречицу тастатуре</value>
     <comment>Button label that adds a keybinding to the current action.</comment>
+  </data><data name="Actions_AdditionalKeyChords" xml:space="preserve">
+    <value>и још {}</value>
+    <comment>Text that will be read out by a screen reader indicating that additional keybindings exist for this command. {} will be replaced by the number of additional keybindings.</comment>
   </data>
+  
   <data name="Actions_DeleteConfirmationButton.Content" xml:space="preserve">
     <value>Да, обриши везивање тастера</value>
     <comment>Button label that confirms deletion of a key binding entry.</comment>
@@ -2115,7 +2222,7 @@
     <comment>Help text directing users how to use the "KeyChordListener" control. Pressing a keyboard shortcut will be recorded by this control.</comment>
   </data>
   <data name="KeyChordListener.[using:Windows.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
-    <value>shortcut listener</value>
+    <value>ослушкивач пречица</value>
     <comment>The control type for a control that awaits keyboard input and records it.</comment>
   </data>
   <data name="KeyChordListener.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
@@ -2169,7 +2276,27 @@
   <data name="Globals_ConfirmCloseAllTabs.Header" xml:space="preserve">
     <value>Упозори када се затвара више од једне картице</value>
     <comment>Header for a control to toggle whether to show a confirm dialog box when closing the application with multiple tabs open.</comment>
+  </data><data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
+    <value>Упозори при затварању</value>
+    <comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment>
+  </data><data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
+    <value>Управља када се приказује дијалог за потврду пре затварања картица или прозора. „Увек” приказује дијалог и приликом затварања панела.</value>
+    <comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment>
+  </data><data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
+    <value>Никад</value>
+    <comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment>
+  </data><data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
+    <value>Увек</value>
+    <comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment>
+  </data><data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
+    <value>Више картица или панела</value>
+    <comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment>
   </data>
+  
+  
+  
+  
+  
   <data name="Globals_InputServiceWarning.Header" xml:space="preserve">
     <value>Упозори када је искључен „Touch Keyboard and Handwriting Panel Service”</value>
   </data>
@@ -2583,19 +2710,19 @@
     <comment>An option to choose from for the "path translation" setting.</comment>
   </data>
   <data name="Profile_PathTranslationStyleWsl.Content" xml:space="preserve">
-    <value>WSL (C:\ -> /mnt/c)</value>
+    <value>WSL (C:\ -&gt; /mnt/c)</value>
     <comment>{Locked="WSL","C:\","/mnt/c"} An option to choose from for the "path translation" setting.</comment>
   </data>
   <data name="Profile_PathTranslationStyleCygwin.Content" xml:space="preserve">
-    <value>Cygwin (C:\ -> /cygdrive/c)</value>
+    <value>Cygwin (C:\ -&gt; /cygdrive/c)</value>
     <comment>{Locked="Cygwin","C:\","/cygdrive/c"} An option to choose from for the "path translation" setting.</comment>
   </data>
   <data name="Profile_PathTranslationStyleMsys2.Content" xml:space="preserve">
-    <value>MSYS2 (C:\ -> /c)</value>
+    <value>MSYS2 (C:\ -&gt; /c)</value>
     <comment>{Locked="MSYS2","C:\","/c"} An option to choose from for the "path translation" setting.</comment>
   </data>
   <data name="Profile_PathTranslationStyleMinGW.Content" xml:space="preserve">
-    <value>MinGW (C:\ -> C:/)</value>
+    <value>MinGW (C:\ -&gt; C:/)</value>
     <comment>{Locked="MinGW","C:\","C:/"} An option to choose from for the "path translation" setting.</comment>
   </data>
   <data name="Profile_Delete_Orphaned.Header" xml:space="preserve">
@@ -2708,9 +2835,25 @@
   </data>
   <data name="Settings_ResetApplicationStateConfirmationButton.Content" xml:space="preserve">
     <value>Да, очисти кеш</value>
+  </data><data name="Nav_SearchBox.PlaceholderText" xml:space="preserve">
+    <value>Претражите подешавања</value>
+    <comment>Placeholder text for the main search box in the settings editor.</comment>
+  </data><data name="Search_NoResults" xml:space="preserve">
+    <value>Нема резултата за "{}"</value>
+    <comment>{Locked="{}"} Displayed when no results were found for a given query. "{}" will be replaced with the query.</comment>
   </data>
+  
+  
   <data name="IconPicker_BuiltInIcon.PlaceholderText" xml:space="preserve">
     <value>Куцајте да филтрирате иконе</value>
     <comment>Placeholder text for a text box to filter and select an icon.</comment>
+  </data><data name="Profile_DragDropDelimiter.Header" xml:space="preserve">
+    <value>Раздвајач за превлачење и отпуштање</value>
+    <comment>Header for a control to set the delimiter used when dragging multiple files into the terminal.</comment>
+  </data><data name="Profile_DragDropDelimiter.HelpText" xml:space="preserve">
+    <value>Овај текст ће бити уметнут између путања више датотека превучених у терминал.</value>
+    <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
+
+
 </root>

@@ -99,12 +99,12 @@ impl SetupReason {
         }
     }
 
-    pub fn title(&self) -> &'static str {
+    pub fn title(&self) -> String {
         match self {
-            Self::FirstRun => "Welcome to Intelligent Terminal!",
-            Self::AgentMissing => "Agent not found",
-            Self::AgentError => "Agent connection failed",
-            Self::SwitchAgent => "Switch agent",
+            Self::FirstRun => t!("setup.title.first_run").into_owned(),
+            Self::AgentMissing => t!("setup.title.agent_missing").into_owned(),
+            Self::AgentError => t!("setup.title.agent_error").into_owned(),
+            Self::SwitchAgent => t!("setup.title.switch_agent").into_owned(),
         }
     }
 }

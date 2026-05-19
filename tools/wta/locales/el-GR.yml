@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Καλως ήρθατε στο Intelligent Terminal!"
+setup.title.agent_missing: "Δεν βρέθηκε ο πράκτορας"
+setup.title.agent_error: "Η σύνδεση με τον πράκτορα απέτυχε"
+setup.title.switch_agent: "Αλλαγή πράκτορα"

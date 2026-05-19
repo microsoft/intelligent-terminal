@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "ఇంటెలిజెంట్ టెర్మినల్‌కు స్వాగతం!"
+setup.title.agent_missing: "ఏజెంట్ కనుగొనబడలేదు"
+setup.title.agent_error: "ఏజెంట్ కనెక్షన్ విఫలమైంది"
+setup.title.switch_agent: "ఏజెంట్‌ను మార్చండి"

@@ -7,5 +7,5 @@ set(VCPKG_LIBRARY_LINKAGE static)
 # aren't automatically picked up (it defaults to the latest one).
 set(VCPKG_PLATFORM_TOOLSET v143)
 
-set(VCPKG_CXX_FLAGS /fsanitize=address)
-set(VCPKG_C_FLAGS /fsanitize=address)
+set(VCPKG_CXX_FLAGS "/fsanitize=address /D_DISABLE_VECTOR_ANNOTATION /D_DISABLE_STRING_ANNOTATION")
+set(VCPKG_C_FLAGS "/fsanitize=address /D_DISABLE_VECTOR_ANNOTATION /D_DISABLE_STRING_ANNOTATION")

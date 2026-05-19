@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Üdvözli az Intelligent Terminal!"
+setup.title.agent_missing: "Az ügynök nem található"
+setup.title.agent_error: "Az ügynökhöz való kapcsolódás sikertelen"
+setup.title.switch_agent: "Ügynök váltása"

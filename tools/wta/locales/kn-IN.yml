@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್‌ಗೆ ಸ್ವಾಗತ!"
+setup.title.agent_missing: "ಏಜೆಂಟ್ ಕಂಡುಬಂದಿಲ್ಲ"
+setup.title.agent_error: "ಏಜೆಂಟ್ ಸಂಪರ್ಕ ವಿಫಲವಾಗಿದೆ"
+setup.title.switch_agent: "ಏಜೆಂಟ್ ಬದಲಿಸಿ"

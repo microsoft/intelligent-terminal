@@ -1083,8 +1083,8 @@ mod tests {
             build_delegate_launch_commandline(&runtime, "Fix the build and report back").unwrap();
 
         assert!(!commandline.contains("--model"));
-        // Executable may resolve to copilot.exe on PATH.
-        assert!(commandline.starts_with("copilot"));
+        // May be wrapped as "cmd /c copilot ..." if copilot.exe isn't on PATH.
+        assert!(commandline.contains("copilot"));
         assert!(commandline.contains("-i \"Fix the build and report back\""));
     }
 
@@ -1148,8 +1148,8 @@ mod tests {
         )
         .unwrap();
 
-        // Executable may resolve to copilot.exe on PATH.
-        assert!(commandline.starts_with("copilot"));
+        // May be wrapped as "cmd /c copilot ..." if copilot.exe isn't on PATH.
+        assert!(commandline.contains("copilot"));
         assert!(commandline.contains("--model claude-haiku-4.5"));
         assert!(commandline.contains("-i \"Fix the Rust build error and run cargo build\""));
     }

@@ -976,4 +976,11 @@
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>分割大小</value>
   </data>
+  <data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>顯示 Terminal Protocol 資訊</value><comment>{Locked="Terminal Protocol"}</comment></data>
+  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>切換窗格可見性</value></data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>切換 AI 代理</value></data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>將焦點移至 AI 代理窗格</value></data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>開啟 AI 代理工作階段清單</value></data>
+  <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>觸發自動修正</value></data>
+  <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>提示</value></data>
 </root>

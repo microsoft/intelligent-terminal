@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Nāu mai ki Intelligent Terminal!"
+setup.title.agent_missing: "Kāore i kitea te agent"
+setup.title.agent_error: "I rahua te hononga agent"
+setup.title.switch_agent: "Huri agent"

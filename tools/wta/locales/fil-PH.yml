@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Maligayang pagdating sa Intelligent Terminal!"
+setup.title.agent_missing: "Hindi nahanap ang agent"
+setup.title.agent_error: "Nabigo ang koneksyon sa agent"
+setup.title.switch_agent: "Palitan ang agent"

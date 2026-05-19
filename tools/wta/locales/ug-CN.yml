@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Intelligent Terminal هە خوش كەلدىڭىز!"
+setup.title.agent_missing: "ۋەكىل تېپىلمىدى"
+setup.title.agent_error: "ۋەكىل بىلەن باغلىنىش مەغلۇب بولدى"
+setup.title.switch_agent: "ۋەكىلنى الماشتۇرۇش"

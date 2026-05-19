@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "इंटेलिजेंट टर्मिनल में आपका स्वागत है!"
+setup.title.agent_missing: "एजेंट नहीं मिला"
+setup.title.agent_error: "एजेंट कनेक्शन विफल हुआ"
+setup.title.switch_agent: "एजेंट बदलें"

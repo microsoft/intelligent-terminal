@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Us donem la benvinguda a l'Intelligent Terminal!"
+setup.title.agent_missing: "No s'ha trobat l'agent"
+setup.title.agent_error: "No s'ha pogut connectar amb l'agent"
+setup.title.switch_agent: "Canvia d'agent"

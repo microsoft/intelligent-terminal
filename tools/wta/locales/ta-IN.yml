@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "Intelligent Terminal-க்கு வரவேற்கிறோம்!"
+setup.title.agent_missing: "முகவர் கிடைக்கவில்லை"
+setup.title.agent_error: "முகவர் இணைப்பு தோல்வியடைந்தது"
+setup.title.switch_agent: "முகவரை மாற்று"

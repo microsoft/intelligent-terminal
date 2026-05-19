@@ -15,10 +15,15 @@
      -->
     <AppxOSMinVersionReplaceManifestVersion>false</AppxOSMinVersionReplaceManifestVersion>
     <AppxOSMaxVersionTestedReplaceManifestVersion>false</AppxOSMaxVersionTestedReplaceManifestVersion>
-    <OCExecutionAliasName Condition="'$(WindowsTerminalBranding)'=='' or '$(WindowsTerminalBranding)'=='Dev'">wtai</OCExecutionAliasName>
-    <OCExecutionAliasName Condition="'$(OCExecutionAliasName)'==''">wt</OCExecutionAliasName>
+    <OCExecutionAliasName>wtai</OCExecutionAliasName>
+    <!-- Map wapproj Platform to the C++ project Platform used in bin output paths.
+         C++ vcxprojs use "Win32" for 32-bit x86 builds, but the wapproj receives "x86"
+         from the solution. x64 and ARM64 are the same in both contexts. -->
+    <CppPlatform>$(Platform)</CppPlatform>
+    <CppPlatform Condition="'$(Platform)'=='x86'">Win32</CppPlatform>
     <!-- Map MSBuild Platform to Rust target triple for wta.exe inclusion. -->
     <WtaRustTarget Condition="'$(Platform)'=='x64'">x86_64-pc-windows-msvc</WtaRustTarget>
+    <WtaRustTarget Condition="'$(Platform)'=='x86'">i686-pc-windows-msvc</WtaRustTarget>
     <WtaRustTarget Condition="'$(Platform)'=='ARM64'">aarch64-pc-windows-msvc</WtaRustTarget>
     <!-- Pick the matching Cargo profile for the package configuration so a
          Debug F5 picks up `cargo build` output and a Release build picks up
@@ -105,7 +110,7 @@
   <!-- Deploy the TerminalProtocol .winmd into the package for MBM (Metadata Based Marshaling).
        The WinRT runtime needs this file to marshal IProtocolServer cross-process. -->
   <ItemGroup>
-    <Content Include="$(SolutionDir)bin\$(Platform)\$(Configuration)\TerminalProtocol\Microsoft.Terminal.Protocol.winmd">
+    <Content Include="$(SolutionDir)bin\$(CppPlatform)\$(Configuration)\TerminalProtocol\Microsoft.Terminal.Protocol.winmd">
       <Link>Microsoft.Terminal.Protocol.winmd</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

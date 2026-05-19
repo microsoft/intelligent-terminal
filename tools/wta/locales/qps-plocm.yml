@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "[¡¡ Ŵẽĺçømẽ ŧø Îñŧẽĺĺįğẽñŧ Ţẽŕmįñåĺ! ¡¡]"
+setup.title.agent_missing: "[¡¡ Åğẽñŧ ñøŧ ƒøůñđ ¡¡]"
+setup.title.agent_error: "[¡¡ Åğẽñŧ çøññẽçŧįøñ ƒåįĺẽđ ¡¡]"
+setup.title.switch_agent: "[¡¡ Ŝŵįŧçĥ åğẽñŧ ¡¡]"

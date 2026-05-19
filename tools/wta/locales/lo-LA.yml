@@ -1,0 +1,5 @@
+# Setup screen titles
+setup.title.first_run: "ຍິນດີຕ້ອນຮັບສູ່ Intelligent Terminal!"
+setup.title.agent_missing: "ບໍ່ພົບ agent"
+setup.title.agent_error: "ການເຊື່ອມຕໍ່ agent ລົ້ມເຫລວ"
+setup.title.switch_agent: "ປ່ຽນ agent"

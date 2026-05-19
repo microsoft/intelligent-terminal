@@ -2752,4 +2752,85 @@
     <value>Этот текст будет вставлен между путями нескольких файлов, перетащенных в терминал.</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
+  <data name="Nav_AIAgents.Content" xml:space="preserve">
+    <value>Агенты</value>
+  </data>
+  <data name="AIAgents_PageSubtitle.Text" xml:space="preserve">
+    <value>Настройте работу агентов во всем терминале</value>
+  </data>
+  <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve">
+    <value>Панель агента</value>
+  </data>
+  <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve">
+    <value>Палитра команд</value>
+  </data>
+  <data name="AIAgents_AcpAgent.Header" xml:space="preserve">
+    <value>Агент</value>
+  </data>
+  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
+    <value>Выберите CLI-агент для панели агента. Все совместимые ACP CLI обнаруживаются автоматически.</value>
+    <comment>{Locked="ACP","CLI"}</comment>
+  </data>
+  <data name="AIAgents_AcpModel.Header" xml:space="preserve">
+    <value>Модель</value>
+  </data>
+  <data name="AIAgents_AcpModel.HelpText" xml:space="preserve">
+    <value>Выберите модель, которую использует этот агент.</value>
+  </data>
+  <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
+    <value>Агент</value>
+  </data>
+  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
+    <value>Выберите агента, используемого для быстрых действий в палитре команд.</value>
+  </data>
+  <data name="AIAgents_AutoFix.Header" xml:space="preserve">
+    <value>Автоматическое обнаружение ошибок</value>
+  </data>
+  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
+    <value>Обнаруживает ошибки команд и автоматически предлагает исправления.</value>
+  </data>
+  <data name="AIAgents_PanePosition.Header" xml:space="preserve">
+    <value>Положение панели</value>
+  </data>
+  <data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
+    <value>Где панель агента будет открываться относительно терминала.</value>
+  </data>
+  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
+    <value>Hooks для агентов</value>
+  </data>
+  <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
+    <value>Установить скрипты Hooks для агентов</value>
+  </data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
+    <value>Требуется для управления сеансами агентов. Устанавливает Hooks в каждый обнаруженный CLI (Copilot, Claude, Gemini), чтобы панель агента получала сведения о сеансах и состоянии. После установки перезапустите все открытые CLI агентов.</value>
+    <comment>{Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
+    <value>Установить Hooks</value>
+  </data>
+  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
+    <value>Обновить</value>
+  </data>
+  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
+    <value>Предупреждать при закрытии</value>
+  </data>
+  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
+    <value>Управляет тем, когда перед закрытием вкладок или окон появляется диалог подтверждения. При значении "Всегда" диалог показывается при закрытии любой панели.</value>
+  </data>
+  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
+    <value>Никогда</value>
+  </data>
+  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
+    <value>Всегда</value>
+  </data>
+  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
+    <value>Несколько вкладок или панелей</value>
+  </data>
+  <data name="Profile_BellStyleNotification.Content" xml:space="preserve">
+    <value>Уведомление на рабочем столе</value>
+  </data>
+  <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
+    <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
+    <comment>{Locked}</comment>
+  </data>
 </root>

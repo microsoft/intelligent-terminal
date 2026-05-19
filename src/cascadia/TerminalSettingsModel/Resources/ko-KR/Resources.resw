@@ -976,4 +976,26 @@
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>분할 크기</value>
   </data>
+  <data name="ShowProtocolInfoCommandKey" xml:space="preserve">
+    <value>Terminal Protocol 정보 표시</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="TogglePaneVisibilityCommandKey" xml:space="preserve">
+    <value>창 표시 여부 전환</value>
+  </data>
+  <data name="OpenAgentPaneCommandKey" xml:space="preserve">
+    <value>AI 에이전트 표시/숨기기</value>
+  </data>
+  <data name="FocusAgentPaneCommandKey" xml:space="preserve">
+    <value>AI 에이전트 창으로 포커스 이동</value>
+  </data>
+  <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
+    <value>AI 에이전트 세션 목록 열기</value>
+  </data>
+  <data name="TriggerAutofixCommandKey" xml:space="preserve">
+    <value>자동 수정 실행</value>
+  </data>
+  <data name="PromptActionArgumentLocalized" xml:space="preserve">
+    <value>프롬프트</value>
+  </data>
 </root>
