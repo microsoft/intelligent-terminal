@@ -657,6 +657,26 @@ void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
     case ProtocolParsing::SendEventRoute::AgentStatus:
         _dispatchAgentStatusToPage(eventJson);
         return;
+    case ProtocolParsing::SendEventRoute::CloseAgentPane:
+        // User pressed Ctrl+C twice in the wta TUI. Marshal to the UI
+        // thread and tell TerminalPage to tear down the shared agent pane.
+        _dispatchCloseAgentPaneToPage(eventJson);
+        return;
+    case ProtocolParsing::SendEventRoute::ViewChanged:
+        // wta TUI flipped its internal view (Esc out of session view,
+        // `/sessions` slash command). C++ mirrors the new view onto the
+        // agent bar title + the bottom bar's sessions/chat highlight.
+        _dispatchViewChangedToPage(eventJson);
+        return;
+    case ProtocolParsing::SendEventRoute::ResumeInNewAgentTab:
+        // Session view's Shift+Enter handler in the wta TUI. Carries
+        // {session_id, cwd} for a historical session. WT creates a new
+        // tab, reconciles the shared agent pane onto it, then publishes
+        // a `load_session` event back to wta with the new tab's StableId
+        // so the existing ACP connection calls `session/load` for that
+        // tab. See TerminalPage::OnResumeInNewAgentTabRequested.
+        _dispatchResumeInNewAgentTabToPage(eventJson);
+        return;
     case ProtocolParsing::SendEventRoute::Broadcast:
     {
         Json::StreamWriterBuilder wb;
@@ -667,50 +687,6 @@ void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
     default:
         return;
     }
-
-    // close_agent_pane: user pressed Ctrl+C twice in the wta TUI. Marshal to
-    // the UI thread and tell TerminalPage to tear down the shared agent pane.
-    if (evt.isMember("method") && evt["method"].isString() &&
-        evt["method"].asString() == "close_agent_pane")
-    {
-        _dispatchCloseAgentPaneToPage(eventJson);
-        return;
-    }
-
-    // view_changed: wta TUI flipped its internal view (Esc out of Agents, or
-    // `/sessions` slash command). C++ mirrors the new view onto the agent bar
-    // title + the bottom bar's sessions/chat highlight.
-    if (evt.isMember("method") && evt["method"].isString() &&
-        evt["method"].asString() == "view_changed")
-    {
-        _dispatchViewChangedToPage(eventJson);
-        return;
-    }
-
-    // resume_in_new_agent_tab: Session view's Shift+Enter handler in the
-    // wta TUI. Carries {session_id, cwd} for a historical session. WT
-    // creates a new tab, reconciles the shared agent pane onto it, then
-    // publishes a `load_session` event back to wta with the new tab's
-    // StableId so the existing ACP connection calls `session/load` for
-    // that tab. See TerminalPage::OnResumeInNewAgentTabRequested.
-    if (evt.isMember("method") && evt["method"].isString() &&
-        evt["method"].asString() == "resume_in_new_agent_tab")
-    {
-        _dispatchResumeInNewAgentTabToPage(eventJson);
-        return;
-    }
-
-    // Legacy path: params.event is required for agent_event broadcasts.
-    THROW_HR_IF(E_INVALIDARG, !evt.isMember("params") || !evt["params"].isMember("event"));
-
-    // Normalize the envelope
-    evt["type"] = "event";
-    evt["method"] = "agent_event";
-
-    // Broadcast to all subscribed clients via the existing path
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    s_NotifyEventToComClients(Json::writeString(wb, evt));
 }
 
 void TerminalProtocolComServer::_dispatchAutofixStateToPage(const winrt::hstring& eventJson)

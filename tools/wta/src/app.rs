@@ -863,9 +863,6 @@ pub struct TabSession {
     pub chat_scroll: Scroll,
 
     // Streaming state
-    pub prompt_in_flight: bool,
-    pub agent_streaming: bool,
-    pub pending_thought_response: String,
     pub pending_agent_response: String,
     /// Accumulator for `session/update` user_message_chunk events
     /// arriving during an ACP `session/load` replay (the historical
@@ -876,9 +873,9 @@ pub struct TabSession {
     pub pending_user_replay: String,
     /// True between the inbound `load_session` event and the
     /// `SessionAttached` event that closes out the ACP `session/load`
-    /// call. While set, session/update chunk handlers bypass the
-    /// `prompt_in_flight` gate so the agent's replayed history actually
-    /// renders into the new tab.
+    /// call. While set, session/update chunk handlers accept chunks
+    /// even though no `TurnState::Submitted` was created for the
+    /// replay — `turn` stays Idle through the load.
     pub loading_session: bool,
     // Explicit per-turn lifecycle. Source of truth in the new state machine
     // (see `doc/specs/turn-state-refactor.md`).
@@ -942,7 +939,6 @@ impl TabSession {
         self.activity_frame = 0;
         self.pending_agent_response.clear();
         self.pending_user_replay.clear();
-        self.agent_streaming = false;
         self.chat_scroll.reset();
         self.timing_note = None;
         self.selection_visible_pending = false;
@@ -963,7 +959,6 @@ impl TabSession {
             let text = std::mem::take(&mut self.pending_agent_response);
             self.messages.push(ChatMessage::Agent(text));
         }
-        self.pending_thought_response.clear();
     }
 
     /// Cycle the past-turn selection toward older entries.
@@ -2659,7 +2654,6 @@ impl App {
                 if tab.loading_session {
                     tab.flush_load_replay_pending();
                     tab.loading_session = false;
-                    tab.agent_streaming = false;
                     tab.scroll_to_bottom();
                 }
                 // Per-session model lists could differ — surface the new
@@ -2681,15 +2675,12 @@ impl App {
                 // AgentError because the error is local to one tab's
                 // session-load attempt, not the whole connection.
                 let tab = self.tab_mut(&tab_id);
-                tab.prompt_in_flight = false;
-                tab.agent_streaming = false;
                 tab.loading_session = false;
                 tab.progress_status = None;
-                tab.pending_thought_response.clear();
                 tab.pending_agent_response.clear();
                 tab.pending_user_replay.clear();
                 tab.timing_note = None;
-                tab.pending_completed_turn = None;
+                tab.turn = TurnState::Idle;
                 tab.messages.push(ChatMessage::Error(message));
                 tab.scroll_to_bottom();
             }
@@ -2779,22 +2770,18 @@ impl App {
                 self.current_tab_mut().scroll_to_bottom();
             }
             AppEvent::AgentThoughtChunk { session_id, text } => {
-                let tab = self.session_tab_mut(&session_id);
-                // If the user cancelled this prompt (or it already
-                // completed) we drop the late chunk rather than re-arming
-                // the spinner. During session/load replay
-                // (`loading_session`) we accept chunks regardless.
-                if !tab.prompt_in_flight && !tab.loading_session {
-                    return;
-                }
-                if tab.progress_status.is_none() {
-                    tab.progress_status = Some("Thinking...".to_string());
-                }
-                append_thought_preview(&mut tab.pending_thought_response, &text);
+                // Late chunk after cancel / completion is dropped by
+                // `turn_observe_chunk` (state isn't Submitted/Streaming).
+                self.turn_observe_chunk(&session_id, ChunkKind::Thought, &text);
             }
             AppEvent::AgentMessageChunk { session_id, text } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.prompt_in_flight && !tab.loading_session {
+                // Late chunks after cancel / completion are dropped by
+                // `turn_observe_chunk` (state isn't Submitted/Streaming).
+                // During session/load replay no Submitted state exists,
+                // so we still need to gate on `loading_session` here to
+                // accept replayed chunks into `messages`.
+                if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
                 }
                 // Turn boundary detection during replay: an agent
@@ -2806,9 +2793,7 @@ impl App {
                     let text = std::mem::take(&mut tab.pending_user_replay);
                     tab.messages.push(ChatMessage::User(text));
                 }
-                tab.agent_streaming = true;
                 tab.progress_status = None;
-                tab.pending_thought_response.clear();
                 tab.pending_agent_response.push_str(&text);
 
                 // Append to the streaming buffer. The state machine drops
@@ -2852,10 +2837,7 @@ impl App {
             }
             AppEvent::ToolCall { session_id, id, title, status } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.prompt_in_flight && !tab.loading_session {
-                    return;
-                }
-                if !tab.turn.is_in_flight() {
+                if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
                 }
                 // Turn boundary during replay (see AgentMessageChunk).
@@ -2877,11 +2859,7 @@ impl App {
             }
             AppEvent::ToolCallUpdate { session_id, id, status } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.prompt_in_flight && !tab.loading_session {
-                    return;
-                }
-                if !tab.turn.is_in_flight() {
-
+                if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
                 }
                 if let Some(entry) = tab.tool_calls.get_mut(&id) {
@@ -2903,10 +2881,7 @@ impl App {
             }
             AppEvent::Plan { session_id, entries } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.prompt_in_flight && !tab.loading_session {
-                    return;
-                }
-                if !tab.turn.is_in_flight() {
+                if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
                 }
                 if tab.loading_session {
@@ -2929,10 +2904,7 @@ impl App {
                 responder,
             } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.prompt_in_flight && !tab.loading_session {
-                    return;
-                }
-                if !tab.turn.is_in_flight() {
+                if !tab.turn.is_in_flight() && !tab.loading_session {
                     // Auto-deny if the user cancelled before the agent
                     // got around to asking. Dropping the responder yields
                     // a Cancelled outcome on the agent side.
@@ -3144,8 +3116,8 @@ impl App {
                         tab.session_id = None;
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
-                        // tab even though `prompt_in_flight` is false.
-                        // Closed by the SessionAttached handler when
+                        // tab even though `turn` stays Idle. Closed by
+                        // the SessionAttached handler when
                         // `conn.load_session` returns.
                         tab.loading_session = true;
                         tab.messages.push(ChatMessage::System(format!(
