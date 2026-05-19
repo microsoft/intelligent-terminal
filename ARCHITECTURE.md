@@ -1,16 +1,23 @@
 # WTA (Windows Terminal Agent) — Comprehensive Architecture
 
+> **Project context:** WTA ships as part of **Intelligent Terminal**, an
+> AI-native fork of Windows Terminal. The "WTA" acronym (Windows Terminal
+> Agent) is preserved as the binary/crate name for historical continuity, but
+> the host application this document refers to as "Windows Terminal" below is
+> Intelligent Terminal (which is built on the upstream Windows Terminal
+> codebase). Where the distinction matters, it is called out explicitly.
+
 ## Overview
 
 WTA is a Rust application (crate: both `lib` and `bin`) that bridges AI agent protocols
-(ACP, MCP) with Windows Terminal's internal capabilities (panes, tabs, buffers, input).
-It communicates with Windows Terminal through an abstracted **channel** layer that
+(ACP, MCP) with Intelligent Terminal's internal capabilities (panes, tabs, buffers, input).
+It communicates with the terminal through an abstracted **channel** layer that
 supports multiple transports: VT escape sequences (OSC 9001), named pipes, or
 direct in-process calls.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Windows Terminal (C++)                      │
+│                     Intelligent Terminal (C++)                   │
 │                                                                 │
 │   ProtocolRequestHandler  ◄── single implementation             │
 │        ▲         ▲         ▲                                    │

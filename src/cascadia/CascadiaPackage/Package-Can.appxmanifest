@@ -18,7 +18,7 @@
   IgnorableNamespaces="uap mp rescap uap3 uap17 desktop6 virtualization">
 
   <Identity
-    Name="Microsoft.WindowsTerminalCanary"
+    Name="Microsoft.IntelligentTerminalCanary"
     Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
     Version="0.0.2.1" />
 

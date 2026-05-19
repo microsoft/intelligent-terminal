@@ -1,6 +1,12 @@
-# Copilot Instructions for Windows Terminal
+# Copilot Instructions for Intelligent Terminal
 
-This is the source repository for **Windows Terminal**, **Windows Console Host** (`conhost.exe`), and shared components between them. It is a large C++ codebase built with MSBuild/Visual Studio targeting Windows.
+This is the source repository for **Intelligent Terminal**, an AI-native fork of
+**Windows Terminal**. It also contains the **Windows Console Host** (`conhost.exe`)
+and shared components inherited from upstream. On top of upstream Windows
+Terminal, this fork adds the Windows Terminal Agent (`wta`) orchestrator, a
+typed Terminal Protocol (COM/WinRT) used by agents to drive panes, the `wtcli`
+client, and ACP-based in-pane agent experiences. It is a large C++ codebase
+built with MSBuild/Visual Studio targeting Windows, with the agent layer in Rust.
 
 ## Build
 
@@ -79,7 +85,7 @@ XAML formatting uses **XamlStyler** (config in `XamlStyler.json` at repo root).
 
 The codebase has two main products sharing foundational components:
 
-### Windows Terminal (`src/cascadia/`)
+### Intelligent Terminal (`src/cascadia/`)
 - **TerminalCore** — Core terminal state machine (buffer, VT parsing, input). No UI dependency. This is a static LIB.
 - **TerminalControl** — UWP/XAML control wrapping TerminalCore with a DirectWrite/Atlas renderer. This is a DLL.
 - **TerminalApp** — Application logic: tabs, panes, settings UI, command palette. Pure UWP-like code, no Win32 UI.

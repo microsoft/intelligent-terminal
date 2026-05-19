@@ -2,7 +2,7 @@
 
 [![Terminal Build Status](https://dev.azure.com/shine-oss/terminal/_apis/build/status%2FTerminal%20CI?branchName=main)](https://dev.azure.com/shine-oss/terminal/_build/latest?definitionId=1&branchName=main)
 
-# Welcome to the Windows Terminal, Console and Command-Line repo
+# Welcome to the Intelligent Terminal repo
 
 <details>
   <summary><strong>Table of Contents</strong></summary>
@@ -39,11 +39,18 @@
 
 <br />
 
+**Intelligent Terminal** is an AI-native fork of [Windows Terminal](https://github.com/microsoft/terminal).
+It embeds AI agents (Copilot, Claude, Gemini, and custom agents) directly into the
+terminal so they can read panes, run commands, automate workflows, and auto-fix
+failing commands — all through a typed Terminal Protocol surface rather than
+scraping the screen.
+
 This repository contains the source code for:
 
-* [Windows Terminal](https://aka.ms/terminal)
-* [Windows Terminal Preview](https://aka.ms/terminal-preview)
-* The Windows console host (`conhost.exe`)
+* The Intelligent Terminal app (built on top of Windows Terminal)
+* The Windows Terminal Agent (`wta`) orchestrator and `wtcli` client
+* The Terminal Protocol (COM / WinRT IDL) used by agents to drive panes
+* The Windows console host (`conhost.exe`), inherited from upstream
 * Components shared between the two projects
 * [ColorTool](./src/tools/ColorTool)
 * [Sample projects](./samples)
@@ -51,10 +58,15 @@ This repository contains the source code for:
 
 Related repositories include:
 
+* [Windows Terminal](https://github.com/microsoft/terminal) — the upstream project this fork is based on
 * [Windows Terminal Documentation](https://docs.microsoft.com/windows/terminal)
   ([Repo: Contribute to the docs](https://github.com/MicrosoftDocs/terminal))
 * [Console API Documentation](https://github.com/MicrosoftDocs/Console-Docs)
 * [Cascadia Code Font](https://github.com/Microsoft/Cascadia-Code)
+
+The remainder of this README describes the underlying Windows Terminal — most of
+it still applies to Intelligent Terminal, with AI-specific behavior layered on
+top. See `ARCHITECTURE.md` and `CLAUDE.md` for the fork-specific design.
 
 ## Installing and running Windows Terminal
 
