@@ -32,7 +32,7 @@
   <Description _locID="App_Description">
     <!-- _locComment_text="{MaxLength=10000} App Description" -->Це попередня збірка терміналу Windows, яка містить найновіші функції в міру їх розробки. Термінал Windows - це сучасний, швидкий, ефективний, потужний та продуктивний термінальний застосунок для користувачів інструментів командного рядка та оболонок, таких як командний рядок, PowerShell та WSL. Його основні функції включають кілька вкладок, панелей, підтримку символів Unicode та UTF-8, механізм візуалізації тексту з прискоренням GPU, а також користувацькі теми, стилі та конфігурації.
 
-Це проєкт з відкритим кодом, і ми вітаємо участь спільноти. Щоб взяти участь, будь ласка, відвідайте https://github.com/microsoft/terminal </Description>
+Це проєкт з відкритим кодом, і ми вітаємо участь спільноти. Щоб взяти участь, будь ласка, відвідайте https://aka.ms/intelligentterminal/source </Description>
   <ShortDescription _locID="App_ShortDescription">
     <!-- Only used for games. This description appears in the Information section of the Game Hub on Xbox One, and helps customers understand more about your game. -->
     <!-- _locComment_text="{MaxLength=500} App ShortDescription" -->
@@ -174,9 +174,9 @@
     <!-- _locComment_text="{MaxLength=10000} Additional License Terms" -->
   </AdditionalLicenseTerms>
   <WebsiteURL _locID="App_WebsiteURL">
-    <!-- _locComment_text="{MaxLength=2048} WebsiteURL" -->https://github.com/microsoft/terminal</WebsiteURL>
+    <!-- _locComment_text="{MaxLength=2048} WebsiteURL" -->https://aka.ms/intelligentterminal/source</WebsiteURL>
   <SupportContactInfo _locID="App_SupportContactInfo">
-    <!-- _locComment_text="{MaxLength=2048} Support Contact Info" -->https://github.com/microsoft/terminal/issues/new</SupportContactInfo>
+    <!-- _locComment_text="{MaxLength=2048} Support Contact Info" -->https://aka.ms/intelligentterminal/feedback</SupportContactInfo>
   <PrivacyPolicyURL _locID="App_PrivacyURL">
-    <!-- _locComment_text="{MaxLength=2048} Privacy Policy URL" -->https://go.microsoft.com/fwlink/?LinkID=521839</PrivacyPolicyURL>
+    <!-- _locComment_text="{MaxLength=2048} Privacy Policy URL" -->https://aka.ms/intelligentterminal/privacy</PrivacyPolicyURL>
 </ProductDescription>

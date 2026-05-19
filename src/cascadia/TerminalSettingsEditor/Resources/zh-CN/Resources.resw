@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -2852,7 +2852,7 @@
     <value>桌面通知</value>
   </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
-    <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
+    <value>https://aka.ms/intelligentterminal/portable-mode</value>
     <comment>{Locked}</comment>
   </data>
 </root>

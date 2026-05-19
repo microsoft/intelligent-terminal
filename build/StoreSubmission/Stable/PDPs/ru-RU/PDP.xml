@@ -32,7 +32,7 @@
   <Description>
       Терминал Windows — это современное, быстрое, мощное и эффективное приложение терминала для пользователей средств командной строки и оболочек, таких как Командная строка, PowerShell и WSL. В число его основных функций входят множественные вкладки, панели, поддержка символов Юникода и UTF-8, модуль отрисовки текста с использованием графического ускорителя, а также пользовательские темы, стили и конфигурации.
 
-Это проект с открытым исходным кодом, и мы приглашаем сообщество к участию. Чтобы внести вклад, посетите страницу https://github.com/microsoft/terminal </Description>
+Это проект с открытым исходным кодом, и мы приглашаем сообщество к участию. Чтобы внести вклад, посетите страницу https://aka.ms/intelligentterminal/source </Description>
   <ShortDescription>
     <!-- Only used for games. This description appears in the Information section of the Game Hub on Xbox One, and helps customers understand more about your game. -->
     
@@ -173,9 +173,9 @@
     
   </AdditionalLicenseTerms>
   <WebsiteURL>
-    https://github.com/microsoft/terminal</WebsiteURL>
+    https://aka.ms/intelligentterminal/source</WebsiteURL>
   <SupportContactInfo>
-    https://github.com/microsoft/terminal/issues/new</SupportContactInfo>
+    https://aka.ms/intelligentterminal/feedback</SupportContactInfo>
   <PrivacyPolicyURL>
-    https://go.microsoft.com/fwlink/?LinkID=521839</PrivacyPolicyURL>
+    https://aka.ms/intelligentterminal/privacy</PrivacyPolicyURL>
 </ProductDescription>
