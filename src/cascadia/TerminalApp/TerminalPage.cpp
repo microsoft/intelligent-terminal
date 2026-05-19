@@ -680,6 +680,17 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_OnAgentForegroundPromptRequested(const IInspectable& /*sender*/, const winrt::hstring& prompt)
     {
         _agentPaneLog("_OnAgentForegroundPromptRequested: prompt='" + winrt::to_string(prompt) + "' empty=" + (prompt.empty() ? "true" : "false"));
+
+        TraceLoggingWrite(
+            g_hTerminalAgentProvider,
+            "AgentPromptSent",
+            TraceLoggingDescription("Event emitted when a foreground agent prompt is dispatched to WTA via the ? command palette flow"),
+            TraceLoggingValue("CommandPaletteDelegate", "Route", "Delivery route to WTA: CommandPaletteDelegate = ?<prompt> palette path"),
+            TraceLoggingValue(static_cast<uint32_t>(prompt.size()), "PromptLength", "Number of UTF-16 code units in the prompt (content is not collected)"),
+            TraceLoggingValue(prompt.empty(), "EmptyPrompt", "True if the prompt was empty (no-op case)"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+
         if (!prompt.empty())
         {
             _DelegatePromptToAgent(prompt);
@@ -8531,6 +8542,15 @@ namespace winrt::TerminalApp::implementation
                         "QuickFixSuggestionUsed",
                         TraceLoggingDescription("Event emitted when a winget suggestion from is used"),
                         TraceLoggingValue("QuickFixMenu", "Source"),
+                        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+
+                    TraceLoggingWrite(
+                        g_hTerminalAgentProvider,
+                        "ErrorFixAttempted",
+                        TraceLoggingDescription("Event emitted when the user accepts a suggested fix for a detected error"),
+                        TraceLoggingValue("QuickFixMenu", "FixSource", "Where the suggested fix originated (QuickFixMenu = winget quick-fix menu, SuggestionsUI = command palette suggestions, AgentSuggestion = AI agent recommendation)"),
+                        TraceLoggingValue(static_cast<uint32_t>(suggestion.size()), "FixLength", "Number of UTF-16 code units in the accepted fix command (content is not collected)"),
                         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
                 }

@@ -3306,6 +3306,27 @@ impl App {
                 let notification = classify_wt_event(&method, &pane_id, &params);
                 tracing::debug!(target: "autofix", severity = ?notification.severity, summary = %notification.summary, "classified");
 
+                // Telemetry: emit ErrorDetected for any non-acknowledged
+                // critical/actionable classification. Acknowledged events are
+                // the auto-silenced "unknown"/"connected"/success cases.
+                if !notification.acknowledged {
+                    let severity_str = match notification.severity {
+                        WtEventSeverity::Critical => "Critical",
+                        WtEventSeverity::Actionable => "Actionable",
+                        WtEventSeverity::Informational => "Informational",
+                    };
+                    if matches!(
+                        notification.severity,
+                        WtEventSeverity::Critical | WtEventSeverity::Actionable
+                    ) {
+                        crate::telemetry::log_error_detected(
+                            severity_str,
+                            &method,
+                            &pane_id,
+                        );
+                    }
+                }
+
                 // Always log to chat for critical/actionable events
                 match notification.severity {
                     WtEventSeverity::Critical => {
@@ -3372,6 +3393,15 @@ impl App {
                                 .unwrap_or(false);
                             let is_prompt_start = seq == "osc:133;A";
                             if is_exit_zero && self.autofix_pane_id.as_deref() == Some(pane_id.as_str()) {
+                                // Telemetry: a fix was armed for this pane and the next
+                                // command exited cleanly — the user's problem resolved.
+                                // TimeSinceFixMs is a placeholder (0.0) until we track
+                                // an `autofix_armed_at: Instant` on App state.
+                                crate::telemetry::log_error_fix_resolved(
+                                    pane_id.as_str(),
+                                    0.0,
+                                );
+
                                 // `turn_cancel` owns the full cleanup: bumps
                                 // `autofix_generation`, emits autofix_state_cleared
                                 // (resolving the pane from the AutofixContext, or

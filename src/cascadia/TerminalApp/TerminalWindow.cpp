@@ -170,7 +170,16 @@ namespace winrt::TerminalApp::implementation
         {
             // layout will only ever be non-null if there were >0 tabs persisted in
             // .TabLayout(). We can re-evaluate that as a part of TODO: GH#12633
+            const auto persistedTabCount = static_cast<int32_t>(layout.TabLayout().Size());
             _root->SetStartupActions(wil::to_vector(layout.TabLayout()));
+
+            TraceLoggingWrite(
+                g_hTerminalAgentProvider,
+                "SessionResumed",
+                TraceLoggingDescription("Event emitted when the terminal window restores from a persisted layout (resumed session)"),
+                TraceLoggingValue(persistedTabCount, "TabCount", "Number of tabs being restored from the persisted layout"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         }
         else if (_appArgs)
         {

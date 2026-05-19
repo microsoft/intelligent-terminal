@@ -888,6 +888,18 @@ namespace winrt::TerminalApp::implementation
                 TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                 TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 
+            // Mirror to the fork Agent provider so we can attribute command-palette usage
+            // to the fork without polluting the upstream event schema.
+            const auto trimmedInput = _getTrimmedInput();
+            const bool isAgentPrompt = !trimmedInput.empty() && (trimmedInput.front() == L'?' || trimmedInput.front() == L'&');
+            TraceLoggingWrite(
+                g_hTerminalAgentProvider,
+                "CommandPaletteDispatched",
+                TraceLoggingDescription("Fork-side mirror of command palette dispatch, tagged with agent-prompt indicator"),
+                TraceLoggingValue(isAgentPrompt, "IsAgentPrompt", "True if the input was an agent prompt (? or & prefix)"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+
             const auto item{ filteredCommand->Item() };
             if (item.Type() == PaletteItemType::CommandLine)
             {
@@ -914,11 +926,13 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const bool isBackground = (_currentMode == CommandPaletteMode::AgentBackgroundMode);
         TraceLoggingWrite(
-            g_hTerminalAppProvider,
-            "CommandPaletteDispatchedAgentPrompt",
-            TraceLoggingDescription("Event emitted when the user submits an agent prompt via the Command Palette"),
-            TraceLoggingBoolean(_currentMode == CommandPaletteMode::AgentBackgroundMode, "IsBackgroundMode", "Whether this is a background agent task"),
+            g_hTerminalAgentProvider,
+            "CommandPaletteAgentPrompt",
+            TraceLoggingDescription("Event emitted when the user submits an agent prompt via the Command Palette (? foreground / & background)"),
+            TraceLoggingValue(isBackground ? "Background" : "Foreground", "Mode", "Foreground = ? prefix, Background = & prefix"),
+            TraceLoggingValue(static_cast<uint32_t>(promptText.size()), "PromptLength", "Number of UTF-16 code units in the prompt (content is not collected)"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 

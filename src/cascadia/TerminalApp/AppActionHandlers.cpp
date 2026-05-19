@@ -1672,6 +1672,17 @@ namespace winrt::TerminalApp::implementation
         const bool visibleOnActiveTab =
             pane && activeTab && (_FindTabContainingAgentPane() == activeTab) && !pane->IsHidden();
 
+        TraceLoggingWrite(
+            g_hTerminalAgentProvider,
+            "AgentPaneOpened",
+            TraceLoggingDescription("Event emitted when the user toggles the agent pane via openAgentPane action"),
+            TraceLoggingValue("Action", "TriggerSource", "How the pane was triggered (Action=keybinding/command palette)"),
+            TraceLoggingValue(visibleOnActiveTab, "AlreadyVisible", "Whether the agent pane was already visible on the active tab"),
+            TraceLoggingValue(_agentSessionsViewActive, "InSessionsView", "Whether the pane was showing the sessions view"),
+            TraceLoggingValue(NumberOfTabs(), "TabCount", "Number of tabs currently open in this window"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+
         if (visibleOnActiveTab && _agentSessionsViewActive)
         {
             OutputDebugStringW(L"[AgentPane] OpenAgentPane: switch to chat — pane visible and in sessions view\n");

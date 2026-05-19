@@ -197,6 +197,87 @@ namespace winrt::TerminalApp::implementation
             TraceLoggingBool(_settings.GlobalSettings().ShowTabsInTitlebar(), "TabsInTitlebar"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+
+        // ---- Fork (Intelligent Terminal) telemetry: agent configuration snapshot ----
+        // Emit a one-shot snapshot of the user's AI-agent configuration at app start.
+        // Privacy: agent identifiers are emitted as enum strings only. The raw value of
+        // acpCustomCommand / delegateCustomCommand is NEVER emitted (may contain PII).
+        const auto& global = _settings.GlobalSettings();
+
+        const auto classifyAgent = [](const winrt::hstring& value) -> const char* {
+            const std::wstring_view v{ value };
+            if (v.empty())
+            {
+                return "Default";
+            }
+            if (v.rfind(L"custom:", 0) == 0 || v == L"custom")
+            {
+                return "Custom";
+            }
+            if (v == L"copilot")
+            {
+                return "Copilot";
+            }
+            if (v == L"gemini")
+            {
+                return "Gemini";
+            }
+            if (v == L"claude")
+            {
+                return "Claude";
+            }
+            return "Other";
+        };
+
+        const auto acpAgentKind = classifyAgent(global.AcpAgent());
+        const auto delegateAgentKind = classifyAgent(global.DelegateAgent());
+        const bool acpHasCustomCommand = !global.AcpCustomCommand().empty();
+        const bool delegateHasCustomCommand = !global.DelegateCustomCommand().empty();
+        const bool acpHasModelOverride = !global.AcpModel().empty();
+        const bool delegateHasModelOverride = !global.DelegateModel().empty();
+
+        TraceLoggingWrite(
+            g_hTerminalAgentProvider,
+            "AgentProviderConfigured",
+            TraceLoggingDescription("Snapshot of which AI-agent providers the user has configured at app startup"),
+            TraceLoggingValue(acpAgentKind, "AcpAgent", "Configured in-pane agent (Copilot/Gemini/Claude/Custom/Other/Default)"),
+            TraceLoggingValue(delegateAgentKind, "DelegateAgent", "Configured delegate agent for ?<prompt> (Copilot/Gemini/Claude/Custom/Other/Default)"),
+            TraceLoggingValue(acpHasCustomCommand, "AcpHasCustomCommand", "True if acpCustomCommand is set (the value itself is not collected)"),
+            TraceLoggingValue(delegateHasCustomCommand, "DelegateHasCustomCommand", "True if delegateCustomCommand is set (the value itself is not collected)"),
+            TraceLoggingValue(acpHasModelOverride, "AcpHasModelOverride", "True if acpModel override is set"),
+            TraceLoggingValue(delegateHasModelOverride, "DelegateHasModelOverride", "True if delegateModel override is set"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+
+        const auto classifyPosition = [](const winrt::hstring& value) -> const char* {
+            const std::wstring_view v{ value };
+            if (v == L"bottom") return "Bottom";
+            if (v == L"top") return "Top";
+            if (v == L"left") return "Left";
+            if (v == L"right") return "Right";
+            return "Other";
+        };
+
+        const auto classifyConfirmation = [](const winrt::hstring& value) -> const char* {
+            const std::wstring_view v{ value };
+            if (v == L"auto") return "Auto";
+            if (v == L"always") return "Always";
+            if (v == L"never") return "Never";
+            return "Other";
+        };
+
+        TraceLoggingWrite(
+            g_hTerminalAgentProvider,
+            "IntelligentFeatureUsage",
+            TraceLoggingDescription("Snapshot of which Intelligent-Terminal features the user has enabled at app startup"),
+            TraceLoggingValue(global.AutoFixEnabled(), "AutoFixEnabled", "Whether the autofix feature is enabled in settings"),
+            TraceLoggingValue(global.AiCoordinatorEnabled(), "AiCoordinatorEnabled", "Whether the AI coordinator is enabled"),
+            TraceLoggingValue(classifyPosition(global.AgentPanePosition()), "AgentPanePosition", "Configured agent pane position (Bottom/Top/Left/Right/Other)"),
+            TraceLoggingValue(classifyConfirmation(global.AiConfirmationReadOps()), "AiConfirmationReadOps", "Confirmation mode for read operations (Auto/Always/Never/Other)"),
+            TraceLoggingValue(classifyConfirmation(global.AiConfirmationCreateOps()), "AiConfirmationCreateOps", "Confirmation mode for create operations (Auto/Always/Never/Other)"),
+            TraceLoggingValue(classifyConfirmation(global.AiConfirmationInputOps()), "AiConfirmationInputOps", "Confirmation mode for input operations (Auto/Always/Never/Other)"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
     // Method Description:

@@ -31,4 +31,9 @@ windows-sys = { version = "0.61", features = [
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
+# Microsoft's official ETW TraceLogging crate. Emits byte-identical events to
+# the C++ TraceLoggingWrite() macros — see src/cascadia/TerminalApp/init.cpp
+# for the matching provider GUID and src/cascadia/TerminalApp/AppLogic.cpp
+# for the event-emission style we mirror here.
+tracelogging = "1"
 which = "7"

@@ -481,15 +481,28 @@ impl PromptTimingState {
                 );
                 let turn_id = active.id;
                 let submitted_at_unix_s = active.submitted_at_unix_s;
+                let prompt_sent_at = active.prompt_sent_at_unix_s;
                 let details = format!(
                     "text_len={} since_prompt_sent={} first_visible_text_gap={} gap_source={}",
                     text_len,
-                    format_elapsed(active.prompt_sent_at_unix_s, Some(now)),
+                    format_elapsed(prompt_sent_at, Some(now)),
                     visible_gap,
                     visible_gap_source
                 );
                 drop(guard);
                 prompt_timing_log(turn_id, submitted_at_unix_s, "first_text", &details);
+
+                // Telemetry: agent's first text chunk arrived. Time-to-first-token
+                // is the key responsiveness metric — emit it for analysis.
+                let first_token_latency_ms = match prompt_sent_at {
+                    Some(sent) if now >= sent => (now - sent) * 1000.0,
+                    _ => 0.0,
+                };
+                crate::telemetry::log_agent_response_first_token(
+                    session_id,
+                    first_token_latency_ms,
+                    text_len as u32,
+                );
             }
         }
     }
@@ -684,6 +697,18 @@ impl PromptTimingState {
             active_prompt.submitted_at_unix_s,
             "prompt_complete",
             &details.join(" "),
+        );
+
+        // Telemetry: emit the prompt-complete signal with aggregate metrics.
+        let total_duration_ms = match active_prompt.prompt_sent_at_unix_s {
+            Some(sent) if now >= sent => (now - sent) * 1000.0,
+            _ => 0.0,
+        };
+        crate::telemetry::log_agent_response_complete(
+            session_id,
+            total_duration_ms,
+            active_prompt.bytes_read_after_prompt as u64,
+            success,
         );
 
         Some(final_timing_note(
@@ -2570,6 +2595,19 @@ async fn dispatch_prompt_body(
                 status: "Thinking...".to_string(),
             });
             prompt_timing_task.mark_prompt_sent(&prompt_session_id_str);
+
+            // Telemetry: prompt dispatched over ACP. Mirrors the C++ side's
+            // AgentPromptSent event (which fires for ?<prompt> delegation).
+            // Together the two emissions cover both prompt-entry routes.
+            crate::telemetry::log_agent_prompt_sent(
+                &prompt_session_id_str,
+                text.len() as u32,
+                prompt.is_autofix,
+                match kind {
+                    TemplateKind::Autofix => "Autofix",
+                    TemplateKind::Planner => "Planner",
+                },
+            );
 
             // Register a cancel oneshot for this prompt. The cancel
             // listener picks the sender out by session_id and signals it

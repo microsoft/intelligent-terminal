@@ -9,7 +9,6 @@
 #include "EnumEntry.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentHooksStatus.h"
-#include "../inc/WtaProcess.h"
 
 #include <json/json.h>
 
@@ -649,8 +648,170 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     // `wta install-hooks`; afterwards we re-invoke the status query to
     // refresh the rows.
 
-    // _ResolveWtaExePath and _RunWtaCaptureStdout moved to
-    // src/cascadia/inc/WtaProcess.h for shared use.
+    std::wstring AIAgentsViewModel::_ResolveWtaExePath()
+    {
+        // Mirrors TerminalPage::_DetectWtaPath: prefer co-located wta.exe
+        // (MSIX-installed scenario), fall back to walking up the running
+        // module path looking for a dev build, then PATH.
+        const auto modulePath = std::filesystem::path{ wil::GetModuleFileNameW<std::wstring>(nullptr) };
+        const auto moduleDir = modulePath.parent_path();
+        std::error_code ec;
+        {
+            const auto sibling = moduleDir / L"wta.exe";
+            if (std::filesystem::exists(sibling, ec))
+            {
+                return sibling.lexically_normal().wstring();
+            }
+        }
+        auto cursor = moduleDir;
+        while (!cursor.empty())
+        {
+            for (const auto& relative : {
+                     std::filesystem::path{ L"tools\\wta\\target\\debug\\wta.exe" },
+                     std::filesystem::path{ L"tools\\wta\\target\\release\\wta.exe" },
+                 })
+            {
+                const auto candidate = cursor / relative;
+                if (std::filesystem::exists(candidate, ec))
+                {
+                    return candidate.lexically_normal().wstring();
+                }
+            }
+            const auto parent = cursor.parent_path();
+            if (parent == cursor) break;
+            cursor = parent;
+        }
+        wchar_t buffer[MAX_PATH];
+        if (SearchPathW(nullptr, L"wta", L".exe", MAX_PATH, buffer, nullptr) > 0)
+        {
+            return std::wstring{ buffer };
+        }
+        return {};
+    }
+
+    // Synchronous; intended to be called from a resume_background
+    // coroutine. Routes wta's stdout AND stderr into the same pipe;
+    // wta's logging goes to file, so the pipe sees only the JSON
+    // payload.
+    //
+    // The poll loop (rather than blocking ReadFile until EOF) is
+    // load-bearing: when wta launches `cmd /c npx ...`, the npx →
+    // node grandchildren inherit every inheritable handle wta had,
+    // including the pipe write end we set up here. Tokio creates
+    // fresh pipes for the *child's* stdio but doesn't strip
+    // pre-existing inheritable handles from the parent. So when
+    // wta exits, the grandchildren still hold a copy of the write
+    // end and the pipe never sees EOF — blocking ReadFile would
+    // wait forever. Waiting on wta's process handle instead lets
+    // us bail as soon as wta itself is done.
+    std::string AIAgentsViewModel::_RunWtaCaptureStdout(const std::wstring& wtaPath,
+                                                       const std::wstring& argsAfterExe,
+                                                       DWORD timeoutMs)
+    {
+        if (wtaPath.empty())
+        {
+            return {};
+        }
+
+        SECURITY_ATTRIBUTES sa{};
+        sa.nLength = sizeof(sa);
+        sa.bInheritHandle = TRUE;
+
+        wil::unique_handle readHandle;
+        wil::unique_handle writeHandle;
+        if (!CreatePipe(readHandle.addressof(), writeHandle.addressof(), &sa, 0))
+        {
+            return {};
+        }
+        if (!SetHandleInformation(readHandle.get(), HANDLE_FLAG_INHERIT, 0))
+        {
+            return {};
+        }
+
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+        si.wShowWindow = SW_HIDE;
+        si.hStdOutput = writeHandle.get();
+        si.hStdError = writeHandle.get();
+        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+        std::wstring cmdline = L"\"" + wtaPath + L"\" " + argsAfterExe;
+        std::wstring mutableCmd = cmdline;
+
+        PROCESS_INFORMATION pi{};
+        const BOOL launched = CreateProcessW(
+            wtaPath.c_str(),
+            mutableCmd.data(),
+            nullptr,
+            nullptr,
+            TRUE,
+            CREATE_NO_WINDOW,
+            nullptr,
+            nullptr,
+            &si,
+            &pi);
+        if (!launched)
+        {
+            return {};
+        }
+        wil::unique_handle proc{ pi.hProcess };
+        wil::unique_handle thread{ pi.hThread };
+
+        writeHandle.reset();
+
+        const auto drainAvailable = [&](std::string& out) {
+            for (;;)
+            {
+                DWORD available = 0;
+                if (!PeekNamedPipe(readHandle.get(), nullptr, 0, nullptr, &available, nullptr))
+                {
+                    return;
+                }
+                if (available == 0)
+                {
+                    return;
+                }
+                std::vector<char> chunk(available);
+                DWORD bytesRead = 0;
+                if (!ReadFile(readHandle.get(), chunk.data(), available, &bytesRead, nullptr) || bytesRead == 0)
+                {
+                    return;
+                }
+                out.append(chunk.data(), bytesRead);
+            }
+        };
+
+        std::string captured;
+        captured.reserve(4096);
+
+        const DWORD startTick = GetTickCount();
+        for (;;)
+        {
+            drainAvailable(captured);
+
+            if (WaitForSingleObject(proc.get(), 50) == WAIT_OBJECT_0)
+            {
+                drainAvailable(captured);
+                break;
+            }
+
+            if (GetTickCount() - startTick > timeoutMs)
+            {
+                TerminateProcess(proc.get(), 1);
+                WaitForSingleObject(proc.get(), 1000);
+                return {};
+            }
+        }
+
+        DWORD exitCode = 1;
+        GetExitCodeProcess(proc.get(), &exitCode);
+        if (exitCode != 0)
+        {
+            return {};
+        }
+        return captured;
+    }
 
     void AIAgentsViewModel::_ApplyStatusReport(const std::optional<::Microsoft::Terminal::AgentHooks::StatusReport>& report)
     {
@@ -717,8 +878,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         co_await winrt::resume_background();
 
-        const auto wtaPath = ::Microsoft::Terminal::WtaProcess::ResolveWtaExePath();
-        const auto stdoutText = ::Microsoft::Terminal::WtaProcess::RunWtaCaptureStdout(wtaPath, L"hooks status --json", 30'000);
+        const auto wtaPath = _ResolveWtaExePath();
+        const auto stdoutText = _RunWtaCaptureStdout(wtaPath, L"hooks status --json", 30'000);
         auto report = ::Microsoft::Terminal::AgentHooks::ParseStatusJson(stdoutText);
 
         co_await wil::resume_foreground(dispatcher);
@@ -748,21 +909,65 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         co_await winrt::resume_background();
 
-        const auto wtaPath = ::Microsoft::Terminal::WtaProcess::ResolveWtaExePath();
+        const auto wtaPath = _ResolveWtaExePath();
         if (wtaPath.empty())
         {
             summary = L"Failed: could not locate wta.exe";
         }
         else
         {
-            ok = ::Microsoft::Terminal::WtaProcess::RunWtaAndWait(wtaPath, L"hooks install", 60'000);
-            if (ok)
+            std::wstring cmdline = L"\"" + wtaPath + L"\" hooks install";
+
+            STARTUPINFOW si{};
+            si.cb = sizeof(si);
+            si.dwFlags = STARTF_USESHOWWINDOW;
+            si.wShowWindow = SW_HIDE;
+            PROCESS_INFORMATION pi{};
+            std::wstring mutableCmd = cmdline;
+            const BOOL launched = CreateProcessW(
+                wtaPath.c_str(),
+                mutableCmd.data(),
+                nullptr,
+                nullptr,
+                FALSE,
+                CREATE_NO_WINDOW,
+                nullptr,
+                nullptr,
+                &si,
+                &pi);
+            if (!launched)
             {
-                summary = L"Hooks installed successfully. Restart any open agent CLIs to pick up the new hooks.";
+                const auto err = GetLastError();
+                summary = L"Failed to launch installer (error " + std::to_wstring(err) + L")";
             }
             else
             {
-                summary = L"Hooks installation failed. Check %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log for details.";
+                const DWORD waitResult = WaitForSingleObject(pi.hProcess, 60'000);
+                if (waitResult == WAIT_TIMEOUT)
+                {
+                    // Don't leave an orphaned wta.exe blocking on a child CLI
+                    // — terminate it and surface the timeout instead of mis-
+                    // reporting STILL_ACTIVE (259) as an exit code.
+                    TerminateProcess(pi.hProcess, 1);
+                    WaitForSingleObject(pi.hProcess, 1'000);
+                    summary = L"Installer timed out after 60s. Check %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log for the stuck CLI.";
+                }
+                else
+                {
+                    DWORD exitCode = 1;
+                    GetExitCodeProcess(pi.hProcess, &exitCode);
+                    if (exitCode == 0)
+                    {
+                        ok = true;
+                        summary = L"Hooks installed successfully. Restart any open agent CLIs to pick up the new hooks.";
+                    }
+                    else
+                    {
+                        summary = L"Installer exited with code " + std::to_wstring(exitCode);
+                    }
+                }
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
             }
         }
 
@@ -863,7 +1068,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         co_await winrt::resume_background();
 
-        const auto wtaPath = ::Microsoft::Terminal::WtaProcess::ResolveWtaExePath();
+        const auto wtaPath = _ResolveWtaExePath();
         std::string stdoutText;
         if (!wtaPath.empty())
         {
@@ -877,7 +1082,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             // 40s ceiling matches probe.rs's internal limits (npx
             // initialize 25s + new_session 10s + slack). Cached
             // adapters return in <2s.
-            stdoutText = ::Microsoft::Terminal::WtaProcess::RunWtaCaptureStdout(wtaPath, args, 40'000);
+            stdoutText = _RunWtaCaptureStdout(wtaPath, args, 40'000);
         }
 
         std::vector<Model::AcpModelInfo> parsed;

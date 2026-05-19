@@ -80,6 +80,7 @@
 #include <TraceLoggingProvider.h>
 #include <winmeta.h>
 TRACELOGGING_DECLARE_PROVIDER(g_hTerminalAppProvider);
+TRACELOGGING_DECLARE_PROVIDER(g_hTerminalAgentProvider);
 #include <telemetry/ProjectTelemetry.h>
 #include <TraceLoggingActivity.h>
 

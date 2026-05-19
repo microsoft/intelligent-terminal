@@ -13,6 +13,7 @@ mod protocol;
 mod runtime_paths;
 mod pane_context;
 mod shell;
+mod telemetry;
 mod theme;
 mod ui;
 mod ui_trace;
@@ -354,6 +355,11 @@ enum InitialView {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    // Register the ETW TraceLogging provider once per process. The provider
+    // shares the same GUID as the C++ side's g_hTerminalAgentProvider so
+    // listeners see a single merged event stream for the fork.
+    telemetry::register();
 
     // Legacy flags first (backward compat)
     if cli.test_pipe {

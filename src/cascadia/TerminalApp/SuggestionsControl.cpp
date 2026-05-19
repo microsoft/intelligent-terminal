@@ -743,6 +743,15 @@ namespace winrt::TerminalApp::implementation
                                 TraceLoggingValue("SuggestionsUI", "Source"),
                                 TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                                 TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+
+                            TraceLoggingWrite(
+                                g_hTerminalAgentProvider,
+                                "ErrorFixAttempted",
+                                TraceLoggingDescription("Event emitted when the user accepts a suggested fix for a detected error"),
+                                TraceLoggingValue("SuggestionsUI", "FixSource", "Where the suggested fix originated (QuickFixMenu = winget quick-fix menu, SuggestionsUI = command palette suggestions, AgentSuggestion = AI agent recommendation)"),
+                                TraceLoggingValue(static_cast<uint32_t>(sendInputCmd.Input().size()), "FixLength", "Number of UTF-16 code units in the accepted fix command (content is not collected)"),
+                                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
                         }
                     }
 
