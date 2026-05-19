@@ -387,7 +387,7 @@ namespace winrt::TerminalApp::implementation
             // We can't do it the other way around (default to Transparent, only
             // switch to a color when disabling tabs in the titlebar), because
             // looking up the correct ThemeResource from and App dictionary is a
-            // capital-H Hard problem.
+            // HARD problem.
             const auto transparent = Media::SolidColorBrush();
             transparent.Color(Windows::UI::Colors::Transparent());
             _tabRow.Background(transparent);
