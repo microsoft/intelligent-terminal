@@ -3224,7 +3224,7 @@ impl App {
                     tracing::info!(target: "set_view", view = view_str, "applying set_view");
                     match view_str {
                         "sessions" | "agents" => {
-                            // User pressed Ctrl+Alt+/ or F2 — they know the shortcut,
+                            // User entered session management (via shortcut or UI) —
                             // permanently dismiss the welcome hint.
                             if self.show_welcome_hint {
                                 self.show_welcome_hint = false;

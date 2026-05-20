@@ -87,20 +87,20 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         input::input_height(&tab.input, tab.cursor_pos, main_area.width)
     };
 
-    // Expire the transient hint before deciding whether to reserve a row.
-    // Also show welcome hint (first-run shortcut guide) in the same slot.
+    // Expire the transient hint independently, then decide whether to
+    // reserve a row for either the transient hint or the welcome hint.
     let now = std::time::Instant::now();
-    let welcome_visible = app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected;
-    let hint_visible = welcome_visible
-        || app
-            .transient_hint
-            .as_ref()
-            .map(|(_, deadline)| now < *deadline)
-            .unwrap_or(false);
-    if !hint_visible {
+    let transient_visible = app
+        .transient_hint
+        .as_ref()
+        .map(|(_, deadline)| now < *deadline)
+        .unwrap_or(false);
+    if !transient_visible {
         app.transient_hint = None;
     }
+    let welcome_visible = app.show_welcome_hint
+        && app.state == crate::app::ConnectionState::Connected;
+    let hint_visible = welcome_visible || transient_visible;
     let hint_h: u16 = if hint_visible { 1 } else { 0 };
     let rec_hint_h: u16 = if app.current_tab().turn.recommendations().is_some() { 1 } else { 0 };
 
