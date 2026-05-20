@@ -176,9 +176,9 @@ jobs:
   #      feed (already exists on `microsoft` ADO org; same feed used by
   #      microsoft/sudo, microsoft/vscode, microsoft/edit, microsoft/qdk).
   #   2. Crates resolve through a project-level Azure Artifact Cargo feed
-  #      with crates.io upstream, configured in wta/.cargo/config.toml.
+  #      with crates.io upstream, configured in tools/wta/.cargo/config.toml.
   #   3. The Rust version uses the `ms-prod-X.YY` channel, pinned in
-  #      `wta/rust-toolchain.toml`.
+  #      `tools/wta/rust-toolchain.toml`.
   #   4. Component Governance scanning of Cargo.lock is auto-injected by
   #      1ES PT (no extra task needed here).
   #
@@ -199,7 +199,7 @@ jobs:
       # vars), so the override registry ends up unauthenticated and Azure
       # Artifacts returns 404 on its sparse-index endpoint.
       # Instead, the registry + source replacement lives in
-      # wta/.cargo/config.toml — CargoAuthenticate@0 (next step) tokens it,
+      # tools/wta/.cargo/config.toml — CargoAuthenticate@0 (next step) tokens it,
       # and cargo's normal config-file resolution picks it up.
       additionalTargets: 'x86_64-pc-windows-msvc i686-pc-windows-msvc aarch64-pc-windows-msvc'
 
@@ -208,7 +208,7 @@ jobs:
   # (the feed requires CI-only auth tokens). It only exists during CI.
   # Cargo discovers .cargo/config.toml by walking from the current
   # working directory (repo root) up — NOT from the manifest directory.
-  # The config must live at the repo root, not inside wta/.
+  # The config must live at the repo root, not inside tools/wta/.
   - pwsh: |-
       $configDir = '.cargo'
       New-Item -ItemType Directory -Path $configDir -Force | Out-Null
@@ -235,7 +235,7 @@ jobs:
 
   # Separate fetch step: some 1ES pools disable network during the build
   # phase. Fetching upfront keeps `cargo build --frozen` fully offline.
-  - script: cargo fetch --manifest-path wta/Cargo.toml --locked
+  - script: cargo fetch --manifest-path tools/wta/Cargo.toml --locked
     displayName: Fetch crates (offline-friendly)
 
   - pwsh: |-
@@ -249,9 +249,9 @@ jobs:
       $config = '$(BuildConfiguration)'
       Write-Host "Building wta for $triple ($config)"
       if ($config -eq 'Release') {
-        cargo build --manifest-path wta/Cargo.toml --target $triple --frozen --release
+        cargo build --manifest-path tools/wta/Cargo.toml --target $triple --frozen --release
       } else {
-        cargo build --manifest-path wta/Cargo.toml --target $triple --frozen
+        cargo build --manifest-path tools/wta/Cargo.toml --target $triple --frozen
       }
       if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit code $LASTEXITCODE" }
     displayName: Build wta (Cargo)
@@ -265,7 +265,7 @@ jobs:
         default { 'x86_64-pc-windows-msvc' }
       }
       Write-Host "Running wta unit tests for $triple"
-      cargo test --manifest-path wta/Cargo.toml --target $triple --frozen
+      cargo test --manifest-path tools/wta/Cargo.toml --target $triple --frozen
       if ($LASTEXITCODE -ne 0) { throw "cargo test failed with exit code $LASTEXITCODE" }
     displayName: Test wta (Cargo)
     condition: ne(variables['BuildPlatform'], 'arm64')

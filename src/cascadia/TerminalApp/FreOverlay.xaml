@@ -89,9 +89,14 @@
                             </Grid.RowDefinitions>
                             <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
                                     Margin="6,6,6,0">
-                                <Image Source="ms-appx:///FREAssets/FRE_Asset1.png"
-                                       Stretch="UniformToFill"
-                                       VerticalAlignment="Bottom" />
+                                <StackPanel VerticalAlignment="Center"
+                                            HorizontalAlignment="Center" Spacing="6">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE7BA;"
+                                              Foreground="#50FFFFFF" FontSize="20" />
+                                    <TextBlock Text="⚠ Error detected: Ctrl+Shift to fix"
+                                               Foreground="#FFFFD700" FontSize="11"
+                                               HorizontalAlignment="Center" />
+                                </StackPanel>
                             </Border>
                             <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
                                 <TextBlock FontFamily="Segoe UI Variable Text, Segoe UI"
@@ -115,9 +120,11 @@
                             </Grid.RowDefinitions>
                             <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
                                     Margin="6,6,6,0">
-                                <Image Source="ms-appx:///FREAssets/FRE_Asset2.png"
-                                       Stretch="UniformToFill"
-                                       VerticalAlignment="Center" />
+                                <StackPanel VerticalAlignment="Center"
+                                            HorizontalAlignment="Center" Spacing="6">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE81C;"
+                                              Foreground="#50FFFFFF" FontSize="20" />
+                                </StackPanel>
                             </Border>
                             <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
                                 <TextBlock FontFamily="Segoe UI Variable Text, Segoe UI"

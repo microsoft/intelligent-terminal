@@ -1742,17 +1742,6 @@ namespace winrt::TerminalApp::implementation
             cmdline += fmt::format(FMT_COMPILE(L" --agent \"{}\""), s);
         }
 
-        // See `_OpenOrReuseAgentPane` for the rationale: wta needs the
-        // canonical `acpAgent` setting value (not the expanded command
-        // line) to drive the session-management view's CLI filter.
-        if (const auto acpAgent = globals.AcpAgent(); !acpAgent.empty())
-        {
-            std::wstring s{ acpAgent };
-            for (size_t pos = 0; (pos = s.find(L'"', pos)) != std::wstring::npos; pos += 2)
-                s.replace(pos, 1, L"\"\"");
-            cmdline += fmt::format(FMT_COMPILE(L" --agent-id \"{}\""), s);
-        }
-
         const auto delegateAgent = _ResolveEffectiveDelegateAgent(globals);
         if (!delegateAgent.empty())
         {
@@ -2127,21 +2116,6 @@ namespace winrt::TerminalApp::implementation
                 for (size_t pos = 0; (pos = agentStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
                     agentStr.replace(pos, 1, L"\"\"");
                 cmdline += fmt::format(FMT_COMPILE(L" --agent \"{}\""), agentStr);
-            }
-
-            // Tell wta which `acpAgent` setting value produced this launch
-            // — wta needs the canonical id ("copilot" / "claude" / "codex"
-            // / "gemini" / "custom:…") to drive the session-management
-            // view's CLI filter, and parsing it back out of the expanded
-            // `--agent` command line is fragile (adapter launches expand
-            // to "npx -y …" and lose the agent's name). Passing it through
-            // here keeps a single source of truth.
-            if (const auto acpAgent = globals.AcpAgent(); !acpAgent.empty())
-            {
-                std::wstring idStr{ acpAgent };
-                for (size_t pos = 0; (pos = idStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
-                    idStr.replace(pos, 1, L"\"\"");
-                cmdline += fmt::format(FMT_COMPILE(L" --agent-id \"{}\""), idStr);
             }
 
             const auto delegateAgent = _ResolveEffectiveDelegateAgent(globals);
