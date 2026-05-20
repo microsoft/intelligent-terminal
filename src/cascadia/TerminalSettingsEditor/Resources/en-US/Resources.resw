@@ -758,27 +758,26 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Supplementary description for the pane position setting. 
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
-    <value>Agent Hooks</value>
-    <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane). 
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
-    <value>Install agent hook scripts</value>
-    <comment>Header for the Agent Hooks install section. 
+    <value>Agent session tracking (hooks)</value>
+    <comment>Header for the expandable Agent Hooks section in the Agent pane group. Wording matches the design ask: this UX exists so the agent pane can track CLI sessions through installed hooks.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>Required for agent session management. Installs hooks into each detected CLI (Copilot, Claude, Gemini) so they report sessions and status to the agent pane. Restart any open agent CLIs after installing.</value>
-    <comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment>
+    <value>Track sessions across CLI tools. Required for agent session management.</value>
+    <comment>Help text shown under the expandable section header. {Locked="CLI"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallRowLabel.Text" xml:space="preserve">
+    <value>Install agent hook script</value>
+    <comment>Label for the first row inside the Agent session tracking expander — describes what the adjacent "Install hooks" button does.</comment>
   </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Install hooks</value>
-    <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment>
+    <comment>Button label inside the Agent session tracking expander. Triggers installation of the wt-agent-hooks plugin for every detected agent CLI.</comment>
   </data>
-  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
-    <value>Refresh</value>
-    <comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment>
+  <data name="AIAgents_HooksRemoveButton.Content" xml:space="preserve">
+    <value>Remove</value>
+    <comment>Button label next to each CLI row inside the Agent session tracking expander. Uninstalls the wt-agent-hooks plugin/extension for that CLI.</comment>
   </data>
   <data name="Profile_OpacitySlider.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Background opacity</value>

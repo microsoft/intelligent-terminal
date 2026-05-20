@@ -197,10 +197,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // actual status query shells out to `wta hooks status --json`
         // off the UI thread; seed a placeholder until it returns so the
         // user sees something other than empty rows.
-        const winrt::hstring detecting{ L"Detecting…" };
-        _copilotHooksStatus = detecting;
-        _claudeHooksStatus = detecting;
-        _geminiHooksStatus = detecting;
+        // Rows are hidden until the first status query returns; the only
+        // thing the user sees in the expander before that is the Install
+        // row (always present) and the help text.
         RefreshAgentHooksStatus();
     }
 
@@ -648,26 +647,85 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     // _ResolveWtaExePath and _RunWtaCaptureStdout moved to
     // src/cascadia/inc/WtaProcess.h for shared use.
 
+    // "Fully installed" mirrors AgentHooks::FormatCliStatusLine's gating —
+    // when every piece is in place we hide the subtitle so the row shows
+    // just the CLI name + Remove button (clean state). Anything looser is
+    // still a removable state on disk and is surfaced via the subtitle.
+    static bool _IsHooksFullyInstalled(const ::Microsoft::Terminal::AgentHooks::CliStatus* cli)
+    {
+        return cli &&
+               cli->marketplaceRegistered &&
+               cli->marketplacePathValid &&
+               cli->pluginInstalled &&
+               cli->pluginEnabled;
+    }
+
+    // Build the descriptor text for the row's subtitle: the post-em-dash
+    // portion of FormatCliStatusLine. Returns empty when the CLI has no
+    // hook state on disk (row is hidden) OR when it's fully installed
+    // (row is shown without a subtitle).
+    static winrt::hstring _ComputeHooksSubtitle(const ::Microsoft::Terminal::AgentHooks::CliStatus* cli)
+    {
+        if (!cli)
+        {
+            return {};
+        }
+        if (!cli->marketplaceRegistered && !cli->pluginInstalled)
+        {
+            return {};
+        }
+        if (_IsHooksFullyInstalled(cli))
+        {
+            return {};
+        }
+
+        std::wstring text = L"partially installed (";
+        bool first = true;
+        const auto append = [&](std::wstring_view tag) {
+            if (!first)
+            {
+                text += L", ";
+            }
+            text += tag;
+            first = false;
+        };
+        append(cli->marketplaceRegistered ? L"marketplace registered" : L"marketplace missing");
+        append(cli->pluginInstalled ? L"plugin installed" : L"plugin missing");
+        if (cli->pluginInstalled && !cli->pluginEnabled)
+        {
+            append(L"plugin disabled");
+        }
+        if (cli->marketplaceRegistered && !cli->marketplacePathValid)
+        {
+            append(L"marketplace path stale");
+        }
+        text += L")";
+        if (cli->detectionFallback.has_value())
+        {
+            text += L" (filesystem fallback)";
+        }
+        return winrt::hstring{ text };
+    }
+
     void AIAgentsViewModel::_ApplyStatusReport(const std::optional<::Microsoft::Terminal::AgentHooks::StatusReport>& report)
     {
         namespace AgentHooks = ::Microsoft::Terminal::AgentHooks;
         using AgentHooks::CliStatus;
         using AgentHooks::FindCli;
-        using AgentHooks::FormatCliStatusLine;
 
-        // Display strings + per-CLI detected flags. When the report is
-        // missing (wta failed / not found / parse error) we surface a
-        // single explanatory line per row instead of crashing or
-        // silently leaving the previous text.
         if (!report.has_value())
         {
-            const winrt::hstring unavailable{ L"Hook detection unavailable (wta.exe not found or status query failed)" };
-            _copilotHooksStatus = unavailable;
-            _claudeHooksStatus = unavailable;
-            _geminiHooksStatus = unavailable;
+            // wta unavailable — collapse all rows; the Install action up top
+            // still works (or fails loudly) so the user has a path forward.
             _copilotCliDetected = false;
             _claudeCliDetected = false;
             _geminiCliDetected = false;
+            _showCopilotHookRow = false;
+            _showClaudeHookRow = false;
+            _showGeminiHookRow = false;
+            _copilotHooksSubtitle = {};
+            _claudeHooksSubtitle = {};
+            _geminiHooksSubtitle = {};
         }
         else
         {
@@ -679,21 +737,31 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _claudeCliDetected = claude && claude->binaryOnPath;
             _geminiCliDetected = gemini && gemini->binaryOnPath;
 
-            const auto missing = [](std::wstring_view name) {
-                return winrt::hstring{ std::wstring{ name } + L" — not reported by wta" };
+            const auto hasState = [](const CliStatus* cli) {
+                return cli && (cli->marketplaceRegistered || cli->pluginInstalled);
             };
-            _copilotHooksStatus = copilot ? winrt::hstring{ FormatCliStatusLine(*copilot, L"Copilot CLI") } : missing(L"Copilot CLI");
-            _claudeHooksStatus = claude ? winrt::hstring{ FormatCliStatusLine(*claude, L"Claude Code") } : missing(L"Claude Code");
-            _geminiHooksStatus = gemini ? winrt::hstring{ FormatCliStatusLine(*gemini, L"Gemini CLI") } : missing(L"Gemini CLI");
+            _showCopilotHookRow = hasState(copilot);
+            _showClaudeHookRow = hasState(claude);
+            _showGeminiHookRow = hasState(gemini);
+
+            _copilotHooksSubtitle = _ComputeHooksSubtitle(copilot);
+            _claudeHooksSubtitle = _ComputeHooksSubtitle(claude);
+            _geminiHooksSubtitle = _ComputeHooksSubtitle(gemini);
         }
 
         _NotifyChanges(L"IsCopilotCliDetected",
                        L"IsClaudeCliDetected",
                        L"IsGeminiCliDetected",
                        L"IsAnyAgentCliDetected",
-                       L"CopilotHooksStatusText",
-                       L"ClaudeHooksStatusText",
-                       L"GeminiHooksStatusText");
+                       L"ShowCopilotHookRow",
+                       L"ShowClaudeHookRow",
+                       L"ShowGeminiHookRow",
+                       L"CopilotHooksSubtitle",
+                       L"ClaudeHooksSubtitle",
+                       L"GeminiHooksSubtitle",
+                       L"ShowCopilotHooksSubtitle",
+                       L"ShowClaudeHooksSubtitle",
+                       L"ShowGeminiHooksSubtitle");
     }
 
     void AIAgentsViewModel::RefreshAgentHooksStatus()
@@ -723,22 +791,53 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _refreshingAgentHooks = false;
     }
 
-    void AIAgentsViewModel::InstallAgentHooks()
+    void AIAgentsViewModel::InstallAllAgentHooks()
     {
         if (_installingAgentHooks) return;
         _installingAgentHooks = true;
         _agentHooksInstallSummary = winrt::hstring{ L"Installing hooks..." };
-        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary");
-        _RunHooksInstallerAsync();
+        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
+        _RunHooksWtaAsync(L"hooks install", L"Installing hooks...");
     }
 
-    winrt::fire_and_forget AIAgentsViewModel::_RunHooksInstallerAsync()
+    void AIAgentsViewModel::RemoveCopilotHooks()
+    {
+        if (_installingAgentHooks) return;
+        _installingAgentHooks = true;
+        _agentHooksInstallSummary = winrt::hstring{ L"Removing Copilot hooks..." };
+        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
+        _RunHooksWtaAsync(L"hooks uninstall --cli copilot", L"Removing Copilot hooks...");
+    }
+
+    void AIAgentsViewModel::RemoveClaudeHooks()
+    {
+        if (_installingAgentHooks) return;
+        _installingAgentHooks = true;
+        _agentHooksInstallSummary = winrt::hstring{ L"Removing Claude hooks..." };
+        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
+        _RunHooksWtaAsync(L"hooks uninstall --cli claude", L"Removing Claude hooks...");
+    }
+
+    void AIAgentsViewModel::RemoveGeminiHooks()
+    {
+        if (_installingAgentHooks) return;
+        _installingAgentHooks = true;
+        _agentHooksInstallSummary = winrt::hstring{ L"Removing Gemini hooks..." };
+        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
+        _RunHooksWtaAsync(L"hooks uninstall --cli gemini", L"Removing Gemini hooks...");
+    }
+
+    winrt::fire_and_forget AIAgentsViewModel::_RunHooksWtaAsync(std::wstring wtaArgs, std::wstring /*inProgressMessage*/)
     {
         auto strongThis = get_strong();
         // Capture dispatcher synchronously while we're still on the calling
         // (UI) thread.
         auto dispatcher = winrt::Windows::UI::Xaml::Window::Current().Dispatcher();
 
+        // Tailor the summary message to the action: callers pass either
+        // `hooks install...` or `hooks uninstall...` and we surface a
+        // matching success/failure line in the expander.
+        const bool isUninstall = wtaArgs.find(L"uninstall") != std::wstring::npos;
         std::wstring summary;
         bool ok = false;
 
@@ -751,14 +850,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
         else
         {
-            ok = ::Microsoft::Terminal::WtaProcess::RunWtaAndWait(wtaPath, L"hooks install", 60'000);
+            ok = ::Microsoft::Terminal::WtaProcess::RunWtaAndWait(wtaPath, wtaArgs, 60'000);
             if (ok)
             {
-                summary = L"Hooks installed successfully. Restart any open agent CLIs to pick up the new hooks.";
+                summary = isUninstall
+                              ? L"Hooks removed. Restart any open agent CLIs to drop the previous hooks."
+                              : L"Hooks installed. Restart any open agent CLIs to pick up the new hooks.";
             }
             else
             {
-                summary = L"Hooks installation failed. Check %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log for details.";
+                summary = isUninstall
+                              ? L"Hook removal failed. Check %LOCALAPPDATA%\\IntelligentTerminal\\logs\\ for details."
+                              : L"Hooks installation failed. Check %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log for details.";
             }
         }
 
@@ -766,7 +869,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         _installingAgentHooks = false;
         _agentHooksInstallSummary = winrt::hstring{ summary };
-        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary");
+        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
         // Refresh detection / install state regardless of success so the
         // status rows reflect what's now on disk.
         RefreshAgentHooksStatus();

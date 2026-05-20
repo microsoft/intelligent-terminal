@@ -550,6 +550,29 @@ fn install_for_claude(home: &Path) {
         }
     };
 
+    // Claude-specific WindowsApps workaround.
+    //
+    // `claude plugin install` ends up calling Node.js
+    // `fs.cpSync(src, dst, { recursive: true })` to copy the plugin folder
+    // into `~/.claude/plugins/`. On Windows, recursive `cpSync` does a
+    // `realpathSync` + recursive `scandir` chain that fails with
+    // `EPERM: operation not permitted, scandir '...'` against MSIX
+    // package subtrees under `C:\Program Files\WindowsApps\<pkg>\...`,
+    // even though normal users have `Read & Execute` on those paths
+    // and other tools (`copilot plugin install`, `gemini extensions
+    // install`) — which use a hand-rolled per-entry copy loop — work
+    // fine from the same source.
+    //
+    // To sidestep the issue: when the resolved bundle source lives
+    // under `\WindowsApps\` (i.e. we're running from a packaged
+    // install), copy it into `%LOCALAPPDATA%\IntelligentTerminal\
+    // hook-bundle-staging\claude\` and hand the staged path to Claude
+    // instead. Dev-tree builds and `WTA_HOOKS_BUNDLE_DIR` overrides are
+    // unaffected because the heuristic only fires for WindowsApps
+    // paths.
+    let staged_dir = maybe_stage_bundle_for_claude(&bundle_dir);
+    let bundle_dir = staged_dir.as_deref().unwrap_or(&bundle_dir);
+
     let bundle_path = bundle_dir.to_string_lossy().into_owned();
     if let Err(e) = run_plugin_cli(
         "claude",
@@ -1610,9 +1633,11 @@ fn gemini_extension_dir(home: &Path) -> PathBuf {
         .join(GEMINI_EXTENSION_DIR_NAME)
 }
 
-/// Per-CLI legacy staging directories swept by `wta hooks uninstall`.
-/// New wta installs never write to any of these; the sweep exists
-/// purely so users upgrading from older wta builds end up with a clean
+/// Per-CLI staging directories swept by `wta hooks uninstall`.
+///
+/// Most entries are *legacy*: they were written by older wta builds and
+/// are never touched by the current install path; the sweep exists
+/// purely so users upgrading from those builds end up with a clean
 /// disk after `wta hooks uninstall`.
 ///
 ///   * `<localappdata>\IntelligentTerminal\<cli>-plugin-src\<marketplace>\`
@@ -1625,6 +1650,13 @@ fn gemini_extension_dir(home: &Path) -> PathBuf {
 ///     was the embedded-fallback materialization location used in the
 ///     short-lived first commit of #20 before the embedded fallback
 ///     was removed entirely.
+///
+/// One entry is *active*: Claude's MSIX WindowsApps-workaround staging
+/// at `<localappdata>\IntelligentTerminal\hook-bundle-staging\claude\`
+/// (see [`maybe_stage_bundle_for_claude`]). Current wta builds rewrite
+/// it on every startup when running from a packaged install. Uninstall
+/// sweeps it so a clean uninstall doesn't leave the materialized copy
+/// behind.
 fn legacy_staging_dirs(cli: CliKind) -> Vec<PathBuf> {
     let Some(root) = crate::runtime_paths::intelligent_terminal_root() else {
         return Vec::new();
@@ -1641,6 +1673,11 @@ fn legacy_staging_dirs(cli: CliKind) -> Vec<PathBuf> {
     }
     // #20-first-commit-style embedded-fallback materialization.
     dirs.push(root.join("hook-bundle-fallback").join(cli.dir_name()));
+    // Active WindowsApps-workaround staging (Claude only — Copilot and
+    // Gemini don't trip the `cpSync` EPERM that motivated this).
+    if matches!(cli, CliKind::Claude) {
+        dirs.push(root.join(STAGING_SUBDIR).join(cli.dir_name()));
+    }
     dirs
 }
 
@@ -1854,6 +1891,103 @@ fn home_dir() -> Option<PathBuf> {
     std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))
         .map(PathBuf::from)
+}
+
+/// Directory name (under `%LOCALAPPDATA%\IntelligentTerminal\`) used to
+/// hold per-CLI staging copies of the wt-agent-hooks bundle. We only
+/// materialize into it when the resolved source lives under WindowsApps
+/// (see [`maybe_stage_bundle_for_claude`]); dev-tree and
+/// `WTA_HOOKS_BUNDLE_DIR` runs skip staging and hand the source path
+/// directly to the CLI.
+const STAGING_SUBDIR: &str = "hook-bundle-staging";
+
+/// True when `path` is under `…\WindowsApps\…` (any segment, any case).
+/// Used to detect MSIX-deployed bundle sources that trip Node.js's
+/// recursive `fs.cpSync` with `EPERM` (see the long-form rationale at
+/// the call site in `install_for_claude`).
+fn is_under_windows_apps(path: &Path) -> bool {
+    let s = path.to_string_lossy();
+    let lower = s.to_ascii_lowercase();
+    // Match both forward- and back-slashed forms so the heuristic also
+    // works for paths surfaced as `C:/Program Files/WindowsApps/...`
+    // (rare but possible if a caller normalises separators).
+    lower.contains(r"\windowsapps\") || lower.contains("/windowsapps/")
+}
+
+/// If `source` is under WindowsApps, stage a copy into
+/// `%LOCALAPPDATA%\IntelligentTerminal\hook-bundle-staging\claude\`
+/// and return the staged path. Returns `None` when staging is unnecessary
+/// or fails (the caller falls back to `source`).
+///
+/// Idempotent: removes any stale staging directory first so MSIX upgrades
+/// (which bump the version segment in the package path) don't leave
+/// orphaned files behind.
+fn maybe_stage_bundle_for_claude(source: &Path) -> Option<PathBuf> {
+    if !is_under_windows_apps(source) {
+        return None;
+    }
+    let root = crate::runtime_paths::intelligent_terminal_root()?;
+    let staged = root.join(STAGING_SUBDIR).join(CliKind::Claude.dir_name());
+    match restage_bundle_dir(source, &staged) {
+        Ok(()) => {
+            tracing::info!(
+                target: "agent_hooks",
+                source = %source.display(),
+                staged = %staged.display(),
+                "staged claude bundle out of WindowsApps to sidestep Node.js cpSync EPERM",
+            );
+            Some(staged)
+        }
+        Err(e) => {
+            tracing::warn!(
+                target: "agent_hooks",
+                err = %e,
+                source = %source.display(),
+                staged = %staged.display(),
+                "failed to stage claude bundle under LOCALAPPDATA; \
+                 falling back to WindowsApps source (claude plugin install \
+                 may fail with EPERM)",
+            );
+            None
+        }
+    }
+}
+
+/// Recreate `dst` as a fresh, byte-identical copy of `src`. Removes any
+/// pre-existing `dst` first.
+fn restage_bundle_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if dst.exists() {
+        fs::remove_dir_all(dst)?;
+    }
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    copy_dir_recursive(src, dst)
+}
+
+/// Minimal recursive directory copy. Sufficient for the wt-agent-hooks
+/// bundle, which is a handful of small JSON/PowerShell files and contains
+/// no symlinks. Skips `is_symlink` entries defensively rather than trying
+/// to recreate them.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if file_type.is_symlink() {
+            // Bundle has no symlinks today; if one ever appears, skip
+            // rather than fall back to host-specific symlink behaviour.
+            continue;
+        }
+        if file_type.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -2135,6 +2269,155 @@ mod tests {
 
         // Nothing for Copilot anywhere → None.
         assert!(bundle::find_loose_dir(CliKind::Copilot, &roots).is_none());
+    }
+
+    // ---- WindowsApps staging workaround (Claude) ------------------------
+
+    /// `is_under_windows_apps` should be true for the MSIX install layout
+    /// regardless of slash direction or letter case, and false for normal
+    /// dev-tree / user paths.
+    #[test]
+    fn is_under_windows_apps_recognises_packaged_paths() {
+        assert!(is_under_windows_apps(Path::new(
+            r"C:\Program Files\WindowsApps\IntelligentTerminal_0.7.0.11_x64__rd9vj3e6a2mbr\wt-agent-hooks\claude",
+        )));
+        // Case-insensitive match.
+        assert!(is_under_windows_apps(Path::new(
+            r"C:\Program Files\windowsapps\Foo\bar",
+        )));
+        // Forward slashes (rare but possible if a caller normalises them).
+        assert!(is_under_windows_apps(Path::new(
+            "C:/Program Files/WindowsApps/Foo/bar",
+        )));
+        // Dev-tree / user paths should not match.
+        assert!(!is_under_windows_apps(Path::new(
+            r"Q:\git\intelligent-terminal\tools\wta\wt-agent-hooks\claude",
+        )));
+        assert!(!is_under_windows_apps(Path::new(
+            r"C:\Users\someone\AppData\Local\IntelligentTerminal\hook-bundle-staging\claude",
+        )));
+        // Substring `windowsapps` only matches when it's a full path segment.
+        // (Our heuristic intentionally requires the surrounding slashes so a
+        // user folder literally named `WindowsAppsStuff` doesn't get
+        // misclassified.)
+        assert!(!is_under_windows_apps(Path::new(
+            r"C:\Users\me\WindowsAppsStuff\foo",
+        )));
+    }
+
+    /// `copy_dir_recursive` must reproduce a nested directory tree
+    /// byte-for-byte at the destination, creating intermediate
+    /// directories as it goes.
+    #[test]
+    fn copy_dir_recursive_mirrors_tree() {
+        let src = unique_dir("stage-src");
+        let dst = unique_dir("stage-dst").join("staged");
+
+        fs::create_dir_all(src.join(".claude-plugin")).unwrap();
+        fs::create_dir_all(src.join("wt-agent-hooks/hooks")).unwrap();
+        fs::write(
+            src.join(".claude-plugin/marketplace.json"),
+            r#"{"name":"wt-local"}"#,
+        )
+        .unwrap();
+        fs::write(
+            src.join("wt-agent-hooks/.claude-plugin/plugin.json"),
+            r#"{"name":"wt-agent-hooks"}"#,
+        )
+        .ok();
+        fs::create_dir_all(src.join("wt-agent-hooks/.claude-plugin")).unwrap();
+        fs::write(
+            src.join("wt-agent-hooks/.claude-plugin/plugin.json"),
+            r#"{"name":"wt-agent-hooks"}"#,
+        )
+        .unwrap();
+        fs::write(
+            src.join("wt-agent-hooks/hooks/hooks.json"),
+            r#"{"hooks":{}}"#,
+        )
+        .unwrap();
+        fs::write(
+            src.join("wt-agent-hooks/hooks/send-event.ps1"),
+            "Write-Output 'hi'",
+        )
+        .unwrap();
+
+        copy_dir_recursive(&src, &dst).expect("copy succeeds");
+
+        assert_eq!(
+            fs::read_to_string(dst.join(".claude-plugin/marketplace.json")).unwrap(),
+            r#"{"name":"wt-local"}"#,
+        );
+        assert_eq!(
+            fs::read_to_string(dst.join("wt-agent-hooks/.claude-plugin/plugin.json")).unwrap(),
+            r#"{"name":"wt-agent-hooks"}"#,
+        );
+        assert_eq!(
+            fs::read_to_string(dst.join("wt-agent-hooks/hooks/hooks.json")).unwrap(),
+            r#"{"hooks":{}}"#,
+        );
+        assert_eq!(
+            fs::read_to_string(dst.join("wt-agent-hooks/hooks/send-event.ps1")).unwrap(),
+            "Write-Output 'hi'",
+        );
+    }
+
+    /// `restage_bundle_dir` removes a pre-existing staging directory
+    /// before re-mirroring `src`. Verifies that stale files from a prior
+    /// MSIX version (e.g. an old plugin.json) don't survive the
+    /// re-staging.
+    #[test]
+    fn restage_bundle_dir_replaces_stale_contents() {
+        let src = unique_dir("restage-src");
+        let dst = unique_dir("restage-dst").join("staged");
+
+        fs::create_dir_all(&dst).unwrap();
+        fs::write(dst.join("STALE.txt"), "leftover from a prior MSIX version").unwrap();
+
+        fs::write(src.join("fresh.json"), r#"{"v":2}"#).unwrap();
+
+        restage_bundle_dir(&src, &dst).expect("restage succeeds");
+
+        assert!(!dst.join("STALE.txt").exists(), "stale file must be gone");
+        assert_eq!(
+            fs::read_to_string(dst.join("fresh.json")).unwrap(),
+            r#"{"v":2}"#,
+        );
+    }
+
+    /// Uninstall must sweep the active `hook-bundle-staging\claude\`
+    /// directory in addition to the historical staging dirs, so a clean
+    /// uninstall doesn't leave the MSIX workaround copy behind.
+    #[test]
+    fn legacy_staging_dirs_includes_active_claude_staging() {
+        let Some(root) = crate::runtime_paths::intelligent_terminal_root() else {
+            // No LOCALAPPDATA on this host (extremely unusual) — nothing to
+            // assert. The function would return an empty Vec in that case
+            // and the sweep would log a warning, which is the documented
+            // behaviour.
+            return;
+        };
+        let expected = root.join(STAGING_SUBDIR).join(CliKind::Claude.dir_name());
+
+        let claude_dirs = legacy_staging_dirs(CliKind::Claude);
+        assert!(
+            claude_dirs.iter().any(|p| p == &expected),
+            "Claude sweep list should contain the active staging dir {} but was {:?}",
+            expected.display(),
+            claude_dirs,
+        );
+
+        // Copilot and Gemini don't trigger the workaround, so the active
+        // staging path must NOT appear in their sweep lists.
+        for cli in [CliKind::Copilot, CliKind::Gemini] {
+            let dirs = legacy_staging_dirs(cli);
+            assert!(
+                dirs.iter().all(|p| p != &expected),
+                "{:?} sweep list must not include Claude's active staging dir but was {:?}",
+                cli,
+                dirs,
+            );
+        }
     }
 
     // ---- bundle content invariants --------------------------------------

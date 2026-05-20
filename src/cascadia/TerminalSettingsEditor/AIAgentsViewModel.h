@@ -120,14 +120,30 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             return _copilotCliDetected || _claudeCliDetected || _geminiCliDetected;
         }
-        winrt::hstring CopilotHooksStatusText() const { return _copilotHooksStatus; }
-        winrt::hstring ClaudeHooksStatusText() const { return _claudeHooksStatus; }
-        winrt::hstring GeminiHooksStatusText() const { return _geminiHooksStatus; }
+        // Per-CLI "row visible" flags — true when the CLI has any wt-agent-hooks
+        // state on disk (marketplace registered OR plugin installed). The
+        // expander shows a Remove row for every CLI in this set so users can
+        // clean up partial installs, not just fully-installed ones.
+        bool ShowCopilotHookRow() const noexcept { return _showCopilotHookRow; }
+        bool ShowClaudeHookRow() const noexcept { return _showClaudeHookRow; }
+        bool ShowGeminiHookRow() const noexcept { return _showGeminiHookRow; }
+        // Detail text shown under the CLI name when state isn't fully
+        // installed. Empty for fully-installed CLIs (subtitle is hidden in XAML).
+        winrt::hstring CopilotHooksSubtitle() const { return _copilotHooksSubtitle; }
+        winrt::hstring ClaudeHooksSubtitle() const { return _claudeHooksSubtitle; }
+        winrt::hstring GeminiHooksSubtitle() const { return _geminiHooksSubtitle; }
+        bool ShowCopilotHooksSubtitle() const noexcept { return !_copilotHooksSubtitle.empty(); }
+        bool ShowClaudeHooksSubtitle() const noexcept { return !_claudeHooksSubtitle.empty(); }
+        bool ShowGeminiHooksSubtitle() const noexcept { return !_geminiHooksSubtitle.empty(); }
         bool IsInstallingAgentHooks() const noexcept { return _installingAgentHooks; }
         winrt::hstring AgentHooksInstallSummary() const { return _agentHooksInstallSummary; }
+        bool HasAgentHooksInstallSummary() const noexcept { return !_agentHooksInstallSummary.empty(); }
 
         void RefreshAgentHooksStatus();
-        void InstallAgentHooks();
+        void InstallAllAgentHooks();
+        void RemoveCopilotHooks();
+        void RemoveClaudeHooks();
+        void RemoveGeminiHooks();
 
     private:
         Model::GlobalAppSettings _GlobalSettings;
@@ -182,16 +198,25 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _copilotCliDetected{ false };
         bool _claudeCliDetected{ false };
         bool _geminiCliDetected{ false };
-        winrt::hstring _copilotHooksStatus;
-        winrt::hstring _claudeHooksStatus;
-        winrt::hstring _geminiHooksStatus;
+        // Row visibility — true when the CLI has any wt-agent-hooks state
+        // on disk (marketplace registered OR plugin installed).
+        bool _showCopilotHookRow{ false };
+        bool _showClaudeHookRow{ false };
+        bool _showGeminiHookRow{ false };
+        // Subtitle text per CLI; empty for fully-installed CLIs.
+        winrt::hstring _copilotHooksSubtitle;
+        winrt::hstring _claudeHooksSubtitle;
+        winrt::hstring _geminiHooksSubtitle;
         bool _installingAgentHooks{ false };
         bool _refreshingAgentHooks{ false };
         winrt::hstring _agentHooksInstallSummary;
 
         void _ApplyStatusReport(const std::optional<::Microsoft::Terminal::AgentHooks::StatusReport>& report);
         winrt::fire_and_forget _RefreshAgentHooksStatusAsync();
-        winrt::fire_and_forget _RunHooksInstallerAsync();
+        // Args are passed verbatim to wta.exe (e.g. L"hooks install" or
+        // L"hooks uninstall --cli claude"). `inProgressMessage` is shown
+        // beneath the expander while the wta process is running.
+        winrt::fire_and_forget _RunHooksWtaAsync(std::wstring wtaArgs, std::wstring inProgressMessage);
     };
 };
 
