@@ -49,8 +49,8 @@ jobs:
   # Rename to known/fixed name for Windows build system
   - powershell: |-
       # Create vpack directory and place item inside
-      $TargetFolder = New-Item -Type Directory '$(Build.SourcesDirectory)/WindowsTerminal.app'
-      Get-ChildItem bundle/Microsoft.WindowsTerminal_*.msixbundle | Move-Item (Join-Path $TargetFolder.FullName 'Microsoft.WindowsTerminal_8wekyb3d8bbwe.msixbundle') -Verbose
+      $TargetFolder = New-Item -Type Directory '$(Build.SourcesDirectory)/IntelligentTerminal.app'
+      Get-ChildItem bundle/Microsoft.IntelligentTerminal_*.msixbundle | Move-Item (Join-Path $TargetFolder.FullName 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe.msixbundle') -Verbose
     displayName: Stage packages for vpack
 
   - task: PkgESVPack@12
@@ -58,9 +58,9 @@ jobs:
     env:
       SYSTEM_ACCESSTOKEN: $(System.AccessToken)
     inputs:
-      sourceDirectory: '$(Build.SourcesDirectory)/WindowsTerminal.app'
-      description: VPack for the Windows Terminal Application
-      pushPkgName: WindowsTerminal.app
+      sourceDirectory: '$(Build.SourcesDirectory)/IntelligentTerminal.app'
+      description: VPack for the Intelligent Terminal Application
+      pushPkgName: IntelligentTerminal.app
       owner: conhost
       githubToken: $(GitHubTokenForVpackProvenance)
 
