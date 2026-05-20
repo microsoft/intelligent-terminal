@@ -1049,7 +1049,8 @@ void WindowEmperor::_updateComIdleTimer()
     const auto idle =
         _windowCount <= 0 &&
         _messageBoxCount <= 0 &&
-        TerminalProtocolComServer::s_GetLiveObjectCount() <= 0;
+        TerminalProtocolComServer::s_GetLiveObjectCount() <= 0 &&
+        !_app.Logic().Settings().GlobalSettings().AllowHeadless();
 
     if (idle)
     {
@@ -1166,7 +1167,8 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                 // Double-check: still truly idle?
                 if (_windowCount <= 0 &&
                     _messageBoxCount <= 0 &&
-                    TerminalProtocolComServer::s_GetLiveObjectCount() <= 0)
+                    TerminalProtocolComServer::s_GetLiveObjectCount() <= 0 &&
+                    !_app.Logic().Settings().GlobalSettings().AllowHeadless())
                 {
                     PostQuitMessage(0);
                 }

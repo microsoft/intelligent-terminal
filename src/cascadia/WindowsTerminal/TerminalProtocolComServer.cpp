@@ -19,7 +19,7 @@ namespace Protocol = winrt::Microsoft::Terminal::Protocol;
 
 // Static state — set once before registration, never mutated.
 WindowEmperor* TerminalProtocolComServer::s_emperor = nullptr;
-HWND TerminalProtocolComServer::s_emperorHwnd = nullptr;
+std::atomic<HWND> TerminalProtocolComServer::s_emperorHwnd{ nullptr };
 std::atomic<int32_t> TerminalProtocolComServer::s_liveObjectCount{ 0 };
 
 static DWORD g_comRegistration = 0;
@@ -38,7 +38,7 @@ void TerminalProtocolComServer::s_setEmperor(WindowEmperor* emperor) noexcept
 
 void TerminalProtocolComServer::s_setEmperorHwnd(HWND hwnd) noexcept
 {
-    s_emperorHwnd = hwnd;
+    s_emperorHwnd.store(hwnd, std::memory_order_release);
 }
 
 int32_t TerminalProtocolComServer::s_GetLiveObjectCount() noexcept
@@ -50,7 +50,7 @@ int32_t TerminalProtocolComServer::s_GetLiveObjectCount() noexcept
 // Called from the COM MTA thread — PostMessage is thread-safe.
 static void s_notifyEmperorIdleCheck()
 {
-    const auto hwnd = TerminalProtocolComServer::s_emperorHwnd;
+    const auto hwnd = TerminalProtocolComServer::s_emperorHwnd.load(std::memory_order_acquire);
     if (hwnd)
     {
         PostMessage(hwnd, WindowEmperor::WM_COM_IDLE_CHECK, 0, 0);

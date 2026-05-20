@@ -154,6 +154,6 @@ private:
     static void _dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson);
 
     static WindowEmperor* s_emperor;
-    static HWND s_emperorHwnd;
+    static std::atomic<HWND> s_emperorHwnd;
     static std::atomic<int32_t> s_liveObjectCount;
 };
