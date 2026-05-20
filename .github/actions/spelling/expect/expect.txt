@@ -1930,6 +1930,7 @@ wstr
 wstrings
 wsz
 wta
+wtai
 wtd
 WTEXT
 WTo
