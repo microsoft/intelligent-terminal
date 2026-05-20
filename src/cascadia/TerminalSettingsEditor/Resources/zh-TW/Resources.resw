@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>當執行命令列應用程式且不使用現有工作模式而啟動的終端機應用程式 (例如從 [開始] 功能表或 [執行] 對話方塊)。</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>圖形 API</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>這會變更內送文字群組到儲存格的方式。[Grapheme 叢集] 選項是最新式且更正確的 Unicode 方法，而 “wcswidth” 是 UNIX 的常見方法，而 [Windows 控制台] 則會復寫它在 Windows 上運作的方式。變更此設定需要重新啟動Windows 終端機，且只適用於從其中啟動的應用程式。</value>
+    <value>這會變更內送文字群組到儲存格的方式。[Grapheme 叢集] 選項是最新式且更正確的 Unicode 方法，而 “wcswidth” 是 UNIX 的常見方法，而 [Windows 控制台] 則會復寫它在 Windows 上運作的方式。變更此設定需要重新啟動智慧終端機，且只適用於從其中啟動的應用程式。</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Grapheme 叢集</value>
@@ -376,7 +376,7 @@
     <comment>A label for a drop down selector, referring to the East Asian Ambiguous Width Unicode specification.</comment>
   </data>
   <data name="Globals_AmbiguousWidth.HelpText" xml:space="preserve">
-    <value>設定東亞模糊字元的寬度。「窄」(預設) 以相容性為優先，而「寬」則以多數中日韓字型的可讀性為優先。在「寬」模式下，部分應用程式可能無法正常運作，導致游標移動異常。變更此設定後，需重新啟動 Windows 終端機，且僅適用於從 Windows 終端機內啟動的應用程式。</value>
+    <value>設定東亞模糊字元的寬度。「窄」(預設) 以相容性為優先，而「寬」則以多數中日韓字型的可讀性為優先。在「寬」模式下，部分應用程式可能無法正常運作，導致游標移動異常。變更此設定後，需重新啟動 智慧終端機，且僅適用於從 智慧終端機內啟動的應用程式。</value>
   </data>
   <data name="Globals_AmbiguousWidth_Narrow.Text" xml:space="preserve">
     <value>窄</value>
@@ -522,7 +522,7 @@
     <comment>Header for a control to toggle whether the terminal's title is shown as the application title, or not.</comment>
   </data>
   <data name="Globals_ShowTitleInTitlebar.HelpText" xml:space="preserve">
-    <value>停用時，標題列會是 [Windows 終端機]。</value>
+    <value>停用時，標題列會是 [智慧終端機]。</value>
     <comment>A description for what the "show title in titlebar" setting does. Presented near "Globals_ShowTitleInTitlebar.Header".{Locked="Windows"}</comment>
   </data>
   <data name="Globals_SnapToGridOnResize.Header" xml:space="preserve">
@@ -574,8 +574,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>允許 Windows 終端機 在背景執行</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>允許 智慧終端機 在背景執行</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>啟用偵錯功能</value>
@@ -896,7 +896,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>自動</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>色彩配置</value>
@@ -1218,7 +1218,7 @@
     <comment>A supplementary setting to the "starting directory" setting. "Parent" refers to the parent process of the current process.</comment>
   </data>
   <data name="Profile_StartingDirectoryUseParentCheckbox.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>如果啟用，這個設定檔將會在啟動 Windows 終端機的目錄中產生。</value>
+    <value>如果啟用，這個設定檔將會在啟動 智慧終端機的目錄中產生。</value>
     <comment>A description for what the supplementary "use parent process directory" setting does. Presented near "Profile_StartingDirectoryUseParentCheckbox".</comment>
   </data>
   <data name="Profile_SuppressApplicationTitle.Header" xml:space="preserve">
@@ -2223,7 +2223,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Windows 終端機正以可攜式模式執行。</value>
+    <value>智慧終端機正以可攜式模式執行。</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
@@ -2578,7 +2578,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>當 Windows 終端機 以系統管理員身分執行時，在標題欄中顯示遮罩</value>
+    <value>當 智慧終端機 以系統管理員身分執行時，在標題欄中顯示遮罩</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">

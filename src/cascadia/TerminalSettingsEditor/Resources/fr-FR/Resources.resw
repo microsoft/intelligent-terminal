@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>L’application Terminal qui se lance lorsqu’une application de ligne de commande est exécutée sans session existante, par exemple à partir du menu Démarrer ou de la boîte de dialogue Exécuter.</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>Graphics API</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>Cela modifie la façon dont le texte entrant est regroupé en cellules. L'option « Clusters de graphèmes » est la méthode la plus moderne et la plus conforme à Unicode, tandis que « wcswidth » est une approche courante sous UNIX et la « Console Windows » reproduit la manière dont cela fonctionnait sous Windows. La modification de ce paramètre nécessite le redémarrage du Terminal Windows et ne s'applique qu'aux applications lancées à partir de celui-ci.</value>
+    <value>Cela modifie la façon dont le texte entrant est regroupé en cellules. L'option « Clusters de graphèmes » est la méthode la plus moderne et la plus conforme à Unicode, tandis que « wcswidth » est une approche courante sous UNIX et la « Console Windows » reproduit la manière dont cela fonctionnait sous Windows. La modification de ce paramètre nécessite le redémarrage du Terminal Intelligent et ne s'applique qu'aux applications lancées à partir de celui-ci.</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Clusters de graphèmes</value>
@@ -376,7 +376,7 @@
     <comment>A label for a drop down selector, referring to the East Asian Ambiguous Width Unicode specification.</comment>
   </data>
   <data name="Globals_AmbiguousWidth.HelpText" xml:space="preserve">
-    <value>Définit la largeur utilisée pour les caractères ambigus d’Asie de l’Est. « Narrow » (par défaut) privilégie la compatibilité, tandis que « Wide » favorise la lisibilité avec de nombreuses polices CJK. En mode « Wide », certaines applications peuvent ne pas fonctionner correctement et provoquer un déplacement erratique du curseur. La modification de ce paramètre nécessite le redémarrage du Terminal Windows et ne s’applique qu’aux applications lancées à partir de celui-ci.</value>
+    <value>Définit la largeur utilisée pour les caractères ambigus d’Asie de l’Est. « Narrow » (par défaut) privilégie la compatibilité, tandis que « Wide » favorise la lisibilité avec de nombreuses polices CJK. En mode « Wide », certaines applications peuvent ne pas fonctionner correctement et provoquer un déplacement erratique du curseur. La modification de ce paramètre nécessite le redémarrage du Terminal Intelligent et ne s’applique qu’aux applications lancées à partir de celui-ci.</value>
   </data>
   <data name="Globals_AmbiguousWidth_Narrow.Text" xml:space="preserve">
     <value>Étroites</value>
@@ -574,8 +574,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>Autoriser Terminal Windows à s’exécuter en arrière-plan</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>Autoriser Terminal Intelligent à s’exécuter en arrière-plan</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>Activer les fonctionnalités de débogage</value>
@@ -896,7 +896,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>Automatique</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>Jeu de couleurs</value>
@@ -2223,7 +2223,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Terminal Windows s’exécute en mode portable.</value>
+    <value>Terminal Intelligent s’exécute en mode portable.</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
@@ -2578,7 +2578,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>Afficher un bouclier dans la barre de titre lorsque Terminal Windows s’exécute en tant qu’administrateur</value>
+    <value>Afficher un bouclier dans la barre de titre lorsque Terminal Intelligent s’exécute en tant qu’administrateur</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">

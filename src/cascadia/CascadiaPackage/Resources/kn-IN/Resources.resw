@@ -165,7 +165,7 @@
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem_Preview" xml:space="preserve">
     <value>ಟರ್ಮಿನಲ್ ನಲ್ಲಿ ತೆರೆಯಿರಿ &amp;ಪೂರ್ವವೀಕ್ಷಣೆ ಮಾಡಿ</value>
-    <comment>This is a menu item that will be displayed in the Windows File Explorer that launches the Preview version of Intelligent Terminal. Please mark one of the characters to be an accelerator key.</comment>
+    <comment>This is a menu item that will be displayed in the Windows File Explorer that launches the Preview version of Windows Terminal. Please mark one of the characters to be an accelerator key.</comment>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem" xml:space="preserve">
     <value>ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್‌ನಲ್ಲಿ ತೆರೆಯಿರಿ(&amp;I)</value>

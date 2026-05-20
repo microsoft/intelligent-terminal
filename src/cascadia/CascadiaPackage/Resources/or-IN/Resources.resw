@@ -165,7 +165,7 @@
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem_Preview" xml:space="preserve">
     <value>ଟର୍ମିନାଲ୍ &amp;ପୂର୍ବାବଲୋକନରେ ଖୋଲନ୍ତୁ</value>
-    <comment>This is a menu item that will be displayed in the Windows File Explorer that launches the Preview version of Intelligent Terminal. Please mark one of the characters to be an accelerator key.</comment>
+    <comment>This is a menu item that will be displayed in the Windows File Explorer that launches the Preview version of Windows Terminal. Please mark one of the characters to be an accelerator key.</comment>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem" xml:space="preserve">
     <value>ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲରେ ଖୋଲନ୍ତୁ(&amp;I)</value>

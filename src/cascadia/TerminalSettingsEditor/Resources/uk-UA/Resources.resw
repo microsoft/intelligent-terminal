@@ -328,7 +328,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>Програма терміналу, яка запускається, коли програма командного рядка запускається без наявного сеансу, наприклад із меню "Пуск" або діалогового вікна "Виконати".</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>Графічний API</value>
@@ -368,7 +368,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>Це змінює спосіб групування вхідного тексту в клітинки. Параметр "Кластери графем" є найсучаснішим і правильним для Unicode способом зробити це, тоді як "wcswidth" є поширеним підходом у UNIX, а "Консоль Windows" повторює спосіб, яким він працював у Windows. Зміна цього параметра потребує перезапуску терміналу Windows, і це стосується лише програм, запущених із нього.</value>
+    <value>Це змінює спосіб групування вхідного тексту в клітинки. Параметр "Кластери графем" є найсучаснішим і правильним для Unicode способом зробити це, тоді як "wcswidth" є поширеним підходом у UNIX, а "Консоль Windows" повторює спосіб, яким він працював у Windows. Зміна цього параметра потребує перезапуску Інтелектуальному Терміналу, і це стосується лише програм, запущених із нього.</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Кластери графем</value>
@@ -581,8 +581,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>Дозволити терміналу Windows працювати у фоновому режимі</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>Дозволити Інтелектуальному Терміналу працювати у фоновому режимі</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>Увімкнути функції налагодження</value>
@@ -896,7 +896,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>Автоматично</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>Колірна схема</value>
@@ -1954,7 +1954,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Термінал Windows працює в портативному режимі.</value>
+    <value>Інтелектуальний Термінал працює в портативному режимі.</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
@@ -2321,7 +2321,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>Відображати щит у рядку заголовка, коли термінал Windows запущено від імені Адміністратора</value>
+    <value>Відображати щит у рядку заголовка, коли Інтелектуальний Термінал запущено від імені Адміністратора</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">

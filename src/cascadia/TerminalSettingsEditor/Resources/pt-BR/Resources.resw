@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>O aplicativo de terminal que é iniciado quando um aplicativo de linha de comando é executado sem uma sessão existente, como no menu iniciar ou na caixa de diálogo Executar.</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>API de Gráficos</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>Isso altera a maneira como o texto de entrada é agrupado em células. A opção "Clusters do Grapheme" é a maneira mais moderna e correta de fazer isso, enquanto "wcswidth" é uma abordagem comum no UNIX e o "Console do Windows" replica a maneira como ele funciona no Windows. Alterar essa configuração requer uma reinicialização Terminal do Windows e aplica-se somente a aplicativos iniciados de dentro dela.</value>
+    <value>Isso altera a maneira como o texto de entrada é agrupado em células. A opção "Clusters do Grapheme" é a maneira mais moderna e correta de fazer isso, enquanto "wcswidth" é uma abordagem comum no UNIX e o "Console do Windows" replica a maneira como ele funciona no Windows. Alterar essa configuração requer uma reinicialização Terminal Inteligente e aplica-se somente a aplicativos iniciados de dentro dela.</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Clusters do Grapheme</value>
@@ -376,7 +376,7 @@
     <comment>A label for a drop down selector, referring to the East Asian Ambiguous Width Unicode specification.</comment>
   </data>
   <data name="Globals_AmbiguousWidth.HelpText" xml:space="preserve">
-    <value>Define a largura usada para caracteres ambíguos do Leste Asiático. "Estreito" (padrão) prioriza a compatibilidade, enquanto "Amplo" prioriza a legibilidade com muitas fontes CJK. No modo "Amplo", alguns aplicativos podem não funcionar corretamente e provocar movimento irregular do cursor. Alterar essa configuração exige reiniciar o Terminal do Windows e vale só para aplicativos iniciados dentro dele.</value>
+    <value>Define a largura usada para caracteres ambíguos do Leste Asiático. "Estreito" (padrão) prioriza a compatibilidade, enquanto "Amplo" prioriza a legibilidade com muitas fontes CJK. No modo "Amplo", alguns aplicativos podem não funcionar corretamente e provocar movimento irregular do cursor. Alterar essa configuração exige reiniciar o Terminal Inteligente e vale só para aplicativos iniciados dentro dele.</value>
   </data>
   <data name="Globals_AmbiguousWidth_Narrow.Text" xml:space="preserve">
     <value>Estreita</value>
@@ -574,8 +574,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>Permitir Terminal do Windows ser executado em segundo plano</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>Permitir Terminal Inteligente ser executado em segundo plano</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>Habilitar recursos de depuração</value>
@@ -896,7 +896,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>Automático</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>Esquema de cores</value>
@@ -2223,7 +2223,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>O terminal do Windows está em execução no modo portátil.</value>
+    <value>O Terminal Inteligente está em execução no modo portátil.</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
@@ -2578,7 +2578,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>Exibir um escudo na barra de título quando o Terminal do Windows estiver sendo executado como Administrador</value>
+    <value>Exibir um escudo na barra de título quando o Terminal Inteligente estiver sendo executado como Administrador</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">

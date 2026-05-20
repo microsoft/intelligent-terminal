@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>시작 메뉴나 실행 대화 상자와 같이 기존 세션이 없으면 명령 줄 응용 프로그램을 실행하고 있는 터미널 응용 프로그램입니다.</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>Graphics API</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>들어오는 텍스트가 셀로 그룹화되는 방식을 변경합니다. "Grapheme 클러스터" 옵션은 가장 최신이며 유니코드로 올바른 방법이며, "wcswidth"는 UNIX에서 일반적인 접근 방식이며 "Windows 콘솔"은 Windows에서 작동하는 방식을 복제합니다. 이 설정을 변경하려면 Windows 터미널 다시 시작해야 하며 이 설정 내에서 시작된 애플리케이션에만 적용됩니다.</value>
+    <value>들어오는 텍스트가 셀로 그룹화되는 방식을 변경합니다. "Grapheme 클러스터" 옵션은 가장 최신이며 유니코드로 올바른 방법이며, "wcswidth"는 UNIX에서 일반적인 접근 방식이며 "Windows 콘솔"은 Windows에서 작동하는 방식을 복제합니다. 이 설정을 변경하려면 지능형 터미널 다시 시작해야 하며 이 설정 내에서 시작된 애플리케이션에만 적용됩니다.</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Grapheme 클러스터</value>
@@ -376,7 +376,7 @@
     <comment>A label for a drop down selector, referring to the East Asian Ambiguous Width Unicode specification.</comment>
   </data>
   <data name="Globals_AmbiguousWidth.HelpText" xml:space="preserve">
-    <value>동아시아의 모호한 문자에 사용되는 너비를 설정하세요. "좁게"(기본값)는 호환성을 우선시하고, "넓게"는 많은 CJK 글꼴에서 가독성을 우선시합니다. "넓게" 모드에서는 일부 애플리케이션이 제대로 작동하지 않아 커서가 이상하게 움직일 수 있습니다. 이 설정을 변경하려면 Windows 터미널을 다시 시작해야 하며, 이 설정은 Windows 터미널 내에서 실행된 애플리케이션에만 적용됩니다.</value>
+    <value>동아시아의 모호한 문자에 사용되는 너비를 설정하세요. "좁게"(기본값)는 호환성을 우선시하고, "넓게"는 많은 CJK 글꼴에서 가독성을 우선시합니다. "넓게" 모드에서는 일부 애플리케이션이 제대로 작동하지 않아 커서가 이상하게 움직일 수 있습니다. 이 설정을 변경하려면 지능형 터미널을 다시 시작해야 하며, 이 설정은 지능형 터미널 내에서 실행된 애플리케이션에만 적용됩니다.</value>
   </data>
   <data name="Globals_AmbiguousWidth_Narrow.Text" xml:space="preserve">
     <value>좁게</value>
@@ -574,8 +574,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>Windows 터미널 백그라운드에서 실행하도록 허용</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>지능형 터미널 백그라운드에서 실행하도록 허용</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>디버깅 기능 사용</value>
@@ -896,7 +896,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>자동</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>색 구성표</value>
@@ -2223,7 +2223,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Windows 터미널이 이식 가능 모드에서 실행되고 있습니다.</value>
+    <value>지능형 터미널이 이식 가능 모드에서 실행되고 있습니다.</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
@@ -2578,7 +2578,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>Windows 터미널 관리자 권한으로 실행 중일 때 제목 표시줄에 실드 표시</value>
+    <value>지능형 터미널 관리자 권한으로 실행 중일 때 제목 표시줄에 실드 표시</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">

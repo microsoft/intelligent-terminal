@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>Терминалска апликација која се покреће када се апликација из командне линије покрене без постојеће сесије, као, на пример, из Старт менија или из дијалога Покрени.</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>Графички API</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>Ово мења начин на који се долазни текст распоређује у ћелије. Опција „Скупине графема” је најсавременији и Unicode-исправан начин за то, док је „wcswidth” уобичајен приступ на UNIX системима, а „Windows Console” опонаша начин на који је то некада радило у Windows-у. Измена овог подешавања захтева поновно покретање програма Windows Терминал и примењује се само на апликације покренуте из њега.</value>
+    <value>Ово мења начин на који се долазни текст распоређује у ћелије. Опција „Скупине графема” је најсавременији и Unicode-исправан начин за то, док је „wcswidth” уобичајен приступ на UNIX системима, а „Windows Console” опонаша начин на који је то некада радило у Windows-у. Измена овог подешавања захтева поновно покретање програма Интелигентни Терминал и примењује се само на апликације покренуте из њега.</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Скупине графема</value>
@@ -374,7 +374,7 @@
     <value>Ширина двосмислених знакова</value>
     <comment>A label for a drop down selector, referring to the East Asian Ambiguous Width Unicode specification.</comment>
   </data><data name="Globals_AmbiguousWidth.HelpText" xml:space="preserve">
-    <value>Подешава ширину која се користи за источноазијске знакове двосмислене ширине. „Уско” (подразумевано) даје предност компатибилности, док „Широко” даје предност читљивости са многим CJK фонтовима. У режиму „Широко” неке апликације можда неће радити исправно и могу изазвати непредвидљиво померање курсора. Измена овог подешавања захтева поновно покретање програма Windows Терминал и примењује се само на апликације покренуте из њега.</value>
+    <value>Подешава ширину која се користи за источноазијске знакове двосмислене ширине. „Уско” (подразумевано) даје предност компатибилности, док „Широко” даје предност читљивости са многим CJK фонтовима. У режиму „Широко” неке апликације можда неће радити исправно и могу изазвати непредвидљиво померање курсора. Измена овог подешавања захтева поновно покретање програма Интелигентни Терминал и примењује се само на апликације покренуте из њега.</value>
   </data><data name="Globals_AmbiguousWidth_Narrow.Text" xml:space="preserve">
     <value>Уско</value>
     <comment>As in "narrow width". Refers to the East Asian Ambiguous Width Unicode specification.</comment>
@@ -574,8 +574,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>Дозволи да се Windows Терминал извршава у позадини</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>Дозволи да се Интелигентни Терминал извршава у позадини</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>Укључи функције за отклањање грешака</value>
@@ -972,7 +972,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>Аутоматски</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>Шема боја</value>
@@ -2323,7 +2323,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Windows Терминал се извршава у преносном режиму.</value>
+    <value>Интелигентни Терминал се извршава у преносном режиму.</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
@@ -2682,7 +2682,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>Прикажи штит у насловној линији када се Windows Терминал извршава као Администратор</value>
+    <value>Прикажи штит у насловној линији када се Интелигентни Терминал извршава као Администратор</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">

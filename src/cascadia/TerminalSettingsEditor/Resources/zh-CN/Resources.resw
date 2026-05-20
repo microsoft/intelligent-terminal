@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>当命令行应用程序在没有现有会话(例如从“开始菜单”或“运行”对话框)运行时启动的终端应用程序。</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>图形 API</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>这会更改传入文本分组到单元格中的方式。“Grapheme 群集”选项是执行此操作的最新式和 Unicode 正确的方法，而“wcswidth”是 UNIX 上的常见方法，“Windows 控制台”复制了它在 Windows 上的工作方式。更改此设置需要重启Windows 终端且仅适用于从其内部启动的应用程序。</value>
+    <value>这会更改传入文本分组到单元格中的方式。“Grapheme 群集”选项是执行此操作的最新式和 Unicode 正确的方法，而“wcswidth”是 UNIX 上的常见方法，“Windows 控制台”复制了它在 Windows 上的工作方式。更改此设置需要重启智能终端且仅适用于从其内部启动的应用程序。</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Grapheme 群集</value>
@@ -376,7 +376,7 @@
     <comment>A label for a drop down selector, referring to the East Asian Ambiguous Width Unicode specification.</comment>
   </data>
   <data name="Globals_AmbiguousWidth.HelpText" xml:space="preserve">
-    <value>设置东亚模糊字符的宽度。"窄"模式(默认)优先考虑兼容性，而"宽"模式优先考虑很多中日韩字体的可读性。在"宽"模式下，某些应用程序可能无法正常工作，并导致光标不规则移动。更改此设置需要重启 Windows 终端，而且仅适用于从终端中启动的应用程序。</value>
+    <value>设置东亚模糊字符的宽度。"窄"模式(默认)优先考虑兼容性，而"宽"模式优先考虑很多中日韩字体的可读性。在"宽"模式下，某些应用程序可能无法正常工作，并导致光标不规则移动。更改此设置需要重启 智能终端，而且仅适用于从终端中启动的应用程序。</value>
   </data>
   <data name="Globals_AmbiguousWidth_Narrow.Text" xml:space="preserve">
     <value>窄</value>
@@ -574,8 +574,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>允许Windows 终端在后台运行</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>允许智能终端在后台运行</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>启用调试功能</value>
@@ -896,7 +896,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>自动</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>配色方案</value>
@@ -2223,7 +2223,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Windows 终端正在便携模式下运行。</value>
+    <value>智能终端正在便携模式下运行。</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
@@ -2578,7 +2578,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>当 Windows 终端以管理员身份运行时，在标题栏中显示一个盾牌图标</value>
+    <value>当 智能终端以管理员身份运行时，在标题栏中显示一个盾牌图标</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">
