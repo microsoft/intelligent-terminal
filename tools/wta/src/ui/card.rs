@@ -10,7 +10,7 @@ pub const CARD_H_CHROME: u16 = 8;
 /// Minimum `area.{width,height}` for `render_card_shell` to paint anything:
 /// 2 borders + content(1) + divider(1) + buttons(1) = 5. Callers reserving
 /// fewer rows than this would leave the card invisible — clamp to 0 instead.
-pub const CARD_MIN_HEIGHT: u16 = 5;
+pub const CARD_MIN_SIZE: u16 = 5;
 
 /// Wrap width inside a card given the outer panel width. Floors at 1 so
 /// `div_ceil` callers don't divide by zero on absurdly narrow terminals.
@@ -29,13 +29,13 @@ pub fn inset_horizontal(r: Rect, n: u16) -> Rect {
 
 /// Paint the card chrome (outer border + middle divider) and return the
 /// inner content/button regions. Returns `None` when `area` is smaller than
-/// `CARD_MIN_HEIGHT` in either dimension.
+/// `CARD_MIN_SIZE` in either dimension.
 pub fn render_card_shell(
     frame: &mut Frame,
     area: Rect,
     border_style: Style,
 ) -> Option<(Rect, Rect)> {
-    if area.width < CARD_MIN_HEIGHT || area.height < CARD_MIN_HEIGHT {
+    if area.width < CARD_MIN_SIZE || area.height < CARD_MIN_SIZE {
         return None;
     }
     let block = Block::default()

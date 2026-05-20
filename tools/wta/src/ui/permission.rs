@@ -3,11 +3,11 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::{App, PermissionState};
 use crate::theme;
-use crate::ui::card::{self, CARD_MIN_HEIGHT};
+use crate::ui::card::{self, CARD_MIN_SIZE};
 
 /// Render the permission card. Embedded above the input box; `layout.rs`
 /// reserves the row budget via `App::permission_panel_height`, which is
-/// either ≥ `CARD_MIN_HEIGHT` (full card) or exactly 1 (compact fallback —
+/// either ≥ `CARD_MIN_SIZE` (full card) or exactly 1 (compact fallback —
 /// the agent flow is blocked on this prompt, so we must remain visible).
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let perm = match &app.current_tab().permission {
@@ -15,7 +15,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         None => return,
     };
 
-    if area.height < CARD_MIN_HEIGHT {
+    if area.height < CARD_MIN_SIZE {
         render_compact(frame, perm, area);
         return;
     }
@@ -73,16 +73,34 @@ fn render_compact(frame: &mut Frame, perm: &PermissionState, area: Rect) {
         .lines()
         .next()
         .unwrap_or("Permission requested");
+    let prefix = "[!] ";
+    let separator = "  ";
     let hint = "[Y/N to answer · resize for full card]";
-    let budget = area.width.saturating_sub(hint.chars().count() as u16 + 4) as usize;
-    let mut desc: String = desc_one_line.chars().take(budget.max(1)).collect();
-    if desc_one_line.chars().count() > budget {
-        desc.push('…');
-    }
+    // Reserve every non-description column up front (prefix + separator +
+    // hint). Previously we only subtracted prefix+hint and let description
+    // eat the separator — and forced `.max(1)` so 1 char of description
+    // would render even when there was genuinely no room, pushing the hint
+    // off-screen.
+    let overhead =
+        prefix.chars().count() + separator.chars().count() + hint.chars().count();
+    let budget = (area.width as usize).saturating_sub(overhead);
+    let total = desc_one_line.chars().count();
+    let desc: String = if budget == 0 {
+        // No room — show prefix + hint only; the hint must stay visible.
+        String::new()
+    } else if total <= budget {
+        desc_one_line.to_string()
+    } else {
+        // Reserve one column for '…'.
+        let take = budget.saturating_sub(1);
+        let mut s: String = desc_one_line.chars().take(take).collect();
+        s.push('…');
+        s
+    };
     let line = Line::from(vec![
-        Span::styled("[!] ", theme::BADGE_ACTIONABLE),
+        Span::styled(prefix, theme::BADGE_ACTIONABLE),
         Span::styled(desc, theme::CARD_DESCRIPTION),
-        Span::raw("  "),
+        Span::raw(separator),
         Span::styled(hint, theme::DIM),
     ]);
     frame.render_widget(Paragraph::new(line), area);

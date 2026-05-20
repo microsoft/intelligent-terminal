@@ -4409,7 +4409,7 @@ impl App {
         let Some(recs) = self.current_tab().turn.recommendations() else { return 0 };
         let card_heights = recs.choices.iter().map(|c| rec_card_height(c, panel_width) as u16);
         let total = card_heights.clone().sum::<u16>();
-        let floor = card_heights.max().unwrap_or(ui::card::CARD_MIN_HEIGHT);
+        let floor = card_heights.max().unwrap_or(ui::card::CARD_MIN_SIZE);
         // Reserve: input(3) + chat_min(1) + rec_hint(1) = 5.
         let ceiling = self.terminal_rows.saturating_sub(5);
         total.min(ceiling).max(floor)
@@ -4430,7 +4430,7 @@ impl App {
         // Permission is modal — only hard-reserve input(3).
         let ceiling = self.terminal_rows.saturating_sub(3);
         let h = card_h.min(ceiling);
-        if h >= ui::card::CARD_MIN_HEIGHT { h } else { 1 }
+        if h >= ui::card::CARD_MIN_SIZE { h } else { 1 }
     }
 
     /// Recompute `rec_scroll.max` from the current card heights and the
@@ -5612,8 +5612,8 @@ pub(crate) fn rec_card_height(choice: &RecommendationChoice, panel_width: u16) -
         .sum::<usize>()
         .max(1);
 
-    // CARD_MIN_HEIGHT counts 1 content row; add the wrap-extra rows + 1 gap.
-    ui::card::CARD_MIN_HEIGHT as usize + content_lines.saturating_sub(1) + 1
+    // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows + 1 gap.
+    ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1) + 1
 }
 
 /// Computes the rendered height (in terminal rows) of the embedded
@@ -5629,8 +5629,8 @@ pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -
         })
         .sum::<usize>()
         .max(1);
-    // CARD_MIN_HEIGHT counts 1 content row; add the wrap-extra rows.
-    ui::card::CARD_MIN_HEIGHT as usize + content_lines.saturating_sub(1)
+    // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows.
+    ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1)
 }
 
 /// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
@@ -7265,7 +7265,7 @@ mod tests {
     use crate::coordinator::{
         OpenTarget, RecommendationChoice, RecommendationSet, RecommendedAction,
     };
-    use crate::ui::card::{card_content_width, CARD_H_CHROME, CARD_MIN_HEIGHT};
+    use crate::ui::card::{card_content_width, CARD_H_CHROME, CARD_MIN_SIZE};
 
     fn perm_with(desc: &str) -> PermissionState {
         PermissionState {
@@ -7322,7 +7322,7 @@ mod tests {
         let perm = perm_with("ok");
         assert_eq!(
             permission_card_height(&perm, 80) as u16,
-            CARD_MIN_HEIGHT
+            CARD_MIN_SIZE
         );
     }
 
@@ -7333,13 +7333,13 @@ mod tests {
         let inner_full = 80 - CARD_H_CHROME as usize;
         assert_eq!(
             permission_card_height(&perm, 80),
-            CARD_MIN_HEIGHT as usize + 200_usize.div_ceil(inner_full) - 1
+            CARD_MIN_SIZE as usize + 200_usize.div_ceil(inner_full) - 1
         );
         // Debug panel open: 60% of 80 = 48 → wrap at 40.
         let inner_split = 48 - CARD_H_CHROME as usize;
         assert_eq!(
             permission_card_height(&perm, 48),
-            CARD_MIN_HEIGHT as usize + 200_usize.div_ceil(inner_split) - 1
+            CARD_MIN_SIZE as usize + 200_usize.div_ceil(inner_split) - 1
         );
         // The two should differ — proves the panel_width input matters
         // (the PR #20 reviewer-3 bug).
@@ -7353,13 +7353,13 @@ mod tests {
     fn permission_card_height_treats_blank_lines_as_one_row() {
         let perm = perm_with("line1\n\nline2");
         // 3 logical lines (blank counts as 1).
-        assert_eq!(permission_card_height(&perm, 80), CARD_MIN_HEIGHT as usize + 2);
+        assert_eq!(permission_card_height(&perm, 80), CARD_MIN_SIZE as usize + 2);
     }
 
     #[test]
     fn rec_card_height_includes_inter_card_gap() {
         let h = rec_card_height(&rec_send("ls"), 80);
-        assert_eq!(h as u16, CARD_MIN_HEIGHT + 1);
+        assert_eq!(h as u16, CARD_MIN_SIZE + 1);
     }
 
     #[test]
@@ -7378,7 +7378,7 @@ mod tests {
         };
         let h = rec_card_height(&choice, 80);
         // "New tab (logs) in C:/repo" fits on one row at width 72.
-        assert_eq!(h as u16, CARD_MIN_HEIGHT + 1);
+        assert_eq!(h as u16, CARD_MIN_SIZE + 1);
     }
 
     #[test]
@@ -7391,7 +7391,7 @@ mod tests {
     #[test]
     fn permission_panel_height_falls_back_to_compact_below_card_min() {
         let mut app = test_app();
-        app.terminal_rows = 7; // ceiling = 7-3 = 4 < CARD_MIN_HEIGHT
+        app.terminal_rows = 7; // ceiling = 7-3 = 4 < CARD_MIN_SIZE
         app.current_tab_mut().permission = Some(perm_with("ok"));
         // Must stay visible — agent flow blocks on this prompt. 1-row strip
         // is the compact fallback rendered by `ui::permission::render`.
@@ -7401,9 +7401,9 @@ mod tests {
     #[test]
     fn permission_panel_height_admits_at_card_min_ceiling() {
         let mut app = test_app();
-        app.terminal_rows = 8; // ceiling = 5 == CARD_MIN_HEIGHT
+        app.terminal_rows = 8; // ceiling = 5 == CARD_MIN_SIZE
         app.current_tab_mut().permission = Some(perm_with("ok"));
-        assert_eq!(app.permission_panel_height(80), CARD_MIN_HEIGHT);
+        assert_eq!(app.permission_panel_height(80), CARD_MIN_SIZE);
     }
 
     #[test]
@@ -7440,5 +7440,43 @@ mod tests {
         assert_eq!(app.main_area_width(), 100);
         app.show_debug_panel = true;
         assert_eq!(app.main_area_width(), 60);
+    }
+
+    /// Regression: `ui::recommendations::render` used `area.width` (= `h_rec[1]`
+    /// = `main_area.width - 2`) when calling `rec_card_height`, while
+    /// `rec_panel_height` / `sync_rec_scroll_max` used `main_area.width`. The
+    /// 2-cell desync clipped the bottom card and undercounted scroll bounds
+    /// whenever a card's wrap row count differed between the two widths.
+    ///
+    /// This test pins both code paths to `main_area.width`, and picks a
+    /// text length that lies in the critical window `(W-10, W-8]` so the
+    /// old buggy width (`W-2`, content `W-10`) would wrap to a different
+    /// row count than the correct width (`W`, content `W-8`).
+    #[test]
+    fn rec_card_height_matches_predict_and_render_paths() {
+        let w: u16 = 50;
+        // text length 42 sits exactly at the boundary: fits on 1 row at
+        // inner_width 42 (W=50, chrome=8), but spills to 2 rows at
+        // inner_width 40 (the old buggy basis).
+        let text = "a".repeat(42);
+        let choice = rec_send(&text);
+        let mut app = test_app();
+        app.terminal_cols = w;
+        app.terminal_rows = 30;
+        install_recs(&mut app, vec![choice.clone()]);
+
+        let predict = app.rec_panel_height(app.main_area_width()) as usize;
+        // Same width the renderer now uses (`app.main_area_width()`).
+        let render = rec_card_height(&choice, app.main_area_width());
+        assert_eq!(predict, render);
+
+        // Sanity: confirm the chosen text *is* a sensitive input — i.e. the
+        // old buggy basis (h_rec[1] width = W-2) would have produced a
+        // different height. If this ever fails the test no longer guards
+        // the regression.
+        let buggy = rec_card_height(&choice, app.main_area_width() - 2);
+        assert_ne!(render, buggy,
+            "text length 42 should wrap differently at width 50 vs 48 — \
+             pick a different critical input");
     }
 }
