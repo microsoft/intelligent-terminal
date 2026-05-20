@@ -118,7 +118,7 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="AppName" xml:space="preserve">
-    <value>Terminal</value>
+    <value>Intelligent Terminal</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
   </data>
   <data name="AppNameDev" xml:space="preserve">
@@ -134,7 +134,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
   </data>
   <data name="AppStoreName" xml:space="preserve">
-    <value>Windows Terminal</value>
+    <value>Intelligent Terminal</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
   </data>
   <data name="AppStoreNameDev" xml:space="preserve">
@@ -150,7 +150,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
   </data>
   <data name="AppShortName" xml:space="preserve">
-    <value>Terminal</value>
+    <value>Intelligent Terminal</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
   </data>
   <data name="AppShortNameDev" xml:space="preserve">
@@ -192,7 +192,7 @@
     <comment>This is a menu item that will be displayed in the Windows File Explorer that launches the Preview version of Windows Terminal. Please mark one of the characters to be an accelerator key.</comment>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem" xml:space="preserve">
-    <value>Óрêп ìл &amp;Ťěѓmιиåĺ !!! !!</value>
+    <value>Open in &amp;Intelligent Terminal</value>
     <comment>This is a menu item that will be displayed in the Windows File Explorer that launches the non-preview version of Windows Terminal. Please mark one of the characters to be an accelerator key.</comment>
   </data>
 </root>
