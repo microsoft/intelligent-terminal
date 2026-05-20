@@ -3,6 +3,21 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::theme;
 
+/// Horizontal chrome between `main_area.width` and a card's inner text:
+/// 2 (h_rec/h_perm outer padding) + 2 (border) + 4 (inset, 2 each side) = 8.
+pub const CARD_H_CHROME: u16 = 8;
+
+/// Minimum `area.{width,height}` for `render_card_shell` to paint anything:
+/// 2 borders + content(1) + divider(1) + buttons(1) = 5. Callers reserving
+/// fewer rows than this would leave the card invisible — clamp to 0 instead.
+pub const CARD_MIN_HEIGHT: u16 = 5;
+
+/// Wrap width inside a card given the outer panel width. Floors at 1 so
+/// `div_ceil` callers don't divide by zero on absurdly narrow terminals.
+pub fn card_content_width(panel_width: u16) -> usize {
+    (panel_width as usize).saturating_sub(CARD_H_CHROME as usize).max(1)
+}
+
 pub fn inset_horizontal(r: Rect, n: u16) -> Rect {
     Rect {
         x: r.x.saturating_add(n),
@@ -13,15 +28,14 @@ pub fn inset_horizontal(r: Rect, n: u16) -> Rect {
 }
 
 /// Paint the card chrome (outer border + middle divider) and return the
-/// inner content/button regions. Returns `None` when `area` is too small to
-/// fit a usable shell — callers should bail out without painting anything
-/// else, matching the previous per-card "too cramped to draw" guard.
+/// inner content/button regions. Returns `None` when `area` is smaller than
+/// `CARD_MIN_HEIGHT` in either dimension.
 pub fn render_card_shell(
     frame: &mut Frame,
     area: Rect,
     border_style: Style,
 ) -> Option<(Rect, Rect)> {
-    if area.width < 4 || area.height < 4 {
+    if area.width < CARD_MIN_HEIGHT || area.height < CARD_MIN_HEIGHT {
         return None;
     }
     let block = Block::default()
@@ -29,10 +43,6 @@ pub fn render_card_shell(
         .border_style(border_style);
     let inner = block.inner(area);
     frame.render_widget(block, area);
-
-    if inner.height < 3 || inner.width == 0 {
-        return None;
-    }
     let inner_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([

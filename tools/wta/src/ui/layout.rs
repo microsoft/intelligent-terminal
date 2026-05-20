@@ -77,7 +77,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     };
 
     let rec_panel_h = if app.current_tab().turn.recommendations().is_some() {
-        app.rec_panel_height()
+        app.rec_panel_height(main_area.width)
     } else {
         0
     };
@@ -147,7 +147,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         .split(chunks[2]);
 
     chat::render(frame, app, h_chat[1]);
-    app.sync_rec_scroll_max();
+    app.sync_rec_scroll_max(main_area.width);
     recommendations::render(frame, app, h_rec[1]);
     if app.current_tab().permission.is_some() {
         permission::render(frame, app, h_perm[1]);
@@ -209,7 +209,7 @@ pub fn input_cursor_position(app: &App, area: Rect) -> Option<Position> {
     };
 
     let rec_height = if app.current_tab().turn.recommendations().is_some() {
-        Constraint::Length(app.rec_panel_height())
+        Constraint::Length(app.rec_panel_height(main_area.width))
     } else {
         Constraint::Length(0)
     };

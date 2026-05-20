@@ -4,7 +4,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::{rec_card_height, App};
 use crate::coordinator::{OpenTarget, RecommendationChoice, RecommendedAction};
 use crate::theme;
-use crate::ui::card;
+use crate::ui::card::{self, CARD_MIN_HEIGHT};
 
 /// Render the recommendations panel. Pure: callers (layout.rs) must call
 /// `App::sync_rec_scroll_max` first so `rec_scroll.offset` is already clamped
@@ -36,8 +36,8 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             let card_h = h.saturating_sub(1) as u16; // last canvas row is inter-card gap
             let y = area.y + (canvas_top - rec_scroll) as u16;
             let available = cards_bottom.saturating_sub(y);
-            if available < 4 {
-                break; // render_card bails below 4 — nothing useful to draw
+            if available < CARD_MIN_HEIGHT {
+                break; // card shell bails below this — nothing useful to draw
             }
             let render_h = card_h.min(available);
             // Cards use the full h_rec[1] width so their left border sits in
@@ -76,7 +76,7 @@ fn render_card(
     choice: &RecommendationChoice,
     idx: usize,
 ) {
-    if area.width < 4 || area.height < 4 {
+    if area.width < CARD_MIN_HEIGHT || area.height < CARD_MIN_HEIGHT {
         return;
     }
 

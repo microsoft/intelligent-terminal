@@ -1,5 +1,5 @@
 mod auth;
-mod card;
+pub mod card;
 mod chat;
 mod command_popup;
 mod debug_panel;

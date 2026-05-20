@@ -2581,7 +2581,7 @@ impl App {
                     // 3 input + 1 nav hint row above the input.
                     let recs_top = self
                         .terminal_rows
-                        .saturating_sub(4 + self.rec_panel_height());
+                        .saturating_sub(4 + self.rec_panel_height(self.main_area_width()));
                     row >= recs_top
                 };
                 let d = delta as isize;
@@ -3835,7 +3835,7 @@ impl App {
                 if self.current_tab_mut().selected_recommendation > 0 {
                     self.current_tab_mut().selected_recommendation -= 1;
                     self.current_tab_mut().selected_button = self.default_button_for_selected();
-                    self.scroll_rec_to_selected();
+                    self.scroll_rec_to_selected(self.main_area_width());
                 }
             }
             KeyCode::Down if self.current_tab().input.is_empty() && self.current_tab().turn.recommendations().is_some() => {
@@ -3849,7 +3849,7 @@ impl App {
                     let default_btn = self.default_button_for_selected();
                     self.current_tab_mut().selected_recommendation += 1;
                     self.current_tab_mut().selected_button = default_btn;
-                    self.scroll_rec_to_selected();
+                    self.scroll_rec_to_selected(self.main_area_width());
                 }
             }
             KeyCode::Right | KeyCode::Tab
@@ -4384,58 +4384,63 @@ impl App {
         }
     }
 
+    /// Width of the main area (chat / recs / perm / input) — matches the
+    /// 60/40 horizontal split in `ui::layout::render` when the debug panel is
+    /// open. All card/wrap calculations must root here, not `terminal_cols`.
+    pub fn main_area_width(&self) -> u16 {
+        if self.show_debug_panel {
+            self.terminal_cols.saturating_mul(60) / 100
+        } else {
+            self.terminal_cols
+        }
+    }
+
     /// Height of the recommendations panel — grows to fit content, capped so
-    /// input (3) and chat (≥3) still have room, but floored at
-    /// `tallest_card_h + 1` so any card is fully renderable when scrolled to.
-    /// Using the tallest (not just the recommended) means Down/Up navigation
-    /// never lands on a card too tall for the panel. The floor wins when the
-    /// cap would otherwise hide a card.
-    pub fn rec_panel_height(&self) -> u16 {
+    /// input and chat still have room, but floored at the tallest card's
+    /// height so any card is fully renderable when scrolled to. Using the
+    /// tallest (not just the recommended) means Down/Up navigation never
+    /// lands on a card too tall for the panel.
+    ///
+    /// `panel_width` is the actual render width (`main_area.width` after the
+    /// debug-panel split), not `terminal_cols` — passing the wrong one
+    /// under-counts wrap rows and clips the bottom card when the debug panel
+    /// is open.
+    pub fn rec_panel_height(&self, panel_width: u16) -> u16 {
         let Some(recs) = self.current_tab().turn.recommendations() else { return 0 };
-        let w = self.terminal_cols;
-        let card_heights = recs.choices.iter().map(|c| rec_card_height(c, w) as u16);
+        let card_heights = recs.choices.iter().map(|c| rec_card_height(c, panel_width) as u16);
         let total = card_heights.clone().sum::<u16>();
-        let floor = card_heights.max().unwrap_or(7);
-        // 6 = input (3) + chat min (3); +1 reserves the row layout.rs adds
-        // for the nav hint just above the input.
-        let ceiling = self.terminal_rows.saturating_sub(7);
+        let floor = card_heights.max().unwrap_or(ui::card::CARD_MIN_HEIGHT);
+        // Reserve: input(3) + chat_min(1) + rec_hint(1) = 5.
+        let ceiling = self.terminal_rows.saturating_sub(5);
         total.min(ceiling).max(floor)
     }
 
-    /// Height of the embedded permission card. Returns 0 when no permission
-    /// is pending. Permission is modal-equivalent — the user can't make
-    /// progress without resolving it — so the only hard reserve is the input
-    /// row (3); chat / filler / nav-hint may shrink to make room. When the
-    /// terminal is so short that even the minimum drawable shell (4) won't
-    /// fit, return 0 so layout doesn't reserve unrenderable rows (the card
-    /// shell bails out below 4 in card.rs).
+    /// Height reserved for the embedded permission card. Returns 0 only when
+    /// no permission is pending — when one *is* pending, the user must be
+    /// able to see it (the agent flow is blocked until they answer), so we
+    /// fall back to a 1-row compact strip when the full card can't fit.
+    /// `permission::render` reads the actual reserved height and switches
+    /// between full and compact rendering.
     ///
-    /// `panel_width` must be the actual render width the card will see (i.e.
-    /// `main_area.width` after debug-panel split), not `terminal_cols`.
-    /// Passing the full terminal width would under-count wrap rows when the
-    /// debug panel is visible and clip the description.
+    /// `panel_width` is the actual render width (`main_area.width` after the
+    /// debug-panel split), not `terminal_cols`.
     pub fn permission_panel_height(&self, panel_width: u16) -> u16 {
         let Some(perm) = self.current_tab().permission.as_ref() else { return 0 };
         let card_h = permission_card_height(perm, panel_width) as u16;
+        // Permission is modal — only hard-reserve input(3).
         let ceiling = self.terminal_rows.saturating_sub(3);
         let h = card_h.min(ceiling);
-        if h < 4 { 0 } else { h }
+        if h >= ui::card::CARD_MIN_HEIGHT { h } else { 1 }
     }
 
     /// Recompute `rec_scroll.max` from the current card heights and the
     /// panel's available cards region. Called from layout.rs before
     /// `recommendations::render` so the renderer stays `&App` and any
     /// wheel-driven over-scroll is clamped before paint.
-    ///
-    /// `max = total_cards_h - panel_cards_h` (saturating): when the panel
-    /// grows large enough to fit every card, `max` drops to 0 and `set_max`
-    /// snaps `offset` back to the top — so resizing the pane wider
-    /// "rearranges" the panel without needing a manual scroll.
-    pub fn sync_rec_scroll_max(&mut self) {
-        let w = self.terminal_cols;
-        let panel_cards_h = self.rec_panel_height() as usize;
+    pub fn sync_rec_scroll_max(&mut self, panel_width: u16) {
+        let panel_cards_h = self.rec_panel_height(panel_width) as usize;
         let Some(recs) = self.current_tab().turn.recommendations() else { return };
-        let total: usize = recs.choices.iter().map(|c| rec_card_height(c, w)).sum();
+        let total: usize = recs.choices.iter().map(|c| rec_card_height(c, panel_width)).sum();
         self.current_tab_mut().rec_scroll.set_max(total.saturating_sub(panel_cards_h));
     }
 
@@ -4444,14 +4449,13 @@ impl App {
     }
 
     /// Scroll the rec panel so the selected card's top sits at the panel top.
-    fn scroll_rec_to_selected(&mut self) {
-        let panel_height = self.rec_panel_height() as usize;
-        let w = self.terminal_cols;
+    fn scroll_rec_to_selected(&mut self, panel_width: u16) {
+        let panel_height = self.rec_panel_height(panel_width) as usize;
         let Some(recs) = self.current_tab().turn.recommendations().cloned() else { return };
 
         let mut line_top = 0usize;
         for (idx, choice) in recs.choices.iter().enumerate() {
-            let card_h = rec_card_height(choice, w);
+            let card_h = rec_card_height(choice, panel_width);
             if idx == self.current_tab().selected_recommendation {
                 let tab = self.current_tab_mut();
                 if line_top < tab.rec_scroll.offset
@@ -5572,12 +5576,10 @@ impl App {
 }
 
 /// Computes the rendered height (in terminal rows) of a recommendation card.
+/// Includes one trailing row used as the inter-card gap in the rec panel.
 pub(crate) fn rec_card_height(choice: &RecommendationChoice, panel_width: u16) -> usize {
     use crate::coordinator::RecommendedAction;
-    // h_rec padding (1+1) + side borders (1+1) + inner padding (2+2) = 8. The
-    // card now spans the full h_rec[1] width so its border aligns with the
-    // green-dot column in the chat above (no extra 2-cell outer indent).
-    let inner_width = (panel_width as usize).saturating_sub(8).max(1);
+    let inner_width = ui::card::card_content_width(panel_width);
 
     let text = choice.actions.iter().find_map(|action| match action {
         RecommendedAction::Send { input, .. } => Some(input.clone()),
@@ -5610,31 +5612,25 @@ pub(crate) fn rec_card_height(choice: &RecommendationChoice, panel_width: u16) -
         .sum::<usize>()
         .max(1);
 
-    // top_border + content + divider + buttons + bottom_border + blank = 5 fixed rows.
-    5 + content_lines
+    // CARD_MIN_HEIGHT counts 1 content row; add the wrap-extra rows + 1 gap.
+    ui::card::CARD_MIN_HEIGHT as usize + content_lines.saturating_sub(1) + 1
 }
 
 /// Computes the rendered height (in terminal rows) of the embedded
-/// permission card. Same chrome budget as `rec_card_height` (8-cell
-/// horizontal padding for outer h_perm padding + borders + inner inset),
-/// but without the inter-card gap (only one card is ever shown).
+/// permission card. No inter-card gap — only one card is ever shown.
 pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -> usize {
-    let inner_width = (panel_width as usize).saturating_sub(8).max(1);
+    let inner_width = ui::card::card_content_width(panel_width);
     let content_lines: usize = perm
         .description
         .lines()
         .map(|line| {
             let chars = line.chars().count();
-            if chars == 0 {
-                1
-            } else {
-                chars.div_ceil(inner_width)
-            }
+            if chars == 0 { 1 } else { chars.div_ceil(inner_width) }
         })
         .sum::<usize>()
         .max(1);
-    // top_border + content + divider + buttons + bottom_border = 4 + content_lines.
-    4 + content_lines
+    // CARD_MIN_HEIGHT counts 1 content row; add the wrap-extra rows.
+    ui::card::CARD_MIN_HEIGHT as usize + content_lines.saturating_sub(1)
 }
 
 /// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
@@ -7261,5 +7257,188 @@ mod tests {
         // AgentMessageEnd flips end_pending=false.
         app.turn_close(DEFAULT_TAB_ID);
         assert!(app.current_tab().turn.accepts_new_prompt());
+    }
+
+    // ─── card / panel height math ───────────────────────────────────────────
+
+    use crate::app::turn_state::{SubmittedPrompt, TurnOutcome, TurnState};
+    use crate::coordinator::{
+        OpenTarget, RecommendationChoice, RecommendationSet, RecommendedAction,
+    };
+    use crate::ui::card::{card_content_width, CARD_H_CHROME, CARD_MIN_HEIGHT};
+
+    fn perm_with(desc: &str) -> PermissionState {
+        PermissionState {
+            description: desc.to_string(),
+            options: vec![PermOption {
+                id: "allow_once".into(),
+                name: "Allow".into(),
+                kind: "allow_once".into(),
+            }],
+            selected: 0,
+            responder: None,
+        }
+    }
+
+    fn rec_send(input: &str) -> RecommendationChoice {
+        RecommendationChoice {
+            choice: 0,
+            title: "t".into(),
+            rationale: String::new(),
+            actions: vec![RecommendedAction::Send {
+                parent: String::new(),
+                input: input.into(),
+            }],
+        }
+    }
+
+    fn install_recs(app: &mut App, choices: Vec<RecommendationChoice>) {
+        let tab = app.current_tab_mut();
+        tab.turn = TurnState::Surfaced {
+            prompt: SubmittedPrompt {
+                id: 1,
+                text: "p".into(),
+                submitted_at_unix_s: 0.0,
+                autofix: None,
+            },
+            outcome: TurnOutcome::Recommendation(RecommendationSet {
+                recommended_choice: Some(0),
+                choices,
+            }),
+            end_pending: false,
+        };
+    }
+
+    #[test]
+    fn card_content_width_subtracts_chrome_and_floors_at_1() {
+        assert_eq!(card_content_width(80), 80 - CARD_H_CHROME as usize);
+        assert_eq!(card_content_width(CARD_H_CHROME + 1), 1);
+        assert_eq!(card_content_width(CARD_H_CHROME), 1);
+        assert_eq!(card_content_width(0), 1);
+    }
+
+    #[test]
+    fn permission_card_height_single_line_is_card_min() {
+        let perm = perm_with("ok");
+        assert_eq!(
+            permission_card_height(&perm, 80) as u16,
+            CARD_MIN_HEIGHT
+        );
+    }
+
+    #[test]
+    fn permission_card_height_counts_wrap_at_actual_panel_width() {
+        let perm = perm_with(&"a".repeat(200));
+        // Full-width terminal: wrap at 80 - 8 = 72.
+        let inner_full = 80 - CARD_H_CHROME as usize;
+        assert_eq!(
+            permission_card_height(&perm, 80),
+            CARD_MIN_HEIGHT as usize + 200_usize.div_ceil(inner_full) - 1
+        );
+        // Debug panel open: 60% of 80 = 48 → wrap at 40.
+        let inner_split = 48 - CARD_H_CHROME as usize;
+        assert_eq!(
+            permission_card_height(&perm, 48),
+            CARD_MIN_HEIGHT as usize + 200_usize.div_ceil(inner_split) - 1
+        );
+        // The two should differ — proves the panel_width input matters
+        // (the PR #20 reviewer-3 bug).
+        assert_ne!(
+            permission_card_height(&perm, 80),
+            permission_card_height(&perm, 48)
+        );
+    }
+
+    #[test]
+    fn permission_card_height_treats_blank_lines_as_one_row() {
+        let perm = perm_with("line1\n\nline2");
+        // 3 logical lines (blank counts as 1).
+        assert_eq!(permission_card_height(&perm, 80), CARD_MIN_HEIGHT as usize + 2);
+    }
+
+    #[test]
+    fn rec_card_height_includes_inter_card_gap() {
+        let h = rec_card_height(&rec_send("ls"), 80);
+        assert_eq!(h as u16, CARD_MIN_HEIGHT + 1);
+    }
+
+    #[test]
+    fn rec_card_height_handles_open_action_synthesis() {
+        let choice = RecommendationChoice {
+            choice: 0,
+            title: "t".into(),
+            rationale: String::new(),
+            actions: vec![RecommendedAction::Open {
+                target: OpenTarget::Tab,
+                parent: None,
+                cwd: Some("C:/repo".into()),
+                title: Some("logs".into()),
+                direction: None,
+            }],
+        };
+        let h = rec_card_height(&choice, 80);
+        // "New tab (logs) in C:/repo" fits on one row at width 72.
+        assert_eq!(h as u16, CARD_MIN_HEIGHT + 1);
+    }
+
+    #[test]
+    fn permission_panel_height_zero_when_no_permission() {
+        let mut app = test_app();
+        app.terminal_rows = 30;
+        assert_eq!(app.permission_panel_height(80), 0);
+    }
+
+    #[test]
+    fn permission_panel_height_falls_back_to_compact_below_card_min() {
+        let mut app = test_app();
+        app.terminal_rows = 7; // ceiling = 7-3 = 4 < CARD_MIN_HEIGHT
+        app.current_tab_mut().permission = Some(perm_with("ok"));
+        // Must stay visible — agent flow blocks on this prompt. 1-row strip
+        // is the compact fallback rendered by `ui::permission::render`.
+        assert_eq!(app.permission_panel_height(80), 1);
+    }
+
+    #[test]
+    fn permission_panel_height_admits_at_card_min_ceiling() {
+        let mut app = test_app();
+        app.terminal_rows = 8; // ceiling = 5 == CARD_MIN_HEIGHT
+        app.current_tab_mut().permission = Some(perm_with("ok"));
+        assert_eq!(app.permission_panel_height(80), CARD_MIN_HEIGHT);
+    }
+
+    #[test]
+    fn rec_panel_height_floor_lets_tallest_card_render() {
+        let mut app = test_app();
+        app.terminal_rows = 20;
+        let tall = "x".repeat(500);
+        install_recs(&mut app, vec![rec_send(&tall)]);
+        let tall_h = rec_card_height(&app.current_tab().turn.recommendations()
+            .unwrap().choices[0], 80) as u16;
+        // ceiling = 20 - 5 = 15; tall card is much larger; floor wins.
+        assert_eq!(app.rec_panel_height(80), tall_h);
+    }
+
+    #[test]
+    fn rec_panel_height_caps_at_ceiling_when_total_exceeds() {
+        let mut app = test_app();
+        app.terminal_rows = 30;
+        // Three short cards, each h=6 → total 18; ceiling 30-5=25.
+        install_recs(&mut app, vec![rec_send("a"), rec_send("b"), rec_send("c")]);
+        assert_eq!(app.rec_panel_height(80), 18);
+    }
+
+    #[test]
+    fn rec_panel_height_zero_when_no_recs() {
+        let app = test_app();
+        assert_eq!(app.rec_panel_height(80), 0);
+    }
+
+    #[test]
+    fn main_area_width_reflects_debug_panel_split() {
+        let mut app = test_app();
+        app.terminal_cols = 100;
+        assert_eq!(app.main_area_width(), 100);
+        app.show_debug_panel = true;
+        assert_eq!(app.main_area_width(), 60);
     }
 }
