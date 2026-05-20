@@ -3224,6 +3224,12 @@ impl App {
                     tracing::info!(target: "set_view", view = view_str, "applying set_view");
                     match view_str {
                         "sessions" | "agents" => {
+                            // User pressed Ctrl+Alt+/ or F2 — they know the shortcut,
+                            // permanently dismiss the welcome hint.
+                            if self.show_welcome_hint {
+                                self.show_welcome_hint = false;
+                                set_welcome_shown_in_state();
+                            }
                             let entering_agents =
                                 self.current_tab().current_view != View::Agents;
                             let has_sessions = !self
