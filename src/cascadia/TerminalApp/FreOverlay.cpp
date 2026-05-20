@@ -133,9 +133,11 @@ namespace winrt::TerminalApp::implementation
                                                   const RoutedEventArgs& /*args*/)
     {
         // Guard: event can fire during InitializeComponent before controls exist
-        if (auto hint = SessionManagementHint())
+        auto toggle = SessionManagementToggle();
+        auto hint = SessionManagementHint();
+        if (toggle && hint)
         {
-            hint.Visibility(SessionManagementToggle().IsOn() ? Visibility::Visible : Visibility::Collapsed);
+            hint.Visibility(toggle.IsOn() ? Visibility::Visible : Visibility::Collapsed);
         }
     }
 
