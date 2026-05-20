@@ -7,7 +7,12 @@ trigger:
     exclude:
       - docs/*
       - samples/*
-      - tools/*
+      # tools/wta/** intentionally NOT excluded — it hosts the WTA fuzzer
+      # sources and the function under fuzz (build_wt_commandline). When
+      # adding a new tools/ subdir, decide whether it affects fuzz and add
+      # an exclude entry here if not.
+      - tools/ReleaseEngineering/*
+      - tools/TestTableWriter/*
 
 pr: none
 

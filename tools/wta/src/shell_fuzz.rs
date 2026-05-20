@@ -12,6 +12,13 @@ pub enum BuildCommandlineError {
     /// The program path (argv[0]) contains a literal `"`. There is no
     /// `CommandLineToArgvW`-compatible way to escape it.
     QuoteInProgram,
+    /// The program path contains a NUL byte. Windows commandline strings
+    /// are NUL-terminated, so `CommandLineToArgvW` / `CreateProcess` would
+    /// silently truncate at the first NUL.
+    NulInProgram,
+    /// An argument contains a NUL byte. Same truncation hazard as
+    /// [`Self::NulInProgram`].
+    NulInArgument,
 }
 
 impl std::fmt::Display for BuildCommandlineError {
@@ -20,6 +27,8 @@ impl std::fmt::Display for BuildCommandlineError {
             Self::QuoteInProgram => {
                 f.write_str("executable path cannot contain a literal double quote")
             }
+            Self::NulInProgram => f.write_str("executable path cannot contain a NUL byte"),
+            Self::NulInArgument => f.write_str("argument cannot contain a NUL byte"),
         }
     }
 }
@@ -35,6 +44,9 @@ fn append_wt_commandline_program(
     cmdline: &mut String,
     value: &str,
 ) -> Result<(), BuildCommandlineError> {
+    if value.contains('\0') {
+        return Err(BuildCommandlineError::NulInProgram);
+    }
     if value.contains('"') {
         return Err(BuildCommandlineError::QuoteInProgram);
     }
@@ -44,12 +56,23 @@ fn append_wt_commandline_program(
     Ok(())
 }
 
-/// Append a non-first argument, quoting using the `CommandLineToArgvW`
-/// convention. Always quotes unconditionally — mirrors
-/// `QuoteAndEscapeCommandlineArg` in `src/cascadia/WinRTUtils/inc/WtExeUtils.h`.
-/// A `needs_quotes` heuristic is fragile because the OS parser splits on
-/// whitespace beyond space/tab (e.g. `\n`, `\r`).
-fn append_wt_commandline_arg(cmdline: &mut String, value: &str) {
+/// Append a non-first argument, quoting per the `CommandLineToArgvW`
+/// rules. Always quotes unconditionally — a `needs_quotes` heuristic is
+/// fragile because the OS parser splits on whitespace beyond space/tab
+/// (e.g. `\n`, `\r`).
+///
+/// Note: similar in spirit to `QuoteAndEscapeCommandlineArg` in
+/// `src/cascadia/WinRTUtils/inc/WtExeUtils.h`, but **not** identical —
+/// that C++ helper also escapes `;` for WT's own subcommand separator,
+/// which has no meaning at this layer (`CommandLineToArgvW` +
+/// `CreateProcess`).
+fn append_wt_commandline_arg(
+    cmdline: &mut String,
+    value: &str,
+) -> Result<(), BuildCommandlineError> {
+    if value.contains('\0') {
+        return Err(BuildCommandlineError::NulInArgument);
+    }
     cmdline.push('"');
     let mut backslashes = 0;
     for ch in value.chars() {
@@ -77,6 +100,7 @@ fn append_wt_commandline_arg(cmdline: &mut String, value: &str) {
         cmdline.push('\\');
     }
     cmdline.push('"');
+    Ok(())
 }
 
 /// Build a commandline string from a command and its arguments for WT pane
@@ -100,7 +124,7 @@ pub fn build_wt_commandline(
     append_wt_commandline_program(&mut cmdline, command)?;
     for arg in args {
         cmdline.push(' ');
-        append_wt_commandline_arg(&mut cmdline, arg);
+        append_wt_commandline_arg(&mut cmdline, arg)?;
     }
     Ok(cmdline)
 }

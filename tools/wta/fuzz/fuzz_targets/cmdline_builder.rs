@@ -60,36 +60,35 @@ fuzz_target!(|input: FuzzInput| {
         return;
     }
 
-    // `CommandLineToArgvW` parses argv[0] with no backslash escaping, so a
-    // literal `"` in the command is inherently unrepresentable. The encoder
-    // must return `QuoteInProgram` for these inputs — exercise that path.
-    if input.command.contains('"') {
-        assert_eq!(
-            build_wt_commandline(&input.command, &input.args),
-            Err(BuildCommandlineError::QuoteInProgram),
-            "expected QuoteInProgram for command containing `\"`: {:?}",
-            input.command,
-        );
-        return;
-    }
-
-    let result = build_wt_commandline(&input.command, &input.args)
-        .expect("encoder returned Err for an input it should accept");
-    assert!(!result.is_empty());
-
-    let input_has_nul =
-        input.command.contains('\0') || input.args.iter().any(|a| a.contains('\0'));
-
-    if !input_has_nul {
-        assert!(
-            !result.contains('\0'),
-            "Null byte injected into commandline: {:?}",
-            result
-        );
+    // Predict the encoder's outcome for inputs that should be rejected.
+    // Ordering must match `append_wt_commandline_program` / `_arg`: NUL is
+    // checked before `"` in the program, then args are scanned in order.
+    let expected_err = if input.command.contains('\0') {
+        Some(BuildCommandlineError::NulInProgram)
+    } else if input.command.contains('"') {
+        Some(BuildCommandlineError::QuoteInProgram)
+    } else if input.args.iter().any(|a| a.contains('\0')) {
+        Some(BuildCommandlineError::NulInArgument)
     } else {
-        // OS parser would truncate at the first NUL — round-trip is not meaningful.
+        None
+    };
+
+    let result = build_wt_commandline(&input.command, &input.args);
+
+    if let Some(err) = expected_err {
+        assert_eq!(
+            result,
+            Err(err),
+            "expected {:?} for command={:?} args={:?}",
+            err,
+            input.command,
+            input.args,
+        );
         return;
     }
+
+    let result = result.expect("encoder returned Err for an input it should accept");
+    assert!(!result.is_empty());
 
     let parsed = parse_commandline(&result)
         .expect("CommandLineToArgvW failed to parse our output");
