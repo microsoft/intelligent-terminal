@@ -133,6 +133,7 @@ rfind
 ROOTOWNER
 roundf
 RSHIFT
+rustup
 rvrn
 SACL
 schandle
