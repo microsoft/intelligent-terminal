@@ -87,33 +87,6 @@ namespace Microsoft::Terminal::Protocol::Parsing
             }
         }
 
-        // close_agent_pane — direct dispatch, no broadcast.
-        // Emitted by the wta TUI when the user presses Ctrl+C twice.
-        if (outEvt.isMember("method") && outEvt["method"].isString() &&
-            outEvt["method"].asString() == "close_agent_pane")
-        {
-            return SendEventRoute::CloseAgentPane;
-        }
-
-        // view_changed — direct dispatch, no broadcast.
-        // Emitted by the wta TUI when its internal view flips
-        // (Esc out of session view, `/sessions` slash command).
-        if (outEvt.isMember("method") && outEvt["method"].isString() &&
-            outEvt["method"].asString() == "view_changed")
-        {
-            return SendEventRoute::ViewChanged;
-        }
-
-        // resume_in_new_agent_tab — direct dispatch, no broadcast.
-        // Emitted by the wta TUI's session management view on Shift+Enter
-        // over a historical session row. Carries {session_id, cwd}; WT
-        // creates a new tab + agent pane and calls back with `load_session`.
-        if (outEvt.isMember("method") && outEvt["method"].isString() &&
-            outEvt["method"].asString() == "resume_in_new_agent_tab")
-        {
-            return SendEventRoute::ResumeInNewAgentTab;
-        }
-
         // Broadcast path: params.event is required
         if (!outEvt.isMember("params") || !outEvt["params"].isObject() ||
             !outEvt["params"].isMember("event"))

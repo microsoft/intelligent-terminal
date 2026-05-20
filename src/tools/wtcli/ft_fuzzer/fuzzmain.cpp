@@ -55,18 +55,23 @@ static int FuzzOneInput(const uint8_t* data, size_t size)
     }
 
     // ── Target 2: MatchesEventFilter ──
-    // Construct semi-valid JSON from fuzzed fields so the parser succeeds
-    // and the deep matching logic (session_id, wildcard) is actually reached.
+    // Construct valid JSON from fuzzed fields using Json::Value so the parser
+    // succeeds and the deep matching logic (session_id, wildcard) is reached
+    // even when fuzzed strings contain quotes/backslashes/control chars.
     {
         // 2a: Fuzzed event structure with fuzzed filter.
         const auto& fuzzedSessionId = parts[2];
         const auto& fuzzedEvent = parts[0];
         const auto& fuzzedFilter = parts[3];
 
-        std::string syntheticJson =
-            R"({"params":{"session_id":")" + fuzzedSessionId +
-            R"(","event":")" + fuzzedEvent +
-            R"("}})";
+        Json::Value params;
+        params["session_id"] = fuzzedSessionId;
+        params["event"] = fuzzedEvent;
+        Json::Value ev;
+        ev["params"] = params;
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        auto syntheticJson = Json::writeString(wb, ev);
 
         wtcli::MatchesEventFilter(syntheticJson, fuzzedSessionId, fuzzedFilter);
 
