@@ -49,6 +49,20 @@ impl CliSource {
             other     => Self::Unknown(other.to_string()),
         }
     }
+
+    /// Map an `agent_registry` agent id (`"copilot"`, `"claude"`, `"gemini"`,
+    /// ...) to the matching `CliSource` variant. Returns `None` for agents
+    /// the session registry does not track (e.g. `"codex"`, `"unknown"`, or
+    /// an empty string), which the session-management view treats as
+    /// "no filter — show all rows".
+    pub fn from_agent_id(agent_id: &str) -> Option<Self> {
+        match agent_id.to_ascii_lowercase().as_str() {
+            "copilot" => Some(Self::Copilot),
+            "claude"  => Some(Self::Claude),
+            "gemini"  => Some(Self::Gemini),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -360,6 +374,22 @@ impl AgentSessionRegistry {
         let mut v: Vec<_> = self.sessions.values().collect();
         v.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
         v
+    }
+
+    /// Like [`iter_sorted`], but keeps only rows whose `cli_source` matches
+    /// the supplied filter. Passing `None` disables filtering and returns
+    /// the same list as `iter_sorted`. Used by the session-management view
+    /// so that, when the agent pane is running a known CLI (copilot /
+    /// claude / gemini), the list only shows sessions for that CLI.
+    pub fn iter_sorted_filtered(&self, filter: Option<&CliSource>) -> Vec<&AgentSession> {
+        let sorted = self.iter_sorted();
+        match filter {
+            None => sorted,
+            Some(want) => sorted
+                .into_iter()
+                .filter(|s| &s.cli_source == want)
+                .collect(),
+        }
     }
 
     pub fn take_dirty(&mut self) -> bool {
@@ -1144,5 +1174,107 @@ mod tests {
         assert_eq!(s.status, AgentStatus::Idle);
         assert!(s.current_tool.is_none());
         assert!(s.attention_reason.is_none());
+    }
+
+    #[test]
+    fn from_agent_id_maps_known_cli_ids() {
+        assert_eq!(CliSource::from_agent_id("copilot"), Some(CliSource::Copilot));
+        assert_eq!(CliSource::from_agent_id("claude"),  Some(CliSource::Claude));
+        assert_eq!(CliSource::from_agent_id("gemini"),  Some(CliSource::Gemini));
+        // Case-insensitive — `current_agent_id` is conventionally lowercase
+        // but mixed-case must not silently drop the filter.
+        assert_eq!(CliSource::from_agent_id("Copilot"), Some(CliSource::Copilot));
+    }
+
+    #[test]
+    fn from_agent_id_returns_none_for_untracked_or_empty() {
+        // Empty / unknown / codex are all "no filter" — the F2 view will
+        // fall back to showing every row.
+        assert_eq!(CliSource::from_agent_id(""),         None);
+        assert_eq!(CliSource::from_agent_id("codex"),    None);
+        assert_eq!(CliSource::from_agent_id("unknown"),  None);
+        assert_eq!(CliSource::from_agent_id("bogus"),    None);
+    }
+
+    #[test]
+    fn iter_sorted_filtered_keeps_only_matching_cli_source() {
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("cop"),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane("p-cop"),
+            cwd: PathBuf::from("/x"),
+            title: "copilot run".into(),
+        });
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("cla"),
+            cli_source: CliSource::Claude,
+            pane_session_id: pane("p-cla"),
+            cwd: PathBuf::from("/x"),
+            title: "claude run".into(),
+        });
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("gem"),
+            cli_source: CliSource::Gemini,
+            pane_session_id: pane("p-gem"),
+            cwd: PathBuf::from("/x"),
+            title: "gemini run".into(),
+        });
+
+        // No filter → all three rows in last_activity_at-desc order.
+        let all: Vec<&str> = reg
+            .iter_sorted_filtered(None)
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(all.len(), 3);
+
+        // Copilot filter → only the copilot row.
+        let cop: Vec<&str> = reg
+            .iter_sorted_filtered(Some(&CliSource::Copilot))
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(cop, vec!["cop"]);
+
+        // Claude filter → only the claude row.
+        let cla: Vec<&str> = reg
+            .iter_sorted_filtered(Some(&CliSource::Claude))
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(cla, vec!["cla"]);
+    }
+
+    #[test]
+    fn iter_sorted_filtered_excludes_unknown_cli_source() {
+        // A row with Unknown(_) cli_source — e.g. a malformed hook payload
+        // — must not appear under any concrete filter. With no filter it
+        // does appear, matching iter_sorted's behaviour.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("cop"),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane("p-cop"),
+            cwd: PathBuf::from("/x"),
+            title: "copilot".into(),
+        });
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("mystery"),
+            cli_source: CliSource::Unknown("foo".into()),
+            pane_session_id: pane("p-mystery"),
+            cwd: PathBuf::from("/x"),
+            title: "mystery".into(),
+        });
+
+        let cop: Vec<&str> = reg
+            .iter_sorted_filtered(Some(&CliSource::Copilot))
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(cop, vec!["cop"]);
+
+        let all_len = reg.iter_sorted_filtered(None).len();
+        assert_eq!(all_len, 2);
     }
 }

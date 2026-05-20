@@ -43,11 +43,8 @@ namespace winrt::TerminalApp::implementation
 
     void AboutDialog::_SendFeedbackOnClick(const IInspectable& /*sender*/, const Windows::UI::Xaml::Controls::ContentDialogButtonClickEventArgs& /*eventArgs*/)
     {
-#if defined(WT_BRANDING_RELEASE)
-        ShellExecute(nullptr, nullptr, L"https://go.microsoft.com/fwlink/?linkid=2125419", nullptr, nullptr, SW_SHOW);
-#else
-        ShellExecute(nullptr, nullptr, L"https://go.microsoft.com/fwlink/?linkid=2204904", nullptr, nullptr, SW_SHOW);
-#endif
+        // TODO(IntelligentTerminal): register this URL on the aka.ms portal.
+        ShellExecute(nullptr, nullptr, L"https://aka.ms/intelligentterminal/feedback", nullptr, nullptr, SW_SHOW);
     }
 
     void AboutDialog::_ThirdPartyNoticesOnClick(const IInspectable& /*sender*/, const Windows::UI::Xaml::RoutedEventArgs& /*eventArgs*/)

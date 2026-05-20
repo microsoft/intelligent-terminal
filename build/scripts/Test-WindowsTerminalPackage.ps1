@@ -98,8 +98,10 @@ Try {
     }
 
     If (($null -eq (Get-Item "$AppxPackageRootPath\wtd.exe" -EA:Ignore)) -And
-        ($null -eq (Get-Item "$AppxPackageRootPath\wt.exe" -EA:Ignore))) {
-        Throw "Failed to find wt.exe/wtd.exe -- check the WAP packaging project"
+        ($null -eq (Get-Item "$AppxPackageRootPath\wt.exe" -EA:Ignore)) -And
+        ($null -eq (Get-Item "$AppxPackageRootPath\wtai.exe" -EA:Ignore)) -And
+        ($null -eq (Get-Item "$AppxPackageRootPath\WindowsTerminal.exe" -EA:Ignore))) {
+        Throw "Failed to find wt.exe/wtd.exe/wtai.exe/WindowsTerminal.exe -- check the WAP packaging project"
     }
 
     If ($null -eq (Get-Item "$AppxPackageRootPath\OpenConsole.exe" -EA:Ignore)) {

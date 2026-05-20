@@ -1,9 +1,10 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::{rec_card_height, App};
 use crate::coordinator::{OpenTarget, RecommendationChoice, RecommendedAction};
 use crate::theme;
+use crate::ui::card;
 
 /// Render the recommendations panel. Pure: callers (layout.rs) must call
 /// `App::sync_rec_scroll_max` first so `rec_scroll.offset` is already clamped
@@ -93,34 +94,17 @@ fn render_card(
         theme::CARD_BORDER
     };
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(border_style);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    if inner.height < 3 || inner.width == 0 {
+    let Some((content_area, button_area)) = card::render_card_shell(frame, area, border_style)
+    else {
         return;
-    }
-
-    let inner_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-        ])
-        .split(inner);
-    let content_area = inner_chunks[0];
-    let divider_y = inner_chunks[1].y;
-    let button_area = inner_chunks[2];
+    };
 
     let (command_text, buttons, body_kind) = extract_card_content(choice, app, is_selected);
     let body_style = match body_kind {
         CardBodyKind::Code => theme::CARD_CODE,
         CardBodyKind::Description => theme::CARD_DESCRIPTION,
     };
-    let content_inner = inset_horizontal(content_area, 2);
+    let content_inner = card::inset_horizontal(content_area, 2);
     if content_inner.width > 0 {
         let content = Paragraph::new(command_text)
             .style(body_style)
@@ -128,77 +112,15 @@ fn render_card(
         frame.render_widget(content, content_inner);
     }
 
-    render_divider(frame.buffer_mut(), area, divider_y, border_style);
-
-    let button_inner = inset_horizontal(button_area, 2);
+    let button_inner = card::inset_horizontal(button_area, 2);
     if button_inner.width > 0 {
-        render_buttons(
-            frame,
-            button_inner,
-            &buttons,
-            is_selected,
-            app.current_tab().selected_button,
-        );
-    }
-}
-
-fn inset_horizontal(r: Rect, n: u16) -> Rect {
-    Rect {
-        x: r.x.saturating_add(n),
-        y: r.y,
-        width: r.width.saturating_sub(n.saturating_mul(2)),
-        height: r.height,
-    }
-}
-
-fn render_divider(buf: &mut Buffer, area: Rect, y: u16, border_style: Style) {
-    if y < area.y || y >= area.y.saturating_add(area.height) {
-        return;
-    }
-    if area.width < 2 {
-        return;
-    }
-    let left = area.x;
-    let right = area.x.saturating_add(area.width).saturating_sub(1);
-    if left >= right {
-        return;
-    }
-    buf.set_string(left, y, "├", border_style);
-    let middle_width = area.width.saturating_sub(2) as usize;
-    if middle_width > 0 {
-        buf.set_string(left.saturating_add(1), y, "─".repeat(middle_width), border_style);
-    }
-    buf.set_string(right, y, "┤", border_style);
-}
-
-fn render_buttons(
-    frame: &mut Frame,
-    area: Rect,
-    buttons: &[String],
-    is_selected: bool,
-    focused_button: usize,
-) {
-    let mut pieces: Vec<(String, Style)> = Vec::new();
-    for (i, label) in buttons.iter().enumerate() {
-        if i > 0 {
-            pieces.push(("   ".into(), Style::default()));
-        }
-        let style = if is_selected && i == focused_button {
-            theme::BUTTON_FOCUSED
+        let focused = if is_selected {
+            Some(app.current_tab().selected_button)
         } else {
-            theme::BUTTON_PLAIN
+            None
         };
-        pieces.push((label.clone(), style));
+        card::render_buttons(frame, button_inner, &buttons, focused);
     }
-
-    // Left-align buttons so they sit under the command text column.
-    let mut spans: Vec<Span> = Vec::with_capacity(pieces.len());
-    for (text, style) in pieces {
-        spans.push(Span::styled(text, style));
-    }
-
-    let para = Paragraph::new(Line::from(spans));
-    frame.render_widget(para, area);
 }
 
 enum CardBodyKind {

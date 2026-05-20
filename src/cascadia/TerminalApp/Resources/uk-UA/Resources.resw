@@ -166,8 +166,8 @@
     <value>Не вдалося перезавантажити налаштування</value>
   </data>
   <data name="FeedbackUriValue" xml:space="preserve">
-    <value>https://go.microsoft.com/fwlink/?linkid=2125419</value>
-    <comment>{Locked}This is a FWLink, so it will be localized with the fwlink tool</comment>
+    <value>https://aka.ms/intelligentterminal/feedback</value>
+    <comment>{Locked}</comment>
   </data>
   <data name="AboutMenuItem" xml:space="preserve">
     <value>Про програму</value>
@@ -298,8 +298,8 @@
     <comment>{Locked="\"globals\""} </comment>
   </data>
   <data name="LegacyGlobalsPropertyHrefUrl" xml:space="preserve">
-    <value>https://go.microsoft.com/fwlink/?linkid=2128258</value>
-    <comment>{Locked}This is a FWLink, so it will be localized with the fwlink tool</comment>
+    <value>https://aka.ms/intelligentterminal/legacy-globals</value>
+    <comment>{Locked}</comment>
   </data>
   <data name="LegacyGlobalsPropertyHrefLabel" xml:space="preserve">
     <value>Для отримання додаткової інформації перегляньте цю веб-сторінку.</value>

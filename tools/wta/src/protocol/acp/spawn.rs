@@ -8,6 +8,8 @@
 //! wraps stdio with instrumentation and drives a prompt loop; the probe
 //! attaches raw stdio, runs `initialize` + `new_session`, and exits.
 
+use std::path::Path;
+
 use anyhow::{anyhow, Result};
 
 pub(crate) struct AgentSpawn {
@@ -35,7 +37,14 @@ impl AgentSpawn {
     }
 }
 
-pub(crate) fn spawn_agent_process(agent_cmd: &str) -> Result<AgentSpawn> {
+/// Spawn the ACP agent process.
+///
+/// `cwd` pins the child's working directory to the user's active pane cwd so
+/// the agent's `execute_command` tool — which inherits the agent process cwd
+/// when its shell wrapper doesn't explicitly set one — starts in the user's
+/// project. None preserves the parent's cwd (probe path, where it doesn't
+/// matter).
+pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
         .first()
@@ -66,6 +75,9 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str) -> Result<AgentSpawn> {
     // runtime, but doesn't apply to an ACP host. Scrub unconditionally;
     // other agents don't care.
     cmd.env_remove("CLAUDECODE");
+    if let Some(cwd) = cwd {
+        cmd.current_dir(cwd);
+    }
     let child = cmd
         .args(&args)
         .stdin(std::process::Stdio::piped())

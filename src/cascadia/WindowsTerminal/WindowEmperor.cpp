@@ -442,8 +442,8 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
     std::wstring windowClassName;
     windowClassName.reserve(64); // "Windows Terminal Preview Admin 0123456789012345 0123456789012345"
 #if defined(WT_BRANDING_RELEASE)
-    windowClassName.append(L"Windows Terminal");
-    unpackagedAumid = L"Microsoft.WindowsTerminal";
+    windowClassName.append(L"Intelligent Terminal");
+    unpackagedAumid = L"Microsoft.IntelligentTerminal";
 #elif defined(WT_BRANDING_PREVIEW)
     windowClassName.append(L"Windows Terminal Preview");
     unpackagedAumid = L"Microsoft.WindowsTerminalPreview";

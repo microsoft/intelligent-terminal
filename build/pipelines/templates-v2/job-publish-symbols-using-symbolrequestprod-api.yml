@@ -77,7 +77,7 @@ jobs:
       SymbolServerType: 'TeamServices'
       SymbolsProduct: 'Windows Terminal Converged Symbols'
       SymbolsVersion: '$(XES_APPXMANIFESTVERSION)'
-      SymbolsArtifactName: 'WindowsTerminal_$(XES_APPXMANIFESTVERSION)'
+      SymbolsArtifactName: 'IntelligentTerminal_$(XES_APPXMANIFESTVERSION)'
       SymbolExpirationInDays: ${{ parameters.symbolExpiryTime }}
     env:
       LIB: $(Build.SourcesDirectory)
@@ -93,7 +93,7 @@ jobs:
       # Prepare the request
       $expiration = (Get-Date).Add([TimeSpan]::FromDays(${{ parameters.symbolExpiryTime }}))
       $createRequestBody = @{
-        requestName = "WindowsTerminal_$(XES_APPXMANIFESTVERSION)";
+        requestName = "IntelligentTerminal_$(XES_APPXMANIFESTVERSION)";
         expirationTime = $expiration.ToString();
       }
       Write-Host "##[debug]Starting request $($createRequestBody.requestName) with expiration date of $($createRequestBody.expirationTime)"

@@ -1643,12 +1643,13 @@ Json::Value CascadiaSettings::ToJson() const
 {
     // top-level json object
     auto json{ _globals->ToJson() };
-    json["$help"] = "https://aka.ms/terminal-documentation";
+    // TODO(IntelligentTerminal): register these URLs on the aka.ms portal.
+    json["$help"] = "https://aka.ms/intelligentterminal/docs";
     json["$schema"] =
 #if defined(WT_BRANDING_RELEASE)
-        "https://aka.ms/terminal-profiles-schema"
+        "https://aka.ms/intelligentterminal/schema"
 #elif defined(WT_BRANDING_PREVIEW)
-        "https://aka.ms/terminal-profiles-schema-preview"
+        "https://aka.ms/intelligentterminal/schema-preview"
 #elif !defined(NDEBUG) // DEBUG mode
         _getDevPathToSchema() // magic schema path that refers to the local source directory
 #else // All other brandings

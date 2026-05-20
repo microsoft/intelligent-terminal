@@ -950,6 +950,36 @@ async fn read_pane_last_message(
     result
 }
 
+/// Resolve the user's active pane cwd via WT's `get_active_pane` COM call.
+///
+/// Used at agent-session startup to pin both the agent child process cwd and
+/// the ACP `new_session` cwd to the user's project, so `execute_command` lands
+/// there on its first call. Returns `None` when WT isn't connected, when WT
+/// reports the active pane is the agent pane itself (no source resolved yet),
+/// or when the cwd field is missing/empty — callers fall back to
+/// `std::env::current_dir()`.
+async fn resolve_active_pane_cwd(
+    shell_mgr: &ShellManager,
+    wt_connected: bool,
+) -> Option<std::path::PathBuf> {
+    if !wt_connected {
+        return None;
+    }
+    let active = shell_mgr.wt_get_active_pane().await.ok()?;
+    let is_agent = active
+        .get("is_agent_pane")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if is_agent {
+        return None;
+    }
+    active
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
 async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String> {
     // WT's GetActivePane already resolves the agent pane to the user's working
     // pane (the "source"), so a single active-pane query gives us the right
@@ -1771,7 +1801,22 @@ async fn run_inner(
         .ok_or_else(|| anyhow::anyhow!("empty agent command"))?;
     let args = &parts[1..];
 
-    let spawned = crate::protocol::acp::spawn::spawn_agent_process(agent_cmd)?;
+    // Resolve the user's active pane cwd before spawning the agent. Both the
+    // child's working directory and the ACP `new_session` cwd derive from it,
+    // so the agent's `execute_command` tool runs in the user's project rather
+    // than wta.exe's own process cwd (which is typically %USERPROFILE% under
+    // packaged identity — that's the bug we saw where `cargo run` resolved
+    // against C:\Users\<user> and failed to find Cargo.toml).
+    let active_pane_cwd = resolve_active_pane_cwd(&shell_mgr, wt_connected).await;
+    startup_probe.log(&format!(
+        "resolved active pane cwd: {:?}",
+        active_pane_cwd.as_ref().map(|p| p.display().to_string())
+    ));
+
+    let spawned = crate::protocol::acp::spawn::spawn_agent_process(
+        agent_cmd,
+        active_pane_cwd.as_deref(),
+    )?;
     let resolved_program = spawned.resolved_program.clone();
     let is_npx_launch = spawned.is_npx;
     let adapter_package = spawned.adapter_package.clone();
@@ -1929,7 +1974,9 @@ async fn run_inner(
     // Create session — also with a timeout.
     let _ = event_tx.send(AppEvent::ConnectionStage("Creating session...".to_string()));
     startup_probe.log("Creating session");
-    let cwd = std::env::current_dir().unwrap_or_default();
+    let cwd = active_pane_cwd
+        .clone()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     startup_probe.log(&format!("Using session cwd={}", cwd.display()));
     let session_future = conn.new_session(acp::NewSessionRequest::new(cwd));
     let session = tokio::time::timeout(std::time::Duration::from_secs(15), session_future)

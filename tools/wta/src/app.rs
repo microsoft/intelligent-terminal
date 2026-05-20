@@ -620,7 +620,14 @@ pub struct AcpModelInfo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DispatchedCommandKind {
     FocusPane,
-    SplitPaneResume,
+    /// Plain Enter on a terminal-state row in the session management
+    /// view: open a new WT tab whose primary pane runs
+    /// `<cli> --resume <key>`. (Previously this was a split-pane in the
+    /// current tab — see commit history; the new-tab variant keeps the
+    /// originating tab clean and matches user expectation that
+    /// resuming a historical session is a "go open my session" action,
+    /// not a "split my workspace" action.)
+    NewTabResume,
     /// Shift+Enter in the session management view — resume a historical
     /// session in the agent pane of a new tab via WT-side coordination +
     /// ACP session/load.
@@ -857,8 +864,6 @@ pub struct TabSession {
     pub chat_scroll: Scroll,
 
     // Streaming state
-    pub prompt_in_flight: bool,
-    pub agent_streaming: bool,
     pub pending_agent_response: String,
     /// Accumulator for `session/update` user_message_chunk events
     /// arriving during an ACP `session/load` replay (the historical
@@ -869,9 +874,9 @@ pub struct TabSession {
     pub pending_user_replay: String,
     /// True between the inbound `load_session` event and the
     /// `SessionAttached` event that closes out the ACP `session/load`
-    /// call. While set, session/update chunk handlers bypass the
-    /// `prompt_in_flight` gate so the agent's replayed history actually
-    /// renders into the new tab.
+    /// call. While set, session/update chunk handlers accept chunks
+    /// even though no `TurnState::Submitted` was created for the
+    /// replay — `turn` stays Idle through the load.
     pub loading_session: bool,
     // Explicit per-turn lifecycle. Source of truth in the new state machine
     // (see `doc/specs/turn-state-refactor.md`).
@@ -935,7 +940,6 @@ impl TabSession {
         self.activity_frame = 0;
         self.pending_agent_response.clear();
         self.pending_user_replay.clear();
-        self.agent_streaming = false;
         self.chat_scroll.reset();
         self.timing_note = None;
         self.selection_visible_pending = false;
@@ -1520,6 +1524,18 @@ impl App {
         }
     }
 
+    /// Filter to apply to the F2 session-management view based on which
+    /// agent CLI the WTA agent pane is currently driving. Returns
+    /// `Some(CliSource::*)` when `current_agent_id` resolves to a tracked
+    /// CLI (copilot / claude / gemini) so only matching rows are listed.
+    /// Returns `None` when no agent has been selected yet or the agent is
+    /// not one the session registry tracks (codex / unknown) — in that
+    /// case the view falls back to showing every row so the user can still
+    /// see and resume their history.
+    pub fn current_cli_filter(&self) -> Option<crate::agent_sessions::CliSource> {
+        crate::agent_sessions::CliSource::from_agent_id(&self.current_agent_id)
+    }
+
     /// Enter handler for the F2 Agents view. For live rows (Idle / Working
     /// / Attention / Error), focus the underlying WT pane. For terminal-
     /// state rows (Ended / Historical), spawn a new pane that runs the
@@ -1564,22 +1580,28 @@ impl App {
         }
     }
 
-    /// Spawn a new WT pane that runs `<cli> <resume_flag> <session_key>`
-    /// to rehydrate a Historical/Ended agent session from the CLI's
-    /// on-disk session store. Silent no-op for CLIs without a resume
-    /// flag (Codex today) or unknown CLI sources.
+    /// Open a new WT tab whose primary pane runs `<cli> <resume_flag>
+    /// <session_key>` to rehydrate a Historical/Ended agent session from
+    /// the CLI's on-disk session store. Silent no-op for CLIs without a
+    /// resume flag (Codex today) or unknown CLI sources.
     ///
     /// Flow:
     ///   1. Apply `ResumeDispatched` synchronously so a rapid second Enter
     ///      on the same row no-ops while this resume is in flight.
-    ///   2. Issue `wtcli --json split-pane -c "<cli> <flag> <key>"` on a
-    ///      background thread via `spawn_wtcli_split_then_focus_with_callback`
-    ///      — that helper also focuses the new pane and gives us back its
-    ///      GUID once the split succeeds.
+    ///   2. Issue `wtcli --json new-tab -c "<cli> <flag> <key>" -d "<cwd>"`
+    ///      on a background thread via
+    ///      `spawn_wtcli_split_then_focus_with_callback` — the helper is
+    ///      generic (parses `session_id` from JSON and focuses the new
+    ///      pane), so it works equally well for new-tab and split-pane.
+    ///      Routing through `new-tab` keeps the originating tab clean
+    ///      and matches user expectation that resuming a historical
+    ///      session is a "go open my session" action, not a "split my
+    ///      workspace" action.
     ///   3. The callback posts `AgentSessionEvent(ResumePaneAssigned{...})`
-    ///      through `agent_event_tx` so the registry can bind the new pane
-    ///      to the row even for hook-less CLIs (Gemini), allowing a later
-    ///      `PaneClosed` to transition the row back to Ended.
+    ///      through `agent_event_tx` so the registry can bind the new
+    ///      tab's primary pane GUID to the row even for hook-less CLIs
+    ///      (Gemini), allowing a later `PaneClosed` to transition the
+    ///      row back to Ended.
     fn dispatch_resume(&mut self, s: &crate::agent_sessions::AgentSession) {
         let cli_id = match s.cli_source {
             crate::agent_sessions::CliSource::Claude  => "claude",
@@ -1610,30 +1632,32 @@ impl App {
 
         // Per-CLI session stores are keyed by an encoding of the *current*
         // working directory (e.g. Claude looks under
-        // `~/.claude/projects/<encoded-cwd>/<id>.jsonl`; Copilot and Gemini
-        // behave similarly). `wtcli split-pane` doesn't accept --cwd
-        // (`src/tools/wtcli/main.cpp:360-402`) so the new pane inherits the
-        // splitting pane's cwd by default. Without a `cd /d` prefix the
-        // CLI reports `No conversation found with session ID: <id>` even
+        // `~/.claude/projects/<encoded-cwd>/<id>.jsonl`; Copilot and
+        // Gemini behave similarly). Without the right cwd the CLI
+        // reports `No conversation found with session ID: <id>` even
         // though the JSONL exists on disk.
         //
-        // We always wrap in `cmd /c` because:
-        //   1. The `cd /d ... && ...` chain requires a shell, and
-        //   2. npm-installed CLIs (`copilot.cmd`, `claude.cmd`,
-        //      `gemini.cmd`) need cmd.exe's PATHEXT resolution to launch
-        //      from a bare name (`CreateProcess` returns 0x80070002 for
-        //      `.cmd` shims).
-        let cwd_string = s.cwd.to_string_lossy();
-        let launch_commandline = if cwd_string.is_empty() {
-            format!("cmd /c {}", commandline)
-        } else {
-            format!("cmd /c cd /d \"{}\" && {}", cwd_string, commandline)
-        };
-        let argv = vec![
-            "split-pane".to_string(),
+        // `wtcli new-tab` exposes `-d <cwd>` (see
+        // `src/tools/wtcli/main.cpp:326-353` → COM `CreateTab(...,
+        // startingDirectory, ...)`) so the new tab's primary pane
+        // launches in the historical session's project root directly,
+        // without needing a `cd /d` shell prefix.
+        //
+        // We still wrap the CLI invocation in `cmd /c` because
+        // npm-installed CLIs (`copilot.cmd`, `claude.cmd`, `gemini.cmd`)
+        // need cmd.exe's PATHEXT resolution to launch from a bare name
+        // (`CreateProcess` returns 0x80070002 for `.cmd` shims).
+        let cwd_string = s.cwd.to_string_lossy().to_string();
+        let launch_commandline = format!("cmd /c {}", commandline);
+        let mut argv = vec![
+            "new-tab".to_string(),
             "-c".to_string(),
             launch_commandline.clone(),
         ];
+        if !cwd_string.is_empty() {
+            argv.push("-d".to_string());
+            argv.push(cwd_string.clone());
+        }
 
         // Optimistic state flip: bump Historical/Ended -> Idle so a rapid
         // second Enter on the same row sees a non-terminal status and
@@ -1646,6 +1670,9 @@ impl App {
         // for hook-less CLIs (Gemini) so a future `PaneClosed` can
         // transition the row to Ended; harmless duplicate work for
         // Claude/Copilot whose hooks beat us to the same binding.
+        // `wtcli new-tab --json` emits a `session_id` field on the new
+        // tab's primary pane in the same shape as `split-pane --json`,
+        // so the existing helper handles both.
         let cb_key = key.clone();
         let event_tx = self.agent_event_tx.clone();
         let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> = match event_tx {
@@ -1667,13 +1694,14 @@ impl App {
             cli = %cli_id,
             commandline = %commandline,
             launch_commandline = %launch_commandline,
-            "dispatch_resume: split-pane scheduled",
+            cwd = %cwd_string,
+            "dispatch_resume: new-tab scheduled",
         );
 
         #[cfg(test)]
         {
             self.last_dispatched_command = Some(DispatchedCommand {
-                kind: DispatchedCommandKind::SplitPaneResume,
+                kind: DispatchedCommandKind::NewTabResume,
                 session_id: None,
                 argv,
             });
@@ -1860,11 +1888,17 @@ impl App {
     /// `agent_sessions` via `AppEvent::HistoricalSessionsLoaded`. Subsequent
     /// calls are no-ops — the registry is cached for this wta's lifetime.
     ///
-    /// Called from the F2 toggle into the Agents view. Pre-F2 the scan
-    /// would be pure overhead — chat mode never reads historical entries —
-    /// and on a populated machine the scan is ~10s of disk I/O, so an
-    /// eager-load at startup would either block the LocalSet (slowing the
-    /// first agent_status event) or churn the disk on every model switch.
+    /// Called eagerly from `run_acp_app` right after `set_event_tx` so the
+    /// scan starts overlapping with ACP startup and is usually done by the
+    /// time the user first opens the Agents view. Also called defensively
+    /// from the F2 / `/sessions` toggle in case startup raced ahead of
+    /// `set_event_tx` (Setup/FRE mode — `event_tx` not yet wired, so the
+    /// eager call early-returns and the F2 press picks it up).
+    ///
+    /// Pre-eager-load this was strictly lazy because each wta restart
+    /// (model switch, new agent pane) re-pays the ~10s scan. The eager
+    /// kick is gated to the ACP TUI mode for the same reason — short-lived
+    /// modes (`delegate`, `mcp`, CLI helpers) never call this.
     pub fn ensure_history_loaded(&mut self) {
         if self.history_load_state != HistoryLoadState::NotStarted {
             return;
@@ -2665,7 +2699,6 @@ impl App {
                 if tab.loading_session {
                     tab.flush_load_replay_pending();
                     tab.loading_session = false;
-                    tab.agent_streaming = false;
                     tab.scroll_to_bottom();
                 }
                 // Per-session model lists could differ — surface the new
@@ -2687,8 +2720,6 @@ impl App {
                 // AgentError because the error is local to one tab's
                 // session-load attempt, not the whole connection.
                 let tab = self.tab_mut(&tab_id);
-                tab.prompt_in_flight = false;
-                tab.agent_streaming = false;
                 tab.loading_session = false;
                 tab.progress_status = None;
                 tab.pending_agent_response.clear();
@@ -2794,7 +2825,12 @@ impl App {
             }
             AppEvent::AgentMessageChunk { session_id, text } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.prompt_in_flight && !tab.loading_session {
+                // Late chunks after cancel / completion are dropped by
+                // `turn_observe_chunk` (state isn't Submitted/Streaming).
+                // During session/load replay no Submitted state exists,
+                // so we still need to gate on `loading_session` here to
+                // accept replayed chunks into `messages`.
+                if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
                 }
                 // Turn boundary detection during replay: an agent
@@ -2806,7 +2842,6 @@ impl App {
                     let text = std::mem::take(&mut tab.pending_user_replay);
                     tab.messages.push(ChatMessage::User(text));
                 }
-                tab.agent_streaming = true;
                 tab.progress_status = None;
                 tab.pending_agent_response.push_str(&text);
 
@@ -2851,10 +2886,7 @@ impl App {
             }
             AppEvent::ToolCall { session_id, id, title, status } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.prompt_in_flight && !tab.loading_session {
-                    return;
-                }
-                if !tab.turn.is_in_flight() {
+                if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
                 }
                 // Turn boundary during replay (see AgentMessageChunk).
@@ -2876,11 +2908,7 @@ impl App {
             }
             AppEvent::ToolCallUpdate { session_id, id, status } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.prompt_in_flight && !tab.loading_session {
-                    return;
-                }
-                if !tab.turn.is_in_flight() {
-
+                if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
                 }
                 if let Some(entry) = tab.tool_calls.get_mut(&id) {
@@ -2902,10 +2930,7 @@ impl App {
             }
             AppEvent::Plan { session_id, entries } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.prompt_in_flight && !tab.loading_session {
-                    return;
-                }
-                if !tab.turn.is_in_flight() {
+                if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
                 }
                 if tab.loading_session {
@@ -2928,10 +2953,7 @@ impl App {
                 responder,
             } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.prompt_in_flight && !tab.loading_session {
-                    return;
-                }
-                if !tab.turn.is_in_flight() {
+                if !tab.turn.is_in_flight() && !tab.loading_session {
                     // Auto-deny if the user cancelled before the agent
                     // got around to asking. Dropping the responder yields
                     // a Cancelled outcome on the agent side.
@@ -3017,7 +3039,10 @@ impl App {
                 // activates immediately. Mirrors the F2 enter-Agents path.
                 if self.current_tab().current_view == View::Agents
                     && self.current_tab().agents_list_state.selected().is_none()
-                    && !self.agent_sessions.iter_sorted().is_empty()
+                    && !self
+                        .agent_sessions
+                        .iter_sorted_filtered(self.current_cli_filter().as_ref())
+                        .is_empty()
                 {
                     self.current_tab_mut().agents_list_state.select(Some(0));
                 }
@@ -3148,8 +3173,8 @@ impl App {
                         tab.session_id = None;
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
-                        // tab even though `prompt_in_flight` is false.
-                        // Closed by the SessionAttached handler when
+                        // tab even though `turn` stays Idle. Closed by
+                        // the SessionAttached handler when
                         // `conn.load_session` returns.
                         tab.loading_session = true;
                         tab.messages.push(ChatMessage::System(format!(
@@ -3201,8 +3226,10 @@ impl App {
                         "sessions" | "agents" => {
                             let entering_agents =
                                 self.current_tab().current_view != View::Agents;
-                            let has_sessions =
-                                !self.agent_sessions.iter_sorted().is_empty();
+                            let has_sessions = !self
+                                .agent_sessions
+                                .iter_sorted_filtered(self.current_cli_filter().as_ref())
+                                .is_empty();
                             {
                                 let tab = self.current_tab_mut();
                                 tab.current_view = View::Agents;
@@ -3686,7 +3713,8 @@ impl App {
         // selection cursor are per-tab on `TabSession` so each WT tab
         // keeps its own picker state across switches.
         if self.current_tab().current_view == View::Agents {
-            let count = self.agent_sessions.iter_sorted().len();
+            let filter = self.current_cli_filter();
+            let count = self.agent_sessions.iter_sorted_filtered(filter.as_ref()).len();
             match key.code {
                 KeyCode::Down => {
                     let cur = self.current_tab().agents_list_state.selected().unwrap_or(0);
@@ -3703,7 +3731,7 @@ impl App {
                     if let Some(idx) = self.current_tab().agents_list_state.selected() {
                         let selected = self
                             .agent_sessions
-                            .iter_sorted()
+                            .iter_sorted_filtered(filter.as_ref())
                             .get(idx)
                             .map(|s| (*s).clone());
                         if let Some(s) = selected {
@@ -3729,7 +3757,7 @@ impl App {
                     if let Some(idx) = self.current_tab().agents_list_state.selected() {
                         let target = self
                             .agent_sessions
-                            .iter_sorted()
+                            .iter_sorted_filtered(filter.as_ref())
                             .get(idx)
                             .map(|s| (s.key.clone(), s.status.clone()));
                         if let Some((key, status)) = target {
@@ -3740,7 +3768,12 @@ impl App {
                             if matches!(status, Ended | Historical) {
                                 self.agent_sessions.remove(&key);
                                 // Keep the cursor in-bounds after eviction.
-                                let new_count = self.agent_sessions.iter_sorted().len();
+                                // Re-query through the same filter so the
+                                // selection clamp matches the rendered list.
+                                let new_count = self
+                                    .agent_sessions
+                                    .iter_sorted_filtered(filter.as_ref())
+                                    .len();
                                 let tab = self.current_tab_mut();
                                 if new_count == 0 {
                                     tab.agents_list_state.select(None);
@@ -3760,15 +3793,18 @@ impl App {
             return;
         }
 
-        // If permission modal is showing, route keys there
+        // If permission card is showing, route keys there. Buttons are
+        // rendered horizontally inside the embedded card (same chrome as
+        // recommendations), so Left/Right move the focus; Up/Down kept as
+        // aliases for muscle memory from the prior modal.
         if let Some(ref mut perm) = self.current_tab_mut().permission {
             match key.code {
-                KeyCode::Up => {
+                KeyCode::Left | KeyCode::Up => {
                     if perm.selected > 0 {
                         perm.selected -= 1;
                     }
                 }
-                KeyCode::Down => {
+                KeyCode::Right | KeyCode::Down => {
                     if perm.selected < perm.options.len().saturating_sub(1) {
                         perm.selected += 1;
                     }
@@ -4331,7 +4367,10 @@ impl App {
                 // the Agents picker and seed a selection so Enter/Up/Down
                 // are immediately useful. Esc / F2 still close the view.
                 // Per-tab — only flips the active tab's view state.
-                let has_sessions = !self.agent_sessions.iter_sorted().is_empty();
+                let has_sessions = !self
+                    .agent_sessions
+                    .iter_sorted_filtered(self.current_cli_filter().as_ref())
+                    .is_empty();
                 {
                     let tab = self.current_tab_mut();
                     if tab.agents_list_state.selected().is_none() && has_sessions {
@@ -4382,6 +4421,26 @@ impl App {
         // for the nav hint just above the input.
         let ceiling = self.terminal_rows.saturating_sub(7);
         total.min(ceiling).max(floor)
+    }
+
+    /// Height of the embedded permission card. Returns 0 when no permission
+    /// is pending. Permission is modal-equivalent — the user can't make
+    /// progress without resolving it — so the only hard reserve is the input
+    /// row (3); chat / filler / nav-hint may shrink to make room. When the
+    /// terminal is so short that even the minimum drawable shell (4) won't
+    /// fit, return 0 so layout doesn't reserve unrenderable rows (the card
+    /// shell bails out below 4 in card.rs).
+    ///
+    /// `panel_width` must be the actual render width the card will see (i.e.
+    /// `main_area.width` after debug-panel split), not `terminal_cols`.
+    /// Passing the full terminal width would under-count wrap rows when the
+    /// debug panel is visible and clip the description.
+    pub fn permission_panel_height(&self, panel_width: u16) -> u16 {
+        let Some(perm) = self.current_tab().permission.as_ref() else { return 0 };
+        let card_h = permission_card_height(perm, panel_width) as u16;
+        let ceiling = self.terminal_rows.saturating_sub(3);
+        let h = card_h.min(ceiling);
+        if h < 4 { 0 } else { h }
     }
 
     /// Recompute `rec_scroll.max` from the current card heights and the
@@ -5576,6 +5635,29 @@ pub(crate) fn rec_card_height(choice: &RecommendationChoice, panel_width: u16) -
     5 + content_lines
 }
 
+/// Computes the rendered height (in terminal rows) of the embedded
+/// permission card. Same chrome budget as `rec_card_height` (8-cell
+/// horizontal padding for outer h_perm padding + borders + inner inset),
+/// but without the inter-card gap (only one card is ever shown).
+pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -> usize {
+    let inner_width = (panel_width as usize).saturating_sub(8).max(1);
+    let content_lines: usize = perm
+        .description
+        .lines()
+        .map(|line| {
+            let chars = line.chars().count();
+            if chars == 0 {
+                1
+            } else {
+                chars.div_ceil(inner_width)
+            }
+        })
+        .sum::<usize>()
+        .max(1);
+    // top_border + content + divider + buttons + bottom_border = 4 + content_lines.
+    4 + content_lines
+}
+
 /// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
 ///
 /// Recommendation responses arrive as JSON; storing the raw JSON in a completed
@@ -6414,7 +6496,7 @@ mod tests {
     }
 
     #[test]
-    fn enter_on_history_row_dispatches_split_pane_with_resume() {
+    fn enter_on_history_row_dispatches_new_tab_with_resume() {
         use crate::agent_sessions::{CliSource, SessionEvent};
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         use std::path::PathBuf;
@@ -6438,23 +6520,36 @@ mod tests {
         let cmd = app
             .last_dispatched_command_for_test()
             .expect("a command was dispatched");
-        assert_eq!(cmd.kind, DispatchedCommandKind::SplitPaneResume);
+        assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
         let argv = cmd.argv.join(" ");
-        assert!(argv.contains("split-pane"), "argv: {}", argv);
-        // The actual command may or may not be wrapped with `cmd /c` depending
-        // on whether `claude.exe` exists on the test runner's PATH. Accept
-        // both forms so the test isn't environment-dependent.
+        // The dispatch must use `wtcli new-tab` (not `split-pane`) so the
+        // resumed CLI lands in its own WT tab instead of carving up the
+        // originating tab.
+        assert!(argv.contains("new-tab"), "argv: {}", argv);
         assert!(
-            argv.contains("claude --resume abc-123"),
+            !argv.contains("split-pane"),
+            "argv must NOT use split-pane: {}",
+            argv
+        );
+        // The CLI invocation is still wrapped in `cmd /c` so .cmd shims
+        // resolve via PATHEXT, but the legacy `cd /d` prefix is gone —
+        // cwd is threaded through wtcli's `-d` flag now.
+        assert!(
+            argv.contains("cmd /c claude --resume abc-123"),
             "argv: {}",
             argv
         );
-        // Resume is keyed off the session's project cwd — the new pane's
-        // launch line must `cd /d` into it so the CLI's session store
-        // lookup (`~/.claude/projects/<encoded-cwd>/...`) succeeds.
         assert!(
-            argv.contains("cd /d \"/work/proj\""),
-            "expected cd /d prefix to original session cwd; argv: {}",
+            !argv.contains("cd /d"),
+            "argv must NOT contain cd /d (cwd is now passed via -d): {}",
+            argv
+        );
+        // Resume is keyed off the session's project cwd — the new tab's
+        // primary pane must start in that directory so the CLI's session
+        // store lookup (`~/.claude/projects/<encoded-cwd>/...`) succeeds.
+        assert!(
+            argv.contains("-d /work/proj"),
+            "expected -d <cwd>; argv: {}",
             argv
         );
     }
@@ -6462,10 +6557,11 @@ mod tests {
     #[test]
     fn shift_enter_on_history_row_dispatches_resume_in_agent_pane() {
         // Shift+Enter on a terminal-state row should route to the
-        // ResumeInAgentPane path, NOT the legacy SplitPaneResume — it
-        // emits `resume_in_new_agent_tab` to WT instead of splitting a
-        // normal pane locally. The dispatched-command tape captures the
-        // shape so downstream wiring can be regression-checked.
+        // ResumeInAgentPane path, NOT the legacy NewTabResume — it
+        // emits `resume_in_new_agent_tab` to WT instead of spawning a
+        // normal terminal tab locally. The dispatched-command tape
+        // captures the shape so downstream wiring can be
+        // regression-checked.
         use crate::agent_sessions::{CliSource, SessionEvent};
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         use std::path::PathBuf;

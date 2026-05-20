@@ -6,13 +6,13 @@ body:
 - type: markdown
   attributes:
     value: |
-      Please make sure to [search for existing issues](https://github.com/microsoft/terminal/issues) and [check the FAQ](https://github.com/microsoft/terminal/wiki/Frequently-Asked-Questions-(FAQ)) before filing a new one!
+      Please make sure to [search for existing issues](https://github.com/microsoft/intelligent-terminal/issues) before filing a new one!
 
-      If this is an application crash, please provide a [Feedback Hub](https://aka.ms/terminal-feedback-hub) submission link so we can find your diagnostic data on the backend. Use the category "Apps > Windows Terminal" and choose "Share My Feedback" after submission to get the link.
+      If this is an application crash, please provide a [Feedback Hub](https://aka.ms/intelligentterminal/feedback) submission link so we can find your diagnostic data on the backend. Use the appropriate category and choose "Share My Feedback" after submission to get the link.
 
 - type: input
   attributes:
-    label: Windows Terminal version
+    label: Intelligent Terminal version
     placeholder: "1.21.2701.0"
     description: |
       You can copy the version number from the About dialog. Open the About dialog by opening the menu with the "V" button (to the right of the "+" button that opens a new tab) and choosing About from the end of the list.

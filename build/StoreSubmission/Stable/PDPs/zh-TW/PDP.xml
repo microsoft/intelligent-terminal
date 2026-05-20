@@ -32,7 +32,7 @@
   <Description>
       Windows 終端機是一種現代化、快速、高效、功能強大且具生產力的終端應用程式，適合命令列工具和 Shell (像是命令提示字元、PowerShell 和 WSL) 的使用者。主要功能包括多個索引標籤、窗格、Unicode 和 UTF-8 字元支援、GPU 加速的文字呈現引擎，以及自訂主題、樣式和設定。
 
-這是開放原始碼的專案，我們歡迎參與社群。若要參與，請瀏覽 https://github.com/microsoft/terminal </Description>
+這是開放原始碼的專案，我們歡迎參與社群。若要參與，請瀏覽 https://aka.ms/intelligentterminal/source </Description>
   <ShortDescription>
     <!-- Only used for games. This description appears in the Information section of the Game Hub on Xbox One, and helps customers understand more about your game. -->
     
@@ -173,9 +173,9 @@
     
   </AdditionalLicenseTerms>
   <WebsiteURL>
-    https://github.com/microsoft/terminal</WebsiteURL>
+    https://aka.ms/intelligentterminal/source</WebsiteURL>
   <SupportContactInfo>
-    https://github.com/microsoft/terminal/issues/new</SupportContactInfo>
+    https://aka.ms/intelligentterminal/feedback</SupportContactInfo>
   <PrivacyPolicyURL>
-    https://go.microsoft.com/fwlink/?LinkID=521839</PrivacyPolicyURL>
+    https://aka.ms/intelligentterminal/privacy</PrivacyPolicyURL>
 </ProductDescription>

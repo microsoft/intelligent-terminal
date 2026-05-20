@@ -794,6 +794,7 @@ Inputkeyinfo
 Inputreadhandledata
 INPUTSCOPE
 INSERTMODE
+intelligentterminal
 INTERACTIVITYBASE
 INTERCEPTCOPYPASTE
 internalevent
@@ -1906,6 +1907,7 @@ WNDCLASSW
 Wndproc
 wordiswrapped
 workarea
+worktree
 WOWARM
 WOWx
 wparam
@@ -1927,6 +1929,8 @@ WSLENV
 wstr
 wstrings
 wsz
+wta
+wtai
 wtd
 WTEXT
 WTo

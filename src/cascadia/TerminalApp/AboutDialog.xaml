@@ -53,14 +53,15 @@
 
         <StackPanel Margin="-12,0,0,0"
                     Orientation="Vertical">
+            <!-- TODO(IntelligentTerminal): register these URLs on the aka.ms portal. -->
             <HyperlinkButton x:Uid="AboutDialog_SourceCodeLink"
-                             NavigateUri="https://go.microsoft.com/fwlink/?linkid=2203152" />
+                             NavigateUri="https://aka.ms/intelligentterminal/source" />
             <HyperlinkButton x:Uid="AboutDialog_DocumentationLink"
-                             NavigateUri="https://go.microsoft.com/fwlink/?linkid=2125416" />
+                             NavigateUri="https://aka.ms/intelligentterminal/docs" />
             <HyperlinkButton x:Uid="AboutDialog_ReleaseNotesLink"
-                             NavigateUri="https://go.microsoft.com/fwlink/?linkid=2125417" />
+                             NavigateUri="https://aka.ms/intelligentterminal/releasenotes" />
             <HyperlinkButton x:Uid="AboutDialog_PrivacyPolicyLink"
-                             NavigateUri="https://go.microsoft.com/fwlink/?linkid=2125418" />
+                             NavigateUri="https://aka.ms/intelligentterminal/privacy" />
             <HyperlinkButton x:Uid="AboutDialog_ThirdPartyNoticesLink"
                              Click="_ThirdPartyNoticesOnClick" />
         </StackPanel>

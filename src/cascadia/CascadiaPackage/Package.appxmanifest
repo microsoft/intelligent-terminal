@@ -19,9 +19,9 @@
   IgnorableNamespaces="uap mp rescap uap3 uap17 desktop6 virtualization">
 
   <Identity
-    Name="Microsoft.WindowsTerminal"
+    Name="Microsoft.IntelligentTerminal"
     Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
-    Version="1.0.0.0" />
+    Version="0.1.0.0" />
 
   <Properties>
     <DisplayName>ms-resource:AppStoreName</DisplayName>
@@ -181,7 +181,7 @@
                 Description="Console host built from microsoft/terminal open source repository"
                 PublicFolder="Public">
                 <uap3:Properties>
-                    <Clsid>{2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}</Clsid>
+                    <Clsid>{7ABAC0AD-3AEF-4556-ABE7-C1812594E071}</Clsid>
                 </uap3:Properties>
             </uap3:AppExtension>
         </uap3:Extension>
@@ -192,39 +192,39 @@
                 Description="Terminal host built from microsoft/terminal open source repository"
                 PublicFolder="Public">
                 <uap3:Properties>
-                    <Clsid>{E12CFF52-A866-4C77-9A90-F570A7AA2C6B}</Clsid>
+                    <Clsid>{ECC17785-94ED-4359-B545-0472B7D0275F}</Clsid>
                 </uap3:Properties>
             </uap3:AppExtension>
         </uap3:Extension>
         <com:Extension Category="windows.comInterface">
             <com:ComInterface>
-                <com:ProxyStub Id="3171DE52-6EFA-4AEF-8A9F-D02BD67E7A4F" DisplayName="OpenConsoleHandoffProxy" Path="OpenConsoleProxy.dll"/>
-                <com:Interface Id="E686C757-9A35-4A1C-B3CE-0BCC8B5C69F4" ProxyStubClsid="3171DE52-6EFA-4AEF-8A9F-D02BD67E7A4F"/>
-                <com:Interface Id="6F23DA90-15C5-4203-9DB0-64E73F1B1B00" ProxyStubClsid="3171DE52-6EFA-4AEF-8A9F-D02BD67E7A4F"/> <!-- ITerminalHandoff3 -->
-                <com:Interface Id="746E6BC0-AB05-4E38-AB14-71E86763141F" ProxyStubClsid="3171DE52-6EFA-4AEF-8A9F-D02BD67E7A4F"/>
+                <com:ProxyStub Id="BA251D6A-94D2-4523-AAA0-9477EE21766E" DisplayName="OpenConsoleHandoffProxy" Path="OpenConsoleProxy.dll"/>
+                <com:Interface Id="E686C757-9A35-4A1C-B3CE-0BCC8B5C69F4" ProxyStubClsid="BA251D6A-94D2-4523-AAA0-9477EE21766E"/>
+                <com:Interface Id="6F23DA90-15C5-4203-9DB0-64E73F1B1B00" ProxyStubClsid="BA251D6A-94D2-4523-AAA0-9477EE21766E"/> <!-- ITerminalHandoff3 -->
+                <com:Interface Id="746E6BC0-AB05-4E38-AB14-71E86763141F" ProxyStubClsid="BA251D6A-94D2-4523-AAA0-9477EE21766E"/>
             </com:ComInterface>
         </com:Extension>
         <com:Extension Category="windows.comServer">
             <com:ComServer>
                 <com:ExeServer DisplayName="OpenConsole" Executable="OpenConsole.exe">
-                    <com:Class Id="2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69"/>
+                    <com:Class Id="7ABAC0AD-3AEF-4556-ABE7-C1812594E071"/>
                 </com:ExeServer>
-                <com:ExeServer DisplayName="WindowsTerminal" Executable="WindowsTerminal.exe">
-                    <com:Class Id="E12CFF52-A866-4C77-9A90-F570A7AA2C6B"/>
+                <com:ExeServer DisplayName="IntelligentTerminal" Executable="WindowsTerminal.exe">
+                    <com:Class Id="ECC17785-94ED-4359-B545-0472B7D0275F"/>
                     <com:Class Id="A2E4F6B8-1C3D-4E5F-A6B7-C8D9E0F1A2B3"/> <!-- TerminalProtocolComServer (Release) -->
                 </com:ExeServer>
-                <com:SurrogateServer DisplayName="WindowsTerminalShellExt">
-                    <com:Class Id="9f156763-7844-4dc4-b2b1-901f640f5155" Path="WindowsTerminalShellExt.dll" ThreadingModel="STA"/>
+                <com:SurrogateServer DisplayName="IntelligentTerminalShellExt">
+                    <com:Class Id="1E1F2315-7C3C-4603-BE7B-D2F2117D6DFF" Path="WindowsTerminalShellExt.dll" ThreadingModel="STA"/>
                 </com:SurrogateServer>
             </com:ComServer>
         </com:Extension>
         <desktop4:Extension Category="windows.fileExplorerContextMenus">
             <desktop4:FileExplorerContextMenus>
                 <desktop5:ItemType Type="Directory">
-                    <desktop5:Verb Id="OpenTerminalHere" Clsid="9f156763-7844-4dc4-b2b1-901f640f5155" />
+                    <desktop5:Verb Id="OpenIntelligentTerminalHere" Clsid="1E1F2315-7C3C-4603-BE7B-D2F2117D6DFF" />
                 </desktop5:ItemType>
                 <desktop5:ItemType Type="Directory\Background">
-                  <desktop5:Verb Id="OpenTerminalHere" Clsid="9f156763-7844-4dc4-b2b1-901f640f5155" />
+                  <desktop5:Verb Id="OpenIntelligentTerminalHere" Clsid="1E1F2315-7C3C-4603-BE7B-D2F2117D6DFF" />
                 </desktop5:ItemType>
             </desktop4:FileExplorerContextMenus>
         </desktop4:Extension>
@@ -253,7 +253,7 @@
   </Extensions>
 
   <mp:PhoneIdentity
-    PhoneProductId="3a855625-ba50-46d5-b806-cb4520089c64"
+    PhoneProductId="F910FD82-A793-4FAD-8274-E881400F371E"
     PhonePublisherId="95d94207-0c7c-47ed-82db-d75c81153c35" />
 
 </Package>

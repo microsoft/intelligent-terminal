@@ -26,7 +26,7 @@ using namespace Microsoft::WRL;
 
 struct
 #if defined(WT_BRANDING_RELEASE)
-    __declspec(uuid("9f156763-7844-4dc4-b2b1-901f640f5155"))
+    __declspec(uuid("1E1F2315-7C3C-4603-BE7B-D2F2117D6DFF"))
 #elif defined(WT_BRANDING_PREVIEW)
     __declspec(uuid("02db545a-3e20-46de-83a5-1329b1e88b6b"))
 #elif defined(WT_BRANDING_CANARY)

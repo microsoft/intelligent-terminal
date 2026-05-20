@@ -451,7 +451,7 @@
             <!--  Learn more about fragment extensions  -->
             <HyperlinkButton x:Uid="Extensions_DisclaimerHyperlink"
                              Margin="-12,0,0,0"
-                             NavigateUri="https://go.microsoft.com/fwlink/?linkid=2321753" />
+                             NavigateUri="https://aka.ms/intelligentterminal/extensions" />
 
             <!--  Grouping: Active Extensions  -->
             <TextBlock x:Uid="Extensions_ActiveExtensionsHeader"

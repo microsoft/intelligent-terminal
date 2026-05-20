@@ -28,17 +28,68 @@ pub fn render(
     list_state: &mut ListState,
     history_load_state: HistoryLoadState,
     activity_frame: usize,
+    cli_filter: Option<&CliSource>,
 ) {
     // No in-TUI header: the "Agent sessions" title lives in the C++ agent
     // bar above this pane (AgentPaneContent::SetSessionsView), so we render
     // the list flush against the top of `area` and don't reserve any space
-    // for chrome here.
-    let list_area = area;
+    // for chrome there.
+    //
+    // Layout (column 0 is the pane's left edge):
+    //   col 0  → leftmost vertical separator (only over list rows; the
+    //            spacer row and the hint sit "outside" / below the bar)
+    //   col 2+ → list rows / loading / hint, rendered into `inner`
+    let inner = Rect {
+        x: area.x + 2,
+        y: area.y,
+        width: area.width.saturating_sub(2),
+        height: area.height,
+    };
 
-    let sorted = reg.iter_sorted();
+    // Footer keybinding hint: reserve the bottom row of `area` so the
+    // shortcut legend stays anchored to the pane bottom regardless of how
+    // many session rows are visible. We also reserve one blank spacer row
+    // above the hint so it has visible breathing room from the last
+    // session — at narrow heights we collapse those reservations gracefully.
+    //
+    // The hint spans the full pane width (starting at `area.x`, not
+    // `inner.x`) so it reads as chrome that lives *outside* the vertical
+    // bar, matching the Figma where the bar terminates at the bottom of
+    // the list and the hint sits below it flush with the left edge.
+    let (list_area, hint_area) = if inner.height >= 3 {
+        let hint = Rect {
+            x: area.x,
+            y: area.y + area.height - 1,
+            width: area.width,
+            height: 1,
+        };
+        let list = Rect { height: inner.height - 2, ..inner };
+        (list, Some(hint))
+    } else if inner.height >= 2 {
+        let hint = Rect {
+            x: area.x,
+            y: area.y + area.height - 1,
+            width: area.width,
+            height: 1,
+        };
+        let list = Rect { height: inner.height - 1, ..inner };
+        (list, Some(hint))
+    } else {
+        (inner, None)
+    };
+
+    let sorted = reg.iter_sorted_filtered(cli_filter);
+    tracing::info!(
+        target: "agents_view_filter",
+        filter = ?cli_filter,
+        visible = sorted.len(),
+        total = reg.iter_sorted().len(),
+        "rendering agent sessions list"
+    );
     tracing::debug!(
         target: "agents_render",
         total = sorted.len(),
+        filter = ?cli_filter,
         first_three = ?sorted.iter().take(3).map(|s| (
             s.key.clone(),
             format!("{:?}", s.status),
@@ -55,10 +106,14 @@ pub fn render(
     // a dim "loading…" hint led users to think the list was complete (only
     // the 1 live session) and dismiss the view before the scan finished.
     if history_load_state == HistoryLoadState::Loading {
+        render_left_bar(f, area.x, list_area, None);
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
         spans.extend(shimmer::shimmer_spans("Loading...", activity_frame));
         let loading = Paragraph::new(Line::from(spans));
         f.render_widget(loading, list_area);
+        if let Some(hint_area) = hint_area {
+            render_footer_hint(f, hint_area);
+        }
         return;
     }
 
@@ -75,6 +130,68 @@ pub fn render(
     // rather than a full-row reverse-video bar.
     let list = List::new(rows);
     f.render_stateful_widget(list, list_area, list_state);
+
+    // Paint the leftmost vertical bar *after* the list renders so we can
+    // read the post-render scroll offset and color the bar segment in
+    // front of the selected row with the cyan selection accent — keeping
+    // the bar/title/caret in visual sync.
+    let offset = list_state.offset();
+    let selected_visible_row = selected
+        .and_then(|s| s.checked_sub(offset))
+        .filter(|v| (*v as u16) < list_area.height);
+    render_left_bar(f, area.x, list_area, selected_visible_row);
+
+    if let Some(hint_area) = hint_area {
+        render_footer_hint(f, hint_area);
+    }
+}
+
+/// Draw the leftmost vertical separator. Spans only `list_area`'s row
+/// range — the hint (and the blank spacer above it) live *below* the bar.
+/// `selected_row`, when set, is the list-relative row index whose bar
+/// segment paints cyan instead of muted, mirroring the selection cursor
+/// in the row itself.
+fn render_left_bar(f: &mut Frame, bar_x: u16, list_area: Rect, selected_row: Option<usize>) {
+    if list_area.height == 0 {
+        return;
+    }
+    let bar_lines: Vec<Line<'static>> = (0..list_area.height)
+        .map(|i| {
+            let style = if Some(i as usize) == selected_row {
+                Style::default().fg(ACCENT_CYAN)
+            } else {
+                Style::default().fg(MUTED_WHITE)
+            };
+            Line::from(Span::styled("┃", style))
+        })
+        .collect();
+    let bar_area = Rect {
+        x: bar_x,
+        y: list_area.y,
+        width: 1,
+        height: list_area.height,
+    };
+    f.render_widget(Paragraph::new(bar_lines), bar_area);
+}
+
+/// Bottom-of-pane keybinding legend. Single line, dim foreground so it
+/// reads as chrome and not as a row. Truncated with an ellipsis when the
+/// pane is too narrow to fit the full text — a partial hint is still more
+/// useful than a wrapped or clipped one.
+fn render_footer_hint(f: &mut Frame, area: Rect) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    const HINT: &str =
+        "(↑ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit)";
+    // No leading gutter: the caller offsets `area` past the leftmost
+    // vertical bar, so the hint already sits one column inside the bar and
+    // reads as left-aligned chrome rather than another row.
+    let text = trunc(HINT, area.width as usize);
+    let line = Line::from(vec![
+        Span::styled(text, Style::default().fg(MUTED_WHITE)),
+    ]);
+    f.render_widget(Paragraph::new(line), area);
 }
 
 fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'static> {

@@ -9,6 +9,13 @@ schedules:
     always: false # only run if there's code changes!
 
 parameters:
+  - name: branding
+    displayName: "Branding"
+    type: string
+    default: Canary
+    values:
+      - Canary
+      - Release
   - name: publishToAzure
     displayName: "Deploy to **PUBLIC** Azure Storage"
     type: boolean
@@ -23,13 +30,13 @@ name: $(BuildDefinitionName)_$(date:yyMM).$(date:dd)$(rev:rrr)
 variables:
   - template: templates-v2/variables-nuget-package-version.yml
     parameters:
-      branding: Canary
+      branding: ${{ parameters.branding }}
 
 extends:
   template: templates-v2/pipeline-1espt-full-release-build.yml
   parameters:
     official: ${{ parameters.official }}
-    branding: Canary
+    branding: ${{ parameters.branding }}
     buildTerminal: true
     pgoBuildMode: Optimize
     codeSign: true
@@ -60,5 +67,5 @@ extends:
             storageContainer: $(AzureStorageContainer)
             buildConfiguration: Release
             buildPlatforms: [x64, x86, arm64]
-            environment: production-canary
+            environment: production-${{ lower(parameters.branding) }}
 

@@ -114,6 +114,49 @@ $xml.Load($path)  # Throws if malformed
   fs.writeFileSync(path, content, 'utf8');
   ```
 
+### Bulk string-replace recipe (e.g. URL sweep across all locales)
+
+Even simple "find-and-replace this string" operations across `.resw` files **silently strip the BOM** if you use `Set-Content`, `Out-File` (without `-Encoding utf8BOM`), or any text-based edit tool. Verify BOM is preserved after every bulk edit.
+
+**Safe PowerShell recipe** that preserves BOM and CRLF:
+
+```powershell
+$files = Get-ChildItem -Path src/cascadia/SomeComponent/Resources -Recurse -Filter Resources.resw
+foreach ($f in $files) {
+    $bytes = [System.IO.File]::ReadAllBytes($f.FullName)
+    $hadBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+    $startIdx = if ($hadBom) { 3 } else { 0 }
+    $text = [System.Text.Encoding]::UTF8.GetString($bytes, $startIdx, $bytes.Length - $startIdx)
+    $newText = $text -replace 'old-pattern', 'new-pattern'
+    if ($newText -eq $text) { continue }
+    $newBytes = [System.Text.Encoding]::UTF8.GetBytes($newText)
+    if ($hadBom) { $newBytes = [byte[]](0xEF, 0xBB, 0xBF) + $newBytes }
+    [System.IO.File]::WriteAllBytes($f.FullName, $newBytes)
+}
+```
+
+**Verification step after any `.resw` bulk edit** (mandatory):
+
+```powershell
+foreach ($f in (git diff --name-only -- '*.resw')) {
+    $b = [System.IO.File]::ReadAllBytes($f) | Select-Object -First 3
+    $hasBom = $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF
+    $orig = & cmd /c "git show HEAD:`"$f`" > `"$env:TEMP\bom-check.bin`""
+    $origB = [System.IO.File]::ReadAllBytes("$env:TEMP\bom-check.bin") | Select-Object -First 3
+    $origHasBom = $origB[0] -eq 0xEF -and $origB[1] -eq 0xBB -and $origB[2] -eq 0xBF
+    if ($origHasBom -and -not $hasBom) { Write-Host "REGRESSED BOM: $f" }
+}
+```
+
+If you see "REGRESSED BOM", restore it before committing:
+
+```powershell
+$bytes = [System.IO.File]::ReadAllBytes($path)
+[System.IO.File]::WriteAllBytes($path, [byte[]](0xEF, 0xBB, 0xBF) + $bytes)
+```
+
+> **Why this rule exists, and why it bites:** PowerShell's default text I/O strips BOM. The PR review bot will flag every `.resw` file you touched with "removes UTF-8 BOM" comments. The fix is mechanical but tedious. Use the safe recipe above for any bulk operation and the BOM-verification step before committing.
+
 ## Terminology Alignment
 
 Align translations using these sources **in priority order**:
@@ -193,6 +236,7 @@ Good translator comments:
 |-------|----------|
 | XML corruption | Never use text-based edit tools; use XmlDocument or Node.js |
 | Missing BOM | Always save with UTF-8 BOM (`\uFEFF` prefix) |
+| **Bulk string-replace strips BOM silently** | Use the [bulk string-replace recipe](#bulk-string-replace-recipe-eg-url-sweep-across-all-locales); always run the BOM-verification step before committing |
 | PowerShell CJK issues | Use Node.js for Chinese/Japanese/Korean content |
 | `xml:space` lost | Use namespace-aware `SetAttribute` |
 | Terminology inconsistency with WTA | Check `wta/locales/{locale}.yml` for that term |

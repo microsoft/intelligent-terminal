@@ -19,7 +19,7 @@ Author(s):
 #include "ITerminalHandoff.h"
 
 #if defined(WT_BRANDING_RELEASE)
-#define __CLSID_CTerminalHandoff "E12CFF52-A866-4C77-9A90-F570A7AA2C6B"
+#define __CLSID_CTerminalHandoff "ECC17785-94ED-4359-B545-0472B7D0275F"
 #elif defined(WT_BRANDING_PREVIEW)
 #define __CLSID_CTerminalHandoff "86633F1F-6454-40EC-89CE-DA4EBA977EE2"
 #elif defined(WT_BRANDING_CANARY)
