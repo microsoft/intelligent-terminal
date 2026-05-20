@@ -3760,28 +3760,10 @@ namespace winrt::TerminalApp::implementation
     // The bottom bar is hidden entirely on non-terminal tabs (e.g. Settings).
     void TerminalPage::_UpdateBottomBarState()
     {
-        // Hide the bottom bar on non-terminal tabs (Settings, Scratchpad, etc.)
-        // by checking the active content type directly. AgentPaneContent counts
-        // as a terminal — it wraps a TerminalPaneContent — so the bottom bar
-        // stays visible when the agent pane is focused.
-        if (auto bottomBar = BottomBar())
-        {
-            bool isTerminalTab = true;
-            if (const auto tab = _GetFocusedTabImpl())
-            {
-                if (const auto content = tab->GetActiveContent())
-                {
-                    const bool isTerm = content.try_as<TerminalApp::TerminalPaneContent>() != nullptr;
-                    const bool isAgent = content.try_as<TerminalApp::AgentPaneContent>() != nullptr;
-                    isTerminalTab = isTerm || isAgent;
-                }
-            }
-            bottomBar.Visibility(isTerminalTab ? Visibility::Visible : Visibility::Collapsed);
-            if (!isTerminalTab)
-            {
-                return;
-            }
-        }
+        // Keep the bottom bar (agent pane / session toggle buttons) visible on
+        // every tab type, including non-terminal tabs like Settings — the
+        // buttons are still functional there (they target the shared agent
+        // pane, not the focused tab's content).
 
         // Per-tab flag drives the toggle button's lit state — it tracks
         // whether the user wants the agent pane open on the *active* tab,
