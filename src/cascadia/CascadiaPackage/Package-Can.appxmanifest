@@ -74,20 +74,15 @@
             <desktop:ExecutionAlias Alias="wtai.exe" />
           </uap3:AppExecutionAlias>
         </uap3:Extension>
-        <!-- wtcli.exe / wta.exe aliases let CLI-agent hook scripts (Claude /
-             Copilot / Gemini) invoke the packaged binaries from outside the
-             package. Without these, scripts fall back to the WindowsApps
+        <!-- wtcli.exe alias lets CLI-agent hook scripts (Claude /
+             Copilot / Gemini) invoke the packaged binary from outside the
+             package. Without this, scripts fall back to the WindowsApps
              InstallLocation path and CreateProcess returns ERROR_ACCESS_DENIED
              (0x5) because regular users lack Execute on files under
              C:\Program Files\WindowsApps\. -->
         <uap3:Extension Category="windows.appExecutionAlias" Executable="wtcli.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:AppExecutionAlias>
             <desktop:ExecutionAlias Alias="wtcli.exe" />
-          </uap3:AppExecutionAlias>
-        </uap3:Extension>
-        <uap3:Extension Category="windows.appExecutionAlias" Executable="wta.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap3:AppExecutionAlias>
-            <desktop:ExecutionAlias Alias="wta.exe" />
           </uap3:AppExecutionAlias>
         </uap3:Extension>
         <uap3:Extension Category="windows.appExtensionHost">
