@@ -183,6 +183,23 @@ pub fn lookup_profile(executable: &str) -> &'static AgentProfile {
         .unwrap_or(&DEFAULT_PROFILE)
 }
 
+/// Look up an agent profile by its full agent command string.
+/// Checks both the id (first word) and the acp_launch_command.
+/// This handles npx-based agents like `npx -y @zed-industries/codex-acp` → codex.
+pub fn lookup_profile_by_command(cmd: &str) -> &'static AgentProfile {
+    // Try direct match on first word (e.g. "copilot --acp --stdio" → "copilot")
+    let first_word = cmd.split_whitespace().next().unwrap_or(cmd);
+    let profile = lookup_profile(first_word);
+    if profile.id != DEFAULT_PROFILE.id {
+        return profile;
+    }
+    // Try matching against acp_launch_command (e.g. "npx -y @zed-industries/codex-acp")
+    KNOWN_AGENTS
+        .iter()
+        .find(|p| !p.acp_launch_command.is_empty() && cmd.contains(p.acp_launch_command))
+        .unwrap_or(&DEFAULT_PROFILE)
+}
+
 /// Look up an agent profile by id.
 pub fn lookup_profile_by_id(id: &str) -> &'static AgentProfile {
     KNOWN_AGENTS

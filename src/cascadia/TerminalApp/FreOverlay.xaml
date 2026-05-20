@@ -237,30 +237,27 @@
                         <!--  Session management  -->
                         <Border Background="#19FFFFFF" CornerRadius="4" Padding="16,12">
                             <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2">
+                                <StackPanel Grid.Column="0" Spacing="2">
                                     <TextBlock FontSize="14" FontWeight="SemiBold"
                                                Foreground="White" Text="Session management" />
                                     <TextBlock FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap"
                                                Text="Give Intelligent Terminal permission to track the status of your running or active agents." />
+                                    <TextBlock x:Name="SessionManagementHint"
+                                               FontSize="12" Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" Margin="0,4,0,0"
+                                               Text="ℹ Enabling this will install integration hooks to track sessions across your agent CLIs." />
                                 </StackPanel>
                                 <ToggleSwitch x:Name="SessionManagementToggle"
-                                              Grid.Row="0" Grid.Column="1" Grid.RowSpan="2"
+                                              Grid.Column="1"
                                               IsOn="True" VerticalAlignment="Center"
                                               HorizontalAlignment="Right" MinWidth="0"
-                                              OnContent="On" OffContent="Off" />
-                                <TextBlock Grid.Row="1" Grid.Column="0"
-                                           FontSize="12" Foreground="#99FFFFFF"
-                                           TextWrapping="Wrap" Margin="0,6,0,0"
-                                           Text="ℹ Enabling this will install integration hooks to track sessions across your agent CLIs." />
+                                              OnContent="On" OffContent="Off"
+                                              Toggled="_OnSessionManagementToggled" />
                             </Grid>
                         </Border>
 

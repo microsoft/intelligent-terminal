@@ -41,6 +41,8 @@ namespace winrt::TerminalApp::implementation
                                  const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
         void _OnAgentSelectionChanged(const winrt::Windows::Foundation::IInspectable& sender,
                                       const winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs& args);
+        void _OnSessionManagementToggled(const winrt::Windows::Foundation::IInspectable& sender,
+                                         const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
 
         // No-op kept for IDL compatibility.
         void ResetDragOffset();

@@ -216,12 +216,6 @@ pub fn build_setup_options(
                         opts.push(SetupOption::Retry);
                     }
                 }
-                // Offer switching to Copilot or any detected agent
-                for a in all_agents {
-                    if a.id != status.id && (a.id == "copilot" || a.cli_found) {
-                        opts.push(SetupOption::SwitchAgent { agent: a.clone() });
-                    }
-                }
                 // If custom/unknown agent, offer retry
                 if status.id == "unknown" || (!status.can_auto_install() && !status.cli_found) {
                     opts.push(SetupOption::Retry);
@@ -1153,6 +1147,9 @@ pub struct App {
     pub state: ConnectionState,
     /// The agent ID we're trying to connect to (set at preflight/FRE time).
     pub current_agent_id: String,
+    /// True when preflight detected an issue and is showing Setup screen.
+    /// Prevents AgentError from overriding the preflight Setup.
+    preflight_setup_active: bool,
     pub agent_name: String,
     pub agent_model: Option<String>,
     pub agent_version: Option<String>,
@@ -1349,6 +1346,7 @@ impl App {
             deferred_acp: None,
             state: ConnectionState::Connecting("Starting agent...".to_string()),
             current_agent_id: String::new(),
+            preflight_setup_active: false,
             agent_name: String::new(),
             agent_model: None,
             agent_version: None,
@@ -2161,8 +2159,8 @@ impl App {
                         install_log: Vec::new(),
                         install_error: None,
                         options,
-                        title: format!("{} is not available", agent_name),
-                        subtitle: format!("{} CLI was not found", agent_id),
+                        title: "Agent not available".to_string(),
+                        subtitle: format!("Your agent \"{}\" is not installed. Please reinstall it manually, then retry. To switch agents, go to Settings.", agent_name),
                     });
                 }
             }
@@ -2211,23 +2209,27 @@ impl App {
                 });
             }
             SetupOption::Retry => {
-                // Re-run preflight detection
+                // Re-run preflight detection and try to reconnect
                 if let Some(ref setup) = self.setup {
                     let agent_id = setup.preflight.agent_id.clone();
                     if !agent_id.is_empty() {
                         let status = crate::agent_check::check_agent(&agent_id);
-                        if status.cli_found && status.has_credential {
+                        if status.cli_found {
+                            // CLI found — try to connect (auth will be checked by ACP).
+                            // Stay in Setup mode with "Connecting..." to avoid a flash
+                            // of red error text in Chat if ACP fails immediately.
                             self.update_deferred_acp_agent(&agent_id);
-                            self.mode = AppMode::Chat;
                             self.state =
-                                ConnectionState::Connecting("Starting agent...".to_string());
+                                ConnectionState::Connecting("Reconnecting...".to_string());
+                            self.preflight_setup_active = false;
                             if self.deferred_acp.is_some() {
                                 self.pending_acp_start = true;
                             } else {
                                 let new_cmd = self.build_agent_cmd(&agent_id);
                                 let _ = self.restart_tx.send(RestartRequest { agent_cmd: Some(new_cmd) });
                             }
-                            self.setup = None;
+                            // Don't clear setup yet — AgentConnected will transition to Chat,
+                            // AgentError will update the Setup screen.
                         }
                     }
                 }
@@ -2622,6 +2624,12 @@ impl App {
                 self.current_model_id = current_model_id.clone();
                 self.agent_supports_load_session = load_session_supported;
                 self.state = ConnectionState::Connected;
+                self.preflight_setup_active = false;
+                // If we were in Setup (e.g. after Retry), transition to Chat
+                if self.mode == AppMode::Setup {
+                    self.mode = AppMode::Chat;
+                    self.setup = None;
+                }
                 // Show welcome hint on first-ever connect (persisted in state.json)
                 if !welcome_shown_in_state() {
                     self.show_welcome_hint = true;
@@ -2717,7 +2725,7 @@ impl App {
                     || lower.contains("401")
                     || lower.contains("apikey is missing")
                     || lower.contains("api key");
-                if is_auth_error {
+                if is_auth_error && !self.preflight_setup_active {
                     tracing::info!("AgentError auth fallback: showing setup screen");
                     // Use current_agent_id — set at preflight or agent selection time.
                     let agent_id = if !self.current_agent_id.is_empty() {
@@ -2752,7 +2760,11 @@ impl App {
                         install_error: None,
                         options,
                         title: "Sign in required".to_string(),
-                        subtitle: format!("Your agent \"{}\" requires authentication. Sign in to continue.", profile.display_name),
+                        subtitle: if profile.id == "copilot" {
+                            format!("Your agent \"{}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Settings.", profile.display_name)
+                        } else {
+                            format!("Your agent \"{}\" requires authentication. Please sign in via the agent CLI, then retry. To switch agents, go to Settings.", profile.display_name)
+                        },
                     });
                     // Clear error messages
                     let tab = self.current_tab_mut();
@@ -2957,11 +2969,16 @@ impl App {
                     let all_agents = crate::agent_check::check_all_agents();
                     let options = build_setup_options(&reason, Some(&current_status), &all_agents);
                     let title = reason.title().to_string();
-                    let subtitle = format!(
-                        "Your default agent \"{}\" is not available. Select an agent or fix the issue.",
-                        result.display_name
-                    );
+                    let subtitle = if current_status.can_auto_install() {
+                        format!(
+                            "Your agent \"{}\" is not installed. Follow the steps below to install it. To switch agents, go to Settings.",
+                            result.display_name
+                        )
+                    } else {
+                        format!("Your agent \"{}\" is not installed. Please reinstall it manually, then retry. To switch agents, go to Settings.", result.display_name)
+                    };
                     self.mode = AppMode::Setup;
+                    self.preflight_setup_active = true;
                     self.setup = Some(SetupState {
                         reason,
 
@@ -3646,7 +3663,11 @@ impl App {
                                 install_error: None,
                                 options,
                                 title: "Sign in required".to_string(),
-                                subtitle: format!("Your agent \"{}\" requires authentication. Sign in to continue.", profile.display_name),
+                                subtitle: if profile.id == "copilot" {
+                                    format!("Your agent \"{}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Settings.", profile.display_name)
+                                } else {
+                                    format!("Your agent \"{}\" requires authentication. Please sign in via the agent CLI, then retry. To switch agents, go to Settings.", profile.display_name)
+                                },
                             });
                         } else {
                             self.mode = AppMode::Chat;

@@ -1684,8 +1684,9 @@ async fn run_acp_app(
             // Skip preflight when FRE is active — FRE has its own agent
             // selection + auth flow and doesn't need the preflight wizard.
             if cli.setup.is_none() {
-                let agent_id = agent_cmd.split_whitespace().next().unwrap_or(&agent_cmd);
-                app_state.current_agent_id = agent_check::check_agent(agent_id).id.clone();
+                let resolved_profile = agent_registry::lookup_profile_by_command(&agent_cmd);
+                let agent_id = resolved_profile.id;
+                app_state.current_agent_id = agent_id.to_string();
                 let status = agent_check::check_agent(agent_id);
                 let preflight_result = app::PreflightResult {
                     agent_id: status.id.clone(),
