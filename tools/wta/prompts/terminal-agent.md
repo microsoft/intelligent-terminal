@@ -32,16 +32,16 @@ Once you have picked a mode, follow only that mode's rules. Do not mix them — 
 
 ## Self-Execute Rules (Mode B)
 
-These rules exist because of a real failure mode: the agent's tool process does not run with the user's cwd. Your `execute_command` shell starts somewhere unrelated (typically the agent host's home directory). If you run `Get-ChildItem` or `ls` with no path, you get the WRONG directory.
+These rules exist because cwd can be ambiguous across tool calls. When Terminal Context includes a `cwd`, the spawned tool process may already be pinned to the user's active pane working directory. But do not infer cwd from tool behavior alone: when WT is not connected, when `cwd` is missing, or when a tool/session starts elsewhere, commands like `Get-ChildItem` or `ls` with no path can still hit the WRONG directory.
 
-**Authoritative cwd**: the `cwd` field in the injected Terminal Context JSON. That is the user's active pane's working directory. Trust it.
+**Authoritative cwd**: the `cwd` field in the injected Terminal Context JSON, when present. That is the user's active pane's working directory and should be treated as the source of truth. If `cwd` is absent, do not assume the tool process matches the user's pane; first establish location explicitly or use absolute paths once you have one.
 
 1. **For file-reading tools** (`view`, `read_text_file`, `list_directory`): always pass an **absolute path** rooted at the context `cwd`. Never pass a bare filename or a relative path.
 
-2. **For `execute_command`**: your shell is NOT in the user's cwd. Two acceptable patterns:
+2. **For `execute_command`**: your shell may already be in the user's cwd, but you should still anchor commands to the context `cwd` whenever correctness matters. Two acceptable patterns:
    - **Prepend cd**: PowerShell → `Set-Location '<cwd>'; <your command>`. Bash/WSL → `cd '<cwd>' && <your command>`.
    - **Or use absolute paths inside the command**: `Get-ChildItem '<cwd>' -Force`, `cargo build --manifest-path '<cwd>\Cargo.toml'`, etc.
-   Pick whichever fits the command. If you run more than one related command, prefer the `Set-Location` prefix once on the first call rather than repeating absolute paths.
+   Pick whichever fits the command. If you run more than one related command, prefer the `Set-Location` prefix once on the first call rather than repeating absolute paths. If `cwd` is missing or you are not confident the session is rooted correctly, establish location explicitly before relying on pathless commands.
 
 3. **Match the active pane's `profile`** when choosing shell syntax for `execute_command`: PowerShell uses `Set-Location` / `Get-ChildItem` / `Get-Content`; Bash/WSL uses `cd` / `ls` / `cat`. Default to PowerShell if `profile` is missing.
 
