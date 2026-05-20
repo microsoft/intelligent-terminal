@@ -53,21 +53,28 @@ if (-not $env:WT_COM_CLSID) {
 # Locate wtcli.exe. Order:
 #   1. PATH (works if the package registers a wtcli AppExecutionAlias).
 #   2. $env:WTCLI_PATH override (escape hatch for dev builds / debugging).
-#   3. The Windows Terminal package InstallLocation (where the build drops it).
+#
+# Intentionally NOT falling back to Get-AppxPackage InstallLocation:
+# under MSIX, the package InstallLocation lives under
+# C:\Program Files\WindowsApps\<pkg>\, where regular user processes
+# lack Execute permission on PE files — CreateProcess returns
+# ERROR_ACCESS_DENIED (0x5). The supported invocation path for the
+# packaged wtcli from outside the package is the App Execution Alias
+# (declared in Package*.appxmanifest); `Get-Command wtcli` above
+# resolves it via %LOCALAPPDATA%\Microsoft\WindowsApps\.
 $wtcliPath = (Get-Command wtcli -ErrorAction SilentlyContinue).Source
 if (-not $wtcliPath -and $env:WTCLI_PATH -and (Test-Path $env:WTCLI_PATH)) {
     $wtcliPath = $env:WTCLI_PATH
 }
 if (-not $wtcliPath) {
-    try {
-        $pkgs = Get-AppxPackage -Name "*Terminal*" -ErrorAction SilentlyContinue
-        foreach ($pkg in $pkgs) {
-            $candidate = Join-Path $pkg.InstallLocation "wtcli.exe"
-            if (Test-Path $candidate) { $wtcliPath = $candidate; break }
-        }
-    } catch { }
+    if ($traceWritten) {
+        try {
+            $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
+            Add-Content -LiteralPath $tracePath -Value "$stamp | SKIP no wtcli on PATH (cli=$CliSource event=$EventType — App Execution Alias missing/disabled? See Settings -> Apps -> Advanced app settings -> App execution aliases)" -ErrorAction SilentlyContinue
+        } catch { }
+    }
+    exit 0
 }
-if (-not $wtcliPath) { exit 0 }
 
 # Read hook JSON from stdin (may be empty for events that don't carry a
 # payload, e.g. some CLIs' AfterTool / SessionEnd. We still want those to
