@@ -30,7 +30,12 @@ public:
         WM_MESSAGE_BOX_CLOSED,
         WM_IDENTIFY_ALL_WINDOWS,
         WM_NOTIFY_FROM_NOTIFICATION_AREA,
+        WM_COM_IDLE_CHECK, // Posted by COM MTA thread when live object count changes
     };
+
+    // Grace period before exiting when no windows and no COM clients remain.
+    static constexpr UINT_PTR IDT_COM_IDLE = 42;
+    static constexpr DWORD COM_IDLE_TIMEOUT_MS = 5000;
 
     WindowEmperor();
     ~WindowEmperor();
@@ -68,6 +73,7 @@ private:
     LRESULT _messageHandler(HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept;
     void _createMessageWindow(const wchar_t* className);
     void _postQuitMessageIfNeeded() const;
+    void _updateComIdleTimer();
     safe_void_coroutine _showMessageBox(winrt::hstring message, bool error);
     void _notificationAreaMenuRequested(WPARAM wParam);
     void _notificationAreaMenuClicked(WPARAM wParam, LPARAM lParam) const;

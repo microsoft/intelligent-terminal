@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <vector>
 
@@ -51,6 +52,7 @@ struct Factory : winrt::implements<Factory<T>, IClassFactory, winrt::no_module_l
 struct __declspec(uuid(__CLSID_TerminalProtocolServer))
 TerminalProtocolComServer : winrt::implements<TerminalProtocolComServer, Protocol::IProtocolServer>
 {
+    TerminalProtocolComServer();
     ~TerminalProtocolComServer();
 
     // ── IProtocolServer ──
@@ -99,9 +101,15 @@ TerminalProtocolComServer : winrt::implements<TerminalProtocolComServer, Protoco
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;
+    // Store the emperor's hidden HWND so MTA threads can PostMessage to the UI thread.
+    static void s_setEmperorHwnd(HWND hwnd) noexcept;
 
     static HRESULT s_StartListening();
     static HRESULT s_StopListening();
+
+    // Live COM object count (all objects, regardless of auth state).
+    // Used by WindowEmperor to decide when the process is truly idle.
+    static int32_t s_GetLiveObjectCount() noexcept;
 
     // Deliver an event to all connected COM clients.
     static void s_NotifyEventToComClients(const std::string& eventJson);
@@ -146,4 +154,6 @@ private:
     static void _dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson);
 
     static WindowEmperor* s_emperor;
+    static HWND s_emperorHwnd;
+    static std::atomic<int32_t> s_liveObjectCount;
 };

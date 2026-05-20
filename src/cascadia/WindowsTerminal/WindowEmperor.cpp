@@ -36,6 +36,8 @@ using VirtualKeyModifiers = winrt::Windows::System::VirtualKeyModifiers;
 WindowEmperor::WindowEmperor() = default;
 WindowEmperor::~WindowEmperor()
 {
+    // Clear the HWND before revoking COM to prevent stale PostMessage calls.
+    TerminalProtocolComServer::s_setEmperorHwnd(nullptr);
     // Revoke COM class factory before destroying resources.
     LOG_IF_FAILED(TerminalProtocolComServer::s_StopListening());
 }
@@ -283,6 +285,9 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
 
     _windowCount += 1;
     _windows.emplace_back(std::move(host));
+
+    // A new window means we're no longer idle — cancel any pending COM idle timer.
+    _updateComIdleTimer();
 
     if (_windowCount == 1)
     {
@@ -1034,6 +1039,29 @@ void WindowEmperor::_postQuitMessageIfNeeded() const
     }
 }
 
+// Re-evaluates whether the process is truly idle (no windows, no message
+// boxes, no live COM clients). If so, starts a grace-period timer; if
+// activity resumes, cancels it. This is the single place that decides
+// about the COM idle timer — all callers just invoke this method and
+// let it recompute from scratch (stateless).
+void WindowEmperor::_updateComIdleTimer()
+{
+    const auto idle =
+        _windowCount <= 0 &&
+        _messageBoxCount <= 0 &&
+        TerminalProtocolComServer::s_GetLiveObjectCount() <= 0;
+
+    if (idle)
+    {
+        // Start (or restart) the grace-period timer.
+        SetTimer(_window.get(), IDT_COM_IDLE, COM_IDLE_TIMEOUT_MS, nullptr);
+    }
+    else
+    {
+        KillTimer(_window.get(), IDT_COM_IDLE);
+    }
+}
+
 safe_void_coroutine WindowEmperor::_showMessageBox(winrt::hstring message, bool error)
 {
     // Prevent the main loop from exiting until the message box is closed.
@@ -1117,13 +1145,34 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             // Counterpart specific to CreateNewWindow().
             _windowCount -= 1;
             _postQuitMessageIfNeeded();
+            _updateComIdleTimer();
             return 0;
         }
         case WM_MESSAGE_BOX_CLOSED:
             // Counterpart specific to _showMessageBox().
             _messageBoxCount -= 1;
             _postQuitMessageIfNeeded();
+            _updateComIdleTimer();
             return 0;
+        case WM_COM_IDLE_CHECK:
+            // Posted by the COM MTA thread when a COM object is created or
+            // destroyed. Recompute idle state from scratch.
+            _updateComIdleTimer();
+            return 0;
+        case WM_TIMER:
+            if (wParam == IDT_COM_IDLE)
+            {
+                KillTimer(_window.get(), IDT_COM_IDLE);
+                // Double-check: still truly idle?
+                if (_windowCount <= 0 &&
+                    _messageBoxCount <= 0 &&
+                    TerminalProtocolComServer::s_GetLiveObjectCount() <= 0)
+                {
+                    PostQuitMessage(0);
+                }
+                return 0;
+            }
+            break;
         case WM_IDENTIFY_ALL_WINDOWS:
             for (const auto& host : _windows)
             {
@@ -1651,6 +1700,7 @@ void WindowEmperor::_initializeProtocolServer()
 {
     // Register COM class factory for cross-process access (runs on MTA thread).
     TerminalProtocolComServer::s_setEmperor(this);
+    TerminalProtocolComServer::s_setEmperorHwnd(_window.get());
     if (SUCCEEDED_LOG(TerminalProtocolComServer::s_StartListening()))
     {
         // Stringify the CLSID so child processes can discover us via CoCreateInstance.

@@ -19,6 +19,8 @@ namespace Protocol = winrt::Microsoft::Terminal::Protocol;
 
 // Static state — set once before registration, never mutated.
 WindowEmperor* TerminalProtocolComServer::s_emperor = nullptr;
+HWND TerminalProtocolComServer::s_emperorHwnd = nullptr;
+std::atomic<int32_t> TerminalProtocolComServer::s_liveObjectCount{ 0 };
 
 static DWORD g_comRegistration = 0;
 static std::shared_mutex g_mtx;
@@ -32,6 +34,27 @@ std::vector<TerminalProtocolComServer*> TerminalProtocolComServer::s_instances;
 void TerminalProtocolComServer::s_setEmperor(WindowEmperor* emperor) noexcept
 {
     s_emperor = emperor;
+}
+
+void TerminalProtocolComServer::s_setEmperorHwnd(HWND hwnd) noexcept
+{
+    s_emperorHwnd = hwnd;
+}
+
+int32_t TerminalProtocolComServer::s_GetLiveObjectCount() noexcept
+{
+    return s_liveObjectCount.load(std::memory_order_acquire);
+}
+
+// Post a message to the emperor's UI thread to re-evaluate idle state.
+// Called from the COM MTA thread — PostMessage is thread-safe.
+static void s_notifyEmperorIdleCheck()
+{
+    const auto hwnd = TerminalProtocolComServer::s_emperorHwnd;
+    if (hwnd)
+    {
+        PostMessage(hwnd, WindowEmperor::WM_COM_IDLE_CHECK, 0, 0);
+    }
 }
 
 HRESULT TerminalProtocolComServer::s_StartListening()
@@ -94,9 +117,17 @@ HRESULT TerminalProtocolComServer::s_StopListening()
     return S_OK;
 }
 
+TerminalProtocolComServer::TerminalProtocolComServer()
+{
+    s_liveObjectCount.fetch_add(1, std::memory_order_release);
+    s_notifyEmperorIdleCheck();
+}
+
 TerminalProtocolComServer::~TerminalProtocolComServer()
 {
     _removeInstance();
+    s_liveObjectCount.fetch_sub(1, std::memory_order_release);
+    s_notifyEmperorIdleCheck();
 }
 
 void TerminalProtocolComServer::_addInstance()
