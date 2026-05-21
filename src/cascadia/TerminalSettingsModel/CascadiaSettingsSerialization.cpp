@@ -1967,59 +1967,42 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
             return "custom";
         };
 
-        if (changes.contains("global.acpAgent"))
-        {
-            const auto sanitized = sanitizeProviderId(_globals->AcpAgent());
+        const auto emitAgentProviderConfigured = [&](const char* providerType, const winrt::hstring& id) {
+            const auto sanitized = sanitizeProviderId(id);
             TraceLoggingWrite(g_hSettingsModelProvider,
                               "AgentProviderConfigured",
                               TraceLoggingDescription("Event emitted when the user has an agent provider configured"),
-                              TraceLoggingValue("AcpAgent", "ProviderType", "Which provider setting (AcpAgent or DelegateAgent)"),
+                              TraceLoggingValue(providerType, "ProviderType", "Which provider setting (AcpAgent or DelegateAgent)"),
                               TraceLoggingValue(sanitized.c_str(), "ProviderId", "The agent provider ID"),
-                              TraceLoggingValue(branding, "Branding"),
                               TraceLoggingValue(distribution, "Distribution"),
                               TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                               TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        };
+        if (changes.contains("global.acpAgent"))
+        {
+            emitAgentProviderConfigured("AcpAgent", _globals->AcpAgent());
         }
         if (changes.contains("global.delegateAgent"))
         {
-            const auto sanitized = sanitizeProviderId(_globals->DelegateAgent());
-            TraceLoggingWrite(g_hSettingsModelProvider,
-                              "AgentProviderConfigured",
-                              TraceLoggingDescription("Event emitted when the user has an agent provider configured"),
-                              TraceLoggingValue("DelegateAgent", "ProviderType", "Which provider setting (AcpAgent or DelegateAgent)"),
-                              TraceLoggingValue(sanitized.c_str(), "ProviderId", "The agent provider ID"),
-                              TraceLoggingValue(branding, "Branding"),
-                              TraceLoggingValue(distribution, "Distribution"),
-                              TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                              TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            emitAgentProviderConfigured("DelegateAgent", _globals->DelegateAgent());
         }
-        if (changes.contains("global.autoFixEnabled"))
-        {
+        const auto emitIntelligentFeatureConfigured = [&](const char* featureName, const winrt::hstring& featureValue) {
             TraceLoggingWrite(g_hSettingsModelProvider,
                               "IntelligentFeatureConfigured",
                               TraceLoggingDescription("Event emitted when the user has an intelligent terminal feature configured"),
-                              TraceLoggingValue("AutoFix", "FeatureName", "The name of the feature"),
-                              TraceLoggingValue(_globals->AutoFixEnabled(), "FeatureEnabled", "Whether the feature is enabled"),
-                              TraceLoggingValue(branding, "Branding"),
+                              TraceLoggingValue(featureName, "FeatureName", "The name of the feature"),
+                              TraceLoggingValue(featureValue.c_str(), "FeatureValue", "The configured value"),
                               TraceLoggingValue(distribution, "Distribution"),
                               TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                               TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        };
+        if (changes.contains("global.autoFixEnabled"))
+        {
+            emitIntelligentFeatureConfigured("AutoFix", _globals->AutoFixEnabled() ? L"true" : L"false");
         }
         if (changes.contains("global.agentPanePosition"))
         {
-            const auto position = _globals->AgentPanePosition();
-            const auto sanitizedPosition = (position == L"bottom" || position == L"right" || position == L"top" || position == L"left")
-                                               ? winrt::to_string(position)
-                                               : std::string{ "unknown" };
-            TraceLoggingWrite(g_hSettingsModelProvider,
-                              "IntelligentFeatureConfigured",
-                              TraceLoggingDescription("Event emitted when the user has an intelligent terminal feature configured"),
-                              TraceLoggingValue("AgentPanePosition", "FeatureName", "The name of the feature"),
-                              TraceLoggingValue(sanitizedPosition.c_str(), "FeatureValue", "The configured position value"),
-                              TraceLoggingValue(branding, "Branding"),
-                              TraceLoggingValue(distribution, "Distribution"),
-                              TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                              TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            emitIntelligentFeatureConfigured("AgentPanePosition", _globals->AgentPanePosition());
         }
     }
 }

@@ -57,17 +57,6 @@ using namespace ::Microsoft::Console;
 using namespace ::Microsoft::Terminal::Core;
 using namespace std::chrono_literals;
 
-// Telemetry branding constant for this binary.
-#if defined(WT_BRANDING_RELEASE)
-static constexpr uint8_t c_telemetryBranding = 3;
-#elif defined(WT_BRANDING_PREVIEW)
-static constexpr uint8_t c_telemetryBranding = 2;
-#elif defined(WT_BRANDING_CANARY)
-static constexpr uint8_t c_telemetryBranding = 1;
-#else
-static constexpr uint8_t c_telemetryBranding = 0;
-#endif
-
 #define HOOKUP_ACTION(action) _actionDispatch->action({ this, &TerminalPage::_Handle##action });
 
 namespace winrt
@@ -2248,7 +2237,6 @@ namespace winrt::TerminalApp::implementation
                         "AgentPaneOpened",
                         TraceLoggingDescription("Event emitted when the agent pane is opened"),
                         TraceLoggingWideString(triggerSource, "TriggerSource", "How the agent pane was triggered"),
-                        TraceLoggingValue(c_telemetryBranding, "Branding"),
                         TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                         TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
                 }
@@ -2294,7 +2282,6 @@ namespace winrt::TerminalApp::implementation
                     "AgentPaneOpened",
                     TraceLoggingDescription("Event emitted when the agent pane is opened"),
                     TraceLoggingWideString(triggerSource, "TriggerSource", "How the agent pane was triggered"),
-                    TraceLoggingValue(c_telemetryBranding, "Branding"),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 
@@ -2454,7 +2441,6 @@ namespace winrt::TerminalApp::implementation
             "AgentPaneOpened",
             TraceLoggingDescription("Event emitted when the agent pane is opened"),
             TraceLoggingWideString(triggerSource, "TriggerSource", "How the agent pane was triggered"),
-            TraceLoggingValue(c_telemetryBranding, "Branding"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 
@@ -4045,7 +4031,6 @@ namespace winrt::TerminalApp::implementation
                     g_hTerminalAppProvider,
                     "ErrorDetected",
                     TraceLoggingDescription("Event emitted when an error is auto-detected in a terminal pane"),
-                    TraceLoggingValue(c_telemetryBranding, "Branding"),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
             }
@@ -4367,7 +4352,6 @@ namespace winrt::TerminalApp::implementation
             "ErrorFixAttempted",
             TraceLoggingDescription("Event emitted when the user attempts an agent-suggested fix"),
             TraceLoggingWideString(triggerSource, "TriggerSource", "How the fix was triggered"),
-            TraceLoggingValue(c_telemetryBranding, "Branding"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 
@@ -4497,7 +4481,6 @@ namespace winrt::TerminalApp::implementation
             g_hTerminalAppProvider,
             "SessionResumed",
             TraceLoggingDescription("Event emitted when a prior agent session resume is dispatched"),
-            TraceLoggingValue(c_telemetryBranding, "Branding"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 

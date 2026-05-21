@@ -1683,7 +1683,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        _OpenOrReuseAgentPane(L"", false, L"Action");
+        _OpenOrReuseAgentPane(L"", false, L"OpenPaneAction");
         _UpdateBottomBarState();
         args.Handled(true);
     }
