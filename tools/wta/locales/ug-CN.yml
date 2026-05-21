@@ -1,6 +1,5 @@
-# ─── Setup screen ────────────────────────────────────────────────────────────
+# Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-
 setup.title.first_run: "Intelligent Terminal ھە خوش كەلدىڭىز!"
 setup.title.agent_missing: "ۋەكىل تېپىلمىدى"
 setup.title.agent_error: "ۋەكىل بىلەن باغلىنىش مەغلۇب بولدى"
@@ -9,13 +8,12 @@ setup.title.not_available: "ۋەكىل ئىشلەتكىلى ئەمەس"
 setup.title.sign_in: "كىرىش تەلەپ قىلىنىدۇ"
 
 # %{agent} is replaced with the agent display name at runtime.
-# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
 setup.subtitle.copilot_missing: "سىزنىڭ ۋەكىلىڭىز \"%{agent}\" ئورنىتىلمىغان. ئورنىتىش ئۈچۈن تۆۋەندىكى قەدەملەرنى بېسىڭ. ۋەكىلنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
 setup.subtitle.agent_missing: "سىزنىڭ ۋەكىلىڭىز \"%{agent}\" ئورنىتىلمىغان. قولدا قايتا ئورنىتىپ سىناڭ. ۋەكىلنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
 setup.subtitle.copilot_auth: "سىزنىڭ ۋەكىلىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. كىرىش ئۈچۈن تۆۋەندىكى قەدەملەرنى بېسىڭ. ۋەكىلنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
 setup.subtitle.agent_auth: "سىزنىڭ ۋەكىلىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. ۋەكىل CLI ئارقىلىق كىرىپ قايتا سىناڭ. ۋەكىلنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
 
-# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+# {Locked="Intelligent Terminal"}
 setup.description.fre_line1: "Intelligent Terminal دا ئىشلەتمەكچى كۆڭۈلمە ۋەكىل CLI نى تاللاڭ. سىز"
 setup.description.fre_line2: "Settings قا كىرىپ ئىش بوشلۇقىڭىزنى تەڭشىيەلەىسىز."
 
@@ -29,38 +27,124 @@ setup.status.installing: "ئورنىتىلىۋاتىدۇ..."
 setup.status.install_failed: "ئورنىتىش مەغلۇب بولدى: "
 setup.status.installing_winget: " winget ئارقىلىق ئورنىتىلىۋاتىدۇ..."
 
-# ─── Auth screen ─────────────────────────────────────────────────────────────────────────────
+# ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "ۋەكىل CLI %{name} تاللاندى"
+auth.agent_selected_with_status: "ۋەكىل CLI %{name} — "
+auth.checking_authentication: "  %{spinner} تونۇقتۇرۇش تەكشۈرۈلۈۋاتىدۇ..."
+auth.waiting_for_authorization: "  %{spinner} ئىكرامىيەت كۈتۈلۈۋاتىدۇ..."
+auth.code_copied_hint: "كود چاپلىگەن — توركۆرۈڭۈزگە چاپلاڭ."
+auth.sign_in_prompt: "ۋەكىلىڭىزنى ئىشلىتىش ئۈچۈن كىرىڭ:"
+auth.card_connect: "ۋەكىل ئىقتىدارلىرىنى ئاچىش ئۈچۈن %{name} نى باغلاڭ"
+auth.button_sign_in_github: "[ GitHub بىلەن كىرىش ]"
+auth.button_sign_in_with: "[ %{name} بىلەن كىرىش ]"
+auth.hint_footer: "Enter كىرىش ئۈچۈن, Esc قايتىش ئۈچۈن بېسىڭ"
 
-auth.agent_selected: "ۋەكىل CLI %{agent} تاللاندى"
-auth.agent_selected_reason: "ۋەكىل CLI %{agent} — "
-auth.checking: "تونۇقتۇرۇش تەكشۈرۈلۈۋاتىدۇ..."
-auth.waiting: "ئىكرامىيەت كۈتۈلۈۋاتىدۇ..."
-auth.code_copied: "كود چاپلىگەن — توركۆرۈڭۈزگە چاپلاڭ."
-auth.signin_prompt: "ۋەكىلىڭىزنى ئىشلىتىش ئۈچۈن كىرىڭ:"
-auth.connect_agent: "ۋەكىل ئىقتىدارلىرىنى ئاچىش ئۈچۈن %{agent} نى باغلاڭ"
-# {Locked="GitHub"} - brand name
-auth.signin_github: "[ GitHub بىلەن كىرىش ]"
-auth.signin_agent: "[ %{agent} بىلەن كىرىش ]"
-auth.hint: "Enter كىرىش ئۈچۈن, Esc قايتىش ئۈچۈن بېسىڭ"
-
-# ─── Chat ────────────────────────────────────────────────────────────────────────────────
-
-# {Locked="Intelligent Terminal"}
-chat.thinking: "ئويلىنىۋاتىدۇ…"
-chat.welcome: "Intelligent Terminal ھە خوش كەلدىڭىز!"
+# ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "ئويلىنىۋاتىدۇ…"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+chat.welcome_title: "Intelligent Terminal ھە خوش كەلدىڭىز!"
 chat.plan_header: "پىلان:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
 
-# ─── Hints ───────────────────────────────────────────────────────────────────────────────
-# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
-hint.shortcuts: "(Ctrl+Shift+. ۋەكىل تاختىسىنى كۆرسەت/يوشۇرۇش • Ctrl+Alt+/ ۋەكىل ئوتتۇرىسىنى كۆرسەت/يوشۇرۇش)"
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
+input.placeholder.connecting: "connecting..."
+input.placeholder.disconnected: "disconnect"
 
-# ─── Agent status labels ──────────────────────────────────────────────────────────────────
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / commands "
+commands.help_title: " Help "
+commands.help_header: "Slash commands — type / in the input box."
+commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command parser)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ to navigate • Enter to select • Esc to cancel)"
+recommendations.button_run_command: "[ Run command ]"
+recommendations.button_insert_in_terminal: "Insert in Terminal"
+recommendations.button_open_in_new_tab: "Open in New Tab ↵"
+recommendations.button_open_in_new_panel: "Open in New Panel ↵"
+recommendations.button_open_tab: "Open Tab ↵"
+recommendations.button_open_panel: "Open Panel ↵"
+recommendations.button_execute: "Execute ↵"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+permission.compact.default_description: "Permission requested"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N to answer · resize for full card]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_installed_auto: "ئورنىتىلمىغان — ئاپتوماتىك ئورنىتىش ئۈچۈن تاللاڭ"
 agent.status.not_found: "تېپىلمىدى"
 agent.status.detected: "بايقىلدى"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "Running: winget install GitHub.Copilot"
+agent.install.launch_failed: "Failed to launch winget: %{error}"
+agent.install.winget_exited: "winget exited unexpectedly: %{error}"
+agent.install.winget_failed_code: "winget install failed (exit code %{code})"
+agent.install.unsupported: "Automatic install not supported for %{agent}"
+agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {Locked="PATH"}
 
-# ─── Connection state ─────────────────────────────────────────────────────────────────────
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Loading..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit)"
+agents.status.active: "Active"
+agents.status.waiting_for_input: "Waiting for input"
+agents.status.error: "Error"
+agents.status.idle: "Idle"
 
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "(Ctrl+Shift+. ۋەكىل تاختىسىنى كۆرسەت/يوشۇرۇش • Ctrl+Alt+/ ۋەكىل ئوتتۇرىسىنى كۆرسەت/يوشۇرۇش)"
+
+# ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "ۋەكىل ئىشقا چۈشۈرۈلۈۋاتىدۇ..."
 connection.reconnecting: "قايتا باغلىنىۋاتىدۇ..."
+
+# ── System messages (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Cancelled."
+system.no_prompt_in_flight: "No prompt in flight."
+system.authentication_failed: "Authentication failed"
+system.command_copied_retry: "Command copied — run it in another terminal, then press Enter to retry"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
+output.no_windows: "No windows found."
+output.no_tabs: "No tabs found."
+output.no_panes: "No panes found."
+output.no_windows_in_list: "No windows found"
+output.no_tabs_in_window: "No tabs found in window %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Active pane: %{pane} (tab: %{tab}, window: %{window})"
+output.pane_running: "Running (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Exited (code: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Created tab %{tab_id} (pane %{pane_id})"
+output.created_pane: "Created pane %{pane_id}"
+output.pane_closed: "Pane %{pane_id} closed."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "No active pane found. Use -t to specify a pane ID."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID not set. Run inside a Windows Terminal pane."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Unknown shell type '%{shell}'. Use: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "Failed to spawn wtcli wait-for"
+error.wtcli_wait_for_parse: "Failed to parse wtcli wait-for output"
+error.wtcli_wait_for_failed: "wtcli wait-for failed: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "bundle source: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI not on PATH"
+hooks.installed: "✓ installed"
+hooks.marketplace_path_stale: "⚠ marketplace path stale"
+hooks.installed_but_disabled: "⚠ installed but disabled"
+hooks.not_installed: "✗ not installed"
+hooks.uninstall_skipped: "skipped (CLI not on PATH)"
+hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

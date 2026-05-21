@@ -1,6 +1,5 @@
-# ─── شاشة الإعداد ────────────────────────────────────────────────────────────
+# عناوين شاشة الإعداد
 # {Locked="Intelligent Terminal"} - اسم المنتج، لا تترجمه
-
 setup.title.first_run: "مرحبًا بك في Intelligent Terminal!"
 setup.title.agent_missing: "لم يتم العثور على الوكيل"
 setup.title.agent_error: "فشل الاتصال بالوكيل"
@@ -9,13 +8,12 @@ setup.title.not_available: "الوكيل غير متوفر"
 setup.title.sign_in: "تسجيل الدخول مطلوب"
 
 # يتم استبدال %{agent} باسم عرض الوكيل في وقت التشغيل.
-# {Locked="Settings"} - يشير إلى صفحة Settings.
 setup.subtitle.copilot_missing: "الوكيل \"%{agent}\" غير مثبّت. اتبع الخطوات أدناه لتثبيته. لتبديل الوكلاء، انتقل إلى Settings."
 setup.subtitle.agent_missing: "الوكيل \"%{agent}\" غير مثبّت. يُرجى إعادة تثبيته يدويًا، ثم أعد المحاولة. لتبديل الوكلاء، انتقل إلى Settings."
 setup.subtitle.copilot_auth: "يتطلب الوكيل \"%{agent}\" المصادقة. اتبع الخطوات أدناه لتسجيل الدخول. لتبديل الوكلاء، انتقل إلى Settings."
 setup.subtitle.agent_auth: "يتطلب الوكيل \"%{agent}\" المصادقة. يُرجى تسجيل الدخول عبر CLI الخاص بالوكيل، ثم أعد المحاولة. لتبديل الوكلاء، انتقل إلى Settings."
 
-# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+# {Locked="Intelligent Terminal"}
 setup.description.fre_line1: "اختر CLI الوكيل الافتراضي الذي تريد استخدامه في Intelligent Terminal. يمكنك"
 setup.description.fre_line2: "الانتقال إلى Settings لتكوين مساحة العمل وإعدادها."
 
@@ -29,38 +27,124 @@ setup.status.installing: "جارٍ التثبيت..."
 setup.status.install_failed: "فشل التثبيت: "
 setup.status.installing_winget: " جارٍ التثبيت عبر winget..."
 
-# ─── شاشة المصادقة ─────────────────────────────────────────────────────────────
+# ── تدفق المصادقة (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - اختصار، استخدام شائع في عمليات الترجمة من Microsoft
+auth.agent_selected: "تم تحديد CLI الوكيل %{name}"
+auth.agent_selected_with_status: "CLI الوكيل %{name} — "
+auth.checking_authentication: "  %{spinner} جارٍ التحقق من المصادقة..."
+auth.waiting_for_authorization: "  %{spinner} في انتظار التفويض..."
+auth.code_copied_hint: "  تم نسخ الرمز إلى الحافظة — الصقه في المتصفح."
+auth.sign_in_prompt: "سجّل الدخول لاستخدام وكيلك:"
+auth.card_connect: "  قم بتوصيل %{name} لتمكين ميزات الوكيل"
+auth.button_sign_in_github: "[ تسجيل الدخول باستخدام GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ تسجيل الدخول باستخدام %{name} ]"
+auth.hint_footer: "  اضغط Enter لتسجيل الدخول، Esc للرجوع"  # {Locked="Enter","Esc"}
 
-auth.agent_selected: "تم تحديد CLI الوكيل %{agent}"
-auth.agent_selected_reason: "CLI الوكيل %{agent} — "
-auth.checking: "جارٍ التحقق من المصادقة..."
-auth.waiting: "في انتظار التفويض..."
-auth.code_copied: "تم نسخ الرمز إلى الحافظة — الصقه في المتصفح."
-auth.signin_prompt: "سجّل الدخول لاستخدام وكيلك:"
-auth.connect_agent: "قم بتوصيل %{agent} لتمكين ميزات الوكيل"
-# {Locked="GitHub"} - اسم العلامة التجارية
-auth.signin_github: "[ تسجيل الدخول باستخدام GitHub ]"
-auth.signin_agent: "[ تسجيل الدخول باستخدام %{agent} ]"
-auth.hint: "اضغط Enter لتسجيل الدخول، Esc للرجوع"
-
-# ─── الدردشة ────────────────────────────────────────────────────────────────────
-
-# {Locked="Intelligent Terminal"}
-chat.thinking: "جارٍ التفكير…"
-chat.welcome: "مرحبًا بك في Intelligent Terminal!"
+# ── عرض الدردشة (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "جارٍ التفكير…"
+# {Locked="Intelligent Terminal"} - اسم المنتج، لا تترجمه
+chat.welcome_title: "مرحبًا بك في Intelligent Terminal!"
 chat.plan_header: "الخطة:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
 
-# ─── تلميحات ───────────────────────────────────────────────────────────────
-# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
-hint.shortcuts: "(Ctrl+Shift+. لإظهار/إخفاء لوحة الوكيل • Ctrl+Alt+/ لإظهار/إخفاء جلسة الوكيل)"
+# ── عناصر نائبة للإدخال (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "اسأل أي شيء، / للأوامر.."  # {Locked="/"}
+input.placeholder.connecting: "جارٍ الاتصال..."
+input.placeholder.disconnected: "غير متصل"
 
-# ─── تسميات حالة الوكيل ────────────────────────────────────────────────────
+# ── نافذة الأوامر المنبثقة (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - بادئة أمر الشرطة المائلة، يجب أن تبقى ASCII
+commands.popup_title: " / الأوامر "
+commands.help_title: " المساعدة "
+commands.help_header: "أوامر الشرطة المائلة — اكتب / في مربع الإدخال."
+commands.help_escape_hint: "  //text     إرسال '/' حرفيًا (يتجاوز محلل الأوامر)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        إغلاق هذه المساعدة"  # {Locked="Esc"}
 
+# ── لوحة التوصيات (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - أسماء المفاتيح ورمز مفتاح الإدخال، لا تترجمها
+recommendations.nav_hint: "(↑ ↓ للتنقل • Enter للتحديد • Esc للإلغاء)"
+recommendations.button_run_command: "[ تشغيل الأمر ]"
+recommendations.button_insert_in_terminal: "إدراج في الطرفية"
+recommendations.button_open_in_new_tab: "فتح في علامة تبويب جديدة ↵"
+recommendations.button_open_in_new_panel: "فتح في لوحة جديدة ↵"
+recommendations.button_open_tab: "فتح علامة تبويب ↵"
+recommendations.button_open_panel: "فتح لوحة ↵"
+recommendations.button_execute: "تنفيذ ↵"
+
+# ── مربع حوار الأذونات في الوضع المضغوط (src/ui/permission.rs) ───────────────────────
+permission.compact.default_description: "تم طلب الإذن"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N للإجابة · غيّر الحجم لعرض البطاقة الكاملة]"  # {Locked="Y/N"}
+
+# ── حالة الوكيل (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_installed_auto: "غير مثبّت — حدد للتثبيت تلقائيًا"
 agent.status.not_found: "غير موجود"
 agent.status.detected: "تم الاكتشاف"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - أسماء الأدوات والأمر، يجب تشغيلها كما هي
+agent.install.running_winget: "جارٍ التشغيل: winget install GitHub.Copilot"
+agent.install.launch_failed: "فشل في تشغيل winget: %{error}"
+agent.install.winget_exited: "خرج winget بشكل غير متوقع: %{error}"
+agent.install.winget_failed_code: "فشل تثبيت winget (رمز الخروج %{code})"
+agent.install.unsupported: "التثبيت التلقائي غير مدعوم لـ %{agent}"
+agent.custom.auth_hint: "تأكد من أن %{name} مثبّت وموجود في PATH."  # {Locked="PATH"}
 
-# ─── حالة الاتصال ───────────────────────────────────────────────────────────
+# ── عرض الوكلاء (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "جارٍ التحميل..."
+# {Locked="Enter","Shift+enter","Esc"} - مجموعات المفاتيح، لا تترجمها
+agents.footer_hint: "(↑ ↓ للتنقل • Enter لبدء جلسة في علامة تبويب جديدة • Shift+enter لبدء جلسة في لوحة الوكيل • Esc للخروج)"
+agents.status.active: "نشط"
+agents.status.waiting_for_input: "في انتظار الإدخال"
+agents.status.error: "خطأ"
+agents.status.idle: "خامل"
 
+# ── تلميح ترحيب التخطيط (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. لإظهار/إخفاء لوحة الوكيل • Ctrl+Alt+/ لإظهار/إخفاء جلسة الوكيل)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── حالة الاتصال ────────────────────────────────────────────────────────
 connection.starting: "جارٍ تشغيل الوكيل..."
 connection.reconnecting: "جارٍ إعادة الاتصال..."
+
+# ── رسائل النظام (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "تم الإلغاء."
+system.no_prompt_in_flight: "لا يوجد أمر قيد التنفيذ."
+system.authentication_failed: "فشلت المصادقة"
+system.command_copied_retry: "تم نسخ الأمر — شغّله في طرفية أخرى، ثم اضغط Enter لإعادة المحاولة"  # {Locked="Enter"}
+
+# ── مخرجات CLI في وقت التشغيل (src/main.rs) ────────────────────────────────────────
+output.no_windows: "لم يتم العثور على نوافذ."
+output.no_tabs: "لم يتم العثور على علامات تبويب."
+output.no_panes: "لم يتم العثور على لوحات."
+output.no_windows_in_list: "لم يتم العثور على نوافذ"
+output.no_tabs_in_window: "لم يتم العثور على علامات تبويب في النافذة %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - معرّفات الأعمدة، تُبقى بالأحرف اللاتينية للتحليل
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "اللوحة النشطة: %{pane} (علامة التبويب: %{tab}، النافذة: %{window})"
+output.pane_running: "قيد التشغيل (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "خرج (الرمز: %{code}، PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "تم إنشاء علامة التبويب %{tab_id} (اللوحة %{pane_id})"
+output.created_pane: "تم إنشاء اللوحة %{pane_id}"
+output.pane_closed: "تم إغلاق اللوحة %{pane_id}."
+
+# ── الأخطاء (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "لم يتم العثور على لوحة نشطة. استخدم -t لتحديد معرّف اللوحة."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID غير معيّن. شغّله داخل لوحة Windows Terminal."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "نوع shell غير معروف '%{shell}'. استخدم: bash، powershell، cmd، fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - اسم الأمر، لا تترجمه
+error.wtcli_wait_for_spawn: "فشل في تشغيل wtcli wait-for"
+error.wtcli_wait_for_parse: "فشل في تحليل مخرجات wtcli wait-for"
+error.wtcli_wait_for_failed: "فشل wtcli wait-for: %{stderr}"
+
+# ── مخرجات حالة الخطافات (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - أسماء الأدوات/CLI، متغيرات البيئة، أسماء ملفات السجل
+hooks.bundle_source: "مصدر الحزمة: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI ليس في PATH"
+hooks.installed: "✓ مثبّت"
+hooks.marketplace_path_stale: "⚠ مسار المتجر قديم"
+hooks.installed_but_disabled: "⚠ مثبّت ولكن معطّل"
+hooks.not_installed: "✗ غير مثبّت"
+hooks.uninstall_skipped: "تم التخطي (CLI ليس في PATH)"
+hooks.install_attempted: "تمت محاولة تثبيت wt-agent-hooks (متساوي القوة). شغّل `wta hooks status` لفحص النتيجة. سجل التتبع: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

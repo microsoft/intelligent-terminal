@@ -68,14 +68,17 @@ fn render_compact(frame: &mut Frame, perm: &PermissionState, area: Rect) {
     if area.width == 0 || area.height == 0 {
         return;
     }
+    let default_desc = t!("permission.compact.default_description").into_owned();
     let desc_one_line = perm
         .description
         .lines()
         .next()
-        .unwrap_or("Permission requested");
-    let prefix = "[!] ";
+        .unwrap_or(default_desc.as_str());
+    let prefix_owned = t!("permission.compact.prefix").into_owned();
+    let prefix = prefix_owned.as_str();
     let separator = "  ";
-    let hint = "[Y/N to answer · resize for full card]";
+    let hint_owned = t!("permission.compact.hint").into_owned();
+    let hint = hint_owned.as_str();
     // Reserve every non-description column up front (prefix + separator +
     // hint). Previously we only subtracted prefix+hint and let description
     // eat the separator — and forced `.max(1)` so 1 char of description

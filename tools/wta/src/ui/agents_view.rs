@@ -108,7 +108,8 @@ pub fn render(
     if history_load_state == HistoryLoadState::Loading {
         render_left_bar(f, area.x, list_area, None);
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
-        spans.extend(shimmer::shimmer_spans("Loading...", activity_frame));
+        let loading_label = t!("agents.loading").into_owned();
+        spans.extend(shimmer::shimmer_spans(&loading_label, activity_frame));
         let loading = Paragraph::new(Line::from(spans));
         f.render_widget(loading, list_area);
         if let Some(hint_area) = hint_area {
@@ -182,12 +183,11 @@ fn render_footer_hint(f: &mut Frame, area: Rect) {
     if area.width == 0 || area.height == 0 {
         return;
     }
-    const HINT: &str =
-        "(↑ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit)";
+    let hint = t!("agents.footer_hint").into_owned();
     // No leading gutter: the caller offsets `area` past the leftmost
     // vertical bar, so the hint already sits one column inside the bar and
     // reads as left-aligned chrome rather than another row.
-    let text = trunc(HINT, area.width as usize);
+    let text = trunc(&hint, area.width as usize);
     let line = Line::from(vec![
         Span::styled(text, Style::default().fg(MUTED_WHITE)),
     ]);
@@ -281,10 +281,10 @@ fn cwd_basename(s: &AgentSession) -> String {
 /// actively running a tool.
 fn status_badge(s: &AgentSession) -> String {
     match s.status {
-        AgentStatus::Working   => "Active".to_string(),
-        AgentStatus::Attention => "Waiting for input".to_string(),
-        AgentStatus::Error     => "Error".to_string(),
-        AgentStatus::Idle      => "Idle".to_string(),
+        AgentStatus::Working   => t!("agents.status.active").into_owned(),
+        AgentStatus::Attention => t!("agents.status.waiting_for_input").into_owned(),
+        AgentStatus::Error     => t!("agents.status.error").into_owned(),
+        AgentStatus::Idle      => t!("agents.status.idle").into_owned(),
         AgentStatus::Ended | AgentStatus::Historical => String::new(),
     }
 }

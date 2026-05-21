@@ -159,7 +159,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     if hint_visible {
         if welcome_visible {
             let line = Line::from(Span::styled(
-                format!("  {}", t!("hint.shortcuts")),
+                t!("layout.welcome_hint").into_owned(),
                 Style::default().fg(Color::DarkGray),
             ));
             frame.render_widget(line, chunks[4]);

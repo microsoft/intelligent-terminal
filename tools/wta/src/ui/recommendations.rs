@@ -70,7 +70,7 @@ pub fn render_hint(frame: &mut Frame, area: Rect) {
         return;
     }
     let hint = Paragraph::new(Line::from(Span::styled(
-        "(↑ ↓ to navigate • Enter to select • Esc to cancel)",
+        t!("recommendations.nav_hint").into_owned(),
         theme::DIM,
     )));
     frame.render_widget(hint, area);
@@ -145,7 +145,10 @@ fn extract_card_content(
             RecommendedAction::Send { input, .. } => {
                 return (
                     input.clone(),
-                    vec!["[ Run command ]".into(), "Insert in Terminal".into()],
+                    vec![
+                        t!("recommendations.button_run_command").into_owned(),
+                        t!("recommendations.button_insert_in_terminal").into_owned(),
+                    ],
                     CardBodyKind::Code,
                 );
             }
@@ -158,10 +161,10 @@ fn extract_card_content(
                 let agent_label = agent.as_deref().unwrap_or("agent");
                 let display = format!("{}: {}", agent_label, input);
                 let target_label = match target {
-                    OpenTarget::Tab => "Open in New Tab ↵",
-                    OpenTarget::Panel => "Open in New Panel ↵",
+                    OpenTarget::Tab => t!("recommendations.button_open_in_new_tab").into_owned(),
+                    OpenTarget::Panel => t!("recommendations.button_open_in_new_panel").into_owned(),
                 };
-                return (display, vec![target_label.into()], CardBodyKind::Code);
+                return (display, vec![target_label], CardBodyKind::Code);
             }
             RecommendedAction::Open {
                 target,
@@ -186,17 +189,17 @@ fn extract_card_content(
                     _ => format!("New empty {}", kind),
                 };
                 let button = match target {
-                    OpenTarget::Tab => "Open Tab ↵",
-                    OpenTarget::Panel => "Open Panel ↵",
+                    OpenTarget::Tab => t!("recommendations.button_open_tab").into_owned(),
+                    OpenTarget::Panel => t!("recommendations.button_open_panel").into_owned(),
                 };
-                return (display, vec![button.into()], CardBodyKind::Description);
+                return (display, vec![button], CardBodyKind::Description);
             }
         }
     }
 
     (
         choice.title.clone(),
-        vec!["Execute ↵".into()],
+        vec![t!("recommendations.button_execute").into_owned()],
         CardBodyKind::Description,
     )
 }

@@ -2781,7 +2781,7 @@ impl App {
                             display_name: profile.display_name.to_string(),
                             cli_status: CheckStatus::Passed,
                             cli_path: None,
-                            auth_status: CheckStatus::Failed("Authentication failed".to_string()),
+                            auth_status: CheckStatus::Failed(t!("system.authentication_failed").into_owned()),
                             install_hint: profile.install_hint.to_string(),
                             install_url: String::new(),
                             auth_hint: profile.auth_hint.to_string(),
@@ -3554,7 +3554,7 @@ impl App {
                     if let Some(ref mut auth) = self.auth {
                         auth.checking = false;
                         if !auth.login_command.contains("copilot") {
-                            auth.status_message = "Command copied — run it in another terminal, then press Enter to retry".to_string();
+                            auth.status_message = t!("system.command_copied_retry").into_owned();
                         }
                     }
                 }
@@ -3683,7 +3683,7 @@ impl App {
                                     display_name: profile.display_name.to_string(),
                                     cli_status: CheckStatus::Passed,
                                     cli_path: None,
-                                    auth_status: CheckStatus::Failed("Authentication failed".to_string()),
+                                    auth_status: CheckStatus::Failed(t!("system.authentication_failed").into_owned()),
                                     install_hint: profile.install_hint.to_string(),
                                     install_url: String::new(),
                                     auth_hint: profile.auth_hint.to_string(),
@@ -3955,7 +3955,7 @@ impl App {
                         self.turn_cancel(&sid);
                     }
                     let tab = self.current_tab_mut();
-                    tab.messages.push(ChatMessage::System("Cancelled.".to_string()));
+                    tab.messages.push(ChatMessage::System(t!("system.cancelled").into_owned()));
                     tab.scroll_to_bottom();
                     self.close_pane_armed_at = None;
                 } else if !self.current_tab().input.is_empty() {
@@ -4332,12 +4332,12 @@ impl App {
                     }
                     let tab = self.current_tab_mut();
                     tab.messages
-                        .push(ChatMessage::System("Cancelled.".to_string()));
+                        .push(ChatMessage::System(t!("system.cancelled").into_owned()));
                     tab.scroll_to_bottom();
                 } else {
                     let tab = self.current_tab_mut();
                     tab.messages
-                        .push(ChatMessage::System("No prompt in flight.".to_string()));
+                        .push(ChatMessage::System(t!("system.no_prompt_in_flight").into_owned()));
                     tab.scroll_to_bottom();
                 }
             }

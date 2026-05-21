@@ -26,7 +26,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(vec![
             Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
             Span::styled(
-                t!("auth.agent_selected", agent = &auth.agent_name).into_owned(),
+                t!("auth.agent_selected", name = &auth.agent_name).into_owned(),
                 Style::new().fg(Color::White),
             ),
         ]));
@@ -35,14 +35,14 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         if auth.status_message.is_empty() {
             lines.push(Line::from(vec![
                 Span::styled(
-                    format!("  {} {}", spinner_char, t!("auth.checking")),
+                    t!("auth.checking_authentication", spinner = spinner_char.to_string()).into_owned(),
                     Style::new().fg(Color::Yellow),
                 ),
             ]));
         } else {
             lines.push(Line::from(vec![
                 Span::styled(
-                    format!("  {} {}", spinner_char, t!("auth.waiting")),
+                    t!("auth.waiting_for_authorization", spinner = spinner_char.to_string()).into_owned(),
                     Style::new().fg(Color::Yellow),
                 ),
             ]));
@@ -53,7 +53,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             )));
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
-                format!("  {}", t!("auth.code_copied")),
+                t!("auth.code_copied_hint").into_owned(),
                 DIM_TEXT,
             )));
         }
@@ -62,7 +62,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             lines.push(Line::from(vec![
                 Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
                 Span::styled(
-                    t!("auth.agent_selected", agent = &auth.agent_name).into_owned(),
+                    t!("auth.agent_selected", name = &auth.agent_name).into_owned(),
                     Style::new().fg(Color::White),
                 ),
             ]));
@@ -70,7 +70,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             lines.push(Line::from(vec![
                 Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
                 Span::styled(
-                    t!("auth.agent_selected_reason", agent = &auth.agent_name).into_owned(),
+                    t!("auth.agent_selected_with_status", name = &auth.agent_name).into_owned(),
                     Style::new().fg(Color::White),
                 ),
                 Span::styled(
@@ -85,7 +85,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(vec![
             Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
             Span::styled(
-                t!("auth.signin_prompt").into_owned(),
+                t!("auth.sign_in_prompt").into_owned(),
                 Style::new().fg(Color::White),
             ),
         ]));
@@ -93,16 +93,16 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(""));
 
         lines.push(Line::from(Span::styled(
-            format!("  {}", t!("auth.connect_agent", agent = &auth.agent_name)),
+            t!("auth.card_connect", name = &auth.agent_name).into_owned(),
             Style::new().fg(Color::White),
         )));
 
         lines.push(Line::from(""));
 
         let button_text = if auth.agent_name.contains("Copilot") {
-            t!("auth.signin_github").into_owned()
+            t!("auth.button_sign_in_github").into_owned()
         } else {
-            t!("auth.signin_agent", agent = &auth.agent_name).into_owned()
+            t!("auth.button_sign_in_with", name = &auth.agent_name).into_owned()
         };
         lines.push(Line::from(vec![
             Span::raw("                          "),
@@ -114,7 +114,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            format!("  {}", t!("auth.hint")),
+            t!("auth.hint_footer").into_owned(),
             DIM_TEXT,
         )));
     }

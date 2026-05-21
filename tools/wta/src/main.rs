@@ -575,7 +575,7 @@ async fn main() -> Result<()> {
                 .request("close_pane", json!({ "session_id": pane_id }))
                 .await?;
             if !json_mode {
-                println!("Pane {} closed.", pane_id);
+                println!("{}", t!("output.pane_closed", pane_id = pane_id));
             }
             Ok(())
         }
@@ -623,18 +623,18 @@ async fn main() -> Result<()> {
                 ])
                 .output()
                 .await
-                .context("Failed to spawn wtcli wait-for")?;
+                .with_context(|| t!("error.wtcli_wait_for_spawn").into_owned())?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                bail!("wtcli wait-for failed: {}", stderr.trim());
+                bail!("{}", t!("error.wtcli_wait_for_failed", stderr = stderr.trim()));
             }
 
             let stdout = String::from_utf8_lossy(&output.stdout);
             let trimmed = stdout.trim();
             if !trimmed.is_empty() {
                 let val: serde_json::Value = serde_json::from_str(trimmed)
-                    .context("Failed to parse wtcli wait-for output")?;
+                    .with_context(|| t!("error.wtcli_wait_for_parse").into_owned())?;
                 print_output(&val, json_mode, format_pane_status);
             }
             Ok(())
@@ -727,11 +727,7 @@ fn run_hooks_install(cli: HooksCliFilter) -> Result<()> {
     // %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.
     let _guard = logging::init("install-hooks");
     agent_hooks_installer::ensure_installed_scoped(cli.into_scope());
-    println!(
-        "wt-agent-hooks install attempted (idempotent). \
-         Run `wta hooks status` to inspect the result. \
-         Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
-    );
+    println!("{}", t!("hooks.install_attempted"));
     Ok(())
 }
 
@@ -764,27 +760,31 @@ fn run_hooks_uninstall(cli: HooksCliFilter, json_mode: bool) -> Result<()> {
 }
 
 fn format_hooks_status_human(r: &agent_hooks_installer::StatusReport) {
+    let path_suffix = r.bundle_source
+        .path
+        .as_deref()
+        .map(|p| format!(" ({})", p))
+        .unwrap_or_default();
     println!(
-        "bundle source: {}{}",
-        r.bundle_source.kind,
-        r.bundle_source
-            .path
-            .as_deref()
-            .map(|p| format!(" ({})", p))
-            .unwrap_or_default(),
+        "{}",
+        t!(
+            "hooks.bundle_source",
+            source = r.bundle_source.kind,
+            path_suffix = path_suffix,
+        )
     );
     println!();
     for c in &r.clis {
         let summary = if !c.binary_on_path {
-            "\u{2717} CLI not on PATH".to_string()
+            t!("hooks.cli_not_on_path").into_owned()
         } else if c.plugin_installed && c.plugin_enabled && c.marketplace_path_valid {
-            "\u{2713} installed".to_string()
+            t!("hooks.installed").into_owned()
         } else if c.plugin_installed && !c.marketplace_path_valid {
-            "\u{26a0} marketplace path stale".to_string()
+            t!("hooks.marketplace_path_stale").into_owned()
         } else if c.plugin_installed {
-            "\u{26a0} installed but disabled".to_string()
+            t!("hooks.installed_but_disabled").into_owned()
         } else {
-            "\u{2717} not installed".to_string()
+            t!("hooks.not_installed").into_owned()
         };
         let detail = format!(
             "marketplace={}, path_valid={}, plugin={}, enabled={}{}",
@@ -806,7 +806,7 @@ fn format_hooks_status_human(r: &agent_hooks_installer::StatusReport) {
 fn format_hooks_uninstall_human(r: &agent_hooks_installer::UninstallReport) {
     for c in &r.clis {
         let summary = if !c.attempted {
-            "skipped (CLI not on PATH)".to_string()
+            t!("hooks.uninstall_skipped").into_owned()
         } else {
             let plugin = c
                 .plugin_uninstalled
@@ -859,7 +859,7 @@ async fn resolve_pane_id(channel: &CliChannel, target: &Option<String>) -> Resul
                     serde_json::Value::Number(n) => Some(n.to_string()),
                     _ => None,
                 })
-                .ok_or_else(|| anyhow::anyhow!("No active pane found. Use -t to specify a pane ID."))?;
+                .ok_or_else(|| anyhow::anyhow!("{}", t!("error.no_active_pane")))?;
             Ok(pane_id)
         }
     }
@@ -875,7 +875,7 @@ async fn get_first_window_id(channel: &CliChannel) -> Result<String> {
         .and_then(|w| w.get("window_id"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| anyhow::anyhow!("No windows found"))
+        .ok_or_else(|| anyhow::anyhow!("{}", t!("output.no_windows_in_list")))
 }
 
 /// Get the first tab ID from a window.
@@ -892,7 +892,7 @@ async fn get_first_tab_id(channel: &CliChannel, window_id: &str) -> Result<Strin
             Some(serde_json::Value::Number(n)) => Some(n.to_string()),
             _ => None,
         })
-        .ok_or_else(|| anyhow::anyhow!("No tabs found in window {}", window_id))
+        .ok_or_else(|| anyhow::anyhow!("{}", t!("output.no_tabs_in_window", window_id = window_id)))
 }
 
 // ─── Output helpers ─────────────────────────────────────────────────────────
@@ -911,10 +911,10 @@ fn print_output(val: &serde_json::Value, json_mode: bool, formatter: fn(&serde_j
 fn format_windows_human(val: &serde_json::Value) {
     if let Some(windows) = val.get("windows").and_then(|v| v.as_array()) {
         if windows.is_empty() {
-            println!("No windows found.");
+            println!("{}", t!("output.no_windows"));
             return;
         }
-        println!("{:<12} {:<30} {}", "WINDOW_ID", "TITLE", "FOCUSED");
+        println!("{}", t!("output.header.windows"));
         for w in windows {
             let id = json_str_or_num(w, "window_id");
             let title = w
@@ -940,10 +940,10 @@ fn format_windows_human(val: &serde_json::Value) {
 fn format_tabs_human(val: &serde_json::Value) {
     if let Some(tabs) = val.get("tabs").and_then(|v| v.as_array()) {
         if tabs.is_empty() {
-            println!("No tabs found.");
+            println!("{}", t!("output.no_tabs"));
             return;
         }
-        println!("{:<10} {:<30} {}", "TAB_ID", "TITLE", "FOCUSED");
+        println!("{}", t!("output.header.tabs"));
         for t in tabs {
             let id = json_str_or_num(t, "tab_id");
             let title = t.get("title").and_then(|v| v.as_str()).unwrap_or("-");
@@ -966,13 +966,10 @@ fn format_tabs_human(val: &serde_json::Value) {
 fn format_panes_human(val: &serde_json::Value) {
     if let Some(panes) = val.get("panes").and_then(|v| v.as_array()) {
         if panes.is_empty() {
-            println!("No panes found.");
+            println!("{}", t!("output.no_panes"));
             return;
         }
-        println!(
-            "{:<10} {:<8} {:<8} {:<10} {}",
-            "PANE_ID", "PID", "ACTIVE", "ROWS", "COLS"
-        );
+        println!("{}", t!("output.header.panes"));
         for p in panes {
             let id = json_str_or_num(p, "session_id");
             let pid = p
@@ -1013,7 +1010,7 @@ fn format_active_pane(val: &serde_json::Value) {
     let id = json_str_or_num(val, "session_id");
     let tab = json_str_or_num(val, "tab_id");
     let win = json_str_or_num(val, "window_id");
-    println!("Active pane: {} (tab: {}, window: {})", id, tab, win);
+    println!("{}", t!("output.active_pane", pane = id, tab = tab, window = win));
 }
 
 fn format_pane_status(val: &serde_json::Value) {
@@ -1033,21 +1030,21 @@ fn format_pane_status(val: &serde_json::Value) {
         .map(|n| n.to_string())
         .unwrap_or_else(|| "-".to_string());
     if running {
-        println!("Running (PID: {})", pid);
+        println!("{}", t!("output.pane_running", pid = pid));
     } else {
-        println!("Exited (code: {}, PID: {})", exit_code, pid);
+        println!("{}", t!("output.pane_exited", code = exit_code, pid = pid));
     }
 }
 
 fn format_created_tab(val: &serde_json::Value) {
     let tab_id = json_str_or_num(val, "tab_id");
     let pane_id = json_str_or_num(val, "session_id");
-    println!("Created tab {} (pane {})", tab_id, pane_id);
+    println!("{}", t!("output.created_tab", tab_id = tab_id, pane_id = pane_id));
 }
 
 fn format_created_pane(val: &serde_json::Value) {
     let pane_id = json_str_or_num(val, "session_id");
-    println!("Created pane {}", pane_id);
+    println!("{}", t!("output.created_pane", pane_id = pane_id));
 }
 
 /// Extract a field that may be string or number from JSON.
@@ -1063,7 +1060,7 @@ fn json_str_or_num(val: &serde_json::Value, key: &str) -> String {
 
 fn run_pipe_id(json_mode: bool) -> Result<()> {
     let clsid = std::env::var("WT_COM_CLSID")
-        .map_err(|_| anyhow::anyhow!("WT_COM_CLSID not set. Run inside a Windows Terminal pane."))?;
+        .map_err(|_| anyhow::anyhow!("{}", t!("error.wt_com_clsid_not_set")))?;
     if json_mode {
         let val = json!({ "connection_id": clsid, "env": "WT_COM_CLSID" });
         println!("{}", serde_json::to_string_pretty(&val)?);
@@ -1075,7 +1072,7 @@ fn run_pipe_id(json_mode: bool) -> Result<()> {
 
 fn run_set_env(shell_type: &str) -> Result<()> {
     let clsid = std::env::var("WT_COM_CLSID")
-        .map_err(|_| anyhow::anyhow!("WT_COM_CLSID not set. Run inside a Windows Terminal pane."))?;
+        .map_err(|_| anyhow::anyhow!("{}", t!("error.wt_com_clsid_not_set")))?;
 
     match shell_type {
         "bash" | "sh" | "zsh" => {
@@ -1095,7 +1092,7 @@ fn run_set_env(shell_type: &str) -> Result<()> {
             eprintln!("# Run: wta set-env -s fish | source");
         }
         other => {
-            bail!("Unknown shell type '{}'. Use: bash, powershell, cmd, fish", other);
+            bail!("{}", t!("error.unknown_shell_type", shell = other));
         }
     }
 
