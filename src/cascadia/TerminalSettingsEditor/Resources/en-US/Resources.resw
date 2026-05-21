@@ -2125,7 +2125,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="Actions_CommandPaletteLaunchModeAgentDelegation.Content" xml:space="preserve">
     <value>Agent Delegation</value>
-    <comment>An option to choose from for the "command palette launch mode". Launches in agent delegation mode (with the "?" prefix).</comment>
+    <comment>An option to choose from for the "command palette launch mode". Launches in agent delegation mode (with the literal ASCII "?" prefix). {Locked="?"}</comment>
   </data>
   <data name="Actions_SuggestionsSourceNone.Content" xml:space="preserve">
     <value>None</value>

@@ -462,6 +462,9 @@
   <data name="ToggleCommandPaletteCommandLineModeCommandKey" xml:space="preserve">
     <value>Ťŏġĝļĕ çбmмáήď φàłėŧτĕ ίη ċσmмäпδ ℓìņє mόð℮ !!! !!! !!! !!! </value>
   </data>
+  <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
+    <value>Ťŏġĝļĕ çбmмáήď φàłėŧτĕ ίη äġëṅт ďëλεġäтίόη mόð℮ !!! !!! !!! !!! </value>
+  </data>
   <data name="ToggleFocusModeCommandKey" xml:space="preserve">
     <value>Ţоģġľе ƒöςŭś mσďē !!! !!</value>
     <comment>"Focus mode" is a mode with minimal UI elements, for a distraction-free experience</comment>

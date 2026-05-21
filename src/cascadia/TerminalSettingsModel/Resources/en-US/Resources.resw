@@ -467,7 +467,7 @@
     <value>Toggle command palette in command line mode</value>
   </data>
   <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
-    <value>Open command palette in agent delegation mode</value>
+    <value>Toggle command palette in agent delegation mode</value>
   </data>
   <data name="ToggleFocusModeCommandKey" xml:space="preserve">
     <value>Toggle focus mode</value>

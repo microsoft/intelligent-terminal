@@ -2035,6 +2035,10 @@
     <value>Čσммåňđ ₤ίñé !!! </value>
     <comment>An option to choose from for the "command palette launch mode". Launches in command line mode.</comment>
   </data>
+  <data name="Actions_CommandPaletteLaunchModeAgentDelegation.Content" xml:space="preserve">
+    <value>Άġëṅт Ďëλεġäтίόη !!! </value>
+    <comment>An option to choose from for the "command palette launch mode". Launches in agent delegation mode (with the literal ASCII "?" prefix). {Locked="?"}</comment>
+  </data>
   <data name="Actions_SuggestionsSourceNone.Content" xml:space="preserve">
     <value>Ņõńê !</value>
     <comment>An option to choose from for the "suggestions source". No suggestions source.</comment>
