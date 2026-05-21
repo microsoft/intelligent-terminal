@@ -27,9 +27,6 @@ namespace wtcli
         const std::string& sessionId,
         Json::Value& outEvt)
     {
-        outEvt["type"] = "event";
-        outEvt["method"] = "agent_event";
-
         Json::Value params;
         if (!paramsJson.empty())
         {
@@ -44,6 +41,9 @@ namespace wtcli
 
         params["event"] = eventType;
         params["session_id"] = sessionId;
+
+        outEvt["type"] = "event";
+        outEvt["method"] = "agent_event";
         outEvt["params"] = params;
         return true;
     }

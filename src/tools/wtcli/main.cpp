@@ -694,7 +694,7 @@ int main()
                 : GuidToString(ResolveSessionId(server, ""));
             if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, evt))
             {
-                fprintf(stderr, "Invalid JSON: expected an object\n");
+                fprintf(stderr, "Invalid JSON for --json: value must be a JSON object (e.g. '{\"key\":\"val\"}')\n");
                 exitCode = 1;
                 return;
             }
