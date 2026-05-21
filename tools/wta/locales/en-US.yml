@@ -1,10 +1,16 @@
+# ── File-level locks ─────────────────────────────────────────────────────────
+# {Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name
+# "Agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human representative or proxy
+
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
 setup.title.first_run: "Welcome to Intelligent Terminal!"
 setup.title.agent_missing: "Agent not found"
 setup.title.agent_error: "Agent connection failed"
+# Button label — verb command to change which AI agent is active
 setup.title.switch_agent: "Switch agent"
+# Title when the configured AI agent is not available
 setup.title.not_available: "Agent not available"
+# Title when authentication is required
 setup.title.sign_in: "Sign in required"
 
 # %{agent} is replaced with the agent display name at runtime.
@@ -13,7 +19,6 @@ setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please 
 setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Settings."
 setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent CLI, then retry. To switch agents, go to Settings."
 
-# {Locked="Intelligent Terminal"}
 setup.description.fre_line1: "Choose the default agent CLI you would like to use in Intelligent Terminal. You can"
 setup.description.fre_line2: "navigate to Settings to configure and set up your workspace."
 
@@ -42,8 +47,8 @@ auth.hint_footer: "  Press Enter to sign in, Esc to go back"  # {Locked="Enter",
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Thinking…"
-# {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Welcome to Intelligent Terminal!"
+# Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -51,12 +56,15 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
+# Input box placeholder while agent connection is being established
 input.placeholder.connecting: "connecting..."
+# Input box placeholder when agent is disconnected
 input.placeholder.disconnected: "disconnect"
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / commands "
+# Title bar of the slash-commands help popup
 commands.help_title: " Help "
 commands.help_header: "Slash commands — type / in the input box."
 commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command parser)"  # {Locked="//text","/"}
@@ -71,16 +79,20 @@ recommendations.button_open_in_new_tab: "Open in New Tab ↵"
 recommendations.button_open_in_new_panel: "Open in New Panel ↵"
 recommendations.button_open_tab: "Open Tab ↵"
 recommendations.button_open_panel: "Open Panel ↵"
+# Button label — run the selected command (not "kill/execute a person")
 recommendations.button_execute: "Execute ↵"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+# Default description shown in compact permission dialog when no specific description is provided
 permission.compact.default_description: "Permission requested"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N to answer · resize for full card]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_installed_auto: "Not installed — select to install automatically"
+# Status badge when agent CLI binary is not on PATH
 agent.status.not_found: "Not found"
+# Status badge when agent CLI binary is found on PATH
 agent.status.detected: "Detected"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
@@ -94,16 +106,21 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 agents.loading: "Loading..."
 # {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit)"
+# Status badge when agent session is actively processing
 agents.status.active: "Active"
 agents.status.waiting_for_input: "Waiting for input"
+# Status badge when agent session encountered an error
 agents.status.error: "Error"
+# Status badge when agent session has no active work
 agents.status.idle: "Idle"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Alt+/ to show/hide agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
+# Status text shown while launching the agent process
 connection.starting: "Starting agent..."
+# Status text shown while re-establishing agent connection
 connection.reconnecting: "Reconnecting..."
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
@@ -140,11 +157,16 @@ error.wtcli_wait_for_failed: "wtcli wait-for failed: %{stderr}"
 
 # ── Hooks status output (src/main.rs) ───────────────────────────────────────
 # {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+# Line showing where the hook extension bundle was loaded from (filesystem path or built-in)
 hooks.bundle_source: "bundle source: %{source}%{path_suffix}"
 hooks.cli_not_on_path: "✗ CLI not on PATH"
+# Shown when a shell hook is successfully installed
 hooks.installed: "✓ installed"
+# Badge in hooks-status table when the extension install path is outdated
 hooks.marketplace_path_stale: "⚠ marketplace path stale"
+# Badge when the shell hook extension is installed but the user has disabled it
 hooks.installed_but_disabled: "⚠ installed but disabled"
+# Shown when a shell hook is not yet installed
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

@@ -1,20 +1,20 @@
 # عناوين شاشة الإعداد
 # {Locked="Intelligent Terminal"} - اسم المنتج، لا تترجمه
 setup.title.first_run: "مرحبًا بك في Intelligent Terminal!"
-setup.title.agent_missing: "لم يتم العثور على الوكيل"
-setup.title.agent_error: "فشل الاتصال بالوكيل"
-setup.title.switch_agent: "تبديل الوكيل"
-setup.title.not_available: "الوكيل غير متوفر"
+setup.title.agent_missing: "لم يتم العثور على عامل الذكاء الاصطناعي"
+setup.title.agent_error: "فشل الاتصال بعامل الذكاء الاصطناعي"
+setup.title.switch_agent: "تبديل عامل الذكاء الاصطناعي"
+setup.title.not_available: "عامل الذكاء الاصطناعي غير متوفر"
 setup.title.sign_in: "تسجيل الدخول مطلوب"
 
-# يتم استبدال %{agent} باسم عرض الوكيل في وقت التشغيل.
-setup.subtitle.copilot_missing: "الوكيل \"%{agent}\" غير مثبّت. اتبع الخطوات أدناه لتثبيته. لتبديل الوكلاء، انتقل إلى Settings."
-setup.subtitle.agent_missing: "الوكيل \"%{agent}\" غير مثبّت. يُرجى إعادة تثبيته يدويًا، ثم أعد المحاولة. لتبديل الوكلاء، انتقل إلى Settings."
-setup.subtitle.copilot_auth: "يتطلب الوكيل \"%{agent}\" المصادقة. اتبع الخطوات أدناه لتسجيل الدخول. لتبديل الوكلاء، انتقل إلى Settings."
-setup.subtitle.agent_auth: "يتطلب الوكيل \"%{agent}\" المصادقة. يُرجى تسجيل الدخول عبر CLI الخاص بالوكيل، ثم أعد المحاولة. لتبديل الوكلاء، انتقل إلى Settings."
+# يتم استبدال %{agent} باسم عرض عامل الذكاء الاصطناعي في وقت التشغيل.
+setup.subtitle.copilot_missing: "عامل الذكاء الاصطناعي \"%{agent}\" غير مثبّت. اتبع الخطوات أدناه لتثبيته. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى Settings."
+setup.subtitle.agent_missing: "عامل الذكاء الاصطناعي \"%{agent}\" غير مثبّت. يُرجى إعادة تثبيته يدويًا، ثم أعد المحاولة. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى Settings."
+setup.subtitle.copilot_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. اتبع الخطوات أدناه لتسجيل الدخول. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى Settings."
+setup.subtitle.agent_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. يُرجى تسجيل الدخول عبر CLI الخاص بعامل الذكاء الاصطناعي، ثم أعد المحاولة. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "اختر CLI الوكيل الافتراضي الذي تريد استخدامه في Intelligent Terminal. يمكنك"
+setup.description.fre_line1: "اختر CLI عامل الذكاء الاصطناعي الافتراضي الذي تريد استخدامه في Intelligent Terminal. يمكنك"
 setup.description.fre_line2: "الانتقال إلى Settings لتكوين مساحة العمل وإعدادها."
 
 setup.option.reinstall: "إعادة تثبيت %{agent}"
@@ -29,13 +29,13 @@ setup.status.installing_winget: " جارٍ التثبيت عبر winget..."
 
 # ── تدفق المصادقة (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - اختصار، استخدام شائع في عمليات الترجمة من Microsoft
-auth.agent_selected: "تم تحديد CLI الوكيل %{name}"
-auth.agent_selected_with_status: "CLI الوكيل %{name} — "
+auth.agent_selected: "تم تحديد CLI عامل الذكاء الاصطناعي %{name}"
+auth.agent_selected_with_status: "CLI عامل الذكاء الاصطناعي %{name} — "
 auth.checking_authentication: "  %{spinner} جارٍ التحقق من المصادقة..."
 auth.waiting_for_authorization: "  %{spinner} في انتظار التفويض..."
 auth.code_copied_hint: "  تم نسخ الرمز إلى الحافظة — الصقه في المتصفح."
-auth.sign_in_prompt: "سجّل الدخول لاستخدام وكيلك:"
-auth.card_connect: "  قم بتوصيل %{name} لتمكين ميزات الوكيل"
+auth.sign_in_prompt: "سجّل الدخول لاستخدام عامل الذكاء الاصطناعي الخاص بك:"
+auth.card_connect: "  قم بتوصيل %{name} لتمكين ميزات عامل الذكاء الاصطناعي"
 auth.button_sign_in_github: "[ تسجيل الدخول باستخدام GitHub ]"  # {Locked="GitHub"}
 auth.button_sign_in_with: "[ تسجيل الدخول باستخدام %{name} ]"
 auth.hint_footer: "  اضغط Enter لتسجيل الدخول، Esc للرجوع"  # {Locked="Enter","Esc"}
@@ -78,7 +78,7 @@ permission.compact.default_description: "تم طلب الإذن"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N للإجابة · غيّر الحجم لعرض البطاقة الكاملة]"  # {Locked="Y/N"}
 
-# ── حالة الوكيل (src/agent_check.rs) ───────────────────────────────────────
+# ── حالة عامل الذكاء الاصطناعي (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_installed_auto: "غير مثبّت — حدد للتثبيت تلقائيًا"
 agent.status.not_found: "غير موجود"
 agent.status.detected: "تم الاكتشاف"
@@ -90,20 +90,20 @@ agent.install.winget_failed_code: "فشل تثبيت winget (رمز الخروج
 agent.install.unsupported: "التثبيت التلقائي غير مدعوم لـ %{agent}"
 agent.custom.auth_hint: "تأكد من أن %{name} مثبّت وموجود في PATH."  # {Locked="PATH"}
 
-# ── عرض الوكلاء (src/ui/agents_view.rs) ─────────────────────────────────────
+# ── عرض عوامل الذكاء الاصطناعي (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "جارٍ التحميل..."
 # {Locked="Enter","Shift+enter","Esc"} - مجموعات المفاتيح، لا تترجمها
-agents.footer_hint: "(↑ ↓ للتنقل • Enter لبدء جلسة في علامة تبويب جديدة • Shift+enter لبدء جلسة في لوحة الوكيل • Esc للخروج)"
+agents.footer_hint: "(↑ ↓ للتنقل • Enter لبدء جلسة في علامة تبويب جديدة • Shift+enter لبدء جلسة في لوحة عامل الذكاء الاصطناعي • Esc للخروج)"
 agents.status.active: "نشط"
 agents.status.waiting_for_input: "في انتظار الإدخال"
 agents.status.error: "خطأ"
 agents.status.idle: "خامل"
 
 # ── تلميح ترحيب التخطيط (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. لإظهار/إخفاء لوحة الوكيل • Ctrl+Alt+/ لإظهار/إخفاء جلسة الوكيل)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. لإظهار/إخفاء لوحة عامل الذكاء الاصطناعي • Ctrl+Alt+/ لإظهار/إخفاء جلسة عامل الذكاء الاصطناعي)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
 
 # ── حالة الاتصال ────────────────────────────────────────────────────────
-connection.starting: "جارٍ تشغيل الوكيل..."
+connection.starting: "جارٍ تشغيل عامل الذكاء الاصطناعي..."
 connection.reconnecting: "جارٍ إعادة الاتصال..."
 
 # ── رسائل النظام (src/app.rs) ────────────────────────────────────────────────

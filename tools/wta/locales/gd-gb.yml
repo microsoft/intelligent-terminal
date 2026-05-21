@@ -1,20 +1,20 @@
 # Tiotalan sgrìn stèidheachaidh
 # {Locked="Intelligent Terminal"} - ainm an toraidh, na eadar-theangaich
 setup.title.first_run: "Fàilte gu Intelligent Terminal!"
-setup.title.agent_missing: "Cha deach an neach-gnìomha a lorg"
-setup.title.agent_error: "Dh'fhàillig ceangal an neach-ghníomha"
-setup.title.switch_agent: "Atharraich neach-gnìomha"
-setup.title.not_available: "Chan eil an neach-gnìomha ri fhaighinn"
+setup.title.agent_missing: "Cha deach an àidseant a lorg"
+setup.title.agent_error: "Dh'fhàillig ceangal an àidseant"
+setup.title.switch_agent: "Atharraich àidseant"
+setup.title.not_available: "Chan eil an àidseant ri fhaighinn"
 setup.title.sign_in: "Feumaidh tu clàradh a-steach"
 
-# Thèid %{agent} a chur an àite ainm-taisbeanaidh an neach-gnìomha aig àm ruith.
-setup.subtitle.copilot_missing: "Chan eil an neach-gnìomha agad \"%{agent}\" air a stàladh. Lean na ceumannan gu h-ìosal gus a stàladh. Airson neach-gnìomha atharrachadh, rach gu Settings."
-setup.subtitle.agent_missing: "Chan eil an neach-gnìomha agad \"%{agent}\" air a stàladh. Ath-stàlaich e le làimh, an uair sin feuch a-rithist. Airson neach-gnìomha atharrachadh, rach gu Settings."
-setup.subtitle.copilot_auth: "Feumaidh an neach-gnìomha agad \"%{agent}\" dearbhadh. Lean na ceumannan gu h-ìosal gus clàradh a-steach. Airson neach-gnìomha atharrachadh, rach gu Settings."
-setup.subtitle.agent_auth: "Feumaidh an neach-gnìomha agad \"%{agent}\" dearbhadh. Clàraich a-steach tron CLI neach-gnìomha, an uair sin feuch a-rithist. Airson neach-gnìomha atharrachadh, rach gu Settings."
+# Thèid %{agent} a chur an àite ainm-taisbeanaidh an àidseant aig àm ruith.
+setup.subtitle.copilot_missing: "Chan eil an àidseant agad \"%{agent}\" air a stàladh. Lean na ceumannan gu h-ìosal gus a stàladh. Airson àidseant atharrachadh, rach gu Settings."
+setup.subtitle.agent_missing: "Chan eil an àidseant agad \"%{agent}\" air a stàladh. Ath-stàlaich e le làimh, an uair sin feuch a-rithist. Airson àidseant atharrachadh, rach gu Settings."
+setup.subtitle.copilot_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Lean na ceumannan gu h-ìosal gus clàradh a-steach. Airson àidseant atharrachadh, rach gu Settings."
+setup.subtitle.agent_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Clàraich a-steach tron CLI àidseant, an uair sin feuch a-rithist. Airson àidseant atharrachadh, rach gu Settings."
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Tagh an CLI neach-gnìomha bunaiteach a bu mhath leat a chleachdadh ann an Intelligent Terminal. 'S urrainn dhut"
+setup.description.fre_line1: "Tagh an CLI àidseant bunaiteach a bu mhath leat a chleachdadh ann an Intelligent Terminal. 'S urrainn dhut"
 setup.description.fre_line2: "a dhol gu Settings gus an raon-obrach agad a rèiteachadh."
 
 setup.option.reinstall: "Ath-stàlaich %{agent}"
@@ -29,13 +29,13 @@ setup.status.installing_winget: " Ga stàladh tro winget..."
 
 # ── Sruth dearbhaidh (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - giorrachadh, cleachdadh cumanta tarsainn ionadaileachaidhean Microsoft
-auth.agent_selected: "Tha CLI neach-gnìomha %{name} air a thaghadh"
-auth.agent_selected_with_status: "CLI neach-gnìomha %{name} — "
+auth.agent_selected: "Tha CLI àidseant %{name} air a thaghadh"
+auth.agent_selected_with_status: "CLI àidseant %{name} — "
 auth.checking_authentication: "  %{spinner} A' sgrùdadh dearbhaidh..."
 auth.waiting_for_authorization: "  %{spinner} A' feitheamh ri ùghdarrachadh..."
 auth.code_copied_hint: "  Chaidh an còd a chopaigeadh dhan stòr-bhùird — cuir ann ad bhrobhsair e."
-auth.sign_in_prompt: "Clàraich a-steach gus an neach-gnìomha agad a chleachdadh:"
-auth.card_connect: "  Ceangail %{name} gus gleusan neach-gnìomha a chur an comas"
+auth.sign_in_prompt: "Clàraich a-steach gus an àidseant agad a chleachdadh:"
+auth.card_connect: "  Ceangail %{name} gus gleusan àidseant a chur an comas"
 auth.button_sign_in_github: "[ Clàraich a-steach le GitHub ]"  # {Locked="GitHub"}
 auth.button_sign_in_with: "[ Clàraich a-steach le %{name} ]"
 auth.hint_footer: "  Brùth Enter gus clàradh a-steach, Esc gus tilleadh"  # {Locked="Enter","Esc"}
@@ -78,7 +78,7 @@ permission.compact.default_description: "Cead air iarraidh"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N gus freagairt · atharraich meud airson cairt iomlan]"  # {Locked="Y/N"}
 
-# ── Inbhe neach-gnìomha (src/agent_check.rs) ───────────────────────────────────
+# ── Inbhe àidseant (src/agent_check.rs) ───────────────────────────────────
 agent.status.not_installed_auto: "Gun stàladh — tagh gus stàladh gu fèin-obrachail"
 agent.status.not_found: "Cha deach a lorg"
 agent.status.detected: "Chaidh a lorg"
@@ -90,20 +90,20 @@ agent.install.winget_failed_code: "Dh'fhàillig stàladh winget (còd fàgail %{
 agent.install.unsupported: "Chan eil stàladh fèin-obrachail ga thaic airson %{agent}"
 agent.custom.auth_hint: "Dèan cinnteach gu bheil %{name} air a stàladh agus air do PATH."  # {Locked="PATH"}
 
-# ── Sealladh neach-gnìomha (src/ui/agents_view.rs) ─────────────────────────────────
+# ── Sealladh àidseant (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Ga luchdadh..."
 # {Locked="Enter","Shift+enter","Esc"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
-agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog ann an taba ùr • Shift+enter gus seisean a chur air bhog ann am panail neach-gnìomha • Esc gus fàgail)"
+agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog ann an taba ùr • Shift+enter gus seisean a chur air bhog ann am panail àidseant • Esc gus fàgail)"
 agents.status.active: "Gnìomhach"
 agents.status.waiting_for_input: "A' feitheamh ri ion-chur"
 agents.status.error: "Mearachd"
 agents.status.idle: "Na thàmh"
 
 # ── Sanas fàilte cruth (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. gus panail neach-gnìomha a shealltainn/fhalach • Ctrl+Alt+/ gus seisean neach-gnìomha a shealltainn/fhalach)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. gus panail àidseant a shealltainn/fhalach • Ctrl+Alt+/ gus seisean àidseant a shealltainn/fhalach)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
 
 # ── Staid ceangail ────────────────────────────────────────────────────────
-connection.starting: "A' tòiseachadh an neach-gnìomha..."
+connection.starting: "A' tòiseachadh an àidseant..."
 connection.reconnecting: "Ag ath-cheangal..."
 
 # ── Teachdaireachdan siostam (src/app.rs) ────────────────────────────────────

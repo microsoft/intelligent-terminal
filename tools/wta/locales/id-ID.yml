@@ -1,20 +1,20 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - nama produk, jangan diterjemahkan
 setup.title.first_run: "Selamat datang di Intelligent Terminal!"
-setup.title.agent_missing: "Agen tidak ditemukan"
-setup.title.agent_error: "Koneksi agen gagal"
-setup.title.switch_agent: "Ganti agen"
-setup.title.not_available: "Agen tidak tersedia"
+setup.title.agent_missing: "Agen AI tidak ditemukan"
+setup.title.agent_error: "Koneksi agen AI gagal"
+setup.title.switch_agent: "Ganti agen AI"
+setup.title.not_available: "Agen AI tidak tersedia"
 setup.title.sign_in: "Perlu masuk"
 
-# %{agent} diganti dengan nama tampilan agen saat runtime.
-setup.subtitle.copilot_missing: "Agen \"%{agent}\" Anda belum diinstal. Ikuti langkah-langkah di bawah untuk menginstalnya. Untuk mengganti agen, buka Settings."
-setup.subtitle.agent_missing: "Agen \"%{agent}\" Anda belum diinstal. Silakan instal ulang secara manual, lalu coba lagi. Untuk mengganti agen, buka Settings."
-setup.subtitle.copilot_auth: "Agen \"%{agent}\" Anda memerlukan autentikasi. Ikuti langkah-langkah di bawah untuk masuk. Untuk mengganti agen, buka Settings."
-setup.subtitle.agent_auth: "Agen \"%{agent}\" Anda memerlukan autentikasi. Silakan masuk melalui CLI agen, lalu coba lagi. Untuk mengganti agen, buka Settings."
+# %{agent} diganti dengan nama tampilan agen AI saat runtime.
+setup.subtitle.copilot_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Ikuti langkah-langkah di bawah untuk menginstalnya. Untuk mengganti agen AI, buka Settings."
+setup.subtitle.agent_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Silakan instal ulang secara manual, lalu coba lagi. Untuk mengganti agen AI, buka Settings."
+setup.subtitle.copilot_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Ikuti langkah-langkah di bawah untuk masuk. Untuk mengganti agen AI, buka Settings."
+setup.subtitle.agent_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Silakan masuk melalui CLI agen AI, lalu coba lagi. Untuk mengganti agen AI, buka Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Pilih CLI agen default yang ingin Anda gunakan di Intelligent Terminal. Anda dapat"
+setup.description.fre_line1: "Pilih CLI agen AI default yang ingin Anda gunakan di Intelligent Terminal. Anda dapat"
 setup.description.fre_line2: "membuka Settings untuk mengonfigurasi dan menyiapkan ruang kerja Anda."
 
 setup.option.reinstall: "Instal ulang %{agent}"
@@ -29,13 +29,13 @@ setup.status.installing_winget: " Menginstal melalui winget..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "CLI agen %{name} dipilih"
-auth.agent_selected_with_status: "CLI agen %{name} — "
+auth.agent_selected: "CLI agen AI %{name} dipilih"
+auth.agent_selected_with_status: "CLI agen AI %{name} — "
 auth.checking_authentication: "  %{spinner} Memeriksa autentikasi..."
 auth.waiting_for_authorization: "  %{spinner} Menunggu otorisasi..."
 auth.code_copied_hint: "  Kode disalin ke papan klip — tempel di browser Anda."
-auth.sign_in_prompt: "Masuk untuk menggunakan agen Anda:"
-auth.card_connect: "  Sambungkan %{name} untuk mengaktifkan fitur agen"
+auth.sign_in_prompt: "Masuk untuk menggunakan agen AI Anda:"
+auth.card_connect: "  Sambungkan %{name} untuk mengaktifkan fitur agen AI"
 auth.button_sign_in_github: "[ Masuk dengan GitHub ]"  # {Locked="GitHub"}
 auth.button_sign_in_with: "[ Masuk dengan %{name} ]"
 auth.hint_footer: "  Tekan Enter untuk masuk, Esc untuk kembali"  # {Locked="Enter","Esc"}
@@ -93,17 +93,17 @@ agent.custom.auth_hint: "Pastikan %{name} sudah diinstal dan ada di PATH Anda." 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Memuat..."
 # {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ untuk navigasi • Enter untuk membuka sesi di tab baru • Shift+enter untuk membuka sesi di panel agen • Esc untuk keluar)"
+agents.footer_hint: "(↑ ↓ untuk navigasi • Enter untuk membuka sesi di tab baru • Shift+enter untuk membuka sesi di panel agen AI • Esc untuk keluar)"
 agents.status.active: "Aktif"
 agents.status.waiting_for_input: "Menunggu input"
 agents.status.error: "Kesalahan"
 agents.status.idle: "Menganggur"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. untuk menampilkan/menyembunyikan panel agen • Ctrl+Alt+/ untuk menampilkan/menyembunyikan sesi agen)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. untuk menampilkan/menyembunyikan panel agen AI • Ctrl+Alt+/ untuk menampilkan/menyembunyikan sesi agen AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Memulai agen..."
+connection.starting: "Memulai agen AI..."
 connection.reconnecting: "Menyambungkan kembali..."
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────

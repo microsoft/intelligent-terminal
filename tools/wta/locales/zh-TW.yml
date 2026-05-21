@@ -1,20 +1,20 @@
 # 設定畫面標題
 # {Locked="Intelligent Terminal"} - 產品名稱，請勿翻譯
 setup.title.first_run: "歡迎使用 Intelligent Terminal！"
-setup.title.agent_missing: "找不到代理程式"
-setup.title.agent_error: "代理程式連線失敗"
-setup.title.switch_agent: "切換代理程式"
-setup.title.not_available: "代理程式無法使用"
+setup.title.agent_missing: "找不到智慧代理"
+setup.title.agent_error: "智慧代理連線失敗"
+setup.title.switch_agent: "切換智慧代理"
+setup.title.not_available: "智慧代理無法使用"
 setup.title.sign_in: "需要登入"
 
-# %{agent} 會在執行階段替換為代理程式的顯示名稱。
-setup.subtitle.copilot_missing: "您的代理程式 \"%{agent}\" 尚未安裝。請依照下列步驟進行安裝。若要切換代理程式，請前往設定。"
-setup.subtitle.agent_missing: "您的代理程式 \"%{agent}\" 尚未安裝。請手動重新安裝，然後重試。若要切換代理程式，請前往設定。"
-setup.subtitle.copilot_auth: "您的代理程式 \"%{agent}\" 需要驗證。請依照下列步驟登入。若要切換代理程式，請前往設定。"
-setup.subtitle.agent_auth: "您的代理程式 \"%{agent}\" 需要驗證。請透過代理程式 CLI 登入，然後重試。若要切換代理程式，請前往設定。"
+# %{agent} 會在執行階段替換為智慧代理的顯示名稱。
+setup.subtitle.copilot_missing: "您的智慧代理 \"%{agent}\" 尚未安裝。請依照下列步驟進行安裝。若要切換智慧代理，請前往設定。"
+setup.subtitle.agent_missing: "您的智慧代理 \"%{agent}\" 尚未安裝。請手動重新安裝，然後重試。若要切換智慧代理，請前往設定。"
+setup.subtitle.copilot_auth: "您的智慧代理 \"%{agent}\" 需要驗證。請依照下列步驟登入。若要切換智慧代理，請前往設定。"
+setup.subtitle.agent_auth: "您的智慧代理 \"%{agent}\" 需要驗證。請透過智慧代理 CLI 登入，然後重試。若要切換智慧代理，請前往設定。"
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "選擇您要在 Intelligent Terminal 中使用的預設代理程式 CLI。您可以"
+setup.description.fre_line1: "選擇您要在 Intelligent Terminal 中使用的預設智慧代理 CLI。您可以"
 setup.description.fre_line2: "前往設定來配置及設定您的工作區。"
 
 setup.option.reinstall: "重新安裝 %{agent}"
@@ -29,13 +29,13 @@ setup.status.installing_winget: " 正在透過 winget 安裝..."
 
 # ── 驗證流程 (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - 縮寫，不翻譯
-auth.agent_selected: "已選取代理程式 CLI %{name}"
-auth.agent_selected_with_status: "代理程式 CLI %{name} — "
+auth.agent_selected: "已選取智慧代理 CLI %{name}"
+auth.agent_selected_with_status: "智慧代理 CLI %{name} — "
 auth.checking_authentication: "  %{spinner} 正在檢查驗證..."
 auth.waiting_for_authorization: "  %{spinner} 正在等待授權..."
 auth.code_copied_hint: "  代碼已複製到剪貼簿 — 請在瀏覽器中貼上。"
-auth.sign_in_prompt: "登入以使用您的代理程式："
-auth.card_connect: "  連接 %{name} 以啟用代理程式功能"
+auth.sign_in_prompt: "登入以使用您的智慧代理："
+auth.card_connect: "  連接 %{name} 以啟用智慧代理功能"
 auth.button_sign_in_github: "[ 使用 GitHub 登入 ]"  # {Locked="GitHub"}
 auth.button_sign_in_with: "[ 使用 %{name} 登入 ]"
 auth.hint_footer: "  按 Enter 登入，按 Esc 返回"  # {Locked="Enter","Esc"}
@@ -78,7 +78,7 @@ permission.compact.default_description: "已要求權限"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N 回答 · 調整視窗大小以檢視完整卡片]"  # {Locked="Y/N"}
 
-# ── 代理程式狀態 (src/agent_check.rs) ───────────────────────────────────────
+# ── 智慧代理狀態 (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_installed_auto: "未安裝 — 選取以自動安裝"
 agent.status.not_found: "找不到"
 agent.status.detected: "已偵測到"
@@ -90,20 +90,20 @@ agent.install.winget_failed_code: "winget 安裝失敗（結束代碼 %{code}）
 agent.install.unsupported: "不支援自動安裝 %{agent}"
 agent.custom.auth_hint: "請確認 %{name} 已安裝並位於 PATH 上。"  # {Locked="PATH"}
 
-# ── 代理程式檢視 (src/ui/agents_view.rs) ─────────────────────────────────────
+# ── 智慧代理檢視 (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "載入中..."
 # {Locked="Enter","Shift+enter","Esc"} - 組合鍵，請勿翻譯
-agents.footer_hint: "(↑ ↓ 瀏覽 • Enter 在新索引標籤中啟動工作階段 • Shift+enter 在代理程式窗格中啟動工作階段 • Esc 結束)"
+agents.footer_hint: "(↑ ↓ 瀏覽 • Enter 在新索引標籤中啟動工作階段 • Shift+enter 在智慧代理窗格中啟動工作階段 • Esc 結束)"
 agents.status.active: "使用中"
 agents.status.waiting_for_input: "等待輸入"
 agents.status.error: "錯誤"
 agents.status.idle: "閒置"
 
 # ── 版面配置歡迎提示 (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. 顯示/隱藏代理程式窗格 • Ctrl+Alt+/ 顯示/隱藏代理程式工作階段)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. 顯示/隱藏智慧代理窗格 • Ctrl+Alt+/ 顯示/隱藏智慧代理工作階段)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
 
 # ── 連線狀態 ────────────────────────────────────────────────────────────
-connection.starting: "正在啟動代理程式..."
+connection.starting: "正在啟動智慧代理..."
 connection.reconnecting: "正在重新連線..."
 
 # ── 系統訊息 (src/app.rs) ────────────────────────────────────────────────

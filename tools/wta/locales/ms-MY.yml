@@ -1,20 +1,20 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - nama produk, jangan diterjemahkan
 setup.title.first_run: "Selamat datang ke Intelligent Terminal!"
-setup.title.agent_missing: "Ejen tidak ditemui"
-setup.title.agent_error: "Sambungan ejen gagal"
-setup.title.switch_agent: "Tukar ejen"
-setup.title.not_available: "Ejen tidak tersedia"
+setup.title.agent_missing: "Ejen AI tidak ditemui"
+setup.title.agent_error: "Sambungan ejen AI gagal"
+setup.title.switch_agent: "Tukar ejen AI"
+setup.title.not_available: "Ejen AI tidak tersedia"
 setup.title.sign_in: "Log masuk diperlukan"
 
-# %{agent} digantikan dengan nama paparan ejen semasa masa jalan.
-setup.subtitle.copilot_missing: "Ejen \"%{agent}\" anda belum dipasang. Ikuti langkah di bawah untuk memasangnya. Untuk menukar ejen, pergi ke Settings."
-setup.subtitle.agent_missing: "Ejen \"%{agent}\" anda belum dipasang. Sila pasang semula secara manual, kemudian cuba lagi. Untuk menukar ejen, pergi ke Settings."
-setup.subtitle.copilot_auth: "Ejen \"%{agent}\" anda memerlukan pengesahan. Ikuti langkah di bawah untuk log masuk. Untuk menukar ejen, pergi ke Settings."
-setup.subtitle.agent_auth: "Ejen \"%{agent}\" anda memerlukan pengesahan. Sila log masuk melalui CLI ejen, kemudian cuba lagi. Untuk menukar ejen, pergi ke Settings."
+# %{agent} digantikan dengan nama paparan ejen AI semasa masa jalan.
+setup.subtitle.copilot_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Ikuti langkah di bawah untuk memasangnya. Untuk menukar ejen AI, pergi ke Settings."
+setup.subtitle.agent_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Sila pasang semula secara manual, kemudian cuba lagi. Untuk menukar ejen AI, pergi ke Settings."
+setup.subtitle.copilot_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Ikuti langkah di bawah untuk log masuk. Untuk menukar ejen AI, pergi ke Settings."
+setup.subtitle.agent_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Sila log masuk melalui CLI ejen AI, kemudian cuba lagi. Untuk menukar ejen AI, pergi ke Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Pilih CLI ejen lalai yang ingin anda gunakan dalam Intelligent Terminal. Anda boleh"
+setup.description.fre_line1: "Pilih CLI ejen AI lalai yang ingin anda gunakan dalam Intelligent Terminal. Anda boleh"
 setup.description.fre_line2: "pergi ke Settings untuk mengkonfigurasi dan menyediakan ruang kerja anda."
 
 setup.option.reinstall: "Pasang semula %{agent}"
@@ -29,13 +29,13 @@ setup.status.installing_winget: " Memasang melalui winget..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "CLI ejen %{name} dipilih"
-auth.agent_selected_with_status: "CLI ejen %{name} — "
+auth.agent_selected: "CLI ejen AI %{name} dipilih"
+auth.agent_selected_with_status: "CLI ejen AI %{name} — "
 auth.checking_authentication: "  %{spinner} Menyemak pengesahan..."
 auth.waiting_for_authorization: "  %{spinner} Menunggu kebenaran..."
 auth.code_copied_hint: "  Kod disalin ke papan keratan — tampalkan dalam pelayar anda."
-auth.sign_in_prompt: "Log masuk untuk menggunakan ejen anda:"
-auth.card_connect: "  Sambungkan %{name} untuk mendayakan ciri ejen"
+auth.sign_in_prompt: "Log masuk untuk menggunakan ejen AI anda:"
+auth.card_connect: "  Sambungkan %{name} untuk mendayakan ciri ejen AI"
 auth.button_sign_in_github: "[ Log masuk dengan GitHub ]"  # {Locked="GitHub"}
 auth.button_sign_in_with: "[ Log masuk dengan %{name} ]"
 auth.hint_footer: "  Tekan Enter untuk log masuk, Esc untuk kembali"  # {Locked="Enter","Esc"}
@@ -93,17 +93,17 @@ agent.custom.auth_hint: "Pastikan %{name} dipasang dan berada dalam PATH anda." 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Memuatkan..."
 # {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ untuk navigasi • Enter untuk membuka sesi dalam tab baharu • Shift+enter untuk membuka sesi dalam anak tetingkap ejen • Esc untuk keluar)"
+agents.footer_hint: "(↑ ↓ untuk navigasi • Enter untuk membuka sesi dalam tab baharu • Shift+enter untuk membuka sesi dalam anak tetingkap ejen AI • Esc untuk keluar)"
 agents.status.active: "Aktif"
 agents.status.waiting_for_input: "Menunggu input"
 agents.status.error: "Ralat"
 agents.status.idle: "Menganggur"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. untuk tunjuk/sembunyikan anak tetingkap ejen • Ctrl+Alt+/ untuk tunjuk/sembunyikan sesi ejen)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. untuk tunjuk/sembunyikan anak tetingkap ejen AI • Ctrl+Alt+/ untuk tunjuk/sembunyikan sesi ejen AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Memulakan ejen..."
+connection.starting: "Memulakan ejen AI..."
 connection.reconnecting: "Menyambung semula..."
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
