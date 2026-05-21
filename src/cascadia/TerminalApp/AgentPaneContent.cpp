@@ -153,9 +153,13 @@ namespace winrt::TerminalApp::implementation
     {
         // Sessions view: the bar shows only the "Agent sessions" title
         // (Figma node 912:70364 — no per-agent logo on the session list).
+        // Collapse the logo so the title shifts left to where the logo
+        // would have been, but keep the bar's 10px left padding so the
+        // text doesn't butt against the edge.
         if (_isSessionsView)
         {
             AgentLogo().Source(nullptr);
+            AgentLogo().Visibility(Visibility::Collapsed);
             return;
         }
 
@@ -163,6 +167,7 @@ namespace winrt::TerminalApp::implementation
         if (_agentName.empty())
         {
             AgentLogo().Source(nullptr);
+            AgentLogo().Visibility(Visibility::Collapsed);
             return;
         }
 
@@ -176,6 +181,7 @@ namespace winrt::TerminalApp::implementation
         source.RasterizePixelWidth(28.0);
         source.RasterizePixelHeight(28.0);
         AgentLogo().Source(source);
+        AgentLogo().Visibility(Visibility::Visible);
     }
 
 #pragma region IPaneContent forwarding
