@@ -112,8 +112,9 @@ namespace Microsoft::Terminal::CommandLine
     // Any empty field is omitted from the JSON (the Rust side uses
     // Option<String> and falls back to defaults for missing fields).
     //
-    // Returns empty string on failure (invalid input containing NUL).
-    // Callers should check for empty return if they need error handling.
+    // All control characters in field values (including NUL) are escaped
+    // per RFC 8259, so the resulting JSON blob is always valid and safe
+    // for commandline transport.
     inline std::wstring BuildAgentConfigArg(
         std::wstring_view agent,
         std::wstring_view agentId,

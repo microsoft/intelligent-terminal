@@ -1208,11 +1208,13 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Append the prompt as a positional argument.
-        if (auto q = QuoteArgForCommandLine(std::wstring_view{ prompt }))
+        // Append the prompt as a positional argument (required by wta delegate).
+        auto quotedPrompt = QuoteArgForCommandLine(std::wstring_view{ prompt });
+        if (!quotedPrompt)
         {
-            cmdline += L" " + *q;
+            return; // Prompt contains embedded NUL — cannot safely launch.
         }
+        cmdline += L" " + *quotedPrompt;
 
         _agentPaneLog("launching: " + winrt::to_string(winrt::hstring{ cmdline }));
 
