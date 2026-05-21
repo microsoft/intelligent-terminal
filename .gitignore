@@ -8,6 +8,11 @@ tools/wta/target*/
 tools/wta/*.excalidraw
 tools/wta/*.png
 
+# Cargo-fuzz artifacts (corpus, crashes, build output)
+tools/wta/fuzz/target/
+tools/wta/fuzz/corpus/
+tools/wta/fuzz/artifacts/
+
 # Claude Code local settings
 .claude/settings.local.json
 

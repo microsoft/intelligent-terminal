@@ -41,6 +41,7 @@ EXECUTEDEFAULT
 EXECUTEONLYONCE
 EXPCMDFLAGS
 EXPCMDSTATE
+ffi
 filetime
 FILTERSPEC
 fina
@@ -90,6 +91,7 @@ MENUITEMINFOW
 MINIMIZEBOX
 MOUSELEAVE
 mov
+msrustup
 MULTIPLEUSE
 NCHITTEST
 NCLBUTTONDBLCLK
@@ -134,6 +136,7 @@ rfind
 ROOTOWNER
 roundf
 RSHIFT
+rustup
 rvrn
 SACL
 schandle
@@ -185,6 +188,7 @@ UOI
 UPDATEINIFILE
 urlmon
 USEROBJECTFLAGS
+usize
 Vcpp
 Viewbox
 virtualalloc
@@ -197,6 +201,7 @@ winsta
 winstamin
 wmemcmp
 wpc
+wta
 WSF
 WWH
 wwinmain

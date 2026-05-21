@@ -7,7 +7,12 @@ trigger:
     exclude:
       - docs/*
       - samples/*
-      - tools/*
+      # tools/wta/** intentionally NOT excluded — it hosts the WTA fuzzer
+      # sources and the function under fuzz (build_wt_commandline). When
+      # adding a new tools/ subdir, decide whether it affects fuzz and add
+      # an exclude entry here if not.
+      - tools/ReleaseEngineering/*
+      - tools/TestTableWriter/*
 
 pr: none
 
@@ -33,9 +38,84 @@ stages:
           buildEverything: true
           keepAllExpensiveBuildOutputs: false
 
+  - stage: BuildWtaFuzzer
+    displayName: WTA Rust Fuzzer Build
+    dependsOn: []
+    condition: succeeded()
+    jobs:
+      - job: BuildRustFuzzer
+        pool:
+          ${{ if eq(variables['System.CollectionId'], 'cb55739e-4afe-46a3-970f-1b49d8ee7564') }}:
+            name: SHINE-INT-L
+          ${{ else }}:
+            name: SHINE-OSS-L
+        steps:
+        - checkout: self
+
+        # Install MSRustup + the ms-nightly toolchain required by cargo-fuzz.
+        # Mirrors the canonical Rust install pattern from
+        # build/pipelines/templates-v2/job-build-project.yml.
+        - task: RustInstaller@1
+          displayName: Install Rust toolchain (MSRustup)
+          inputs:
+            rustVersion: ms-nightly
+            toolchainFeed: https://pkgs.dev.azure.com/microsoft/_packaging/RustTools/nuget/v3/index.json
+            additionalTargets: 'x86_64-pc-windows-msvc'
+
+        # CI-only .cargo/config.toml at the repo root pointing cargo at the
+        # Azure Artifacts feed. Not checked into the repo (would break local
+        # dev — feed requires CI-only auth tokens). Cargo discovers this by
+        # walking up from CWD; it must live at the repo root, not under wta/.
+        - pwsh: |-
+            $configDir = '.cargo'
+            New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+            @"
+            [registries]
+            WindowsTerminalCargo = { index = "sparse+https://pkgs.dev.azure.com/microsoft/Dart/_packaging/IntelligentTerminal_Cargo/Cargo/index/" }
+
+            [source.crates-io]
+            replace-with = "WindowsTerminalCargo"
+            "@ | Set-Content "$configDir/config.toml" -Encoding utf8NoBOM
+          displayName: Create Cargo registry config (CI only)
+
+        # Issues a Bearer token for the Azure Artifacts feed referenced in
+        # .cargo/config.toml. Required — without it the sparse-index endpoint
+        # returns 404.
+        - task: CargoAuthenticate@0
+          displayName: Authenticate Cargo feeds
+          inputs:
+            configFile: .cargo/config.toml
+
+        # cargo-fuzz must come from the authenticated feed.
+        - script: cargo +ms-nightly install cargo-fuzz --locked
+          displayName: Install cargo-fuzz
+
+        # Pre-fetch deps so the build step is offline-friendly (some 1ES
+        # pools disable network during the build phase).
+        - script: cargo fetch --manifest-path tools/wta/fuzz/Cargo.toml --locked
+          displayName: Fetch fuzz crate dependencies
+
+        - script: cargo +ms-nightly fuzz build cmdline_builder --fuzz-dir tools/wta/fuzz
+          displayName: Build WTA fuzz targets
+
+        # Use pwsh (not bash) so the ADO `$(Build.ArtifactStagingDirectory)`
+        # macro doesn't expand to a backslash-laden path that bash treats as
+        # escape sequences.
+        - pwsh: |-
+            $src = 'tools/wta/fuzz/target/x86_64-pc-windows-msvc/release/cmdline_builder.exe'
+            $dst = "$(Build.ArtifactStagingDirectory)/WtaCmdlineFuzzer.exe"
+            Copy-Item -Path $src -Destination $dst
+          displayName: Stage fuzzer artifact
+
+        - task: PublishPipelineArtifact@1
+          displayName: Publish WTA fuzzer
+          inputs:
+            targetPath: $(Build.ArtifactStagingDirectory)/WtaCmdlineFuzzer.exe
+            artifactName: wta-fuzzer
+
   - stage: Submit
     displayName: Submit to OneFuzz
-    dependsOn: [Build]
+    dependsOn: [Build, BuildWtaFuzzer]
     condition: succeeded()
     jobs:
       - job:
@@ -43,9 +123,14 @@ stages:
           vmImage: 'ubuntu-latest'
         steps:
         - task: DownloadPipelineArtifact@2
-          displayName: Download artifacts
+          displayName: Download C++ fuzzer artifacts
           inputs:
             artifactName: build-x64-Fuzzing
+            downloadPath: $(Build.ArtifactStagingDirectory)
+        - task: DownloadPipelineArtifact@2
+          displayName: Download WTA fuzzer artifact
+          inputs:
+            artifactName: wta-fuzzer
             downloadPath: $(Build.ArtifactStagingDirectory)
         - task: UsePythonVersion@0
           inputs:
@@ -77,3 +162,9 @@ stages:
           env:
             target_exe_path: $(Build.ArtifactStagingDirectory)/ProtocolFuzzer.exe
             test_name: ProtocolServerParsing
+        - bash: |
+            onefuzz template libfuzzer basic --colocate_all_tasks --vm_count 1 --target_exe $target_exe_path --notification_config @./build/Fuzz/notifications-ado.json OpenConsole $test_name $(Build.SourceVersion) default
+          displayName: Submit OneFuzz Job — WtaCmdlineFuzzer
+          env:
+            target_exe_path: $(Build.ArtifactStagingDirectory)/WtaCmdlineFuzzer.exe
+            test_name: WtaCmdlineBuilder

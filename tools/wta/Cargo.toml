@@ -8,6 +8,10 @@ description = "Windows Terminal Agent — ACP TUI client / MCP tool server"
 name = "wta"
 path = "src/main.rs"
 
+[lib]
+name = "wta"
+path = "src/lib.rs"
+
 [dependencies]
 agent-client-protocol = { version = "0.10", features = ["unstable_session_model"] }
 tokio = { version = "1", features = ["full"] }
