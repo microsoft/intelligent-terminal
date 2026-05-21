@@ -476,6 +476,7 @@ int main()
             {
                 Json::Value v;
                 v["ok"] = true;
+                v["session_id"] = GuidToString(sessionId);
                 PrintJson(v);
             }
         }

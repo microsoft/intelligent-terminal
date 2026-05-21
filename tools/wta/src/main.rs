@@ -1254,10 +1254,7 @@ async fn run_default_tui(cli: Cli) -> Result<()> {
             let cli_arc = Arc::new(channel);
             wt_protocol_channel = Some(Arc::clone(&cli_arc));
 
-            let wt_channel_for_mgr: Arc<dyn shell::wt_channel::WtChannel> =
-                cli_arc.clone() as Arc<dyn shell::wt_channel::WtChannel>;
-
-            shell_mgr = shell_mgr.with_wt_channel(wt_channel_for_mgr);
+            shell_mgr = shell_mgr.with_wt_channel(cli_arc.clone() as Arc<dyn shell::wt_channel::WtChannel>);
             true
         }
         Err(e) => {
