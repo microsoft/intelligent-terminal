@@ -965,6 +965,10 @@
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>エラーの説明、コマンドの下書き、タスクの打開を作業しながらその場で手助けする組み込みアシスタントを設定します。</value>
   </data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>この設定は組織によって管理されています。</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Intelligent Terminal の詳細を見る</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>

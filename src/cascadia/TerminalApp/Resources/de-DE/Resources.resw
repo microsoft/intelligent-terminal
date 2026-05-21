@@ -967,6 +967,10 @@
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Richten Sie Ihren integrierten Assistenten ein, um Fehler zu erklären, Befehle zu entwerfen und Aufgaben direkt dort zu lösen, wo Sie arbeiten. </value>
   </data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>Diese Einstellung wird von Ihrer Organisation verwaltet.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Erfahren Sie mehr über Intelligent Terminal</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>

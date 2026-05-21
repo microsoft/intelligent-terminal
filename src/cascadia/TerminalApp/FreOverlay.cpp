@@ -108,6 +108,15 @@ namespace winrt::TerminalApp::implementation
             AgentComboBox().SelectedIndex(selectedIndex);
         }
 
+        // Agent dropdown — show policy notice if AllowedAgents GPO is active
+        if (globals.IsAgentPolicyLocked())
+        {
+            const auto policyText = RS_(L"FreOverlay_PolicyLocked");
+            AgentPolicyNotice().Text(policyText);
+            AgentPolicyNotice().Visibility(Visibility::Visible);
+            Automation::AutomationProperties::SetHelpText(AgentComboBox(), policyText);
+        }
+
         // Populate pane position ComboBox
         auto posItems = PanePositionComboBox().Items();
         posItems.Clear();

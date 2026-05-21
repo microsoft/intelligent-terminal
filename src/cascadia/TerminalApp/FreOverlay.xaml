@@ -202,6 +202,11 @@
                                                FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap" Visibility="Collapsed"
                                                Margin="0,4,0,0" />
+                                    <TextBlock x:Name="AgentPolicyNotice"
+                                               FontSize="12" FontStyle="Italic"
+                                               Foreground="#CCFFA500" TextWrapping="Wrap"
+                                               Visibility="Collapsed"
+                                               AutomationProperties.LiveSetting="Polite" />
                                 </StackPanel>
                                 <ComboBox x:Name="AgentComboBox" Grid.Column="1"
                                           MinWidth="220"

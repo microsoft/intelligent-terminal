@@ -1021,7 +1021,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_PolicyLocked" xml:space="preserve">
     <value>This setting is managed by your organization.</value>
-    <comment>Shown under FRE controls when a Group Policy restricts the option.</comment>
+    <comment>Text shown below a disabled toggle/dropdown in the first-run experience when Group Policy controls the feature. Standard Windows policy notice wording.</comment>
   </data>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">

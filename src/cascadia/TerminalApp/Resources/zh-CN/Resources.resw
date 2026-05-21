@@ -1153,7 +1153,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Subtitle shown when Group Policy blocks all AI agents from running.</comment>
   </data>
   <data name="FreOverlay_PolicyLocked" xml:space="preserve">
-    <value>此选项受你的组织策略限制。</value>
-    <comment>Text shown below a disabled toggle in the first-run experience when Group Policy blocks the feature.</comment>
+    <value>此设置由你的组织管理。</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
   </data>
 </root>

@@ -2890,7 +2890,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <!-- GPO policy-locked indicators shown in Settings UI -->
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
-    <value>Some options are restricted by your organization's policy.</value>
-    <comment>Text displayed when a setting is restricted by Group Policy (GPO). Available options may be limited.</comment>
+    <value>This setting is managed by your organization.</value>
+    <comment>Text displayed when a setting is controlled by Group Policy (GPO). Standard Windows policy notice wording.</comment>
   </data>
 </root>

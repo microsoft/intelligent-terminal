@@ -1135,7 +1135,7 @@
     <comment>Subtitle shown when Group Policy blocks all AI agents from running.</comment>
   </data>
   <data name="FreOverlay_PolicyLocked" xml:space="preserve">
-    <value>Esta opção está restrita pela política da sua organização.</value>
-    <comment>Text shown below a disabled toggle in the first-run experience when Group Policy blocks the feature.</comment>
+    <value>Esta configuração é gerenciada pela sua organização.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
   </data>
 </root>

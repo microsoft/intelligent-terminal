@@ -964,6 +964,10 @@
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>設定您的內建助理，讓它直接在您的工作環境中協助您說明錯誤、草擬命令，以及排除工作阻礙。</value>
   </data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>此設定由您的組織管理。</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>深入了解 Intelligent Terminal</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
