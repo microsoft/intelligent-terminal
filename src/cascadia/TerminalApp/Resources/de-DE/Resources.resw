@@ -959,23 +959,116 @@
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>Die Shellintegration konnte nicht initialisiert werden. Der Pfad zu Ihrem PowerShell-Profil konnte nicht ermittelt werden. Stellen Sie sicher, dass die Ziel-Shell installiert ist.</value><comment>{Locked="PowerShell"}</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>KI-Agent ist nicht verfügbar</value></data>
   <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>Es konnte kein KI-Agent gefunden werden. Installieren Sie eine Agent-CLI (z. B. copilot, gemini) und stellen Sie sicher, dass sie sich in Ihrem PATH befindet, oder konfigurieren Sie eine unter Einstellungen &gt; Agenten.</value><comment>{Locked="CLI","PATH","copilot","gemini"}</comment></data>
-  <data name="FreOverlay_Title" xml:space="preserve"><value>Neu in Intelligentem Terminal</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_Card1Title" xml:space="preserve"><value>Willkommen bei Intelligentem Terminal</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_Card1Description" xml:space="preserve"><value>Richten Sie Ihren integrierten KI-Agenten ein, damit er Ihnen direkt bei der Arbeit hilft</value></data>
-  <data name="FreOverlay_Card2Title" xml:space="preserve"><value>Automatische Fehlererkennung</value></data>
-  <data name="FreOverlay_Card2Description" xml:space="preserve"><value>Der Agentbereich hat immer Kontext und ist mit Ihrer bevorzugten Agent-CLI einsatzbereit</value><comment>{Locked="CLI"}</comment></data>
-  <data name="FreOverlay_Card3Title" xml:space="preserve"><value>Sitzungsverwaltung</value></data>
-  <data name="FreOverlay_Card3Description" xml:space="preserve"><value>Die Sitzungsverwaltung hilft Ihnen dabei, Agenten nachzuverfolgen und zu früheren Sitzungen zurückzukehren</value></data>
-  <data name="FreOverlay_Card4Title" xml:space="preserve"><value>Schnelle Agentbefehle</value></data>
-  <data name="FreOverlay_Card4Description" xml:space="preserve"><value>Mit der Befehlspalette lassen sich Registerkarten im Hintergrund starten</value></data>
-  <data name="FreOverlay_DetailTitle" xml:space="preserve"><value>Willkommen bei Intelligentem Terminal</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_DetailDescription" xml:space="preserve"><value>Richten Sie Ihren integrierten KI-Agenten ein, damit er Ihnen direkt bei der Arbeit hilft, Fehler zu erklären, Befehle zu entwerfen und Aufgaben wieder in Gang zu bringen.</value></data>
-  <data name="FreOverlay_Detail2Title" xml:space="preserve"><value>Automatische Fehlererkennung</value></data>
-  <data name="FreOverlay_Detail2Description" xml:space="preserve"><value>Der Agentbereich hat immer Kontext und ist mit Ihrer bevorzugten Agent-CLI einsatzbereit.</value><comment>{Locked="CLI"}</comment></data>
-  <data name="FreOverlay_Detail3Title" xml:space="preserve"><value>Sitzungsverwaltung</value></data>
-  <data name="FreOverlay_Detail3Description" xml:space="preserve"><value>Die Sitzungsverwaltung hilft Ihnen dabei, Agenten nachzuverfolgen und zu früheren Sitzungen zurückzukehren.</value></data>
-  <data name="FreOverlay_Detail4Title" xml:space="preserve"><value>Schnelle Agentbefehle</value></data>
-  <data name="FreOverlay_Detail4Description" xml:space="preserve"><value>Verwenden Sie die Befehlspalette, um agentengestützte Aufgaben von überall in Ihrem Terminal aus schnell auszuführen.</value></data>
-  <data name="FreOverlay_DetailLink" xml:space="preserve"><value>Erfahren Sie mehr über Intelligentes Terminal.</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_NextButton" xml:space="preserve"><value>Jetzt entdecken</value></data>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>Willkommen bei Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>Richten Sie Ihren integrierten Assistenten ein, um Fehler zu erklären, Befehle zu entwerfen und Aufgaben direkt dort zu lösen, wo Sie arbeiten. </value>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>Erfahren Sie mehr über Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>Bleiben Sie im Fluss mit Ihrem integrierten KI-Agenten</value>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>Ihr Agent verfolgt, was in Ihrem Terminal passiert, und kann Ihnen helfen, Fehler zu verstehen und zu beheben, sobald sie auftreten.</value>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>Machen Sie genau dort weiter, wo Sie aufgehört haben</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>Behalten Sie Ihre aktiven und vergangenen Agentsitzungen im Blick und kehren Sie in Sekundenschnelle zu Ihrer Arbeit zurück. Überprüfen Sie laufende Aufgaben oder greifen Sie auf frühere Arbeiten zurück, ohne den Überblick zu verlieren.</value>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>Weiter</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>Willkommen bei Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>Wählen Sie, was Sie jetzt einrichten möchten. Sie können diese Einstellungen jederzeit in den </value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>Einstellungen</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>Agent</value>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>Wählen Sie die Agent-CLI aus, die im Agentbereich verwendet wird. Jede kompatible ACP-CLI wird automatisch erkannt.</value>
+    <comment>{Locked="CLI","ACP"}</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ Dieser Agent erfordert Node.js und NPX, die automatisch installiert werden, falls noch nicht vorhanden.</value>
+    <comment>{Locked="Node.js","NPX"}</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>Automatische Fehlererkennung</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>Erteilen Sie Intelligent Terminal die Berechtigung, auf Ihre Shell zuzugreifen und Fehler automatisch zu erkennen.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
+    <value>Sitzungsverwaltung</value>
+  </data>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>Erteilen Sie Intelligent Terminal die Berechtigung, den Status Ihrer laufenden oder aktiven Agenten zu verfolgen.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ Durch Aktivieren werden Integrations-Hooks installiert, um Sitzungen über Ihre Agent-CLIs hinweg zu verfolgen.</value>
+    <comment>{Locked="CLI"}</comment>
+  </data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>Bereichsposition</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>Wo der Agentbereich relativ zu Ihrem Terminal geöffnet wird.</value>
+  </data>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (wird installiert)</value>
+  </data>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (installiert)</value>
+  </data>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>Unten</value>
+  </data>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>Rechts</value>
+  </data>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>Links</value>
+  </data>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>Oben</value>
+  </data>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>Wird eingerichtet...</value>
+  </data>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ GitHub Copilot konnte nicht installiert werden. Überprüfen Sie Ihre Netzwerkverbindung und versuchen Sie es erneut.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Node.js konnte nicht installiert werden. Überprüfen Sie Ihre Netzwerkverbindung und versuchen Sie es erneut.</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>Ein</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>Aus</value>
+  </data>
 </root>

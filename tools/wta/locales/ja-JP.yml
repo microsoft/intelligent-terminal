@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── セットアップ画面 ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - 製品名、翻訳不要
+
 setup.title.first_run: "Intelligent Terminal へようこそ"
 setup.title.agent_missing: "エージェントが見つかりません"
 setup.title.agent_error: "エージェントへの接続に失敗しました"
 setup.title.switch_agent: "エージェントを切り替える"
+setup.title.not_available: "エージェントを利用できません"
+setup.title.sign_in: "サインインが必要です"
+
+# %{agent} は実行時にエージェントの表示名に置換されます。
+# {Locked="Settings"} - Settings ページを指します。英語 UI のまま保持してください。
+setup.subtitle.copilot_missing: "エージェント \"%{agent}\" がインストールされていません。以下の手順に従ってインストールしてください。エージェントを切り替えるには Settings に移動してください。"
+setup.subtitle.agent_missing: "エージェント \"%{agent}\" がインストールされていません。手動で再インストールしてから再試行してください。エージェントを切り替えるには Settings に移動してください。"
+setup.subtitle.copilot_auth: "エージェント \"%{agent}\" には認証が必要です。以下の手順に従ってサインインしてください。エージェントを切り替えるには Settings に移動してください。"
+setup.subtitle.agent_auth: "エージェント \"%{agent}\" には認証が必要です。エージェント CLI からサインインしてから再試行してください。エージェントを切り替えるには Settings に移動してください。"
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal で使用する既定のエージェント CLI を選択してください。"
+setup.description.fre_line2: "Settings に移動してワークスペースを構成およびセットアップできます。"
+
+setup.option.reinstall: "%{agent} を再インストール"
+setup.option.reinstall_hint: "（自動的にインストールされます）"
+setup.option.signin: "%{agent} にサインイン"
+setup.option.retry_detection: "検出を再試行"
+setup.option.retry_auth: "サインイン済み — 接続を再試行"
+setup.option.retry_connection: "接続を再試行"
+setup.status.installing: "インストール中..."
+setup.status.install_failed: "インストール失敗: "
+setup.status.installing_winget: " winget 経由でインストール中..."
+
+# ─── 認証画面 ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "エージェント CLI %{agent} が選択されています"
+auth.agent_selected_reason: "エージェント CLI %{agent} — "
+auth.checking: "認証を確認中..."
+auth.waiting: "承認を待機中..."
+auth.code_copied: "コードがクリップボードにコピーされました — ブラウザーに貼り付けてください。"
+auth.signin_prompt: "エージェントを使用するにはサインインしてください:"
+auth.connect_agent: "%{agent} を接続してエージェント機能を有効にする"
+# {Locked="GitHub"} - ブランド名
+auth.signin_github: "[ GitHub でサインイン ]"
+auth.signin_agent: "[ %{agent} でサインイン ]"
+auth.hint: "Enter でサインイン、Esc で戻る"
+
+# ─── チャット ────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "考え中…"
+chat.welcome: "Intelligent Terminal へようこそ！"
+chat.plan_header: "プラン:"
+
+# ─── ヒント ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. エージェント ペインの表示/非表示 • Ctrl+Alt+/ エージェント セッションの表示/非表示)"
+
+# ─── エージェント ステータス ラベル ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "未インストール — 選択すると自動的にインストールされます"
+agent.status.not_found: "見つかりません"
+agent.status.detected: "検出済み"
+
+# ─── 接続状態 ───────────────────────────────────────────────────────────
+
+connection.starting: "エージェントを起動中..."
+connection.reconnecting: "再接続中..."

@@ -54,20 +54,21 @@
 
                 <!--  Top: Title + Subtitle  -->
                 <StackPanel Grid.Row="0" Spacing="8" Margin="0,8,0,16" HorizontalAlignment="Center">
-                    <TextBlock FontFamily="Segoe UI Variable Display, Segoe UI"
+                    <TextBlock x:Uid="FreOverlay_WelcomeTitle"
+                               FontFamily="Segoe UI Variable Display, Segoe UI"
                                FontSize="20" FontWeight="SemiBold"
                                Foreground="White" TextAlignment="Center"
-                               LineHeight="28"
-                               Text="Welcome to Intelligent Terminal" />
-                    <TextBlock FontFamily="Segoe UI Variable Small, Segoe UI"
+                               LineHeight="28" />
+                    <TextBlock x:Name="WelcomeSubtitle"
+                               FontFamily="Segoe UI Variable Small, Segoe UI"
                                FontSize="13" Foreground="#B3FFFFFF"
                                TextAlignment="Center" TextWrapping="Wrap"
                                LineHeight="18" MaxWidth="480"
                                Margin="0,4,0,0">
-                        <Run Text="Set up your built-in assistant to help you explain errors, draft commands, and unblock tasks right where you work. " />
+                        <Run x:Name="WelcomeSubtitlePrefix" Text="" />
                         <Hyperlink NavigateUri="https://aka.ms/intelligent-terminal"
                                    Foreground="#FF99EBFF">
-                            <Run Text="Learn more about Intelligent Terminal" />
+                            <Run x:Name="WelcomeSubtitleLink" Text="" />
                         </Hyperlink>
                     </TextBlock>
                 </StackPanel>
@@ -94,14 +95,14 @@
                                        VerticalAlignment="Bottom" />
                             </Border>
                             <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
-                                <TextBlock FontFamily="Segoe UI Variable Text, Segoe UI"
+                                <TextBlock x:Uid="FreOverlay_Card1Title"
+                                           FontFamily="Segoe UI Variable Text, Segoe UI"
                                            FontSize="13" FontWeight="SemiBold"
-                                           Foreground="White" LineHeight="18"
-                                           Text="Stay in flow with your built-in AI agent" />
-                                <TextBlock FontFamily="Segoe UI Variable Small, Segoe UI"
+                                           Foreground="White" LineHeight="18" />
+                                <TextBlock x:Uid="FreOverlay_Card1Description"
+                                           FontFamily="Segoe UI Variable Small, Segoe UI"
                                            FontSize="12" Foreground="#8AFFFFFF"
-                                           TextWrapping="Wrap" LineHeight="16"
-                                           Text="Your agent stays aware of what's happening in your terminal and can help you understand and fix errors as they appear." />
+                                           TextWrapping="Wrap" LineHeight="16" />
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -120,14 +121,14 @@
                                        VerticalAlignment="Center" />
                             </Border>
                             <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
-                                <TextBlock FontFamily="Segoe UI Variable Text, Segoe UI"
+                                <TextBlock x:Uid="FreOverlay_Card2Title"
+                                           FontFamily="Segoe UI Variable Text, Segoe UI"
                                            FontSize="13" FontWeight="SemiBold"
-                                           Foreground="White" LineHeight="18"
-                                           Text="Pick up right where you left off" />
-                                <TextBlock FontFamily="Segoe UI Variable Small, Segoe UI"
+                                           Foreground="White" LineHeight="18" />
+                                <TextBlock x:Uid="FreOverlay_Card2Description"
+                                           FontFamily="Segoe UI Variable Small, Segoe UI"
                                            FontSize="12" Foreground="#8AFFFFFF"
-                                           TextWrapping="Wrap" LineHeight="16"
-                                           Text="Keep track of your active and past agent sessions and jump back into your work in seconds. Review what's in progress or revisit earlier work without losing your place." />
+                                           TextWrapping="Wrap" LineHeight="16" />
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -135,14 +136,14 @@
 
                 <!--  Bottom: Next Button  -->
                 <Grid Grid.Row="2">
-                    <Button x:Name="NextButton"
+                    <Button x:Uid="FreOverlay_NextButton"
+                            x:Name="NextButton"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             Width="120" Height="32"
                             Background="#FF60CDFF" Foreground="Black"
                             FontFamily="Segoe UI Variable Text, Segoe UI"
                             FontSize="14" CornerRadius="5"
-                            Click="_OnNextButtonClick"
-                            Content="Next" />
+                            Click="_OnNextButtonClick" />
                 </Grid>
             </Grid>
 
@@ -158,19 +159,20 @@
 
                 <!--  Top: Title + Subtitle  -->
                 <StackPanel Grid.Row="0" Spacing="8" Margin="0,8,0,16" HorizontalAlignment="Center">
-                    <TextBlock FontFamily="Segoe UI Variable Display, Segoe UI"
+                    <TextBlock x:Uid="FreOverlay_SettingsTitle"
+                               FontFamily="Segoe UI Variable Display, Segoe UI"
                                FontSize="20" FontWeight="SemiBold"
                                Foreground="White" TextAlignment="Center"
-                               LineHeight="28"
-                               Text="Welcome to Intelligent Terminal" />
-                    <TextBlock FontFamily="Segoe UI Variable Small, Segoe UI"
+                               LineHeight="28" />
+                    <TextBlock x:Name="SettingsSubtitle"
+                               FontFamily="Segoe UI Variable Small, Segoe UI"
                                FontSize="13" Foreground="#B3FFFFFF"
                                TextAlignment="Center" TextWrapping="Wrap"
                                LineHeight="18"
                                Margin="0,4,0,0">
-                        <Run Text="Choose what to set up now. You can change these anytime in " />
+                        <Run x:Name="SettingsSubtitlePrefix" Text="" />
                         <Hyperlink Foreground="#FF99EBFF">
-                            <Run Text="Settings" />
+                            <Run x:Name="SettingsSubtitleLink" Text="" />
                         </Hyperlink>
                         <Run Text="." />
                     </TextBlock>
@@ -189,16 +191,17 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Spacing="2">
-                                    <TextBlock FontSize="14" FontWeight="SemiBold"
-                                               Foreground="White" Text="Agent" />
-                                    <TextBlock FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap"
-                                               Text="Choose the agent CLI used in the agent pane. Any compatible ACP CLI will be detected." />
-                                    <TextBlock x:Name="AgentInstallHint"
+                                    <TextBlock x:Uid="FreOverlay_AgentLabel"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Uid="FreOverlay_AgentDescription"
+                                               FontSize="12" Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock x:Uid="FreOverlay_AgentInstallHint"
+                                               x:Name="AgentInstallHint"
                                                FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap" Visibility="Collapsed"
-                                               Margin="0,4,0,0"
-                                               Text="ℹ This agent requires Node.js and NPX, which will be installed automatically if not already present." />
+                                               Margin="0,4,0,0" />
                                 </StackPanel>
                                 <ComboBox x:Name="AgentComboBox" Grid.Column="1"
                                           MinWidth="220"
@@ -221,16 +224,16 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Spacing="2">
-                                    <TextBlock FontSize="14" FontWeight="SemiBold"
-                                               Foreground="White" Text="Auto-error detection" />
-                                    <TextBlock FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap"
-                                               Text="Give Intelligent Terminal permission to access your shell and auto detect errors." />
+                                    <TextBlock x:Uid="FreOverlay_AutoErrorLabel"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Uid="FreOverlay_AutoErrorDescription"
+                                               FontSize="12" Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" />
                                 </StackPanel>
                                 <ToggleSwitch x:Name="AutoErrorToggle" Grid.Column="1"
                                               IsOn="True" VerticalAlignment="Center"
-                                              HorizontalAlignment="Right" MinWidth="0"
-                                              OnContent="On" OffContent="Off" />
+                                              HorizontalAlignment="Right" MinWidth="0" />
                             </Grid>
                         </Border>
 
@@ -242,21 +245,21 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Spacing="2">
-                                    <TextBlock FontSize="14" FontWeight="SemiBold"
-                                               Foreground="White" Text="Session management" />
-                                    <TextBlock FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap"
-                                               Text="Give Intelligent Terminal permission to track the status of your running or active agents." />
-                                    <TextBlock x:Name="SessionManagementHint"
+                                    <TextBlock x:Uid="FreOverlay_SessionLabel"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Uid="FreOverlay_SessionDescription"
                                                FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap" Margin="0,4,0,0"
-                                               Text="ℹ Enabling this will install integration hooks to track sessions across your agent CLIs." />
+                                               TextWrapping="Wrap" />
+                                    <TextBlock x:Uid="FreOverlay_SessionHint"
+                                               x:Name="SessionManagementHint"
+                                               FontSize="12" Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" Margin="0,4,0,0" />
                                 </StackPanel>
                                 <ToggleSwitch x:Name="SessionManagementToggle"
                                               Grid.Column="1"
                                               IsOn="True" VerticalAlignment="Center"
                                               HorizontalAlignment="Right" MinWidth="0"
-                                              OnContent="On" OffContent="Off"
                                               Toggled="_OnSessionManagementToggled" />
                             </Grid>
                         </Border>
@@ -269,11 +272,12 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Spacing="2">
-                                    <TextBlock FontSize="14" FontWeight="SemiBold"
-                                               Foreground="White" Text="Pane position" />
-                                    <TextBlock FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap"
-                                               Text="Where the agent pane opens relative to your terminal." />
+                                    <TextBlock x:Uid="FreOverlay_PanePositionLabel"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Uid="FreOverlay_PanePositionDescription"
+                                               FontSize="12" Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" />
                                 </StackPanel>
                                 <ComboBox x:Name="PanePositionComboBox" Grid.Column="1"
                                           MinWidth="120"
@@ -290,14 +294,14 @@
                                Foreground="#FFFF6B6B" FontSize="13"
                                TextWrapping="Wrap" MaxWidth="400"
                                Visibility="Collapsed" />
-                    <Button x:Name="SaveButton"
+                    <Button x:Uid="FreOverlay_SaveButton"
+                            x:Name="SaveButton"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             Width="120" Height="32"
                             Background="#FF60CDFF" Foreground="Black"
                             FontFamily="Segoe UI Variable Text, Segoe UI"
                             FontSize="14" CornerRadius="5"
-                            Click="_OnSaveButtonClick"
-                            Content="Save" />
+                            Click="_OnSaveButtonClick" />
                 </Grid>
             </Grid>
         </Grid>

@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Velkommen til Intelligent Terminal!"
 setup.title.agent_missing: "Agenten blev ikke fundet"
 setup.title.agent_error: "Forbindelsen til agenten mislykkedes"
 setup.title.switch_agent: "Skift agent"
+setup.title.not_available: "Agenten er ikke tilgængelig"
+setup.title.sign_in: "Log ind påkrævet"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Din agent \"%{agent}\" er ikke installeret. Følg trinene nedenfor for at installere den. For at skifte agent, gå til Settings."
+setup.subtitle.agent_missing: "Din agent \"%{agent}\" er ikke installeret. Geninstaller den manuelt, og prøv derefter igen. For at skifte agent, gå til Settings."
+setup.subtitle.copilot_auth: "Din agent \"%{agent}\" kræver godkendelse. Følg trinene nedenfor for at logge ind. For at skifte agent, gå til Settings."
+setup.subtitle.agent_auth: "Din agent \"%{agent}\" kræver godkendelse. Log ind via agentens CLI, og prøv derefter igen. For at skifte agent, gå til Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Vælg den standardagent-CLI, du vil bruge i Intelligent Terminal. Du kan"
+setup.description.fre_line2: "gå til Settings for at konfigurere og opsætte dit arbejdsområde."
+
+setup.option.reinstall: "Geninstaller %{agent}"
+setup.option.reinstall_hint: "(Installeres automatisk)"
+setup.option.signin: "Log ind på %{agent}"
+setup.option.retry_detection: "Prøv registrering igen"
+setup.option.retry_auth: "Jeg har logget ind — prøv forbindelsen igen"
+setup.option.retry_connection: "Prøv forbindelsen igen"
+setup.status.installing: "Installerer..."
+setup.status.install_failed: "Installationen mislykkedes: "
+setup.status.installing_winget: " Installerer via winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Agent CLI %{agent} er valgt"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "Kontrollerer godkendelse..."
+auth.waiting: "Venter på godkendelse..."
+auth.code_copied: "Koden er kopieret til udklipsholderen — indsæt den i din browser."
+auth.signin_prompt: "Log ind for at bruge din agent:"
+auth.connect_agent: "Tilslut %{agent} for at aktivere agentfunktioner"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Log ind med GitHub ]"
+auth.signin_agent: "[ Log ind med %{agent} ]"
+auth.hint: "Tryk Enter for at logge ind, Esc for at gå tilbage"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Tænker..."
+chat.welcome: "Velkommen til Intelligent Terminal!"
+chat.plan_header: "Plan:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. for at vise/skjule agentpanelet • Ctrl+Alt+/ for at vise/skjule agentsessionen)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Ikke installeret — vælg for at installere automatisk"
+agent.status.not_found: "Ikke fundet"
+agent.status.detected: "Registreret"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Starter agenten..."
+connection.reconnecting: "Genopretter forbindelse..."

@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── 設定畫面 ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - 產品名稱，請勿翻譯
+
 setup.title.first_run: "歡迎使用 Intelligent Terminal！"
 setup.title.agent_missing: "找不到代理"
 setup.title.agent_error: "代理連線失敗"
 setup.title.switch_agent: "切換代理"
+setup.title.not_available: "代理無法使用"
+setup.title.sign_in: "需要登入"
+
+# %{agent} 會在執行階段替換為代理的顯示名稱。
+# {Locked="Settings"} - 指向 Settings 頁面，請維持英文 UI 名稱。
+setup.subtitle.copilot_missing: "您的代理 \"%{agent}\" 尚未安裝。請依照下列步驟進行安裝。若要切換代理，請前往 Settings。"
+setup.subtitle.agent_missing: "您的代理 \"%{agent}\" 尚未安裝。請手動重新安裝，然後重試。若要切換代理，請前往 Settings。"
+setup.subtitle.copilot_auth: "您的代理 \"%{agent}\" 需要驗證。請依照下列步驟登入。若要切換代理，請前往 Settings。"
+setup.subtitle.agent_auth: "您的代理 \"%{agent}\" 需要驗證。請透過代理 CLI 登入，然後重試。若要切換代理，請前往 Settings。"
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "選擇您要在 Intelligent Terminal 中使用的預設代理 CLI。您可以"
+setup.description.fre_line2: "前往 Settings 來設定及配置您的工作區。"
+
+setup.option.reinstall: "重新安裝 %{agent}"
+setup.option.reinstall_hint: "（將自動安裝）"
+setup.option.signin: "登入 %{agent}"
+setup.option.retry_detection: "重試偵測"
+setup.option.retry_auth: "我已登入 — 重試連線"
+setup.option.retry_connection: "重試連線"
+setup.status.installing: "安裝中..."
+setup.status.install_failed: "安裝失敗: "
+setup.status.installing_winget: " 正在透過 winget 安裝..."
+
+# ─── 驗證畫面 ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "已選取代理 CLI %{agent}"
+auth.agent_selected_reason: "代理 CLI %{agent} — "
+auth.checking: "正在檢查驗證..."
+auth.waiting: "正在等待授權..."
+auth.code_copied: "代碼已複製到剪貼簿 — 請在瀏覽器中貼上。"
+auth.signin_prompt: "登入以使用您的代理："
+auth.connect_agent: "連接 %{agent} 以啟用代理功能"
+# {Locked="GitHub"} - 品牌名稱
+auth.signin_github: "[ 使用 GitHub 登入 ]"
+auth.signin_agent: "[ 使用 %{agent} 登入 ]"
+auth.hint: "按 Enter 登入，按 Esc 返回"
+
+# ─── 聊天 ────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "思考中…"
+chat.welcome: "歡迎使用 Intelligent Terminal！"
+chat.plan_header: "計畫："
+
+# ─── 提示 ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. 顯示/隱藏代理窗格 • Ctrl+Alt+/ 顯示/隱藏代理工作階段)"
+
+# ─── 代理狀態標籤 ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "未安裝 — 選取以自動安裝"
+agent.status.not_found: "找不到"
+agent.status.detected: "已偵測到"
+
+# ─── 連線狀態 ───────────────────────────────────────────────────────────
+
+connection.starting: "正在啟動代理..."
+connection.reconnecting: "正在重新連線..."

@@ -957,23 +957,125 @@
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>シェル統合を初期化できませんでした。PowerShell プロファイルのパスを特定できませんでした。対象のシェルがインストールされていることを確認してください。</value><comment>{Locked="PowerShell"}</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>AI エージェントは利用できません</value></data>
   <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>AI エージェントが見つかりませんでした。エージェント CLI (例: copilot、gemini) をインストールし、それが PATH に含まれていることを確認するか、[設定] &gt; [AI エージェント] で構成してください。</value><comment>{Locked="CLI","PATH","copilot","gemini"}</comment></data>
-  <data name="FreOverlay_Title" xml:space="preserve"><value>インテリジェント ターミナルの新機能</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_Card1Title" xml:space="preserve"><value>インテリジェント ターミナルへようこそ</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_Card1Description" xml:space="preserve"><value>作業しながらその場で支援してくれる組み込みアシスタントを設定します</value></data>
-  <data name="FreOverlay_Card2Title" xml:space="preserve"><value>自動エラー検出</value></data>
-  <data name="FreOverlay_Card2Description" xml:space="preserve"><value>エージェント ペインは常にコンテキストを保持し、お好みのエージェント CLI をすぐに利用できます</value><comment>{Locked="CLI"}</comment></data>
-  <data name="FreOverlay_Card3Title" xml:space="preserve"><value>セッション管理</value></data>
-  <data name="FreOverlay_Card3Description" xml:space="preserve"><value>セッション管理により、エージェントを追跡し、以前のセッションに戻れます</value></data>
-  <data name="FreOverlay_Card4Title" xml:space="preserve"><value>クイック エージェント コマンド</value></data>
-  <data name="FreOverlay_Card4Description" xml:space="preserve"><value>コマンド パレットからバックグラウンド タブを起動できます</value></data>
-  <data name="FreOverlay_DetailTitle" xml:space="preserve"><value>インテリジェント ターミナルへようこそ</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_DetailDescription" xml:space="preserve"><value>作業しながらその場で、エラーの説明やコマンドの下書き、行き詰まったタスクの打開を手伝ってくれる組み込みアシスタントを設定します。</value></data>
-  <data name="FreOverlay_Detail2Title" xml:space="preserve"><value>自動エラー検出</value></data>
-  <data name="FreOverlay_Detail2Description" xml:space="preserve"><value>エージェント ペインは常にコンテキストを保持し、お好みのエージェント CLI をすぐに利用できます。</value><comment>{Locked="CLI"}</comment></data>
-  <data name="FreOverlay_Detail3Title" xml:space="preserve"><value>セッション管理</value></data>
-  <data name="FreOverlay_Detail3Description" xml:space="preserve"><value>セッション管理により、エージェントを追跡し、以前のセッションに戻れます。</value></data>
-  <data name="FreOverlay_Detail4Title" xml:space="preserve"><value>クイック エージェント コマンド</value></data>
-  <data name="FreOverlay_Detail4Description" xml:space="preserve"><value>コマンド パレットを使うと、ターミナル内のどこからでもエージェントを使ったタスクをすばやく実行できます。</value></data>
-  <data name="FreOverlay_DetailLink" xml:space="preserve"><value>インテリジェント ターミナルの詳細を見る</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_NextButton" xml:space="preserve"><value>使ってみる</value></data>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>Intelligent Terminal へようこそ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>エラーの説明、コマンドの下書き、タスクの打開を作業しながらその場で手助けする組み込みアシスタントを設定します。</value>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>Intelligent Terminal の詳細を見る</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>組み込み AI エージェントでフローを維持</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>エージェントはターミナルで起きていることを常に把握し、エラーが発生したときにその理解と修正を手助けします。</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>中断したところからすぐに再開</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>アクティブなセッションや過去のエージェント セッションを管理し、数秒で作業に戻れます。進行中の作業を確認したり、過去の作業を見直しても、現在の場所を見失いません。</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>次へ</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>Intelligent Terminal へようこそ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>今すぐ設定する項目を選択してください。これらはいつでも</value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>エージェント</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>エージェント ペインで使用するエージェント CLI を選択します。互換性のある ACP CLI は自動的に検出されます。</value>
+    <comment>{Locked="CLI","ACP"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ このエージェントには Node.js と NPX が必要です。未インストールの場合は自動的にインストールされます。</value>
+    <comment>{Locked="Node.js","NPX"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>自動エラー検出</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal にシェルへのアクセスを許可してエラーを自動検出します。</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
+    <value>セッション管理</value>
+  </data>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal に実行中またはアクティブなエージェントの状態を追跡する権限を付与します。</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ これを有効にすると、エージェント CLI 全体でセッションを追跡するための統合フックがインストールされます。</value>
+    <comment>{Locked="CLI"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>ペインの位置</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>ターミナルに対してエージェント ペインが開く位置です。</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (インストールされます)</value>
+  </data>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (インストール済み)</value>
+  </data>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>下</value>
+  </data>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>右</value>
+  </data>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>左</value>
+  </data>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>上</value>
+  </data>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>セットアップ中...</value>
+  </data>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ GitHub Copilot のインストールに失敗しました。ネットワークを確認して再試行してください。</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Node.js のインストールに失敗しました。ネットワークを確認して再試行してください。</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>オン</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>オフ</value>
+  </data>
 </root>

@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Tervetuloa Intelligent Terminaliin!"
 setup.title.agent_missing: "Agenttia ei löytynyt"
 setup.title.agent_error: "Yhteys agenttiin epäonnistui"
 setup.title.switch_agent: "Vaihda agentti"
+setup.title.not_available: "Agentti ei ole käytettävissä"
+setup.title.sign_in: "Kirjautuminen vaaditaan"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Agenttiasi \"%{agent}\" ei ole asennettu. Asenna se seuraamalla alla olevia ohjeita. Vaihtaaksesi agenttia siirry kohtaan Settings."
+setup.subtitle.agent_missing: "Agenttiasi \"%{agent}\" ei ole asennettu. Asenna se uudelleen manuaalisesti ja yritä sitten uudelleen. Vaihtaaksesi agenttia siirry kohtaan Settings."
+setup.subtitle.copilot_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Kirjaudu sisään seuraamalla alla olevia ohjeita. Vaihtaaksesi agenttia siirry kohtaan Settings."
+setup.subtitle.agent_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Kirjaudu sisään agentin CLI:n kautta ja yritä sitten uudelleen. Vaihtaaksesi agenttia siirry kohtaan Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Valitse oletusagentin CLI, jota haluat käyttää Intelligent Terminalissa. Voit"
+setup.description.fre_line2: "siirtyä kohtaan Settings määrittääksesi ja ottaaksesi käyttöön työtilasi."
+
+setup.option.reinstall: "Asenna %{agent} uudelleen"
+setup.option.reinstall_hint: "(Asennetaan automaattisesti)"
+setup.option.signin: "Kirjaudu sisään palveluun %{agent}"
+setup.option.retry_detection: "Yritä tunnistusta uudelleen"
+setup.option.retry_auth: "Olen kirjautunut sisään — yritä yhteyttä uudelleen"
+setup.option.retry_connection: "Yritä yhteyttä uudelleen"
+setup.status.installing: "Asennetaan..."
+setup.status.install_failed: "Asennus epäonnistui: "
+setup.status.installing_winget: " Asennetaan winget-paketinhallinnan kautta..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Agent CLI %{agent} on valittu"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "Tarkistetaan todennusta..."
+auth.waiting: "Odotetaan valtuutusta..."
+auth.code_copied: "Koodi kopioitu leikepöydälle — liitä se selaimessasi."
+auth.signin_prompt: "Kirjaudu sisään käyttääksesi agenttiasi:"
+auth.connect_agent: "Yhdistä %{agent} ottaaksesi agenttitoiminnot käyttöön"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Kirjaudu sisään GitHub-tilillä ]"
+auth.signin_agent: "[ Kirjaudu sisään palveluun %{agent} ]"
+auth.hint: "Paina Enter kirjautuaksesi sisään, Esc palataksesi takaisin"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Ajattelee..."
+chat.welcome: "Tervetuloa Intelligent Terminaliin!"
+chat.plan_header: "Suunnitelma:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. näyttää/piilottaa agenttipaneelin • Ctrl+Alt+/ näyttää/piilottaa agenttiistunnon)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Ei asennettu — valitse asentaaksesi automaattisesti"
+agent.status.not_found: "Ei löytynyt"
+agent.status.detected: "Havaittu"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Käynnistetään agenttia..."
+connection.reconnecting: "Yhdistetään uudelleen..."

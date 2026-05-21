@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── صفحه راه‌اندازی ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - نام محصول، ترجمه نکنید
+
 setup.title.first_run: "به Intelligent Terminal خوش آمدید!"
 setup.title.agent_missing: "عامل یافت نشد"
 setup.title.agent_error: "اتصال به عامل ناموفق بود"
 setup.title.switch_agent: "تغییر عامل"
+setup.title.not_available: "عامل در دسترس نیست"
+setup.title.sign_in: "ورود به سیستم لازم است"
+
+# %{agent} در زمان اجرا با نام نمایشی عامل جایگزین می‌شود.
+# {Locked="Settings"} - به صفحه Settings اشاره دارد.
+setup.subtitle.copilot_missing: "عامل \"%{agent}\" نصب نشده است. مراحل زیر را برای نصب آن دنبال کنید. برای تغییر عامل‌ها، به Settings بروید."
+setup.subtitle.agent_missing: "عامل \"%{agent}\" نصب نشده است. لطفاً آن را به صورت دستی دوباره نصب کنید، سپس دوباره تلاش کنید. برای تغییر عامل‌ها، به Settings بروید."
+setup.subtitle.copilot_auth: "عامل \"%{agent}\" نیاز به احراز هویت دارد. مراحل زیر را برای ورود دنبال کنید. برای تغییر عامل‌ها، به Settings بروید."
+setup.subtitle.agent_auth: "عامل \"%{agent}\" نیاز به احراز هویت دارد. لطفاً از طریق CLI عامل وارد شوید، سپس دوباره تلاش کنید. برای تغییر عامل‌ها، به Settings بروید."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "CLI عامل پیش‌فرضی را که می‌خواهید در Intelligent Terminal استفاده کنید انتخاب نمایید. می‌توانید"
+setup.description.fre_line2: "به Settings بروید تا فضای کاری خود را پیکربندی و راه‌اندازی کنید."
+
+setup.option.reinstall: "نصب مجدد %{agent}"
+setup.option.reinstall_hint: "(به صورت خودکار نصب خواهد شد)"
+setup.option.signin: "ورود به %{agent}"
+setup.option.retry_detection: "تلاش مجدد برای شناسایی"
+setup.option.retry_auth: "وارد شدم — تلاش مجدد اتصال"
+setup.option.retry_connection: "تلاش مجدد اتصال"
+setup.status.installing: "در حال نصب..."
+setup.status.install_failed: "نصب ناموفق بود: "
+setup.status.installing_winget: " در حال نصب از طریق winget..."
+
+# ─── صفحه احراز هویت ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "CLI عامل %{agent} انتخاب شده است"
+auth.agent_selected_reason: "CLI عامل %{agent} — "
+auth.checking: "در حال بررسی احراز هویت..."
+auth.waiting: "در انتظار مجوز..."
+auth.code_copied: "کد در کلیپ‌بورد کپی شد — آن را در مرورگر خود جای‌گذاری کنید."
+auth.signin_prompt: "برای استفاده از عامل خود وارد شوید:"
+auth.connect_agent: "%{agent} را متصل کنید تا قابلیت‌های عامل فعال شوند"
+# {Locked="GitHub"} - نام برند
+auth.signin_github: "[ ورود با GitHub ]"
+auth.signin_agent: "[ ورود با %{agent} ]"
+auth.hint: "Enter را برای ورود فشار دهید، Esc برای بازگشت"
+
+# ─── گفتگو ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "در حال فکر کردن…"
+chat.welcome: "به Intelligent Terminal خوش آمدید!"
+chat.plan_header: "طرح:"
+
+# ─── راهنمایی‌ها ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. نمایش/پنهان کردن پنل عامل • Ctrl+Alt+/ نمایش/پنهان کردن نشست عامل)"
+
+# ─── برچسب‌های وضعیت عامل ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "نصب نشده — برای نصب خودکار انتخاب کنید"
+agent.status.not_found: "یافت نشد"
+agent.status.detected: "شناسایی شد"
+
+# ─── وضعیت اتصال ───────────────────────────────────────────────────────────
+
+connection.starting: "در حال راه‌اندازی عامل..."
+connection.reconnecting: "در حال اتصال مجدد..."

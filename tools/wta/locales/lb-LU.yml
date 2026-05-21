@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Astellungs-Écran ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - Produktnumm, net iwwersetzen
+
 setup.title.first_run: "Wëllkomm am Intelligent Terminal!"
 setup.title.agent_missing: "Agent net fonnt"
 setup.title.agent_error: "Verbindung mam Agent ass gescheitert"
 setup.title.switch_agent: "Agent wiesselen"
+setup.title.not_available: "Agent net disponibel"
+setup.title.sign_in: "Umeldung erfuerderlech"
+
+# %{agent} gëtt zur Laufzäit duerch den Unzeignumm vum Agent ersat.
+# {Locked="Settings"} - bezitt sech op d'Settings-Säit, behalt et esou.
+setup.subtitle.copilot_missing: "Ären Agent \"%{agent}\" ass net installéiert. Follegt de Schrëtt hei drënner fir en z'installéieren. Fir den Agent ze wiesselen, gitt op Settings."
+setup.subtitle.agent_missing: "Ären Agent \"%{agent}\" ass net installéiert. Installéiert en nach eng Kéier manuell an probéiert et nach eng Kéier. Fir den Agent ze wiesselen, gitt op Settings."
+setup.subtitle.copilot_auth: "Ären Agent \"%{agent}\" brauch eng Authentifizéierung. Follegt de Schrëtt hei drënner fir Iech unzemellen. Fir den Agent ze wiesselen, gitt op Settings."
+setup.subtitle.agent_auth: "Ären Agent \"%{agent}\" brauch eng Authentifizéierung. Mellt Iech iwwer den Agent CLI un an probéiert et nach eng Kéier. Fir den Agent ze wiesselen, gitt op Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Wielt de Standard-Agent CLI deen Dir am Intelligent Terminal benotze wëllt. Dir kënnt"
+setup.description.fre_line2: "op Settings goen fir Ären Aarbechtsberäich ze konfiguréieren an anzeriichten."
+
+setup.option.reinstall: "%{agent} nei installéieren"
+setup.option.reinstall_hint: "(Gëtt automatesch installéiert)"
+setup.option.signin: "Bei %{agent} umellen"
+setup.option.retry_detection: "Erkennung nach eng Kéier probéieren"
+setup.option.retry_auth: "Ech sinn ugemellt — Verbindung nach eng Kéier probéieren"
+setup.option.retry_connection: "Verbindung nach eng Kéier probéieren"
+setup.status.installing: "Gëtt installéiert..."
+setup.status.install_failed: "Installatioun gescheitert: "
+setup.status.installing_winget: " Gëtt iwwer winget installéiert..."
+
+# ─── Authentifizéierungs-Écran ─────────────────────────────────────────────────
+
+auth.agent_selected: "Agent CLI %{agent} ass ausgewielt"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "Authentifizéierung gëtt iwwerpréift..."
+auth.waiting: "Waart op Autorisatioun..."
+auth.code_copied: "Code an d'Tëschoflag kopéiert — setzt en an Ärem Browser an."
+auth.signin_prompt: "Mellt Iech un fir Ären Agent ze benotzen:"
+auth.connect_agent: "Verbinnt %{agent} fir Agent-Funktiounen z'aktivéieren"
+# {Locked="GitHub"} - Markennumm
+auth.signin_github: "[ Mat GitHub umellen ]"
+auth.signin_agent: "[ Mat %{agent} umellen ]"
+auth.hint: "Dréckt Enter fir Iech unzemellen, Esc fir zréckzegoen"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Denkt no…"
+chat.welcome: "Wëllkomm am Intelligent Terminal!"
+chat.plan_header: "Plang:"
+
+# ─── Hiwäiser ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. fir den Agent-Panell ze weisen/verstoppen • Ctrl+Alt+/ fir d'Agent-Sëtzung ze weisen/verstoppen)"
+
+# ─── Agent-Status-Labelen ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Net installéiert — wielt fir automatesch z'installéieren"
+agent.status.not_found: "Net fonnt"
+agent.status.detected: "Erkannt"
+
+# ─── Verbindungszoustand ───────────────────────────────────────────────────────
+
+connection.starting: "Agent gëtt gestart..."
+connection.reconnecting: "Gëtt nei verbonnen..."

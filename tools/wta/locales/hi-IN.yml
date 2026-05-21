@@ -1,5 +1,66 @@
-# Setup screen titles
-setup.title.first_run: "इंटेलिजेंट टर्मिनल में आपका स्वागत है!"
+# ─── सेटअप स्क्रीन ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - उत्पाद नाम, अनुवाद न करें
+
+setup.title.first_run: "Intelligent Terminal में आपका स्वागत है!"
 setup.title.agent_missing: "एजेंट नहीं मिला"
 setup.title.agent_error: "एजेंट कनेक्शन विफल हुआ"
 setup.title.switch_agent: "एजेंट बदलें"
+setup.title.not_available: "एजेंट उपलब्ध नहीं है"
+setup.title.sign_in: "साइन इन आवश्यक है"
+
+# %{agent} रनटाइम पर एजेंट प्रदर्शन नाम से बदला जाता है।
+# {Locked="Settings"} - Settings पृष्ठ को दर्शाता है।
+setup.subtitle.copilot_missing: "आपका एजेंट \"%{agent}\" इंस्टॉल नहीं है। इसे इंस्टॉल करने के लिए नीचे दिए गए चरणों का पालन करें। एजेंट बदलने के लिए Settings पर जाएँ।"
+setup.subtitle.agent_missing: "आपका एजेंट \"%{agent}\" इंस्टॉल नहीं है। कृपया इसे मैन्युअल रूप से पुनः इंस्टॉल करें, फिर पुनः प्रयास करें। एजेंट बदलने के लिए Settings पर जाएँ।"
+setup.subtitle.copilot_auth: "आपके एजेंट \"%{agent}\" को प्रमाणीकरण की आवश्यकता है। साइन इन करने के लिए नीचे दिए गए चरणों का पालन करें। एजेंट बदलने के लिए Settings पर जाएँ।"
+setup.subtitle.agent_auth: "आपके एजेंट \"%{agent}\" को प्रमाणीकरण की आवश्यकता है। कृपया एजेंट CLI से साइन इन करें, फिर पुनः प्रयास करें। एजेंट बदलने के लिए Settings पर जाएँ।"
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal में उपयोग के लिए डिफ़ॉल्ट एजेंट CLI चुनें। आप"
+setup.description.fre_line2: "अपने कार्यक्षेत्र को कॉन्फ़िगर और सेटअप करने के लिए Settings पर जा सकते हैं।"
+
+setup.option.reinstall: "%{agent} पुनः इंस्टॉल करें"
+setup.option.reinstall_hint: "(स्वचालित रूप से इंस्टॉल किया जाएगा)"
+setup.option.signin: "%{agent} में साइन इन करें"
+setup.option.retry_detection: "पहचान पुनः प्रयास करें"
+setup.option.retry_auth: "मैंने साइन इन कर लिया है — कनेक्शन पुनः प्रयास करें"
+setup.option.retry_connection: "कनेक्शन पुनः प्रयास करें"
+setup.status.installing: "इंस्टॉल हो रहा है..."
+setup.status.install_failed: "इंस्टॉल विफल: "
+setup.status.installing_winget: " winget के माध्यम से इंस्टॉल हो रहा है..."
+
+# ─── प्रमाणीकरण स्क्रीन ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "एजेंट CLI %{agent} चयनित है"
+auth.agent_selected_reason: "एजेंट CLI %{agent} — "
+auth.checking: "प्रमाणीकरण जाँचा जा रहा है..."
+auth.waiting: "प्राधिकरण की प्रतीक्षा हो रही है..."
+auth.code_copied: "कोड क्लिपबोर्ड पर कॉपी किया गया — इसे अपने ब्राउज़र में पेस्ट करें।"
+auth.signin_prompt: "अपने एजेंट का उपयोग करने के लिए साइन इन करें:"
+auth.connect_agent: "एजेंट सुविधाएँ सक्षम करने के लिए %{agent} कनेक्ट करें"
+# {Locked="GitHub"} - ब्रांड नाम
+auth.signin_github: "[ GitHub से साइन इन करें ]"
+auth.signin_agent: "[ %{agent} से साइन इन करें ]"
+auth.hint: "साइन इन के लिए Enter दबाएँ, वापस जाने के लिए Esc दबाएँ"
+
+# ─── चैट ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "सोच रहा है…"
+chat.welcome: "Intelligent Terminal में आपका स्वागत है!"
+chat.plan_header: "योजना:"
+
+# ─── संकेत ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. एजेंट पेन दिखाएँ/छिपाएँ • Ctrl+Alt+/ एजेंट सत्र दिखाएँ/छिपाएँ)"
+
+# ─── एजेंट स्थिति लेबल ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "इंस्टॉल नहीं है — स्वचालित रूप से इंस्टॉल करने के लिए चुनें"
+agent.status.not_found: "नहीं मिला"
+agent.status.detected: "पहचाना गया"
+
+# ─── कनेक्शन स्थिति ───────────────────────────────────────────────────────────
+
+connection.starting: "एजेंट प्रारंभ हो रहा है..."
+connection.reconnecting: "पुनः कनेक्ट हो रहा है..."

@@ -159,7 +159,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     if hint_visible {
         if welcome_visible {
             let line = Line::from(Span::styled(
-                "  (Ctrl+Shift+. to show/hide agent pane \u{2022} Ctrl+Alt+/ to show/hide agent session)",
+                format!("  {}", t!("hint.shortcuts")),
                 Style::default().fg(Color::DarkGray),
             ));
             frame.render_widget(line, chunks[4]);

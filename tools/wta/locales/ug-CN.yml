@@ -1,5 +1,66 @@
-# Setup screen titles
-setup.title.first_run: "Intelligent Terminal هە خوش كەلدىڭىز!"
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
+setup.title.first_run: "Intelligent Terminal ھە خوش كەلدىڭىز!"
 setup.title.agent_missing: "ۋەكىل تېپىلمىدى"
 setup.title.agent_error: "ۋەكىل بىلەن باغلىنىش مەغلۇب بولدى"
 setup.title.switch_agent: "ۋەكىلنى الماشتۇرۇش"
+setup.title.not_available: "ۋەكىل ئىشلەتكىلى ئەمەس"
+setup.title.sign_in: "كىرىش تەلەپ قىلىنىدۇ"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "سىزنىڭ ۋەكىلىڭىز \"%{agent}\" ئورنىتىلمىغان. ئورنىتىش ئۈچۈن تۆۋەندىكى قەدەملەرنى بېسىڭ. ۋەكىلنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
+setup.subtitle.agent_missing: "سىزنىڭ ۋەكىلىڭىز \"%{agent}\" ئورنىتىلمىغان. قولدا قايتا ئورنىتىپ سىناڭ. ۋەكىلنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
+setup.subtitle.copilot_auth: "سىزنىڭ ۋەكىلىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. كىرىش ئۈچۈن تۆۋەندىكى قەدەملەرنى بېسىڭ. ۋەكىلنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
+setup.subtitle.agent_auth: "سىزنىڭ ۋەكىلىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. ۋەكىل CLI ئارقىلىق كىرىپ قايتا سىناڭ. ۋەكىلنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal دا ئىشلەتمەكچى كۆڭۈلمە ۋەكىل CLI نى تاللاڭ. سىز"
+setup.description.fre_line2: "Settings قا كىرىپ ئىش بوشلۇقىڭىزنى تەڭشىيەلەىسىز."
+
+setup.option.reinstall: "%{agent} نى قايتا ئورنىتىش"
+setup.option.reinstall_hint: "(ئاپتوماتىك ئورنىتىلىدۇ)"
+setup.option.signin: "%{agent} غا كىرىش"
+setup.option.retry_detection: "قايتا بايقاش"
+setup.option.retry_auth: "كىردىم — قايتا باغلان"
+setup.option.retry_connection: "قايتا باغلان"
+setup.status.installing: "ئورنىتىلىۋاتىدۇ..."
+setup.status.install_failed: "ئورنىتىش مەغلۇب بولدى: "
+setup.status.installing_winget: " winget ئارقىلىق ئورنىتىلىۋاتىدۇ..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────────────────────
+
+auth.agent_selected: "ۋەكىل CLI %{agent} تاللاندى"
+auth.agent_selected_reason: "ۋەكىل CLI %{agent} — "
+auth.checking: "تونۇقتۇرۇش تەكشۈرۈلۈۋاتىدۇ..."
+auth.waiting: "ئىكرامىيەت كۈتۈلۈۋاتىدۇ..."
+auth.code_copied: "كود چاپلىگەن — توركۆرۈڭۈزگە چاپلاڭ."
+auth.signin_prompt: "ۋەكىلىڭىزنى ئىشلىتىش ئۈچۈن كىرىڭ:"
+auth.connect_agent: "ۋەكىل ئىقتىدارلىرىنى ئاچىش ئۈچۈن %{agent} نى باغلاڭ"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ GitHub بىلەن كىرىش ]"
+auth.signin_agent: "[ %{agent} بىلەن كىرىش ]"
+auth.hint: "Enter كىرىش ئۈچۈن, Esc قايتىش ئۈچۈن بېسىڭ"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "ئويلىنىۋاتىدۇ…"
+chat.welcome: "Intelligent Terminal ھە خوش كەلدىڭىز!"
+chat.plan_header: "پىلان:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. ۋەكىل تاختىسىنى كۆرسەت/يوشۇرۇش • Ctrl+Alt+/ ۋەكىل ئوتتۇرىسىنى كۆرسەت/يوشۇرۇش)"
+
+# ─── Agent status labels ──────────────────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "ئورنىتىلمىغان — ئاپتوماتىك ئورنىتىش ئۈچۈن تاللاڭ"
+agent.status.not_found: "تېپىلمىدى"
+agent.status.detected: "بايقىلدى"
+
+# ─── Connection state ─────────────────────────────────────────────────────────────────────
+
+connection.starting: "ۋەكىل ئىشقا چۈشۈرۈلۈۋاتىدۇ..."
+connection.reconnecting: "قايتا باغلىنىۋاتىدۇ..."

@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Velkomin í Intelligent Terminal!"
 setup.title.agent_missing: "Agent fannst ekki"
 setup.title.agent_error: "Tenging við agent mistókst"
 setup.title.switch_agent: "Skipta um agent"
+setup.title.not_available: "Agent er ekki tiltækur"
+setup.title.sign_in: "Innskráning nauðsynleg"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Agentinn þinn \"%{agent}\" er ekki uppsettur. Fylgdu skrefunum hér að neðan til að setja hann upp. Til að skipta um agent, farðu í Settings."
+setup.subtitle.agent_missing: "Agentinn þinn \"%{agent}\" er ekki uppsettur. Settu hann upp aftur handvirkt og reyndu svo aftur. Til að skipta um agent, farðu í Settings."
+setup.subtitle.copilot_auth: "Agentinn þinn \"%{agent}\" krefst auðkenningar. Fylgdu skrefunum hér að neðan til að skrá þig inn. Til að skipta um agent, farðu í Settings."
+setup.subtitle.agent_auth: "Agentinn þinn \"%{agent}\" krefst auðkenningar. Skráðu þig inn í gegnum CLI agentsins og reyndu svo aftur. Til að skipta um agent, farðu í Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Veldu sjálfgefna agent CLI sem þú vilt nota í Intelligent Terminal. Þú getur"
+setup.description.fre_line2: "farið í Settings til að stilla og setja upp vinnusvæðið þitt."
+
+setup.option.reinstall: "Setja upp %{agent} aftur"
+setup.option.reinstall_hint: "(Verður sett upp sjálfkrafa)"
+setup.option.signin: "Skrá inn á %{agent}"
+setup.option.retry_detection: "Reyna greiningu aftur"
+setup.option.retry_auth: "Ég hef skráð mig inn — reyna tengingu aftur"
+setup.option.retry_connection: "Reyna tengingu aftur"
+setup.status.installing: "Set upp..."
+setup.status.install_failed: "Uppsetning mistókst: "
+setup.status.installing_winget: " Set upp í gegnum winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Agent CLI %{agent} er valinn"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "Athuga auðkenningu..."
+auth.waiting: "Bíð eftir heimild..."
+auth.code_copied: "Kóði afritaður á klippispjald — límdu hann í vafranum þínum."
+auth.signin_prompt: "Skráðu þig inn til að nota agentinn þinn:"
+auth.connect_agent: "Tengdu %{agent} til að virkja agenteiginleika"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Skrá inn með GitHub ]"
+auth.signin_agent: "[ Skrá inn með %{agent} ]"
+auth.hint: "Ýttu á Enter til að skrá þig inn, Esc til að fara til baka"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Hugsa..."
+chat.welcome: "Velkomin í Intelligent Terminal!"
+chat.plan_header: "Áætlun:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. til að sýna/fela agentspjald • Ctrl+Alt+/ til að sýna/fela agentlotu)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Ekki uppsett — veldu til að setja upp sjálfkrafa"
+agent.status.not_found: "Fannst ekki"
+agent.status.detected: "Greindist"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Ræsi agent..."
+connection.reconnecting: "Endurtengi..."

@@ -1,5 +1,66 @@
-# Setup screen titles
-setup.title.first_run: "ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್‌ಗೆ ಸ್ವಾಗತ!"
+# ─── ಸೆಟಪ್ ಪರದೆ ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - ಉತ್ಪನ್ನದ ಹೆಸರು, ಅನುವಾದಿಸಬೇಡಿ
+
+setup.title.first_run: "Intelligent Terminal-ಗೆ ಸ್ವಾಗತ!"
 setup.title.agent_missing: "ಏಜೆಂಟ್ ಕಂಡುಬಂದಿಲ್ಲ"
 setup.title.agent_error: "ಏಜೆಂಟ್ ಸಂಪರ್ಕ ವಿಫಲವಾಗಿದೆ"
 setup.title.switch_agent: "ಏಜೆಂಟ್ ಬದಲಿಸಿ"
+setup.title.not_available: "ಏಜೆಂಟ್ ಲಭ್ಯವಿಲ್ಲ"
+setup.title.sign_in: "ಸೈನ್ ಇನ್ ಅಗತ್ಯವಿದೆ"
+
+# %{agent} ರನ್‌ಟೈಮ್‌ನಲ್ಲಿ ಏಜೆಂಟ್ ಪ್ರದರ್ಶನ ಹೆಸರಿನಿಂದ ಬದಲಾಯಿಸಲಾಗುತ್ತದೆ.
+# {Locked="Settings"} - Settings ಪುಟವನ್ನು ಉಲ್ಲೇಖಿಸುತ್ತದೆ.
+setup.subtitle.copilot_missing: "ನಿಮ್ಮ ಏಜೆಂಟ್ \"%{agent}\" ಇನ್‌ಸ್ಟಾಲ್ ಆಗಿಲ್ಲ. ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲು ಕೆಳಗಿನ ಹಂತಗಳನ್ನು ಅನುಸರಿಸಿ. ಏಜೆಂಟ್ ಬದಲಾಯಿಸಲು Settings ಗೆ ಹೋಗಿ."
+setup.subtitle.agent_missing: "ನಿಮ್ಮ ಏಜೆಂಟ್ \"%{agent}\" ಇನ್‌ಸ್ಟಾಲ್ ಆಗಿಲ್ಲ. ದಯವಿಟ್ಟು ಹಸ್ತಚಾಲಿತವಾಗಿ ಮರುಸ್ಥಾಪಿಸಿ, ನಂತರ ಮರುಪ್ರಯತ್ನಿಸಿ. ಏಜೆಂಟ್ ಬದಲಾಯಿಸಲು Settings ಗೆ ಹೋಗಿ."
+setup.subtitle.copilot_auth: "ನಿಮ್ಮ ಏಜೆಂಟ್ \"%{agent}\" ಗೆ ದೃಢೀಕರಣ ಅಗತ್ಯವಿದೆ. ಸೈನ್ ಇನ್ ಮಾಡಲು ಕೆಳಗಿನ ಹಂತಗಳನ್ನು ಅನುಸರಿಸಿ. ಏಜೆಂಟ್ ಬದಲಾಯಿಸಲು Settings ಗೆ ಹೋಗಿ."
+setup.subtitle.agent_auth: "ನಿಮ್ಮ ಏಜೆಂಟ್ \"%{agent}\" ಗೆ ದೃಢೀಕರಣ ಅಗತ್ಯವಿದೆ. ದಯವಿಟ್ಟು ಏಜೆಂಟ್ CLI ಮೂಲಕ ಸೈನ್ ಇನ್ ಮಾಡಿ, ನಂತರ ಮರುಪ್ರಯತ್ನಿಸಿ. ಏಜೆಂಟ್ ಬದಲಾಯಿಸಲು Settings ಗೆ ಹೋಗಿ."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal ನಲ್ಲಿ ಬಳಸಲು ಡಿಫಾಲ್ಟ್ ಏಜೆಂಟ್ CLI ಆಯ್ಕೆಮಾಡಿ. ನೀವು"
+setup.description.fre_line2: "ನಿಮ್ಮ ಕಾರ್ಯಕ್ಷೇತ್ರವನ್ನು ಕಾನ್ಫಿಗರ್ ಮಾಡಲು ಮತ್ತು ಸೆಟಪ್ ಮಾಡಲು Settings ಗೆ ನ್ಯಾವಿಗೇಟ್ ಮಾಡಬಹುದು."
+
+setup.option.reinstall: "%{agent} ಮರುಸ್ಥಾಪಿಸಿ"
+setup.option.reinstall_hint: "(ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಇನ್‌ಸ್ಟಾಲ್ ಆಗುತ್ತದೆ)"
+setup.option.signin: "%{agent} ಗೆ ಸೈನ್ ಇನ್ ಮಾಡಿ"
+setup.option.retry_detection: "ಪತ್ತೆಹಚ್ಚುವಿಕೆಯನ್ನು ಮರುಪ್ರಯತ್ನಿಸಿ"
+setup.option.retry_auth: "ನಾನು ಸೈನ್ ಇನ್ ಮಾಡಿದ್ದೇನೆ — ಸಂಪರ್ಕ ಮರುಪ್ರಯತ್ನಿಸಿ"
+setup.option.retry_connection: "ಸಂಪರ್ಕ ಮರುಪ್ರಯತ್ನಿಸಿ"
+setup.status.installing: "ಇನ್‌ಸ್ಟಾಲ್ ಆಗುತ್ತಿದೆ..."
+setup.status.install_failed: "ಇನ್‌ಸ್ಟಾಲ್ ವಿಫಲವಾಗಿದೆ: "
+setup.status.installing_winget: " winget ಮೂಲಕ ಇನ್‌ಸ್ಟಾಲ್ ಆಗುತ್ತಿದೆ..."
+
+# ─── ದೃಢೀಕರಣ ಪರದೆ ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "ಏಜೆಂಟ್ CLI %{agent} ಆಯ್ಕೆಯಾಗಿದೆ"
+auth.agent_selected_reason: "ಏಜೆಂಟ್ CLI %{agent} — "
+auth.checking: "ದೃಢೀಕರಣ ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ..."
+auth.waiting: "ಅನುಮತಿಗಾಗಿ ಕಾಯಲಾಗುತ್ತಿದೆ..."
+auth.code_copied: "ಕೋಡ್ ಕ್ಲಿಪ್‌ಬೋರ್ಡ್‌ಗೆ ನಕಲಿಸಲಾಗಿದೆ — ನಿಮ್ಮ ಬ್ರೌಸರ್‌ನಲ್ಲಿ ಅಂಟಿಸಿ."
+auth.signin_prompt: "ನಿಮ್ಮ ಏಜೆಂಟ್ ಬಳಸಲು ಸೈನ್ ಇನ್ ಮಾಡಿ:"
+auth.connect_agent: "ಏಜೆಂಟ್ ವೈಶಿಷ್ಟ್ಯಗಳನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಲು %{agent} ಅನ್ನು ಸಂಪರ್ಕಿಸಿ"
+# {Locked="GitHub"} - ಬ್ರಾಂಡ್ ಹೆಸರು
+auth.signin_github: "[ GitHub ನಿಂದ ಸೈನ್ ಇನ್ ಮಾಡಿ ]"
+auth.signin_agent: "[ %{agent} ನಿಂದ ಸೈನ್ ಇನ್ ಮಾಡಿ ]"
+auth.hint: "ಸೈನ್ ಇನ್ ಮಾಡಲು Enter ಒತ್ತಿ, ಹಿಂದೆ ಹೋಗಲು Esc ಒತ್ತಿ"
+
+# ─── ಚಾಟ್ ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "ಯೋಚಿಸುತ್ತಿದೆ…"
+chat.welcome: "Intelligent Terminal-ಗೆ ಸ್ವಾಗತ!"
+chat.plan_header: "ಯೋಜನೆ:"
+
+# ─── ಸುಳಿವುಗಳು ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. ಏಜೆಂಟ್ ಪೇನ್ ತೋರಿಸು/ಮರೆಮಾಡು • Ctrl+Alt+/ ಏಜೆಂಟ್ ಸೆಶನ್ ತೋರಿಸು/ಮರೆಮಾಡು)"
+
+# ─── ಏಜೆಂಟ್ ಸ್ಥಿತಿ ಲೇಬಲ್‌ಗಳು ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "ಇನ್‌ಸ್ಟಾಲ್ ಆಗಿಲ್ಲ — ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲು ಆಯ್ಕೆಮಾಡಿ"
+agent.status.not_found: "ಕಂಡುಬಂದಿಲ್ಲ"
+agent.status.detected: "ಪತ್ತೆಯಾಗಿದೆ"
+
+# ─── ಸಂಪರ್ಕ ಸ್ಥಿತಿ ───────────────────────────────────────────────────────────
+
+connection.starting: "ಏಜೆಂಟ್ ಪ್ರಾರಂಭವಾಗುತ್ತಿದೆ..."
+connection.reconnecting: "ಮರುಸಂಪರ್ಕಗೊಳ್ಳುತ್ತಿದೆ..."

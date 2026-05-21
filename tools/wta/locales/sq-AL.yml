@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Ekrani i konfigurimit ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - emri i produktit, mos e përktheni
+
 setup.title.first_run: "Mirë se vini në Intelligent Terminal!"
 setup.title.agent_missing: "Agjenti nuk u gjet"
 setup.title.agent_error: "Lidhja me agjentin dështoi"
 setup.title.switch_agent: "Ndrysho agjentin"
+setup.title.not_available: "Agjenti nuk është i disponueshëm"
+setup.title.sign_in: "Kërkohet identifikimi"
+
+# %{agent} zëvendësohet me emrin e shfaqur të agjentit gjatë ekzekutimit.
+# {Locked="Settings"} - i referohet faqes Settings, mbajeni në anglisht.
+setup.subtitle.copilot_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Ndiqni hapat më poshtë për ta instaluar. Për të ndryshuar agjentin, shkoni te Settings."
+setup.subtitle.agent_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Riinstalojeni manualisht dhe provoni përsëri. Për të ndryshuar agjentin, shkoni te Settings."
+setup.subtitle.copilot_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Ndiqni hapat më poshtë për t'u identifikuar. Për të ndryshuar agjentin, shkoni te Settings."
+setup.subtitle.agent_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Identifikohuni përmes CLI të agjentit dhe provoni përsëri. Për të ndryshuar agjentin, shkoni te Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Zgjidhni CLI-në e paracaktuar të agjentit që dëshironi të përdorni në Intelligent Terminal. Mund të"
+setup.description.fre_line2: "shkoni te Settings për të konfiguruar hapësirën tuaj të punës."
+
+setup.option.reinstall: "Riinstalo %{agent}"
+setup.option.reinstall_hint: "(Do të instalohet automatikisht)"
+setup.option.signin: "Identifikohu te %{agent}"
+setup.option.retry_detection: "Riprovo zbulimin"
+setup.option.retry_auth: "Jam identifikuar — riprovo lidhjen"
+setup.option.retry_connection: "Riprovo lidhjen"
+setup.status.installing: "Po instalohet..."
+setup.status.install_failed: "Instalimi dështoi: "
+setup.status.installing_winget: " Po instalohet përmes winget..."
+
+# ─── Ekrani i vërtetimit ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "CLI i agjentit %{agent} është zgjedhur"
+auth.agent_selected_reason: "CLI i agjentit %{agent} — "
+auth.checking: "Po kontrollohet vërtetimi..."
+auth.waiting: "Po pritet autorizimi..."
+auth.code_copied: "Kodi u kopjua në clipboard — ngjiteni në shfletuesin tuaj."
+auth.signin_prompt: "Identifikohuni për të përdorur agjentin:"
+auth.connect_agent: "Lidh %{agent} për të aktivizuar veçoritë e agjentit"
+# {Locked="GitHub"} - emër marke
+auth.signin_github: "[ Identifikohu me GitHub ]"
+auth.signin_agent: "[ Identifikohu me %{agent} ]"
+auth.hint: "Shtypni Enter për t'u identifikuar, Esc për t'u kthyer"
+
+# ─── Bisedë ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Po mendoj…"
+chat.welcome: "Mirë se vini në Intelligent Terminal!"
+chat.plan_header: "Plani:"
+
+# ─── Sugjerime ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. shfaq/fshih panelin e agjentit • Ctrl+Alt+/ shfaq/fshih seancën e agjentit)"
+
+# ─── Etiketat e statusit të agjentit ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "I painstaluar — zgjidhni për instalim automatik"
+agent.status.not_found: "Nuk u gjet"
+agent.status.detected: "U zbulua"
+
+# ─── Gjendja e lidhjes ───────────────────────────────────────────────────────────
+
+connection.starting: "Po niset agjenti..."
+connection.reconnecting: "Po rilidhet..."

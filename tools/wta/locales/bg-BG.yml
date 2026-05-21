@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Екран за настройка ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - име на продукта, не се превежда
+
 setup.title.first_run: "Добре дошли в Intelligent Terminal!"
 setup.title.agent_missing: "Агентът не е намерен"
 setup.title.agent_error: "Връзката с агента е неуспешна"
 setup.title.switch_agent: "Смяна на агента"
+setup.title.not_available: "Агентът не е наличен"
+setup.title.sign_in: "Изисква се влизане"
+
+# %{agent} се заменя с показваното име на агента по време на изпълнение.
+# {Locked="Settings"} - отнася се до страницата Settings, запазете на английски.
+setup.subtitle.copilot_missing: "Вашият агент \"%{agent}\" не е инсталиран. Следвайте стъпките по-долу, за да го инсталирате. За да смените агента, отидете в Settings."
+setup.subtitle.agent_missing: "Вашият агент \"%{agent}\" не е инсталиран. Преинсталирайте го ръчно и опитайте отново. За да смените агента, отидете в Settings."
+setup.subtitle.copilot_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Следвайте стъпките по-долу, за да влезете. За да смените агента, отидете в Settings."
+setup.subtitle.agent_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Влезте чрез CLI на агента и опитайте отново. За да смените агента, отидете в Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Изберете CLI на агента по подразбиране, който искате да използвате в Intelligent Terminal. Можете"
+setup.description.fre_line2: "да отидете в Settings, за да конфигурирате работното си пространство."
+
+setup.option.reinstall: "Преинсталиране на %{agent}"
+setup.option.reinstall_hint: "(Ще бъде инсталиран автоматично)"
+setup.option.signin: "Влизане в %{agent}"
+setup.option.retry_detection: "Повторно откриване"
+setup.option.retry_auth: "Влязох — повторен опит за свързване"
+setup.option.retry_connection: "Повторен опит за свързване"
+setup.status.installing: "Инсталиране..."
+setup.status.install_failed: "Инсталирането е неуспешно: "
+setup.status.installing_winget: " Инсталиране чрез winget..."
+
+# ─── Екран за удостоверяване ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Избран е CLI на агента %{agent}"
+auth.agent_selected_reason: "CLI на агента %{agent} — "
+auth.checking: "Проверка на удостоверяването..."
+auth.waiting: "Изчакване на оторизация..."
+auth.code_copied: "Кодът е копиран в клипборда — поставете го в браузъра си."
+auth.signin_prompt: "Влезте, за да използвате агента си:"
+auth.connect_agent: "Свържете %{agent}, за да активирате функциите на агента"
+# {Locked="GitHub"} - име на марка
+auth.signin_github: "[ Влизане с GitHub ]"
+auth.signin_agent: "[ Влизане с %{agent} ]"
+auth.hint: "Натиснете Enter за влизане, Esc за връщане назад"
+
+# ─── Чат ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Мисля…"
+chat.welcome: "Добре дошли в Intelligent Terminal!"
+chat.plan_header: "План:"
+
+# ─── Подсказки ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. показване/скриване на панела на агента • Ctrl+Alt+/ показване/скриване на сесията на агента)"
+
+# ─── Етикети за състоянието на агента ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Не е инсталиран — изберете за автоматично инсталиране"
+agent.status.not_found: "Не е намерен"
+agent.status.detected: "Открит"
+
+# ─── Състояние на връзката ───────────────────────────────────────────────────────────
+
+connection.starting: "Стартиране на агента..."
+connection.reconnecting: "Повторно свързване..."

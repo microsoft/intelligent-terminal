@@ -1,5 +1,66 @@
-# Setup screen titles
-setup.title.first_run: "ഇന്റലിജന്റ് ടെർമിനലിലേക്ക് സ്വാഗതം!"
+# ─── സെറ്റപ്പ് സ്ക്രീന്‍ ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - ഉൽപ്പന്ന നാമം, വിവർത്തനം ചെയ്യരുത്
+
+setup.title.first_run: "Intelligent Terminal-ലേക്ക് സ്വാഗതം!"
 setup.title.agent_missing: "ഏജന്റ് കണ്ടെത്തിയില്ല"
 setup.title.agent_error: "ഏജന്റ് കണക്ഷൻ പരാജയപ്പെട്ടു"
 setup.title.switch_agent: "ഏജന്റ് മാറ്റുക"
+setup.title.not_available: "ഏജന്റ് ലഭ്യമല്ല"
+setup.title.sign_in: "സൈൻ ഇൻ ആവശ്യമാണ്"
+
+# %{agent} റൺടൈമിൽ ഏജന്റ് പ്രദർശന നാമം ഉപയോഗിച്ച് മാറ്റിസ്ഥാപിക്കപ്പെടുന്നു.
+# {Locked="Settings"} - Settings പേജ് സൂചിപ്പിക്കുന്നു.
+setup.subtitle.copilot_missing: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\" ഇൻസ്റ്റാൾ ചെയ്തിട്ടില്ല. ഇൻസ്റ്റാൾ ചെയ്യാൻ താഴെയുള്ള ഘട്ടങ്ങൾ പിന്തുടരുക. ഏജന്റ് മാറ്റാൻ Settings-ലേക്ക് പോകുക."
+setup.subtitle.agent_missing: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\" ഇൻസ്റ്റാൾ ചെയ്തിട്ടില്ല. ദയവായി സ്വമേധയാ വീണ്ടും ഇൻസ്റ്റാൾ ചെയ്ത്, വീണ്ടും ശ്രമിക്കുക. ഏജന്റ് മാറ്റാൻ Settings-ലേക്ക് പോകുക."
+setup.subtitle.copilot_auth: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\"-ന് പ്രമാണീകരണം ആവശ്യമാണ്. സൈൻ ഇൻ ചെയ്യാൻ താഴെയുള്ള ഘട്ടങ്ങൾ പിന്തുടരുക. ഏജന്റ് മാറ്റാൻ Settings-ലേക്ക് പോകുക."
+setup.subtitle.agent_auth: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\"-ന് പ്രമാണീകരണം ആവശ്യമാണ്. ദയവായി ഏജന്റ് CLI വഴി സൈൻ ഇൻ ചെയ്ത്, വീണ്ടും ശ്രമിക്കുക. ഏജന്റ് മാറ്റാൻ Settings-ലേക്ക് പോകുക."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal-ൽ ഉപയോഗിക്കാൻ ഡിഫോൾട്ട് ഏജന്റ് CLI തിരഞ്ഞെടുക്കുക. നിങ്ങൾക്ക്"
+setup.description.fre_line2: "നിങ്ങളുടെ വർക്ക്‌സ്‌പേസ് കോൺഫിഗർ ചെയ്ത് സജ്ജീകരിക്കാൻ Settings-ലേക്ക് നാവിഗേറ്റ് ചെയ്യാം."
+
+setup.option.reinstall: "%{agent} വീണ്ടും ഇൻസ്റ്റാൾ ചെയ്യുക"
+setup.option.reinstall_hint: "(സ്വയമേവ ഇൻസ്റ്റാൾ ചെയ്യപ്പെടും)"
+setup.option.signin: "%{agent}-ൽ സൈൻ ഇൻ ചെയ്യുക"
+setup.option.retry_detection: "കണ്ടെത്തൽ വീണ്ടും ശ്രമിക്കുക"
+setup.option.retry_auth: "ഞാൻ സൈൻ ഇൻ ചെയ്‌തു — കണക്ഷൻ വീണ്ടും ശ്രമിക്കുക"
+setup.option.retry_connection: "കണക്ഷൻ വീണ്ടും ശ്രമിക്കുക"
+setup.status.installing: "ഇൻസ്റ്റാൾ ചെയ്യുന്നു..."
+setup.status.install_failed: "ഇൻസ്റ്റാൾ പരാജയപ്പെട്ടു: "
+setup.status.installing_winget: " winget വഴി ഇൻസ്റ്റാൾ ചെയ്യുന്നു..."
+
+# ─── പ്രമാണീകരണ സ്ക്രീന്‍ ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "ഏജന്റ് CLI %{agent} തിരഞ്ഞെടുത്തു"
+auth.agent_selected_reason: "ഏജന്റ് CLI %{agent} — "
+auth.checking: "പ്രമാണീകരണം പരിശോധിക്കുന്നു..."
+auth.waiting: "അംഗീകാരത്തിനായി കാത്തിരിക്കുന്നു..."
+auth.code_copied: "കോഡ് ക്ലിപ്ബോർഡിലേക്ക് പകർത്തി — നിങ്ങളുടെ ബ്രൗസറിൽ ഒട്ടിക്കുക."
+auth.signin_prompt: "നിങ്ങളുടെ ഏജന്റ് ഉപയോഗിക്കാൻ സൈൻ ഇൻ ചെയ്യുക:"
+auth.connect_agent: "ഏജന്റ് ഫീച്ചറുകൾ പ്രവർത്തനക്ഷമമാക്കാൻ %{agent} കണക്ട് ചെയ്യുക"
+# {Locked="GitHub"} - ബ്രാൻഡ് നാമം
+auth.signin_github: "[ GitHub ഉപയോഗിച്ച് സൈൻ ഇൻ ചെയ്യുക ]"
+auth.signin_agent: "[ %{agent} ഉപയോഗിച്ച് സൈൻ ഇൻ ചെയ്യുക ]"
+auth.hint: "സൈൻ ഇൻ ചെയ്യാൻ Enter അമർത്തുക, തിരികെ പോകാൻ Esc അമർത്തുക"
+
+# ─── ചാറ്റ് ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "ചിന്തിക്കുന്നു…"
+chat.welcome: "Intelligent Terminal-ലേക്ക് സ്വാഗതം!"
+chat.plan_header: "പദ്ധതി:"
+
+# ─── സൂചനകൾ ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. ഏജന്റ് പേൻ കാണിക്കുക/മറയ്ക്കുക • Ctrl+Alt+/ ഏജന്റ് സെഷൻ കാണിക്കുക/മറയ്ക്കുക)"
+
+# ─── ഏജന്റ് നില ലേബലുകൾ ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "ഇൻസ്റ്റാൾ ചെയ്തിട്ടില്ല — സ്വയമേവ ഇൻസ്റ്റാൾ ചെയ്യാൻ തിരഞ്ഞെടുക്കുക"
+agent.status.not_found: "കണ്ടെത്തിയില്ല"
+agent.status.detected: "കണ്ടെത്തി"
+
+# ─── കണക്ഷൻ നില ───────────────────────────────────────────────────────────
+
+connection.starting: "ഏജന്റ് ആരംഭിക്കുന്നു..."
+connection.reconnecting: "വീണ്ടും കണക്ട് ചെയ്യുന്നു..."

@@ -956,23 +956,125 @@
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>初始化 Shell 整合失敗。無法判斷您的 PowerShell 設定檔路徑。請確認已安裝目標 Shell。</value><comment>{Locked="PowerShell"}</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>AI 代理無法使用</value></data>
   <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>找不到任何 AI 代理。請安裝代理 CLI（例如 copilot、gemini），並確認它位於您的 PATH 中，或在 [設定] &gt; [AI 代理] 中進行設定。</value><comment>{Locked="CLI","PATH","copilot","gemini"}</comment></data>
-  <data name="FreOverlay_Title" xml:space="preserve"><value>智慧終端機的新功能</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_Card1Title" xml:space="preserve"><value>歡迎使用智慧終端機</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_Card1Description" xml:space="preserve"><value>設定您的內建助理，直接在您的工作環境中提供協助</value></data>
-  <data name="FreOverlay_Card2Title" xml:space="preserve"><value>自動錯誤偵測</value></data>
-  <data name="FreOverlay_Card2Description" xml:space="preserve"><value>AI 代理窗格一律具備內容脈絡，並已準備好搭配您最愛的 AI 代理 CLI 使用</value><comment>{Locked="CLI"}</comment></data>
-  <data name="FreOverlay_Card3Title" xml:space="preserve"><value>工作階段管理</value></data>
-  <data name="FreOverlay_Card3Description" xml:space="preserve"><value>工作階段管理可協助您追蹤 AI 代理，並快速返回先前的工作階段</value></data>
-  <data name="FreOverlay_Card4Title" xml:space="preserve"><value>快速 AI 代理命令</value></data>
-  <data name="FreOverlay_Card4Description" xml:space="preserve"><value>可從命令選擇區啟動背景索引標籤</value></data>
-  <data name="FreOverlay_DetailTitle" xml:space="preserve"><value>歡迎使用智慧終端機</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_DetailDescription" xml:space="preserve"><value>設定您的內建助理，讓它直接在您的工作環境中協助您說明錯誤、草擬命令，以及排除工作阻礙。</value></data>
-  <data name="FreOverlay_Detail2Title" xml:space="preserve"><value>自動錯誤偵測</value></data>
-  <data name="FreOverlay_Detail2Description" xml:space="preserve"><value>AI 代理窗格一律具備內容脈絡，並已準備好搭配您最愛的 AI 代理 CLI 使用。</value><comment>{Locked="CLI"}</comment></data>
-  <data name="FreOverlay_Detail3Title" xml:space="preserve"><value>工作階段管理</value></data>
-  <data name="FreOverlay_Detail3Description" xml:space="preserve"><value>工作階段管理可協助您追蹤 AI 代理，並快速返回先前的工作階段。</value></data>
-  <data name="FreOverlay_Detail4Title" xml:space="preserve"><value>快速 AI 代理命令</value></data>
-  <data name="FreOverlay_Detail4Description" xml:space="preserve"><value>使用命令選擇區，從終端機中的任何位置快速執行由 AI 代理支援的工作。</value></data>
-  <data name="FreOverlay_DetailLink" xml:space="preserve"><value>深入了解智慧終端機。</value><comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment></data>
-  <data name="FreOverlay_NextButton" xml:space="preserve"><value>開始探索</value></data>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>歡迎使用 Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>設定您的內建助理，讓它直接在您的工作環境中協助您說明錯誤、草擬命令，以及排除工作阻礙。</value>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>深入了解 Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>透過內建 AI 代理保持工作節奏</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>代理會持續掌握您終端機中的狀況，並在錯誤出現時協助您了解和修正。</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>從上次中斷的地方繼續</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>追蹤您的活躍和過往代理工作階段，幾秒鐘內即可恢復工作。檢閱進行中的內容或回顧先前的工作，而不會遺失目前的位置。</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>下一步</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>歡迎使用 Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>選擇要立即設定的項目。您可以隨時在</value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>代理</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>選擇代理窗格中使用的代理 CLI。任何相容的 ACP CLI 都會被自動偵測。</value>
+    <comment>{Locked="CLI","ACP"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ 此代理需要 Node.js 和 NPX，若尚未安裝，將會自動安裝。</value>
+    <comment>{Locked="Node.js","NPX"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>自動錯誤偵測</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>授予 Intelligent Terminal 存取您的 Shell 並自動偵測錯誤的權限。</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
+    <value>工作階段管理</value>
+  </data>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>授予 Intelligent Terminal 追蹤執行中或活躍代理狀態的權限。</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ 啟用此功能將安裝整合掛鉤，以追蹤跨代理 CLI 的工作階段。</value>
+    <comment>{Locked="CLI"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>窗格位置</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>代理窗格相對於終端機開啟的位置。</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>儲存</value>
+  </data>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (將被安裝)</value>
+  </data>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (已安裝)</value>
+  </data>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>底部</value>
+  </data>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>右側</value>
+  </data>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>左側</value>
+  </data>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>頂部</value>
+  </data>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>正在設定...</value>
+  </data>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ 安裝 GitHub Copilot 失敗。請檢查您的網路並重試。</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ 安裝 Node.js 失敗。請檢查您的網路並重試。</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>開</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>關</value>
+  </data>
 </root>

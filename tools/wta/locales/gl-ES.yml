@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Pantalla de configuración ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - nome do produto, non traducir
+
 setup.title.first_run: "Benvido a Intelligent Terminal!"
 setup.title.agent_missing: "Non se atopou o axente"
 setup.title.agent_error: "Non se puido conectar co axente"
 setup.title.switch_agent: "Cambiar de axente"
+setup.title.not_available: "O axente non está dispoñible"
+setup.title.sign_in: "Cómpre iniciar sesión"
+
+# %{agent} substitúese polo nome de visualización do axente en tempo de execución.
+# {Locked="Settings"} - refírese á páxina Settings, mantéñase tal cal.
+setup.subtitle.copilot_missing: "O seu axente \"%{agent}\" non está instalado. Siga os pasos seguintes para instalalo. Para cambiar de axente, vaia a Settings."
+setup.subtitle.agent_missing: "O seu axente \"%{agent}\" non está instalado. Reinstáleo manualmente e volva tentalo. Para cambiar de axente, vaia a Settings."
+setup.subtitle.copilot_auth: "O seu axente \"%{agent}\" require autenticación. Siga os pasos seguintes para iniciar sesión. Para cambiar de axente, vaia a Settings."
+setup.subtitle.agent_auth: "O seu axente \"%{agent}\" require autenticación. Inicie sesión a través do CLI do axente e volva tentalo. Para cambiar de axente, vaia a Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Escolla o CLI de axente predeterminado que desexa usar en Intelligent Terminal. Pode"
+setup.description.fre_line2: "ir a Settings para configurar o seu espazo de traballo."
+
+setup.option.reinstall: "Reinstalar %{agent}"
+setup.option.reinstall_hint: "(Instalarase automaticamente)"
+setup.option.signin: "Iniciar sesión en %{agent}"
+setup.option.retry_detection: "Reintentar detección"
+setup.option.retry_auth: "Xa iniciei sesión — reintentar conexión"
+setup.option.retry_connection: "Reintentar conexión"
+setup.status.installing: "Instalando..."
+setup.status.install_failed: "Erro na instalación: "
+setup.status.installing_winget: " Instalando mediante winget..."
+
+# ─── Pantalla de autenticación ─────────────────────────────────────────────────
+
+auth.agent_selected: "CLI de axente %{agent} está seleccionado"
+auth.agent_selected_reason: "CLI de axente %{agent} — "
+auth.checking: "Comprobando autenticación..."
+auth.waiting: "Agardando autorización..."
+auth.code_copied: "Código copiado ao portapapeis — pégueo no seu navegador."
+auth.signin_prompt: "Inicie sesión para usar o seu axente:"
+auth.connect_agent: "Conectar %{agent} para activar funcións de axente"
+# {Locked="GitHub"} - nome de marca
+auth.signin_github: "[ Iniciar sesión con GitHub ]"
+auth.signin_agent: "[ Iniciar sesión con %{agent} ]"
+auth.hint: "Prema Intro para iniciar sesión, Esc para volver atrás"
+
+# ─── Conversa ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Pensando…"
+chat.welcome: "Benvido a Intelligent Terminal!"
+chat.plan_header: "Plan:"
+
+# ─── Suxestións ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. para mostrar/ocultar o panel de axente • Ctrl+Alt+/ para mostrar/ocultar a sesión de axente)"
+
+# ─── Etiquetas de estado do axente ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Non instalado — seleccione para instalar automaticamente"
+agent.status.not_found: "Non atopado"
+agent.status.detected: "Detectado"
+
+# ─── Estado da conexión ───────────────────────────────────────────────────────
+
+connection.starting: "Iniciando o axente..."
+connection.reconnecting: "Reconectando..."

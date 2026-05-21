@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Intelligent Terminal'e hoş geldiniz!"
 setup.title.agent_missing: "Aracı bulunamadı"
 setup.title.agent_error: "Aracı bağlantısı başarısız oldu"
 setup.title.switch_agent: "Aracı değiştir"
+setup.title.not_available: "Aracı kullanılamıyor"
+setup.title.sign_in: "Oturum açma gerekli"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Aracınız \"%{agent}\" yüklü değil. Yüklemek için aşağıdaki adımları izleyin. Aracı değiştirmek için Settings'e gidin."
+setup.subtitle.agent_missing: "Aracınız \"%{agent}\" yüklü değil. Lütfen elle yeniden yükleyin, ardından tekrar deneyin. Aracı değiştirmek için Settings'e gidin."
+setup.subtitle.copilot_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Oturum açmak için aşağıdaki adımları izleyin. Aracı değiştirmek için Settings'e gidin."
+setup.subtitle.agent_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Lütfen aracı CLI üzerinden oturum açın, ardından tekrar deneyin. Aracı değiştirmek için Settings'e gidin."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal'de kullanmak istediğiniz varsayılan aracı CLI'yi seçin. Çalışma alanınızı"
+setup.description.fre_line2: "yapılandırmak ve ayarlamak için Settings'e gidebilirsiniz."
+
+setup.option.reinstall: "%{agent} yeniden yükle"
+setup.option.reinstall_hint: "(Otomatik olarak yüklenecek)"
+setup.option.signin: "%{agent} oturumu aç"
+setup.option.retry_detection: "Algılamayı yeniden dene"
+setup.option.retry_auth: "Oturum açtım — bağlantıyı yeniden dene"
+setup.option.retry_connection: "Bağlantıyı yeniden dene"
+setup.status.installing: "Yükleniyor..."
+setup.status.install_failed: "Yükleme başarısız: "
+setup.status.installing_winget: " winget üzerinden yükleniyor..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Aracı CLI %{agent} seçildi"
+auth.agent_selected_reason: "Aracı CLI %{agent} — "
+auth.checking: "Kimlik doğrulama kontrol ediliyor..."
+auth.waiting: "Yetkilendirme bekleniyor..."
+auth.code_copied: "Kod panoya kopyalandı — tarayıcınıza yapıştırın."
+auth.signin_prompt: "Aracınızı kullanmak için oturum açın:"
+auth.connect_agent: "Aracı özelliklerini etkinleştirmek için %{agent} bağlayın"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ GitHub ile oturum aç ]"
+auth.signin_agent: "[ %{agent} ile oturum aç ]"
+auth.hint: "Oturum açmak için Enter, geri dönmek için Esc tuşuna basın"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Düşünüyor…"
+chat.welcome: "Intelligent Terminal'e hoş geldiniz!"
+chat.plan_header: "Plan:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. aracı panelini göster/gizle • Ctrl+Alt+/ aracı oturumunu göster/gizle)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Yüklü değil — otomatik yüklemek için seçin"
+agent.status.not_found: "Bulunamadı"
+agent.status.detected: "Algılandı"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Aracı başlatılıyor..."
+connection.reconnecting: "Yeniden bağlanılıyor..."

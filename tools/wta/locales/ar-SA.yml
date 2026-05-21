@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── شاشة الإعداد ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - اسم المنتج، لا تترجمه
+
 setup.title.first_run: "مرحبًا بك في Intelligent Terminal!"
 setup.title.agent_missing: "لم يتم العثور على الوكيل"
 setup.title.agent_error: "فشل الاتصال بالوكيل"
 setup.title.switch_agent: "تبديل الوكيل"
+setup.title.not_available: "الوكيل غير متوفر"
+setup.title.sign_in: "تسجيل الدخول مطلوب"
+
+# يتم استبدال %{agent} باسم عرض الوكيل في وقت التشغيل.
+# {Locked="Settings"} - يشير إلى صفحة Settings.
+setup.subtitle.copilot_missing: "الوكيل \"%{agent}\" غير مثبّت. اتبع الخطوات أدناه لتثبيته. لتبديل الوكلاء، انتقل إلى Settings."
+setup.subtitle.agent_missing: "الوكيل \"%{agent}\" غير مثبّت. يُرجى إعادة تثبيته يدويًا، ثم أعد المحاولة. لتبديل الوكلاء، انتقل إلى Settings."
+setup.subtitle.copilot_auth: "يتطلب الوكيل \"%{agent}\" المصادقة. اتبع الخطوات أدناه لتسجيل الدخول. لتبديل الوكلاء، انتقل إلى Settings."
+setup.subtitle.agent_auth: "يتطلب الوكيل \"%{agent}\" المصادقة. يُرجى تسجيل الدخول عبر CLI الخاص بالوكيل، ثم أعد المحاولة. لتبديل الوكلاء، انتقل إلى Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "اختر CLI الوكيل الافتراضي الذي تريد استخدامه في Intelligent Terminal. يمكنك"
+setup.description.fre_line2: "الانتقال إلى Settings لتكوين مساحة العمل وإعدادها."
+
+setup.option.reinstall: "إعادة تثبيت %{agent}"
+setup.option.reinstall_hint: "(سيتم التثبيت تلقائيًا)"
+setup.option.signin: "تسجيل الدخول إلى %{agent}"
+setup.option.retry_detection: "إعادة محاولة الاكتشاف"
+setup.option.retry_auth: "لقد سجّلت الدخول — إعادة محاولة الاتصال"
+setup.option.retry_connection: "إعادة محاولة الاتصال"
+setup.status.installing: "جارٍ التثبيت..."
+setup.status.install_failed: "فشل التثبيت: "
+setup.status.installing_winget: " جارٍ التثبيت عبر winget..."
+
+# ─── شاشة المصادقة ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "تم تحديد CLI الوكيل %{agent}"
+auth.agent_selected_reason: "CLI الوكيل %{agent} — "
+auth.checking: "جارٍ التحقق من المصادقة..."
+auth.waiting: "في انتظار التفويض..."
+auth.code_copied: "تم نسخ الرمز إلى الحافظة — الصقه في المتصفح."
+auth.signin_prompt: "سجّل الدخول لاستخدام وكيلك:"
+auth.connect_agent: "قم بتوصيل %{agent} لتمكين ميزات الوكيل"
+# {Locked="GitHub"} - اسم العلامة التجارية
+auth.signin_github: "[ تسجيل الدخول باستخدام GitHub ]"
+auth.signin_agent: "[ تسجيل الدخول باستخدام %{agent} ]"
+auth.hint: "اضغط Enter لتسجيل الدخول، Esc للرجوع"
+
+# ─── الدردشة ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "جارٍ التفكير…"
+chat.welcome: "مرحبًا بك في Intelligent Terminal!"
+chat.plan_header: "الخطة:"
+
+# ─── تلميحات ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. لإظهار/إخفاء لوحة الوكيل • Ctrl+Alt+/ لإظهار/إخفاء جلسة الوكيل)"
+
+# ─── تسميات حالة الوكيل ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "غير مثبّت — حدد للتثبيت تلقائيًا"
+agent.status.not_found: "غير موجود"
+agent.status.detected: "تم الاكتشاف"
+
+# ─── حالة الاتصال ───────────────────────────────────────────────────────────
+
+connection.starting: "جارٍ تشغيل الوكيل..."
+connection.reconnecting: "جارٍ إعادة الاتصال..."

@@ -52,6 +52,18 @@ namespace winrt::TerminalApp::implementation
         const auto& globals = _settings.GlobalSettings();
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
+        // Set subtitle Run texts (can't use x:Uid for <Run> inside <Hyperlink>)
+        WelcomeSubtitlePrefix().Text(RS_(L"FreOverlay_WelcomeSubtitlePrefix"));
+        WelcomeSubtitleLink().Text(RS_(L"FreOverlay_WelcomeSubtitleLink"));
+        SettingsSubtitlePrefix().Text(RS_(L"FreOverlay_SettingsSubtitlePrefix"));
+        SettingsSubtitleLink().Text(RS_(L"FreOverlay_SettingsSubtitleLink"));
+
+        // Set toggle On/Off labels
+        AutoErrorToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
+        AutoErrorToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
+        SessionManagementToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
+        SessionManagementToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
+
         // Populate agent ComboBox: Copilot (always) + detected agents
         auto items = AgentComboBox().Items();
         items.Clear();
@@ -73,11 +85,11 @@ namespace winrt::TerminalApp::implementation
 
             if (isCopilot && !installed)
             {
-                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + L" (will be installed)" });
+                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusWillInstall")) });
             }
             else
             {
-                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + L" (installed)" });
+                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusInstalled")) });
             }
 
             items.Append(entry);
@@ -97,10 +109,10 @@ namespace winrt::TerminalApp::implementation
         // Populate pane position ComboBox
         auto posItems = PanePositionComboBox().Items();
         posItems.Clear();
-        posItems.Append(winrt::box_value(L"Bottom"));
-        posItems.Append(winrt::box_value(L"Right"));
-        posItems.Append(winrt::box_value(L"Left"));
-        posItems.Append(winrt::box_value(L"Top"));
+        posItems.Append(winrt::box_value(RS_(L"FreOverlay_PanePositionBottom")));
+        posItems.Append(winrt::box_value(RS_(L"FreOverlay_PanePositionRight")));
+        posItems.Append(winrt::box_value(RS_(L"FreOverlay_PanePositionLeft")));
+        posItems.Append(winrt::box_value(RS_(L"FreOverlay_PanePositionTop")));
 
         const auto currentPos = globals.AgentPanePosition();
         if (currentPos == L"right") PanePositionComboBox().SelectedIndex(1);
@@ -244,7 +256,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         // 2. Disable button, hide previous error
-        SaveButton().Content(winrt::box_value(L"Setting up..."));
+        SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SettingUp")));
         SaveButton().IsEnabled(false);
         ErrorText().Visibility(Visibility::Collapsed);
 
@@ -259,9 +271,9 @@ namespace winrt::TerminalApp::implementation
             if (!self) co_return;
             if (!ok)
             {
-                ErrorText().Text(L"\u26A0 Failed to install GitHub Copilot. Check your network and try again.");
+                ErrorText().Text(RS_(L"FreOverlay_InstallErrorCopilot"));
                 ErrorText().Visibility(Visibility::Visible);
-                SaveButton().Content(winrt::box_value(L"Save"));
+                SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SaveButton/Content")));
                 SaveButton().IsEnabled(true);
                 co_return;
             }
@@ -273,9 +285,9 @@ namespace winrt::TerminalApp::implementation
             if (!self) co_return;
             if (!ok)
             {
-                ErrorText().Text(L"\u26A0 Failed to install Node.js. Check your network and try again.");
+                ErrorText().Text(RS_(L"FreOverlay_InstallErrorNode"));
                 ErrorText().Visibility(Visibility::Visible);
-                SaveButton().Content(winrt::box_value(L"Save"));
+                SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SaveButton/Content")));
                 SaveButton().IsEnabled(true);
                 co_return;
             }
@@ -314,7 +326,7 @@ namespace winrt::TerminalApp::implementation
             auto self = weak.get();
             if (!self) co_return;
 
-            SaveButton().Content(winrt::box_value(L"Save"));
+            SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SaveButton/Content")));
             SaveButton().IsEnabled(true);
             Completed.raise(*this, nullptr);
         }

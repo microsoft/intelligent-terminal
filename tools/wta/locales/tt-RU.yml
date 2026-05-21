@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Intelligent Terminal-га рәхим итегез!"
 setup.title.agent_missing: "Агент табылмады"
 setup.title.agent_error: "Агентка тоташу уңышсыз булды"
 setup.title.switch_agent: "Агентны алыштыру"
+setup.title.not_available: "Агент мөмкин түгел"
+setup.title.sign_in: "Керү таләп ителә"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Сезнең \"%{agent}\" агентыгыз урнатылмаган. Урнату өчен түбәндәге адымнарны үтәгез. Агентны алыштыру өчен Settings бүлегенә күчегез."
+setup.subtitle.agent_missing: "Сезнең \"%{agent}\" агентыгыз урнатылмаган. Зинһар, кулдан яңадан урнатыгыз, аннан яңадан тырышыгыз. Агентны алыштыру өчен Settings бүлегенә күчегез."
+setup.subtitle.copilot_auth: "Сезнең \"%{agent}\" агентыгыз аутентификация таләп итә. Керү өчен түбәндәге адымнарны үтәгез. Агентны алыштыру өчен Settings бүлегенә күчегез."
+setup.subtitle.agent_auth: "Сезнең \"%{agent}\" агентыгыз аутентификация таләп итә. Зинһар, агент CLI аша керегез, аннан яңадан тырышыгыз. Агентны алыштыру өчен Settings бүлегенә күчегез."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal-да кулланырга теләгән килешенгән агент CLI сайлагыз. Эш"
+setup.description.fre_line2: "мәйданыгызны көйләү өчен Settings бүлегенә күчә аласыз."
+
+setup.option.reinstall: "%{agent} яңадан урнату"
+setup.option.reinstall_hint: "(Автоматик рәвештә урнатылачак)"
+setup.option.signin: "%{agent} керү"
+setup.option.retry_detection: "Ачыклауны яңадан сынау"
+setup.option.retry_auth: "Кердем — тоташуны яңадан сынау"
+setup.option.retry_connection: "Тоташуны яңадан сынау"
+setup.status.installing: "Урнатыла..."
+setup.status.install_failed: "Урнату уңышсыз: "
+setup.status.installing_winget: " winget аша урнатыла..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Агент CLI %{agent} сайланды"
+auth.agent_selected_reason: "Агент CLI %{agent} — "
+auth.checking: "Аутентификация тикшерелә..."
+auth.waiting: "Авторизация көтелә..."
+auth.code_copied: "Код буферга күчерелде — браузерга куегыз."
+auth.signin_prompt: "Агентыгызны куллану өчен керегез:"
+auth.connect_agent: "Агент мөмкинлекләрен кушу өчен %{agent} тоташтырыгыз"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ GitHub аша керү ]"
+auth.signin_agent: "[ %{agent} аша керү ]"
+auth.hint: "Керү өчен Enter, артка кайту өчен Esc басыгыз"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Уйлыйм…"
+chat.welcome: "Intelligent Terminal-га рәхим итегез!"
+chat.plan_header: "План:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. агент панелен күрсәтү/яшерү • Ctrl+Alt+/ агент сеансын күрсәтү/яшерү)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Урнатылмаган — автоматик урнату өчен сайлагыз"
+agent.status.not_found: "Табылмады"
+agent.status.detected: "Ачыкланды"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Агент эшкә кушыла..."
+connection.reconnecting: "Яңадан тоташу..."

@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── หน้าจอตั้งค่า ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - ชื่อผลิตภัณฑ์ ห้ามแปล
+
 setup.title.first_run: "ยินดีต้อนรับสู่ Intelligent Terminal!"
 setup.title.agent_missing: "ไม่พบเอเจนต์"
 setup.title.agent_error: "การเชื่อมต่อเอเจนต์ล้มเหลว"
 setup.title.switch_agent: "สลับเอเจนต์"
+setup.title.not_available: "เอเจนต์ไม่พร้อมใช้งาน"
+setup.title.sign_in: "ต้องลงชื่อเข้าใช้"
+
+# %{agent} จะถูกแทนที่ด้วยชื่อที่แสดงของเอเจนต์ขณะรันไทม์
+# {Locked="Settings"} - หมายถึงหน้า Settings ให้คงเป็นภาษาอังกฤษ
+setup.subtitle.copilot_missing: "เอเจนต์ \"%{agent}\" ของคุณยังไม่ได้ติดตั้ง ทำตามขั้นตอนด้านล่างเพื่อติดตั้ง หากต้องการสลับเอเจนต์ ให้ไปที่ Settings"
+setup.subtitle.agent_missing: "เอเจนต์ \"%{agent}\" ของคุณยังไม่ได้ติดตั้ง กรุณาติดตั้งใหม่ด้วยตนเอง แล้วลองอีกครั้ง หากต้องการสลับเอเจนต์ ให้ไปที่ Settings"
+setup.subtitle.copilot_auth: "เอเจนต์ \"%{agent}\" ของคุณต้องการการยืนยันตัวตน ทำตามขั้นตอนด้านล่างเพื่อลงชื่อเข้าใช้ หากต้องการสลับเอเจนต์ ให้ไปที่ Settings"
+setup.subtitle.agent_auth: "เอเจนต์ \"%{agent}\" ของคุณต้องการการยืนยันตัวตน กรุณาลงชื่อเข้าใช้ผ่าน CLI ของเอเจนต์ แล้วลองอีกครั้ง หากต้องการสลับเอเจนต์ ให้ไปที่ Settings"
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "เลือก CLI เอเจนต์เริ่มต้นที่คุณต้องการใช้ใน Intelligent Terminal คุณสามารถ"
+setup.description.fre_line2: "ไปที่ Settings เพื่อกำหนดค่าและตั้งค่าพื้นที่ทำงานของคุณ"
+
+setup.option.reinstall: "ติดตั้ง %{agent} ใหม่"
+setup.option.reinstall_hint: "(จะติดตั้งโดยอัตโนมัติ)"
+setup.option.signin: "ลงชื่อเข้าใช้ %{agent}"
+setup.option.retry_detection: "ลองตรวจสอบอีกครั้ง"
+setup.option.retry_auth: "ลงชื่อเข้าใช้แล้ว — ลองเชื่อมต่ออีกครั้ง"
+setup.option.retry_connection: "ลองเชื่อมต่ออีกครั้ง"
+setup.status.installing: "กำลังติดตั้ง..."
+setup.status.install_failed: "ติดตั้งล้มเหลว: "
+setup.status.installing_winget: " กำลังติดตั้งผ่าน winget..."
+
+# ─── หน้าจอยืนยันตัวตน ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "เลือก CLI เอเจนต์ %{agent} แล้ว"
+auth.agent_selected_reason: "CLI เอเจนต์ %{agent} — "
+auth.checking: "กำลังตรวจสอบการยืนยันตัวตน..."
+auth.waiting: "กำลังรอการอนุญาต..."
+auth.code_copied: "คัดลอกรหัสไปยังคลิปบอร์ดแล้ว — วางในเบราว์เซอร์ของคุณ"
+auth.signin_prompt: "ลงชื่อเข้าใช้เพื่อใช้เอเจนต์ของคุณ:"
+auth.connect_agent: "เชื่อมต่อ %{agent} เพื่อเปิดใช้งานฟีเจอร์เอเจนต์"
+# {Locked="GitHub"} - ชื่อแบรนด์
+auth.signin_github: "[ ลงชื่อเข้าใช้ด้วย GitHub ]"
+auth.signin_agent: "[ ลงชื่อเข้าใช้ด้วย %{agent} ]"
+auth.hint: "กด Enter เพื่อลงชื่อเข้าใช้, Esc เพื่อย้อนกลับ"
+
+# ─── แชท ────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "กำลังคิด…"
+chat.welcome: "ยินดีต้อนรับสู่ Intelligent Terminal!"
+chat.plan_header: "แผน:"
+
+# ─── คำแนะนำ ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. แสดง/ซ่อนแผงเอเจนต์ • Ctrl+Alt+/ แสดง/ซ่อนเซสชันเอเจนต์)"
+
+# ─── ป้ายสถานะเอเจนต์ ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "ยังไม่ได้ติดตั้ง — เลือกเพื่อติดตั้งโดยอัตโนมัติ"
+agent.status.not_found: "ไม่พบ"
+agent.status.detected: "ตรวจพบแล้ว"
+
+# ─── สถานะการเชื่อมต่อ ───────────────────────────────────────────────────────────
+
+connection.starting: "กำลังเริ่มเอเจนต์..."
+connection.reconnecting: "กำลังเชื่อมต่อใหม่..."

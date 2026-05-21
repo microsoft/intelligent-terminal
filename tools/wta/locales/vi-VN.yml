@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Màn hình thiết lập ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - tên sản phẩm, không dịch
+
 setup.title.first_run: "Chào mừng bạn đến Intelligent Terminal!"
 setup.title.agent_missing: "Không tìm thấy tác tử"
 setup.title.agent_error: "Kết nối tới tác tử thất bại"
 setup.title.switch_agent: "Chuyển tác tử"
+setup.title.not_available: "Tác tử không khả dụng"
+setup.title.sign_in: "Cần đăng nhập"
+
+# %{agent} được thay thế bằng tên hiển thị của tác tử khi chạy.
+# {Locked="Settings"} - trỏ đến trang Settings, giữ nguyên tiếng Anh trong UI.
+setup.subtitle.copilot_missing: "Tác tử \"%{agent}\" của bạn chưa được cài đặt. Thực hiện theo các bước bên dưới để cài đặt. Để chuyển tác tử, hãy đi tới Settings."
+setup.subtitle.agent_missing: "Tác tử \"%{agent}\" của bạn chưa được cài đặt. Vui lòng cài đặt lại thủ công, sau đó thử lại. Để chuyển tác tử, hãy đi tới Settings."
+setup.subtitle.copilot_auth: "Tác tử \"%{agent}\" của bạn yêu cầu xác thực. Thực hiện theo các bước bên dưới để đăng nhập. Để chuyển tác tử, hãy đi tới Settings."
+setup.subtitle.agent_auth: "Tác tử \"%{agent}\" của bạn yêu cầu xác thực. Vui lòng đăng nhập qua CLI của tác tử, sau đó thử lại. Để chuyển tác tử, hãy đi tới Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Chọn CLI tác tử mặc định mà bạn muốn sử dụng trong Intelligent Terminal. Bạn có thể"
+setup.description.fre_line2: "đi tới Settings để cấu hình và thiết lập không gian làm việc của bạn."
+
+setup.option.reinstall: "Cài đặt lại %{agent}"
+setup.option.reinstall_hint: "(Sẽ được cài đặt tự động)"
+setup.option.signin: "Đăng nhập vào %{agent}"
+setup.option.retry_detection: "Thử phát hiện lại"
+setup.option.retry_auth: "Tôi đã đăng nhập — thử kết nối lại"
+setup.option.retry_connection: "Thử kết nối lại"
+setup.status.installing: "Đang cài đặt..."
+setup.status.install_failed: "Cài đặt thất bại: "
+setup.status.installing_winget: " Đang cài đặt qua winget..."
+
+# ─── Màn hình xác thực ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Đã chọn CLI tác tử %{agent}"
+auth.agent_selected_reason: "CLI tác tử %{agent} — "
+auth.checking: "Đang kiểm tra xác thực..."
+auth.waiting: "Đang chờ ủy quyền..."
+auth.code_copied: "Mã đã được sao chép vào bộ nhớ tạm — hãy dán vào trình duyệt của bạn."
+auth.signin_prompt: "Đăng nhập để sử dụng tác tử của bạn:"
+auth.connect_agent: "Kết nối %{agent} để bật tính năng tác tử"
+# {Locked="GitHub"} - tên thương hiệu
+auth.signin_github: "[ Đăng nhập bằng GitHub ]"
+auth.signin_agent: "[ Đăng nhập bằng %{agent} ]"
+auth.hint: "Nhấn Enter để đăng nhập, Esc để quay lại"
+
+# ─── Trò chuyện ────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Đang suy nghĩ…"
+chat.welcome: "Chào mừng bạn đến Intelligent Terminal!"
+chat.plan_header: "Kế hoạch:"
+
+# ─── Gợi ý ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. để hiện/ẩn bảng tác tử • Ctrl+Alt+/ để hiện/ẩn phiên tác tử)"
+
+# ─── Nhãn trạng thái tác tử ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Chưa cài đặt — chọn để cài đặt tự động"
+agent.status.not_found: "Không tìm thấy"
+agent.status.detected: "Đã phát hiện"
+
+# ─── Trạng thái kết nối ───────────────────────────────────────────────────────────
+
+connection.starting: "Đang khởi động tác tử..."
+connection.reconnecting: "Đang kết nối lại..."

@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Καλως ήρθατε στο Intelligent Terminal!"
 setup.title.agent_missing: "Δεν βρέθηκε ο πράκτορας"
 setup.title.agent_error: "Η σύνδεση με τον πράκτορα απέτυχε"
 setup.title.switch_agent: "Αλλαγή πράκτορα"
+setup.title.not_available: "Ο πράκτορας δεν είναι διαθέσιμος"
+setup.title.sign_in: "Απαιτείται σύνδεση"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Ο πράκτοράς σας \"%{agent}\" δεν είναι εγκατεστημένος. Ακολουθήστε τα παρακάτω βήματα για να τον εγκαταστήσετε. Για αλλαγή πράκτορα, μεταβείτε στο Settings."
+setup.subtitle.agent_missing: "Ο πράκτοράς σας \"%{agent}\" δεν είναι εγκατεστημένος. Εγκαταστήστε τον ξανά χειροκίνητα και δοκιμάστε ξανά. Για αλλαγή πράκτορα, μεταβείτε στο Settings."
+setup.subtitle.copilot_auth: "Ο πράκτοράς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Ακολουθήστε τα παρακάτω βήματα για να συνδεθείτε. Για αλλαγή πράκτορα, μεταβείτε στο Settings."
+setup.subtitle.agent_auth: "Ο πράκτοράς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Συνδεθείτε μέσω του CLI του πράκτορα και δοκιμάστε ξανά. Για αλλαγή πράκτορα, μεταβείτε στο Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Επιλέξτε το προεπιλεγμένο CLI πράκτορα που θέλετε να χρησιμοποιήσετε στο Intelligent Terminal. Μπορείτε να"
+setup.description.fre_line2: "μεταβείτε στο Settings για ρύθμιση παραμέτρων του χώρου εργασίας σας."
+
+setup.option.reinstall: "Επανεγκατάσταση %{agent}"
+setup.option.reinstall_hint: "(Θα εγκατασταθεί αυτόματα)"
+setup.option.signin: "Σύνδεση στο %{agent}"
+setup.option.retry_detection: "Επανάληψη ανίχνευσης"
+setup.option.retry_auth: "Συνδέθηκα — επανάληψη σύνδεσης"
+setup.option.retry_connection: "Επανάληψη σύνδεσης"
+setup.status.installing: "Εγκατάσταση..."
+setup.status.install_failed: "Η εγκατάσταση απέτυχε: "
+setup.status.installing_winget: " Εγκατάσταση μέσω winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Επιλέχθηκε το CLI πράκτορα %{agent}"
+auth.agent_selected_reason: "CLI πράκτορα %{agent} — "
+auth.checking: "Έλεγχος ταυτοποίησης..."
+auth.waiting: "Αναμονή εξουσιοδότησης..."
+auth.code_copied: "Ο κωδικός αντιγράφηκε στο πρόχειρο — επικολλήστε τον στο πρόγραμμα περιήγησης."
+auth.signin_prompt: "Συνδεθείτε για να χρησιμοποιήσετε τον πράκτορα:"
+auth.connect_agent: "Συνδέστε το %{agent} για ενεργοποίηση λειτουργιών πράκτορα"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Σύνδεση με GitHub ]"
+auth.signin_agent: "[ Σύνδεση με %{agent} ]"
+auth.hint: "Πατήστε Enter για σύνδεση, Esc για επιστροφή"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Σκέφτομαι…"
+chat.welcome: "Καλως ήρθατε στο Intelligent Terminal!"
+chat.plan_header: "Σχέδιο:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. για εμφάνιση/απόκρυψη πλαισίου πράκτορα • Ctrl+Alt+/ για εμφάνιση/απόκρυψη συνεδρίας πράκτορα)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Δεν έχει εγκατασταθεί — επιλέξτε για αυτόματη εγκατάσταση"
+agent.status.not_found: "Δεν βρέθηκε"
+agent.status.detected: "Ανιχνεύθηκε"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Εκκίνηση πράκτορα..."
+connection.reconnecting: "Επανασύνδεση..."

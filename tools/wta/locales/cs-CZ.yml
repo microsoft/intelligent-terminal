@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Obrazovka nastavení ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - název produktu, nepřekládejte
+
 setup.title.first_run: "Vítejte v Intelligent Terminal!"
 setup.title.agent_missing: "Agenta se nepodařilo najít"
 setup.title.agent_error: "Připojení k agentovi se nezdařilo"
 setup.title.switch_agent: "Přepnout agenta"
+setup.title.not_available: "Agent není k dispozici"
+setup.title.sign_in: "Vyžadováno přihlášení"
+
+# %{agent} se za běhu nahradí zobrazovaným názvem agenta.
+# {Locked="Settings"} - odkazuje na stránku Settings, ponechte v angličtině.
+setup.subtitle.copilot_missing: "Váš agent \"%{agent}\" není nainstalován. Postupujte podle níže uvedených kroků a nainstalujte ho. Chcete-li přepnout agenta, přejděte do Settings."
+setup.subtitle.agent_missing: "Váš agent \"%{agent}\" není nainstalován. Přeinstalujte ho ručně a zkuste to znovu. Chcete-li přepnout agenta, přejděte do Settings."
+setup.subtitle.copilot_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Postupujte podle níže uvedených kroků a přihlaste se. Chcete-li přepnout agenta, přejděte do Settings."
+setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Přihlaste se přes CLI agenta a zkuste to znovu. Chcete-li přepnout agenta, přejděte do Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Vyberte výchozí CLI agenta, které chcete používat v Intelligent Terminal. Můžete"
+setup.description.fre_line2: "přejít do Settings a nakonfigurovat svůj pracovní prostor."
+
+setup.option.reinstall: "Přeinstalovat %{agent}"
+setup.option.reinstall_hint: "(Bude nainstalován automaticky)"
+setup.option.signin: "Přihlásit se k %{agent}"
+setup.option.retry_detection: "Opakovat detekci"
+setup.option.retry_auth: "Přihlásil(a) jsem se — opakovat připojení"
+setup.option.retry_connection: "Opakovat připojení"
+setup.status.installing: "Instalace..."
+setup.status.install_failed: "Instalace se nezdařila: "
+setup.status.installing_winget: " Instalace přes winget..."
+
+# ─── Obrazovka ověření ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Je vybrán agent CLI %{agent}"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "Kontrola ověření..."
+auth.waiting: "Čekání na autorizaci..."
+auth.code_copied: "Kód zkopírován do schránky — vložte ho v prohlížeči."
+auth.signin_prompt: "Přihlaste se, abyste mohli používat agenta:"
+auth.connect_agent: "Připojit %{agent} pro povolení funkcí agenta"
+# {Locked="GitHub"} - název značky
+auth.signin_github: "[ Přihlásit se přes GitHub ]"
+auth.signin_agent: "[ Přihlásit se přes %{agent} ]"
+auth.hint: "Stiskněte Enter pro přihlášení, Esc pro návrat"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Přemýšlím…"
+chat.welcome: "Vítejte v Intelligent Terminal!"
+chat.plan_header: "Plán:"
+
+# ─── Nápovědy ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. zobrazit/skrýt panel agenta • Ctrl+Alt+/ zobrazit/skrýt relaci agenta)"
+
+# ─── Popisky stavu agenta ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Nenainstalováno — vyberte pro automatickou instalaci"
+agent.status.not_found: "Nenalezeno"
+agent.status.detected: "Zjištěno"
+
+# ─── Stav připojení ───────────────────────────────────────────────────────────
+
+connection.starting: "Spouštění agenta..."
+connection.reconnecting: "Opětovné připojování..."

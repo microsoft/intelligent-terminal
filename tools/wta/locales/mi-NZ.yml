@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Nāu mai ki Intelligent Terminal!"
 setup.title.agent_missing: "Kāore i kitea te agent"
 setup.title.agent_error: "I rahua te hononga agent"
 setup.title.switch_agent: "Huri agent"
+setup.title.not_available: "Kāore te agent e wātea"
+setup.title.sign_in: "Me takiuru"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Kāore tō agent \"%{agent}\" i tāutahia. Whaia ngā hipanga i raro nei ki te tāuta. Ki te huri agent, haere ki Settings."
+setup.subtitle.agent_missing: "Kāore tō agent \"%{agent}\" i tāutahia. Tāutahia anō ā ringa, kātahi ka ngana anō. Ki te huri agent, haere ki Settings."
+setup.subtitle.copilot_auth: "Me whakamanatū tō agent \"%{agent}\". Whaia ngā hipanga i raro nei ki te takiuru. Ki te huri agent, haere ki Settings."
+setup.subtitle.agent_auth: "Me whakamanatū tō agent \"%{agent}\". Takiuru mā te agent CLI, kātahi ka ngana anō. Ki te huri agent, haere ki Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Kōwhiria te agent CLI taunoa hei whakamahi i roto i Intelligent Terminal. Ka taea e koe te"
+setup.description.fre_line2: "haere ki Settings hei whirihiri me te whakarite i tō wāhi mahi."
+
+setup.option.reinstall: "Tāuta anō i a %{agent}"
+setup.option.reinstall_hint: "(Ka tāutahia aunoa)"
+setup.option.signin: "Takiuru ki %{agent}"
+setup.option.retry_detection: "Ngana anō ki te kimi"
+setup.option.retry_auth: "Kua takiuru ahau — ngana anō ki te hono"
+setup.option.retry_connection: "Ngana anō ki te hono"
+setup.status.installing: "E tāuta ana..."
+setup.status.install_failed: "I rahua te tāuta: "
+setup.status.installing_winget: " E tāuta ana mā winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Kua kōwhiria te agent CLI %{agent}"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "E tiritē ana i te whakamanatū..."
+auth.waiting: "E tatari ana mō te whakamana..."
+auth.code_copied: "Kua tārua te wāehere — whakapiri ki tō tirotiro."
+auth.signin_prompt: "Takiuru ki te whakamahi i tō agent:"
+auth.connect_agent: "Honoa %{agent} ki te whakahohe i ngā āhuatanga agent"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Takiuru mā GitHub ]"
+auth.signin_agent: "[ Takiuru mā %{agent} ]"
+auth.hint: "Pēhi Enter ki te takiuru, Esc ki te hoki"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "E whakaaro ana…"
+chat.welcome: "Nāu mai ki Intelligent Terminal!"
+chat.plan_header: "Mahere:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. ki te whakaatu/huna i te papa agent • Ctrl+Alt+/ ki te whakaatu/huna i te wāhanga agent)"
+
+# ─── Agent status labels ──────────────────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Kāore i tāutahia — kōwhiria ki te tāuta aunoa"
+agent.status.not_found: "Kāore i kitea"
+agent.status.detected: "Kua kitea"
+
+# ─── Connection state ─────────────────────────────────────────────────────────────────────
+
+connection.starting: "E tīmata ana i te agent..."
+connection.reconnecting: "E hono anō ana..."

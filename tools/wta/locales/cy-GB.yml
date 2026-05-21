@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Sgrin gosod ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - enw'r cynnyrch, peidiwch a chyfieithu
+
 setup.title.first_run: "Croeso i Intelligent Terminal!"
 setup.title.agent_missing: "Ni chanfuwyd yr asiant"
 setup.title.agent_error: "Methwyd â chysylltu â'r asiant"
 setup.title.switch_agent: "Newid asiant"
+setup.title.not_available: "Nid yw'r asiant ar gael"
+setup.title.sign_in: "Mae angen mewngofnodi"
+
+# Mae %{agent} yn cael ei ddisodli ag enw arddangos yr asiant ar amser rhedeg.
+# {Locked="Settings"} - yn cyfeirio at y dudalen Settings, cadwch fel y mae.
+setup.subtitle.copilot_missing: "Nid yw eich asiant \"%{agent}\" wedi'i osod. Dilynwch y camau isod i'w osod. I newid asiantau, ewch i Settings."
+setup.subtitle.agent_missing: "Nid yw eich asiant \"%{agent}\" wedi'i osod. Ailosodwch ef â llaw, yna ceisiwch eto. I newid asiantau, ewch i Settings."
+setup.subtitle.copilot_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Dilynwch y camau isod i fewngofnodi. I newid asiantau, ewch i Settings."
+setup.subtitle.agent_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Mewngofnodwch drwy'r CLI asiant, yna ceisiwch eto. I newid asiantau, ewch i Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Dewiswch y CLI asiant rhagosodedig yr hoffech ei ddefnyddio yn Intelligent Terminal. Gallwch"
+setup.description.fre_line2: "lywio i Settings i ffurfweddu a gosod eich gweithle."
+
+setup.option.reinstall: "Ailosod %{agent}"
+setup.option.reinstall_hint: "(Bydd yn cael ei osod yn awtomatig)"
+setup.option.signin: "Mewngofnodi i %{agent}"
+setup.option.retry_detection: "Ailgeisio canfod"
+setup.option.retry_auth: "Rwyf wedi mewngofnodi — ailgeisio cysylltiad"
+setup.option.retry_connection: "Ailgeisio cysylltiad"
+setup.status.installing: "Yn gosod..."
+setup.status.install_failed: "Methodd y gosodiad: "
+setup.status.installing_winget: " Yn gosod drwy winget..."
+
+# ─── Sgrin dilysu ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Mae CLI asiant %{agent} wedi'i ddewis"
+auth.agent_selected_reason: "CLI asiant %{agent} — "
+auth.checking: "Yn gwirio dilysiad..."
+auth.waiting: "Yn aros am awdurdodiad..."
+auth.code_copied: "Cod wedi'i gopïo i'r clipfwrdd — gludiwch ef yn eich porwr."
+auth.signin_prompt: "Mewngofnodwch i ddefnyddio'ch asiant:"
+auth.connect_agent: "Cysylltwch %{agent} i alluogi nodweddion asiant"
+# {Locked="GitHub"} - enw brand
+auth.signin_github: "[ Mewngofnodi gyda GitHub ]"
+auth.signin_agent: "[ Mewngofnodi gyda %{agent} ]"
+auth.hint: "Pwyswch Enter i fewngofnodi, Esc i fynd yn ôl"
+
+# ─── Sgwrs ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Yn meddwl…"
+chat.welcome: "Croeso i Intelligent Terminal!"
+chat.plan_header: "Cynllun:"
+
+# ─── Awgrymiadau ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. i ddangos/cuddio'r paen asiant • Ctrl+Alt+/ i ddangos/cuddio'r sesiwn asiant)"
+
+# ─── Labeli statws asiant ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Heb ei osod — dewiswch i osod yn awtomatig"
+agent.status.not_found: "Heb ei ganfod"
+agent.status.detected: "Canfuwyd"
+
+# ─── Cyflwr cysylltiad ───────────────────────────────────────────────────────
+
+connection.starting: "Yn cychwyn yr asiant..."
+connection.reconnecting: "Yn ailgysylltu..."

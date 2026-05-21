@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Sveiki atvykę į Intelligent Terminal!"
 setup.title.agent_missing: "Agentas nerastas"
 setup.title.agent_error: "Nepavyko prisijungti prie agento"
 setup.title.switch_agent: "Pakeisti agentą"
+setup.title.not_available: "Agentas nepasiekiamas"
+setup.title.sign_in: "Reikia prisijungti"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Norėdami jį įdiegti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Settings."
+setup.subtitle.agent_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Įdiekite jį iš naujo rankiniu būdu, tada bandykite dar kartą. Norėdami pakeisti agentą, eikite į Settings."
+setup.subtitle.copilot_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Norėdami prisijungti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Settings."
+setup.subtitle.agent_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Prisijunkite per agento CLI, tada bandykite dar kartą. Norėdami pakeisti agentą, eikite į Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Pasirinkite numatytąjį agento CLI, kurį norite naudoti Intelligent Terminal. Galite"
+setup.description.fre_line2: "eiti į Settings, kad sukonfigūruotumėte ir nustatytumėte savo darbo sritį."
+
+setup.option.reinstall: "Iš naujo įdiegti %{agent}"
+setup.option.reinstall_hint: "(Bus įdiegta automatiškai)"
+setup.option.signin: "Prisijungti prie %{agent}"
+setup.option.retry_detection: "Bandyti aptikti iš naujo"
+setup.option.retry_auth: "Prisijungiau — bandyti ryšį iš naujo"
+setup.option.retry_connection: "Bandyti ryšį iš naujo"
+setup.status.installing: "Diegiama..."
+setup.status.install_failed: "Diegimas nepavyko: "
+setup.status.installing_winget: " Diegiama per winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Agent CLI %{agent} pasirinktas"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "Tikrinama autentifikacija..."
+auth.waiting: "Laukiama autorizavimo..."
+auth.code_copied: "Kodas nukopijuotas į iškarpinę — įklijuokite jį naršyklėje."
+auth.signin_prompt: "Prisijunkite, kad galėtumėte naudoti savo agentą:"
+auth.connect_agent: "Prijunkite %{agent}, kad įgalintumėte agento funkcijas"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Prisijungti su GitHub ]"
+auth.signin_agent: "[ Prisijungti su %{agent} ]"
+auth.hint: "Paspauskite Enter, kad prisijungtumėte, Esc, kad grįžtumėte atgal"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Mąsto..."
+chat.welcome: "Sveiki atvykę į Intelligent Terminal!"
+chat.plan_header: "Planas:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. rodyti / slėpti agento skydelį • Ctrl+Alt+/ rodyti / slėpti agento seansą)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Neįdiegta — pasirinkite, kad būtų įdiegta automatiškai"
+agent.status.not_found: "Nerasta"
+agent.status.detected: "Aptikta"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Paleidžiamas agentas..."
+connection.reconnecting: "Jungiamasi iš naujo..."

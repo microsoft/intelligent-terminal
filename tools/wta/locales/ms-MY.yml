@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Skrin persediaan ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - nama produk, jangan diterjemahkan
+
 setup.title.first_run: "Selamat datang ke Intelligent Terminal!"
 setup.title.agent_missing: "Ejen tidak ditemui"
 setup.title.agent_error: "Sambungan ejen gagal"
 setup.title.switch_agent: "Tukar ejen"
+setup.title.not_available: "Ejen tidak tersedia"
+setup.title.sign_in: "Log masuk diperlukan"
+
+# %{agent} digantikan dengan nama paparan ejen semasa masa jalan.
+# {Locked="Settings"} - merujuk ke halaman Settings, kekalkan dalam bahasa Inggeris.
+setup.subtitle.copilot_missing: "Ejen \"%{agent}\" anda belum dipasang. Ikuti langkah di bawah untuk memasangnya. Untuk menukar ejen, pergi ke Settings."
+setup.subtitle.agent_missing: "Ejen \"%{agent}\" anda belum dipasang. Sila pasang semula secara manual, kemudian cuba lagi. Untuk menukar ejen, pergi ke Settings."
+setup.subtitle.copilot_auth: "Ejen \"%{agent}\" anda memerlukan pengesahan. Ikuti langkah di bawah untuk log masuk. Untuk menukar ejen, pergi ke Settings."
+setup.subtitle.agent_auth: "Ejen \"%{agent}\" anda memerlukan pengesahan. Sila log masuk melalui CLI ejen, kemudian cuba lagi. Untuk menukar ejen, pergi ke Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Pilih CLI ejen lalai yang ingin anda gunakan dalam Intelligent Terminal. Anda boleh"
+setup.description.fre_line2: "pergi ke Settings untuk mengkonfigurasi dan menyediakan ruang kerja anda."
+
+setup.option.reinstall: "Pasang semula %{agent}"
+setup.option.reinstall_hint: "(Akan dipasang secara automatik)"
+setup.option.signin: "Log masuk ke %{agent}"
+setup.option.retry_detection: "Cuba kesan semula"
+setup.option.retry_auth: "Saya telah log masuk — cuba sambung semula"
+setup.option.retry_connection: "Cuba sambung semula"
+setup.status.installing: "Memasang..."
+setup.status.install_failed: "Pemasangan gagal: "
+setup.status.installing_winget: " Memasang melalui winget..."
+
+# ─── Skrin pengesahan ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "CLI ejen %{agent} dipilih"
+auth.agent_selected_reason: "CLI ejen %{agent} — "
+auth.checking: "Menyemak pengesahan..."
+auth.waiting: "Menunggu kebenaran..."
+auth.code_copied: "Kod disalin ke papan keratan — tampalkan dalam pelayar anda."
+auth.signin_prompt: "Log masuk untuk menggunakan ejen anda:"
+auth.connect_agent: "Sambungkan %{agent} untuk mendayakan ciri ejen"
+# {Locked="GitHub"} - nama jenama
+auth.signin_github: "[ Log masuk dengan GitHub ]"
+auth.signin_agent: "[ Log masuk dengan %{agent} ]"
+auth.hint: "Tekan Enter untuk log masuk, Esc untuk kembali"
+
+# ─── Sembang ────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Sedang berfikir…"
+chat.welcome: "Selamat datang ke Intelligent Terminal!"
+chat.plan_header: "Pelan:"
+
+# ─── Petunjuk ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. untuk tunjuk/sembunyikan anak tetingkap ejen • Ctrl+Alt+/ untuk tunjuk/sembunyikan sesi ejen)"
+
+# ─── Label status ejen ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Belum dipasang — pilih untuk memasang secara automatik"
+agent.status.not_found: "Tidak ditemui"
+agent.status.detected: "Dikesan"
+
+# ─── Status sambungan ───────────────────────────────────────────────────────────
+
+connection.starting: "Memulakan ejen..."
+connection.reconnecting: "Menyambung semula..."

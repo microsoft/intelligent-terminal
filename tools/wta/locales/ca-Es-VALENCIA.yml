@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Pantalla de configuració ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - nom del producte, no traduïu
+
 setup.title.first_run: "Vos donem la benvinguda a l'Intelligent Terminal!"
 setup.title.agent_missing: "No s'ha trobat l'agent"
 setup.title.agent_error: "No s'ha pogut connectar amb l'agent"
 setup.title.switch_agent: "Canvia d'agent"
+setup.title.not_available: "L'agent no està disponible"
+setup.title.sign_in: "Cal iniciar la sessió"
+
+# %{agent} se substituïx pel nom de visualització de l'agent en temps d'execució.
+# {Locked="Settings"} - fa referència a la pàgina Settings, manteniu-ho tal com està.
+setup.subtitle.copilot_missing: "El vostre agent \"%{agent}\" no està instal·lat. Seguiu els passos de baix per a instal·lar-lo. Per a canviar d'agent, aneu a Settings."
+setup.subtitle.agent_missing: "El vostre agent \"%{agent}\" no està instal·lat. Reinstal·leu-lo manualment i torneu a provar. Per a canviar d'agent, aneu a Settings."
+setup.subtitle.copilot_auth: "El vostre agent \"%{agent}\" requerix autenticació. Seguiu els passos de baix per a iniciar la sessió. Per a canviar d'agent, aneu a Settings."
+setup.subtitle.agent_auth: "El vostre agent \"%{agent}\" requerix autenticació. Inicieu la sessió per mitjà del CLI de l'agent i torneu a provar. Per a canviar d'agent, aneu a Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Trieu el CLI d'agent predeterminat que voleu utilitzar en Intelligent Terminal. Podeu"
+setup.description.fre_line2: "anar a Settings per a configurar el vostre espai de treball."
+
+setup.option.reinstall: "Reinstal·la %{agent}"
+setup.option.reinstall_hint: "(S'instal·larà automàticament)"
+setup.option.signin: "Inicia la sessió en %{agent}"
+setup.option.retry_detection: "Torna a provar la detecció"
+setup.option.retry_auth: "He iniciat la sessió — torna a provar la connexió"
+setup.option.retry_connection: "Torna a provar la connexió"
+setup.status.installing: "S'està instal·lant..."
+setup.status.install_failed: "Error en la instal·lació: "
+setup.status.installing_winget: " S'està instal·lant per mitjà de winget..."
+
+# ─── Pantalla d'autenticació ─────────────────────────────────────────────────
+
+auth.agent_selected: "S'ha seleccionat el CLI d'agent %{agent}"
+auth.agent_selected_reason: "CLI d'agent %{agent} — "
+auth.checking: "S'està comprovant l'autenticació..."
+auth.waiting: "S'està esperant l'autorització..."
+auth.code_copied: "Codi copiat al porta-retalls — enganxeu-lo al navegador."
+auth.signin_prompt: "Inicieu la sessió per a utilitzar el vostre agent:"
+auth.connect_agent: "Connecteu %{agent} per a habilitar les funcions d'agent"
+# {Locked="GitHub"} - nom de marca
+auth.signin_github: "[ Inicia la sessió amb GitHub ]"
+auth.signin_agent: "[ Inicia la sessió amb %{agent} ]"
+auth.hint: "Premeu Retorn per a iniciar la sessió, Esc per a tornar arrere"
+
+# ─── Xat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Pensant…"
+chat.welcome: "Vos donem la benvinguda a l'Intelligent Terminal!"
+chat.plan_header: "Pla:"
+
+# ─── Consells ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. per a mostrar/amagar el panell d'agent • Ctrl+Alt+/ per a mostrar/amagar la sessió d'agent)"
+
+# ─── Etiquetes d'estat de l'agent ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "No instal·lat — seleccioneu per a instal·lar automàticament"
+agent.status.not_found: "No s'ha trobat"
+agent.status.detected: "Detectat"
+
+# ─── Estat de la connexió ───────────────────────────────────────────────────────
+
+connection.starting: "S'està iniciant l'agent..."
+connection.reconnecting: "S'està reconnectant..."

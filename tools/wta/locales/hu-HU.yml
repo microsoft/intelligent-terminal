@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Beállítási képernyő ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - terméknév, ne fordítsa le
+
 setup.title.first_run: "Üdvözli az Intelligent Terminal!"
 setup.title.agent_missing: "Az ügynök nem található"
 setup.title.agent_error: "Az ügynökhöz való kapcsolódás sikertelen"
 setup.title.switch_agent: "Ügynök váltása"
+setup.title.not_available: "Az ügynök nem érhető el"
+setup.title.sign_in: "Bejelentkezés szükséges"
+
+# A %{agent} futásidőben az ügynök megjelenítési nevére cserélődik.
+# {Locked="Settings"} - a Settings oldalra utal, tartsa meg angolul.
+setup.subtitle.copilot_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Kövesse az alábbi lépéseket a telepítéshez. Az ügynök váltásához lépjen a Settings oldalra."
+setup.subtitle.agent_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Telepítse újra manuálisan, majd próbálja újra. Az ügynök váltásához lépjen a Settings oldalra."
+setup.subtitle.copilot_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Kövesse az alábbi lépéseket a bejelentkezéshez. Az ügynök váltásához lépjen a Settings oldalra."
+setup.subtitle.agent_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Jelentkezzen be az ügynök CLI-n keresztül, majd próbálja újra. Az ügynök váltásához lépjen a Settings oldalra."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Válassza ki az Intelligent Terminal alkalmazásban használni kívánt alapértelmezett ügynök CLI-t. A"
+setup.description.fre_line2: "Settings oldalon konfigurálhatja és beállíthatja a munkaterületét."
+
+setup.option.reinstall: "%{agent} újratelepítése"
+setup.option.reinstall_hint: "(Automatikusan telepítve lesz)"
+setup.option.signin: "Bejelentkezés a következőbe: %{agent}"
+setup.option.retry_detection: "Észlelés újrapróbálása"
+setup.option.retry_auth: "Bejelentkeztem — kapcsolódás újrapróbálása"
+setup.option.retry_connection: "Kapcsolódás újrapróbálása"
+setup.status.installing: "Telepítés..."
+setup.status.install_failed: "A telepítés sikertelen: "
+setup.status.installing_winget: " Telepítés a winget segítségével..."
+
+# ─── Hitelesítési képernyő ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "A(z) %{agent} ügynök CLI ki van választva"
+auth.agent_selected_reason: "Ügynök CLI %{agent} — "
+auth.checking: "Hitelesítés ellenőrzése..."
+auth.waiting: "Várakozás az engedélyezésre..."
+auth.code_copied: "A kód a vágólapra másolva — illessze be a böngészőben."
+auth.signin_prompt: "Jelentkezzen be az ügynök használatához:"
+auth.connect_agent: "Csatlakoztassa a(z) %{agent} ügynököt az ügynökfunkciók engedélyezéséhez"
+# {Locked="GitHub"} - márkanév
+auth.signin_github: "[ Bejelentkezés GitHub fiókkal ]"
+auth.signin_agent: "[ Bejelentkezés a következővel: %{agent} ]"
+auth.hint: "Nyomja meg az Entert a bejelentkezéshez, az Esc-et a visszalépéshez"
+
+# ─── Csevegés ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Gondolkodás…"
+chat.welcome: "Üdvözli az Intelligent Terminal!"
+chat.plan_header: "Terv:"
+
+# ─── Tippek ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. ügynökpanel megjelenítése/elrejtése • Ctrl+Alt+/ ügynökmunkamenet megjelenítése/elrejtése)"
+
+# ─── Ügynökállapot-címkék ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Nincs telepítve — válassza ki az automatikus telepítéshez"
+agent.status.not_found: "Nem található"
+agent.status.detected: "Észlelve"
+
+# ─── Kapcsolat állapota ───────────────────────────────────────────────────────────
+
+connection.starting: "Ügynök indítása..."
+connection.reconnecting: "Újrakapcsolódás..."

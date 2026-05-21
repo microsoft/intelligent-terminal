@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Välkommen till Intelligent Terminal!"
 setup.title.agent_missing: "Agenten hittades inte"
 setup.title.agent_error: "Anslutningen till agenten misslyckades"
 setup.title.switch_agent: "Byt agent"
+setup.title.not_available: "Agenten är inte tillgänglig"
+setup.title.sign_in: "Inloggning krävs"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Din agent \"%{agent}\" är inte installerad. Följ stegen nedan för att installera den. Om du vill byta agent, gå till Settings."
+setup.subtitle.agent_missing: "Din agent \"%{agent}\" är inte installerad. Installera om den manuellt och försök sedan igen. Om du vill byta agent, gå till Settings."
+setup.subtitle.copilot_auth: "Din agent \"%{agent}\" kräver autentisering. Följ stegen nedan för att logga in. Om du vill byta agent, gå till Settings."
+setup.subtitle.agent_auth: "Din agent \"%{agent}\" kräver autentisering. Logga in via agentens CLI och försök sedan igen. Om du vill byta agent, gå till Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Välj den standardagent-CLI du vill använda i Intelligent Terminal. Du kan"
+setup.description.fre_line2: "gå till Settings för att konfigurera och ställa in din arbetsyta."
+
+setup.option.reinstall: "Installera om %{agent}"
+setup.option.reinstall_hint: "(Installeras automatiskt)"
+setup.option.signin: "Logga in på %{agent}"
+setup.option.retry_detection: "Försök identifiera igen"
+setup.option.retry_auth: "Jag har loggat in — försök ansluta igen"
+setup.option.retry_connection: "Försök ansluta igen"
+setup.status.installing: "Installerar..."
+setup.status.install_failed: "Installationen misslyckades: "
+setup.status.installing_winget: " Installerar via winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Agent CLI %{agent} är vald"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "Kontrollerar autentisering..."
+auth.waiting: "Väntar på auktorisering..."
+auth.code_copied: "Koden har kopierats till urklipp — klistra in den i webbläsaren."
+auth.signin_prompt: "Logga in för att använda din agent:"
+auth.connect_agent: "Anslut %{agent} för att aktivera agentfunktioner"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Logga in med GitHub ]"
+auth.signin_agent: "[ Logga in med %{agent} ]"
+auth.hint: "Tryck Enter för att logga in, Esc för att gå tillbaka"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Tänker..."
+chat.welcome: "Välkommen till Intelligent Terminal!"
+chat.plan_header: "Plan:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. för att visa/dölja agentpanelen • Ctrl+Alt+/ för att visa/dölja agentsessionen)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Inte installerad — välj för att installera automatiskt"
+agent.status.not_found: "Hittades inte"
+agent.status.detected: "Identifierad"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Startar agenten..."
+connection.reconnecting: "Återansluter..."

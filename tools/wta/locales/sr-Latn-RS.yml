@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Dobrodošli u Intelligent Terminal!"
 setup.title.agent_missing: "Agent nije pronađen"
 setup.title.agent_error: "Povezivanje sa agentom nije uspelo"
 setup.title.switch_agent: "Promeni agenta"
+setup.title.not_available: "Agent nije dostupan"
+setup.title.sign_in: "Potrebna je prijava"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Vaš agent \"%{agent}\" nije instaliran. Pratite korake ispod da biste ga instalirali. Za promenu agenta idite u Settings."
+setup.subtitle.agent_missing: "Vaš agent \"%{agent}\" nije instaliran. Ponovo ga ručno instalirajte, pa pokušajte ponovo. Za promenu agenta idite u Settings."
+setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Pratite korake ispod da biste se prijavili. Za promenu agenta idite u Settings."
+setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Prijavite se preko CLI agenta, pa pokušajte ponovo. Za promenu agenta idite u Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Izaberite podrazumevani CLI agent koji želite da koristite u Intelligent Terminal. Možete"
+setup.description.fre_line2: "otići u Settings da konfigurišete i podesite svoj radni prostor."
+
+setup.option.reinstall: "Ponovo instaliraj %{agent}"
+setup.option.reinstall_hint: "(Biće instalirano automatski)"
+setup.option.signin: "Prijavi se u %{agent}"
+setup.option.retry_detection: "Ponovo pokušaj otkrivanje"
+setup.option.retry_auth: "Prijavio/la sam se — pokušaj ponovo povezivanje"
+setup.option.retry_connection: "Ponovo pokušaj povezivanje"
+setup.status.installing: "Instaliranje..."
+setup.status.install_failed: "Instalacija nije uspela: "
+setup.status.installing_winget: " Instaliranje preko winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "CLI agent %{agent} je izabran"
+auth.agent_selected_reason: "CLI agent %{agent} — "
+auth.checking: "Provera autentifikacije..."
+auth.waiting: "Čekanje na autorizaciju..."
+auth.code_copied: "Kod je kopiran u međuspremnik — nalepite ga u pregledač."
+auth.signin_prompt: "Prijavite se da biste koristili svog agenta:"
+auth.connect_agent: "Povežite %{agent} da biste omogućili funkcije agenta"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Prijavi se preko GitHub ]"
+auth.signin_agent: "[ Prijavi se preko %{agent} ]"
+auth.hint: "Pritisnite Enter za prijavu, Esc za povratak"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Razmišljam…"
+chat.welcome: "Dobrodošli u Intelligent Terminal!"
+chat.plan_header: "Plan:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. za prikaz/skrivanje panela agenta • Ctrl+Alt+/ za prikaz/skrivanje sesije agenta)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Nije instaliran — izaberite za automatsku instalaciju"
+agent.status.not_found: "Nije pronađen"
+agent.status.detected: "Otkriven"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Pokretanje agenta..."
+connection.reconnecting: "Ponovno povezivanje..."

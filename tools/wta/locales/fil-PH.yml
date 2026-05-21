@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Screen ng pag-setup ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - pangalan ng produkto, huwag isalin
+
 setup.title.first_run: "Maligayang pagdating sa Intelligent Terminal!"
 setup.title.agent_missing: "Hindi nahanap ang agent"
 setup.title.agent_error: "Nabigo ang koneksyon sa agent"
 setup.title.switch_agent: "Palitan ang agent"
+setup.title.not_available: "Hindi available ang agent"
+setup.title.sign_in: "Kailangang mag-sign in"
+
+# %{agent} ay pinapalitan ng display name ng agent sa runtime.
+# {Locked="Settings"} - tumutukoy sa Settings page, panatilihing Ingles.
+setup.subtitle.copilot_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-install. Sundin ang mga hakbang sa ibaba para i-install ito. Para magpalit ng agent, pumunta sa Settings."
+setup.subtitle.agent_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-install. Mangyaring i-reinstall nang manu-mano, pagkatapos ay subukang muli. Para magpalit ng agent, pumunta sa Settings."
+setup.subtitle.copilot_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Sundin ang mga hakbang sa ibaba para mag-sign in. Para magpalit ng agent, pumunta sa Settings."
+setup.subtitle.agent_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Mangyaring mag-sign in sa pamamagitan ng agent CLI, pagkatapos ay subukang muli. Para magpalit ng agent, pumunta sa Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Pumili ng default na agent CLI na gusto mong gamitin sa Intelligent Terminal. Maaari kang"
+setup.description.fre_line2: "pumunta sa Settings para i-configure at i-set up ang iyong workspace."
+
+setup.option.reinstall: "I-reinstall ang %{agent}"
+setup.option.reinstall_hint: "(Awtomatikong mai-install)"
+setup.option.signin: "Mag-sign in sa %{agent}"
+setup.option.retry_detection: "Subukang muli ang detection"
+setup.option.retry_auth: "Naka-sign in na ako — subukang muli ang koneksyon"
+setup.option.retry_connection: "Subukang muli ang koneksyon"
+setup.status.installing: "Ini-install..."
+setup.status.install_failed: "Nabigo ang pag-install: "
+setup.status.installing_winget: " Ini-install sa pamamagitan ng winget..."
+
+# ─── Screen ng authentication ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Napili ang agent CLI %{agent}"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "Sinusuri ang authentication..."
+auth.waiting: "Naghihintay ng authorization..."
+auth.code_copied: "Nakopya ang code sa clipboard — i-paste ito sa iyong browser."
+auth.signin_prompt: "Mag-sign in para magamit ang iyong agent:"
+auth.connect_agent: "Ikonekta ang %{agent} para paganahin ang mga feature ng agent"
+# {Locked="GitHub"} - pangalan ng brand
+auth.signin_github: "[ Mag-sign in gamit ang GitHub ]"
+auth.signin_agent: "[ Mag-sign in gamit ang %{agent} ]"
+auth.hint: "Pindutin ang Enter para mag-sign in, Esc para bumalik"
+
+# ─── Chat ────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Nag-iisip…"
+chat.welcome: "Maligayang pagdating sa Intelligent Terminal!"
+chat.plan_header: "Plano:"
+
+# ─── Mga hint ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. para ipakita/itago ang agent pane • Ctrl+Alt+/ para ipakita/itago ang agent session)"
+
+# ─── Mga label ng status ng agent ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Hindi pa naka-install — piliin para awtomatikong mai-install"
+agent.status.not_found: "Hindi nahanap"
+agent.status.detected: "Na-detect"
+
+# ─── Status ng koneksyon ───────────────────────────────────────────────────────────
+
+connection.starting: "Sinisimulan ang agent..."
+connection.reconnecting: "Kumokonekta muli..."

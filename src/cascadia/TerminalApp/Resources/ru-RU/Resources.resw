@@ -1014,67 +1014,125 @@
     <value>Не удалось найти ни одного ИИ-агента. Установите CLI-агент (например, copilot, gemini) и убедитесь, что он доступен через PATH, либо настройте его в разделе Параметры &gt; Агенты.</value>
     <comment>{Locked="CLI","PATH","copilot","gemini"}</comment>
   </data>
-  <data name="FreOverlay_Title" xml:space="preserve">
-    <value>Новое в Интеллектуальном Терминале</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>Добро пожаловать в Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_Card1Title" xml:space="preserve">
-    <value>Добро пожаловать в Интеллектуальный Терминал</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>Настройте встроенного помощника, чтобы он помогал вам объяснять ошибки, составлять команды и решать задачи прямо во время работы. </value>
   </data>
-  <data name="FreOverlay_Card1Description" xml:space="preserve">
-    <value>Настройте встроенного ИИ-агента, чтобы он помогал вам прямо во время работы</value>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>Узнать больше об Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_Card2Title" xml:space="preserve">
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>Не выходите из потока с встроенным ИИ-агентом</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>Ваш агент следит за происходящим в терминале и помогает понять и исправить ошибки по мере их появления.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>Продолжайте с того места, где остановились</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>Отслеживайте активные и прошлые сеансы агентов и возвращайтесь к работе за считанные секунды. Просматривайте текущие задачи или возвращайтесь к предыдущим, не теряя своего места.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>Далее</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>Добро пожаловать в Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>Выберите, что настроить сейчас. Вы можете изменить это в любое время в разделе </value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>Параметры</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>Агент</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>Выберите CLI агента, используемый в панели агента. Любой совместимый ACP CLI будет обнаружен автоматически.</value>
+    <comment>{Locked="CLI","ACP"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ Этот агент требует Node.js и NPX, которые будут установлены автоматически, если ещё не установлены.</value>
+    <comment>{Locked="Node.js","NPX"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>Автоматическое обнаружение ошибок</value>
   </data>
-  <data name="FreOverlay_Card2Description" xml:space="preserve">
-    <value>Панель агента всегда знает контекст и готова к работе с вашим любимым CLI-агентом</value>
-    <comment>{Locked="CLI"}</comment>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>Разрешите Intelligent Terminal доступ к вашей оболочке для автоматического обнаружения ошибок.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_Card3Title" xml:space="preserve">
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Управление сеансами</value>
   </data>
-  <data name="FreOverlay_Card3Description" xml:space="preserve">
-    <value>Управление сеансами помогает отслеживать агентов и быстро возвращаться к предыдущим сеансам</value>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>Разрешите Intelligent Terminal отслеживать состояние ваших запущенных или активных агентов.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_Card4Title" xml:space="preserve">
-    <value>Быстрые команды агента</value>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ Включение этой функции установит интеграционные хуки для отслеживания сеансов во всех ваших CLI агентов.</value>
+    <comment>{Locked="CLI"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_Card4Description" xml:space="preserve">
-    <value>Из палитры команд можно запускать фоновые вкладки</value>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>Положение панели</value>
   </data>
-  <data name="FreOverlay_DetailTitle" xml:space="preserve">
-    <value>Добро пожаловать в Интеллектуальный Терминал</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>Где панель агента открывается относительно вашего терминала.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_DetailDescription" xml:space="preserve">
-    <value>Настройте встроенного ИИ-агента, чтобы он помогал объяснять ошибки, составлять команды и решать задачи прямо во время работы.</value>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>Сохранить</value>
   </data>
-  <data name="FreOverlay_Detail2Title" xml:space="preserve">
-    <value>Автоматическое обнаружение ошибок</value>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (будет установлен)</value>
   </data>
-  <data name="FreOverlay_Detail2Description" xml:space="preserve">
-    <value>Панель агента всегда знает контекст и готова к работе с вашим любимым CLI-агентом.</value>
-    <comment>{Locked="CLI"}</comment>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (установлен)</value>
   </data>
-  <data name="FreOverlay_Detail3Title" xml:space="preserve">
-    <value>Управление сеансами</value>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>Снизу</value>
   </data>
-  <data name="FreOverlay_Detail3Description" xml:space="preserve">
-    <value>Управление сеансами помогает отслеживать агентов и быстро возвращаться к предыдущим сеансам.</value>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>Справа</value>
   </data>
-  <data name="FreOverlay_Detail4Title" xml:space="preserve">
-    <value>Быстрые команды агента</value>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>Слева</value>
   </data>
-  <data name="FreOverlay_Detail4Description" xml:space="preserve">
-    <value>Используйте палитру команд, чтобы быстро запускать задачи с помощью агента из любой точки терминала.</value>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>Сверху</value>
   </data>
-  <data name="FreOverlay_DetailLink" xml:space="preserve">
-    <value>Узнайте больше об Интеллектуальном Терминале.</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>Настройка...</value>
   </data>
-  <data name="FreOverlay_NextButton" xml:space="preserve">
-    <value>Начать знакомство</value>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ Не удалось установить GitHub Copilot. Проверьте подключение к сети и попробуйте снова.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Не удалось установить Node.js. Проверьте подключение к сети и попробуйте снова.</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>Вкл</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>Выкл</value>
   </data>
 </root>

@@ -1,5 +1,66 @@
-# Setup screen titles
-setup.title.first_run: "ఇంటెలిజెంట్ టెర్మినల్‌కు స్వాగతం!"
+# ─── సెటప్ స్క్రీన్ ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - ఉత్పత్తి పేరు, అనువదించవద్దు
+
+setup.title.first_run: "Intelligent Terminal-కు స్వాగతం!"
 setup.title.agent_missing: "ఏజెంట్ కనుగొనబడలేదు"
 setup.title.agent_error: "ఏజెంట్ కనెక్షన్ విఫలమైంది"
 setup.title.switch_agent: "ఏజెంట్‌ను మార్చండి"
+setup.title.not_available: "ఏజెంట్ అందుబాటులో లేదు"
+setup.title.sign_in: "సైన్ ఇన్ అవసరం"
+
+# %{agent} రన్‌టైమ్‌లో ఏజెంట్ ప్రదర్శన పేరుతో భర్తీ చేయబడుతుంది.
+# {Locked="Settings"} - Settings పేజీని సూచిస్తుంది.
+setup.subtitle.copilot_missing: "మీ ఏజెంట్ \"%{agent}\" ఇన్‌స్టాల్ చేయబడలేదు. ఇన్‌స్టాల్ చేయడానికి దిగువ దశలను అనుసరించండి. ఏజెంట్‌ను మార్చడానికి Settings కు వెళ్ళండి."
+setup.subtitle.agent_missing: "మీ ఏజెంట్ \"%{agent}\" ఇన్‌స్టాల్ చేయబడలేదు. దయచేసి మాన్యువల్‌గా మళ్ళీ ఇన్‌స్టాల్ చేసి, మళ్ళీ ప్రయత్నించండి. ఏజెంట్‌ను మార్చడానికి Settings కు వెళ్ళండి."
+setup.subtitle.copilot_auth: "మీ ఏజెంట్ \"%{agent}\" కు ప్రమాణీకరణ అవసరం. సైన్ ఇన్ చేయడానికి దిగువ దశలను అనుసరించండి. ఏజెంట్‌ను మార్చడానికి Settings కు వెళ్ళండి."
+setup.subtitle.agent_auth: "మీ ఏజెంట్ \"%{agent}\" కు ప్రమాణీకరణ అవసరం. దయచేసి ఏజెంట్ CLI ద్వారా సైన్ ఇన్ చేసి, మళ్ళీ ప్రయత్నించండి. ఏజెంట్‌ను మార్చడానికి Settings కు వెళ్ళండి."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal లో ఉపయోగించడానికి డిఫాల్ట్ ఏజెంట్ CLI ని ఎంచుకోండి. మీరు"
+setup.description.fre_line2: "మీ వర్క్‌స్పేస్‌ను కాన్ఫిగర్ చేసి సెటప్ చేయడానికి Settings కు నావిగేట్ చేయవచ్చు."
+
+setup.option.reinstall: "%{agent} మళ్ళీ ఇన్‌స్టాల్ చేయండి"
+setup.option.reinstall_hint: "(ఆటోమేటిక్‌గా ఇన్‌స్టాల్ చేయబడుతుంది)"
+setup.option.signin: "%{agent} లో సైన్ ఇన్ చేయండి"
+setup.option.retry_detection: "గుర్తింపును మళ్ళీ ప్రయత్నించండి"
+setup.option.retry_auth: "నేను సైన్ ఇన్ చేసాను — కనెక్షన్ మళ్ళీ ప్రయత్నించండి"
+setup.option.retry_connection: "కనెక్షన్ మళ్ళీ ప్రయత్నించండి"
+setup.status.installing: "ఇన్‌స్టాల్ అవుతోంది..."
+setup.status.install_failed: "ఇన్‌స్టాల్ విఫలమైంది: "
+setup.status.installing_winget: " winget ద్వారా ఇన్‌స్టాల్ అవుతోంది..."
+
+# ─── ప్రమాణీకరణ స్క్రీన్ ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "ఏజెంట్ CLI %{agent} ఎంపిక చేయబడింది"
+auth.agent_selected_reason: "ఏజెంట్ CLI %{agent} — "
+auth.checking: "ప్రమాణీకరణ తనిఖీ చేయబడుతోంది..."
+auth.waiting: "అధికారం కోసం వేచి ఉంది..."
+auth.code_copied: "కోడ్ క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది — మీ బ్రౌజర్‌లో పేస్ట్ చేయండి."
+auth.signin_prompt: "మీ ఏజెంట్‌ను ఉపయోగించడానికి సైన్ ఇన్ చేయండి:"
+auth.connect_agent: "ఏజెంట్ ఫీచర్లను ఎనేబుల్ చేయడానికి %{agent} ను కనెక్ట్ చేయండి"
+# {Locked="GitHub"} - బ్రాండ్ పేరు
+auth.signin_github: "[ GitHub తో సైన్ ఇన్ చేయండి ]"
+auth.signin_agent: "[ %{agent} తో సైన్ ఇన్ చేయండి ]"
+auth.hint: "సైన్ ఇన్ చేయడానికి Enter నొక్కండి, వెనుకకు వెళ్ళడానికి Esc నొక్కండి"
+
+# ─── చాట్ ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "ఆలోచిస్తోంది…"
+chat.welcome: "Intelligent Terminal-కు స్వాగతం!"
+chat.plan_header: "ప్లాన్:"
+
+# ─── సూచనలు ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. ఏజెంట్ పేన్ చూపించు/దాచు • Ctrl+Alt+/ ఏజెంట్ సెషన్ చూపించు/దాచు)"
+
+# ─── ఏజెంట్ స్థితి లేబుల్‌లు ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "ఇన్‌స్టాల్ చేయబడలేదు — ఆటోమేటిక్‌గా ఇన్‌స్టాల్ చేయడానికి ఎంచుకోండి"
+agent.status.not_found: "కనుగొనబడలేదు"
+agent.status.detected: "గుర్తించబడింది"
+
+# ─── కనెక్షన్ స్థితి ───────────────────────────────────────────────────────────
+
+connection.starting: "ఏజెంట్ ప్రారంభమవుతోంది..."
+connection.reconnecting: "మళ్ళీ కనెక్ట్ అవుతోంది..."

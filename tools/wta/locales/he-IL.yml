@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── מסך הגדרה ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - שם המוצר, אין לתרגם
+
 setup.title.first_run: "ברוכים הבאים ל-Intelligent Terminal!"
 setup.title.agent_missing: "הסוכן לא נמצא"
 setup.title.agent_error: "החיבור לסוכן נכשל"
 setup.title.switch_agent: "החלף סוכן"
+setup.title.not_available: "הסוכן אינו זמין"
+setup.title.sign_in: "נדרשת כניסה"
+
+# %{agent} מוחלף בשם התצוגה של הסוכן בזמן ריצה.
+# {Locked="Settings"} - מתייחס לדף Settings.
+setup.subtitle.copilot_missing: "הסוכן \"%{agent}\" אינו מותקן. בצע את השלבים שלהלן כדי להתקין אותו. כדי להחליף סוכנים, עבור אל Settings."
+setup.subtitle.agent_missing: "הסוכן \"%{agent}\" אינו מותקן. התקן אותו מחדש באופן ידני ולאחר מכן נסה שוב. כדי להחליף סוכנים, עבור אל Settings."
+setup.subtitle.copilot_auth: "הסוכן \"%{agent}\" דורש אימות. בצע את השלבים שלהלן כדי להיכנס. כדי להחליף סוכנים, עבור אל Settings."
+setup.subtitle.agent_auth: "הסוכן \"%{agent}\" דורש אימות. היכנס דרך CLI של הסוכן ולאחר מכן נסה שוב. כדי להחליף סוכנים, עבור אל Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "בחר את CLI הסוכן שברצונך להשתמש בו כברירת מחדל ב-Intelligent Terminal. ניתן"
+setup.description.fre_line2: "לנווט אל Settings כדי להגדיר את סביבת העבודה שלך."
+
+setup.option.reinstall: "התקן מחדש את %{agent}"
+setup.option.reinstall_hint: "(יותקן באופן אוטומטי)"
+setup.option.signin: "היכנס אל %{agent}"
+setup.option.retry_detection: "נסה שוב לזהות"
+setup.option.retry_auth: "נכנסתי — נסה שוב להתחבר"
+setup.option.retry_connection: "נסה שוב להתחבר"
+setup.status.installing: "מתקין..."
+setup.status.install_failed: "ההתקנה נכשלה: "
+setup.status.installing_winget: " מתקין באמצעות winget..."
+
+# ─── מסך אימות ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "CLI הסוכן %{agent} נבחר"
+auth.agent_selected_reason: "CLI הסוכן %{agent} — "
+auth.checking: "בודק אימות..."
+auth.waiting: "ממתין לאישור..."
+auth.code_copied: "הקוד הועתק ללוח — הדבק אותו בדפדפן."
+auth.signin_prompt: "היכנס כדי להשתמש בסוכן שלך:"
+auth.connect_agent: "חבר את %{agent} כדי לאפשר תכונות סוכן"
+# {Locked="GitHub"} - שם מותג
+auth.signin_github: "[ היכנס באמצעות GitHub ]"
+auth.signin_agent: "[ היכנס באמצעות %{agent} ]"
+auth.hint: "לחץ Enter כדי להיכנס, Esc כדי לחזור"
+
+# ─── צ'אט ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "חושב…"
+chat.welcome: "ברוכים הבאים ל-Intelligent Terminal!"
+chat.plan_header: "תוכנית:"
+
+# ─── רמזים ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. להצגה/הסתרה של חלונית הסוכן • Ctrl+Alt+/ להצגה/הסתרה של הפעלת הסוכן)"
+
+# ─── תוויות מצב סוכן ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "לא מותקן — בחר להתקנה אוטומטית"
+agent.status.not_found: "לא נמצא"
+agent.status.detected: "זוהה"
+
+# ─── מצב חיבור ───────────────────────────────────────────────────────────
+
+connection.starting: "מפעיל את הסוכן..."
+connection.reconnecting: "מתחבר מחדש..."

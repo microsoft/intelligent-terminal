@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Skrin tas-setup ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - isem il-prodott, tittradux
+
 setup.title.first_run: "Merħba fl-Intelligent Terminal!"
 setup.title.agent_missing: "L-aġent ma nstabx"
 setup.title.agent_error: "Il-konnessjoni mal-aġent falliet"
 setup.title.switch_agent: "Ibdel l-aġent"
+setup.title.not_available: "L-aġent mhuwiex disponibbli"
+setup.title.sign_in: "Hemm bżonn li tidħol"
+
+# %{agent} jiġi sostitwit bl-isem tal-aġent waqt l-eżekuzzjoni.
+# {Locked="Settings"} - jirreferi għall-paġna Settings, żommu kif inhu.
+setup.subtitle.copilot_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Segwi l-passi t'hawn taħt biex tinstallaw. Biex tibdel l-aġenti, mur għal Settings."
+setup.subtitle.agent_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Erġa' installah manwalment, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Settings."
+setup.subtitle.copilot_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Segwi l-passi t'hawn taħt biex tidħol. Biex tibdel l-aġenti, mur għal Settings."
+setup.subtitle.agent_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Idħol permezz tal-CLI tal-aġent, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Agħżel il-CLI tal-aġent awtomatiku li tixtieq tuża fl-Intelligent Terminal. Tista'"
+setup.description.fre_line2: "tmur għal Settings biex tikkonfigura u twaqqaf l-ispazju tax-xogħol tiegħek."
+
+setup.option.reinstall: "Erġa' installa %{agent}"
+setup.option.reinstall_hint: "(Se jiġi installat awtomatikament)"
+setup.option.signin: "Idħol f'%{agent}"
+setup.option.retry_detection: "Erġa' pprova d-detezzjoni"
+setup.option.retry_auth: "Dħalt — erġa' pprova l-konnessjoni"
+setup.option.retry_connection: "Erġa' pprova l-konnessjoni"
+setup.status.installing: "Qed jiġi installat..."
+setup.status.install_failed: "L-installazzjoni falliet: "
+setup.status.installing_winget: " Qed jiġi installat permezz ta' winget..."
+
+# ─── Skrin tal-awtentikazzjoni ─────────────────────────────────────────────────
+
+auth.agent_selected: "CLI tal-aġent %{agent} magħżul"
+auth.agent_selected_reason: "CLI tal-aġent %{agent} — "
+auth.checking: "Qed tiġi vverifikata l-awtentikazzjoni..."
+auth.waiting: "Qed jistenna l-awtorizzazzjoni..."
+auth.code_copied: "Il-kodiċi ġie kkupjat fil-clipboard — waħħlu fil-browser tiegħek."
+auth.signin_prompt: "Idħol biex tuża l-aġent tiegħek:"
+auth.connect_agent: "Qabbad %{agent} biex tattiva l-karatteristiċi tal-aġent"
+# {Locked="GitHub"} - isem il-marka
+auth.signin_github: "[ Idħol b'GitHub ]"
+auth.signin_agent: "[ Idħol b'%{agent} ]"
+auth.hint: "Agħfas Enter biex tidħol, Esc biex tmur lura"
+
+# ─── Ċatt ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Qed jaħseb…"
+chat.welcome: "Merħba fl-Intelligent Terminal!"
+chat.plan_header: "Pjan:"
+
+# ─── Suġġerimenti ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. biex turi/taħbi l-pannell tal-aġent • Ctrl+Alt+/ biex turi/taħbi s-sessjoni tal-aġent)"
+
+# ─── Tikketti tal-istatus tal-aġent ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Mhux installat — agħżel biex tinstalla awtomatikament"
+agent.status.not_found: "Ma nstabx"
+agent.status.detected: "Misjub"
+
+# ─── Stat tal-konnessjoni ───────────────────────────────────────────────────────
+
+connection.starting: "L-aġent qed jibda..."
+connection.reconnecting: "Qed jerġa' jikkonnettja..."

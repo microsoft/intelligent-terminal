@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Sgrìn stèidheachaidh ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - ainm an toraidh, na eadar-theangaich
+
 setup.title.first_run: "Fàilte gu Intelligent Terminal!"
 setup.title.agent_missing: "Cha deach an neach-gníomha a lorg"
-setup.title.agent_error: "Dh’fhàillig ceangal an neach-ghníomha"
+setup.title.agent_error: "Dh'fhàillig ceangal an neach-ghníomha"
 setup.title.switch_agent: "Atharraich neach-gníomha"
+setup.title.not_available: "Chan eil an neach-gnìomha ri fhaighinn"
+setup.title.sign_in: "Feumaidh tu clàradh a-steach"
+
+# Thèid %{agent} a chur an àite ainm-taisbeanaidh an neach-gnìomha aig àm ruith.
+# {Locked="Settings"} - a' toirt iomradh air an duilleag Settings, cùm mar a tha e.
+setup.subtitle.copilot_missing: "Chan eil an neach-gnìomha agad \"%{agent}\" air a stàladh. Lean na ceumannan gu h-ìosal gus a stàladh. Airson neach-gnìomha atharrachadh, rach gu Settings."
+setup.subtitle.agent_missing: "Chan eil an neach-gnìomha agad \"%{agent}\" air a stàladh. Ath-stàlaich e le làimh, an uair sin feuch a-rithist. Airson neach-gnìomha atharrachadh, rach gu Settings."
+setup.subtitle.copilot_auth: "Feumaidh an neach-gnìomha agad \"%{agent}\" dearbhadh. Lean na ceumannan gu h-ìosal gus clàradh a-steach. Airson neach-gnìomha atharrachadh, rach gu Settings."
+setup.subtitle.agent_auth: "Feumaidh an neach-gnìomha agad \"%{agent}\" dearbhadh. Clàraich a-steach tron CLI neach-gnìomha, an uair sin feuch a-rithist. Airson neach-gnìomha atharrachadh, rach gu Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Tagh an CLI neach-gnìomha bunaiteach a bu mhath leat a chleachdadh ann an Intelligent Terminal. 'S urrainn dhut"
+setup.description.fre_line2: "a dhol gu Settings gus an raon-obrach agad a rèiteachadh."
+
+setup.option.reinstall: "Ath-stàlaich %{agent}"
+setup.option.reinstall_hint: "(Thèid a stàladh gu fèin-obrachail)"
+setup.option.signin: "Clàraich a-steach gu %{agent}"
+setup.option.retry_detection: "Feuch a-rithist ri lorg"
+setup.option.retry_auth: "Tha mi air clàradh a-steach — feuch ris a' cheangal a-rithist"
+setup.option.retry_connection: "Feuch ris a' cheangal a-rithist"
+setup.status.installing: "Ga stàladh..."
+setup.status.install_failed: "Dh'fhàillig an stàladh: "
+setup.status.installing_winget: " Ga stàladh tro winget..."
+
+# ─── Sgrìn dearbhaidh ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Tha CLI neach-gnìomha %{agent} air a thaghadh"
+auth.agent_selected_reason: "CLI neach-gnìomha %{agent} — "
+auth.checking: "A' sgrùdadh dearbhaidh..."
+auth.waiting: "A' feitheamh ri ùghdarrachadh..."
+auth.code_copied: "Chaidh an còd a chopaigeadh dhan stòr-bhùird — cuir ann ad bhrobhsair e."
+auth.signin_prompt: "Clàraich a-steach gus an neach-gnìomha agad a chleachdadh:"
+auth.connect_agent: "Ceangail %{agent} gus gleusan neach-gnìomha a chur an comas"
+# {Locked="GitHub"} - ainm-bhranda
+auth.signin_github: "[ Clàraich a-steach le GitHub ]"
+auth.signin_agent: "[ Clàraich a-steach le %{agent} ]"
+auth.hint: "Brùth Enter gus clàradh a-steach, Esc gus tilleadh"
+
+# ─── Còmhradh ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "A' smaoineachadh…"
+chat.welcome: "Fàilte gu Intelligent Terminal!"
+chat.plan_header: "Plana:"
+
+# ─── Sanasan ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. gus panail neach-gnìomha a shealltainn/fhalach • Ctrl+Alt+/ gus seisean neach-gnìomha a shealltainn/fhalach)"
+
+# ─── Leubailean inbhe neach-gnìomha ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Gun stàladh — tagh gus stàladh gu fèin-obrachail"
+agent.status.not_found: "Cha deach a lorg"
+agent.status.detected: "Chaidh a lorg"
+
+# ─── Staid ceangail ───────────────────────────────────────────────────────
+
+connection.starting: "A' tòiseachadh an neach-gnìomha..."
+connection.reconnecting: "Ag ath-cheangal..."

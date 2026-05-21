@@ -62,8 +62,8 @@ fn normalize_locale(locale: &str) -> String {
     //    Aligns with Windows MRT language-distance behavior for our locale set.
     let affinity_target = match locale.to_lowercase().as_str() {
         // Chinese: script-based split
-        "zh-hk" | "zh-mo" | "zh-hant" => Some("zh-TW"),
-        "zh-sg" | "zh-hans" => Some("zh-CN"),
+        "zh-hk" | "zh-mo" | "zh-hant" | "zh-hant-tw" | "zh-hant-hk" | "zh-hant-mo" => Some("zh-TW"),
+        "zh-sg" | "zh-hans" | "zh-hans-cn" | "zh-hans-sg" => Some("zh-CN"),
         // English: Commonwealth regions → en-GB
         "en-au" | "en-nz" | "en-ie" | "en-in" | "en-sg" | "en-za" | "en-hk"
         | "en-my" | "en-ph" | "en-pk" | "en-ng" | "en-ke" | "en-gh" => Some("en-GB"),

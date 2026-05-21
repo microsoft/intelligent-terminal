@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Allillanchu Intelligent Terminal!"
 setup.title.agent_missing: "Mana agente tarikusqachu"
 setup.title.agent_error: "Agente t'inkiynin mana allinchu"
 setup.title.switch_agent: "Agente t'ikray"
+setup.title.not_available: "Agente mana kanchu"
+setup.title.sign_in: "Qallariy yaykuna"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Agentiyki \"%{agent}\" mana churasqachu. Churanaykipaq uraypi llamk'ankunata ruway. Agente t'ikranapaq Settings nisqaman riy."
+setup.subtitle.agent_missing: "Agentiyki \"%{agent}\" mana churasqachu. Ama hina kaspa makiykiwan churay, chaymanta watiqmanta qallariy. Agente t'ikranapaq Settings nisqaman riy."
+setup.subtitle.copilot_auth: "Agentiyki \"%{agent}\" yaykunata munan. Yaykunaykipaq uraypi llamk'ankunata ruway. Agente t'ikranapaq Settings nisqaman riy."
+setup.subtitle.agent_auth: "Agentiyki \"%{agent}\" yaykunata munan. Agente CLI nisqawan yaykuy, chaymanta watiqmanta qallariy. Agente t'ikranapaq Settings nisqaman riy."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal nisqapi llamk'achinaykipaq qallariy agente CLI nisqata akllay. Qamqa"
+setup.description.fre_line2: "Settings nisqaman riy llamk'ana k'itiykita wakichinapaq."
+
+setup.option.reinstall: "%{agent} watiqmanta churay"
+setup.option.reinstall_hint: "(Kikinmanta churakunqa)"
+setup.option.signin: "%{agent} nisqaman yaykuy"
+setup.option.retry_detection: "Watiqmanta maskay"
+setup.option.retry_auth: "Ña yaykurqani — watiqmanta t'inkiy"
+setup.option.retry_connection: "Watiqmanta t'inkiy"
+setup.status.installing: "Churachkan..."
+setup.status.install_failed: "Churay mana allinchu: "
+setup.status.installing_winget: " winget nisqawan churachkan..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Agente CLI %{agent} akllasqa"
+auth.agent_selected_reason: "Agente CLI %{agent} — "
+auth.checking: "Yaykunata qhawachkan..."
+auth.waiting: "Kamachiyta suyachkan..."
+auth.code_copied: "Kode wich'aman apasqa — navegador nisqaykipi k'askachiy."
+auth.signin_prompt: "Agentiykita llamk'achinapaq yaykuy:"
+auth.connect_agent: "%{agent} t'inkiy agente llamk'aykunata hurqunapaq"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ GitHub nisqawan yaykuy ]"
+auth.signin_agent: "[ %{agent} nisqawan yaykuy ]"
+auth.hint: "Enter ñit'iy yaykunapaq, Esc kutirinapaq"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Yuyachkan…"
+chat.welcome: "Allillanchu Intelligent Terminal!"
+chat.plan_header: "Ruwana:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. agente k'itita rikuchiy/pakay • Ctrl+Alt+/ agente hunt'ata rikuchiy/pakay)"
+
+# ─── Agent status labels ──────────────────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Mana churasqachu — kikinmanta churanapaq akllay"
+agent.status.not_found: "Mana tarikusqachu"
+agent.status.detected: "Tarikusqa"
+
+# ─── Connection state ─────────────────────────────────────────────────────────────────────
+
+connection.starting: "Agente qallarichkan..."
+connection.reconnecting: "Watiqmanta t'inkichkan..."

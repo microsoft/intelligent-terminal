@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "ຍິນດີຕ້ອນຮັບສູ່ Intelligent Terminal!"
 setup.title.agent_missing: "ບໍ່ພົບ agent"
 setup.title.agent_error: "ການເຊື່ອມຕໍ່ agent ລົ້ມເຫລວ"
 setup.title.switch_agent: "ປ່ຽນ agent"
+setup.title.not_available: "Agent ບໍ່ພ້ອມໃຊ້ງານ"
+setup.title.sign_in: "ຕ້ອງການເຂົ້າສູ່ລະບົບ"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອຕິດຕັ້ງ། ເພື່ອປ່ຽນ agent, ໄປທີ່ Settings།"
+setup.subtitle.agent_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ກະລຸນາຕິດຕັ້ງໃໝ່ດ້ວຍມື ແລ້ວລອງໃໝ່། ເພື່ອປ່ຽນ agent, ໄປທີ່ Settings།"
+setup.subtitle.copilot_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອເຂົ້າສູ່ລະບົບ། ເພື່ອປ່ຽນ agent, ໄປທີ່ Settings།"
+setup.subtitle.agent_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ກະລຸນາເຂົ້າສູ່ລະບົບຜ່ານ agent CLI ແລ້ວລອງໃໝ່། ເພື່ອປ່ຽນ agent, ໄປທີ່ Settings།"
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "ເລືອກ agent CLI ເລີ່ມຕົ້ນທີ່ທ່ານຕ້ອງການໃຊ້ໃນ Intelligent Terminal། ທ່ານສາມາດ"
+setup.description.fre_line2: "ໄປທີ່ Settings ເພື່ອຕັ້ງຄ່າ ແລະຕັ້ງຄ່າພື້ນທີ່ເຮັດວຽກຂອງທ່ານ།"
+
+setup.option.reinstall: "ຕິດຕັ້ງໃໝ່ %{agent}"
+setup.option.reinstall_hint: "(ຈະຕິດຕັ້ງໂດຍອັດຕະໂນມັດ)"
+setup.option.signin: "ເຂົ້າສູ່ລະບົບ %{agent}"
+setup.option.retry_detection: "ລອງກວດຈັບໃໝ່"
+setup.option.retry_auth: "ຂ້ອຍໄດ້ເຂົ້າສູ່ລະບົບແລ້ວ — ລອງເຊື່ອມຕໍ່ໃໝ່"
+setup.option.retry_connection: "ລອງເຊື່ອມຕໍ່ໃໝ່"
+setup.status.installing: "ກຳລັງຕິດຕັ້ງ..."
+setup.status.install_failed: "ການຕິດຕັ້ງລົ້ມເຫລວ: "
+setup.status.installing_winget: " ກຳລັງຕິດຕັ້ງຜ່ານ winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Agent CLI %{agent} ຖືກເລືອກແລ້ວ"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "ກຳລັງກວດສອບການຢືນຢັນຕົວຕົນ..."
+auth.waiting: "ກຳລັງລໍຖ້າການອະນຸຍາດ..."
+auth.code_copied: "ລະຫັດຖືກຄັດລອກແລ້ວ — ໃຫ້ວາງໃນຕົວທ່ອງເວັບຂອງທ່ານ།"
+auth.signin_prompt: "ເຂົ້າສູ່ລະບົບເພື່ອໃຊ້ agent ຂອງທ່ານ:"
+auth.connect_agent: "ເຊື່ອມຕໍ່ %{agent} ເພື່ອເປີດໃຊ້ຄວາມສາມາດຂອງ agent"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ ເຂົ້າສູ່ລະບົບດ້ວຍ GitHub ]"
+auth.signin_agent: "[ ເຂົ້າສູ່ລະບົບດ້ວຍ %{agent} ]"
+auth.hint: "ກົດ Enter ເພື່ອເຂົ້າສູ່ລະບົບ, Esc ເພື່ອກັບຄືນ"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "ກຳລັງຄິດ…"
+chat.welcome: "ຍິນດີຕ້ອນຮັບສູ່ Intelligent Terminal!"
+chat.plan_header: "ແຜນການ:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. ສະແດງ/ເຊື່ອງແຜງ agent • Ctrl+Alt+/ ສະແດງ/ເຊື່ອງພາກສ່ວນ agent)"
+
+# ─── Agent status labels ──────────────────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "ບໍ່ໄດ້ຕິດຕັ້ງ — ເລືອກເພື່ອຕິດຕັ້ງໂດຍອັດຕະໂນມັດ"
+agent.status.not_found: "ບໍ່ພົບ"
+agent.status.detected: "ກວດພົບແລ້ວ"
+
+# ─── Connection state ─────────────────────────────────────────────────────────────────────
+
+connection.starting: "ກຳລັງເລີ່ມ agent..."
+connection.reconnecting: "ກຳລັງເຊື່ອມຕໍ່ໃໝ່..."

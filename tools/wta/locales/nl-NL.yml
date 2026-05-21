@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Welkom bij Intelligent Terminal!"
 setup.title.agent_missing: "Agent niet gevonden"
 setup.title.agent_error: "Verbinding met agent mislukt"
 setup.title.switch_agent: "Van agent wisselen"
+setup.title.not_available: "Agent niet beschikbaar"
+setup.title.sign_in: "Aanmelden vereist"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Uw agent \"%{agent}\" is niet geïnstalleerd. Volg de onderstaande stappen om deze te installeren. Om van agent te wisselen, ga naar Settings."
+setup.subtitle.agent_missing: "Uw agent \"%{agent}\" is niet geïnstalleerd. Installeer deze handmatig opnieuw en probeer het opnieuw. Om van agent te wisselen, ga naar Settings."
+setup.subtitle.copilot_auth: "Uw agent \"%{agent}\" vereist verificatie. Volg de onderstaande stappen om u aan te melden. Om van agent te wisselen, ga naar Settings."
+setup.subtitle.agent_auth: "Uw agent \"%{agent}\" vereist verificatie. Meld u aan via de agent-CLI en probeer het opnieuw. Om van agent te wisselen, ga naar Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Kies de standaard agent-CLI die u wilt gebruiken in Intelligent Terminal. U kunt"
+setup.description.fre_line2: "naar Settings navigeren om uw werkruimte te configureren en in te richten."
+
+setup.option.reinstall: "%{agent} opnieuw installeren"
+setup.option.reinstall_hint: "(Wordt automatisch geïnstalleerd)"
+setup.option.signin: "Aanmelden bij %{agent}"
+setup.option.retry_detection: "Detectie opnieuw proberen"
+setup.option.retry_auth: "Ik heb me aangemeld — verbinding opnieuw proberen"
+setup.option.retry_connection: "Verbinding opnieuw proberen"
+setup.status.installing: "Installeren..."
+setup.status.install_failed: "Installatie mislukt: "
+setup.status.installing_winget: " Installeren via winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Agent-CLI %{agent} is geselecteerd"
+auth.agent_selected_reason: "Agent-CLI %{agent} — "
+auth.checking: "Verificatie controleren..."
+auth.waiting: "Wachten op autorisatie..."
+auth.code_copied: "Code gekopieerd naar klembord — plak deze in uw browser."
+auth.signin_prompt: "Meld u aan om uw agent te gebruiken:"
+auth.connect_agent: "%{agent} verbinden om agentfuncties in te schakelen"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Aanmelden met GitHub ]"
+auth.signin_agent: "[ Aanmelden met %{agent} ]"
+auth.hint: "Druk op Enter om aan te melden, Esc om terug te gaan"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Bezig met nadenken…"
+chat.welcome: "Welkom bij Intelligent Terminal!"
+chat.plan_header: "Plan:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. om het agentvenster te tonen/verbergen • Ctrl+Alt+/ om de agentsessie te tonen/verbergen)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Niet geïnstalleerd — selecteer om automatisch te installeren"
+agent.status.not_found: "Niet gevonden"
+agent.status.detected: "Gedetecteerd"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Agent starten..."
+connection.reconnecting: "Opnieuw verbinden..."

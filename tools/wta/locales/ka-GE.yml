@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Intelligent Terminal-ში მოგესალმებით!"
 setup.title.agent_missing: "აგენტი ვერ მოიძებნა"
 setup.title.agent_error: "აგენტთან კავშირი ვერ შედგა"
 setup.title.switch_agent: "აგენტის შეცვლა"
+setup.title.not_available: "აგენტი მიუწვდომელია"
+setup.title.sign_in: "საჭიროა შესვლა"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "თქვენი აგენტი \"%{agent}\" არ არის დაინსტალირებული. მის დასაინსტალირებლად მიჰყევით ქვემოთ მოცემულ ნაბიჯებს. აგენტის შესაცვლელად გადადით Settings-ში."
+setup.subtitle.agent_missing: "თქვენი აგენტი \"%{agent}\" არ არის დაინსტალირებული. ხელით ხელახლა დააინსტალირეთ და სცადეთ თავიდან. აგენტის შესაცვლელად გადადით Settings-ში."
+setup.subtitle.copilot_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შესასვლელად მიჰყევით ქვემოთ მოცემულ ნაბიჯებს. აგენტის შესაცვლელად გადადით Settings-ში."
+setup.subtitle.agent_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შედით აგენტის CLI-ით და სცადეთ თავიდან. აგენტის შესაცვლელად გადადით Settings-ში."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "აირჩიეთ ნაგულისხმევი აგენტის CLI, რომლის გამოყენებაც გსურთ Intelligent Terminal-ში. შეგიძლიათ"
+setup.description.fre_line2: "გადახვიდეთ Settings-ში სამუშაო გარემოს კონფიგურაციისთვის."
+
+setup.option.reinstall: "%{agent}-ის ხელახლა დაინსტალირება"
+setup.option.reinstall_hint: "(ავტომატურად დაინსტალირდება)"
+setup.option.signin: "შესვლა %{agent}-ში"
+setup.option.retry_detection: "ამოცნობის გამეორება"
+setup.option.retry_auth: "შევედი — კავშირის გამეორება"
+setup.option.retry_connection: "კავშირის გამეორება"
+setup.status.installing: "ინსტალაცია..."
+setup.status.install_failed: "ინსტალაცია ვერ მოხერხდა: "
+setup.status.installing_winget: " winget-ით ინსტალაცია..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "არჩეულია აგენტის CLI %{agent}"
+auth.agent_selected_reason: "აგენტის CLI %{agent} — "
+auth.checking: "ავთენტიფიკაციის შემოწმება..."
+auth.waiting: "ავტორიზაციის მოლოდინში..."
+auth.code_copied: "კოდი კოპირებულია — ჩასვით ბრაუზერში."
+auth.signin_prompt: "შედით აგენტის გამოსაყენებლად:"
+auth.connect_agent: "დაუკავშირეთ %{agent} აგენტის ფუნქციების გასააქტიურებლად"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ GitHub-ით შესვლა ]"
+auth.signin_agent: "[ %{agent}-ით შესვლა ]"
+auth.hint: "დააჭირეთ Enter შესასვლელად, Esc უკან დასაბრუნებლად"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "ვფიქრობ…"
+chat.welcome: "Intelligent Terminal-ში მოგესალმებით!"
+chat.plan_header: "გეგმა:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. აგენტის პანელის ჩვენება/დამალვა • Ctrl+Alt+/ აგენტის სესიის ჩვენება/დამალვა)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "არ არის დაინსტალირებული — აირჩიეთ ავტომატური ინსტალაციისთვის"
+agent.status.not_found: "ვერ მოიძებნა"
+agent.status.detected: "აღმოჩენილია"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "აგენტის გაშვება..."
+connection.reconnecting: "ხელახლა დაკავშირება..."

@@ -1,5 +1,66 @@
-# Setup screen titles
-setup.title.first_run: "इंटेलिजेंट टर्मिनलांत आपलें स्वागत!"
+# ─── सेटअप स्क्रीन ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - उत्पाद नाम, अणकार करूं नाका
+
+setup.title.first_run: "Intelligent Terminal ंत आपलें स्वागत!"
 setup.title.agent_missing: "एजेंट मेळलो ना"
 setup.title.agent_error: "एजेंट कनेक्शन अपेशी जालें"
 setup.title.switch_agent: "एजेंट बदल"
+setup.title.not_available: "एजेंट उपलब्ध ना"
+setup.title.sign_in: "साइन इन आवश्यक"
+
+# %{agent} रनटायमाक एजेंटाचें डिस्प्ले नांव घालतात.
+# {Locked="Settings"} - Settings पानाक दर्शयता.
+setup.subtitle.copilot_missing: "तुमचो एजेंट \"%{agent}\" इन्स्टॉल जावंक ना. ताका इन्स्टॉल करपाक सकयल दिल्ल्या पावलांक अनुसरण करात. एजेंट बदलपाक Settings कडेन वचात."
+setup.subtitle.agent_missing: "तुमचो एजेंट \"%{agent}\" इन्स्टॉल जावंक ना. उपकार करून ताका हातान परतून इन्स्टॉल करात, मागीर परतून यत्न करात. एजेंट बदलपाक Settings कडेन वचात."
+setup.subtitle.copilot_auth: "तुमच्या एजेंट \"%{agent}\" क प्रमाणीकरण जाय. साइन इन करपाक सकयल दिल्ल्या पावलांक अनुसरण करात. एजेंट बदलपाक Settings कडेन वचात."
+setup.subtitle.agent_auth: "तुमच्या एजेंट \"%{agent}\" क प्रमाणीकरण जाय. उपकार करून एजेंट CLI वरवीं साइन इन करात, मागीर परतून यत्न करात. एजेंट बदलपाक Settings कडेन वचात."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal ंत वापरपाक डिफॉल्ट एजेंट CLI वेंचात. तुमी"
+setup.description.fre_line2: "तुमचें वर्कस्पेस कॉन्फिगर आनी सेटअप करपाक Settings कडेन वचूंक शकतात."
+
+setup.option.reinstall: "%{agent} परतून इन्स्टॉल करात"
+setup.option.reinstall_hint: "(आपशींच इन्स्टॉल जातलें)"
+setup.option.signin: "%{agent} ंत साइन इन करात"
+setup.option.retry_detection: "परतून शोध करात"
+setup.option.retry_auth: "हांवें साइन इन केलां — कनेक्शन परतून यत्न करात"
+setup.option.retry_connection: "कनेक्शन परतून यत्न करात"
+setup.status.installing: "इन्स्टॉल जाता..."
+setup.status.install_failed: "इन्स्टॉल अपेशी: "
+setup.status.installing_winget: " winget वरवीं इन्स्टॉल जाता..."
+
+# ─── प्रमाणीकरण स्क्रीन ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "एजेंट CLI %{agent} वेंचलां"
+auth.agent_selected_reason: "एजेंट CLI %{agent} — "
+auth.checking: "प्रमाणीकरण तपासता..."
+auth.waiting: "अधिकृततायेची वाट पळयता..."
+auth.code_copied: "कोड क्लिपबोर्डार कॉपी जालो — तुमच्या ब्राउझरांत पेस्ट करात."
+auth.signin_prompt: "तुमचो एजेंट वापरपाक साइन इन करात:"
+auth.connect_agent: "एजेंट वैशिश्ट्यां सक्रिय करपाक %{agent} जोडात"
+# {Locked="GitHub"} - ब्रँड नांव
+auth.signin_github: "[ GitHub वरवीं साइन इन करात ]"
+auth.signin_agent: "[ %{agent} वरवीं साइन इन करात ]"
+auth.hint: "साइन इन करपाक Enter दामात, परतून वचपाक Esc दामात"
+
+# ─── चॅट ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "विचार करता…"
+chat.welcome: "Intelligent Terminal ंत आपलें स्वागत!"
+chat.plan_header: "योजना:"
+
+# ─── संकेत ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. एजेंट पेन दाखयात/लिपयात • Ctrl+Alt+/ एजेंट सत्र दाखयात/लिपयात)"
+
+# ─── एजेंट स्थिती लेबल ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "इन्स्टॉल जावंक ना — आपशींच इन्स्टॉल करपाक वेंचात"
+agent.status.not_found: "मेळलो ना"
+agent.status.detected: "शोध लागलो"
+
+# ─── कनेक्शन स्थिती ───────────────────────────────────────────────────────────
+
+connection.starting: "एजेंट सुरू जाता..."
+connection.reconnecting: "परतून जोडता..."

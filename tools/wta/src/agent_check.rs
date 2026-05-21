@@ -34,12 +34,12 @@ impl AgentStatus {
     pub fn status_label(&self) -> String {
         if !self.cli_found {
             if self.id == "copilot" {
-                "Not installed — select to install automatically".to_string()
+                t!("agent.status.not_installed_auto").into_owned()
             } else {
-                "Not found".to_string()
+                t!("agent.status.not_found").into_owned()
             }
         } else {
-            "Detected".to_string()
+            t!("agent.status.detected").into_owned()
         }
     }
 

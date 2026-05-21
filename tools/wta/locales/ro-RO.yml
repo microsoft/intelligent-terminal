@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Ecran de configurare ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - numele produsului, nu se traduce
+
 setup.title.first_run: "Bun venit la Intelligent Terminal!"
 setup.title.agent_missing: "Agentul nu a fost găsit"
 setup.title.agent_error: "Conectarea la agent a eșuat"
 setup.title.switch_agent: "Schimbă agentul"
+setup.title.not_available: "Agentul nu este disponibil"
+setup.title.sign_in: "Autentificare necesară"
+
+# %{agent} este înlocuit cu numele afișat al agentului la rulare.
+# {Locked="Settings"} - se referă la pagina Settings, păstrați în limba engleză.
+setup.subtitle.copilot_missing: "Agentul \"%{agent}\" nu este instalat. Urmați pașii de mai jos pentru a-l instala. Pentru a schimba agentul, accesați Settings."
+setup.subtitle.agent_missing: "Agentul \"%{agent}\" nu este instalat. Reinstalați-l manual, apoi reîncercați. Pentru a schimba agentul, accesați Settings."
+setup.subtitle.copilot_auth: "Agentul \"%{agent}\" necesită autentificare. Urmați pașii de mai jos pentru a vă conecta. Pentru a schimba agentul, accesați Settings."
+setup.subtitle.agent_auth: "Agentul \"%{agent}\" necesită autentificare. Conectați-vă prin CLI-ul agentului, apoi reîncercați. Pentru a schimba agentul, accesați Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Alegeți CLI-ul implicit al agentului pe care doriți să îl utilizați în Intelligent Terminal. Puteți"
+setup.description.fre_line2: "naviga la Settings pentru a configura spațiul de lucru."
+
+setup.option.reinstall: "Reinstalare %{agent}"
+setup.option.reinstall_hint: "(Va fi instalat automat)"
+setup.option.signin: "Conectare la %{agent}"
+setup.option.retry_detection: "Reîncercare detectare"
+setup.option.retry_auth: "M-am conectat — reîncearcă conexiunea"
+setup.option.retry_connection: "Reîncercare conexiune"
+setup.status.installing: "Se instalează..."
+setup.status.install_failed: "Instalarea a eșuat: "
+setup.status.installing_winget: " Se instalează prin winget..."
+
+# ─── Ecran de autentificare ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "CLI-ul agentului %{agent} este selectat"
+auth.agent_selected_reason: "CLI agent %{agent} — "
+auth.checking: "Se verifică autentificarea..."
+auth.waiting: "Se așteaptă autorizarea..."
+auth.code_copied: "Codul a fost copiat în clipboard — inserați-l în browser."
+auth.signin_prompt: "Conectați-vă pentru a utiliza agentul:"
+auth.connect_agent: "Conectați %{agent} pentru a activa funcțiile agentului"
+# {Locked="GitHub"} - nume de marcă
+auth.signin_github: "[ Conectare cu GitHub ]"
+auth.signin_agent: "[ Conectare cu %{agent} ]"
+auth.hint: "Apăsați Enter pentru conectare, Esc pentru a reveni"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Se gândește…"
+chat.welcome: "Bun venit la Intelligent Terminal!"
+chat.plan_header: "Plan:"
+
+# ─── Indicii ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. afișare/ascundere panou agent • Ctrl+Alt+/ afișare/ascundere sesiune agent)"
+
+# ─── Etichete stare agent ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Neinstalat — selectați pentru instalare automată"
+agent.status.not_found: "Negăsit"
+agent.status.detected: "Detectat"
+
+# ─── Stare conexiune ───────────────────────────────────────────────────────────
+
+connection.starting: "Se pornește agentul..."
+connection.reconnecting: "Reconectare..."

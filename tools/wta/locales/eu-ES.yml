@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Konfigurazio-pantaila ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - produktuaren izena, ez itzuli
+
 setup.title.first_run: "Ongi etorri Intelligent Terminal-era!"
 setup.title.agent_missing: "Agentea ez da aurkitu"
 setup.title.agent_error: "Agentearekin konektatzeak huts egin du"
 setup.title.switch_agent: "Aldatu agentea"
+setup.title.not_available: "Agentea ez dago erabilgarri"
+setup.title.sign_in: "Saioa hastea beharrezkoa da"
+
+# %{agent} exekuzio-unean agentearen bistaratze-izenarekin ordezkatzen da.
+# {Locked="Settings"} - Settings orriari dagokio, mantendu bere horretan.
+setup.subtitle.copilot_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. Jarraitu beheko urratsak instalatzeko. Agenteak aldatzeko, joan Settings atalera."
+setup.subtitle.agent_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. Birinstalatu eskuz, eta saiatu berriro. Agenteak aldatzeko, joan Settings atalera."
+setup.subtitle.copilot_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Jarraitu beheko urratsak saioa hasteko. Agenteak aldatzeko, joan Settings atalera."
+setup.subtitle.agent_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Hasi saioa agentearen CLI bidez, eta saiatu berriro. Agenteak aldatzeko, joan Settings atalera."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Aukeratu Intelligent Terminal-en erabili nahi duzun agente CLI lehenetsia. Hau egin dezakezu:"
+setup.description.fre_line2: "joan Settings atalera zure lan-eremua konfiguratu eta ezartzeko."
+
+setup.option.reinstall: "Birinstalatu %{agent}"
+setup.option.reinstall_hint: "(Automatikoki instalatuko da)"
+setup.option.signin: "Hasi saioa %{agent}(e)n"
+setup.option.retry_detection: "Saiatu berriro detekzioa"
+setup.option.retry_auth: "Saioa hasi dut — saiatu berriro konexioa"
+setup.option.retry_connection: "Saiatu berriro konexioa"
+setup.status.installing: "Instalatzen..."
+setup.status.install_failed: "Instalazioak huts egin du: "
+setup.status.installing_winget: " winget bidez instalatzen..."
+
+# ─── Autentifikazio-pantaila ─────────────────────────────────────────────────
+
+auth.agent_selected: "Agente CLI %{agent} hautatuta dago"
+auth.agent_selected_reason: "Agente CLI %{agent} — "
+auth.checking: "Autentifikazioa egiaztatzen..."
+auth.waiting: "Baimenaren zain..."
+auth.code_copied: "Kodea arbelean kopiatu da — itsatsi zure arakatzailean."
+auth.signin_prompt: "Hasi saioa zure agentea erabiltzeko:"
+auth.connect_agent: "Konektatu %{agent} agentearen eginbideak gaitzeko"
+# {Locked="GitHub"} - marka-izena
+auth.signin_github: "[ Hasi saioa GitHub-ekin ]"
+auth.signin_agent: "[ Hasi saioa %{agent}(e)kin ]"
+auth.hint: "Sakatu Enter saioa hasteko, Esc atzera joateko"
+
+# ─── Txata ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Pentsatzen…"
+chat.welcome: "Ongi etorri Intelligent Terminal-era!"
+chat.plan_header: "Plana:"
+
+# ─── Argibideak ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. agente-panela erakusteko/ezkutatzeko • Ctrl+Alt+/ agente-saioa erakusteko/ezkutatzeko)"
+
+# ─── Agentearen egoera-etiketak ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Instalatu gabe — hautatu automatikoki instalatzeko"
+agent.status.not_found: "Ez da aurkitu"
+agent.status.detected: "Detektatuta"
+
+# ─── Konexio-egoera ───────────────────────────────────────────────────────
+
+connection.starting: "Agentea abiarazten..."
+connection.reconnecting: "Birkonektatzen..."

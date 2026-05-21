@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── அமைவு திரை ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - தயாரிப்பு பெயர், மொழிபெயர்க்க வேண்டாம்
+
 setup.title.first_run: "Intelligent Terminal-க்கு வரவேற்கிறோம்!"
 setup.title.agent_missing: "முகவர் கிடைக்கவில்லை"
 setup.title.agent_error: "முகவர் இணைப்பு தோல்வியடைந்தது"
 setup.title.switch_agent: "முகவரை மாற்று"
+setup.title.not_available: "முகவர் கிடைக்கவில்லை"
+setup.title.sign_in: "உள்நுழைவு தேவை"
+
+# %{agent} இயக்க நேரத்தில் முகவர் காட்சிப் பெயரால் மாற்றப்படும்.
+# {Locked="Settings"} - Settings பக்கத்தைக் குறிக்கிறது.
+setup.subtitle.copilot_missing: "உங்கள் முகவர் \"%{agent}\" நிறுவப்படவில்லை. நிறுவ கீழே உள்ள படிகளைப் பின்பற்றுங்கள். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
+setup.subtitle.agent_missing: "உங்கள் முகவர் \"%{agent}\" நிறுவப்படவில்லை. தயவுசெய்து கைமுறையாக மீண்டும் நிறுவி, மீண்டும் முயற்சிக்கவும். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
+setup.subtitle.copilot_auth: "உங்கள் முகவர் \"%{agent}\"-க்கு அங்கீகாரம் தேவை. உள்நுழைய கீழே உள்ள படிகளைப் பின்பற்றுங்கள். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
+setup.subtitle.agent_auth: "உங்கள் முகவர் \"%{agent}\"-க்கு அங்கீகாரம் தேவை. தயவுசெய்து முகவர் CLI மூலம் உள்நுழைந்து, மீண்டும் முயற்சிக்கவும். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal-ல் பயன்படுத்த இயல்புநிலை முகவர் CLI-ஐத் தேர்ந்தெடுக்கவும். நீங்கள்"
+setup.description.fre_line2: "உங்கள் பணியிடத்தை உள்ளமைக்க Settings-க்குச் செல்லலாம்."
+
+setup.option.reinstall: "%{agent} மீண்டும் நிறுவு"
+setup.option.reinstall_hint: "(தானாக நிறுவப்படும்)"
+setup.option.signin: "%{agent}-ல் உள்நுழையவும்"
+setup.option.retry_detection: "கண்டறிதலை மீண்டும் முயற்சிக்கவும்"
+setup.option.retry_auth: "நான் உள்நுழைந்துவிட்டேன் — இணைப்பை மீண்டும் முயற்சிக்கவும்"
+setup.option.retry_connection: "இணைப்பை மீண்டும் முயற்சிக்கவும்"
+setup.status.installing: "நிறுவப்படுகிறது..."
+setup.status.install_failed: "நிறுவல் தோல்வி: "
+setup.status.installing_winget: " winget வழியாக நிறுவப்படுகிறது..."
+
+# ─── அங்கீகாரத் திரை ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "முகவர் CLI %{agent} தேர்ந்தெடுக்கப்பட்டது"
+auth.agent_selected_reason: "முகவர் CLI %{agent} — "
+auth.checking: "அங்கீகாரம் சரிபார்க்கப்படுகிறது..."
+auth.waiting: "அங்கீகாரத்திற்காகக் காத்திருக்கிறது..."
+auth.code_copied: "குறியீடு கிளிப்போர்டுக்கு நகலெடுக்கப்பட்டது — உங்கள் உலாவியில் ஒட்டவும்."
+auth.signin_prompt: "உங்கள் முகவரைப் பயன்படுத்த உள்நுழையவும்:"
+auth.connect_agent: "முகவர் அம்சங்களை இயக்க %{agent}-ஐ இணைக்கவும்"
+# {Locked="GitHub"} - பிராண்ட் பெயர்
+auth.signin_github: "[ GitHub மூலம் உள்நுழையவும் ]"
+auth.signin_agent: "[ %{agent} மூலம் உள்நுழையவும் ]"
+auth.hint: "உள்நுழைய Enter அழுத்தவும், திரும்பிச் செல்ல Esc அழுத்தவும்"
+
+# ─── அரட்டை ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "யோசிக்கிறது…"
+chat.welcome: "Intelligent Terminal-க்கு வரவேற்கிறோம்!"
+chat.plan_header: "திட்டம்:"
+
+# ─── குறிப்புகள் ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. முகவர் பலகத்தைக் காட்டு/மறை • Ctrl+Alt+/ முகவர் அமர்வைக் காட்டு/மறை)"
+
+# ─── முகவர் நிலை லேபிள்கள் ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "நிறுவப்படவில்லை — தானாக நிறுவ தேர்ந்தெடுக்கவும்"
+agent.status.not_found: "கிடைக்கவில்லை"
+agent.status.detected: "கண்டறியப்பட்டது"
+
+# ─── இணைப்பு நிலை ───────────────────────────────────────────────────────────
+
+connection.starting: "முகவர் தொடங்கப்படுகிறது..."
+connection.reconnecting: "மீண்டும் இணைக்கப்படுகிறது..."

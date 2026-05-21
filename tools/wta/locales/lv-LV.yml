@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Laipni lūdzam Intelligent Terminal!"
 setup.title.agent_missing: "Aģents nav atrasts"
 setup.title.agent_error: "Neizdevās izveidot savienojumu ar aģentu"
 setup.title.switch_agent: "Mainīt aģentu"
+setup.title.not_available: "Aģents nav pieejams"
+setup.title.sign_in: "Nepieciešama pierakstīšanās"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Izpildiet tālāk norādītās darbības, lai to instalētu. Lai mainītu aģentu, dodieties uz Settings."
+setup.subtitle.agent_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Pārinstalējiet to manuāli un mēģiniet vēlreiz. Lai mainītu aģentu, dodieties uz Settings."
+setup.subtitle.copilot_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Izpildiet tālāk norādītās darbības, lai pierakstītos. Lai mainītu aģentu, dodieties uz Settings."
+setup.subtitle.agent_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Pierakstieties, izmantojot aģenta CLI, un mēģiniet vēlreiz. Lai mainītu aģentu, dodieties uz Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Izvēlieties noklusējuma aģenta CLI, ko vēlaties izmantot Intelligent Terminal. Varat"
+setup.description.fre_line2: "doties uz Settings, lai konfigurētu un iestatītu savu darbvietu."
+
+setup.option.reinstall: "Pārinstalēt %{agent}"
+setup.option.reinstall_hint: "(Tiks instalēts automātiski)"
+setup.option.signin: "Pierakstīties %{agent}"
+setup.option.retry_detection: "Mēģināt noteikt vēlreiz"
+setup.option.retry_auth: "Esmu pierakstījies — mēģināt savienojumu vēlreiz"
+setup.option.retry_connection: "Mēģināt savienojumu vēlreiz"
+setup.status.installing: "Instalē..."
+setup.status.install_failed: "Instalēšana neizdevās: "
+setup.status.installing_winget: " Instalē, izmantojot winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Agent CLI %{agent} ir izvēlēts"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "Pārbauda autentifikāciju..."
+auth.waiting: "Gaida autorizāciju..."
+auth.code_copied: "Kods nokopēts starpliktuvē — ielīmējiet to pārlūkprogrammā."
+auth.signin_prompt: "Pierakstieties, lai izmantotu savu aģentu:"
+auth.connect_agent: "Savienojiet %{agent}, lai iespējotu aģenta funkcijas"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Pierakstīties ar GitHub ]"
+auth.signin_agent: "[ Pierakstīties ar %{agent} ]"
+auth.hint: "Nospiediet Enter, lai pierakstītos, Esc, lai atgrieztos"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Domā..."
+chat.welcome: "Laipni lūdzam Intelligent Terminal!"
+chat.plan_header: "Plāns:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. lai rādītu/paslēptu aģenta paneli • Ctrl+Alt+/ lai rādītu/paslēptu aģenta sesiju)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Nav instalēts — izvēlieties, lai instalētu automātiski"
+agent.status.not_found: "Nav atrasts"
+agent.status.detected: "Noteikts"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Startē aģentu..."
+connection.reconnecting: "Atkārtoti savienojas..."

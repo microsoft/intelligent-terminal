@@ -996,55 +996,128 @@
   </data><data name="AgentNotConfiguredSubtitle" xml:space="preserve">
     <value>Ниједан ВИ агент није пронађен. Инсталирајте CLI агента (нпр. copilot, gemini) и уверите се да је на вашем PATH-у или га конфигуришите у одељку Подешавања &gt; ВИ агенти.</value>
     <comment>{Locked="CLI","PATH","copilot","gemini"}</comment>
-  </data><data name="FreOverlay_Title" xml:space="preserve">
-    <value>Ново у Интелигентном Терминалу</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
-  </data><data name="FreOverlay_Card1Title" xml:space="preserve">
-    <value>Добро дошли у Интелигентни Терминал</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
-  </data><data name="FreOverlay_Card1Description" xml:space="preserve">
-    <value>Подесите уграђеног агента да вам помаже тамо где радите</value>
-  </data><data name="FreOverlay_Card2Title" xml:space="preserve">
-    <value>Аутоматско откривање грешака</value>
-  </data><data name="FreOverlay_Card2Description" xml:space="preserve">
-    <value>Панел агента увек има контекст и спреман је за рад са вашим омиљеним CLI агентом</value>
-    <comment>{Locked="CLI"}</comment>
-  </data><data name="FreOverlay_Card3Title" xml:space="preserve">
-    <value>Управљање сесијама</value>
-  </data><data name="FreOverlay_Card3Description" xml:space="preserve">
-    <value>Управљање сесијама вам помаже да пратите агенте и вратите се претходним сесијама</value>
-  </data><data name="FreOverlay_Card4Title" xml:space="preserve">
-    <value>Брзе агентске команде</value>
-  </data><data name="FreOverlay_Card4Description" xml:space="preserve">
-    <value>Палета команди може брзо да покрене агентске задатке у позадини</value>
-  </data><data name="FreOverlay_DetailTitle" xml:space="preserve">
-    <value>Добро дошли у Интелигентни Терминал</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
-  </data><data name="FreOverlay_DetailDescription" xml:space="preserve">
-    <value>Подесите уграђеног агента да вам помогне да објасните грешке, саставите команде и решите блокаде у задацима тамо где радите.</value>
-  </data><data name="FreOverlay_Detail2Title" xml:space="preserve">
-    <value>Аутоматско откривање грешака</value>
-  </data><data name="FreOverlay_Detail2Description" xml:space="preserve">
-    <value>Панел агента увек има контекст и спреман је за рад са вашим омиљеним CLI агентом.</value>
-    <comment>{Locked="CLI"}</comment>
-  </data><data name="FreOverlay_Detail3Title" xml:space="preserve">
-    <value>Управљање сесијама</value>
-  </data><data name="FreOverlay_Detail3Description" xml:space="preserve">
-    <value>Управљање сесијама вам помаже да пратите агенте и вратите се претходним сесијама.</value>
-  </data><data name="FreOverlay_Detail4Title" xml:space="preserve">
-    <value>Брзе агентске команде</value>
-  </data><data name="FreOverlay_Detail4Description" xml:space="preserve">
-    <value>Помоћу палете команди можете брзо да покрећете задатке које покреће агент са било ког места у терминалу.</value>
-  </data><data name="FreOverlay_DetailLink" xml:space="preserve">
-    <value>Сазнајте више о Интелигентном Терминалу.</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
-  </data><data name="FreOverlay_NextButton" xml:space="preserve">
-    <value>Почните да истражујете</value>
   </data>
-
-
-
-
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>Добро дошли у Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>Подесите уграђеног помоћника да вам помогне да објасните грешке, саставите команде и решите блокаде у задацима тамо где радите. </value>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>Сазнајте више о Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>Останите у току са уграђеним ВИ агентом</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>Ваш агент прати шта се дешава у терминалу и може вам помоћи да разумете и исправите грешке чим се појаве.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>Наставите тачно одакле сте стали</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>Пратите активне и претходне сесије агената и вратите се на посао за неколико секунди. Прегледајте шта је у току или се вратите на раније радове без губљења места.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>Даље</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>Добро дошли у Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>Изаберите шта желите да подесите сада. Ово можете променити у било ком тренутку у </value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>Подешавања</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>Агент</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>Изаберите CLI агента који се користи у панелу агента. Сваки компатибилни ACP CLI ће бити аутоматски откривен.</value>
+    <comment>{Locked="CLI","ACP"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ Овај агент захтева Node.js и NPX, који ће бити аутоматски инсталирани ако нису већ присутни.</value>
+    <comment>{Locked="Node.js","NPX"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>Аутоматско откривање грешака</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>Дајте Intelligent Terminal дозволу за приступ вашем љусци и аутоматско откривање грешака.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
+    <value>Управљање сесијама</value>
+  </data>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>Дајте Intelligent Terminal дозволу да прати стање ваших покренутих или активних агената.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ Омогућавање овога ће инсталирати интеграционе куке за праћење сесија у свим вашим CLI агентима.</value>
+    <comment>{Locked="CLI"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>Позиција панела</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>Где се панел агента отвара у односу на ваш терминал.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>Сачувај</value>
+  </data>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (биће инсталиран)</value>
+  </data>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (инсталиран)</value>
+  </data>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>Доле</value>
+  </data>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>Десно</value>
+  </data>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>Лево</value>
+  </data>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>Горе</value>
+  </data>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>Подешавање...</value>
+  </data>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ Инсталација GitHub Copilot није успела. Проверите мрежну везу и покушајте поново.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Инсталација Node.js није успела. Проверите мрежну везу и покушајте поново.</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>Укљ</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>Искљ</value>
+  </data>
 
 
 

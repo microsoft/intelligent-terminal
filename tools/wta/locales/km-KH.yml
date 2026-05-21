@@ -1,5 +1,66 @@
-# Setup screen titles
-setup.title.first_run: "សូមស្វាគម្ន៍មកកាន់ Intelligent Terminal!"
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
+setup.title.first_run: "សូមស្វាគមន៍មកកាន់ Intelligent Terminal!"
 setup.title.agent_missing: "រកមិនឃើញភ្នាក់ងារ"
 setup.title.agent_error: "ការតភ្ជាប់ទៅភ្នាក់ងារបានបរាជ័យ"
 setup.title.switch_agent: "ប្តូរភ្នាក់ងារ"
+setup.title.not_available: "ភ្នាក់ងារមិនអាចប្រើបាន"
+setup.title.sign_in: "ត្រូវការចូល"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "ភ្នាក់ងាររបស់អ្នក \"%{agent}\" មិនត្រូវបានតំឡើងទេ។ សូមធ្វើតាមជំហានហើរខាងក្រោមដើម្បីតំឡើង។ ដើម្បីប្តូរភ្នាក់ងារ សូមទៅ Settings។"
+setup.subtitle.agent_missing: "ភ្នាក់ងាររបស់អ្នក \"%{agent}\" មិនត្រូវបានតំឡើងទេ។ សូមតំឡើងដោយដៃឡើងវិញ រួចសាកល្បង។ ដើម្បីប្តូរភ្នាក់ងារ សូមទៅ Settings។"
+setup.subtitle.copilot_auth: "ភ្នាក់ងាររបស់អ្នក \"%{agent}\" ត្រូវការផ្ទៀងផ្តាត់។ សូមធ្វើតាមជំហានហើរខាងក្រោមដើម្បីចូល។ ដើម្បីប្តូរភ្នាក់ងារ សូមទៅ Settings។"
+setup.subtitle.agent_auth: "ភ្នាក់ងាររបស់អ្នក \"%{agent}\" ត្រូវការផ្ទៀងផ្តាត់។ សូមចូលតាមរយៈភ្នាក់ងារ CLI រួចសាកល្បង។ ដើម្បីប្តូរភ្នាក់ងារ សូមទៅ Settings។"
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "រើសភ្នាក់ងារ CLI លំនាំដើមដែលអ្នកចង់ប្រើនៅក្នុង Intelligent Terminal។ អ្នកអាច"
+setup.description.fre_line2: "ទៅ Settings ដើម្បីកំណត់រចនាសម្ព័ន្ធ និងរៀបចំតំបន់ការងាររបស់អ្នក។"
+
+setup.option.reinstall: "តំឡើង %{agent} ឡើងវិញ"
+setup.option.reinstall_hint: "(នឹងត្រូវបានតំឡើងដោយស្វ័យប្រវត្តិ)"
+setup.option.signin: "ចូល %{agent}"
+setup.option.retry_detection: "សាកល្បងរករើងឡើងវិញ"
+setup.option.retry_auth: "ខ្ញុំបានចូលហើយ — សាកល្បងតភ្ជាប់ឡើងវិញ"
+setup.option.retry_connection: "សាកល្បងតភ្ជាប់ឡើងវិញ"
+setup.status.installing: "កំពុងតំឡើង..."
+setup.status.install_failed: "ការតំឡើងបរាជ័យ: "
+setup.status.installing_winget: " កំពុងតំឡើងតាមរយៈ winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────────────────────
+
+auth.agent_selected: "ភ្នាក់ងារ CLI %{agent} ត្រូវបានជ្រើសរើស"
+auth.agent_selected_reason: "ភ្នាក់ងារ CLI %{agent} — "
+auth.checking: "កំពុងផ្ទៀងផ្តាត់..."
+auth.waiting: "កំពុងរង់ចាំការអនុញ្ញាត..."
+auth.code_copied: "កូដត្រូវបានចម្លង — សូមបិទក្នុងកម្មវិធីអានរបស់អ្នក។"
+auth.signin_prompt: "ចូលដើម្បីប្រើភ្នាក់ងាររបស់អ្នក:"
+auth.connect_agent: "តភ្ជាប់ %{agent} ដើម្បីបើកមុខងារភ្នាក់ងារ"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ ចូលដោយ GitHub ]"
+auth.signin_agent: "[ ចូលដោយ %{agent} ]"
+auth.hint: "ចុច Enter ដើម្បីចូល, Esc ដើម្បីត្រឡប់ក្រោយ"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "កំពុងគិត…"
+chat.welcome: "សូមស្វាគមន៍មកកាន់ Intelligent Terminal!"
+chat.plan_header: "ផែនការ:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. បង្ហាញ/លាក់ភ្នាក់ងារ • Ctrl+Alt+/ បង្ហាញ/លាក់វគ្គភ្នាក់ងារ)"
+
+# ─── Agent status labels ──────────────────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "មិនត្រូវបានតំឡើង — ជ្រើសរើសដើម្បីតំឡើងដោយស្វ័យប្រវត្តិ"
+agent.status.not_found: "រកមិនឃើញ"
+agent.status.detected: "រកឃើញ"
+
+# ─── Connection state ─────────────────────────────────────────────────────────────────────
+
+connection.starting: "កំពុងចាប់ផ្តើមភ្នាក់ងារ..."
+connection.reconnecting: "កំពុងតភ្ជាប់ឡើងវិញ..."

@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Intelligent Terminal-ga xush kelibsiz!"
 setup.title.agent_missing: "Agent topilmadi"
 setup.title.agent_error: "Agentga ulanish amalga oshmadi"
 setup.title.switch_agent: "Agentni almashtirish"
+setup.title.not_available: "Agent mavjud emas"
+setup.title.sign_in: "Tizimga kirish talab qilinadi"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Agentingiz \"%{agent}\" oʻrnatilmagan. Oʻrnatish uchun quyidagi qadamlarni bajaring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
+setup.subtitle.agent_missing: "Agentingiz \"%{agent}\" oʻrnatilmagan. Iltimos, qoʻlda qayta oʻrnating, keyin qayta urinib koʻring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
+setup.subtitle.copilot_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Tizimga kirish uchun quyidagi qadamlarni bajaring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
+setup.subtitle.agent_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Iltimos, agent CLI orqali tizimga kiring, keyin qayta urinib koʻring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Intelligent Terminal-da foydalanmoqchi boʻlgan standart agent CLI tanlang. Ish"
+setup.description.fre_line2: "muhitingizni sozlash va oʻrnatish uchun Settings boʻlimiga oʻtishingiz mumkin."
+
+setup.option.reinstall: "%{agent} qayta oʻrnatish"
+setup.option.reinstall_hint: "(Avtomatik oʻrnatiladi)"
+setup.option.signin: "%{agent} tizimga kirish"
+setup.option.retry_detection: "Aniqlashni qayta sinash"
+setup.option.retry_auth: "Tizimga kirdim — ulanishni qayta sinash"
+setup.option.retry_connection: "Ulanishni qayta sinash"
+setup.status.installing: "Oʻrnatilmoqda..."
+setup.status.install_failed: "Oʻrnatish amalga oshmadi: "
+setup.status.installing_winget: " winget orqali oʻrnatilmoqda..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Agent CLI %{agent} tanlangan"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "Autentifikatsiya tekshirilmoqda..."
+auth.waiting: "Avtorizatsiya kutilmoqda..."
+auth.code_copied: "Kod buferga nusxalandi — brauzeringizga joylang."
+auth.signin_prompt: "Agentingizdan foydalanish uchun tizimga kiring:"
+auth.connect_agent: "Agent xususiyatlarini yoqish uchun %{agent} ulang"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ GitHub orqali kirish ]"
+auth.signin_agent: "[ %{agent} orqali kirish ]"
+auth.hint: "Tizimga kirish uchun Enter, orqaga qaytish uchun Esc bosing"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Oʻylayapman…"
+chat.welcome: "Intelligent Terminal-ga xush kelibsiz!"
+chat.plan_header: "Reja:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. agent panelini koʻrsatish/yashirish • Ctrl+Alt+/ agent seansini koʻrsatish/yashirish)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Oʻrnatilmagan — avtomatik oʻrnatish uchun tanlang"
+agent.status.not_found: "Topilmadi"
+agent.status.detected: "Aniqlandi"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Agent ishga tushirilmoqda..."
+connection.reconnecting: "Qayta ulanilmoqda..."

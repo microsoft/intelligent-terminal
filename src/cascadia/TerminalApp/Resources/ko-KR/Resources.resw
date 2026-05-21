@@ -1020,67 +1020,125 @@
     <value>AI 에이전트를 찾을 수 없습니다. 에이전트 CLI(예: copilot, gemini)를 설치하고 PATH에 포함되어 있는지 확인하거나, 설정 &gt; 에이전트에서 구성하세요.</value>
     <comment>{Locked="CLI","PATH","copilot","gemini"}</comment>
   </data>
-  <data name="FreOverlay_Title" xml:space="preserve">
-    <value>지능형 터미널의 새로운 기능</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>Intelligent Terminal에 오신 것을 환영합니다</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_Card1Title" xml:space="preserve">
-    <value>지능형 터미널에 오신 것을 환영합니다</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>작업하는 곳에서 바로 오류를 설명하고, 명령을 작성하고, 막힌 작업을 해결할 수 있도록 기본 제공 어시스턴트를 설정하세요. </value>
   </data>
-  <data name="FreOverlay_Card1Description" xml:space="preserve">
-    <value>작업하는 곳에서 바로 도움을 받을 수 있도록 기본 제공 어시스턴트를 설정하세요</value>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>Intelligent Terminal에 대해 자세히 알아보기</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_Card2Title" xml:space="preserve">
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>기본 제공 AI 에이전트로 흐름을 유지하세요</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>에이전트가 터미널에서 일어나는 상황을 파악하고 오류가 발생하면 이해하고 수정하도록 도와줍니다.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>중단한 곳에서 바로 다시 시작</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>활성 및 과거 에이전트 세션을 추적하고 몇 초 만에 작업으로 돌아갈 수 있습니다. 진행 중인 작업을 검토하거나 이전 작업을 다시 확인해도 현재 위치를 잃지 않습니다.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>다음</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>Intelligent Terminal에 오신 것을 환영합니다</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>지금 설정할 항목을 선택하세요. 이 항목은 언제든지 </value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>설정</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>에이전트</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>에이전트 창에서 사용할 에이전트 CLI를 선택합니다. 호환되는 ACP CLI가 자동으로 감지됩니다.</value>
+    <comment>{Locked="CLI","ACP"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ 이 에이전트에는 Node.js 및 NPX가 필요하며, 아직 설치되지 않은 경우 자동으로 설치됩니다.</value>
+    <comment>{Locked="Node.js","NPX"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>자동 오류 감지</value>
   </data>
-  <data name="FreOverlay_Card2Description" xml:space="preserve">
-    <value>에이전트 창은 항상 컨텍스트를 유지하므로 즐겨 사용하는 에이전트 CLI를 바로 사용할 수 있습니다</value>
-    <comment>{Locked="CLI"}</comment>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal이 셸에 액세스하여 오류를 자동으로 감지할 수 있도록 허용합니다.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_Card3Title" xml:space="preserve">
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>세션 관리</value>
   </data>
-  <data name="FreOverlay_Card3Description" xml:space="preserve">
-    <value>세션 관리를 사용하면 에이전트를 추적하고 이전 세션으로 다시 돌아갈 수 있습니다</value>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal이 실행 중이거나 활성 상태인 에이전트의 상태를 추적할 수 있도록 허용합니다.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_Card4Title" xml:space="preserve">
-    <value>빠른 에이전트 명령</value>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ 이를 활성화하면 에이전트 CLI 전체에서 세션을 추적하기 위한 통합 후크가 설치됩니다.</value>
+    <comment>{Locked="CLI"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_Card4Description" xml:space="preserve">
-    <value>명령 팔레트에서 백그라운드 탭을 시작할 수 있습니다</value>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>창 위치</value>
   </data>
-  <data name="FreOverlay_DetailTitle" xml:space="preserve">
-    <value>지능형 터미널에 오신 것을 환영합니다</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>터미널을 기준으로 에이전트 창이 열리는 위치입니다.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_DetailDescription" xml:space="preserve">
-    <value>작업하는 곳에서 바로 오류를 설명하고, 명령을 작성하고, 막힌 작업을 해결할 수 있도록 기본 제공 어시스턴트를 설정하세요.</value>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>저장</value>
   </data>
-  <data name="FreOverlay_Detail2Title" xml:space="preserve">
-    <value>자동 오류 감지</value>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (설치 예정)</value>
   </data>
-  <data name="FreOverlay_Detail2Description" xml:space="preserve">
-    <value>에이전트 창은 항상 컨텍스트를 유지하므로 즐겨 사용하는 에이전트 CLI를 바로 사용할 수 있습니다.</value>
-    <comment>{Locked="CLI"}</comment>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (설치됨)</value>
   </data>
-  <data name="FreOverlay_Detail3Title" xml:space="preserve">
-    <value>세션 관리</value>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>아래쪽</value>
   </data>
-  <data name="FreOverlay_Detail3Description" xml:space="preserve">
-    <value>세션 관리를 사용하면 에이전트를 추적하고 이전 세션으로 다시 돌아갈 수 있습니다.</value>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>오른쪽</value>
   </data>
-  <data name="FreOverlay_Detail4Title" xml:space="preserve">
-    <value>빠른 에이전트 명령</value>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>왼쪽</value>
   </data>
-  <data name="FreOverlay_Detail4Description" xml:space="preserve">
-    <value>명령 팔레트를 사용해 터미널 어디에서나 에이전트 기반 작업을 빠르게 실행하세요.</value>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>위쪽</value>
   </data>
-  <data name="FreOverlay_DetailLink" xml:space="preserve">
-    <value>지능형 터미널에 대해 자세히 알아보기.</value>
-    <comment>"Intelligent Terminal" is the product name. Translate it if a localized product name exists for this language.</comment>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>설정 중...</value>
   </data>
-  <data name="FreOverlay_NextButton" xml:space="preserve">
-    <value>둘러보기 시작</value>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ GitHub Copilot 설치에 실패했습니다. 네트워크를 확인하고 다시 시도하세요.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Node.js 설치에 실패했습니다. 네트워크를 확인하고 다시 시도하세요.</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>켜기</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>끄기</value>
   </data>
 </root>

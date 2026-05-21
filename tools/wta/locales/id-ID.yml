@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Layar penyiapan ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - nama produk, jangan diterjemahkan
+
 setup.title.first_run: "Selamat datang di Intelligent Terminal!"
 setup.title.agent_missing: "Agen tidak ditemukan"
 setup.title.agent_error: "Koneksi agen gagal"
 setup.title.switch_agent: "Ganti agen"
+setup.title.not_available: "Agen tidak tersedia"
+setup.title.sign_in: "Perlu masuk"
+
+# %{agent} diganti dengan nama tampilan agen saat runtime.
+# {Locked="Settings"} - merujuk ke halaman Settings, biarkan dalam bahasa Inggris.
+setup.subtitle.copilot_missing: "Agen \"%{agent}\" Anda belum diinstal. Ikuti langkah-langkah di bawah untuk menginstalnya. Untuk mengganti agen, buka Settings."
+setup.subtitle.agent_missing: "Agen \"%{agent}\" Anda belum diinstal. Silakan instal ulang secara manual, lalu coba lagi. Untuk mengganti agen, buka Settings."
+setup.subtitle.copilot_auth: "Agen \"%{agent}\" Anda memerlukan autentikasi. Ikuti langkah-langkah di bawah untuk masuk. Untuk mengganti agen, buka Settings."
+setup.subtitle.agent_auth: "Agen \"%{agent}\" Anda memerlukan autentikasi. Silakan masuk melalui CLI agen, lalu coba lagi. Untuk mengganti agen, buka Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Pilih CLI agen default yang ingin Anda gunakan di Intelligent Terminal. Anda dapat"
+setup.description.fre_line2: "membuka Settings untuk mengonfigurasi dan menyiapkan ruang kerja Anda."
+
+setup.option.reinstall: "Instal ulang %{agent}"
+setup.option.reinstall_hint: "(Akan diinstal secara otomatis)"
+setup.option.signin: "Masuk ke %{agent}"
+setup.option.retry_detection: "Coba deteksi lagi"
+setup.option.retry_auth: "Saya sudah masuk — coba sambungkan lagi"
+setup.option.retry_connection: "Coba sambungkan lagi"
+setup.status.installing: "Menginstal..."
+setup.status.install_failed: "Instalasi gagal: "
+setup.status.installing_winget: " Menginstal melalui winget..."
+
+# ─── Layar autentikasi ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "CLI agen %{agent} dipilih"
+auth.agent_selected_reason: "CLI agen %{agent} — "
+auth.checking: "Memeriksa autentikasi..."
+auth.waiting: "Menunggu otorisasi..."
+auth.code_copied: "Kode disalin ke papan klip — tempel di browser Anda."
+auth.signin_prompt: "Masuk untuk menggunakan agen Anda:"
+auth.connect_agent: "Sambungkan %{agent} untuk mengaktifkan fitur agen"
+# {Locked="GitHub"} - nama merek
+auth.signin_github: "[ Masuk dengan GitHub ]"
+auth.signin_agent: "[ Masuk dengan %{agent} ]"
+auth.hint: "Tekan Enter untuk masuk, Esc untuk kembali"
+
+# ─── Obrolan ────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Berpikir…"
+chat.welcome: "Selamat datang di Intelligent Terminal!"
+chat.plan_header: "Rencana:"
+
+# ─── Petunjuk ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. untuk menampilkan/menyembunyikan panel agen • Ctrl+Alt+/ untuk menampilkan/menyembunyikan sesi agen)"
+
+# ─── Label status agen ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Belum diinstal — pilih untuk menginstal secara otomatis"
+agent.status.not_found: "Tidak ditemukan"
+agent.status.detected: "Terdeteksi"
+
+# ─── Status koneksi ───────────────────────────────────────────────────────────
+
+connection.starting: "Memulai agen..."
+connection.reconnecting: "Menyambungkan kembali..."

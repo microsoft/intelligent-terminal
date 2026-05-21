@@ -1,5 +1,66 @@
-# Setup screen titles
-setup.title.first_run: "[¡¡ Ŵẽĺçømẽ ŧø Îñŧẽĺĺįğẽñŧ Ţẽŕmįñåĺ! ¡¡]"
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
+setup.title.first_run: "[¡¡ Ŵẽĺçømẽ ŧø Intelligent Terminal! ¡¡]"
 setup.title.agent_missing: "[¡¡ Åğẽñŧ ñøŧ ƒøůñđ ¡¡]"
 setup.title.agent_error: "[¡¡ Åğẽñŧ çøññẽçŧįøñ ƒåįĺẽđ ¡¡]"
 setup.title.switch_agent: "[¡¡ Ŝŵįŧçĥ åğẽñŧ ¡¡]"
+setup.title.not_available: "[¡¡ Åğẽñŧ ñøŧ åṽåįĺåƀĺẽ ¡¡]"
+setup.title.sign_in: "[¡¡ Ŝįğñ įñ ŕẽqůįŕẽđ ¡¡]"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "[¡¡ Ÿøůŕ åğẽñŧ \"%{agent}\" įś ñøŧ įñśŧåĺĺẽđ. Ƒøĺĺøŵ ŧĥẽ śŧẽṗś ƀẽĺøŵ ŧø įñśŧåĺĺ įŧ. Ţø śŵįŧçĥ åğẽñŧś, ğø ŧø Settings. ¡¡]"
+setup.subtitle.agent_missing: "[¡¡ Ÿøůŕ åğẽñŧ \"%{agent}\" įś ñøŧ įñśŧåĺĺẽđ. Ṗĺẽåśẽ ŕẽįñśŧåĺĺ įŧ måñůåĺĺÿ, ŧĥẽñ ŕẽŧŕÿ. Ţø śŵįŧçĥ åğẽñŧś, ğø ŧø Settings. ¡¡]"
+setup.subtitle.copilot_auth: "[¡¡ Ÿøůŕ åğẽñŧ \"%{agent}\" ŕẽqůįŕẽś åůŧĥẽñŧįçåŧįøñ. Ƒøĺĺøŵ ŧĥẽ śŧẽṗś ƀẽĺøŵ ŧø śįğñ įñ. Ţø śŵįŧçĥ åğẽñŧś, ğø ŧø Settings. ¡¡]"
+setup.subtitle.agent_auth: "[¡¡ Ÿøůŕ åğẽñŧ \"%{agent}\" ŕẽqůįŕẽś åůŧĥẽñŧįçåŧįøñ. Ṗĺẽåśẽ śįğñ įñ ṽįå ŧĥẽ åğẽñŧ CLI, ŧĥẽñ ŕẽŧŕÿ. Ţø śŵįŧçĥ åğẽñŧś, ğø ŧø Settings. ¡¡]"
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "[¡¡ Çĥøøśẽ ŧĥẽ đẽƒåůĺŧ åğẽñŧ CLI ÿøů ŵøůĺđ ĺįķẽ ŧø ůśẽ įñ Intelligent Terminal. Ÿøů çåñ ¡¡]"
+setup.description.fre_line2: "[¡¡ ñåṽįğåŧẽ ŧø Settings ŧø çøñƒįğůŕẽ åñđ śẽŧ ůṗ ÿøůŕ ŵøŕķśṗåçẽ. ¡¡]"
+
+setup.option.reinstall: "[¡¡ Ŕẽįñśŧåĺĺ %{agent} ¡¡]"
+setup.option.reinstall_hint: "[¡¡ (Ŵįĺĺ ƀẽ įñśŧåĺĺẽđ åůŧømåŧįçåĺĺÿ) ¡¡]"
+setup.option.signin: "[¡¡ Ŝįğñ įñ ŧø %{agent} ¡¡]"
+setup.option.retry_detection: "[¡¡ Ŕẽŧŕÿ đẽŧẽçŧįøñ ¡¡]"
+setup.option.retry_auth: "[¡¡ Î'ṽẽ śįğñẽđ įñ — ŕẽŧŕÿ çøññẽçŧįøñ ¡¡]"
+setup.option.retry_connection: "[¡¡ Ŕẽŧŕÿ çøññẽçŧįøñ ¡¡]"
+setup.status.installing: "[¡¡ Îñśŧåĺĺįñğ... ¡¡]"
+setup.status.install_failed: "[¡¡ Îñśŧåĺĺ ƒåįĺẽđ:  ¡¡]"
+setup.status.installing_winget: "[¡¡  Îñśŧåĺĺįñğ ṽįå winget... ¡¡]"
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "[¡¡ Åğẽñŧ CLI %{agent} įś śẽĺẽçŧẽđ ¡¡]"
+auth.agent_selected_reason: "[¡¡ Åğẽñŧ CLI %{agent} —  ¡¡]"
+auth.checking: "[¡¡ Çĥẽçķįñğ åůŧĥẽñŧįçåŧįøñ... ¡¡]"
+auth.waiting: "[¡¡ Ŵåįŧįñğ ƒøŕ åůŧĥøŕįžåŧįøñ... ¡¡]"
+auth.code_copied: "[¡¡ Çøđẽ çøṗįẽđ ŧø çĺįṗƀøåŕđ — ṗåśŧẽ įŧ įñ ÿøůŕ ƀŕøŵśẽŕ. ¡¡]"
+auth.signin_prompt: "[¡¡ Ŝįğñ įñ ŧø ůśẽ ÿøůŕ åğẽñŧ: ¡¡]"
+auth.connect_agent: "[¡¡ Çøññẽçŧ %{agent} ŧø ẽñåƀĺẽ åğẽñŧ ƒẽåŧůŕẽś ¡¡]"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[¡¡ [ Ŝįğñ įñ ŵįŧĥ GitHub ] ¡¡]"
+auth.signin_agent: "[¡¡ [ Ŝįğñ įñ ŵįŧĥ %{agent} ] ¡¡]"
+auth.hint: "[¡¡ Ṗŕẽśś Ẽñŧẽŕ ŧø śįğñ įñ, Ẽśç ŧø ğø ƀåçķ ¡¡]"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "[¡¡ Ţĥįñķįñğ… ¡¡]"
+chat.welcome: "[¡¡ Ŵẽĺçømẽ ŧø Intelligent Terminal! ¡¡]"
+chat.plan_header: "[¡¡ Ṗĺåñ: ¡¡]"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "[¡¡ (Ctrl+Shift+. ŧø śĥøŵ/ĥįđẽ åğẽñŧ ṗåñẽ • Ctrl+Alt+/ ŧø śĥøŵ/ĥįđẽ åğẽñŧ śẽśśįøñ) ¡¡]"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "[¡¡ Ñøŧ įñśŧåĺĺẽđ — śẽĺẽçŧ ŧø įñśŧåĺĺ åůŧømåŧįçåĺĺÿ ¡¡]"
+agent.status.not_found: "[¡¡ Ñøŧ ƒøůñđ ¡¡]"
+agent.status.detected: "[¡¡ Đẽŧẽçŧẽđ ¡¡]"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "[¡¡ Ŝŧåŕŧįñğ åğẽñŧ... ¡¡]"
+connection.reconnecting: "[¡¡ Ŕẽçøññẽçŧįñğ... ¡¡]"

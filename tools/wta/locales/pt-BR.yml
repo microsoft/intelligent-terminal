@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Bem-vindo ao Intelligent Terminal!"
 setup.title.agent_missing: "Agente não encontrado"
 setup.title.agent_error: "Falha na conexão com o agente"
 setup.title.switch_agent: "Trocar agente"
+setup.title.not_available: "Agente não disponível"
+setup.title.sign_in: "Login necessário"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Seu agente \"%{agent}\" não está instalado. Siga as etapas abaixo para instalá-lo. Para trocar de agente, vá para Settings."
+setup.subtitle.agent_missing: "Seu agente \"%{agent}\" não está instalado. Reinstale-o manualmente e tente novamente. Para trocar de agente, vá para Settings."
+setup.subtitle.copilot_auth: "Seu agente \"%{agent}\" requer autenticação. Siga as etapas abaixo para entrar. Para trocar de agente, vá para Settings."
+setup.subtitle.agent_auth: "Seu agente \"%{agent}\" requer autenticação. Entre pela CLI do agente e tente novamente. Para trocar de agente, vá para Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Escolha a CLI de agente padrão que você deseja usar no Intelligent Terminal. Você pode"
+setup.description.fre_line2: "acessar Settings para configurar e preparar seu espaço de trabalho."
+
+setup.option.reinstall: "Reinstalar %{agent}"
+setup.option.reinstall_hint: "(Será instalado automaticamente)"
+setup.option.signin: "Entrar em %{agent}"
+setup.option.retry_detection: "Tentar detecção novamente"
+setup.option.retry_auth: "Já entrei — tentar conexão novamente"
+setup.option.retry_connection: "Tentar conexão novamente"
+setup.status.installing: "Instalando..."
+setup.status.install_failed: "Falha na instalação: "
+setup.status.installing_winget: " Instalando via winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "CLI do agente %{agent} selecionada"
+auth.agent_selected_reason: "CLI do agente %{agent} — "
+auth.checking: "Verificando autenticação..."
+auth.waiting: "Aguardando autorização..."
+auth.code_copied: "Código copiado para a área de transferência — cole-o no navegador."
+auth.signin_prompt: "Entre para usar seu agente:"
+auth.connect_agent: "Conectar %{agent} para habilitar os recursos do agente"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Entrar com GitHub ]"
+auth.signin_agent: "[ Entrar com %{agent} ]"
+auth.hint: "Pressione Enter para entrar, Esc para voltar"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Pensando…"
+chat.welcome: "Bem-vindo ao Intelligent Terminal!"
+chat.plan_header: "Plano:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. para mostrar/ocultar o painel do agente • Ctrl+Alt+/ para mostrar/ocultar a sessão do agente)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Não instalado — selecione para instalar automaticamente"
+agent.status.not_found: "Não encontrado"
+agent.status.detected: "Detectado"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Iniciando agente..."
+connection.reconnecting: "Reconectando..."

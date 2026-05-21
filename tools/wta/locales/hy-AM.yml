@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Բարի գալուստ Intelligent Terminal!"
 setup.title.agent_missing: "Գործակալը չի գտնվել"
 setup.title.agent_error: "Գործակալին միանալը ձախողվել է"
 setup.title.switch_agent: "Փոխել գործակալը"
+setup.title.not_available: "Գործակալը հասանելի չէ"
+setup.title.sign_in: "Պահանջվում է մուտք գործել"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Ձեր \"%{agent}\" գործակալը տեղադրված չէ։ Տեղադրելու համար հետեվեք ստորեվ նշված քայլերին։ Գործակալը փոխելու համար անցեք Settings։"
+setup.subtitle.agent_missing: "Ձեր \"%{agent}\" գործակալը տեղադրված չէ։ Խնդրում ենք ձեռքով վերատեղադրել եվ կրկին փորձել։ Գործակալը փոխելու համար անցեք Settings։"
+setup.subtitle.copilot_auth: "Ձեր \"%{agent}\" գործակալը պահանջում է նույնականացում։ Մուտք գործելու համար հետեվեք ստորեվ նշված քայլերին։ Գործակալը փոխելու համար անցեք Settings։"
+setup.subtitle.agent_auth: "Ձեր \"%{agent}\" գործակալը պահանջում է նույնականացում։ Մուտք գործեք գործակալի CLI-ի միջոցով եվ կրկին փորձել։ Գործակալը փոխելու համար անցեք Settings։"
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Ընտրեք լռադրյալ գործակալի CLI-ն, որը ցանկանում եք օգտագործել Intelligent Terminal-ում։ Դուք կարող եք"
+setup.description.fre_line2: "անցնել Settings՝ ձեր աշխատական տարածքը կարգավորելու համար։"
+
+setup.option.reinstall: "Վերատեղադրել %{agent}"
+setup.option.reinstall_hint: "(Կտեղադրվի ինքնաշխատորեն)"
+setup.option.signin: "Մուտք գործել %{agent}"
+setup.option.retry_detection: "Կրկին հայտնաբերել"
+setup.option.retry_auth: "Մուտք եմ գործել — կրկին միանալ"
+setup.option.retry_connection: "Կրկին միանալ"
+setup.status.installing: "Տեղադրվում է..."
+setup.status.install_failed: "Տեղադրումը ձախողվեց՝ "
+setup.status.installing_winget: " Տեղադրում winget-ի միջոցով..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Ընտրված է գործակալի CLI %{agent}"
+auth.agent_selected_reason: "Գործակալի CLI %{agent} — "
+auth.checking: "Նույնականացման ստուգում..."
+auth.waiting: "Լիազորացման սպասում..."
+auth.code_copied: "Կոդը պատճենվեց — տեղադրեք այն ձեր բրաուզերում։"
+auth.signin_prompt: "Մուտք գործեք՝ ձեր գործակալն օգտագործելու համար՝"
+auth.connect_agent: "Միացրեք %{agent}՝ գործակալի հնարավորությունները միացնելու համար"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Մուտք գործել GitHub-ի միջոցով ]"
+auth.signin_agent: "[ Մուտք գործել %{agent}-ի միջոցով ]"
+auth.hint: "Սեղմեք Enter մուտք գործելու համար, Esc հետ վերադառնալու համար"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Մտածում եմ…"
+chat.welcome: "Բարի գալուստ Intelligent Terminal!"
+chat.plan_header: "Պլան՝"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. գործակալի վահանակը ցույց տալ/թաքցնել • Ctrl+Alt+/ գործակալի նիստը ցույց տալ/թաքցնել)"
+
+# ─── Agent status labels ──────────────────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Տեղադրված չէ — ընտրեք ինքնաշխատ տեղադրման համար"
+agent.status.not_found: "Չի գտնվել"
+agent.status.detected: "Հայտնաբերված է"
+
+# ─── Connection state ─────────────────────────────────────────────────────────────────────
+
+connection.starting: "Գործակալը գործարկվում է..."
+connection.reconnecting: "Վերմիանում..."

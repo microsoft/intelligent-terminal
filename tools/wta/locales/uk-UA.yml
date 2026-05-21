@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Ласкаво просимо до Intelligent Terminal!"
 setup.title.agent_missing: "Агент не знайдено"
 setup.title.agent_error: "Не вдалося підключитися до агента"
 setup.title.switch_agent: "Змінити агента"
+setup.title.not_available: "Агент недоступний"
+setup.title.sign_in: "Потрібен вхід"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" не встановлено. Виконайте наведені нижче кроки, щоб його встановити. Щоб змінити агента, перейдіть до Settings."
+setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" не встановлено. Перевстановіть його вручну та повторіть спробу. Щоб змінити агента, перейдіть до Settings."
+setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Виконайте наведені нижче кроки для входу. Щоб змінити агента, перейдіть до Settings."
+setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Увійдіть через CLI агента та повторіть спробу. Щоб змінити агента, перейдіть до Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Оберіть CLI агента за замовчуванням для використання в Intelligent Terminal. Ви можете"
+setup.description.fre_line2: "перейти до Settings для налаштування робочої області."
+
+setup.option.reinstall: "Перевстановити %{agent}"
+setup.option.reinstall_hint: "(Буде встановлено автоматично)"
+setup.option.signin: "Увійти в %{agent}"
+setup.option.retry_detection: "Повторити виявлення"
+setup.option.retry_auth: "Я увійшов — повторити підключення"
+setup.option.retry_connection: "Повторити підключення"
+setup.status.installing: "Встановлення..."
+setup.status.install_failed: "Помилка встановлення: "
+setup.status.installing_winget: " Встановлення через winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Обрано CLI агента %{agent}"
+auth.agent_selected_reason: "CLI агента %{agent} — "
+auth.checking: "Перевірка автентифікації..."
+auth.waiting: "Очікування авторизації..."
+auth.code_copied: "Код скопійовано до буфера обміну — вставте його у браузері."
+auth.signin_prompt: "Увійдіть, щоб використовувати агента:"
+auth.connect_agent: "Підключіть %{agent} для увімкнення функцій агента"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Увійти через GitHub ]"
+auth.signin_agent: "[ Увійти через %{agent} ]"
+auth.hint: "Натисніть Enter для входу, Esc для повернення"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Думаю…"
+chat.welcome: "Ласкаво просимо до Intelligent Terminal!"
+chat.plan_header: "План:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. — показати/сховати панель агента • Ctrl+Alt+/ — показати/сховати сеанс агента)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Не встановлено — оберіть для автоматичного встановлення"
+agent.status.not_found: "Не знайдено"
+agent.status.detected: "Виявлено"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Запуск агента..."
+connection.reconnecting: "Перепідключення..."

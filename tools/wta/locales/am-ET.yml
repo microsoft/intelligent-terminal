@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "እንኳን ወደ Intelligent Terminal በደህና መጡ!"
-setup.title.agent_missing: "ኤጅንት አልተገኘም"
+setup.title.agent_missing: "ኤጅንት አልተገኙም"
 setup.title.agent_error: "ኤጅንት ግንኙነት አልተሳካም"
 setup.title.switch_agent: "ኤጅንትን ቀይር"
+setup.title.not_available: "ኤጅንት አይገኙም"
+setup.title.sign_in: "መግባት ያስፈልጋል"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "ኤጅንትዎ \"%{agent}\" አልተጠቀመም። ለመጠቀም ከታች ያሉትን ደረጃዎች ይተግበሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
+setup.subtitle.agent_missing: "ኤጅንትዎ \"%{agent}\" አልተጠቀመም። እባክዎን በእጥ ይጠቅሙት እና እንደገና ይሞክሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
+setup.subtitle.copilot_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገወል። ለመግባት ከታች ያሉትን ደረጃዎች ይተግበሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
+setup.subtitle.agent_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገወል። እባክዎን በኤጅንት CLI በኩል ይግቡ እና እንደገና ይሞክሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "በ Intelligent Terminal ውስጥ ላይጠቀሙት የሚፈልጉትን ነባሪ CLI ኤጅንት ይምረጡ። ወደ"
+setup.description.fre_line2: "Settings ሂደው የስራ ቀጠርዎን ላያያዙ ይችላሉ።"
+
+setup.option.reinstall: "%{agent} እንደገና ጠቅም"
+setup.option.reinstall_hint: "(በራሱ ይጠቀማል)"
+setup.option.signin: "ወደ %{agent} ይግቡ"
+setup.option.retry_detection: "እንደገና ፍለጋ"
+setup.option.retry_auth: "ገብቻለሁ — ግንኙነት እንደገና ሞክር"
+setup.option.retry_connection: "ግንኙነት እንደገና ሞክር"
+setup.status.installing: "በመጠቀም ላይ..."
+setup.status.install_failed: "መጠቀም አልተሳካም፡ "
+setup.status.installing_winget: " በ winget በኩል በመጠቀም ላይ..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────────────────────
+
+auth.agent_selected: "ኤጅንት CLI %{agent} ተመርጧል"
+auth.agent_selected_reason: "ኤጅንት CLI %{agent} — "
+auth.checking: "ማረጋገጥ በመፈተሽ..."
+auth.waiting: "ፍቃድ በመጠበቅ..."
+auth.code_copied: "ኮዱ ተቀድቷል — በአስሳሽዎ ላይ ይለጥፉት።"
+auth.signin_prompt: "ኤጅንትዎን ለመጠቀም ይግቡ፡"
+auth.connect_agent: "የኤጅንት ባህሪያትን ለማንቃት %{agent} ይጋኙ"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ በ GitHub ይግቡ ]"
+auth.signin_agent: "[ በ %{agent} ይግቡ ]"
+auth.hint: "ለመግባት Enter ይጫኑ, ለመመለስ Esc ይጫኑ"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "በማሰብ…"
+chat.welcome: "እንኳን ወደ Intelligent Terminal በደህና መጡ!"
+chat.plan_header: "እቅድ፡"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. የኤጅንት ገጽታ ማሳየት/መደበቅ • Ctrl+Alt+/ የኤጅንት ክፍለጥ ማሳየት/መደበቅ)"
+
+# ─── Agent status labels ──────────────────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "አልተጠቀመም — በራስ-ሰር ለመጠቀም ይምረጡ"
+agent.status.not_found: "አልተገኙም"
+agent.status.detected: "ተገኙቷል"
+
+# ─── Connection state ─────────────────────────────────────────────────────────────────────
+
+connection.starting: "ኤጅንት በመጀመር..."
+connection.reconnecting: "እንደገና በመጋኘት..."

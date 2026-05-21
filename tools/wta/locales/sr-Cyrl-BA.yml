@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Setup screen ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - product name, do not translate
+
 setup.title.first_run: "Добродошли у Intelligent Terminal!"
 setup.title.agent_missing: "Агент није пронађен"
 setup.title.agent_error: "Повезивање са агентом није успјело"
 setup.title.switch_agent: "Промијени агента"
+setup.title.not_available: "Агент није доступан"
+setup.title.sign_in: "Потребна је пријава"
+
+# %{agent} is replaced with the agent display name at runtime.
+# {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
+setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" није инсталиран. Пратите кораке испод да бисте га инсталирали. За промјену агента идите у Settings."
+setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" није инсталиран. Поново га ручно инсталирајте, па покушајте поново. За промјену агента идите у Settings."
+setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" захтијева аутентификацију. Пратите кораке испод да бисте се пријавили. За промјену агента идите у Settings."
+setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" захтијева аутентификацију. Пријавите се преко CLI агента, па покушајте поново. За промјену агента идите у Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Изаберите подразумијевани CLI агент који желите да користите у Intelligent Terminal. Можете"
+setup.description.fre_line2: "отићи у Settings да конфигуришете и подесите свој радни простор."
+
+setup.option.reinstall: "Поново инсталирај %{agent}"
+setup.option.reinstall_hint: "(Биће инсталирано аутоматски)"
+setup.option.signin: "Пријави се у %{agent}"
+setup.option.retry_detection: "Поново покушај откривање"
+setup.option.retry_auth: "Пријавио/ла сам се — покушај поново повезивање"
+setup.option.retry_connection: "Поново покушај повезивање"
+setup.status.installing: "Инсталирање..."
+setup.status.install_failed: "Инсталација није успјела: "
+setup.status.installing_winget: " Инсталирање преко winget..."
+
+# ─── Auth screen ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "CLI агент %{agent} је изабран"
+auth.agent_selected_reason: "CLI агент %{agent} — "
+auth.checking: "Провјера аутентификације..."
+auth.waiting: "Чекање на ауторизацију..."
+auth.code_copied: "Код је копиран у међуспремник — налијепите га у прегледач."
+auth.signin_prompt: "Пријавите се да бисте користили свог агента:"
+auth.connect_agent: "Повежите %{agent} да бисте омогућили функције агента"
+# {Locked="GitHub"} - brand name
+auth.signin_github: "[ Пријави се преко GitHub ]"
+auth.signin_agent: "[ Пријави се преко %{agent} ]"
+auth.hint: "Притисните Enter за пријаву, Esc за повратак"
+
+# ─── Chat ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Размишљам…"
+chat.welcome: "Добродошли у Intelligent Terminal!"
+chat.plan_header: "План:"
+
+# ─── Hints ───────────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. за приказ/скривање панела агента • Ctrl+Alt+/ за приказ/скривање сесије агента)"
+
+# ─── Agent status labels ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Није инсталиран — изаберите за аутоматску инсталацију"
+agent.status.not_found: "Није пронађен"
+agent.status.detected: "Откривен"
+
+# ─── Connection state ───────────────────────────────────────────────────────
+
+connection.starting: "Покретање агента..."
+connection.reconnecting: "Поновно повезивање..."

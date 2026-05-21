@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Opstellingskerm ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - produknaam, moenie vertaal nie
+
 setup.title.first_run: "Welkom by Intelligent Terminal!"
 setup.title.agent_missing: "Agent nie gevind nie"
 setup.title.agent_error: "Agentverbinding het misluk"
 setup.title.switch_agent: "Wissel agent"
+setup.title.not_available: "Agent is nie beskikbaar nie"
+setup.title.sign_in: "Aanmelding vereis"
+
+# %{agent} word tydens uitvoering vervang met die agent se vertoonnaam.
+# {Locked="Settings"} - verwys na die Settings-bladsy, hou dit soos dit is.
+setup.subtitle.copilot_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Volg die stappe hieronder om dit te installeer. Om van agent te wissel, gaan na Settings."
+setup.subtitle.agent_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Herinstalleer dit handmatig en probeer weer. Om van agent te wissel, gaan na Settings."
+setup.subtitle.copilot_auth: "Jou agent \"%{agent}\" vereis stawing. Volg die stappe hieronder om aan te meld. Om van agent te wissel, gaan na Settings."
+setup.subtitle.agent_auth: "Jou agent \"%{agent}\" vereis stawing. Meld aan via die agent CLI en probeer weer. Om van agent te wissel, gaan na Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Kies die verstek agent CLI wat jy in Intelligent Terminal wil gebruik. Jy kan"
+setup.description.fre_line2: "na Settings navigeer om jou werkspasie op te stel en te konfigureer."
+
+setup.option.reinstall: "Herinstalleer %{agent}"
+setup.option.reinstall_hint: "(Sal outomaties geïnstalleer word)"
+setup.option.signin: "Meld aan by %{agent}"
+setup.option.retry_detection: "Probeer opsporing weer"
+setup.option.retry_auth: "Ek het aangemeld — probeer verbinding weer"
+setup.option.retry_connection: "Probeer verbinding weer"
+setup.status.installing: "Installeer tans..."
+setup.status.install_failed: "Installasie het misluk: "
+setup.status.installing_winget: " Installeer tans via winget..."
+
+# ─── Stawingskerm ─────────────────────────────────────────────────────────────
+
+auth.agent_selected: "Agent CLI %{agent} is gekies"
+auth.agent_selected_reason: "Agent CLI %{agent} — "
+auth.checking: "Stawing word nagegaan..."
+auth.waiting: "Wag vir magtiging..."
+auth.code_copied: "Kode na die knipbord gekopieer — plak dit in jou blaaier."
+auth.signin_prompt: "Meld aan om jou agent te gebruik:"
+auth.connect_agent: "Koppel %{agent} om agentkenmerke te aktiveer"
+# {Locked="GitHub"} - handelsnaam
+auth.signin_github: "[ Meld aan met GitHub ]"
+auth.signin_agent: "[ Meld aan met %{agent} ]"
+auth.hint: "Druk Enter om aan te meld, Esc om terug te gaan"
+
+# ─── Klets ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Dink na…"
+chat.welcome: "Welkom by Intelligent Terminal!"
+chat.plan_header: "Plan:"
+
+# ─── Wenke ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. om agentpaneel te wys/verberg • Ctrl+Alt+/ om agentsessie te wys/verberg)"
+
+# ─── Agentstatusetikette ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Nie geïnstalleer nie — kies om outomaties te installeer"
+agent.status.not_found: "Nie gevind nie"
+agent.status.detected: "Opgespoor"
+
+# ─── Verbindingstoestand ───────────────────────────────────────────────────────
+
+connection.starting: "Agent word begin..."
+connection.reconnecting: "Herkoppel tans..."

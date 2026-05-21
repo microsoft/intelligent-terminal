@@ -1,5 +1,66 @@
-# Setup screen titles
+# ─── Scáileán socraithe ────────────────────────────────────────────────────────────
+# {Locked="Intelligent Terminal"} - ainm an táirge, ná haistrigh
+
 setup.title.first_run: "Fáilte go Intelligent Terminal!"
 setup.title.agent_missing: "Nír aimsíodh an gníomhaire"
 setup.title.agent_error: "Theip ar cheangal an ghníomhaire"
 setup.title.switch_agent: "Athraigh gníomhaire"
+setup.title.not_available: "Níl an gníomhaire ar fáil"
+setup.title.sign_in: "Sínigh isteach riachtanach"
+
+# Cuirtear %{agent} in ionad ainm taispeána an ghníomhaire ag am rite.
+# {Locked="Settings"} - tagraíonn sé don leathanach Settings, coinnigh mar atá.
+setup.subtitle.copilot_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Lean na céimeanna thíos chun é a shuiteáil. Chun gníomhairí a athrú, téigh go Settings."
+setup.subtitle.agent_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Athshuiteáil de láimh é, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Settings."
+setup.subtitle.copilot_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Lean na céimeanna thíos chun síniú isteach. Chun gníomhairí a athrú, téigh go Settings."
+setup.subtitle.agent_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Sínigh isteach tríd an CLI gníomhaire, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Roghnaigh an CLI gníomhaire réamhshocraithe ba mhaith leat a úsáid in Intelligent Terminal. Is féidir leat"
+setup.description.fre_line2: "dul go Settings chun do spás oibre a chumrú agus a shocrú."
+
+setup.option.reinstall: "Athshuiteáil %{agent}"
+setup.option.reinstall_hint: "(Suiteálfar go huathoibríoch)"
+setup.option.signin: "Sínigh isteach chuig %{agent}"
+setup.option.retry_detection: "Bain triail eile as aimsiú"
+setup.option.retry_auth: "Tá mé sínithe isteach — bain triail eile as ceangal"
+setup.option.retry_connection: "Bain triail eile as ceangal"
+setup.status.installing: "Á shuiteáil..."
+setup.status.install_failed: "Theip ar shuiteáil: "
+setup.status.installing_winget: " Á shuiteáil trí winget..."
+
+# ─── Scáileán fíordheimhnithe ─────────────────────────────────────────────────
+
+auth.agent_selected: "Tá CLI gníomhaire %{agent} roghnaithe"
+auth.agent_selected_reason: "CLI gníomhaire %{agent} — "
+auth.checking: "Fíordheimhniú á sheiceáil..."
+auth.waiting: "Ag fanacht le húdarú..."
+auth.code_copied: "Cód cóipeáilte chuig an ngearrthaisce — greamaigh é i do bhrabhsálaí."
+auth.signin_prompt: "Sínigh isteach chun do ghníomhaire a úsáid:"
+auth.connect_agent: "Ceangail %{agent} chun gnéithe gníomhaire a chumasú"
+# {Locked="GitHub"} - ainm branda
+auth.signin_github: "[ Sínigh isteach le GitHub ]"
+auth.signin_agent: "[ Sínigh isteach le %{agent} ]"
+auth.hint: "Brúigh Enter chun síniú isteach, Esc chun dul ar ais"
+
+# ─── Comhrá ────────────────────────────────────────────────────────────────────
+
+# {Locked="Intelligent Terminal"}
+chat.thinking: "Ag smaoineamh…"
+chat.welcome: "Fáilte go Intelligent Terminal!"
+chat.plan_header: "Plean:"
+
+# ─── Leideanna ───────────────────────────────────────────────────────────────
+# {Locked="Ctrl+Shift+.", "Ctrl+Alt+/"}
+hint.shortcuts: "(Ctrl+Shift+. chun pána gníomhaire a thaispeáint/a cheilt • Ctrl+Alt+/ chun seisiún gníomhaire a thaispeáint/a cheilt)"
+
+# ─── Lipéid stádais gníomhaire ────────────────────────────────────────────────────
+
+agent.status.not_installed_auto: "Níl suiteáilte — roghnaigh chun suiteáil go huathoibríoch"
+agent.status.not_found: "Nár aimsíodh"
+agent.status.detected: "Braitheadh"
+
+# ─── Staid ceangail ───────────────────────────────────────────────────────
+
+connection.starting: "Gníomhaire á thosú..."
+connection.reconnecting: "Ag athcheangal..."

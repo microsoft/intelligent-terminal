@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>សូមស្វាគមន៍មកកាន់ Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>រៀបចំអ្នកជំនួយការដែលដំឡើងដើម្បីជួយអ្នកពន្យល់កំហុស តែងពាក្យបញ្ជា និងដោះស្រាយកិច្ចការត្រង់កន្លែងដែលអ្នកត្រូវធ្វើការ។ </value>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>ស្វែងយល់បន្ថែមអំពី Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>នៅតែនិងអ្នកជាមួយភ្នាក់ងារ AI ដែលដំឡើងដើម្បី</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>ភ្នាក់ងាររបស់អ្នកតាមដានអ្វីដែលកំពុងកើតឡើងក្នុងតេរ្មីណលរបស់អ្នក និងអាចជួយអ្នកស្វែងយល់និងដោះស្រាយកំហុសនៅពេលដែលវាកើតឡើង។</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>បន្តពីកន្លែងដែលអ្នកខានឈប់</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>តាមដានសកម្មភាពភ្នាក់ងារសកម្ម និងក្រៅមុន និងត្រឡប់ទៅការងារវិញក្នុងវិនាទី។ ពិនិត្យអ្វីដែលកំពុងត្រូវធ្វើ ឬម៉ោងម៉ើលត្រឡប់ទៅការងារមុនដោយមិនបាត់បង់កន្លែង។</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>បន្ត</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>សូមស្វាគមន៍មកកាន់ Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>ជ្រើសរើសអ្វីដែលត្រូវដំឡើងឥឡូវ។ អ្នកអាចផ្លាស់ប្តូរនៅពេលណាក្នុង </value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>ការកំណត់</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>ភ្នាក់ងារ</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>ជ្រើសរើសភ្នាក់ងារ CLI ដែលប្រើក្នុងផ្ទាំងភ្នាក់ងារ។ ACP CLI ដែលត្រូវគ្នានឹងត្រូវបានកត់សម្គាល់ដោយស្វ័យប្រវត្តិ។</value>
+    <comment>{Locked="CLI","ACP"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ ភ្នាក់ងារនេះត្រូវការ Node.js និង NPX ដែលនឹងត្រូវបានតំឡើងដោយស្វ័យប្រវត្តិប្រសិនបើមិនទាន់មាន។</value>
+    <comment>{Locked="Node.js","NPX"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>ការរកឃើញកំហុសដោយស្វ័យប្រវត្តិ</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>អនុញ្ញាត Intelligent Terminal ឲ្យចូលប្រើសែលរបស់អ្នក និងរកឃើញកំហុសដោយស្វ័យប្រវត្តិ។</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
+    <value>ការគ្រប់គ្រងវគ្គ</value>
+  </data>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>អនុញ្ញាត Intelligent Terminal ឲ្យតាមដានស្ថានភាពភ្នាក់ងារដែលកំពុងត្រូវដំណើរការ ឬសកម្ម។</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ ការបើកនេះនឹងតំឡើង hook វគ្គដើម្បីតាមដានវគ្គក្នុង CLI ភ្នាក់ងាររបស់អ្នក។</value>
+    <comment>{Locked="CLI"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>ទីតាំងផ្ទាំង</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>ផ្ទាំងភ្នាក់ងារបើកនៅកន្លែងណាប្រៀបធៀបនឹងតេរ្មីណលរបស់អ្នក។</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>រក្សាទុក</value>
+  </data>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (នឹងត្រូវបានតំឡើង)</value>
+  </data>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (តៀឡើងរួចហើយ)</value>
+  </data>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>ខាងក្រោម</value>
+  </data>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>ស្តាំ។</value>
+  </data>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>ឆ្វេង</value>
+  </data>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>ខាងលើ</value>
+  </data>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>កំពុងដំឡើង...</value>
+  </data>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ ការតំឡើង GitHub Copilot បានបរាជ័យ។ ពិនិត្យម៉ោងការតភ្ជាប់បណ្តាញ និងសាកល្បងឡើងវិញ។</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ ការតំឡើង Node.js បានបរាជ័យ។ ពិនិត្យម៉ោងការតភ្ជាប់បណ្តាញ និងសាកល្បងឡើងវិញ។</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>បើក</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>បិទ</value>
+  </data>
+</root>
