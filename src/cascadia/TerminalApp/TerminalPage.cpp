@@ -2111,6 +2111,16 @@ namespace winrt::TerminalApp::implementation
     {
         _agentPaneLog("_OpenOrReuseAgentPane called, prompt='" + winrt::to_string(prompt) + "', intoSessionsView=" + (intoSessionsView ? "true" : "false"));
 
+        const auto emitAgentPaneOpened = [&]() {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "AgentPaneOpened",
+                TraceLoggingDescription("Event emitted when the agent pane is opened"),
+                TraceLoggingWideString(triggerSource, "TriggerSource", "How the agent pane was triggered"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        };
+
         const auto& globals = _settings.GlobalSettings();
         std::wstring cmdline;
 
@@ -2232,13 +2242,7 @@ namespace winrt::TerminalApp::implementation
                                         !existingPane->IsHidden();
                 if (!wasVisible)
                 {
-                    TraceLoggingWrite(
-                        g_hTerminalAppProvider,
-                        "AgentPaneOpened",
-                        TraceLoggingDescription("Event emitted when the agent pane is opened"),
-                        TraceLoggingWideString(triggerSource, "TriggerSource", "How the agent pane was triggered"),
-                        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                    emitAgentPaneOpened();
                 }
 
                 activeTab->AgentPaneOpen(true);
@@ -2277,13 +2281,7 @@ namespace winrt::TerminalApp::implementation
             _ReconcileAgentPaneForActiveTab();
             if (wantOpen)
             {
-                TraceLoggingWrite(
-                    g_hTerminalAppProvider,
-                    "AgentPaneOpened",
-                    TraceLoggingDescription("Event emitted when the agent pane is opened"),
-                    TraceLoggingWideString(triggerSource, "TriggerSource", "How the agent pane was triggered"),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                emitAgentPaneOpened();
 
                 // Transitioning hidden → visible via the chat keybinding
                 // (Ctrl+Shift+.). Force wta into chat view in case it was
@@ -2436,13 +2434,7 @@ namespace winrt::TerminalApp::implementation
         // The user explicitly asked to open it on this tab.
         activeTab->AgentPaneOpen(true);
 
-        TraceLoggingWrite(
-            g_hTerminalAppProvider,
-            "AgentPaneOpened",
-            TraceLoggingDescription("Event emitted when the agent pane is opened"),
-            TraceLoggingWideString(triggerSource, "TriggerSource", "How the agent pane was triggered"),
-            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        emitAgentPaneOpened();
 
         // No tab_changed needed here — wta was already told its owner tab
         // via --owner-tab-id in the cmdline. Tab switches from here on
