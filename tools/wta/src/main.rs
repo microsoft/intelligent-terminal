@@ -492,21 +492,21 @@ async fn main() -> Result<()> {
     // CLI args. This is the secure path: the host serializes all agent
     // config as a single JSON blob, eliminating per-field commandline
     // escaping. Invalid JSON is a hard error (don't silently fall back).
-    if let Some(overlay) = parse_agent_config(cli.agent_config.as_deref())? {
-        if let Some(agent) = overlay.agent {
-            cli.agent = agent;
+    if let Some(AgentConfig { agent, agent_id, delegate_agent, delegate_model, acp_model }) = parse_agent_config(cli.agent_config.as_deref())? {
+        if let Some(v) = agent {
+            cli.agent = v;
         }
-        if overlay.agent_id.is_some() {
-            cli.agent_id = overlay.agent_id;
+        if agent_id.is_some() {
+            cli.agent_id = agent_id;
         }
-        if overlay.delegate_agent.is_some() {
-            cli.delegate_agent = overlay.delegate_agent;
+        if delegate_agent.is_some() {
+            cli.delegate_agent = delegate_agent;
         }
-        if overlay.delegate_model.is_some() {
-            cli.delegate_model = overlay.delegate_model;
+        if delegate_model.is_some() {
+            cli.delegate_model = delegate_model;
         }
-        if overlay.acp_model.is_some() {
-            cli.acp_model = overlay.acp_model;
+        if acp_model.is_some() {
+            cli.acp_model = acp_model;
         }
     }
 
@@ -724,15 +724,15 @@ async fn main() -> Result<()> {
             agent_config,
         }) => {
             // Apply JSON config overlay (same as top-level path).
-            if let Some(overlay) = parse_agent_config(agent_config.as_deref())? {
-                if let Some(a) = overlay.agent {
+            if let Some(AgentConfig { agent: cfg_agent, delegate_agent: cfg_da, delegate_model: cfg_dm, .. }) = parse_agent_config(agent_config.as_deref())? {
+                if let Some(a) = cfg_agent {
                     agent = a;
                 }
-                if overlay.delegate_agent.is_some() {
-                    delegate_agent = overlay.delegate_agent;
+                if cfg_da.is_some() {
+                    delegate_agent = cfg_da;
                 }
-                if overlay.delegate_model.is_some() {
-                    delegate_model = overlay.delegate_model;
+                if cfg_dm.is_some() {
+                    delegate_model = cfg_dm;
                 }
             }
             run_delegate(&prompt, &agent, delegate_agent.as_deref(), delegate_model.as_deref(), cwd.as_deref()).await
