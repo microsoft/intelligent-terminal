@@ -560,6 +560,7 @@
         { "command": "focusAgentPane", "id": "Terminal.FocusAgentPane" },
         { "command": "openAgentSessions", "id": "Terminal.OpenAgentSessions" },
         { "command": "triggerAutofix", "id": "Terminal.TriggerAutofix" },
+        { "command": "bugReport", "id": "Terminal.BugReport" },
         // Tab Management
         // "command": "closeTab" is unbound by default.
         //   The closeTab command closes a tab without confirmation, even if it has multiple panes.
