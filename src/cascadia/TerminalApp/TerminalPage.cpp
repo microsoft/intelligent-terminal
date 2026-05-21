@@ -31,7 +31,7 @@
 #include "TerminalSettingsCache.h"
 #include "TerminalProtocolPipeServer.h"
 #include "WtaProcessLauncher.h"
-#include "QuoteArgForCommandLine.h"
+#include "../inc/QuoteArgForCommandLine.h"
 
 #include "LaunchPositionRequest.g.cpp"
 #include "RenameWindowRequestedArgs.g.cpp"
