@@ -322,4 +322,87 @@ mod tests {
             &["-y", "@zed-industries/claude-code-acp"],
         );
     }
+
+    // ── JSON-in-commandline-arg round-trip ──────────────────────────
+    // These simulate the WT→WTA flow: WT serializes agent config as JSON,
+    // passes it as a single `--agent-config` argument. We verify the JSON
+    // survives the commandline quoting + CommandLineToArgvW round-trip and
+    // can be deserialized back to the original structured data.
+
+    #[test]
+    fn json_arg_simple() {
+        let json = r#"{"agent":"copilot --acp --stdio","agentId":"copilot"}"#;
+        assert_roundtrip("wta.exe", &["--agent-config", json]);
+    }
+
+    #[test]
+    fn json_arg_with_quotes_in_value() {
+        // Agent command contains quotes (e.g. a path with spaces that was quoted)
+        let json = r#"{"agent":"\"C:\\Program Files\\agent.exe\" --acp","agentId":"custom"}"#;
+        assert_roundtrip("wta.exe", &["--agent-config", json]);
+    }
+
+    #[test]
+    fn json_arg_with_backslashes() {
+        // Windows paths with backslashes inside JSON values
+        let json = r#"{"agent":"C:\\Users\\test\\copilot.exe --acp --stdio","agentId":"copilot"}"#;
+        assert_roundtrip("wta.exe", &["--agent-config", json]);
+    }
+
+    #[test]
+    fn json_arg_all_fields() {
+        let json = r#"{"agent":"copilot --acp --stdio","agentId":"copilot","delegateAgent":"codex","delegateModel":"gpt-4o","acpModel":"claude-sonnet"}"#;
+        assert_roundtrip("wta.exe", &["--agent-config", json]);
+    }
+
+    #[test]
+    fn json_arg_unicode_values() {
+        let json = r#"{"agent":"copilot --acp","agentId":"自定义代理"}"#;
+        assert_roundtrip("wta.exe", &["--agent-config", json]);
+    }
+
+    #[test]
+    fn json_arg_with_special_chars_in_model() {
+        // Model name with characters that could trip up naive escaping
+        let json = r#"{"agent":"copilot","acpModel":"org/model-name:v1.0 (beta)"}"#;
+        assert_roundtrip("wta.exe", &["--agent-config", json]);
+    }
+
+    #[test]
+    fn json_arg_adversarial_injection_attempt() {
+        // Attacker tries to break out of JSON arg to inject --no-autofix
+        let json = r#"{"agent":"evil\" --no-autofix --agent \"pwned"}"#;
+        assert_roundtrip("wta.exe", &["--agent-config", json]);
+    }
+
+    #[test]
+    fn json_arg_deserialization_roundtrip() {
+        // Full end-to-end: build commandline with JSON arg, parse via OS,
+        // then deserialize the JSON to verify structured data survives.
+        use serde_json::Value;
+
+        let config = serde_json::json!({
+            "agent": "copilot --acp --stdio",
+            "agentId": "copilot",
+            "delegateAgent": "codex --model gpt-4",
+            "delegateModel": "gpt-4o",
+            "acpModel": "claude-3.5-sonnet"
+        });
+        let json_str = serde_json::to_string(&config).unwrap();
+
+        let args = vec![
+            "--agent-config".to_string(),
+            json_str.clone(),
+        ];
+        let cmdline = build_wt_commandline("wta.exe", &args).unwrap();
+        let parsed = parse_via_os(&cmdline);
+
+        // parsed[0] = "wta.exe", parsed[1] = "--agent-config", parsed[2] = json
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed[1], "--agent-config");
+
+        // The JSON must deserialize back to the same structured data
+        let recovered: Value = serde_json::from_str(&parsed[2]).unwrap();
+        assert_eq!(recovered, config);
+    }
 }

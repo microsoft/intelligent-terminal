@@ -31,6 +31,7 @@
 #include "TerminalSettingsCache.h"
 #include "TerminalProtocolPipeServer.h"
 #include "WtaProcessLauncher.h"
+#include "QuoteArgForCommandLine.h"
 
 #include "LaunchPositionRequest.g.cpp"
 #include "RenameWindowRequestedArgs.g.cpp"
@@ -1163,36 +1164,21 @@ namespace winrt::TerminalApp::implementation
         const auto& globals = _settings.GlobalSettings();
         const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
 
-        // Helper: escape and quote an argument for the command line.
-        auto quoteArg = [](std::wstring_view arg) -> std::wstring {
-            std::wstring escaped{ arg };
-            for (size_t pos = 0; (pos = escaped.find(L'"', pos)) != std::wstring::npos; pos += 2)
-            {
-                escaped.replace(pos, 1, L"\\\"");
-            }
-            return L"\"" + escaped + L"\"";
-        };
+        using Microsoft::Terminal::CommandLine::QuoteArgForCommandLine;
 
-        // Build: wta delegate --agent <agent> --delegate-agent <delegate> "<prompt>"
-        std::wstring cmdline = quoteArg(wtaPath) + L" delegate";
-
-        if (!agentCliPath.empty())
-        {
-            cmdline += L" --agent " + quoteArg(std::wstring_view{ agentCliPath });
-        }
+        // Build: wta delegate --agent-config <json> --cwd <cwd> "<prompt>"
+        std::wstring cmdline = QuoteArgForCommandLine(wtaPath) + L" delegate";
 
         const auto delegateAgent = _ResolveEffectiveDelegateAgent(globals);
-        if (!delegateAgent.empty())
-        {
-            cmdline += L" --delegate-agent " + quoteArg(std::wstring_view{ delegateAgent });
-        }
         const auto delegateModel = globals.DelegateModel();
-        if (!delegateModel.empty())
-        {
-            cmdline += L" --delegate-model " + quoteArg(std::wstring_view{ delegateModel });
-        }
 
-
+        // Pass agent config fields as JSON (same mechanism as the agent pane).
+        cmdline += Microsoft::Terminal::CommandLine::BuildAgentConfigArg(
+            std::wstring_view{ agentCliPath },
+            std::wstring_view{} /* agentId — not needed for delegate */,
+            std::wstring_view{ delegateAgent },
+            std::wstring_view{ delegateModel },
+            std::wstring_view{} /* acpModel */);
 
         // Pass CWD from the active pane.
         winrt::hstring activeCwd;
@@ -1210,16 +1196,11 @@ namespace winrt::TerminalApp::implementation
         }
         if (!activeCwd.empty())
         {
-            cmdline += L" --cwd " + quoteArg(std::wstring_view{ activeCwd });
+            cmdline += L" --cwd " + QuoteArgForCommandLine(std::wstring_view{ activeCwd });
         }
 
         // Append the prompt as a positional argument.
-        std::wstring escapedPrompt{ prompt };
-        for (size_t pos = 0; (pos = escapedPrompt.find(L'"', pos)) != std::wstring::npos; pos += 2)
-        {
-            escapedPrompt.replace(pos, 1, L"\"\"");
-        }
-        cmdline += fmt::format(FMT_COMPILE(L" \"{}\""), escapedPrompt);
+        cmdline += L" " + QuoteArgForCommandLine(std::wstring_view{ prompt });
 
         _agentPaneLog("launching: " + winrt::to_string(winrt::hstring{ cmdline }));
 
@@ -1730,60 +1711,25 @@ namespace winrt::TerminalApp::implementation
         // _NotifyAgentTabChanged → tab_changed events.
         if (const auto stableId = tab->StableId(); !stableId.empty())
         {
-            cmdline += fmt::format(FMT_COMPILE(L" --owner-tab-id \"{}\""), std::wstring_view{ stableId });
+            cmdline += L" --owner-tab-id " + Microsoft::Terminal::CommandLine::QuoteArgForCommandLine(std::wstring_view{ stableId });
         }
 
         const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
-        if (!agentCliPath.empty())
-        {
-            std::wstring s{ agentCliPath };
-            for (size_t pos = 0; (pos = s.find(L'"', pos)) != std::wstring::npos; pos += 2)
-                s.replace(pos, 1, L"\"\"");
-            cmdline += fmt::format(FMT_COMPILE(L" --agent \"{}\""), s);
-        }
-
-        // See `_OpenOrReuseAgentPane` for the rationale: wta needs the
-        // canonical `acpAgent` setting value (not the expanded command
-        // line) to drive the session-management view's CLI filter.
-        if (const auto acpAgent = globals.AcpAgent(); !acpAgent.empty())
-        {
-            std::wstring s{ acpAgent };
-            for (size_t pos = 0; (pos = s.find(L'"', pos)) != std::wstring::npos; pos += 2)
-                s.replace(pos, 1, L"\"\"");
-            cmdline += fmt::format(FMT_COMPILE(L" --agent-id \"{}\""), s);
-        }
-
+        const auto acpAgent = globals.AcpAgent();
         const auto delegateAgent = _ResolveEffectiveDelegateAgent(globals);
-        if (!delegateAgent.empty())
-        {
-            std::wstring s{ delegateAgent };
-            for (size_t pos = 0; (pos = s.find(L'"', pos)) != std::wstring::npos; pos += 2)
-                s.replace(pos, 1, L"\"\"");
-            cmdline += fmt::format(FMT_COMPILE(L" --delegate-agent \"{}\""), s);
-        }
-
         const auto delegateModel = globals.DelegateModel();
-        if (!delegateModel.empty())
-        {
-            std::wstring s{ delegateModel };
-            for (size_t pos = 0; (pos = s.find(L'"', pos)) != std::wstring::npos; pos += 2)
-                s.replace(pos, 1, L"\"\"");
-            cmdline += fmt::format(FMT_COMPILE(L" --delegate-model \"{}\""), s);
-        }
-
-        // Pass the ACP model selection out-of-band so it works for adapter
-        // launches (claude/codex via npx) where --model can't be put on the
-        // adapter cmdline. wta sends this via ACP setSessionModel after
-        // handshake; for copilot/gemini it's redundant (their --model is
-        // already on the agent cmdline) but harmless.
         const auto acpModel = globals.AcpModel();
-        if (!acpModel.empty())
-        {
-            std::wstring s{ acpModel };
-            for (size_t pos = 0; (pos = s.find(L'"', pos)) != std::wstring::npos; pos += 2)
-                s.replace(pos, 1, L"\"\"");
-            cmdline += fmt::format(FMT_COMPILE(L" --acp-model \"{}\""), s);
-        }
+
+        // Pass all agent-related config as a single JSON-encoded argument.
+        // This eliminates per-field hand-rolled escaping — the JSON library
+        // handles special characters, and only one correctly-quoted argument
+        // boundary is needed (via QuoteArgForCommandLine).
+        cmdline += Microsoft::Terminal::CommandLine::BuildAgentConfigArg(
+            std::wstring_view{ agentCliPath },
+            std::wstring_view{ acpAgent },
+            std::wstring_view{ delegateAgent },
+            std::wstring_view{ delegateModel },
+            std::wstring_view{ acpModel });
 
         if (!globals.AutoFixEnabled())
         {
@@ -2121,46 +2067,17 @@ namespace winrt::TerminalApp::implementation
             cmdline = std::wstring{ wtaPath };
 
             const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
-            if (!agentCliPath.empty())
-            {
-                std::wstring agentStr{ agentCliPath };
-                for (size_t pos = 0; (pos = agentStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
-                    agentStr.replace(pos, 1, L"\"\"");
-                cmdline += fmt::format(FMT_COMPILE(L" --agent \"{}\""), agentStr);
-            }
-
-            // Tell wta which `acpAgent` setting value produced this launch
-            // — wta needs the canonical id ("copilot" / "claude" / "codex"
-            // / "gemini" / "custom:…") to drive the session-management
-            // view's CLI filter, and parsing it back out of the expanded
-            // `--agent` command line is fragile (adapter launches expand
-            // to "npx -y …" and lose the agent's name). Passing it through
-            // here keeps a single source of truth.
-            if (const auto acpAgent = globals.AcpAgent(); !acpAgent.empty())
-            {
-                std::wstring idStr{ acpAgent };
-                for (size_t pos = 0; (pos = idStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
-                    idStr.replace(pos, 1, L"\"\"");
-                cmdline += fmt::format(FMT_COMPILE(L" --agent-id \"{}\""), idStr);
-            }
-
+            const auto acpAgent = globals.AcpAgent();
             const auto delegateAgent = _ResolveEffectiveDelegateAgent(globals);
-            if (!delegateAgent.empty())
-            {
-                std::wstring delegateStr{ delegateAgent };
-                for (size_t pos = 0; (pos = delegateStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
-                    delegateStr.replace(pos, 1, L"\"\"");
-                cmdline += fmt::format(FMT_COMPILE(L" --delegate-agent \"{}\""), delegateStr);
-            }
-
             const auto delegateModel = globals.DelegateModel();
-            if (!delegateModel.empty())
-            {
-                std::wstring modelStr{ delegateModel };
-                for (size_t pos = 0; (pos = modelStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
-                    modelStr.replace(pos, 1, L"\"\"");
-                cmdline += fmt::format(FMT_COMPILE(L" --delegate-model \"{}\""), modelStr);
-            }
+
+            // Pass all agent-related config as a single JSON-encoded argument.
+            cmdline += Microsoft::Terminal::CommandLine::BuildAgentConfigArg(
+                std::wstring_view{ agentCliPath },
+                std::wstring_view{ acpAgent },
+                std::wstring_view{ delegateAgent },
+                std::wstring_view{ delegateModel },
+                std::wstring_view{} /* acpModel — not used in this path */);
 
             if (!globals.AutoFixEnabled())
             {
