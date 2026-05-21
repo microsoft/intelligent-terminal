@@ -6,6 +6,7 @@ use tokio::process::Child;
 use tokio::process::Command;
 
 use super::wt_channel::WtChannel;
+use crate::cmdline::build_wt_commandline;
 
 /// Configuration for creating a new terminal.
 pub struct TerminalConfig {
@@ -115,19 +116,11 @@ impl ShellManager {
         let id = self.next_id();
         let wt = self.wt()?;
 
-        // Build the commandline string: "command arg1 arg2 ..."
-        let mut cmdline = config.command.clone();
-        for arg in &config.args {
-            cmdline.push(' ');
-            // Quote args containing spaces
-            if arg.contains(' ') {
-                cmdline.push('"');
-                cmdline.push_str(arg);
-                cmdline.push('"');
-            } else {
-                cmdline.push_str(arg);
-            }
-        }
+        // Build the commandline string for WT pane creation. Returns an
+        // error if the agent-supplied command is unrepresentable (e.g.
+        // contains a literal `"`); the caller catches this and falls back
+        // to create_terminal_local.
+        let cmdline = build_wt_commandline(&config.command, &config.args)?;
 
         // Create a new tab in WT with the command
         let mut params = serde_json::Map::new();

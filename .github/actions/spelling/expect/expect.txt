@@ -547,6 +547,7 @@ FACESIZE
 FAILIFTHERE
 fastlink
 fcharset
+ffi
 fgbg
 FGCOLOR
 FGHIJ
@@ -671,6 +672,7 @@ GMEM
 Goldmine
 gonce
 goutput
+gpt
 GPUs
 GREENSCROLL
 Grehan
@@ -1341,6 +1343,7 @@ PUCHAR
 pvar
 pwch
 PWDDMCONSOLECONTEXT
+pwned
 pws
 pwstr
 pwsz

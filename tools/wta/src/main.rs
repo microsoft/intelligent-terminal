@@ -6,6 +6,7 @@ mod agent_registry;
 mod agent_sessions;
 mod agent_hooks_installer;
 mod app;
+pub mod cmdline;
 mod commands;
 mod coordinator;
 mod event;
@@ -102,6 +103,31 @@ fn normalize_locale(locale: &str) -> String {
 
 // ─── CLI Definition ─────────────────────────────────────────────────────────
 
+/// JSON-encoded agent configuration passed via `--agent-config`.
+/// All fields are optional; missing fields fall back to individual CLI args.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentConfig {
+    agent: Option<String>,
+    agent_id: Option<String>,
+    delegate_agent: Option<String>,
+    delegate_model: Option<String>,
+    acp_model: Option<String>,
+}
+
+/// Parse a JSON `--agent-config` value and return the deserialized config.
+/// Returns `None` if `config_json` is `None`; errors on invalid JSON.
+fn parse_agent_config(config_json: Option<&str>) -> anyhow::Result<Option<AgentConfig>> {
+    match config_json {
+        None => Ok(None),
+        Some(json) => {
+            let config: AgentConfig = serde_json::from_str(json)
+                .context("--agent-config: invalid JSON")?;
+            Ok(Some(config))
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "wta",
@@ -149,6 +175,22 @@ struct Cli {
     /// Model override for the delegate agent
     #[arg(long)]
     delegate_model: Option<String>,
+
+    /// JSON-encoded agent configuration. When present, fields from this
+    /// JSON object override the corresponding individual CLI args above.
+    /// This eliminates hand-rolled commandline escaping on the host side —
+    /// JSON encoding handles all special characters, and only one
+    /// correctly-quoted argument boundary is needed.
+    ///
+    /// Expected shape:
+    /// ```json
+    /// {"agent":"copilot --acp --stdio","agentId":"copilot",
+    ///  "delegateAgent":"codex","delegateModel":"gpt-4","acpModel":"..."}
+    /// ```
+    /// All fields are optional; missing fields fall back to the
+    /// corresponding individual CLI arg or its default.
+    #[arg(long, hide = true)]
+    agent_config: Option<String>,
 
     /// Disable auto-fix on command failure
     #[arg(long)]
@@ -349,6 +391,10 @@ enum Command {
         /// Working directory for the delegate agent tab
         #[arg(long)]
         cwd: Option<String>,
+
+        /// JSON-encoded agent configuration (same as top-level --agent-config)
+        #[arg(long, hide = true)]
+        agent_config: Option<String>,
     },
 
     /// Manage the wt-agent-hooks bridge for supported CLI agents
@@ -440,7 +486,29 @@ async fn main() -> Result<()> {
         rust_i18n::set_locale(&normalize_locale(&locale));
     }
 
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+
+    // If --agent-config is present, overlay its fields onto the individual
+    // CLI args. This is the secure path: the host serializes all agent
+    // config as a single JSON blob, eliminating per-field commandline
+    // escaping. Invalid JSON is a hard error (don't silently fall back).
+    if let Some(AgentConfig { agent, agent_id, delegate_agent, delegate_model, acp_model }) = parse_agent_config(cli.agent_config.as_deref())? {
+        if let Some(v) = agent {
+            cli.agent = v;
+        }
+        if agent_id.is_some() {
+            cli.agent_id = agent_id;
+        }
+        if delegate_agent.is_some() {
+            cli.delegate_agent = delegate_agent;
+        }
+        if delegate_model.is_some() {
+            cli.delegate_model = delegate_model;
+        }
+        if acp_model.is_some() {
+            cli.acp_model = acp_model;
+        }
+    }
 
     // Legacy flags first (backward compat)
     if cli.test_pipe {
@@ -649,11 +717,24 @@ async fn main() -> Result<()> {
         // ── Delegate prompt to new tab agent ──
         Some(Command::Delegate {
             prompt,
-            agent,
-            delegate_agent,
-            delegate_model,
+            mut agent,
+            mut delegate_agent,
+            mut delegate_model,
             cwd,
+            agent_config,
         }) => {
+            // Apply JSON config overlay (same as top-level path).
+            if let Some(AgentConfig { agent: cfg_agent, delegate_agent: cfg_da, delegate_model: cfg_dm, .. }) = parse_agent_config(agent_config.as_deref())? {
+                if let Some(a) = cfg_agent {
+                    agent = a;
+                }
+                if cfg_da.is_some() {
+                    delegate_agent = cfg_da;
+                }
+                if cfg_dm.is_some() {
+                    delegate_model = cfg_dm;
+                }
+            }
             run_delegate(&prompt, &agent, delegate_agent.as_deref(), delegate_model.as_deref(), cwd.as_deref()).await
         }
 

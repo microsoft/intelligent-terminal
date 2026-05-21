@@ -10,6 +10,7 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentHooksStatus.h"
 #include "../inc/WtaProcess.h"
+#include "../inc/QuoteArgForCommandLine.h"
 
 #include <json/json.h>
 
@@ -966,17 +967,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         std::string stdoutText;
         if (!wtaPath.empty())
         {
-            // Quote-escape internal `"` per Windows CRT rules.
-            std::wstring escaped = agentCmdline;
-            for (size_t pos = 0; (pos = escaped.find(L'"', pos)) != std::wstring::npos; pos += 2)
+            // Use correct CommandLineToArgvW quoting for the agent argument.
+            auto quoted = ::Microsoft::Terminal::CommandLine::QuoteArgForCommandLine(std::wstring_view{ agentCmdline });
+            if (quoted)
             {
-                escaped.replace(pos, 1, L"\"\"");
+                const std::wstring args = L"probe-models --agent " + *quoted;
+                // 40s ceiling matches probe.rs's internal limits (npx
+                // initialize 25s + new_session 10s + slack). Cached
+                // adapters return in <2s.
+                stdoutText = ::Microsoft::Terminal::WtaProcess::RunWtaCaptureStdout(wtaPath, args, 40'000);
             }
-            const std::wstring args = L"probe-models --agent \"" + escaped + L"\"";
-            // 40s ceiling matches probe.rs's internal limits (npx
-            // initialize 25s + new_session 10s + slack). Cached
-            // adapters return in <2s.
-            stdoutText = ::Microsoft::Terminal::WtaProcess::RunWtaCaptureStdout(wtaPath, args, 40'000);
         }
 
         std::vector<Model::AcpModelInfo> parsed;
