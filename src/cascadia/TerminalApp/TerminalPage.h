@@ -48,10 +48,6 @@ namespace winrt::TerminalApp::implementation
         Initialized = 2
     };
 
-    // Forward decls for the per-wta protocol pipe transport (Phase 1 — used by
-    // the delegation flow at present; will be extended to the agent pane).
-    struct AgentDelegationEntry;
-
     enum ScrollDirection : int
     {
         ScrollUp = 0,
@@ -626,41 +622,6 @@ namespace winrt::TerminalApp::implementation
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
 
-        // Per-wta protocol pipe transport (delegation in-flight processes).
-        // Each entry pairs a PipeServer (IO thread + JSON-RPC dispatcher)
-        // with the spawned wta's process info; entries self-remove on IO
-        // thread exit (peer EOF or wta crash).
-        std::mutex _agentPipeServersMutex;
-        std::vector<std::shared_ptr<AgentDelegationEntry>> _agentPipeServers;
-        void _RemoveAgentPipeServer(AgentDelegationEntry* entry);
-
-        // Pending pipe handles for the next agent-pane wta launch. Set by
-        // _OpenOrReuseAgentPane just before _MakeTerminalPane runs, consumed
-        // by _CreateConnectionFromSettings when it builds the ConptyConnection
-        // valueSet. The unique_handles ensure exception-safe cleanup if the
-        // launch path bails before Initialize takes ownership.
-        struct PendingProtocolPipe
-        {
-            wil::unique_handle wtaRead;
-            wil::unique_handle wtaWrite;
-        };
-        std::optional<PendingProtocolPipe> _pendingProtocolPipeHandles;
-        void _ConsumePendingProtocolPipeIntoValueSet(
-            Windows::Foundation::Collections::ValueSet& valueSet);
-
-        // Set up the pending pipe pair for the next agent-pane wta launch.
-        // wtRead/wtWrite are the wt-side handles owned by the caller; the
-        // wta-side handles are stashed into _pendingProtocolPipeHandles.
-        // Returns false if pipe creation failed (caller proceeds without pipe).
-        bool _PrepareAgentPanePipe(wil::unique_handle& wtRead,
-                                   wil::unique_handle& wtWrite);
-
-        // After _MakeTerminalPane has run, attach a TerminalProtocolPipeServer
-        // backed by the wt-side handles. Caller already verified that
-        // _ConsumePendingProtocolPipeIntoValueSet did fire (i.e. the wta
-        // received the handles).
-        void _AttachAgentPanePipeServer(wil::unique_handle wtRead,
-                                        wil::unique_handle wtWrite);
         void _OpenOrReuseAgentPane(const winrt::hstring& prompt, bool intoSessionsView = false);
         void _FocusAgentPane();
         void _BroadcastAgentSetView(std::string_view view);

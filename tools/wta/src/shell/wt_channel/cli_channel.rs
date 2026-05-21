@@ -335,7 +335,6 @@ pub fn spawn_wtcli_split_then_focus_with_callback(
 }
 
 /// Channel that invokes `wtcli.exe` for protocol operations.
-/// Used for COM-backed methods; direct shell input stays on PipeChannel.
 pub struct CliChannel {
     available: AtomicBool,
     debug_tx: Option<mpsc::UnboundedSender<DebugMessage>>,
@@ -544,9 +543,17 @@ impl WtChannel for CliChannel {
                 let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
                 self.run_wtcli(&["focus-pane", "-t", &pane_id]).await
             }
-            // send_input intentionally not handled here. It now requires a
-            // PipeChannel attached via inherited handles — only the wta
-            // processes WT itself launches can satisfy it.
+            "send_input" => {
+                let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
+                let text = params.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                let text_owned = text.to_string();
+                let mut args = vec!["send-keys"];
+                if !pane_id.is_empty() {
+                    args.extend(["-t", &pane_id]);
+                }
+                args.push(&text_owned);
+                self.run_wtcli(&args).await
+            }
             "get_capabilities" => self.run_wtcli(&["info"]).await,
             other => bail!("Unsupported method: {}", other),
         }

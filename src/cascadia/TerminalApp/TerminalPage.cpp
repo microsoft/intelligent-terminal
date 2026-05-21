@@ -29,8 +29,6 @@
 #include "SnippetsPaneContent.h"
 #include "TabRowControl.h"
 #include "TerminalSettingsCache.h"
-#include "TerminalProtocolPipeServer.h"
-#include "WtaProcessLauncher.h"
 
 #include "LaunchPositionRequest.g.cpp"
 #include "RenameWindowRequestedArgs.g.cpp"
@@ -1028,125 +1026,6 @@ namespace winrt::TerminalApp::implementation
         return delegateAgent;
     }
 
-    // Holds the spawned wta process and its protocol pipe server. Owned by
-    // TerminalPage in `_agentPipeServers`; entries self-remove when the IO
-    // thread exits (peer EOF or wta crash), via the SetOnShutdown callback.
-    struct AgentDelegationEntry
-    {
-        wil::unique_process_information processInfo;
-        std::shared_ptr<TerminalProtocol::PipeServer> pipeServer;
-    };
-
-    void TerminalPage::_RemoveAgentPipeServer(AgentDelegationEntry* entry)
-    {
-        std::lock_guard lock{ _agentPipeServersMutex };
-        std::erase_if(_agentPipeServers,
-                      [entry](const auto& e) { return e.get() == entry; });
-    }
-
-    // Move the pending wta-side pipe handles into the connection's valueSet
-    // as decimal HANDLE values. Ownership transfers to ConptyConnection,
-    // which closes them after CreateProcessW. Called from
-    // _CreateConnectionFromSettings just before connection.Initialize.
-    void TerminalPage::_ConsumePendingProtocolPipeIntoValueSet(
-        Windows::Foundation::Collections::ValueSet& valueSet)
-    {
-        if (!_pendingProtocolPipeHandles.has_value())
-        {
-            return;
-        }
-        auto pending = std::move(*_pendingProtocolPipeHandles);
-        _pendingProtocolPipeHandles.reset();
-
-        // release() detaches the HANDLE without closing it — ownership passes
-        // through the valueSet (and eventually to ConptyConnection).
-        const auto rValue = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pending.wtaRead.release()));
-        const auto wValue = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pending.wtaWrite.release()));
-        valueSet.Insert(L"protocolPipeReadHandle",
-                        Windows::Foundation::PropertyValue::CreateUInt64(rValue));
-        valueSet.Insert(L"protocolPipeWriteHandle",
-                        Windows::Foundation::PropertyValue::CreateUInt64(wValue));
-    }
-
-    bool TerminalPage::_PrepareAgentPanePipe(wil::unique_handle& wtRead,
-                                              wil::unique_handle& wtWrite)
-    {
-        try
-        {
-            auto pipes = WtaProcessLauncher::CreateInheritablePipePair();
-            wtRead = std::move(pipes.wtRead);
-            wtWrite = std::move(pipes.wtWrite);
-            _pendingProtocolPipeHandles = PendingProtocolPipe{
-                std::move(pipes.wtaRead),
-                std::move(pipes.wtaWrite),
-            };
-            return true;
-        }
-        catch (...)
-        {
-            _agentPaneLog("CreateInheritablePipePair failed; agent pane will use legacy CliChannel");
-            return false;
-        }
-    }
-
-    void TerminalPage::_AttachAgentPanePipeServer(wil::unique_handle wtRead,
-                                                   wil::unique_handle wtWrite)
-    {
-        try
-        {
-            auto entry = std::make_shared<AgentDelegationEntry>();
-            const auto weakThis = get_weak();
-
-            entry->pipeServer = std::make_shared<TerminalProtocol::PipeServer>(
-                std::move(wtRead),
-                std::move(wtWrite),
-                [weakThis](winrt::guid sessionId, std::wstring_view text) -> bool {
-                    auto strong = weakThis.get();
-                    if (!strong)
-                    {
-                        return false;
-                    }
-                    try
-                    {
-                        return strong->SendProtocolInput(sessionId, winrt::hstring{ text }).get();
-                    }
-                    catch (...)
-                    {
-                        return false;
-                    }
-                });
-
-            {
-                std::lock_guard lock{ _agentPipeServersMutex };
-                _agentPipeServers.push_back(entry);
-            }
-
-            AgentDelegationEntry* const entryPtr = entry.get();
-            entry->pipeServer->SetOnShutdown([weakThis, entryPtr]() {
-                auto strong = weakThis.get();
-                if (!strong)
-                {
-                    return;
-                }
-                strong->Dispatcher().RunAsync(
-                    winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-                    [weakThis, entryPtr]() {
-                        if (auto p = weakThis.get())
-                        {
-                            p->_RemoveAgentPipeServer(entryPtr);
-                        }
-                    });
-            });
-
-            entry->pipeServer->Start();
-            _agentPaneLog("agent pane pipe attached");
-        }
-        catch (...)
-        {
-            _agentPaneLog("failed to attach agent pane pipe server");
-        }
-    }
-
     void TerminalPage::_DelegatePromptToAgent(const winrt::hstring& prompt)
     {
         _agentPaneLog("_DelegatePromptToAgent called, prompt='" + winrt::to_string(prompt) + "'");
@@ -1223,83 +1102,34 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("launching: " + winrt::to_string(winrt::hstring{ cmdline }));
 
-        // Launch via WtaProcessLauncher: creates a duplex anonymous pipe pair,
-        // inherits the wta-side handles into the child via STARTUPINFOEX
-        // PROC_THREAD_ATTRIBUTE_HANDLE_LIST, and exposes them as
-        // WT_PROTOCOL_PIPE_R / WT_PROTOCOL_PIPE_W env vars. The wt-side
-        // handles drive a per-wta TerminalProtocol::PipeServer.
-        try
+        // Launch as a hidden background process.
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+
+        PROCESS_INFORMATION pi{};
+        auto mutableCmdline = cmdline;
+        const auto launched = CreateProcessW(
+            wtaPath.c_str(),
+            mutableCmdline.data(),
+            nullptr,
+            nullptr,
+            FALSE,
+            CREATE_NO_WINDOW,
+            nullptr,
+            nullptr,
+            &si,
+            &pi);
+        if (!launched)
         {
-            WtaProcessLauncher::LaunchOptions opts;
-            opts.exePath = wtaPath;
-            opts.commandLine = cmdline;
-            opts.hidden = true;
-
-            auto launchResult = WtaProcessLauncher::LaunchWta(opts);
-
-            auto entry = std::make_shared<AgentDelegationEntry>();
-            entry->processInfo = std::move(launchResult.processInfo);
-
-            const auto weakThis = get_weak();
-
-            entry->pipeServer = std::make_shared<TerminalProtocol::PipeServer>(
-                std::move(launchResult.wtRead),
-                std::move(launchResult.wtWrite),
-                [weakThis](winrt::guid sessionId, std::wstring_view text) -> bool {
-                    auto strong = weakThis.get();
-                    if (!strong)
-                    {
-                        return false;
-                    }
-                    try
-                    {
-                        return strong->SendProtocolInput(sessionId, winrt::hstring{ text }).get();
-                    }
-                    catch (...)
-                    {
-                        return false;
-                    }
-                });
-
-            {
-                std::lock_guard lock{ _agentPipeServersMutex };
-                _agentPipeServers.push_back(entry);
-            }
-
-            // Self-remove on IO-thread exit. Marshal to the UI thread so the
-            // IO thread does not destruct itself (which would deadlock on
-            // PipeServer::Stop()'s self-join).
-            AgentDelegationEntry* const entryPtr = entry.get();
-            entry->pipeServer->SetOnShutdown([weakThis, entryPtr]() {
-                auto strong = weakThis.get();
-                if (!strong)
-                {
-                    return;
-                }
-                strong->Dispatcher().RunAsync(
-                    winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-                    [weakThis, entryPtr]() {
-                        if (auto p = weakThis.get())
-                        {
-                            p->_RemoveAgentPipeServer(entryPtr);
-                        }
-                    });
-            });
-
-            entry->pipeServer->Start();
-            _agentPaneLog("delegate process launched OK (pipe attached)");
-        }
-        catch (const wil::ResultException& ex)
-        {
-            _agentPaneLog(std::string{ "FAILED to launch delegate process: hr=" } +
-                          std::to_string(ex.GetErrorCode()));
+            _agentPaneLog("FAILED to launch delegate process");
             return;
         }
-        catch (...)
-        {
-            _agentPaneLog("FAILED to launch delegate process: unknown error");
-            return;
-        }
+
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        _agentPaneLog("delegate process launched OK");
     }
 
     // --- Hot-reload of agent/model settings -------------------------------
@@ -1814,29 +1644,11 @@ namespace winrt::TerminalApp::implementation
             args.StartingDirectory(startingDirectory);
         }
 
-        // Stage secure-pipe handles for this agent-pane wta. Same flow as
-        // _OpenOrReuseAgentPane: wt-side stays here for the PipeServer,
-        // wta-side flows into _CreateConnectionFromSettings → ConptyConnection.
-        wil::unique_handle autoPaneWtRead;
-        wil::unique_handle autoPaneWtWrite;
-        const bool autoPanePipePrepared = _PrepareAgentPanePipe(autoPaneWtRead, autoPaneWtWrite);
-
         auto rawPane = _MakeTerminalPane(args, nullptr, nullptr);
         if (!rawPane)
         {
             _agentPaneLog("_AutoCreateHiddenAgentPane: _MakeTerminalPane returned null");
-            _pendingProtocolPipeHandles.reset();
             return;
-        }
-
-        if (autoPanePipePrepared && !_pendingProtocolPipeHandles.has_value() &&
-            autoPaneWtRead && autoPaneWtWrite)
-        {
-            _AttachAgentPanePipeServer(std::move(autoPaneWtRead), std::move(autoPaneWtWrite));
-        }
-        else
-        {
-            _pendingProtocolPipeHandles.reset();
         }
 
         auto newPane = _WrapInAgentPaneContent(rawPane);
@@ -2344,31 +2156,10 @@ namespace winrt::TerminalApp::implementation
             newTerminalArgs.StartingDirectory(startingDirectory);
         }
 
-        // Stage the secure-pipe pair for this agent-pane wta. wt-side handles
-        // stay here for PipeServer registration; wta-side handles flow into
-        // _CreateConnectionFromSettings via _pendingProtocolPipeHandles.
-        wil::unique_handle pendingWtRead;
-        wil::unique_handle pendingWtWrite;
-        const bool pipePrepared = _PrepareAgentPanePipe(pendingWtRead, pendingWtWrite);
-
         auto rawPane = _MakeTerminalPane(newTerminalArgs, nullptr, nullptr);
         if (!rawPane)
         {
-            _pendingProtocolPipeHandles.reset();
             return;
-        }
-
-        // If the pipe pair was prepared and consumed by _CreateConnectionFromSettings
-        // (i.e. _pendingProtocolPipeHandles is now empty), wire up the PipeServer.
-        if (pipePrepared && !_pendingProtocolPipeHandles.has_value() && pendingWtRead && pendingWtWrite)
-        {
-            _AttachAgentPanePipeServer(std::move(pendingWtRead), std::move(pendingWtWrite));
-        }
-        else
-        {
-            // _CreateConnectionFromSettings was bypassed (e.g. existing connection
-            // path); drop pending handles to avoid dangling.
-            _pendingProtocolPipeHandles.reset();
         }
 
         // Wrap in AgentPaneContent so the 36px XAML agent bar renders above
@@ -3528,8 +3319,6 @@ namespace winrt::TerminalApp::implementation
         {
             valueSet.Insert(L"sessionId", Windows::Foundation::PropertyValue::CreateGuid(id));
         }
-
-        _ConsumePendingProtocolPipeIntoValueSet(valueSet);
 
         connection.Initialize(valueSet);
 

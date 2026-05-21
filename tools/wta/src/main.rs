@@ -1254,49 +1254,8 @@ async fn run_default_tui(cli: Cli) -> Result<()> {
             let cli_arc = Arc::new(channel);
             wt_protocol_channel = Some(Arc::clone(&cli_arc));
 
-            // If WT inherited a duplex pipe pair into our process via
-            // STARTUPINFOEX HANDLE_LIST, prefer it for the methods it carries
-            // (initially: send_input). All other methods fall through to the
-            // CliChannel (wtcli + COM) until they migrate too.
             let wt_channel_for_mgr: Arc<dyn shell::wt_channel::WtChannel> =
-                match shell::wt_channel::PipeChannel::from_env() {
-                    Ok(Some(pipe)) => match pipe.handshake().await {
-                        Ok(()) => {
-                            tracing::info!(
-                                "PipeChannel handshake OK — routing send_input via inherited pipe"
-                            );
-                            let pipe_arc: Arc<dyn shell::wt_channel::WtChannel> =
-                                Arc::new(pipe);
-                            let cli_dyn: Arc<dyn shell::wt_channel::WtChannel> =
-                                cli_arc.clone();
-                            Arc::new(shell::wt_channel::RoutedChannel::new(
-                                pipe_arc,
-                                cli_dyn,
-                                &["send_input"],
-                            )) as Arc<dyn shell::wt_channel::WtChannel>
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                error = %e,
-                                "PipeChannel handshake failed; falling back to CliChannel"
-                            );
-                            cli_arc.clone() as Arc<dyn shell::wt_channel::WtChannel>
-                        }
-                    },
-                    Ok(None) => {
-                        tracing::debug!(
-                            "No inherited pipe handles in env; using CliChannel only"
-                        );
-                        cli_arc.clone() as Arc<dyn shell::wt_channel::WtChannel>
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            "PipeChannel::from_env error; using CliChannel only"
-                        );
-                        cli_arc.clone() as Arc<dyn shell::wt_channel::WtChannel>
-                    }
-                };
+                cli_arc.clone() as Arc<dyn shell::wt_channel::WtChannel>;
 
             shell_mgr = shell_mgr.with_wt_channel(wt_channel_for_mgr);
             true
