@@ -218,7 +218,7 @@ WTA also exposes helper CLI commands for humans, agents, diagnostics, and Settin
 
 | Category | Examples | Security-relevant behavior |
 |---|---|---|
-| WT operation helpers | `list-*`, `active-pane`, `capture-pane`, `pane-status`, `new-tab`, `split-pane`, `kill-pane`, `send-keys`, `wait-for`, `listen` | Route reads, mutations (including `SendInput`), and event subscription through `CliChannel` / `wtcli.exe` / COM. They do not create a separate trust boundary. |
+| WT operation helpers | `list-*`, `active-pane`, `capture-pane`, `pane-status`, `new-tab`, `split-pane`, `kill-pane`, `wait-for`, `listen` | Route reads, mutations (including `SendInput`), and event subscription through `CliChannel` / `wtcli.exe` / COM. They do not create a separate trust boundary. |
 | Delegation helper | `delegate` | Reads active-pane context, builds a delegate Agent CLI command line, then calls COM `CreateTab(commandline)` so WT launches the delegate Agent CLI in a new ConPTY tab. This is a pane-context disclosure and COM process-creation surface. |
 | Hook-management helpers | `hooks install`, `hooks status`, `hooks uninstall` | Use third-party Agent CLI plugin / extension managers and filesystem state. They affect persistent hook configuration. |
 | Discovery / diagnostics helpers | `pipe-id`, `set-env` / `setenv`, `info`, `test-pipe` and legacy hidden flags | Expose or test WT protocol routing metadata such as `WT_COM_CLSID`. This metadata is not a bearer secret, but it helps a process locate the COM endpoint when observed platform activation behavior allows it. |
