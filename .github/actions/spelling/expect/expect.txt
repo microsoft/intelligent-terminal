@@ -1929,6 +1929,7 @@ wrkstr
 wrl
 wrp
 WSLENV
+wlen
 wstr
 wstrings
 wsz
