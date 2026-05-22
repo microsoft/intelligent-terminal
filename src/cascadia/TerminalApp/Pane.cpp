@@ -2837,14 +2837,22 @@ std::shared_ptr<Pane> Pane::FindPaneBySessionId(const winrt::guid& sessionId)
     return _FindPane([&](const auto& p) {
         if (!p->_IsLeaf() || !p->_content)
             return false;
-        if (const auto termContent = p->_content.try_as<winrt::TerminalApp::TerminalPaneContent>())
+        // Use `_getTerminalContent()` so agent panes (whose `_content`
+        // is an `AgentPaneContent` wrapping a `TerminalPaneContent`)
+        // are matched too. Without this unwrap, FindPaneBySessionId
+        // would skip every agent pane → `TerminalProtocolComServer::FocusPane`
+        // would walk every tab without finding a match → throw E_FAIL
+        // (0x80004005), which surfaces in WTA as
+        // `FocusPane failed: 0x80004005` whenever the user presses
+        // Enter on an active agent-pane session row in the F2 list.
+        const auto termContent = p->_getTerminalContent();
+        if (!termContent)
+            return false;
+        if (const auto control = termContent.GetTermControl())
         {
-            if (const auto control = termContent.GetTermControl())
+            if (const auto conn = control.Connection())
             {
-                if (const auto conn = control.Connection())
-                {
-                    return conn.SessionId() == sessionId;
-                }
+                return conn.SessionId() == sessionId;
             }
         }
         return false;

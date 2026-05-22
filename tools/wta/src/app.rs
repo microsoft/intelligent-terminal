@@ -1567,7 +1567,30 @@ impl App {
         match s.status {
             Idle | Working | Attention | Error => {
                 if let Some(pane) = &s.pane_session_id {
-                    crate::shell::wt_channel::spawn_wtcli_focus_pane(pane);
+                    // Skip self-focus: if the user pressed Enter on the
+                    // row that represents the pane this WTA is already
+                    // running in, the focus call is a no-op for them and
+                    // can throw `winrt::hresult_error` (E_FAIL /
+                    // 0x80004005) on the WT side. Compare case-insensitively
+                    // because pane GUIDs arrive in mixed case (hooks emit
+                    // lowercase, WT-native events emit canonical
+                    // uppercase) and `self.pane_id` is populated from
+                    // whichever path discovered it first.
+                    let is_self = self
+                        .pane_id
+                        .as_deref()
+                        .map(|own| own.eq_ignore_ascii_case(pane.as_str()))
+                        .unwrap_or(false);
+                    if is_self {
+                        tracing::info!(
+                            target: "agents_view",
+                            key = %s.key,
+                            pane = %pane,
+                            "skipping focus_pane: row points at our own pane",
+                        );
+                    } else {
+                        crate::shell::wt_channel::spawn_wtcli_focus_pane(pane);
+                    }
                     #[cfg(test)]
                     {
                         self.last_dispatched_command = Some(DispatchedCommand {
@@ -6867,6 +6890,11 @@ mod tests {
 
         // Bind, then unbind — mirrors the Copilot order: agent.session.end
         // hook arrives and runs SessionStopped before WT emits closed.
+        // The session is NOT tagged with `SessionOrigin::AgentPane` (this
+        // test sets up state via raw SessionStarted, so origin defaults
+        // to Unknown), which means SessionStopped immediately transitions
+        // to Ended and releases the pane binding — exactly the precondition
+        // this test depends on.
         app.agent_sessions.apply(SessionEvent::SessionStarted {
             key: "copilot-key".into(),
             cli_source: CliSource::Copilot,
