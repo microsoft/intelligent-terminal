@@ -4560,7 +4560,7 @@ namespace winrt::TerminalApp::implementation
         evt["type"] = "event";
         evt["method"] = "autofix_execute";
         Json::Value params;
-        params["session_id"] = winrt::to_string(_diagnostics.lastErrorSessionId);
+        params["pane_id"] = winrt::to_string(_diagnostics.lastErrorSessionId);
         evt["params"] = params;
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
@@ -4939,6 +4939,40 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    // Walk every tab's pane tree and return the StableId of the tab that
+    // owns the given control. Used to tag protocol events with both pane
+    // GUID and tab id so wta can route per-tab regardless of which tab is
+    // currently active.
+    std::string TerminalPage::_FindTabIdForControl(const TermControl& control)
+    {
+        if (!control)
+        {
+            return {};
+        }
+        for (const auto& tab : _tabs)
+        {
+            const auto tabImpl = _GetTabImpl(tab);
+            if (!tabImpl)
+            {
+                continue;
+            }
+            const auto rootPane = tabImpl->GetRootPane();
+            if (!rootPane)
+            {
+                continue;
+            }
+            const auto match = rootPane->WalkTree([&](const auto& p) -> std::shared_ptr<Pane> {
+                const auto ctl = p->GetTerminalControl();
+                return (ctl && ctl == control) ? p : nullptr;
+            });
+            if (match)
+            {
+                return winrt::to_string(tabImpl->StableId());
+            }
+        }
+        return {};
+    }
+
     void TerminalPage::_RegisterTerminalEvents(TermControl term)
     {
         term.RaiseNotice({ this, &TerminalPage::_ControlNoticeRaisedHandler });
@@ -5002,9 +5036,10 @@ namespace winrt::TerminalApp::implementation
                             if (!page->_settings.GlobalSettings().AutoFixEnabled())
                                 return;
 
-                            const auto sessionIdStr = page->_FindSessionIdForControl(term2);
-                            if (sessionIdStr.empty())
+                            const auto paneIdStr = page->_FindSessionIdForControl(term2);
+                            if (paneIdStr.empty())
                                 return;
+                            const auto tabIdStr = page->_FindTabIdForControl(term2);
 
                             auto seqStr = winrt::to_string(seq);
 
@@ -5022,7 +5057,11 @@ namespace winrt::TerminalApp::implementation
                                     agentParams.isMember("event") &&
                                     agentParams["event"].isString())
                                 {
-                                    agentParams["session_id"] = sessionIdStr;
+                                    agentParams["pane_id"] = paneIdStr;
+                                    if (!tabIdStr.empty())
+                                    {
+                                        agentParams["tab_id"] = tabIdStr;
+                                    }
 
                                     Json::Value evt;
                                     evt["type"] = "event";
@@ -5059,7 +5098,11 @@ namespace winrt::TerminalApp::implementation
                             evt["type"] = "event";
                             evt["method"] = "vt_sequence";
                             Json::Value params;
-                            params["session_id"] = sessionIdStr;
+                            params["pane_id"] = paneIdStr;
+                            if (!tabIdStr.empty())
+                            {
+                                params["tab_id"] = tabIdStr;
+                            }
                             params["sequence"] = seqStr;
                             evt["params"] = params;
                             Json::StreamWriterBuilder wb;
@@ -5118,17 +5161,24 @@ namespace winrt::TerminalApp::implementation
                             // when an agent CLI exits and the pane is closed.
                             // Volume is low (a handful of events per pane
                             // lifecycle), so always forward.
-                            const auto sessionIdStr = term2
+                            const auto paneIdStr = term2
                                 ? page->_FindSessionIdForControl(term2)
                                 : std::string{};
-                            if (sessionIdStr.empty())
+                            if (paneIdStr.empty())
                                 return;
+                            const auto tabIdStr = term2
+                                ? page->_FindTabIdForControl(term2)
+                                : std::string{};
 
                             Json::Value evt;
                             evt["type"] = "event";
                             evt["method"] = "connection_state";
                             Json::Value params;
-                            params["session_id"] = sessionIdStr;
+                            params["pane_id"] = paneIdStr;
+                            if (!tabIdStr.empty())
+                            {
+                                params["tab_id"] = tabIdStr;
+                            }
                             params["state"] = stateStr;
                             evt["params"] = params;
                             Json::StreamWriterBuilder wb;

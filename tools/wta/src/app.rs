@@ -307,6 +307,12 @@ pub enum WtEventSeverity {
 pub struct WtNotification {
     pub severity: WtEventSeverity,
     pub pane_id: String,
+    /// WT tab StableId that owns the failing pane. `None` when the
+    /// underlying event predates the tab_id wire (older WT builds) or
+    /// arrived without a tab context. Autofix routing treats absence as
+    /// "cannot route — drop with warn", to avoid the old failure mode
+    /// where the fix landed in whatever tab happened to be active.
+    pub tab_id: Option<String>,
     pub summary: String,
     pub acknowledged: bool,
     pub age_ticks: u32,
@@ -467,7 +473,13 @@ pub fn route_agent_event_to_registry(
 }
 
 /// Classify a WT protocol event into a notification.
-pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value) -> WtNotification {
+pub fn classify_wt_event(
+    method: &str,
+    pane_id: &str,
+    tab_id: Option<&str>,
+    params: &serde_json::Value,
+) -> WtNotification {
+    let tab = tab_id.map(str::to_string);
     match method {
         "connection_state" => {
             let state = params
@@ -478,6 +490,7 @@ pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value
                 "failed" => WtNotification {
                     severity: WtEventSeverity::Critical,
                     pane_id: pane_id.to_string(),
+                    tab_id: tab,
                     summary: format!("Pane {}: connection failed", pane_id),
                     acknowledged: false,
                     age_ticks: 0,
@@ -485,6 +498,7 @@ pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value
                 "closed" => WtNotification {
                     severity: WtEventSeverity::Actionable,
                     pane_id: pane_id.to_string(),
+                    tab_id: tab,
                     summary: format!("Pane {}: process exited", pane_id),
                     acknowledged: false,
                     age_ticks: 0,
@@ -492,6 +506,7 @@ pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value
                 "connected" => WtNotification {
                     severity: WtEventSeverity::Informational,
                     pane_id: pane_id.to_string(),
+                    tab_id: tab,
                     summary: format!("Pane {}: connected", pane_id),
                     acknowledged: false,
                     age_ticks: 0,
@@ -500,6 +515,7 @@ pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value
                 "unknown" => return WtNotification {
                     severity: WtEventSeverity::Informational,
                     pane_id: pane_id.to_string(),
+                    tab_id: tab,
                     summary: String::new(),
                     acknowledged: true, // auto-acknowledge so it never shows
                     age_ticks: 100,     // will be auto-dismissed immediately
@@ -507,6 +523,7 @@ pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value
                 _ => WtNotification {
                     severity: WtEventSeverity::Informational,
                     pane_id: pane_id.to_string(),
+                    tab_id: tab,
                     summary: format!("Pane {}: {}", pane_id, state),
                     acknowledged: false,
                     age_ticks: 0,
@@ -536,6 +553,7 @@ pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value
                         return WtNotification {
                             severity: WtEventSeverity::Actionable,
                             pane_id: pane_id.to_string(),
+                            tab_id: tab,
                             summary: format!("Command failed (exit {})", exit_code),
                             acknowledged: false,
                             age_ticks: 0,
@@ -545,6 +563,7 @@ pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value
                         return WtNotification {
                             severity: WtEventSeverity::Informational,
                             pane_id: pane_id.to_string(),
+                            tab_id: tab,
                             summary: String::new(),
                             acknowledged: true,
                             age_ticks: 100,
@@ -557,6 +576,7 @@ pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value
             WtNotification {
                 severity: WtEventSeverity::Informational,
                 pane_id: pane_id.to_string(),
+                tab_id: tab,
                 summary: String::new(),
                 acknowledged: true,
                 age_ticks: 100,
@@ -570,6 +590,7 @@ pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value
             WtNotification {
                 severity: WtEventSeverity::Actionable,
                 pane_id: pane_id.to_string(),
+                tab_id: tab,
                 summary: format!("agent_prompt:{}", prompt),
                 acknowledged: false,
                 age_ticks: 0,
@@ -584,6 +605,7 @@ pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value
             WtNotification {
                 severity: WtEventSeverity::Informational,
                 pane_id: pane_id.to_string(),
+                tab_id: tab,
                 summary: String::new(),
                 acknowledged: true,
                 age_ticks: 100,
@@ -592,6 +614,7 @@ pub fn classify_wt_event(method: &str, pane_id: &str, params: &serde_json::Value
         _ => WtNotification {
             severity: WtEventSeverity::Informational,
             pane_id: pane_id.to_string(),
+            tab_id: tab,
             summary: format!("Pane {}: {}", pane_id, method),
             acknowledged: false,
             age_ticks: 0,
@@ -770,9 +793,15 @@ pub enum AppEvent {
     SystemMessage(String),
     DebugPipeMessage(DebugMessage),
     /// Push event from Windows Terminal protocol (VT sequence or connection state).
+    /// `pane_id` is the WT pane GUID where the event originated.
+    /// `tab_id` is the WT tab StableId that owns the pane — used by autofix
+    /// routing to send fixes to the failing tab's ACP session rather than
+    /// whatever tab WTA happens to be focused on. `None` for events from
+    /// older WT builds that don't yet carry tab_id.
     WtEvent {
         method: String,
         pane_id: String,
+        tab_id: Option<String>,
         params: serde_json::Value,
     },
     /// Background agent install completed — refresh the detected agents list.
@@ -3050,9 +3079,10 @@ impl App {
             AppEvent::WtEvent {
                 method,
                 pane_id,
+                tab_id,
                 params,
             } => {
-                tracing::debug!(target: "autofix", method = %method, pane_id = %pane_id, self_pane_id = ?self.pane_id, "WtEvent");
+                tracing::debug!(target: "autofix", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
 
                 // Hook bridge events: fire-and-forget into the agent registry
                 // so the F2 Agents view stays current. Unrelated to autofix /
@@ -3340,8 +3370,9 @@ impl App {
                     }
                 }
 
-                let notification = classify_wt_event(&method, &pane_id, &params);
-                tracing::debug!(target: "autofix", severity = ?notification.severity, summary = %notification.summary, "classified");
+                let notification =
+                    classify_wt_event(&method, &pane_id, tab_id.as_deref(), &params);
+                tracing::debug!(target: "autofix", severity = ?notification.severity, summary = %notification.summary, tab_id = ?notification.tab_id, "classified");
 
                 // Always log to chat for critical/actionable events
                 match notification.severity {
@@ -4670,18 +4701,39 @@ impl App {
             return;
         }
 
+        // Resolve the target tab: the tab that owns the failing pane.
+        // Without it we can't route the autofix to the right ACP session
+        // (the old fallback to `self.tab_id` would land the fix in
+        // whichever tab WTA happened to be focused on — see comment block
+        // at `maybe_trigger_autofix` head). In release builds we drop the
+        // event with a warn instead of panicking, per Step 2 decision #4.
+        let target_tab_id = match notification.tab_id.clone() {
+            Some(t) => t,
+            None => {
+                tracing::warn!(
+                    target: "autofix",
+                    pane_id = %notification.pane_id,
+                    "dropping autofix: notification missing tab_id (older WT build?)",
+                );
+                return;
+            }
+        };
+
         // Latest event always wins — but only if we can actually act on it.
         // The ACP transport single-flights at the tab level, so if the
-        // current tab already has a prompt in flight, submitting another
-        // one results in `App.turn = Submitted(new)` + ACP `AgentBusy`
+        // target tab already has a prompt in flight, submitting another
+        // one results in `tab.turn = Submitted(new)` + ACP `AgentBusy`
         // rejection — the buffer and the wire diverge, and old chunks
         // corrupt the new turn's state. Defer instead.
         let same_pane = self.autofix_pane_id.as_deref() == Some(notification.pane_id.as_str());
-        let already_busy = !self.current_tab().turn.is_idle()
-            && !matches!(
-                self.current_tab().turn,
-                TurnState::Surfaced { end_pending: false, .. }
-            );
+        let already_busy = {
+            let tab = self.tab_mut(&target_tab_id);
+            !tab.turn.is_idle()
+                && !matches!(
+                    tab.turn,
+                    TurnState::Surfaced { end_pending: false, .. }
+                )
+        };
 
         if already_busy {
             if same_pane {
@@ -4690,6 +4742,7 @@ impl App {
                 tracing::info!(
                     target: "autofix",
                     pane_id = %notification.pane_id,
+                    tab_id = %target_tab_id,
                     "autofix re-trigger same pane while pending — re-emit only",
                 );
                 self.emit_autofix_state_pending(
@@ -4702,6 +4755,7 @@ impl App {
                 tracing::info!(
                     target: "autofix",
                     pane_id = %notification.pane_id,
+                    tab_id = %target_tab_id,
                     armed_pane = ?self.autofix_pane_id,
                     "skipping autofix: previous turn still in-flight",
                 );
@@ -4727,10 +4781,14 @@ impl App {
             notification.summary
         );
 
-        // Use the failing pane as the source so the agent reads its buffer.
+        // Route through the target tab's ACP session. `tab_id` carries the
+        // failing tab's StableId so the ACP layer's `tab_to_session` map
+        // routes (or lazy-creates) to the right session even when the
+        // failing tab isn't currently focused. `source_pane_id` points at
+        // the failing pane so the agent can read its buffer.
         let pane_context = PaneContext {
             pane_id: self.pane_id.clone(),
-            tab_id: self.tab_id.clone(),
+            tab_id: Some(target_tab_id.clone()),
             window_id: self.window_id.clone(),
             cwd: None,
             source_pane_id: Some(notification.pane_id.clone()),
@@ -4750,16 +4808,12 @@ impl App {
                 generation: new_gen,
             }),
         };
-        // Route through the state machine. If no ACP session is bound yet
-        // (tests / pre-AgentConnected), `turn_submit_prompt` still installs
-        // the turn on the default tab so the prompt is queued correctly.
-        let session_id = self
-            .current_tab()
-            .session_id
-            .clone()
-            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-        self.turn_submit_prompt(&session_id, submitted);
-        tracing::info!(target: "autofix", pane_id = %notification.pane_id, generation = new_gen, "sending auto-fix prompt");
+        // Install the turn on the target tab — bypasses session_to_tab
+        // lookup so a tab with no ACP session yet still gets the prompt
+        // queued correctly (the ACP layer creates the session lazily when
+        // it processes the prompt).
+        self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
+        tracing::info!(target: "autofix", pane_id = %notification.pane_id, tab_id = %target_tab_id, generation = new_gen, "sending auto-fix prompt");
         let _ = self.prompt_tx.send(prompt);
 
         // Light up the bottom-bar diagnostic icon in "Pending" state — the
@@ -5015,6 +5069,16 @@ impl App {
     /// prompt over ACP (so this method stays free of async / channel
     /// concerns).
     pub fn turn_submit_prompt(&mut self, session_id: &str, prompt: SubmittedPrompt) {
+        let tab_key = self.tab_for_session(session_id);
+        self.turn_submit_prompt_for_tab(&tab_key, prompt);
+    }
+
+    /// Identical to `turn_submit_prompt` but takes the target tab's id
+    /// directly, bypassing the `session_id → tab_id` lookup. Used by the
+    /// autofix path so a failure in a background tab installs the turn on
+    /// that tab even when its ACP session hasn't been created yet (the ACP
+    /// layer lazy-creates one when the prompt is dispatched).
+    pub fn turn_submit_prompt_for_tab(&mut self, tab_id: &str, prompt: SubmittedPrompt) {
         prompt_timing_log(
             prompt.id,
             prompt.submitted_at_unix_s,
@@ -5027,7 +5091,7 @@ impl App {
         );
         let is_autofix = prompt.autofix.is_some();
         let user_text = prompt.text.clone();
-        let tab = self.session_tab_mut(session_id);
+        let tab = self.tab_mut(tab_id);
         // Per Decision #3, every Idle→Submitted transition explicitly clears
         // these orthogonal fields rather than relying on side effects from a
         // grab-bag helper.
@@ -6145,7 +6209,7 @@ mod tests {
     #[test]
     fn classify_connection_failed_is_critical() {
         let params = json!({"session_id": "3", "state": "failed"});
-        let n = classify_wt_event("connection_state", "3", &params);
+        let n = classify_wt_event("connection_state", "3", None, &params);
         assert_eq!(n.severity, WtEventSeverity::Critical);
         assert!(n.summary.contains("failed"));
         assert!(!n.acknowledged);
@@ -6154,7 +6218,7 @@ mod tests {
     #[test]
     fn classify_connection_closed_is_actionable() {
         let params = json!({"session_id": "5", "state": "closed"});
-        let n = classify_wt_event("connection_state", "5", &params);
+        let n = classify_wt_event("connection_state", "5", None, &params);
         assert_eq!(n.severity, WtEventSeverity::Actionable);
         assert!(n.summary.contains("exited"));
     }
@@ -6162,7 +6226,7 @@ mod tests {
     #[test]
     fn classify_connection_connected_is_informational() {
         let params = json!({"session_id": "1", "state": "connected"});
-        let n = classify_wt_event("connection_state", "1", &params);
+        let n = classify_wt_event("connection_state", "1", None, &params);
         assert_eq!(n.severity, WtEventSeverity::Informational);
         assert!(n.summary.contains("connected"));
     }
@@ -6170,7 +6234,7 @@ mod tests {
     #[test]
     fn classify_osc133_command_failed_is_actionable() {
         let params = json!({"session_id": "2", "sequence": "osc:133;D;1"});
-        let n = classify_wt_event("vt_sequence", "2", &params);
+        let n = classify_wt_event("vt_sequence", "2", None, &params);
         assert_eq!(n.severity, WtEventSeverity::Actionable);
         assert!(n.summary.contains("Command failed"));
         assert!(n.summary.contains("exit 1"));
@@ -6179,14 +6243,14 @@ mod tests {
     #[test]
     fn classify_osc133_command_success_is_silent() {
         let params = json!({"session_id": "2", "sequence": "osc:133;D;0"});
-        let n = classify_wt_event("vt_sequence", "2", &params);
+        let n = classify_wt_event("vt_sequence", "2", None, &params);
         assert!(n.acknowledged); // auto-dismissed
     }
 
     #[test]
     fn classify_osc133_high_exit_code() {
         let params = json!({"session_id": "2", "sequence": "osc:133;D;127"});
-        let n = classify_wt_event("vt_sequence", "2", &params);
+        let n = classify_wt_event("vt_sequence", "2", None, &params);
         assert_eq!(n.severity, WtEventSeverity::Actionable);
         assert!(n.summary.contains("exit 127"));
     }
@@ -6195,21 +6259,21 @@ mod tests {
     fn classify_osc133_prompt_marker_is_silent() {
         // OSC 133;A is a prompt marker, not a command finish
         let params = json!({"session_id": "2", "sequence": "osc:133;A"});
-        let n = classify_wt_event("vt_sequence", "2", &params);
+        let n = classify_wt_event("vt_sequence", "2", None, &params);
         assert!(n.acknowledged); // silenced
     }
 
     #[test]
     fn classify_normal_vt_sequence_is_silent() {
         let params = json!({"session_id": "7", "sequence": "osc:0;title"});
-        let n = classify_wt_event("vt_sequence", "7", &params);
+        let n = classify_wt_event("vt_sequence", "7", None, &params);
         assert!(n.acknowledged); // silenced
     }
 
     #[test]
     fn classify_unknown_method_is_informational() {
         let params = json!({"session_id": "1"});
-        let n = classify_wt_event("something_new", "1", &params);
+        let n = classify_wt_event("something_new", "1", None, &params);
         assert_eq!(n.severity, WtEventSeverity::Informational);
     }
 
@@ -6220,6 +6284,7 @@ mod tests {
         let mut n = WtNotification {
             severity: WtEventSeverity::Informational,
             pane_id: "1".to_string(),
+            tab_id: None,
             summary: "test".to_string(),
             acknowledged: false,
             age_ticks: 0,
@@ -6236,6 +6301,7 @@ mod tests {
         let n = WtNotification {
             severity: WtEventSeverity::Critical,
             pane_id: "1".to_string(),
+            tab_id: None,
             summary: "crash".to_string(),
             acknowledged: false,
             age_ticks: 1000,
@@ -6248,6 +6314,7 @@ mod tests {
         let n = WtNotification {
             severity: WtEventSeverity::Actionable,
             pane_id: "1".to_string(),
+            tab_id: None,
             summary: "exited".to_string(),
             acknowledged: false,
             age_ticks: 1000,
@@ -6263,6 +6330,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
+            tab_id: None,
             params: json!({"session_id": "3", "state": "failed"}),
         });
         assert!(app.show_notification_banner);
@@ -6278,6 +6346,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "5".to_string(),
+            tab_id: None,
             params: json!({"session_id": "5", "state": "closed"}),
         });
         assert!(app.show_notification_banner);
@@ -6290,6 +6359,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "1".to_string(),
+            tab_id: None,
             params: json!({"session_id": "1", "state": "connected"}),
         });
         assert!(!app.show_notification_banner);
@@ -6304,6 +6374,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "42".to_string(),
+            tab_id: None,
             params: json!({"session_id": "42", "state": "failed"}),
         });
         // Events from our own pane should be completely ignored
@@ -6318,6 +6389,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
+            tab_id: None,
             params: json!({"session_id": "3", "state": "failed"}),
         });
         assert!(app.show_notification_banner);
@@ -6336,12 +6408,14 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "1".to_string(),
+            tab_id: None,
             params: json!({"session_id": "1", "state": "closed"}),
         });
         // Second event (more recent)
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "2".to_string(),
+            tab_id: None,
             params: json!({"session_id": "2", "state": "failed"}),
         });
 
@@ -6358,6 +6432,7 @@ mod tests {
             app.handle_event(AppEvent::WtEvent {
                 method: "connection_state".to_string(),
                 pane_id: format!("{}", i),
+                tab_id: None,
                 params: json!({"session_id": format!("{}", i), "state": "connected"}),
             });
         }
@@ -6370,6 +6445,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "1".to_string(),
+            tab_id: None,
             params: json!({"session_id": "1", "state": "connected"}),
         });
         assert_eq!(app.wt_notifications.len(), 1);
@@ -6389,6 +6465,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
+            tab_id: None,
             params: json!({"session_id": "3", "state": "failed"}),
         });
         // Simulate many ticks
@@ -6406,6 +6483,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
+            tab_id: None,
             params: json!({"session_id": "3", "state": "failed"}),
         });
         assert!(app.show_notification_banner);
@@ -6424,6 +6502,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
+            tab_id: None,
             params: json!({"session_id": "3", "state": "closed"}),
         });
         assert!(app.active_notification().is_some());
@@ -6439,18 +6518,21 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "1".to_string(),
+            tab_id: None,
             params: json!({"session_id": "1", "state": "connected"}),
         });
         // Critical from pane 2
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "2".to_string(),
+            tab_id: None,
             params: json!({"session_id": "2", "state": "failed"}),
         });
         // Actionable from pane 3
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: "3".to_string(),
+            tab_id: None,
             params: json!({"session_id": "3", "state": "closed"}),
         });
 
@@ -6790,6 +6872,7 @@ mod tests {
         let notification = WtNotification {
             severity: WtEventSeverity::Actionable,
             pane_id: pane.to_string(),
+            tab_id: Some("test-tab".to_string()),
             summary: format!("Pane {}: process exited", pane),
             acknowledged: false,
             age_ticks: 0,
@@ -6818,6 +6901,7 @@ mod tests {
         let notification = WtNotification {
             severity: WtEventSeverity::Actionable,
             pane_id: pane.to_string(),
+            tab_id: Some("test-tab".to_string()),
             summary: "Command failed (exit 1)".to_string(),
             acknowledged: false,
             age_ticks: 0,
@@ -6829,9 +6913,10 @@ mod tests {
             Some(pane),
             "autofix must still arm normal panes when a command fails"
         );
+        // The target tab's turn (not the active tab's) should be in-flight.
         assert!(
-            !app.current_tab().turn.is_idle(),
-            "autofix prompt should be in-flight"
+            !app.tab_mut("test-tab").turn.is_idle(),
+            "autofix prompt should be in-flight on the target tab"
         );
     }
 
@@ -6871,6 +6956,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: pane.to_string(),
+            tab_id: None,
             params: serde_json::json!({"session_id": pane, "state": "closed"}),
         });
 
@@ -6917,6 +7003,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "vt_sequence".to_string(),
             pane_id: pane.to_string(),
+            tab_id: None,
             params: serde_json::json!({
                 "session_id": pane,
                 "sequence": "osc:133;D;1",
@@ -6942,6 +7029,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "vt_sequence".to_string(),
             pane_id: pane.to_string(),
+            tab_id: Some("test-tab".to_string()),
             params: serde_json::json!({
                 "session_id": pane,
                 "sequence": "osc:133;D;1",
@@ -6984,6 +7072,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "vt_sequence".to_string(),
             pane_id: pane.to_string(),
+            tab_id: None,
             params: serde_json::json!({
                 "session_id": pane,
                 "sequence": "osc:133;A",
@@ -7015,6 +7104,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "vt_sequence".to_string(),
             pane_id: pane.to_string(),
+            tab_id: None,
             params: serde_json::json!({
                 "session_id": pane,
                 "sequence": "osc:133;A",
@@ -7057,6 +7147,7 @@ mod tests {
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
             pane_id: pane.to_string(),
+            tab_id: None,
             params: serde_json::json!({"session_id": pane, "state": "closed"}),
         });
 
