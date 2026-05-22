@@ -4,6 +4,7 @@ extern crate rust_i18n;
 mod agent_check;
 mod agent_registry;
 mod agent_sessions;
+mod agent_pane_origin;
 mod agent_hooks_installer;
 mod app;
 mod commands;

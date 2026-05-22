@@ -1801,6 +1801,17 @@ async fn run_inner(
         .ok_or_else(|| anyhow::anyhow!("empty agent command"))?;
     let args = &parts[1..];
 
+    // Whether this WTA process is hosting an Intelligent Terminal agent
+    // pane (vs. a plain `wta --agent ...` invocation from a shell). Used
+    // by `agent_pane_origin` to record only agent-pane-originated ACP
+    // sessions in the on-disk index. `--owner-tab-id` is the load-bearing
+    // signal: TerminalPage sets it when spawning the agent pane's WTA;
+    // manual runs never set it.
+    let is_agent_pane = owner_tab_id
+        .as_ref()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+
     // Resolve the user's active pane cwd before spawning the agent. Both the
     // child's working directory and the ACP `new_session` cwd derive from it,
     // so the agent's `execute_command` tool runs in the user's project rather
@@ -1986,6 +1997,9 @@ async fn run_inner(
 
     let session_id = session.session_id.clone();
     startup_probe.log(&format!("Session created: {}", session_id));
+    if is_agent_pane {
+        crate::agent_pane_origin::append_default(session_id.0.as_ref());
+    }
 
     // Capture the agent's advertised model list. Settings UI rebuilds its
     // ComboBox from the `agent_status` event payload, where this gets
@@ -2170,6 +2184,7 @@ async fn run_inner(
                 let template_memo_for_new = template_memo.clone();
                 let cancel_signals_for_new = Arc::clone(&cancel_signals);
                 let event_tx_for_new = event_tx.clone();
+                let is_agent_pane_for_new = is_agent_pane;
                 tokio::task::spawn_local(async move {
                     let cwd = req
                         .cwd
@@ -2212,6 +2227,9 @@ async fn run_inner(
                     };
 
                     let new_sid = new_session.session_id.clone();
+                    if is_agent_pane_for_new {
+                        crate::agent_pane_origin::append_default(new_sid.0.as_ref());
+                    }
                     let (per_tab_models, per_tab_current) = match &new_session.models {
                         Some(state) => {
                             let models: Vec<crate::app::AcpModelInfo> = state
@@ -2435,6 +2453,7 @@ async fn run_inner(
                     &shell_mgr,
                     &state.prompt_timing,
                     wt_connected,
+                    is_agent_pane,
                 );
             }
             else => break ExitReason::Done,
@@ -2460,6 +2479,7 @@ fn dispatch_prompt(
     shell_mgr: &Arc<ShellManager>,
     prompt_timing: &Arc<PromptTimingState>,
     wt_connected: bool,
+    is_agent_pane: bool,
 ) {
     let tab_key = prompt
         .pane_context
@@ -2499,6 +2519,7 @@ fn dispatch_prompt(
         prompt_timing_task,
         tab_key_task,
         wt_connected,
+        is_agent_pane,
     ));
 }
 
@@ -2518,6 +2539,7 @@ async fn dispatch_prompt_body(
     prompt_timing_task: Arc<PromptTimingState>,
     tab_key_task: String,
     wt_connected: bool,
+    is_agent_pane: bool,
 ) {
             // Resolve (or lazily create) the ACP session for this tab.
             let prompt_session_id = {
@@ -2549,6 +2571,9 @@ async fn dispatch_prompt_body(
                         }
                     };
                     let new_sid = new_session.session_id.clone();
+                    if is_agent_pane {
+                        crate::agent_pane_origin::append_default(new_sid.0.as_ref());
+                    }
                     let (per_tab_models, per_tab_current) = match &new_session.models {
                         Some(state) => {
                             let models: Vec<crate::app::AcpModelInfo> = state

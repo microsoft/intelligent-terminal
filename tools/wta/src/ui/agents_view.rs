@@ -8,7 +8,7 @@ use ratatui::{
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthStr;
 
-use crate::agent_sessions::{AgentSession, AgentSessionRegistry, AgentStatus, CliSource};
+use crate::agent_sessions::{AgentSession, AgentSessionRegistry, AgentStatus, CliSource, SessionOrigin};
 use crate::app::HistoryLoadState;
 use crate::ui::shimmer;
 
@@ -195,7 +195,9 @@ fn render_footer_hint(f: &mut Frame, area: Rect) {
 }
 
 fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'static> {
-    let title_text  = display_title(s);
+    let origin_prefix = origin_prefix_for(s);
+    let prefix_w      = origin_prefix.as_deref().map(UnicodeWidthStr::width).unwrap_or(0);
+    let title_text  = display_title(s, prefix_w);
     let badge       = status_badge(s);
     let badge_style = badge_style(s);
     let age         = relative_age(s.last_activity_at);
@@ -228,19 +230,26 @@ fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'stat
     let cli_suffix = cli_suffix_for(s, selected);
 
     // Compose the row by measuring everything except trailing whitespace,
-    // then padding to right-align the timestamp at row_width.
-    let caret_w  = 2_usize;
-    let title_w  = title_text.width();
-    let badge_w  = if badge.is_empty() { 0 } else { badge.width() + 2 }; // "  badge"
-    let cli_w    = if cli_suffix.is_empty() { 0 } else { cli_suffix.width() + 1 };
-    let age_w    = age.width();
-    let used     = caret_w + title_w + badge_w + cli_w + age_w;
-    let pad      = row_width.saturating_sub(used).max(1);
+    // then padding to right-align the timestamp at row_width. The origin
+    // marker is rendered as a prefix (between caret and title) rather than
+    // a suffix so it stays visible even when a long title pushes the
+    // trailing columns off the right edge.
+    let caret_w    = 2_usize;
+    let title_w    = title_text.width();
+    let badge_w    = if badge.is_empty() { 0 } else { badge.width() + 2 }; // "  badge"
+    let cli_w      = if cli_suffix.is_empty() { 0 } else { cli_suffix.width() + 1 };
+    let age_w      = age.width();
+    let used       = caret_w + prefix_w + title_w + badge_w + cli_w + age_w;
+    let pad        = row_width.saturating_sub(used).max(1);
 
-    let mut spans = vec![
-        caret,
-        Span::styled(title_text, title_style),
-    ];
+    let mut spans = vec![caret];
+    if let Some(prefix) = origin_prefix {
+        // Same style as title: no dim/gray override. Selected rows pick
+        // up the cyan accent the same way the title does; unselected
+        // rows fall through to the terminal's default foreground.
+        spans.push(Span::styled(prefix, title_style));
+    }
+    spans.push(Span::styled(title_text, title_style));
     if !badge.is_empty() {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(badge, badge_style));
@@ -261,12 +270,19 @@ fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'stat
 /// Clean session title for display. Falls back to the working-directory
 /// basename when the agent hasn't surfaced a title yet (fresh sessions
 /// before the first prompt).
-fn display_title(s: &AgentSession) -> String {
+///
+/// `prefix_w` is the width of any row-prefix span (e.g. the
+/// `Agent pane session <id>: ` marker) that will be rendered *before*
+/// the title; the title cap is reduced by that much so the combined
+/// `prefix + title` chunk stays within the same visual budget that
+/// rows without a prefix get. A floor of 20 keeps even very long
+/// prefixes from squashing the title to uselessness.
+fn display_title(s: &AgentSession, prefix_w: usize) -> String {
     let raw = if s.title.is_empty() { cwd_basename(s) } else { s.title.clone() };
-    // Cap at a reasonable width so a long prompt doesn't push the
-    // timestamp off-screen on narrow panes. The ratatui List will wrap
-    // anything we leave through; the truncation here is purely cosmetic.
-    trunc(&raw, 64)
+    const TITLE_BUDGET: usize = 64;
+    const TITLE_MIN: usize = 20;
+    let cap = TITLE_BUDGET.saturating_sub(prefix_w).max(TITLE_MIN);
+    trunc(&raw, cap)
 }
 
 fn cwd_basename(s: &AgentSession) -> String {
@@ -318,6 +334,33 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
         CliSource::Unknown(_) => return String::new(),
     };
     format!("· {}", label)
+}
+
+/// Surface a tiny "originated from the Intelligent Terminal agent pane"
+/// marker on rows whose session WTA started for an agent pane (vs.
+/// sessions the user kicked off themselves in a regular shell). Returns
+/// `None` for non-agent-pane rows so the prefix collapses entirely.
+///
+/// Rendered as a row prefix (between caret and title) rather than a
+/// suffix so a long title can never push it off the right edge.
+/// Applies uniformly across statuses — live rows benefit from the marker
+/// because the status badge alone doesn't reveal *which kind* of session
+/// is live, and historical rows benefit because their badge area is
+/// empty.
+fn origin_prefix_for(s: &AgentSession) -> Option<String> {
+    if s.origin == SessionOrigin::AgentPane {
+        // Take the first 8 chars of the ACP/CLI session id. For real
+        // sessions this is the leading group of the UUID
+        // (`e1619fc0-...` -> `e1619fc0`), which is enough to visually
+        // disambiguate rows that share the same title. Synthetic keys
+        // (`pane:<guid>`) shouldn't reach this branch in practice
+        // because they're never written to the agent-pane origin index,
+        // but `.chars().take(8)` keeps us safe if one does.
+        let short_id: String = s.key.chars().take(8).collect();
+        Some(format!("Agent pane session {}: ", short_id))
+    } else {
+        None
+    }
 }
 
 /// Human-readable age, matching the Figma:

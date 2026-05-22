@@ -446,6 +446,20 @@ pub fn route_agent_event_to_registry(
 
     reg.apply(ev);
 
+    // Stamp `AgentPane` origin on the live session if the agent-pane
+    // origin index recorded its session id. This is what flips the
+    // "agent pane" prefix on for *live* rows — historical rows pick up
+    // the same flag through `history_loader::load_all`'s join. We
+    // re-read the index on every routed event (small file, infrequent
+    // event) rather than caching, to stay correct after a new session
+    // is created while wta is already running.
+    if !key_for_refresh.is_empty() {
+        let agent_pane_keys = crate::agent_pane_origin::load_default_set();
+        if agent_pane_keys.contains(&key_for_refresh) {
+            reg.set_origin(&key_for_refresh, crate::agent_sessions::SessionOrigin::AgentPane);
+        }
+    }
+
     // Upgrade synthetic title from disk if the CLI has now written one.
     if reg.title_is_synthetic(&key_for_refresh) {
         if let Some(cli) = reg.cli_source_for(&key_for_refresh) {

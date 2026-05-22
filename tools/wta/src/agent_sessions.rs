@@ -75,6 +75,27 @@ pub enum AgentStatus {
     Historical,
 }
 
+/// Where this session was first created from, used purely as UX metadata
+/// (e.g. a small badge on Historical rows so the user can tell which
+/// sessions were started by Intelligent Terminal's agent pane).
+///
+/// Populated authoritatively by `agent_pane_origin`: WTA appends a record
+/// to the on-disk index whenever it creates an ACP session for an agent
+/// pane (i.e. `--owner-tab-id` was supplied), and `history_loader` joins
+/// that index when reconstructing historical rows. Live rows default to
+/// `Unknown` because the UI only surfaces this badge for ended/historical
+/// sessions, where it is most useful.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum SessionOrigin {
+    /// Origin not recorded — either the session pre-dates the index, was
+    /// started outside of WTA (user ran `copilot` by hand), or the index
+    /// file was unavailable when we tried to look it up.
+    #[default]
+    Unknown,
+    /// Created by WTA on behalf of an Intelligent Terminal agent pane.
+    AgentPane,
+}
+
 #[derive(Clone, Debug)]
 pub struct AgentSession {
     pub key:               AgentKey,
@@ -91,6 +112,9 @@ pub struct AgentSession {
     pub current_tool:      Option<String>,
     pub attention_reason:  Option<String>,
     pub log_path:          Option<PathBuf>,
+    /// Provenance for this session — populated for historical rows from
+    /// the agent-pane origin index. See [`SessionOrigin`].
+    pub origin:            SessionOrigin,
 }
 
 #[derive(Clone, Debug)]
@@ -197,6 +221,7 @@ impl AgentSessionRegistry {
                     current_tool:      None,
                     attention_reason:  None,
                     log_path:          None,
+                    origin:            SessionOrigin::default(),
                 });
                 // If we're rebinding to a different pane, drop the old pane's mapping first.
                 if let Some(old_pane) = entry.pane_session_id.take() {
@@ -419,6 +444,23 @@ impl AgentSessionRegistry {
         self.sessions.contains_key(key)
     }
 
+    /// Update the `origin` field on an existing session entry. No-op if
+    /// `key` is not in the registry. Used by the routing layer to stamp
+    /// `AgentPane` on live rows once the agent-pane origin index has
+    /// confirmed the session was started by WTA on behalf of an agent
+    /// pane. Kept as a focused setter (rather than a parameter on
+    /// `SessionEvent::SessionStarted`) so we don't have to thread the
+    /// flag through every test fixture and demo path that constructs
+    /// SessionStarted events.
+    pub fn set_origin(&mut self, key: &str, origin: SessionOrigin) {
+        if let Some(entry) = self.sessions.get_mut(key) {
+            if entry.origin != origin {
+                entry.origin = origin;
+                self.dirty = true;
+            }
+        }
+    }
+
     /// Returns true if the given pane GUID is currently bound to an agent
     /// CLI session (Copilot/Claude/Gemini/...). Used by the autofix path to
     /// suppress "command failed" classification when the failing process is
@@ -599,6 +641,7 @@ impl AgentSessionRegistry {
             current_tool:      None,
             attention_reason:  None,
             log_path:          Some(PathBuf::from("~/.gemini/logs/2026-05-03-1530.log")),
+            origin:            SessionOrigin::default(),
         });
 
         // Stagger last_activity_at so the order in the UI matches the
@@ -889,6 +932,7 @@ mod tests {
             current_tool:      None,
             attention_reason:  None,
             log_path:          None,
+            origin:            SessionOrigin::default(),
         }]);
         reg.apply(SessionEvent::ResumeDispatched { key: k("g") });
         assert_eq!(reg.sessions.get(&k("g")).unwrap().status, AgentStatus::Idle,
@@ -1097,6 +1141,7 @@ mod tests {
             current_tool:      None,
             attention_reason:  None,
             log_path:          None,
+            origin:            SessionOrigin::default(),
         };
 
         // Loaded set tries to overwrite live-1 + add hist-1.

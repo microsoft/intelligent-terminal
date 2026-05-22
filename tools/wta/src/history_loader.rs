@@ -38,7 +38,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::agent_sessions::{AgentSession, AgentStatus, CliSource};
+use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionOrigin};
 
 const MAX_PER_CLI: usize = 50;
 const TITLE_TAIL_BYTES: u64 = 64 * 1024;
@@ -49,6 +49,18 @@ pub fn load_all() -> Vec<AgentSession> {
     out.extend(take_n(load_copilot(&home), MAX_PER_CLI));
     out.extend(take_n(load_claude(&home),  MAX_PER_CLI));
     out.extend(take_n(load_gemini(&home),  MAX_PER_CLI));
+    // Stamp `origin: AgentPane` on rows whose session id was recorded in
+    // the local agent-pane index. Loaded once and applied as a join so the
+    // per-CLI scanners stay agnostic of how the index is shaped or where
+    // it lives.
+    let agent_pane_keys = crate::agent_pane_origin::load_default_set();
+    if !agent_pane_keys.is_empty() {
+        for s in out.iter_mut() {
+            if agent_pane_keys.contains(&s.key) {
+                s.origin = SessionOrigin::AgentPane;
+            }
+        }
+    }
     out
 }
 
@@ -185,6 +197,7 @@ fn load_copilot(home: &Path) -> Vec<AgentSession> {
             current_tool:      None,
             attention_reason:  None,
             log_path:          Some(events),
+            origin:            crate::agent_sessions::SessionOrigin::default(),
         });
     }
     out.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
@@ -241,6 +254,7 @@ fn load_claude(home: &Path) -> Vec<AgentSession> {
                 current_tool:      None,
                 attention_reason:  None,
                 log_path:          Some(path),
+                origin:            crate::agent_sessions::SessionOrigin::default(),
             });
         }
     }
@@ -305,6 +319,7 @@ fn load_gemini(home: &Path) -> Vec<AgentSession> {
                 current_tool:      None,
                 attention_reason:  None,
                 log_path:          Some(path),
+                origin:            crate::agent_sessions::SessionOrigin::default(),
             });
         }
     }
@@ -818,6 +833,11 @@ mod tests {
         assert_eq!(s.title, "Refactor parser");
         assert_eq!(s.cwd, PathBuf::from("C:\\Users\\me\\proj"));
         assert_eq!(s.status, AgentStatus::Historical);
+        // `load_copilot` itself never consults the agent-pane index — the
+        // join is layered on top by `load_all`. So scanner output should
+        // always default to Unknown regardless of any index that may exist
+        // in the host's real %LOCALAPPDATA%.
+        assert_eq!(s.origin, SessionOrigin::Unknown);
         let _ = fs::remove_dir_all(&home);
     }
 
