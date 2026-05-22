@@ -11,10 +11,17 @@ param(
     [string]$CliSource = ""
 )
 
+# Skip if not running inside Windows Terminal.
+# Moved BEFORE the diagnostic trace so we don't spam hook-trace.log with
+# ENTER+SKIP pairs on every tool event when WTA isn't in play (the hook
+# has nothing useful to do without WT_COM_CLSID anyway).
+if (-not $env:WT_COM_CLSID) { exit 0 }
+
 # ─── diagnostic trace (round 13) ────────────────────────────────────────
 # Every hook invocation appends one line so we can diagnose missing
 # SessionEnd events on Ctrl+C without relying on wta seeing the message.
 # Writes to %LOCALAPPDATA%\IntelligentTerminal\logs\hook-trace.log.
+# Rotates at 5 MB to hook-trace.log.1 (one backup kept, ~10 MB ceiling).
 # Best-effort; never throws.
 $traceWritten = $false
 try {
@@ -23,6 +30,21 @@ try {
         New-Item -ItemType Directory -Path $traceDir -Force | Out-Null
     }
     $tracePath = Join-Path $traceDir 'hook-trace.log'
+
+    # Size-based rotation: if current log exceeds 5 MB, rotate to .1
+    try {
+        if (Test-Path -LiteralPath $tracePath) {
+            $sz = (Get-Item -LiteralPath $tracePath -ErrorAction SilentlyContinue).Length
+            if ($sz -ge 5MB) {
+                $rotated = "$tracePath.1"
+                if (Test-Path -LiteralPath $rotated) {
+                    Remove-Item -LiteralPath $rotated -Force -ErrorAction SilentlyContinue
+                }
+                Move-Item -LiteralPath $tracePath -Destination $rotated -Force -ErrorAction SilentlyContinue
+            }
+        }
+    } catch { }
+
     $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
     $cliEnvHint =
         if ($env:COPILOT_SESSION_ID) { 'copilot' }
@@ -38,17 +60,6 @@ try {
     $traceWritten = $true
 } catch { }
 # ────────────────────────────────────────────────────────────────────────
-
-# Skip if not running inside Windows Terminal
-if (-not $env:WT_COM_CLSID) {
-    if ($traceWritten) {
-        try {
-            $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
-            Add-Content -LiteralPath $tracePath -Value "$stamp | SKIP no WT_COM_CLSID (cli=$CliSource event=$EventType)" -ErrorAction SilentlyContinue
-        } catch { }
-    }
-    exit 0
-}
 
 # Locate wtcli.exe. Order:
 #   1. PATH (works if the package registers a wtcli AppExecutionAlias).

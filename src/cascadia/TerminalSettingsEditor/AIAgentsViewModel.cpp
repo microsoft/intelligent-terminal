@@ -797,6 +797,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                        L"IsClaudeCliDetected",
                        L"IsGeminiCliDetected",
                        L"IsAnyAgentCliDetected",
+                       L"CanInstallAgentHooks",
                        L"ShowCopilotHookRow",
                        L"ShowClaudeHookRow",
                        L"ShowGeminiHookRow",
