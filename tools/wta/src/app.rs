@@ -1308,35 +1308,67 @@ pub const QUEUE_HINT_DURATION: std::time::Duration = std::time::Duration::from_m
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueuedPrompt {
     pub text: String,
+    /// Whitespace-collapsed cache of `text`, computed once at construction
+    /// and read each frame by `ui/queued_hint::render`. Avoids the per-frame
+    /// `split_whitespace().collect::<Vec<_>>().join(" ")` allocation pointed
+    /// out by Copilot review round 7.
+    collapsed: String,
 }
 
 impl QueuedPrompt {
+    pub fn new(text: String) -> Self {
+        let collapsed = collapse_whitespace(&text);
+        Self { text, collapsed }
+    }
+
     /// One-line preview for the transient hint shown after an Esc-dequeue.
     /// Collapses internal whitespace and truncates at `max_chars` characters
     /// with an ellipsis. Char-based (not cell-based) because the transient
     /// hint row is rendered with simple `Paragraph` clipping and doesn't
     /// need the precise width math `ui/queued_hint` performs.
     pub fn preview(&self, max_chars: usize) -> String {
-        let collapsed = self.collapsed_text();
-        if collapsed.chars().count() <= max_chars {
-            collapsed
+        if self.collapsed.chars().count() <= max_chars {
+            self.collapsed.clone()
         } else {
-            let taken: String = collapsed.chars().take(max_chars.saturating_sub(1)).collect();
+            let taken: String = self
+                .collapsed
+                .chars()
+                .take(max_chars.saturating_sub(1))
+                .collect();
             format!("{}…", taken)
         }
     }
 
-    /// Internal whitespace-collapsed text (no truncation, no ellipsis).
+    /// Cached whitespace-collapsed text (no truncation, no ellipsis).
     /// `ui/queued_hint` consumes this so it can do one single width-aware
-    /// truncation pass — combining the char-count truncation here with the
+    /// truncation pass — combining a char-count truncation here with the
     /// cell-width truncation there could otherwise yield a doubled `…`
     /// when both clips fire on the same string.
-    pub fn collapsed_text(&self) -> String {
-        self.text
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
+    pub fn collapsed_text(&self) -> &str {
+        &self.collapsed
     }
+}
+
+/// Stream-collapse contiguous whitespace runs into single spaces without an
+/// intermediate `Vec`. Mirrors `split_whitespace().collect::<Vec<_>>().join(" ")`
+/// but allocates only the result string.
+fn collapse_whitespace(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut pending_space = false;
+    let mut wrote_any = false;
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            pending_space = wrote_any;
+        } else {
+            if pending_space {
+                out.push(' ');
+                pending_space = false;
+            }
+            out.push(ch);
+            wrote_any = true;
+        }
+    }
+    out
 }
 
 /// Top-level UI view selector. Toggled with F2.
@@ -4237,7 +4269,7 @@ impl App {
                         }
                         let text = std::mem::take(&mut tab.input);
                         tab.cursor_pos = 0;
-                        tab.pending_prompts.push_back(QueuedPrompt { text });
+                        tab.pending_prompts.push_back(QueuedPrompt::new(text));
                         tab.refresh_command_popup();
                         return;
                     }
@@ -5154,10 +5186,31 @@ impl App {
             if tab.pending_prompts.is_empty() {
                 continue;
             }
-            let session_id = tab
-                .session_id
-                .clone()
-                .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+            // Resolve the ACP session id this tab dispatches against.
+            //
+            // With a real `session_id`, `session_tab_mut(session_id)` routes
+            // unambiguously via `session_to_tab` → this tab.
+            //
+            // Without one, `session_tab_mut(DEFAULT_TAB_ID)` falls back via
+            // `tab_for_session`'s `self.tab_id` branch — correct *only* for
+            // the focused tab. Background-tab drains hitting that fallback
+            // would apply the state transition to the focused tab instead
+            // (Copilot review round 7). Defer those drains until the tab's
+            // own `SessionAttached` arrives; the next event tick retries.
+            let session_id = match tab.session_id.clone() {
+                Some(sid) => sid,
+                None => {
+                    let focused = self
+                        .tab_id
+                        .as_deref()
+                        .unwrap_or(DEFAULT_TAB_ID);
+                    if tab_id == focused {
+                        DEFAULT_TAB_ID.to_string()
+                    } else {
+                        continue;
+                    }
+                }
+            };
             let queued = self
                 .tab_sessions
                 .get_mut(&tab_id)
@@ -7831,13 +7884,16 @@ mod tests {
         app.tab_id = Some("focused-tab".into());
         let bg = "bg-tab".to_string();
         // Seed both tabs so session_tab_mut / current_tab don't collide.
-        app.tab_sessions
-            .entry(bg.clone())
-            .or_default()
-            .pending_prompts
-            .push_back(QueuedPrompt { text: "bg-msg".into() });
-        // Background tab must also be Idle + Connected to be drainable.
-        // (Default TabSession is Idle, so nothing further to set.)
+        // The background tab must have a real ACP session id for drain to
+        // fire — see `drain_pending_prompts` round-7 fix that gates on
+        // `session_id.is_some()` to avoid wrong-tab dispatch via the old
+        // DEFAULT_TAB_ID fallback.
+        {
+            let tab = app.tab_sessions.entry(bg.clone()).or_default();
+            tab.session_id = Some("bg-session".into());
+            tab.pending_prompts.push_back(QueuedPrompt::new("bg-msg".into()));
+        }
+        app.session_to_tab.insert("bg-session".into(), bg.clone());
         app.tab_sessions
             .entry("focused-tab".into())
             .or_default();
@@ -7849,6 +7905,33 @@ mod tests {
             "PaneContext.tab_id must reflect the drained tab, not the focused one");
         assert_eq!(ctx.pane_id.as_deref(), Some("pane-real"));
         assert_eq!(ctx.window_id.as_deref(), Some("win-real"));
+    }
+
+    #[test]
+    fn drain_holds_queue_when_tab_has_no_session_id() {
+        // Regression for Copilot round-7: a background tab without an ACP
+        // session id must NOT drain via the old DEFAULT_TAB_ID fallback,
+        // because `session_tab_mut(DEFAULT_TAB_ID)` resolves to the
+        // currently focused tab — would apply the state transition to the
+        // wrong tab. Queue stays put until SessionAttached arrives.
+        let (mut app, mut rx) = test_app_with_prompt_rx();
+        app.state = ConnectionState::Connected;
+        app.tab_id = Some("focused-tab".into());
+        let bg = "bg-tab".to_string();
+        {
+            let tab = app.tab_sessions.entry(bg.clone()).or_default();
+            // session_id intentionally left None.
+            tab.pending_prompts.push_back(QueuedPrompt::new("bg-msg".into()));
+        }
+        app.tab_sessions
+            .entry("focused-tab".into())
+            .or_default();
+
+        app.drain_pending_prompts();
+        assert!(rx.try_recv().is_err(),
+            "must not dispatch when the draining tab has no session_id");
+        assert_eq!(app.tab_sessions[&bg].pending_prompts.len(), 1,
+            "queued prompt is preserved until SessionAttached arrives");
     }
 
     #[test]
@@ -7943,9 +8026,9 @@ mod tests {
 
     #[test]
     fn queued_prompt_preview_truncates_and_collapses_whitespace() {
-        let q = QueuedPrompt { text: "  hello\n\nworld   ".into() };
+        let q = QueuedPrompt::new("  hello\n\nworld   ".into());
         assert_eq!(q.preview(40), "hello world");
-        let long = QueuedPrompt { text: "x".repeat(100) };
+        let long = QueuedPrompt::new("x".repeat(100));
         let preview = long.preview(10);
         assert!(preview.ends_with('…'));
         assert!(preview.chars().count() <= 10);
