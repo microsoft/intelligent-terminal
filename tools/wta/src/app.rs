@@ -5846,10 +5846,14 @@ impl App {
             let tab = self.session_tab_mut(session_id);
             let mut details = tab.current_turn_details();
             details.push(ChatMessage::Agent(explanation));
+            // Auto-expand the auto-diagnosed-error turn: when the user
+            // clicks the Suggested pill they came here specifically to
+            // read the explanation, so showing the collapsed preview
+            // would force a second click.
             tab.completed_turns.push(CompletedTurn {
                 prompt: turn_prompt_label,
                 details,
-                expanded: false,
+                expanded: true,
             });
             tab.messages.clear();
             tab.tool_calls.clear();
