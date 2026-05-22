@@ -2208,7 +2208,7 @@ impl App {
                     setup.install_in_progress = true;
                     setup.install_error = None;
                     setup.install_log.clear();
-                    setup.install_log.push(format!("{} {}...", t!("setup.status.installing"), agent_id));
+                    setup.install_log.push(format!("{} {}", t!("setup.status.installing"), agent_id));
                 }
                 // Spawn async winget install via agent_check
                 if let Some(ref tx) = self.event_tx {
