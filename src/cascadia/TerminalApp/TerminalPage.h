@@ -367,6 +367,12 @@ namespace winrt::TerminalApp::implementation
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
+        // Snapshot of AutoFixEnabled at last SetSettings call. When the
+        // user toggles "Auto-suggest fixes" we send the new value to WTA
+        // over the protocol so it can update its in-memory gate without
+        // requiring the agent pane to be torn down and respawned.
+        bool _lastAutoFixEnabled{ false };
+        bool _autoFixEnabledSnapshotInitialized{ false };
         bool _agentRebuilding{ false };
         // Set when a settings change wants a rebuild but the active
         // tab can't host an agent pane (e.g. the Settings tab itself).

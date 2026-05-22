@@ -3190,6 +3190,25 @@ impl App {
                     return;
                 }
 
+                if method == "autofix_enabled_changed" {
+                    // C++ pushes this when the user toggles "Auto-suggest
+                    // fixes" in settings while WTA is already running.
+                    // Without it the flag would stay pinned to whatever
+                    // `--no-autofix` value WTA was launched with.
+                    let enabled = params
+                        .get("enabled")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    tracing::info!(
+                        target: "autofix",
+                        old = self.autofix_enabled,
+                        new = enabled,
+                        "autofix_enabled hot-reloaded from settings change",
+                    );
+                    self.autofix_enabled = enabled;
+                    return;
+                }
+
                 if method == "tab_changed" {
                     tracing::info!(
                         target: "tab_session",

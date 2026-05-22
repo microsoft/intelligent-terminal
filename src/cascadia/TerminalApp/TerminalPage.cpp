@@ -309,6 +309,34 @@ namespace winrt::TerminalApp::implementation
             _agentSettingsSnapshotInitialized = true;
         }
 
+        // Auto-suggest toggle hot-reload: when AutoFixEnabled changes
+        // between settings reloads, push the new value to WTA over the
+        // protocol. WTA's `autofix_enabled` flag would otherwise stay
+        // pinned to whatever `--no-autofix` value it was launched with.
+        {
+            const bool currentAutoFix = _settings.GlobalSettings().AutoFixEnabled();
+            if (!_autoFixEnabledSnapshotInitialized)
+            {
+                _lastAutoFixEnabled = currentAutoFix;
+                _autoFixEnabledSnapshotInitialized = true;
+            }
+            else if (_lastAutoFixEnabled != currentAutoFix)
+            {
+                _lastAutoFixEnabled = currentAutoFix;
+                Json::Value evt;
+                evt["type"] = "event";
+                evt["method"] = "autofix_enabled_changed";
+                Json::Value params;
+                params["enabled"] = currentAutoFix;
+                evt["params"] = params;
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                ProtocolVtSequenceReceived.raise(
+                    *this,
+                    winrt::to_hstring(Json::writeString(wb, evt)));
+            }
+        }
+
         // Make sure to call SetCommands before _RefreshUIForSettingsReload.
         // SetCommands will make sure the KeyChordText of Commands is updated, which needs
         // to happen before the Settings UI is reloaded and tries to re-read those values.
