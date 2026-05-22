@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::{bail, Context};
+use anyhow::{anyhow, bail, Context};
 use tokio::sync::mpsc;
 
 use crate::app::DebugMessage;
@@ -545,7 +545,24 @@ impl WtChannel for CliChannel {
             }
             "send_input" => {
                 let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
-                let text = params.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                // Strict validation: caller errors must surface as errors,
+                // not silently degrade to a no-op SendInput("") that wta
+                // then reports as success. The downstream COM layer treats
+                // empty text as a deliberate no-op, so a malformed request
+                // that fell through to "" here would otherwise look
+                // identical to a successful send and be very hard to
+                // diagnose.
+                let text = params
+                    .get("text")
+                    .ok_or_else(|| anyhow!("send_input: missing 'text' parameter"))?
+                    .as_str()
+                    .ok_or_else(|| anyhow!("send_input: 'text' must be a JSON string"))?;
+                // Empty text is an explicit no-op — short-circuit before
+                // spawning wtcli; the downstream COM SendInput would treat
+                // it the same way.
+                if text.is_empty() {
+                    return Ok(serde_json::json!({ "ok": true, "noop": true }));
+                }
                 let text_owned = text.to_string();
                 // `--raw` bypasses wtcli's tmux-style token translation so a
                 // payload that literally equals "Enter" / "Tab" / "C-c" is
