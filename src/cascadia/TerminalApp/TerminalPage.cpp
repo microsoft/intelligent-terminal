@@ -1795,7 +1795,10 @@ namespace winrt::TerminalApp::implementation
 
         if (const auto lang = globals.Language(); !lang.empty())
         {
-            cmdline += fmt::format(FMT_COMPILE(L" --language \"{}\""), std::wstring_view{ lang });
+            std::wstring langStr{ lang };
+            for (size_t pos = 0; (pos = langStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
+                langStr.replace(pos, 1, L"\"\"");
+            cmdline += fmt::format(FMT_COMPILE(L" --language \"{}\""), langStr);
         }
 
         _agentPaneLog("_AutoCreateHiddenAgentPane: cmdline=" + winrt::to_string(winrt::hstring{ cmdline }));
@@ -2180,7 +2183,10 @@ namespace winrt::TerminalApp::implementation
             // PrimaryLanguageOverride set by AppLogic).
             if (const auto lang = globals.Language(); !lang.empty())
             {
-                cmdline += fmt::format(FMT_COMPILE(L" --language \"{}\""), std::wstring_view{ lang });
+                std::wstring langStr{ lang };
+                for (size_t pos = 0; (pos = langStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
+                    langStr.replace(pos, 1, L"\"\"");
+                cmdline += fmt::format(FMT_COMPILE(L" --language \"{}\""), langStr);
             }
 
             if (intoSessionsView)

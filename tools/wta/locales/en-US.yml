@@ -28,6 +28,8 @@ setup.option.signin: "Sign in to %{agent}"
 setup.option.retry_detection: "Retry detection"
 setup.option.retry_auth: "I've signed in — retry connection"
 setup.option.retry_connection: "Retry connection"
+# Button label — switch active AI agent to a different one
+setup.option.switch_to: "Switch to %{agent}"
 setup.status.installing: "Installing..."
 setup.status.install_failed: "Install failed: "
 setup.status.installing_winget: " Installing via winget..."

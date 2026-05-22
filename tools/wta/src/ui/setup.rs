@@ -110,7 +110,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 (t!("setup.option.signin", agent = display_name.as_str()).into_owned(), String::new())
             }
             SetupOption::SwitchAgent { agent } => (
-                format!("Switch to {}", agent.display_name),
+                t!("setup.option.switch_to", agent = agent.display_name.as_str()).into_owned(),
                 format!("  ({})", agent.status_label()),
             ),
             SetupOption::Retry => {
