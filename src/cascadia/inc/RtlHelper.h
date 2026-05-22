@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include <cwctype>
 #include <string_view>
 
 namespace Microsoft::Terminal::RtlHelper
@@ -51,6 +50,38 @@ namespace Microsoft::Terminal::RtlHelper
     //
     // We also recognize the Microsoft pseudo-mirrored pseudo-locale
     // `qps-plocm`, which is the canonical way to validate RTL plumbing.
+    // Locale-independent ASCII tolower. BCP-47 language tags are
+    // pure ASCII, so we deliberately avoid std::towlower (which honors
+    // the C runtime locale and, e.g., maps 'I' to dotless-i under the
+    // Turkish locale — breaking case-insensitive matching of "IW-IL"
+    // or "QPS-PLOCM"). Mirrors `til::tolower_ascii` exactly; inlined
+    // here to keep the header self-contained.
+    [[nodiscard]] constexpr wchar_t _tolower_ascii(wchar_t c) noexcept
+    {
+        if (c >= L'A' && c <= L'Z')
+        {
+            c = static_cast<wchar_t>(c | 0x20);
+        }
+        return c;
+    }
+
+    // Locale-independent ASCII case-insensitive equality.
+    [[nodiscard]] constexpr bool _equals_insensitive_ascii(std::wstring_view a, std::wstring_view b) noexcept
+    {
+        if (a.size() != b.size())
+        {
+            return false;
+        }
+        for (size_t i = 0; i < a.size(); ++i)
+        {
+            if (_tolower_ascii(a[i]) != _tolower_ascii(b[i]))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     inline constexpr std::wstring_view kRtlLanguageSubtags[] = {
         L"ar",
         L"he",
@@ -89,22 +120,9 @@ namespace Microsoft::Terminal::RtlHelper
         // Special-case the pseudo-mirrored pseudo-locale. It is not a
         // BCP-47 language subtag in its own right (`qps` is the
         // pseudo-language prefix), so we match the whole tag.
-        constexpr std::wstring_view pseudoMirrored = L"qps-plocm";
-        if (language.size() == pseudoMirrored.size())
+        if (_equals_insensitive_ascii(language, L"qps-plocm"))
         {
-            bool eq = true;
-            for (size_t i = 0; i < pseudoMirrored.size(); ++i)
-            {
-                if (std::towlower(language[i]) != pseudoMirrored[i])
-                {
-                    eq = false;
-                    break;
-                }
-            }
-            if (eq)
-            {
-                return true;
-            }
+            return true;
         }
 
         // Extract the primary language subtag (chars before the first `-`).
@@ -119,20 +137,7 @@ namespace Microsoft::Terminal::RtlHelper
 
         for (const auto& tag : kRtlLanguageSubtags)
         {
-            if (primary.size() != tag.size())
-            {
-                continue;
-            }
-            bool match = true;
-            for (size_t i = 0; i < tag.size(); ++i)
-            {
-                if (std::towlower(primary[i]) != tag[i])
-                {
-                    match = false;
-                    break;
-                }
-            }
-            if (match)
+            if (_equals_insensitive_ascii(primary, tag))
             {
                 return true;
             }

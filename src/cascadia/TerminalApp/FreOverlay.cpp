@@ -75,10 +75,14 @@ namespace winrt::TerminalApp::implementation
                 }
                 CATCH_LOG();
             }
-            if (::Microsoft::Terminal::RtlHelper::IsRtlLocale(language))
-            {
-                RootGrid().FlowDirection(winrt::Windows::UI::Xaml::FlowDirection::RightToLeft);
-            }
+            // Explicit on both branches so that re-initializing the
+            // same overlay element for a different language correctly
+            // resets the cascade — Initialize is called every time the
+            // FRE is shown, and the underlying XAML element is reused.
+            using winrt::Windows::UI::Xaml::FlowDirection;
+            RootGrid().FlowDirection(::Microsoft::Terminal::RtlHelper::IsRtlLocale(language)
+                                         ? FlowDirection::RightToLeft
+                                         : FlowDirection::LeftToRight);
         }
 
         // Set subtitle Run texts (can't use x:Uid for <Run> inside <Hyperlink>)

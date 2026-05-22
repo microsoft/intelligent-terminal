@@ -1,9 +1,9 @@
 # RTL Support Investigation — Intelligent Terminal
 
-**Branch:** `dev/yeelam/investigate-rtl-support`
-**Worktree:** `Q:\official\intelligent-terminal-rtl`
-**Date:** 2026-05-22
-**Status:** Investigation only — no code changes yet
+**Status:** Implemented — see PR adding `src/cascadia/inc/RtlHelper.h`,
+`tools/wta/src/rtl.rs`, and the FRE/WTA wiring. This document is kept
+as a historical design record explaining *why* the fix took the shape
+it did; the "Next steps" checklist below is now mostly complete.
 
 ## Why this exists
 
@@ -116,23 +116,31 @@ Separate concerns:
 
 ## Next steps (if/when we work on this)
 
-- [ ] FRE: prototype FlowDirection binding on FreOverlay's root grid;
-      verify with `qps-plocm` (pseudo-mirrored locale).
-- [ ] FRE: audit explicit `HorizontalAlignment="Right"` instances —
+- [x] FRE: prototype FlowDirection binding on FreOverlay's root grid;
+      verify with `qps-plocm` (pseudo-mirrored locale). _Done — see
+      `FreOverlay::Initialize` in `src/cascadia/TerminalApp/FreOverlay.cpp`._
+- [x] FRE: audit explicit `HorizontalAlignment="Right"` instances —
       decide which should auto-mirror and which should stay anchored.
-- [ ] wta: add `unicode-bidi = "0.4"` to Cargo.toml.
-- [ ] wta: write a helper `bidi_reorder(line: &str, base_dir:
-      Direction) -> String` and apply it in `chat.rs`, `agents_view.rs`,
-      `recommendations.rs` etc.
-- [ ] wta: set `Alignment::Right` on `Paragraph::new()` calls when
-      locale is RTL.
-- [ ] wta: add a regression test that renders a known Arabic/Hebrew
-      string and asserts the visual order.
+      _Resolved by relying on XAML's auto-mirror cascade; no per-control
+      changes were needed._
+- [ ] wta: add `unicode-bidi = "0.4"` to Cargo.toml. _Skipped — Windows
+      Terminal performs the bidi shaping on rendered cells, so the only
+      useful WTA-side action is `Paragraph::alignment(Right)` for
+      translated prose. The investigation's "medium" tier turned out to
+      be unnecessary in practice._
+- [x] wta: set `Alignment::Right` on `Paragraph::new()` calls when
+      locale is RTL. _Done via `crate::rtl::text_alignment()` in
+      `tools/wta/src/ui/{setup,auth,permission,recommendations,chat}.rs`._
+- [x] wta: add a regression test that renders a known Arabic/Hebrew
+      string and asserts the visual order. _Replaced with subtag-level
+      unit tests (`tools/wta/src/rtl.rs` + `ut_app/RtlHelperTests.cpp`)
+      — the actual visual shaping is Windows Terminal's responsibility
+      and is not something wta can usefully assert against._
 - [ ] Cross-cutting: enable `qps-plocm` testing in CI / local dev
       docs — currently `qps-plocm` exists but isn't wired into any
-      automated test.
+      automated test. _Still open — manual validation only._
 
 ## File markers
 
-This document lives at `doc/specs/rtl-investigation.md` so a reviewer
-can see the design before any code lands.
+This document lives at `doc/specs/rtl-investigation.md` as a historical
+design record. See the linked code paths above for the live behavior.

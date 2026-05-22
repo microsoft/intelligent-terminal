@@ -21,8 +21,10 @@
 // LTR controls keep their explicit alignment.
 //
 // Test coverage lives at the bottom of this file. It is deliberately
-// pure — no `rust_i18n::set_locale` poking, no global state — so it
-// runs deterministically under `cargo test`.
+// pure — every test exercises `is_rtl_locale` / `text_alignment_for_locale`
+// directly with explicit locale arguments, so nothing here touches
+// `rust_i18n::set_locale`. That makes the suite race-free under
+// `cargo test`'s default parallel runner.
 
 use ratatui::layout::Alignment;
 
@@ -80,6 +82,18 @@ pub fn is_rtl_locale(locale: &str) -> bool {
         .any(|tag| primary.eq_ignore_ascii_case(tag))
 }
 
+/// Returns `Alignment::Right` when `locale` is RTL, otherwise
+/// `Alignment::Left`. Pure helper used by the global-state wrapper
+/// below; exposed separately so tests don't have to touch
+/// `rust_i18n::set_locale`.
+pub fn text_alignment_for_locale(locale: &str) -> Alignment {
+    if is_rtl_locale(locale) {
+        Alignment::Right
+    } else {
+        Alignment::Left
+    }
+}
+
 /// Returns the default text alignment for the *current* `rust_i18n`
 /// locale: `Alignment::Right` when the locale is RTL, otherwise
 /// `Alignment::Left`.
@@ -88,11 +102,7 @@ pub fn is_rtl_locale(locale: &str) -> bool {
 /// to set Paragraph alignment. Fixed-width status / token rows can stay
 /// left-aligned regardless.
 pub fn text_alignment() -> Alignment {
-    if is_rtl_locale(&rust_i18n::locale()) {
-        Alignment::Right
-    } else {
-        Alignment::Left
-    }
+    text_alignment_for_locale(&rust_i18n::locale())
 }
 
 /// Returns `true` if the *current* `rust_i18n` locale is RTL. Thin
@@ -222,18 +232,18 @@ mod tests {
     }
 
     #[test]
-    fn text_alignment_reflects_current_locale() {
-        // text_alignment() reads the live rust_i18n locale; verify the
-        // mapping both ways without leaking global state across tests.
-        let prev = rust_i18n::locale().to_string();
-        rust_i18n::set_locale("ar-SA");
-        assert_eq!(text_alignment(), Alignment::Right);
-        assert!(is_current_locale_rtl());
-        rust_i18n::set_locale("en-US");
-        assert_eq!(text_alignment(), Alignment::Left);
-        assert!(!is_current_locale_rtl());
-        rust_i18n::set_locale("qps-plocm");
-        assert_eq!(text_alignment(), Alignment::Right);
-        rust_i18n::set_locale(&prev);
+    fn text_alignment_for_locale_maps_correctly() {
+        // Pure helper — no rust_i18n global state poked. Race-free
+        // under cargo test's default parallel runner.
+        assert_eq!(text_alignment_for_locale("ar-SA"), Alignment::Right);
+        assert_eq!(text_alignment_for_locale("he-IL"), Alignment::Right);
+        assert_eq!(text_alignment_for_locale("fa-IR"), Alignment::Right);
+        assert_eq!(text_alignment_for_locale("ur-PK"), Alignment::Right);
+        assert_eq!(text_alignment_for_locale("ug-CN"), Alignment::Right);
+        assert_eq!(text_alignment_for_locale("qps-plocm"), Alignment::Right);
+        assert_eq!(text_alignment_for_locale("en-US"), Alignment::Left);
+        assert_eq!(text_alignment_for_locale("de-DE"), Alignment::Left);
+        assert_eq!(text_alignment_for_locale("ja-JP"), Alignment::Left);
+        assert_eq!(text_alignment_for_locale(""), Alignment::Left);
     }
 }
