@@ -124,6 +124,7 @@ branchconfig
 brandings
 Browsable
 Bspace
+bspace
 BTNFACE
 bufferout
 buffersize
@@ -1930,6 +1931,7 @@ wstr
 wstrings
 wsz
 wta
+WTCLI
 wtai
 wtd
 WTEXT
