@@ -4004,14 +4004,27 @@ namespace winrt::TerminalApp::implementation
             _TriggerAutofix();
             break;
         case AutofixState::Suggested:
+        {
             // No executable fix — auto-fix produced an explanation that lives
             // in the agent pane chat history. Open the pane so the user can
-            // read it, then drop back to Idle (the suggestion has been "seen").
+            // read it, then ask WTA to clear the suggestion for the active
+            // tab. WTA is the authoritative state owner, so we don't mutate
+            // _diagnostics locally — we wait for the inbound
+            // autofix_state:cleared event to roll us back to Idle.
             _OpenOrReuseAgentPane(L"");
-            _diagnostics.autofixState = AutofixState::Idle;
-            _diagnostics.suggestionTitle.clear();
-            _UpdateBottomBarState();
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "autofix_dismiss_suggestion";
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorSessionId);
+            evt["params"] = params;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            ProtocolVtSequenceReceived.raise(
+                *this,
+                winrt::to_hstring(Json::writeString(wb, evt)));
             break;
+        }
         case AutofixState::Pending:
             // Analysis in flight — show the agent pane so the user can watch
             // progress. Keep Pending state until WTA confirms armed/cleared.
@@ -4223,9 +4236,9 @@ namespace winrt::TerminalApp::implementation
     // Inbound event from WTA carrying an autofix_state update. Called by the
     // COM server on the UI thread. Payload shape:
     //   {"type":"event","method":"autofix_state",
-    //    "params":{"state":"pending|armed|cleared",
-    //              "session_id":"...", "summary":"...",
-    //              "fix_preview":"...", "hotkey_hint":"Ctrl+."}}
+    //    "params":{"state":"pending|armed|suggested|cleared",
+    //              "pane_id":"...", "summary":"...",
+    //              "fix_preview":"...", "hotkey_hint":"Ctrl+Alt+."}}
     void TerminalPage::OnAutofixStateChanged(hstring eventJson)
     {
         Json::Value evt;
@@ -4259,10 +4272,11 @@ namespace winrt::TerminalApp::implementation
             _diagnostics.autofixState = AutofixState::Idle;
             _diagnostics.fixPreview.clear();
             _diagnostics.suggestionTitle.clear();
+            _diagnostics.lastErrorSessionId.clear();
         }
-        if (params.isMember("session_id") && params["session_id"].isString())
+        if (params.isMember("pane_id") && params["pane_id"].isString())
         {
-            const auto s = params["session_id"].asString();
+            const auto s = params["pane_id"].asString();
             _diagnostics.lastErrorSessionId.assign(s.begin(), s.end());
         }
         if (params.isMember("fix_preview") && params["fix_preview"].isString())
