@@ -177,12 +177,7 @@
 
             <muxc:NavigationViewItem x:Name="ActionsNavItem"
                                      x:Uid="Nav_Actions"
-                                     Tag="Actions_Nav">
-                <muxc:NavigationViewItem.InfoBadge>
-                    <muxc:InfoBadge Style="{StaticResource NewInfoBadge}"
-                                    Visibility="{x:Bind ActionsVM.DisplayBadge, Mode=OneWay}" />
-                </muxc:NavigationViewItem.InfoBadge>
-            </muxc:NavigationViewItem>
+                                     Tag="Actions_Nav" />
 
             <muxc:NavigationViewItem x:Name="NewTabMenuNavItem"
                                      x:Uid="Nav_NewTabMenu"
@@ -200,6 +195,10 @@
                               Height="16"
                               Data="M15 8C15 7.86623 14.9623 7.73504 14.8906 7.62207L11.5879 2.41504C11.4241 2.15678 11.1398 2.00006 10.834 2C10.4293 2 10.075 2.27211 9.9707 2.66309L7.06445 13.5605C6.83812 14.4093 6.0698 15 5.19141 15C4.52741 15 3.90931 14.6604 3.55371 14.0996L0.265625 8.91309C0.0924114 8.63994 0 8.32344 0 8C0 7.67656 0.0924114 7.36006 0.265625 7.08691L3.68359 1.69629C3.95874 1.26274 4.43668 1 4.9502 1H7.5C7.77614 1 8 1.22386 8 1.5C8 1.77614 7.77614 2 7.5 2H4.9502C4.77896 2 4.61904 2.08782 4.52734 2.23242L1.10938 7.62207C1.03775 7.73504 1 7.86623 1 8C1 8.13377 1.03775 8.26496 1.10938 8.37793L4.39844 13.5635C4.57063 13.835 4.86987 14 5.19141 14C5.61674 14 5.98904 13.7137 6.09863 13.3027L9.00488 2.40527C9.22593 1.57662 9.97634 1 10.834 1C11.4821 1.00006 12.0854 1.33159 12.4326 1.87891L15.7344 7.08691C15.9076 7.36006 16 7.67656 16 8C16 8.32344 15.9076 8.63994 15.7344 8.91309L12.3164 14.3037C12.0413 14.7373 11.5633 15 11.0498 15H8.5C8.22386 15 8 14.7761 8 14.5C8 14.2239 8.22386 14 8.5 14H11.0498C11.221 14 11.381 13.9122 11.4727 13.7676L14.8906 8.37793C14.9623 8.26496 15 8.13377 15 8Z" />
                 </muxc:NavigationViewItem.Icon>
+                <muxc:NavigationViewItem.InfoBadge>
+                    <muxc:InfoBadge x:Name="AIAgentsBadge"
+                                    Style="{StaticResource NewInfoBadge}" />
+                </muxc:NavigationViewItem.InfoBadge>
             </muxc:NavigationViewItem>
 
             <muxc:NavigationViewItemHeader x:Uid="Nav_Profiles" />
