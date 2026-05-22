@@ -1116,20 +1116,19 @@ namespace winrt::TerminalApp::implementation
         si.dwFlags = STARTF_USESHOWWINDOW;
         si.wShowWindow = SW_HIDE;
 
-        PROCESS_INFORMATION pi{};
+        wil::unique_process_information pi;
         auto mutableCmdline = cmdline;
-        const auto launched = CreateProcessW(
-            wtaPath.c_str(),
-            mutableCmdline.data(),
-            nullptr,
-            nullptr,
-            FALSE,
-            CREATE_NO_WINDOW,
-            nullptr,
-            nullptr,
-            &si,
-            &pi);
-        if (!launched)
+        if (!CreateProcessW(
+                wtaPath.c_str(),
+                mutableCmdline.data(),
+                nullptr,
+                nullptr,
+                FALSE,
+                CREATE_NO_WINDOW,
+                nullptr,
+                nullptr,
+                &si,
+                &pi))
         {
             const auto err = GetLastError();
             _agentPaneLog("FAILED to launch delegate process: GetLastError=" +
@@ -1138,8 +1137,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
+        // pi destructor closes hProcess + hThread on scope exit.
         _agentPaneLog("delegate process launched OK");
     }
 

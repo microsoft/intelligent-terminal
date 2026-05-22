@@ -430,8 +430,13 @@ int main()
     // ── send-keys ──
     std::string sendKeysTarget;
     std::vector<std::string> sendKeysArgs;
+    bool sendKeysRaw = false;
     auto* sendKeysCmd = app.add_subcommand("send-keys", "Send keys to a pane")->alias("send");
     sendKeysCmd->add_option("-t,--target", sendKeysTarget, "Session ID (GUID)");
+    sendKeysCmd->add_flag("--raw", sendKeysRaw,
+                          "Treat the payload as literal UTF-8 text — skip tmux-style "
+                          "token translation (Enter/Tab/Escape/BSpace/C-x). Use this when "
+                          "forwarding arbitrary agent-supplied text.");
     sendKeysCmd->add_option("keys", sendKeysArgs, "Keys to send")->required();
     sendKeysCmd->callback([&]() {
         auto server = connect();
@@ -439,7 +444,9 @@ int main()
         try
         {
             auto sessionId = ResolveSessionId(server, sendKeysTarget);
-            auto text = wtcli::TranslateKeys(sendKeysArgs);
+            auto text = sendKeysRaw
+                ? wtcli::JoinAsUtf16(sendKeysArgs)
+                : wtcli::TranslateKeys(sendKeysArgs);
             server.SendInput(sessionId, text);
             if (jsonMode)
             {

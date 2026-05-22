@@ -16,6 +16,29 @@
 
 namespace wtcli
 {
+    // Concatenate positional args as literal UTF-8 → UTF-16 text without
+    // any tmux-style token interpretation. Use this when the caller's intent
+    // is "send these exact characters" (e.g. wta forwarding agent-supplied
+    // text), so payloads like the literal word "Enter" / "Tab" / "C-c" are
+    // not silently rewritten into control bytes.
+    inline std::wstring JoinAsUtf16(const std::vector<std::string>& parts)
+    {
+        std::wstring result;
+        for (const auto& p : parts)
+        {
+            if (p.empty())
+                continue;
+            const int wlen = MultiByteToWideChar(CP_UTF8, 0, p.data(), static_cast<int>(p.size()), nullptr, 0);
+            if (wlen > 0)
+            {
+                const size_t prev = result.size();
+                result.resize(prev + static_cast<size_t>(wlen));
+                MultiByteToWideChar(CP_UTF8, 0, p.data(), static_cast<int>(p.size()), result.data() + prev, wlen);
+            }
+        }
+        return result;
+    }
+
     // Translate tmux-style key names to the byte stream that should be sent
     // to a pane. Recognized tokens: Enter / Space / Tab / Escape (alias Esc) /
     // BSpace / C-a..C-z. Unrecognized tokens are passed through as UTF-8 →

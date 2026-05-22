@@ -547,7 +547,13 @@ impl WtChannel for CliChannel {
                 let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
                 let text = params.get("text").and_then(|v| v.as_str()).unwrap_or("");
                 let text_owned = text.to_string();
-                let mut args = vec!["send-keys"];
+                // `--raw` bypasses wtcli's tmux-style token translation so a
+                // payload that literally equals "Enter" / "Tab" / "C-c" is
+                // sent verbatim instead of being rewritten to CR / TAB /
+                // Ctrl+C. wta forwards agent-supplied text — token semantics
+                // belong on the human-facing `wtcli send-keys` path, not on
+                // this routed transport.
+                let mut args = vec!["send-keys", "--raw"];
                 if !pane_id.is_empty() {
                     args.extend(["-t", &pane_id]);
                 }
