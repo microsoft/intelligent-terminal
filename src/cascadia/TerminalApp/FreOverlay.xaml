@@ -222,13 +222,13 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Spacing="2">
                                     <TextBlock FontSize="14" FontWeight="SemiBold"
-                                               Foreground="White" Text="Auto-error detection" />
+                                               Foreground="White" Text="Auto-suggest fixes for failed commands" />
                                     <TextBlock FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap"
-                                               Text="Give Intelligent Terminal permission to access your shell and auto detect errors." />
+                                               Text="When enabled, the AI agent automatically analyzes failed commands and proposes a fix. When disabled, failed commands surface a clickable hint in the status bar — press Ctrl+Alt+. or click the hint to request a fix." />
                                 </StackPanel>
                                 <ToggleSwitch x:Name="AutoErrorToggle" Grid.Column="1"
-                                              IsOn="True" VerticalAlignment="Center"
+                                              IsOn="False" VerticalAlignment="Center"
                                               HorizontalAlignment="Right" MinWidth="0"
                                               OnContent="On" OffContent="Off" />
                             </Grid>
