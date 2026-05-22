@@ -167,6 +167,14 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = InitialView::Chat)]
     initial_view: InitialView,
 
+    /// UI language override, passed by Windows Terminal from the
+    /// `settings.json` `Language` field. When present, wta uses this
+    /// directly for i18n instead of detecting the OS locale — ensuring
+    /// the agent pane displays the same language as the Terminal chrome.
+    /// When absent, wta falls back to `sys_locale` (automatic detection).
+    #[arg(long)]
+    language: Option<String>,
+
     /// Stable GUID of the WT tab that owns this wta process. Passed in by
     /// TerminalPage when spawning the agent pane (both _OpenOrReuseAgentPane
     /// and _AutoCreateHiddenAgentPane). Seeded into app_state.tab_id before
@@ -436,11 +444,17 @@ enum InitialView {
 async fn main() -> Result<()> {
     // Detect and set the system locale for i18n.
     // normalize_locale() maps unmatched regions to the canonical variant (e.g., de-AT → de-DE).
-    if let Some(locale) = sys_locale::get_locale() {
-        rust_i18n::set_locale(&normalize_locale(&locale));
-    }
-
+    //
+    // Priority:
+    //   1. --language flag (passed by Windows Terminal from settings.json Language)
+    //      — aligns with C++ side's PrimaryLanguageOverride behavior
+    //   2. sys_locale (GetUserPreferredUILanguages — automatic OS detection)
+    //      — aligns with C++ side's MRT fallback when Language is empty
     let cli = Cli::parse();
+    let locale = cli.language.clone()
+        .or_else(|| sys_locale::get_locale())
+        .unwrap_or_else(|| "en-US".to_string());
+    rust_i18n::set_locale(&normalize_locale(&locale));
 
     // Legacy flags first (backward compat)
     if cli.test_pipe {
