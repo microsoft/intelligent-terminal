@@ -9,6 +9,7 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/WtaProcess.h"
 #include "../inc/ShellIntegration.h"
+#include "../inc/RtlHelper.h"
 
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::UI::Xaml;
@@ -51,6 +52,34 @@ namespace winrt::TerminalApp::implementation
         _settings = settings;
         const auto& globals = _settings.GlobalSettings();
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+
+        // Honor RTL languages on the FRE root grid. XAML cascades
+        // FlowDirection down the tree and auto-mirrors HorizontalAlignment,
+        // so this single line is enough to flip the entire two-page wizard
+        // for ar-SA / he-IL / fa-IR / ur-PK / ug-CN (and the qps-plocm
+        // pseudo-locale used for validation). We honor the explicit
+        // `Language` override from settings.json first (matches the way
+        // AppLogic::_ApplyLanguageSettingChange resolves it), then fall
+        // back to the OS preferred UI language.
+        {
+            winrt::hstring language = globals.Language();
+            if (language.empty())
+            {
+                try
+                {
+                    const auto langs = winrt::Windows::Globalization::ApplicationLanguages::Languages();
+                    if (langs && langs.Size() > 0)
+                    {
+                        language = langs.GetAt(0);
+                    }
+                }
+                CATCH_LOG();
+            }
+            if (::Microsoft::Terminal::RtlHelper::IsRtlLocale(language))
+            {
+                RootGrid().FlowDirection(winrt::Windows::UI::Xaml::FlowDirection::RightToLeft);
+            }
+        }
 
         // Set subtitle Run texts (can't use x:Uid for <Run> inside <Hyperlink>)
         WelcomeSubtitlePrefix().Text(RS_(L"FreOverlay_WelcomeSubtitlePrefix"));

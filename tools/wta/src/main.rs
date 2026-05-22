@@ -15,6 +15,7 @@ mod logging;
 mod osc52;
 mod protocol;
 mod runtime_paths;
+mod rtl;
 mod pane_context;
 mod shell;
 mod theme;
