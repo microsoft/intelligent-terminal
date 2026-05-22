@@ -4289,12 +4289,17 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Inbound event from WTA carrying an autofix_state update. Called by the
-    // COM server on the UI thread. Payload shape:
-    //   {"type":"event","method":"autofix_state",
-    //    "params":{"state":"pending|armed|suggested|cleared",
-    //              "pane_id":"...", "summary":"...",
-    //              "fix_preview":"...", "hotkey_hint":"Ctrl+Alt+."}}
+    // Inbound event from WTA carrying an autofix_state update. Called by
+    // the COM server on the UI thread. Per-state payload shape:
+    //   detected  : { state, pane_id, summary,           hotkey_hint }
+    //   pending   : { state, pane_id, summary }
+    //   armed     : { state, pane_id, fix_preview,       hotkey_hint }
+    //   suggested : { state, pane_id, suggestion_title }
+    //   cleared   : { state }   ← no pane_id; clears lastErrorSessionId
+    // All non-`state` fields are optional from this consumer's
+    // perspective — missing fields just leave the previous value in
+    // place (except on `cleared`, which resets pane_id / previews /
+    // titles explicitly).
     void TerminalPage::OnAutofixStateChanged(hstring eventJson)
     {
         Json::Value evt;
@@ -5112,22 +5117,36 @@ namespace winrt::TerminalApp::implementation
                             if (!page || !term2)
                                 return;
 
-                            // Autofix pipeline always forwards vt_sequence
-                            // events. The `autoFixEnabled` setting only
-                            // controls whether WTA *automatically* invokes
-                            // the LLM; the Detected pill (suggest-mode
-                            // default) needs these events too.
+                            // Early filter: WTA only acts on osc:133;* and
+                            // AgentEvent payloads. Every other VT sequence
+                            // (cursor moves, OSC 0/1 titles, color resets,
+                            // …) gets classified as Informational and
+                            // dropped on the other side, so skip the
+                            // pane/tab lookup, JSON encode, and IPC for
+                            // those entirely. This matters because
+                            // VtSequenceReceived can fire hundreds of times
+                            // a second on a busy terminal.
+                            //
+                            // (The `autoFixEnabled` setting only controls
+                            // whether WTA *automatically* invokes the LLM;
+                            // the Detected pill needs these events too,
+                            // which is why there's no enable-gate here.)
+                            auto seqStr = winrt::to_string(seq);
+                            static constexpr std::string_view agentPrefix = "AgentEvent;";
+                            static constexpr std::string_view osc133Prefix = "osc:133;";
+                            const bool isAgentEvent = seqStr.starts_with(agentPrefix);
+                            const bool isOsc133 = seqStr.starts_with(osc133Prefix);
+                            if (!isAgentEvent && !isOsc133)
+                            {
+                                return;
+                            }
 
                             const auto paneIdStr = page->_FindSessionIdForControl(term2);
                             if (paneIdStr.empty())
                                 return;
                             const auto tabIdStr = page->_FindTabIdForControl(term2);
 
-                            auto seqStr = winrt::to_string(seq);
-
-                            // Check for AgentEvent sub-action: "AgentEvent;{json}"
-                            static constexpr std::string_view agentPrefix = "AgentEvent;";
-                            if (seqStr.starts_with(agentPrefix))
+                            if (isAgentEvent)
                             {
                                 auto jsonPayload = seqStr.substr(agentPrefix.size());
                                 Json::Value agentParams;
@@ -5155,27 +5174,11 @@ namespace winrt::TerminalApp::implementation
                                     page->ProtocolVtSequenceReceived.raise(
                                         *page,
                                         winrt::to_hstring(Json::writeString(wb, evt)));
-                                    return; // Don't also emit as raw vt_sequence
                                 }
+                                return; // AgentEvent never falls through to vt_sequence
                             }
 
-                            // Track command failures for the bottom bar diagnostics button.
-                            // OSC 133;D;N with N>0 means the last command failed.
-                            // seqStr format: "osc:133;D;1"
-                            static constexpr std::string_view osc133Prefix = "osc:133;";
-                            if (seqStr.starts_with(osc133Prefix))
-                            {
-                                auto rest = seqStr.substr(osc133Prefix.size());
-                                // rest is e.g. "D;1" or "D;0"
-                                if (rest.starts_with("D;"))
-                                {
-                                    auto codeStr = rest.substr(2);
-                                    int exitCode = 0;
-                                    try { exitCode = std::stoi(codeStr); } catch (...) {}
-                                    // All bar state transitions come from WTA via autofix_state events.
-                                }
-                            }
-
+                            // isOsc133 path — forward as vt_sequence.
                             Json::Value evt;
                             evt["type"] = "event";
                             evt["method"] = "vt_sequence";

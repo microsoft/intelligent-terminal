@@ -3177,7 +3177,7 @@ impl App {
                         .suggested_pane_id
                         .take();
                     if let Some(pane) = suggested {
-                        self.emit_autofix_state_cleared(&active, &pane);
+                        self.emit_autofix_state_cleared(&active);
                     }
                     return;
                 }
@@ -3554,7 +3554,7 @@ impl App {
                                         tab.autofix.pane_id.take()
                                     };
                                     if let Some(pane) = pane_to_clear {
-                                        self.emit_autofix_state_cleared(&target_tab, &pane);
+                                        self.emit_autofix_state_cleared(&target_tab);
                                     }
                                 }
                             }
@@ -3572,7 +3572,7 @@ impl App {
                                         .suggested_pane_id
                                         .take();
                                     if let Some(pane) = pane_to_clear {
-                                        self.emit_autofix_state_cleared(&t_owned, &pane);
+                                        self.emit_autofix_state_cleared(&t_owned);
                                     }
                                 }
                             }
@@ -3597,7 +3597,7 @@ impl App {
                                         _ => None,
                                     };
                                     if let Some(bar_pane) = detected_pane {
-                                        self.emit_autofix_state_cleared(&t_owned, &bar_pane);
+                                        self.emit_autofix_state_cleared(&t_owned);
                                     }
                                 }
                             }
@@ -4179,7 +4179,7 @@ impl App {
                     };
                     if let Some(p) = pane_to_clear {
                         let active = self.active_tab_key().to_string();
-                        self.emit_autofix_state_cleared(&active, &p);
+                        self.emit_autofix_state_cleared(&active);
                     }
                 }
             }
@@ -4196,7 +4196,7 @@ impl App {
             KeyCode::Esc if self.current_tab().autofix.suggested_pane_id.is_some() => {
                 let pane = self.current_tab_mut().autofix.suggested_pane_id.take().unwrap();
                 let active = self.active_tab_key().to_string();
-                self.emit_autofix_state_cleared(&active, &pane);
+                self.emit_autofix_state_cleared(&active);
             }
             KeyCode::Esc => {
                 self.current_tab_mut().clear_input();
@@ -4847,10 +4847,11 @@ impl App {
 
         // Resolve the target tab: the tab that owns the failing pane.
         // Without it we can't route the autofix to the right ACP session
-        // (the old fallback to `self.tab_id` would land the fix in
-        // whichever tab WTA happened to be focused on — see comment block
-        // at `maybe_trigger_autofix` head). In release builds we drop the
-        // event with a warn instead of panicking, per Step 2 decision #4.
+        // (the prior code fell back to `self.tab_id` and would land the
+        // fix in whichever tab WTA happened to be focused on — see
+        // comment block at `maybe_trigger_autofix` head). In release
+        // builds we drop the event with a warn instead of panicking,
+        // per Step 2 decision #4.
         let target_tab_id = match notification.tab_id.clone() {
             Some(t) => t,
             None => {
@@ -5083,14 +5084,14 @@ impl App {
             _ => {
                 tracing::info!(target: "autofix", "autofix_execute: no armed fix for this pane");
                 // Tell the UI anyway so it returns to Idle.
-                self.emit_autofix_state_cleared(&active_tab, requested_pane_id);
+                self.emit_autofix_state_cleared(&active_tab);
                 return;
             }
         };
         let rec = match self.current_tab().turn.recommendations().cloned() {
             Some(r) => r,
             None => {
-                self.emit_autofix_state_cleared(&active_tab, &armed_pane);
+                self.emit_autofix_state_cleared(&active_tab);
                 self.current_tab_mut().autofix.pane_id = None;
                 return;
             }
@@ -5100,7 +5101,7 @@ impl App {
             .unwrap_or(self.current_tab_mut().selected_recommendation)
             .min(rec.choices.len().saturating_sub(1));
         let Some(mut choice) = rec.choices.get(idx).cloned() else {
-            self.emit_autofix_state_cleared(&active_tab, &armed_pane);
+            self.emit_autofix_state_cleared(&active_tab);
             self.current_tab_mut().autofix.pane_id = None;
             return;
         };
@@ -5143,14 +5144,14 @@ impl App {
                 });
         }
         self.push_execution_info(format!("Auto-executing choice {}.", choice_label));
-        self.emit_autofix_state_cleared(&active_tab, &armed_pane);
+        self.emit_autofix_state_cleared(&active_tab);
     }
 
-    fn emit_autofix_state_cleared(&mut self, target_tab_id: &str, pane_id: &str) {
-        // Reuse the snapshot's `Idle` so subsequent tab switches don't
-        // accidentally re-emit a stale state. `pane_id` is plumbed to C++
-        // so `_diagnostics.lastErrorSessionId` clears consistently.
-        let _ = pane_id;
+    fn emit_autofix_state_cleared(&mut self, target_tab_id: &str) {
+        // `cleared` carries no pane info — C++ clears its
+        // `lastErrorSessionId` based on the state alone. Reusing the
+        // `Idle` snapshot means a subsequent tab switch re-emits a
+        // clean state rather than something stale.
         self.set_bar_snapshot(target_tab_id, AutofixBarSnapshot::Idle);
     }
 
@@ -5519,7 +5520,7 @@ impl App {
             end_pending: true,
         };
         if let Some(pane) = autofix_pane {
-            self.emit_autofix_state_cleared(&target_tab, &pane);
+            self.emit_autofix_state_cleared(&target_tab);
             self.session_tab_mut(session_id).autofix.pane_id = None;
         }
         self.turn_release_end_pending(session_id);
@@ -5547,7 +5548,7 @@ impl App {
                     &format!("pane={:?}", pane_id),
                 );
                 if let Some(pane_id) = pane_id {
-                    self.emit_autofix_state_cleared(&target_tab, &pane_id);
+                    self.emit_autofix_state_cleared(&target_tab);
                 }
                 self.session_tab_mut(session_id).autofix.pane_id = None;
                 let tab = self.session_tab_mut(session_id);
@@ -5678,7 +5679,7 @@ impl App {
             .recommendation_tx
             .send(crate::coordinator::ChoiceExecution { choice, insert_only });
         if let Some(pane_id) = armed_pane {
-            self.emit_autofix_state_cleared(&target_tab, &pane_id);
+            self.emit_autofix_state_cleared(&target_tab);
         }
         self.session_tab_mut(session_id).autofix.pane_id = None;
         let tab = self.session_tab_mut(session_id);
@@ -5713,7 +5714,7 @@ impl App {
                 .or_else(|| tab.autofix.pane_id.clone())
         };
         if let Some(pane_id) = pane_id {
-            self.emit_autofix_state_cleared(&target_tab, &pane_id);
+            self.emit_autofix_state_cleared(&target_tab);
         }
         let tab = self.session_tab_mut(session_id);
         tab.autofix.pane_id = None;
