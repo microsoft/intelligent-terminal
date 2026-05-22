@@ -33,9 +33,8 @@ setup.status.install_failed: "Install failed: "
 setup.status.installing_winget: " Installing via winget..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
-# {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Agent CLI %{name} is selected"
-auth.agent_selected_with_status: "Agent CLI %{name} — "
+auth.agent_selected: "Agent %{name} is selected"
+auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Checking authentication..."
 auth.waiting_for_authorization: "  %{spinner} Waiting for authorization..."
 auth.code_copied_hint: "  Code copied to clipboard — paste it in your browser."
@@ -81,6 +80,20 @@ recommendations.button_open_tab: "Open Tab ↵"
 recommendations.button_open_panel: "Open Panel ↵"
 # Button label — run the selected command (not "kill/execute a person")
 recommendations.button_execute: "Execute ↵"
+# Fallback label when agent name is unknown in OpenAndSend card
+recommendations.agent_fallback: "agent"
+# Display format: "{agent}: {input}" for OpenAndSend card title
+recommendations.open_and_send_display: "%{agent}: %{input}"
+# Labels for tab/panel in Open card descriptions
+recommendations.open_kind_tab: "tab"
+recommendations.open_kind_panel: "panel"
+# "panel (direction)" when direction is specified
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+# Display formats for Open card titles
+recommendations.open_new_with_title_and_cwd: "New %{kind} (%{title}) in %{cwd}"
+recommendations.open_new_with_title: "New %{kind} (%{title})"
+recommendations.open_new_with_cwd: "New %{kind} in %{cwd}"
+recommendations.open_new_empty: "New empty %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 # Default description shown in compact permission dialog when no specific description is provided

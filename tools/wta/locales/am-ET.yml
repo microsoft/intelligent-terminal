@@ -29,8 +29,8 @@ setup.status.installing_winget: " በ winget በኩል በመጠቀም ላይ...
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "ኤጅንት CLI %{name} ተመርጧል"
-auth.agent_selected_with_status: "ኤጅንት CLI %{name} — "
+auth.agent_selected: "ኤጅንት %{name} ተመርጧል"
+auth.agent_selected_with_status: "ኤጅንት %{name} — "
 auth.checking_authentication: "  %{spinner} ማረጋገጥ በመፈተሽ..."
 auth.waiting_for_authorization: "  %{spinner} ፍቃድ በመጠበቅ..."
 auth.code_copied_hint: "ኮዱ ተቀድቷል — በአስሳሽዎ ላይ ይለጥፉት።"
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Open in New Panel ↵"
 recommendations.button_open_tab: "Open Tab ↵"
 recommendations.button_open_panel: "Open Panel ↵"
 recommendations.button_execute: "Execute ↵"
+recommendations.agent_fallback: "ወኪል"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ትር"
+recommendations.open_kind_panel: "ፓነል"
+recommendations.open_kind_panel_direction: "ፓነል (%{direction})"
+recommendations.open_new_with_title_and_cwd: "አዲስ %{kind} (%{title}) በ %{cwd}"
+recommendations.open_new_with_title: "አዲስ %{kind} (%{title})"
+recommendations.open_new_with_cwd: "አዲስ %{kind} በ %{cwd}"
+recommendations.open_new_empty: "አዲስ ባዶ %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "Permission requested"

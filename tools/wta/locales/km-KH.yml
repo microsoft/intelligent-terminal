@@ -32,8 +32,8 @@ setup.status.installing_winget: " កំពុងតំឡើងតាមរយ�
 
 # ── Auth flow (src/ui/auth.rs) ────────────────────────────────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "AI អេជេន្ត់ CLI %{name} ត្រូវបានជ្រើសរើស"
-auth.agent_selected_with_status: "AI អេជេន្ត់ CLI %{name} — "
+auth.agent_selected: "AI អេជេន្ត់ %{name} ត្រូវបានជ្រើសរើស"
+auth.agent_selected_with_status: "AI អេជេន្ត់ %{name} — "
 auth.checking_authentication: "  %{spinner} កំពុងផ្ទៀងផ្ទាត់..."
 auth.waiting_for_authorization: "  %{spinner} កំពុងរង់ចាំការអនុញ្ញាត..."
 auth.code_copied_hint: "  កូដត្រូវបានចម្លង — សូមបិទនៅក្នុងកម្មវិធីអានរបស់អ្នក។"
@@ -80,6 +80,15 @@ recommendations.button_open_tab: "បើកផ្ទាំង ↵"
 recommendations.button_open_panel: "បើកផ្តាំង ↵"
 # Button label — run the selected command (not "kill/execute a person")
 recommendations.button_execute: "ប្រតិបត្តិ ↵"
+recommendations.agent_fallback: "ភ្នាក់ងារ"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ផ្ទាំង"
+recommendations.open_kind_panel: "បន្ទះ"
+recommendations.open_kind_panel_direction: "បន្ទះ (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} ថ្មី (%{title}) នៅក្នុង %{cwd}"
+recommendations.open_new_with_title: "%{kind} ថ្មី (%{title})"
+recommendations.open_new_with_cwd: "%{kind} ថ្មី នៅក្នុង %{cwd}"
+recommendations.open_new_empty: "%{kind} ទទេថ្មី"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────────────────────────────────────
 # Default description shown in compact permission dialog when no specific description is provided

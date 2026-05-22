@@ -29,8 +29,8 @@ setup.status.installing_winget: " Set upp í gegnum winget..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Agent CLI %{name} er valinn"
-auth.agent_selected_with_status: "Agent CLI %{name} — "
+auth.agent_selected: "Agent %{name} er valinn"
+auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Athuga auðkenningu..."
 auth.waiting_for_authorization: "  %{spinner} Bíð eftir heimild..."
 auth.code_copied_hint: "  Kóði afritaður á klippispjald — límdu hann í vafranum þínum."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Opna í nýju spjaldi ↵"
 recommendations.button_open_tab: "Opna flipa ↵"
 recommendations.button_open_panel: "Opna spjald ↵"
 recommendations.button_execute: "Keyra ↵"
+recommendations.agent_fallback: "umboðsmaður"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "flipi"
+recommendations.open_kind_panel: "spjald"
+recommendations.open_kind_panel_direction: "spjald (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Nýtt %{kind} (%{title}) í %{cwd}"
+recommendations.open_new_with_title: "Nýtt %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Nýtt %{kind} í %{cwd}"
+recommendations.open_new_empty: "Nýtt tómt %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "Heimild óskað"

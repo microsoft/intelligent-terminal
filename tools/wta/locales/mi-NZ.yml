@@ -29,8 +29,8 @@ setup.status.installing_winget: " E tauta ana ma winget..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Kua kowhiria te agent CLI %{name}"
-auth.agent_selected_with_status: "Agent CLI %{name} — "
+auth.agent_selected: "Kua kowhiria te agent %{name}"
+auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} E tiritee ana i te whakamanatu..."
 auth.waiting_for_authorization: "  %{spinner} E tatari ana mo te whakamana..."
 auth.code_copied_hint: "  Kua tarua te waehere — whakapiri ki to tirotiro."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Whakatuwherahia i te Papa Hou ↵"
 recommendations.button_open_tab: "Whakatuwhera Ripa ↵"
 recommendations.button_open_panel: "Whakatuwhera Papa ↵"
 recommendations.button_execute: "Whakamahia ↵"
+recommendations.agent_fallback: "māngai"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ripa"
+recommendations.open_kind_panel: "papatohu"
+recommendations.open_kind_panel_direction: "papatohu (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} hou (%{title}) i %{cwd}"
+recommendations.open_new_with_title: "%{kind} hou (%{title})"
+recommendations.open_new_with_cwd: "%{kind} hou i %{cwd}"
+recommendations.open_new_empty: "%{kind} hou kau"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────────────
 permission.compact.default_description: "Kua tonoa te whakaaetanga"

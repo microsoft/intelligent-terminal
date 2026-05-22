@@ -29,8 +29,8 @@ setup.status.installing_winget: " 正在透過 winget 安裝..."
 
 # ── 驗證流程 (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - 縮寫，不翻譯
-auth.agent_selected: "已選取智慧代理 CLI %{name}"
-auth.agent_selected_with_status: "智慧代理 CLI %{name} — "
+auth.agent_selected: "已選取智慧代理 %{name}"
+auth.agent_selected_with_status: "智慧代理 %{name} — "
 auth.checking_authentication: "  %{spinner} 正在檢查驗證..."
 auth.waiting_for_authorization: "  %{spinner} 正在等待授權..."
 auth.code_copied_hint: "  代碼已複製到剪貼簿 — 請在瀏覽器中貼上。"
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "在新面板中開啟 ↵"
 recommendations.button_open_tab: "開啟索引標籤 ↵"
 recommendations.button_open_panel: "開啟面板 ↵"
 recommendations.button_execute: "執行 ↵"
+recommendations.agent_fallback: "智慧代理"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "索引標籤"
+recommendations.open_kind_panel: "面板"
+recommendations.open_kind_panel_direction: "面板 (%{direction})"
+recommendations.open_new_with_title_and_cwd: "新建 %{kind}（%{title}）— %{cwd}"
+recommendations.open_new_with_title: "新建 %{kind}（%{title}）"
+recommendations.open_new_with_cwd: "新建 %{kind} — %{cwd}"
+recommendations.open_new_empty: "新建空白 %{kind}"
 
 # ── 權限對話方塊精簡模式 (src/ui/permission.rs) ───────────────────────────────
 permission.compact.default_description: "已要求權限"

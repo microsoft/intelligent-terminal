@@ -29,8 +29,8 @@ setup.status.installing_winget: " Gëtt iwwer winget installéiert..."
 
 # ── Authentifizéierungs-Flux (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - Ofkierzung, allgemeng Benotzung an Microsoft-Lokaliséierungen
-auth.agent_selected: "Agent CLI %{name} ass ausgewielt"
-auth.agent_selected_with_status: "Agent CLI %{name} — "
+auth.agent_selected: "Agent %{name} ass ausgewielt"
+auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Authentifizéierung gëtt iwwerpréift..."
 auth.waiting_for_authorization: "  %{spinner} Waart op Autorisatioun..."
 auth.code_copied_hint: "  Code an d'Tëschoflag kopéiert — setzt en an Ärem Browser an."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "An engem neie Panell opmaachen ↵"
 recommendations.button_open_tab: "Tab opmaachen ↵"
 recommendations.button_open_panel: "Panell opmaachen ↵"
 recommendations.button_execute: "Ausféieren ↵"
+recommendations.agent_fallback: "Agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "Tab"
+recommendations.open_kind_panel: "Panel"
+recommendations.open_kind_panel_direction: "Panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Neien %{kind} (%{title}) an %{cwd}"
+recommendations.open_new_with_title: "Neien %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Neien %{kind} an %{cwd}"
+recommendations.open_new_empty: "Neien eidelen %{kind}"
 
 # ── Erlaabnes-Dialog kompakt Modus (src/ui/permission.rs) ───────────────────────────
 permission.compact.default_description: "Erlaabnes ugefrot"

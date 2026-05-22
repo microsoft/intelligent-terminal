@@ -29,8 +29,8 @@ setup.status.installing_winget: " winget арқылы орнатылуда..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Агент CLI %{name} таңдалды"
-auth.agent_selected_with_status: "Агент CLI %{name} — "
+auth.agent_selected: "Агент %{name} таңдалды"
+auth.agent_selected_with_status: "Агент %{name} — "
 auth.checking_authentication: "  %{spinner} Аутентификация тексерілуде..."
 auth.waiting_for_authorization: "  %{spinner} Авторизация күтілуде..."
 auth.code_copied_hint: "  Код буферге көшірілді — браузерге қойыңыз."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Жаңа панельде ашу ↵"
 recommendations.button_open_tab: "Қойындыны ашу ↵"
 recommendations.button_open_panel: "Панельді ашу ↵"
 recommendations.button_execute: "Орындау ↵"
+recommendations.agent_fallback: "агент"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "қойынды"
+recommendations.open_kind_panel: "тақта"
+recommendations.open_kind_panel_direction: "тақта (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Жаңа %{kind} (%{title}) %{cwd} ішінде"
+recommendations.open_new_with_title: "Жаңа %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Жаңа %{kind} %{cwd} ішінде"
+recommendations.open_new_empty: "Жаңа бос %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "Рұқсат сұралуда"

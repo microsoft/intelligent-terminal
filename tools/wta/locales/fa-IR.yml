@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "باز کردن در پنل جدید 
 recommendations.button_open_tab: "باز کردن زبانه ↵"
 recommendations.button_open_panel: "باز کردن پنل ↵"
 recommendations.button_execute: "اجرا ↵"
+recommendations.agent_fallback: "عامل"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "زبانه"
+recommendations.open_kind_panel: "پنل"
+recommendations.open_kind_panel_direction: "پنل (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} جدید (%{title}) در %{cwd}"
+recommendations.open_new_with_title: "%{kind} جدید (%{title})"
+recommendations.open_new_with_cwd: "%{kind} جدید در %{cwd}"
+recommendations.open_new_empty: "%{kind} خالی جدید"
 
 # ── کادر محاوره‌ای مجوز در حالت فشرده (src/ui/permission.rs) ───────────────────────
 permission.compact.default_description: "مجوز درخواست شده است"

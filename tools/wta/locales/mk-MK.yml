@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Отвори во нов панел �
 recommendations.button_open_tab: "Отвори јазиче ↵"
 recommendations.button_open_panel: "Отвори панел ↵"
 recommendations.button_execute: "Изврши ↵"
+recommendations.agent_fallback: "агент"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "картичка"
+recommendations.open_kind_panel: "панел"
+recommendations.open_kind_panel_direction: "панел (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Нов %{kind} (%{title}) во %{cwd}"
+recommendations.open_new_with_title: "Нов %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Нов %{kind} во %{cwd}"
+recommendations.open_new_empty: "Нов празен %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "Побарана дозвола"

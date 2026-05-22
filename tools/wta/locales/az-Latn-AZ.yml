@@ -29,8 +29,8 @@ setup.status.installing_winget: " winget vasitəsilə quraşdırılır..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Agent CLI %{name} seçilib"
-auth.agent_selected_with_status: "Agent CLI %{name} — "
+auth.agent_selected: "Agent %{name} seçilib"
+auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Kimlik doğrulaması yoxlanılır..."
 auth.waiting_for_authorization: "  %{spinner} İcazə gözlənilir..."
 auth.code_copied_hint: "  Kod buferə kopyalandı — brauzerdə yapışdırın."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Yeni Paneldə Aç ↵"
 recommendations.button_open_tab: "Sekməni Aç ↵"
 recommendations.button_open_panel: "Paneli Aç ↵"
 recommendations.button_execute: "İcra et ↵"
+recommendations.agent_fallback: "agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "nişan"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Yeni %{kind} (%{title}) — %{cwd}"
+recommendations.open_new_with_title: "Yeni %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Yeni %{kind} — %{cwd}"
+recommendations.open_new_empty: "Yeni boş %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "İcazə tələb olunur"

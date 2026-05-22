@@ -29,8 +29,8 @@ setup.status.installing_winget: " winget-ით ინსტალაცია..
 
 # ── ავთენტიფიკაციის პროცესი (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - აბრევიატურა, Microsoft-ის ლოკალიზაციებში გავრცელებული გამოყენება
-auth.agent_selected: "არჩეულია აგენტის CLI %{name}"
-auth.agent_selected_with_status: "აგენტის CLI %{name} — "
+auth.agent_selected: "არჩეულია აგენტის %{name}"
+auth.agent_selected_with_status: "აგენტის %{name} — "
 auth.checking_authentication: "  %{spinner} ავთენტიფიკაციის შემოწმება..."
 auth.waiting_for_authorization: "  %{spinner} ავტორიზაციის მოლოდინში..."
 auth.code_copied_hint: "  კოდი კოპირებულია — ჩასვით ბრაუზერში."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "ახალ პანელში �
 recommendations.button_open_tab: "ჩანართის გახსნა ↵"
 recommendations.button_open_panel: "პანელის გახსნა ↵"
 recommendations.button_execute: "შესრულება ↵"
+recommendations.agent_fallback: "აგენტი"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ჩანართი"
+recommendations.open_kind_panel: "პანელი"
+recommendations.open_kind_panel_direction: "პანელი (%{direction})"
+recommendations.open_new_with_title_and_cwd: "ახალი %{kind} (%{title}) %{cwd}-ში"
+recommendations.open_new_with_title: "ახალი %{kind} (%{title})"
+recommendations.open_new_with_cwd: "ახალი %{kind} %{cwd}-ში"
+recommendations.open_new_empty: "ახალი ცარიელი %{kind}"
 
 # ── ნებართვის დიალოგი კომპაქტური რეჟიმი (src/ui/permission.rs) ───────────────────────────
 permission.compact.default_description: "ნებართვა მოთხოვნილია"

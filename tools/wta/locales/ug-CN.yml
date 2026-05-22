@@ -29,8 +29,8 @@ setup.status.installing_winget: " winget ئارقىلىق ئورنىتىلىۋا
 
 # ── Auth flow (src/ui/auth.rs) ────────────────────────────────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "AI ئاگېنتى CLI %{name} تاللاندى"
-auth.agent_selected_with_status: "AI ئاگېنتى CLI %{name} — "
+auth.agent_selected: "AI ئاگېنتى %{name} تاللاندى"
+auth.agent_selected_with_status: "AI ئاگېنتى %{name} — "
 auth.checking_authentication: "  %{spinner} تونۇقتۇرۇش تەكشۈرۈلۈۋاتىدۇ..."
 auth.waiting_for_authorization: "  %{spinner} ئىكرامىيەت كۈتۈلۈۋاتىدۇ..."
 auth.code_copied_hint: "  كود چاپلىغەن — توركۆرۈڭۈزگە چاپلاڭ."
@@ -76,6 +76,15 @@ recommendations.button_open_tab: "بەتكۈچ ئېچىش ↵"
 recommendations.button_open_panel: "تاختا ئېچىش ↵"
 # Button label — run the selected command (not "kill/execute a person")
 recommendations.button_execute: "ئىجرا قىلىش ↵"
+recommendations.agent_fallback: "ۋاكالەتچى"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "بەتكۈچ"
+recommendations.open_kind_panel: "تاختا"
+recommendations.open_kind_panel_direction: "تاختا (%{direction})"
+recommendations.open_new_with_title_and_cwd: "يېڭى %{kind} (%{title}) %{cwd} دا"
+recommendations.open_new_with_title: "يېڭى %{kind} (%{title})"
+recommendations.open_new_with_cwd: "يېڭى %{kind} %{cwd} دا"
+recommendations.open_new_empty: "يېڭى قۇرۇق %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────────────────────────────────
 # Default description shown in compact permission dialog when no specific description is provided

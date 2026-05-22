@@ -29,8 +29,8 @@ setup.status.installing_winget: " Installation über winget..."
 
 # ── Authentifizierungsablauf (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - Abkürzung, nicht übersetzen
-auth.agent_selected: "Agent-CLI %{name} ist ausgewählt"
-auth.agent_selected_with_status: "Agent-CLI %{name} — "
+auth.agent_selected: "Agent-%{name} ist ausgewählt"
+auth.agent_selected_with_status: "Agent-%{name} — "
 auth.checking_authentication: "  %{spinner} Authentifizierung wird überprüft..."
 auth.waiting_for_authorization: "  %{spinner} Warten auf Autorisierung..."
 auth.code_copied_hint: "  Code in die Zwischenablage kopiert — fügen Sie ihn in Ihren Browser ein."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "In neuem Bereich öffnen ↵"
 recommendations.button_open_tab: "Registerkarte öffnen ↵"
 recommendations.button_open_panel: "Bereich öffnen ↵"
 recommendations.button_execute: "Ausführen ↵"
+recommendations.agent_fallback: "Agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "Registerkarte"
+recommendations.open_kind_panel: "Bereich"
+recommendations.open_kind_panel_direction: "Bereich (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Neue(r) %{kind} (%{title}) in %{cwd}"
+recommendations.open_new_with_title: "Neue(r) %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Neue(r) %{kind} in %{cwd}"
+recommendations.open_new_empty: "Neue(r) leere(r) %{kind}"
 
 # ── Berechtigungsdialog Kompaktmodus (src/ui/permission.rs) ───────────────────────────────
 permission.compact.default_description: "Berechtigung angefordert"

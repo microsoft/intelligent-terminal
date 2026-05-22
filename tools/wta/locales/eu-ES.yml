@@ -29,8 +29,8 @@ setup.status.installing_winget: " winget bidez instalatzen..."
 
 # ── Autentifikazio-fluxua (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - laburdura, Microsoften lokalizazioetan ohiko erabilera
-auth.agent_selected: "Agente CLI %{name} hautatuta dago"
-auth.agent_selected_with_status: "Agente CLI %{name} — "
+auth.agent_selected: "Agente %{name} hautatuta dago"
+auth.agent_selected_with_status: "Agente %{name} — "
 auth.checking_authentication: "  %{spinner} Autentifikazioa egiaztatzen..."
 auth.waiting_for_authorization: "  %{spinner} Baimenaren zain..."
 auth.code_copied_hint: "  Kodea arbelean kopiatu da — itsatsi zure arakatzailean."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Ireki Panel Berrian ↵"
 recommendations.button_open_tab: "Ireki Fitxa ↵"
 recommendations.button_open_panel: "Ireki Panela ↵"
 recommendations.button_execute: "Exekutatu ↵"
+recommendations.agent_fallback: "agente"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "fitxa"
+recommendations.open_kind_panel: "panela"
+recommendations.open_kind_panel_direction: "panela (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} berria (%{title}) %{cwd}-(e)n"
+recommendations.open_new_with_title: "%{kind} berria (%{title})"
+recommendations.open_new_with_cwd: "%{kind} berria %{cwd}-(e)n"
+recommendations.open_new_empty: "%{kind} huts berria"
 
 # ── Baimen-elkarrizketa modu trinkoa (src/ui/permission.rs) ───────────────────────────
 permission.compact.default_description: "Baimena eskatuta"

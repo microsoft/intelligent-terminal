@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Άνοιγμα σε νέο πλαίσ
 recommendations.button_open_tab: "Άνοιγμα καρτέλας ↵"
 recommendations.button_open_panel: "Άνοιγμα πλαισίου ↵"
 recommendations.button_execute: "Εκτέλεση ↵"
+recommendations.agent_fallback: "πράκτορας"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "καρτέλα"
+recommendations.open_kind_panel: "πίνακας"
+recommendations.open_kind_panel_direction: "πίνακας (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Νέο %{kind} (%{title}) σε %{cwd}"
+recommendations.open_new_with_title: "Νέο %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Νέο %{kind} σε %{cwd}"
+recommendations.open_new_empty: "Νέο κενό %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "Ζητήθηκε άδεια"

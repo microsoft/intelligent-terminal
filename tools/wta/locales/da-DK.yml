@@ -29,8 +29,8 @@ setup.status.installing_winget: " Installerer via winget..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Agent CLI %{name} er valgt"
-auth.agent_selected_with_status: "Agent CLI %{name} — "
+auth.agent_selected: "Agent %{name} er valgt"
+auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Kontrollerer godkendelse..."
 auth.waiting_for_authorization: "  %{spinner} Venter på godkendelse..."
 auth.code_copied_hint: "  Koden er kopieret til udklipsholderen — indsæt den i din browser."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Åbn i nyt panel ↵"
 recommendations.button_open_tab: "Åbn fane ↵"
 recommendations.button_open_panel: "Åbn panel ↵"
 recommendations.button_execute: "Udfør ↵"
+recommendations.agent_fallback: "agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "fane"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Ny %{kind} (%{title}) i %{cwd}"
+recommendations.open_new_with_title: "Ny %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Ny %{kind} i %{cwd}"
+recommendations.open_new_empty: "Ny tom %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "Tilladelse anmodet"

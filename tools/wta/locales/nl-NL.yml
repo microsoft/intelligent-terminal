@@ -29,8 +29,8 @@ setup.status.installing_winget: " Installeren via winget..."
 
 # ── Verificatiestroom (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - afkorting, niet vertalen
-auth.agent_selected: "Agent-CLI %{name} is geselecteerd"
-auth.agent_selected_with_status: "Agent-CLI %{name} — "
+auth.agent_selected: "Agent-%{name} is geselecteerd"
+auth.agent_selected_with_status: "Agent-%{name} — "
 auth.checking_authentication: "  %{spinner} Verificatie controleren..."
 auth.waiting_for_authorization: "  %{spinner} Wachten op autorisatie..."
 auth.code_copied_hint: "  Code gekopieerd naar klembord — plak deze in uw browser."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Openen in nieuw deelvenster ↵"
 recommendations.button_open_tab: "Tabblad openen ↵"
 recommendations.button_open_panel: "Deelvenster openen ↵"
 recommendations.button_execute: "Uitvoeren ↵"
+recommendations.agent_fallback: "agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "tabblad"
+recommendations.open_kind_panel: "deelvenster"
+recommendations.open_kind_panel_direction: "deelvenster (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Nieuw %{kind} (%{title}) in %{cwd}"
+recommendations.open_new_with_title: "Nieuw %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Nieuw %{kind} in %{cwd}"
+recommendations.open_new_empty: "Nieuw leeg %{kind}"
 
 # ── Machtigingsdialoogvenster compacte modus (src/ui/permission.rs) ───────────────────────────────
 permission.compact.default_description: "Machtiging gevraagd"

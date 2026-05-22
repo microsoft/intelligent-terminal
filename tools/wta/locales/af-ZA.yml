@@ -29,8 +29,8 @@ setup.status.installing_winget: " Installeer tans via winget..."
 
 # ── Stawingsvloei (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - akroniem, algemene gebruik in Microsoft-lokaliserings
-auth.agent_selected: "Agent CLI %{name} is gekies"
-auth.agent_selected_with_status: "Agent CLI %{name} — "
+auth.agent_selected: "Agent %{name} is gekies"
+auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Stawing word nagegaan..."
 auth.waiting_for_authorization: "  %{spinner} Wag vir magtiging..."
 auth.code_copied_hint: "  Kode na die knipbord gekopieer — plak dit in jou blaaier."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Maak oop in Nuwe Paneel ↵"
 recommendations.button_open_tab: "Maak Oortjie oop ↵"
 recommendations.button_open_panel: "Maak Paneel oop ↵"
 recommendations.button_execute: "Voer uit ↵"
+recommendations.agent_fallback: "agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "oortjie"
+recommendations.open_kind_panel: "paneel"
+recommendations.open_kind_panel_direction: "paneel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Nuwe %{kind} (%{title}) in %{cwd}"
+recommendations.open_new_with_title: "Nuwe %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Nuwe %{kind} in %{cwd}"
+recommendations.open_new_empty: "Nuwe leë %{kind}"
 
 # ── Toestemmingsdialoog kompakte modus (src/ui/permission.rs) ───────────────────────────
 permission.compact.default_description: "Toestemming versoek"

@@ -29,8 +29,8 @@ setup.status.installing_winget: " Ini-install sa pamamagitan ng winget..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Napili ang agent CLI %{name}"
-auth.agent_selected_with_status: "Agent CLI %{name} — "
+auth.agent_selected: "Napili ang agent %{name}"
+auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Sinusuri ang authentication..."
 auth.waiting_for_authorization: "  %{spinner} Naghihintay ng authorization..."
 auth.code_copied_hint: "  Nakopya ang code sa clipboard — i-paste ito sa iyong browser."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Buksan sa Bagong Panel ↵"
 recommendations.button_open_tab: "Buksan ang Tab ↵"
 recommendations.button_open_panel: "Buksan ang Panel ↵"
 recommendations.button_execute: "Isagawa ↵"
+recommendations.agent_fallback: "ahente"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "tab"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Bagong %{kind} (%{title}) sa %{cwd}"
+recommendations.open_new_with_title: "Bagong %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Bagong %{kind} sa %{cwd}"
+recommendations.open_new_empty: "Bagong walang laman na %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "Hinihiling ang pahintulot"

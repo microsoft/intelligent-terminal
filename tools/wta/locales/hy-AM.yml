@@ -34,8 +34,8 @@ setup.status.installing_winget: " Տեղադրում winget-ի միջոցով...
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Ընտրված է ագենտի CLI %{name}"
-auth.agent_selected_with_status: "Ագենտի CLI %{name} — "
+auth.agent_selected: "Ընտրված է ագենտի %{name}"
+auth.agent_selected_with_status: "Ագենտի %{name} — "
 auth.checking_authentication: "  %{spinner} Նույնականացման ստուգում..."
 auth.waiting_for_authorization: "  %{spinner} Լիազորացման սպասում..."
 auth.code_copied_hint: "  Կոդը պատճենվեց — տեղադրեք այն ձեր բրաուզերում։"
@@ -81,6 +81,15 @@ recommendations.button_open_tab: "Բացել ներդիր ↵"
 recommendations.button_open_panel: "Բացել վահանակ ↵"
 # Button label — run the selected command (not "kill/execute a person")
 recommendations.button_execute: "Կատարել ↵"
+recommendations.agent_fallback: "ագենտ"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ներդիր"
+recommendations.open_kind_panel: "վահանակ"
+recommendations.open_kind_panel_direction: "վահանակ (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Նոր %{kind} (%{title}) %{cwd}-ում"
+recommendations.open_new_with_title: "Նոր %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Նոր %{kind} %{cwd}-ում"
+recommendations.open_new_empty: "Նոր դատարկ %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────────────────────────────────
 # Default description shown in compact permission dialog when no specific description is provided

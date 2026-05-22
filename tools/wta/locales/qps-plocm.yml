@@ -29,8 +29,8 @@ setup.status.installing_winget: "[!!  In_stalling via winget... !!]"
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "[!! Age_nt CLI %{name} is selected !!]"
-auth.agent_selected_with_status: "[!! Age_nt CLI %{name} —  !!]"
+auth.agent_selected: "[!! Age_nt %{name} is selected !!]"
+auth.agent_selected_with_status: "[!! Age_nt %{name} —  !!]"
 auth.checking_authentication: "[!!   %{spinner} Che_cking authentication... !!]"
 auth.waiting_for_authorization: "[!!   %{spinner} Wai_ting for authorization... !!]"
 auth.code_copied_hint: "[!!   Co_de copied to clipboard — paste it in your browser. !!]"
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "[!! Ope_n in New Panel ↵ !!]"
 recommendations.button_open_tab: "[!! Ope_n Tab ↵ !!]"
 recommendations.button_open_panel: "[!! Ope_n Panel ↵ !!]"
 recommendations.button_execute: "[!! Exe_cute ↵ !!]"
+recommendations.agent_fallback: "agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "tab"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "New %{kind} (%{title}) in %{cwd}"
+recommendations.open_new_with_title: "New %{kind} (%{title})"
+recommendations.open_new_with_cwd: "New %{kind} in %{cwd}"
+recommendations.open_new_empty: "New empty %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "[!! Per_mission requested !!]"

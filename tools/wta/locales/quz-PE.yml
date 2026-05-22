@@ -29,8 +29,8 @@ setup.status.installing_winget: " winget nisqawan churachkan..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Agente CLI %{name} akllasqa"
-auth.agent_selected_with_status: "Agente CLI %{name} — "
+auth.agent_selected: "Agente %{name} akllasqa"
+auth.agent_selected_with_status: "Agente %{name} — "
 auth.checking_authentication: "  %{spinner} Yaykunata qhawachkan..."
 auth.waiting_for_authorization: "  %{spinner} Kamachiyta suyachkan..."
 auth.code_copied_hint: "  Kode wich'aman apasqa — navegador nisqaykipi k'askachiy."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Musuq K'iti nisqapi kichay ↵"
 recommendations.button_open_tab: "Ripa kichay ↵"
 recommendations.button_open_panel: "K'iti kichay ↵"
 recommendations.button_execute: "Purichiy ↵"
+recommendations.agent_fallback: "agente"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "tab"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Musuq %{kind} (%{title}) %{cwd}-pi"
+recommendations.open_new_with_title: "Musuq %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Musuq %{kind} %{cwd}-pi"
+recommendations.open_new_empty: "Musuq ch’usaq %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────────────
 permission.compact.default_description: "Kamachiyta mañakusqa"

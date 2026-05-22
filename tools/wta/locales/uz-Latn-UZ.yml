@@ -29,8 +29,8 @@ setup.status.installing_winget: " winget orqali oʻrnatilmoqda..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Agent CLI %{name} tanlangan"
-auth.agent_selected_with_status: "Agent CLI %{name} — "
+auth.agent_selected: "Agent %{name} tanlangan"
+auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Autentifikatsiya tekshirilmoqda..."
 auth.waiting_for_authorization: "  %{spinner} Avtorizatsiya kutilmoqda..."
 auth.code_copied_hint: "  Kod buferga nusxalandi — brauzeringizga joylang."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Yangi panelda ochish ↵"
 recommendations.button_open_tab: "Varaqni ochish ↵"
 recommendations.button_open_panel: "Panelni ochish ↵"
 recommendations.button_execute: "Bajarish ↵"
+recommendations.agent_fallback: "agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "varaq"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Yangi %{kind} (%{title}) — %{cwd}"
+recommendations.open_new_with_title: "Yangi %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Yangi %{kind} — %{cwd}"
+recommendations.open_new_empty: "Yangi bo‘sh %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "Ruxsat soʻralmoqda"

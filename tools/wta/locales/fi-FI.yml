@@ -29,8 +29,8 @@ setup.status.installing_winget: " Asennetaan winget-paketinhallinnan kautta..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Agent CLI %{name} on valittu"
-auth.agent_selected_with_status: "Agent CLI %{name} — "
+auth.agent_selected: "Agent %{name} on valittu"
+auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Tarkistetaan todennusta..."
 auth.waiting_for_authorization: "  %{spinner} Odotetaan valtuutusta..."
 auth.code_copied_hint: "  Koodi kopioitu leikepöydälle — liitä se selaimessasi."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Avaa uudessa paneelissa ↵"
 recommendations.button_open_tab: "Avaa välilehti ↵"
 recommendations.button_open_panel: "Avaa paneeli ↵"
 recommendations.button_execute: "Suorita ↵"
+recommendations.agent_fallback: "agentti"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "välilehti"
+recommendations.open_kind_panel: "paneeli"
+recommendations.open_kind_panel_direction: "paneeli (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Uusi %{kind} (%{title}) kohteessa %{cwd}"
+recommendations.open_new_with_title: "Uusi %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Uusi %{kind} kohteessa %{cwd}"
+recommendations.open_new_empty: "Uusi tyhjä %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "Käyttöoikeus pyydetty"

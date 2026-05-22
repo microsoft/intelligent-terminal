@@ -29,8 +29,8 @@ setup.status.installing_winget: " Diegiama per winget..."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations
-auth.agent_selected: "Agent CLI %{name} pasirinktas"
-auth.agent_selected_with_status: "Agent CLI %{name} — "
+auth.agent_selected: "Agent %{name} pasirinktas"
+auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Tikrinama autentifikacija..."
 auth.waiting_for_authorization: "  %{spinner} Laukiama autorizavimo..."
 auth.code_copied_hint: "  Kodas nukopijuotas į iškarpinę — įklijuokite jį naršyklėje."
@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Atidaryti naujame skydelyje ↵"
 recommendations.button_open_tab: "Atidaryti skirtuką ↵"
 recommendations.button_open_panel: "Atidaryti skydelį ↵"
 recommendations.button_execute: "Vykdyti ↵"
+recommendations.agent_fallback: "agentas"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "skirtukas"
+recommendations.open_kind_panel: "skydelis"
+recommendations.open_kind_panel_direction: "skydelis (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Naujas %{kind} (%{title}), vieta: %{cwd}"
+recommendations.open_new_with_title: "Naujas %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Naujas %{kind}, vieta: %{cwd}"
+recommendations.open_new_empty: "Naujas tuščias %{kind}"
 
 # ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
 permission.compact.default_description: "Prašomas leidimas"

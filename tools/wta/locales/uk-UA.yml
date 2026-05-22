@@ -72,6 +72,15 @@ recommendations.button_open_in_new_panel: "Відкрити в новій пан
 recommendations.button_open_tab: "Відкрити вкладку ↵"
 recommendations.button_open_panel: "Відкрити панель ↵"
 recommendations.button_execute: "Виконати ↵"
+recommendations.agent_fallback: "агент"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "вкладка"
+recommendations.open_kind_panel: "панель"
+recommendations.open_kind_panel_direction: "панель (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Нова %{kind} (%{title}) у %{cwd}"
+recommendations.open_new_with_title: "Нова %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Нова %{kind} у %{cwd}"
+recommendations.open_new_empty: "Нова порожня %{kind}"
 
 # ── Діалогове вікно дозволів у компактному режимі (src/ui/permission.rs) ───────────────────────────────
 permission.compact.default_description: "Запитано дозвіл"
