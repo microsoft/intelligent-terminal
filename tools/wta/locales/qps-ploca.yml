@@ -160,26 +160,18 @@ hooks.uninstall_skipped: "[!!_skipped (CLI not on PATH)_!!]"
 hooks.install_attempted: "[!!_wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log_!!]"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "just now"
-time.minutes_ago:
-  one: "%{count} minute ago"
-  other: "%{count} minutes ago"
-time.hours_ago:
-  one: "%{count} hour ago"
-  other: "%{count} hours ago"
-time.days_ago:
-  one: "%{count} day ago"
-  other: "%{count} days ago"
-time.date_format: "%{month} %{day}, %{year}"
-time.month:
-  "1": "January"
-  "2": "February"
-  "3": "March"
-  "4": "April"
-  "5": "May"
-  "6": "June"
-  "7": "July"
-  "8": "August"
-  "9": "September"
-  "10": "October"
-  "11": "November"
-  "12": "December"
+time.minute_singular: "%{count} minute ago"
+time.minutes_other: "%{count} minutes ago"
+time.hour_singular: "%{count} hour ago"
+time.hours_other: "%{count} hours ago"
+time.day_singular: "%{count} day ago"
+time.days_other: "%{count} days ago"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+commands.help.summary: "[!!_Show this command list_!!]"
+commands.clear.summary: "[!!_Clear the chat scrollback (keeps session)_!!]"
+commands.new.summary: "[!!_Start a fresh ACP session (drops history)_!!]"
+commands.restart.summary: "[!!_Reconnect: kill agent process and respawn_!!]"
+commands.stop.summary: "[!!_Cancel the in-flight prompt_!!]"
+commands.sessions.summary: "[!!_Open the historical sessions picker (Ctrl+Shift+/)_!!]"

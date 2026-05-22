@@ -160,23 +160,18 @@ hooks.uninstall_skipped: "건너뜀(CLI가 PATH에 없음)"
 hooks.install_attempted: "wt-agent-hooks 설치가 시도되었습니다(멱등). 결과를 확인하려면 `wta hooks status`를 실행하세요. 추적 로그: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "방금"
-time.minutes_ago:
-  other: "%{count}분 전"
-time.hours_ago:
-  other: "%{count}시간 전"
-time.days_ago:
-  other: "%{count}일 전"
-time.date_format: "%{year}년 %{month}월 %{day}일"
-time.month:
-  "1": "1월"
-  "2": "2월"
-  "3": "3월"
-  "4": "4월"
-  "5": "5월"
-  "6": "6월"
-  "7": "7월"
-  "8": "8월"
-  "9": "9월"
-  "10": "10월"
-  "11": "11월"
-  "12": "12월"
+time.minute_singular: "%{count}분 전"
+time.minutes_other: "%{count}분 전"
+time.hour_singular: "%{count}시간 전"
+time.hours_other: "%{count}시간 전"
+time.day_singular: "%{count}일 전"
+time.days_other: "%{count}일 전"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+commands.help.summary: "이 명령 목록 표시"
+commands.clear.summary: "채팅 스크롤백 지우기(세션 유지)"
+commands.new.summary: "새 ACP 세션 시작(기록 삭제)"
+commands.restart.summary: "다시 연결: 에이전트 프로세스를 종료하고 재실행"
+commands.stop.summary: "진행 중인 프롬프트 취소"
+commands.sessions.summary: "기록된 세션 선택기 열기(Ctrl+Shift+/)"

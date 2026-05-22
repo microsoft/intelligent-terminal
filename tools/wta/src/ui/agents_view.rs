@@ -327,7 +327,10 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
 ///   < 7d    → "N day(s) ago"
 ///   ≥ 7d    → "Month D, YYYY"   (UTC — close enough for week-old rows)
 ///
-/// All strings come from rust-i18n with locale-aware plural forms.
+/// All strings come from rust-i18n. rust-i18n 3.x has no CLDR plural
+/// support, so we pick `_singular` for n=1 and `_other` for n≠1; locales
+/// with no singular/plural distinction can map both keys to the same
+/// template.
 fn relative_age(t: SystemTime) -> String {
     let now = SystemTime::now();
     let secs = now.duration_since(t).map(|d| d.as_secs()).unwrap_or(0);
@@ -335,38 +338,81 @@ fn relative_age(t: SystemTime) -> String {
         rust_i18n::t!("time.just_now").into_owned()
     } else if secs < 3600 {
         let n = secs / 60;
-        rust_i18n::t!("time.minutes_ago", count = n).into_owned()
+        let key = if n == 1 { "time.minute_singular" } else { "time.minutes_other" };
+        rust_i18n::t!(key, count = n.to_string()).into_owned()
     } else if secs < 86_400 {
         let n = secs / 3600;
-        rust_i18n::t!("time.hours_ago", count = n).into_owned()
+        let key = if n == 1 { "time.hour_singular" } else { "time.hours_other" };
+        rust_i18n::t!(key, count = n.to_string()).into_owned()
     } else if secs < 7 * 86_400 {
         let n = secs / 86_400;
-        rust_i18n::t!("time.days_ago", count = n).into_owned()
+        let key = if n == 1 { "time.day_singular" } else { "time.days_other" };
+        rust_i18n::t!(key, count = n.to_string()).into_owned()
     } else {
         format_calendar_date(t)
     }
 }
 
-/// Format a SystemTime as a locale-aware calendar date in UTC. No chrono dep
-/// in wta — uses Howard Hinnant's date algorithm (public domain) for the
-/// Gregorian conversion, then renders via rust-i18n keys so the locale can
-/// reorder day/month/year (e.g. zh-CN: 年/月/日) and localize month names.
-/// Returns "—" for pre-epoch / unreadable timestamps.
+/// Format a SystemTime as a locale-aware calendar date using Windows'
+/// built-in `GetDateFormatEx`. Microsoft maintains the full CLDR data for
+/// every locale Windows supports, so day/month/year ordering and month
+/// names are correct by construction — far higher confidence than
+/// hand-translating these per-locale in our yml files.
+///
+/// Uses Hinnant's `civil_from_days` for the UNIX-epoch → Gregorian
+/// conversion, then hands the broken-down date to `GetDateFormatEx` with
+/// `DATE_LONGDATE` (e.g. "Wednesday, May 22, 2026" en-US, "2026年5月22日"
+/// zh-CN, "Mittwoch, 22. Mai 2026" de-DE). Returns "—" for pre-epoch /
+/// unreadable timestamps and an ISO fallback if the OS call fails.
 fn format_calendar_date(t: SystemTime) -> String {
     let secs = match t.duration_since(UNIX_EPOCH) {
         Ok(d)  => d.as_secs() as i64,
         Err(_) => return "—".to_string(),
     };
     let (y, m, d) = civil_from_days(secs.div_euclid(86_400));
-    let month_key = format!("time.month.{}", m);
-    let month_name = rust_i18n::t!(&month_key).into_owned();
-    rust_i18n::t!(
-        "time.date_format",
-        month = month_name,
-        day = d.to_string(),
-        year = y.to_string()
-    )
-    .into_owned()
+
+    use windows_sys::Win32::Foundation::SYSTEMTIME;
+    use windows_sys::Win32::Globalization::{GetDateFormatEx, DATE_LONGDATE};
+
+    let st = SYSTEMTIME {
+        wYear: y as u16,
+        wMonth: m as u16,
+        wDayOfWeek: 0, // ignored by GetDateFormatEx
+        wDay: d as u16,
+        wHour: 0,
+        wMinute: 0,
+        wSecond: 0,
+        wMilliseconds: 0,
+    };
+
+    // Convert our current rust-i18n locale (e.g. "zh-CN") to a wide,
+    // null-terminated string for the Win32 API. The set of locale names
+    // wta uses (BCP-47 with hyphens) matches what GetDateFormatEx
+    // accepts.
+    let locale = rust_i18n::locale().to_string();
+    let locale_w: Vec<u16> = locale.encode_utf16().chain(std::iter::once(0)).collect();
+
+    let mut buf = [0u16; 256];
+    let n = unsafe {
+        GetDateFormatEx(
+            locale_w.as_ptr(),
+            DATE_LONGDATE,
+            &st,
+            std::ptr::null(),
+            buf.as_mut_ptr(),
+            buf.len() as i32,
+            std::ptr::null(),
+        )
+    };
+    if n > 0 {
+        // GetDateFormatEx returns the character count including the
+        // terminating null; drop that.
+        let len = (n as usize).saturating_sub(1);
+        String::from_utf16_lossy(&buf[..len])
+    } else {
+        // ISO fallback if the OS call fails for any reason.
+        format!("{:04}-{:02}-{:02}", y, m, d)
+    }
 }
 
 /// Civil date from days since the Unix epoch (1970-01-01).
@@ -393,16 +439,35 @@ fn trunc(s: &str, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use std::time::Duration;
+
+    /// All tests that read rust_i18n strings share the global locale.
+    /// Cargo runs tests in parallel by default, so without this mutex
+    /// one test's `set_locale("zh-CN")` is observed by another test
+    /// inside its en-US assertions. Every locale-sensitive test must
+    /// acquire this lock first.
+    static LOCALE_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Ensure tests use en-US locale so the hardcoded English assertions match
+    /// (regardless of what the running shell's locale is). Must be called
+    /// while holding `LOCALE_LOCK`.
+    fn set_test_locale() {
+        rust_i18n::set_locale("en-US");
+    }
 
     #[test]
     fn relative_age_just_now_under_a_minute() {
+        let _g = LOCALE_LOCK.lock().unwrap();
+        set_test_locale();
         let t = SystemTime::now() - Duration::from_secs(5);
         assert_eq!(relative_age(t), "just now");
     }
 
     #[test]
     fn relative_age_singular_and_plural_minutes() {
+        let _g = LOCALE_LOCK.lock().unwrap();
+        set_test_locale();
         let t1 = SystemTime::now() - Duration::from_secs(60);
         assert_eq!(relative_age(t1), "1 minute ago");
         let t2 = SystemTime::now() - Duration::from_secs(180);
@@ -411,17 +476,151 @@ mod tests {
 
     #[test]
     fn relative_age_days() {
+        let _g = LOCALE_LOCK.lock().unwrap();
+        set_test_locale();
         let t = SystemTime::now() - Duration::from_secs(3 * 86_400);
         assert_eq!(relative_age(t), "3 days ago");
     }
 
     #[test]
     fn relative_age_falls_back_to_calendar_date_after_a_week() {
-        // 8 days ago — must produce a "Month D, YYYY" string, not "8 days ago".
+        // 8 days ago — must produce a calendar date string, not "8 days ago".
+        let _g = LOCALE_LOCK.lock().unwrap();
+        set_test_locale();
         let t = SystemTime::now() - Duration::from_secs(8 * 86_400);
         let s = relative_age(t);
-        assert!(s.contains(", "), "expected 'Month D, YYYY', got {:?}", s);
+        assert!(!s.is_empty(), "expected calendar date, got empty");
         assert!(!s.ends_with("ago"), "expected calendar date, got {:?}", s);
+    }
+
+    /// Locale coverage smoke-test: walk a representative set of locales
+    /// (CJK, RTL/Arabic, Cyrillic, long-compound German, etc.) and verify
+    /// that `relative_age` produces non-empty, non-key output for each.
+    /// This guards against rust-i18n key-resolution regressions (a missed
+    /// `_singular`/`_other` would surface as the literal key like
+    /// "time.minutes_ago") AND against locale files that drift from the
+    /// expected schema. Bundled into one test to avoid racing on
+    /// rust-i18n's global locale across parallel tests.
+    #[test]
+    fn relative_age_covers_representative_locales() {
+        let _g = LOCALE_LOCK.lock().unwrap();
+        let one_minute = SystemTime::now() - Duration::from_secs(60);
+        let many_minutes = SystemTime::now() - Duration::from_secs(180);
+        let many_hours = SystemTime::now() - Duration::from_secs(5 * 3600);
+        let many_days = SystemTime::now() - Duration::from_secs(3 * 86_400);
+        let week_old = SystemTime::now() - Duration::from_secs(8 * 86_400);
+
+        // (locale, label, expected-substring-in-N-minutes-output)
+        // Substring is locale-specific keyword that must appear; not the
+        // full template (we don't want the test to break on word-order
+        // changes inside the template).
+        let locales: &[(&str, &str)] = &[
+            ("en-US", "minute"),
+            ("zh-CN", "分钟"),
+            ("zh-TW", "分鐘"),
+            ("ja-JP", "分"),
+            ("ko-KR", "분"),
+            ("de-DE", "Minute"),
+            ("fr-FR", "minute"),
+            ("es-ES", "minuto"),
+            ("ru-RU", "минут"),
+            ("ar-SA", "دقيق"),
+            ("he-IL", "דק"),
+        ];
+
+        for (locale, expected_minute_kw) in locales {
+            rust_i18n::set_locale(locale);
+
+            // All four ago-strings must be non-empty and must not leak a
+            // raw rust-i18n key (e.g. "time.minutes_other").
+            for (t, label) in &[
+                (one_minute, "one_minute"),
+                (many_minutes, "many_minutes"),
+                (many_hours, "many_hours"),
+                (many_days, "many_days"),
+            ] {
+                let s = relative_age(*t);
+                assert!(!s.is_empty(), "[{}] {}: empty output", locale, label);
+                assert!(
+                    !s.starts_with("time."),
+                    "[{}] {}: raw key leaked: {:?}",
+                    locale, label, s,
+                );
+            }
+
+            // Minute string must contain the locale's expected keyword.
+            let minute_str = relative_age(many_minutes);
+            assert!(
+                minute_str.contains(expected_minute_kw),
+                "[{}] expected keyword {:?} in {:?}",
+                locale, expected_minute_kw, minute_str,
+            );
+
+            // Calendar fallback (Windows GetDateFormatEx): must produce a
+            // non-empty string that contains at least one digit (year or
+            // day). Different locales produce different orderings and
+            // separators, so we don't pin a specific format — just check
+            // that the OS returned something plausible.
+            let date_str = relative_age(week_old);
+            assert!(!date_str.is_empty(), "[{}] calendar date empty", locale);
+            assert!(
+                date_str.chars().any(|c| c.is_ascii_digit() || c.is_numeric()),
+                "[{}] calendar date has no digits: {:?}",
+                locale, date_str,
+            );
+            // Should not end with "ago" — it's a calendar date, not a
+            // relative phrase. (Locales translate "ago" differently, so
+            // we only check the English literal hasn't slipped through.)
+            assert!(
+                !date_str.to_lowercase().ends_with("ago"),
+                "[{}] expected calendar date, got {:?}",
+                locale, date_str,
+            );
+        }
+    }
+
+    /// Verify the Windows `GetDateFormatEx` path produces locale-correct
+    /// calendar dates for the locales most likely to surface formatting
+    /// bugs (CJK = year-first, Arabic = RTL + Eastern digits possibly,
+    /// German = long, French = day-first).
+    #[test]
+    fn format_calendar_date_locale_smoke() {
+        let _g = LOCALE_LOCK.lock().unwrap();
+        // 2026-05-22 in UTC.
+        let target = UNIX_EPOCH + Duration::from_secs(20_595 * 86_400);
+
+        let cases: &[(&str, &[&str])] = &[
+            // (locale, must-contain-one-of substrings)
+            ("en-US", &["May", "2026"]),
+            ("zh-CN", &["2026", "5", "22"]),
+            ("zh-TW", &["2026", "5", "22"]),
+            ("ja-JP", &["2026", "5", "22"]),
+            ("ko-KR", &["2026", "5", "22"]),
+            ("de-DE", &["Mai", "2026"]),
+            ("fr-FR", &["mai", "2026"]),
+            ("ru-RU", &["мая", "2026"]),
+            // ar-SA defaults to Hijri calendar on Windows. We get a
+            // date like "05/ذو الحجة/1447" — verify it's non-empty and
+            // contains an Arabic-Indic or Latin digit. Forcing
+            // Gregorian via GetDateFormatEx requires custom format
+            // strings; accepting the OS default is the right call for
+            // a Saudi user.
+            ("ar-SA", &["/", "ذو", "1447", "2026"]),
+        ];
+
+        for (locale, must_contain) in cases {
+            rust_i18n::set_locale(locale);
+            let s = format_calendar_date(target);
+            assert!(!s.is_empty(), "[{}] empty", locale);
+            assert!(
+                must_contain.iter().any(|sub| s.contains(*sub)),
+                "[{}] expected one of {:?} in {:?}",
+                locale, must_contain, s,
+            );
+        }
+
+        // Reset to en-US so subsequent tests are deterministic.
+        rust_i18n::set_locale("en-US");
     }
 
     #[test]
@@ -436,7 +635,15 @@ mod tests {
 
     #[test]
     fn format_calendar_date_renders_month_name() {
+        let _g = LOCALE_LOCK.lock().unwrap();
+        rust_i18n::set_locale("en-US");
         let t = UNIX_EPOCH + Duration::from_secs(20_563 * 86_400);
-        assert_eq!(format_calendar_date(t), "April 20, 2026");
+        let s = format_calendar_date(t);
+        // Windows DATE_LONGDATE for en-US emits "Monday, April 20, 2026"
+        // (weekday + month name + day + year). We only verify the parts
+        // we care about — the rest is OS-controlled and may change.
+        assert!(s.contains("April"), "expected month name in {:?}", s);
+        assert!(s.contains("20"), "expected day in {:?}", s);
+        assert!(s.contains("2026"), "expected year in {:?}", s);
     }
 }

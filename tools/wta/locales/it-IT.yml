@@ -161,26 +161,18 @@ hooks.install_attempted: "Installazione di wt-agent-hooks tentata (idempotente).
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "proprio ora"
-time.minutes_ago:
-  one: "%{count} minuto fa"
-  other: "%{count} minuti fa"
-time.hours_ago:
-  one: "%{count} ora fa"
-  other: "%{count} ore fa"
-time.days_ago:
-  one: "%{count} giorno fa"
-  other: "%{count} giorni fa"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "gennaio"
-  "2": "febbraio"
-  "3": "marzo"
-  "4": "aprile"
-  "5": "maggio"
-  "6": "giugno"
-  "7": "luglio"
-  "8": "agosto"
-  "9": "settembre"
-  "10": "ottobre"
-  "11": "novembre"
-  "12": "dicembre"
+time.minute_singular: "%{count} minuto fa"
+time.minutes_other: "%{count} minuti fa"
+time.hour_singular: "%{count} ora fa"
+time.hours_other: "%{count} ore fa"
+time.day_singular: "%{count} giorno fa"
+time.days_other: "%{count} giorni fa"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+commands.help.summary: "Mostra questo elenco di comandi"
+commands.clear.summary: "Cancella la cronologia chat (mantiene la sessione)"
+commands.new.summary: "Avvia una nuova sessione ACP (cancella la cronologia)"
+commands.restart.summary: "Riconnetti: termina il processo agente e riavvialo"
+commands.stop.summary: "Annulla la richiesta in corso"
+commands.sessions.summary: "Apri il selettore delle sessioni storiche (Ctrl+Maiusc+/)"

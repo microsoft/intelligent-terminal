@@ -161,26 +161,9 @@ hooks.install_attempted: "wt-agent-hooks Installatioun probéiert (idempotent). 
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "elo grad"
-time.minutes_ago:
-  one: "virun %{count} Minutt"
-  other: "virun %{count} Minutten"
-time.hours_ago:
-  one: "virun %{count} Stonn"
-  other: "virun %{count} Stonnen"
-time.days_ago:
-  one: "virun %{count} Dag"
-  other: "virun %{count} Deeg"
-time.date_format: "%{day}. %{month} %{year}"
-time.month:
-  "1": "Januar"
-  "2": "Februar"
-  "3": "Mäerz"
-  "4": "Abrëll"
-  "5": "Mee"
-  "6": "Juni"
-  "7": "Juli"
-  "8": "August"
-  "9": "September"
-  "10": "Oktober"
-  "11": "November"
-  "12": "Dezember"
+time.minute_singular: "virun %{count} Minutt"
+time.minutes_other: "virun %{count} Minutten"
+time.hour_singular: "virun %{count} Stonn"
+time.hours_other: "virun %{count} Stonnen"
+time.day_singular: "virun %{count} Dag"
+time.days_other: "virun %{count} Deeg"

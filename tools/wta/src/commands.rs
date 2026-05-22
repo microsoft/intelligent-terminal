@@ -21,7 +21,9 @@ pub enum CommandKind {
 #[derive(Debug, Clone, Copy)]
 pub struct CommandSpec {
     pub name: &'static str,
-    pub summary: &'static str,
+    /// rust-i18n key for the user-facing description. Resolved at render
+    /// time so the popup follows the current locale.
+    pub summary_key: &'static str,
     pub kind: CommandKind,
     /// True if this command takes free-form arguments after the name.
     /// MVP commands are all zero-arg; the field exists so the popup
@@ -29,41 +31,48 @@ pub struct CommandSpec {
     pub takes_args: bool,
 }
 
+impl CommandSpec {
+    /// Look up the localized summary at render time.
+    pub fn summary(&self) -> String {
+        rust_i18n::t!(self.summary_key).into_owned()
+    }
+}
+
 /// Static registry. Order is the display order in `/help`.
 pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "help",
-        summary: "Show this command list",
+        summary_key: "commands.help.summary",
         kind: CommandKind::Help,
         takes_args: false,
     },
     CommandSpec {
         name: "clear",
-        summary: "Clear the chat scrollback (keeps session)",
+        summary_key: "commands.clear.summary",
         kind: CommandKind::Clear,
         takes_args: false,
     },
     CommandSpec {
         name: "new",
-        summary: "Start a fresh ACP session (drops history)",
+        summary_key: "commands.new.summary",
         kind: CommandKind::New,
         takes_args: false,
     },
     CommandSpec {
         name: "restart",
-        summary: "Reconnect: kill agent process and respawn",
+        summary_key: "commands.restart.summary",
         kind: CommandKind::Restart,
         takes_args: false,
     },
     CommandSpec {
         name: "stop",
-        summary: "Cancel the in-flight prompt",
+        summary_key: "commands.stop.summary",
         kind: CommandKind::Stop,
         takes_args: false,
     },
     CommandSpec {
         name: "sessions",
-        summary: "Open the historical sessions picker (Ctrl+Shift+/)",
+        summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
         takes_args: false,
     },

@@ -62,7 +62,13 @@ commands.help_title: " Pomoč "
 commands.help_header: "Ukazi s poševnico — vnesite / v vnosno polje."
 commands.help_escape_hint: "  //text     Pošlji dobesedni '/' (obide razčlenjevalnik ukazov)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Zapri to pomoč"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+commands.help.summary: "Prikaži ta seznam ukazov"
+commands.clear.summary: "Počisti zgodovino klepeta (seja se ohrani)"
+commands.new.summary: "Začni novo sejo ACP (zavrže zgodovino)"  # {Locked="ACP"}
+commands.restart.summary: "Ponovno poveži: končaj proces agenta in ga znova zaženi"
+commands.stop.summary: "Prekliči poziv v teku"
+commands.sessions.summary: "Odpri izbirnik preteklih sej (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ za krmarjenje • ← → za preklapljanje gumbov • Enter za izbiro • Esc za preklic)"
@@ -160,34 +166,13 @@ hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
-# CLDR plural categories for this locale; %{count} = numeric count.
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
 time.just_now: "pravkar"
-time.minutes_ago:
-  one: "pred %{count} minuto"
-  two: "pred %{count} minutama"
-  few: "pred %{count} minutami"
-  other: "pred %{count} minutami"
-time.hours_ago:
-  one: "pred %{count} uro"
-  two: "pred %{count} urama"
-  few: "pred %{count} urami"
-  other: "pred %{count} urami"
-time.days_ago:
-  one: "pred %{count} dnevom"
-  two: "pred %{count} dnevoma"
-  few: "pred %{count} dnevi"
-  other: "pred %{count} dnevi"
-time.date_format: "%{day}. %{month} %{year}"
-time.month:
-  "1": "januarja"
-  "2": "februarja"
-  "3": "marca"
-  "4": "aprila"
-  "5": "maja"
-  "6": "junija"
-  "7": "julija"
-  "8": "avgusta"
-  "9": "septembra"
-  "10": "oktobra"
-  "11": "novembra"
-  "12": "decembra"
+time.minute_singular: "pred 1 minuto"
+time.minutes_other: "pred %{count} minutami"
+time.hour_singular: "pred 1 uro"
+time.hours_other: "pred %{count} urami"
+time.day_singular: "pred 1 dnevom"
+time.days_other: "pred %{count} dnevi"

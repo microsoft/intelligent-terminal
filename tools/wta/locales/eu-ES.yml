@@ -161,26 +161,9 @@ hooks.install_attempted: "wt-agent-hooks instalatzea saiatu da (idempotentea). E
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "oraintxe"
-time.minutes_ago:
-  one: "duela %{count} minutu"
-  other: "duela %{count} minutu"
-time.hours_ago:
-  one: "duela %{count} ordu"
-  other: "duela %{count} ordu"
-time.days_ago:
-  one: "duela %{count} egun"
-  other: "duela %{count} egun"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "urtarrila"
-  "2": "otsaila"
-  "3": "martxoa"
-  "4": "apirila"
-  "5": "maiatza"
-  "6": "ekaina"
-  "7": "uztaila"
-  "8": "abuztua"
-  "9": "iraila"
-  "10": "urria"
-  "11": "azaroa"
-  "12": "abendua"
+time.minute_singular: "duela %{count} minutu"
+time.minutes_other: "duela %{count} minutu"
+time.hour_singular: "duela %{count} ordu"
+time.hours_other: "duela %{count} ordu"
+time.day_singular: "duela %{count} egun"
+time.days_other: "duela %{count} egun"

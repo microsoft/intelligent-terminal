@@ -62,7 +62,13 @@ commands.help_title: " Довідка "
 commands.help_header: "Слеш-команди — введіть / у полі введення."
 commands.help_escape_hint: "  //text     Надіслати літерал '/' (екранує аналізатор команд)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Закрити цю довідку"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+commands.help.summary: "Показати цей список команд"
+commands.clear.summary: "Очистити історію чату (сеанс зберігається)"
+commands.new.summary: "Розпочати новий сеанс ACP (історію буде скинуто)"  # {Locked="ACP"}
+commands.restart.summary: "Повторно підключитися: завершити процес агента й запустити його знову"
+commands.stop.summary: "Скасувати поточний запит"
+commands.sessions.summary: "Відкрити вибір історичних сеансів (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Панель рекомендацій (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵"} - назви клавіш і символ клавіші Enter, не перекладати
 recommendations.nav_hint: "(↑ ↓ навігація • ← → перемикання кнопок • Enter вибрати • Esc скасувати)"
@@ -160,34 +166,13 @@ hooks.uninstall_skipped: "Пропущено (CLI не в PATH)"
 hooks.install_attempted: "Спроба встановлення wt-agent-hooks (ідемпотентно). Виконайте `wta hooks status` для перевірки результату. Журнал трасування: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
-# CLDR plural categories for this locale; %{count} = numeric count.
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
 time.just_now: "щойно"
-time.minutes_ago:
-  one: "%{count} хвилину тому"
-  few: "%{count} хвилини тому"
-  many: "%{count} хвилин тому"
-  other: "%{count} хвилини тому"
-time.hours_ago:
-  one: "%{count} годину тому"
-  few: "%{count} години тому"
-  many: "%{count} годин тому"
-  other: "%{count} години тому"
-time.days_ago:
-  one: "%{count} день тому"
-  few: "%{count} дні тому"
-  many: "%{count} днів тому"
-  other: "%{count} дня тому"
-time.date_format: "%{day} %{month} %{year} р."
-time.month:
-  "1": "січня"
-  "2": "лютого"
-  "3": "березня"
-  "4": "квітня"
-  "5": "травня"
-  "6": "червня"
-  "7": "липня"
-  "8": "серпня"
-  "9": "вересня"
-  "10": "жовтня"
-  "11": "листопада"
-  "12": "грудня"
+time.minute_singular: "1 хвилину тому"
+time.minutes_other: "%{count} хвилин тому"
+time.hour_singular: "1 годину тому"
+time.hours_other: "%{count} годин тому"
+time.day_singular: "1 день тому"
+time.days_other: "%{count} днів тому"

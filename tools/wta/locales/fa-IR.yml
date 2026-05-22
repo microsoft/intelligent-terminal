@@ -63,6 +63,16 @@ commands.help_header: "دستورات اسلش — / را در کادر ورود
 commands.help_escape_hint: "  //text     ارسال '/' تحت‌اللفظی (تجزیه‌کننده دستور را رد می‌کند)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        بستن این راهنما"  # {Locked="Esc"}
 
+# Slash-command summaries shown in the popup and /help overlay.
+# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
+# English. Only the descriptions are localized.
+commands.help.summary: "نمایش این فهرست دستورات"
+commands.clear.summary: "پاک کردن تاریخچه پیمایش گفتگو (نشست حفظ می‌شود)"
+commands.new.summary: "شروع یک نشست ACP تازه (حذف تاریخچه)"  # {Locked="ACP"}
+commands.restart.summary: "اتصال مجدد: پایان دادن به فرایند عامل و راه‌اندازی دوباره"
+commands.stop.summary: "لغو درخواست در حال اجرا"
+commands.sessions.summary: "باز کردن انتخابگر نشست‌های تاریخی (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
 # ── پنل پیشنهادات (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵"} - نام کلیدها و نماد کلید بازگشت، ترجمه نکنید
 recommendations.nav_hint: "(↑ ↓ برای پیمایش • ← → برای جابه‌جایی بین دکمه‌ها • Enter برای انتخاب • Esc برای لغو)"
@@ -160,26 +170,9 @@ hooks.uninstall_skipped: "رد شد (CLI در PATH نیست)"
 hooks.install_attempted: "تلاش نصب wt-agent-hooks انجام شد (بی‌توان). برای بررسی نتیجه `wta hooks status` را اجرا کنید. گزارش ردیابی: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "همین حالا"
-time.minutes_ago:
-  one: "%{count} دقیقه پیش"
-  other: "%{count} دقیقه پیش"
-time.hours_ago:
-  one: "%{count} ساعت پیش"
-  other: "%{count} ساعت پیش"
-time.days_ago:
-  one: "%{count} روز پیش"
-  other: "%{count} روز پیش"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "ژانویه"
-  "2": "فوریه"
-  "3": "مارس"
-  "4": "آوریل"
-  "5": "مه"
-  "6": "ژوئن"
-  "7": "ژوئیه"
-  "8": "اوت"
-  "9": "سپتامبر"
-  "10": "اکتبر"
-  "11": "نوامبر"
-  "12": "دسامبر"
+time.minute_singular: "1 دقیقه پیش"
+time.minutes_other: "%{count} دقیقه پیش"
+time.hour_singular: "1 ساعت پیش"
+time.hours_other: "%{count} ساعت پیش"
+time.day_singular: "1 روز پیش"
+time.days_other: "%{count} روز پیش"

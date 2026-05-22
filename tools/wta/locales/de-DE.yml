@@ -161,26 +161,18 @@ hooks.install_attempted: "wt-agent-hooks Installation versucht (idempotent). Fü
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "gerade eben"
-time.minutes_ago:
-  one: "vor %{count} Minute"
-  other: "vor %{count} Minuten"
-time.hours_ago:
-  one: "vor %{count} Stunde"
-  other: "vor %{count} Stunden"
-time.days_ago:
-  one: "vor %{count} Tag"
-  other: "vor %{count} Tagen"
-time.date_format: "%{day}. %{month} %{year}"
-time.month:
-  "1": "Januar"
-  "2": "Februar"
-  "3": "März"
-  "4": "April"
-  "5": "Mai"
-  "6": "Juni"
-  "7": "Juli"
-  "8": "August"
-  "9": "September"
-  "10": "Oktober"
-  "11": "November"
-  "12": "Dezember"
+time.minute_singular: "vor %{count} Minute"
+time.minutes_other: "vor %{count} Minuten"
+time.hour_singular: "vor %{count} Stunde"
+time.hours_other: "vor %{count} Stunden"
+time.day_singular: "vor %{count} Tag"
+time.days_other: "vor %{count} Tagen"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+commands.help.summary: "Diese Befehlsliste anzeigen"
+commands.clear.summary: "Chatverlauf löschen (Sitzung bleibt erhalten)"
+commands.new.summary: "Eine neue ACP-Sitzung starten (Verlauf verwerfen)"
+commands.restart.summary: "Neu verbinden: Agentprozess beenden und neu starten"
+commands.stop.summary: "Laufende Eingabe abbrechen"
+commands.sessions.summary: "Auswahl historischer Sitzungen öffnen (Strg+Umschalt+/)"

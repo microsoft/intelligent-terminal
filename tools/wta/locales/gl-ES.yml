@@ -161,26 +161,9 @@ hooks.install_attempted: "Intentouse instalar wt-agent-hooks (idempotente). Exec
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "agora mesmo"
-time.minutes_ago:
-  one: "hai %{count} minuto"
-  other: "hai %{count} minutos"
-time.hours_ago:
-  one: "hai %{count} hora"
-  other: "hai %{count} horas"
-time.days_ago:
-  one: "hai %{count} día"
-  other: "hai %{count} días"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "xaneiro"
-  "2": "febreiro"
-  "3": "marzo"
-  "4": "abril"
-  "5": "maio"
-  "6": "xuño"
-  "7": "xullo"
-  "8": "agosto"
-  "9": "setembro"
-  "10": "outubro"
-  "11": "novembro"
-  "12": "decembro"
+time.minute_singular: "hai %{count} minuto"
+time.minutes_other: "hai %{count} minutos"
+time.hour_singular: "hai %{count} hora"
+time.hours_other: "hai %{count} horas"
+time.day_singular: "hai %{count} día"
+time.days_other: "hai %{count} días"

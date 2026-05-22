@@ -63,6 +63,16 @@ commands.help_header: "Slash buyruqlari — kiritish maydoniga / yozing."
 commands.help_escape_hint: "  //text     Toʻgʻridan-toʻgʻri '/' yuborish (buyruq tahlilchisini chetlab oʻtish)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Bu yordamni yopish"  # {Locked="Esc"}
 
+# Slash-command summaries shown in the popup and /help overlay.
+# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
+# English. Only the descriptions are localized.
+commands.help.summary: "Bu buyruqlar roʻyxatini koʻrsat"
+commands.clear.summary: "Chat aylantirish tarixini tozalash (seansni saqlaydi)"
+commands.new.summary: "Yangi ACP seansini boshlash (tarixni oʻchiradi)"  # {Locked="ACP"}
+commands.restart.summary: "Qayta ulanish: agent jarayonini tugatib, qayta ishga tushirish"
+commands.stop.summary: "Bajarilayotgan soʻrovni bekor qilish"
+commands.sessions.summary: "Tarixiy seanslar tanlagichini ochish (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ navigatsiya uchun • ← → tugmalarni almashtirish uchun • Enter tanlash uchun • Esc bekor qilish uchun)"
@@ -160,23 +170,9 @@ hooks.uninstall_skipped: "oʻtkazib yuborildi (CLI PATH-da emas)"
 hooks.install_attempted: "wt-agent-hooks oʻrnatish urinildi (idempotent). Natijani tekshirish uchun `wta hooks status` bajaring. Iz jurnali: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "hozirgina"
-time.minutes_ago:
-  other: "%{count} daqiqa oldin"
-time.hours_ago:
-  other: "%{count} soat oldin"
-time.days_ago:
-  other: "%{count} kun oldin"
-time.date_format: "%{year}-yil %{day}-%{month}"
-time.month:
-  "1": "yanvar"
-  "2": "fevral"
-  "3": "mart"
-  "4": "aprel"
-  "5": "may"
-  "6": "iyun"
-  "7": "iyul"
-  "8": "avgust"
-  "9": "sentabr"
-  "10": "oktabr"
-  "11": "noyabr"
-  "12": "dekabr"
+time.minute_singular: "%{count} daqiqa oldin"
+time.minutes_other: "%{count} daqiqa oldin"
+time.hour_singular: "%{count} soat oldin"
+time.hours_other: "%{count} soat oldin"
+time.day_singular: "%{count} kun oldin"
+time.days_other: "%{count} kun oldin"

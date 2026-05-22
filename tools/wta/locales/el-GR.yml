@@ -160,26 +160,9 @@ hooks.uninstall_skipped: "παραλείφθηκε (το CLI δεν βρίσκε
 hooks.install_attempted: "Δοκιμάστηκε η εγκατάσταση wt-agent-hooks (idempotent). Εκτελέστε `wta hooks status` για έλεγχο αποτελεσμάτων. Αρχείο καταγραφής: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "μόλις τώρα"
-time.minutes_ago:
-  one: "πριν από %{count} λεπτό"
-  other: "πριν από %{count} λεπτά"
-time.hours_ago:
-  one: "πριν από %{count} ώρα"
-  other: "πριν από %{count} ώρες"
-time.days_ago:
-  one: "πριν από %{count} ημέρα"
-  other: "πριν από %{count} ημέρες"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "Ιανουαρίου"
-  "2": "Φεβρουαρίου"
-  "3": "Μαρτίου"
-  "4": "Απριλίου"
-  "5": "Μαΐου"
-  "6": "Ιουνίου"
-  "7": "Ιουλίου"
-  "8": "Αυγούστου"
-  "9": "Σεπτεμβρίου"
-  "10": "Οκτωβρίου"
-  "11": "Νοεμβρίου"
-  "12": "Δεκεμβρίου"
+time.minute_singular: "πριν από %{count} λεπτό"
+time.minutes_other: "πριν από %{count} λεπτά"
+time.hour_singular: "πριν από %{count} ώρα"
+time.hours_other: "πριν από %{count} ώρες"
+time.day_singular: "πριν από %{count} ημέρα"
+time.days_other: "πριν από %{count} ημέρες"

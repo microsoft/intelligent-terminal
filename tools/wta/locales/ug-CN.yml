@@ -66,6 +66,16 @@ commands.help_header: "ئىسلەش بۇيرۇقلىرى — كىرگۈزۈش ر
 commands.help_escape_hint: "  //text     ئەسلى '/' ئەۋەتىش (بۇيرۇق ئانالىزلىغۇچتىن قېچىش)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        بۇ ياردەمنى تاقاش"  # {Locked="Esc"}
 
+# Slash-command summaries shown in the popup and /help overlay.
+# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
+# English. Only the descriptions are localized.
+commands.help.summary: "بۇ بۇيرۇق تىزىملىكىنى كۆرسىتىش"
+commands.clear.summary: "سۆھبەتنىڭ سىيرىلىش تارىخىنى تازىلاش (سېسىيەنى ساقلايدۇ)"
+commands.new.summary: "يېڭى ACP سېسىيەسىنى باشلاش (تارىخنى تاشلايدۇ)"  # {Locked="ACP"}
+commands.restart.summary: "قايتا باغلىنىش: ئاگېنت جەريانىنى توختىتىپ قايتا قوزغىتىش"
+commands.stop.summary: "ئىجرا قىلىنىۋاتقان سوراقنى بىكار قىلىش"
+commands.sessions.summary: "تارىخىي سېسىيەلەر تاللىغۇچىنى ئېچىش (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
 # ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────
 # {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ يۆتكىلىش ئۈچۈن • ← → كۇنۇپكىلارنى ئالماشتۇرۇش ئۈچۈن • Enter تاللاش ئۈچۈن • Esc بىكار قىلىش ئۈچۈن)"
@@ -169,23 +179,9 @@ hooks.uninstall_skipped: "ئاتلىدى (CLI PATH دا ئەمەس)"
 hooks.install_attempted: "wt-agent-hooks ئورنىتىش سىنالدى (idempotent). نەتىجىنى تەكشۈرۈش ئۈچۈن `wta hooks status` نى ئىجرا قىلىڭ. ئىز خاتىرىسى: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "ھازىرلا"
-time.minutes_ago:
-  other: "%{count} مىنۇت بۇرۇن"
-time.hours_ago:
-  other: "%{count} سائەت بۇرۇن"
-time.days_ago:
-  other: "%{count} كۈن بۇرۇن"
-time.date_format: "%{year}-يىلى %{month} %{day}-كۈنى"
-time.month:
-  "1": "يانۋار"
-  "2": "فېۋرال"
-  "3": "مارت"
-  "4": "ئاپرېل"
-  "5": "ماي"
-  "6": "ئىيۇن"
-  "7": "ئىيۇل"
-  "8": "ئاۋغۇست"
-  "9": "سېنتەبىر"
-  "10": "ئۆكتەبىر"
-  "11": "نويابىر"
-  "12": "دېكابىر"
+time.minute_singular: "%{count} مىنۇت بۇرۇن"
+time.minutes_other: "%{count} مىنۇت بۇرۇن"
+time.hour_singular: "%{count} سائەت بۇرۇن"
+time.hours_other: "%{count} سائەت بۇرۇن"
+time.day_singular: "%{count} كۈن بۇرۇن"
+time.days_other: "%{count} كۈن بۇرۇن"

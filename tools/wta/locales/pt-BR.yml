@@ -161,26 +161,18 @@ hooks.install_attempted: "Instalação do wt-agent-hooks tentada (idempotente). 
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "agora mesmo"
-time.minutes_ago:
-  one: "há %{count} minuto"
-  other: "há %{count} minutos"
-time.hours_ago:
-  one: "há %{count} hora"
-  other: "há %{count} horas"
-time.days_ago:
-  one: "há %{count} dia"
-  other: "há %{count} dias"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "janeiro"
-  "2": "fevereiro"
-  "3": "março"
-  "4": "abril"
-  "5": "maio"
-  "6": "junho"
-  "7": "julho"
-  "8": "agosto"
-  "9": "setembro"
-  "10": "outubro"
-  "11": "novembro"
-  "12": "dezembro"
+time.minute_singular: "há %{count} minuto"
+time.minutes_other: "há %{count} minutos"
+time.hour_singular: "há %{count} hora"
+time.hours_other: "há %{count} horas"
+time.day_singular: "há %{count} dia"
+time.days_other: "há %{count} dias"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+commands.help.summary: "Mostrar esta lista de comandos"
+commands.clear.summary: "Limpar o histórico do chat (mantém a sessão)"
+commands.new.summary: "Iniciar uma nova sessão ACP (descarta o histórico)"
+commands.restart.summary: "Reconectar: encerrar o processo do agente e reiniciar"
+commands.stop.summary: "Cancelar o prompt em andamento"
+commands.sessions.summary: "Abrir o seletor de sessões anteriores (Ctrl+Shift+/)"

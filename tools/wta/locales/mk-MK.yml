@@ -62,7 +62,13 @@ commands.help_title: " Помош "
 commands.help_header: "Команди со коса црта — внесете / во полето за внес."
 commands.help_escape_hint: "  //text     Испрати буквално '/' (ги заобиколува анализаторот на команди)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Затвори ја оваа помош"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+commands.help.summary: "Прикажи ја оваа листа со команди"
+commands.clear.summary: "Исчисти ја историјата на разговорот (ја задржува сесијата)"
+commands.new.summary: "Започни нова сесија ACP (ја отфрла историјата)"  # {Locked="ACP"}
+commands.restart.summary: "Повторно поврзи: прекини го процесот на агентот и стартувај го повторно"
+commands.stop.summary: "Откажи го тековното барање"
+commands.sessions.summary: "Отвори избирач на претходни сесии (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ за навигација • ← → за префрлување копчиња • Enter за избор • Esc за откажување)"
@@ -160,28 +166,13 @@ hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
-# CLDR plural categories for this locale; %{count} = numeric count.
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
 time.just_now: "штотуку"
-time.minutes_ago:
-  one: "пред %{count} минута"
-  other: "пред %{count} минути"
-time.hours_ago:
-  one: "пред %{count} час"
-  other: "пред %{count} часа"
-time.days_ago:
-  one: "пред %{count} ден"
-  other: "пред %{count} дена"
-time.date_format: "%{day} %{month} %{year} г."
-time.month:
-  "1": "јануари"
-  "2": "февруари"
-  "3": "март"
-  "4": "април"
-  "5": "мај"
-  "6": "јуни"
-  "7": "јули"
-  "8": "август"
-  "9": "септември"
-  "10": "октомври"
-  "11": "ноември"
-  "12": "декември"
+time.minute_singular: "пред 1 минута"
+time.minutes_other: "пред %{count} минути"
+time.hour_singular: "пред 1 час"
+time.hours_other: "пред %{count} часа"
+time.day_singular: "пред 1 ден"
+time.days_other: "пред %{count} дена"

@@ -160,23 +160,18 @@ hooks.uninstall_skipped: "スキップ (CLI が PATH 上にありません)"
 hooks.install_attempted: "wt-agent-hooks のインストールを試行しました (べき等)。結果を確認するには `wta hooks status` を実行してください。トレース ログ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "たった今"
-time.minutes_ago:
-  other: "%{count} 分前"
-time.hours_ago:
-  other: "%{count} 時間前"
-time.days_ago:
-  other: "%{count} 日前"
-time.date_format: "%{year}年%{month}月%{day}日"
-time.month:
-  "1": "1月"
-  "2": "2月"
-  "3": "3月"
-  "4": "4月"
-  "5": "5月"
-  "6": "6月"
-  "7": "7月"
-  "8": "8月"
-  "9": "9月"
-  "10": "10月"
-  "11": "11月"
-  "12": "12月"
+time.minute_singular: "%{count} 分前"
+time.minutes_other: "%{count} 分前"
+time.hour_singular: "%{count} 時間前"
+time.hours_other: "%{count} 時間前"
+time.day_singular: "%{count} 日前"
+time.days_other: "%{count} 日前"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+commands.help.summary: "このコマンド一覧を表示"
+commands.clear.summary: "チャットのスクロールバックをクリア（セッションは保持）"
+commands.new.summary: "新しい ACP セッションを開始（履歴を破棄）"
+commands.restart.summary: "再接続: エージェント プロセスを終了して再起動"
+commands.stop.summary: "実行中のプロンプトをキャンセル"
+commands.sessions.summary: "過去のセッション ピッカーを開く（Ctrl+Shift+/）"

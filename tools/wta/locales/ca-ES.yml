@@ -161,26 +161,9 @@ hooks.install_attempted: "S'ha intentat instal·lar wt-agent-hooks (idempotent).
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "ara mateix"
-time.minutes_ago:
-  one: "fa %{count} minut"
-  other: "fa %{count} minuts"
-time.hours_ago:
-  one: "fa %{count} hora"
-  other: "fa %{count} hores"
-time.days_ago:
-  one: "fa %{count} dia"
-  other: "fa %{count} dies"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "gener"
-  "2": "febrer"
-  "3": "març"
-  "4": "abril"
-  "5": "maig"
-  "6": "juny"
-  "7": "juliol"
-  "8": "agost"
-  "9": "setembre"
-  "10": "octubre"
-  "11": "novembre"
-  "12": "desembre"
+time.minute_singular: "fa %{count} minut"
+time.minutes_other: "fa %{count} minuts"
+time.hour_singular: "fa %{count} hora"
+time.hours_other: "fa %{count} hores"
+time.day_singular: "fa %{count} dia"
+time.days_other: "fa %{count} dies"

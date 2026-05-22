@@ -63,6 +63,16 @@ commands.help_header: "Eğik çizgi komutları — giriş kutusuna / yazın."
 commands.help_escape_hint: "  //text     Düz '/' gönder (komut ayrıştırıcısını atla)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Bu yardımı kapat"  # {Locked="Esc"}
 
+# Slash-command summaries shown in the popup and /help overlay.
+# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
+# English. Only the descriptions are localized.
+commands.help.summary: "Bu komut listesini göster"
+commands.clear.summary: "Sohbet kaydırma geçmişini temizle (oturumu korur)"
+commands.new.summary: "Yeni bir ACP oturumu başlat (geçmişi bırakır)"  # {Locked="ACP"}
+commands.restart.summary: "Yeniden bağlan: aracı sürecini sonlandır ve yeniden başlat"
+commands.stop.summary: "Devam eden istemi iptal et"
+commands.sessions.summary: "Geçmiş oturum seçicisini aç (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ gezinmek için • ← → düğmeler arasında geçiş yapmak için • Enter seçmek için • Esc iptal etmek için)"
@@ -160,23 +170,9 @@ hooks.uninstall_skipped: "atlandı (CLI PATH'te değil)"
 hooks.install_attempted: "wt-agent-hooks yüklemesi denendi (idempotent). Sonucu incelemek için `wta hooks status` çalıştırın. İzleme günlüğü: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "az önce"
-time.minutes_ago:
-  other: "%{count} dakika önce"
-time.hours_ago:
-  other: "%{count} saat önce"
-time.days_ago:
-  other: "%{count} gün önce"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "Ocak"
-  "2": "Şubat"
-  "3": "Mart"
-  "4": "Nisan"
-  "5": "Mayıs"
-  "6": "Haziran"
-  "7": "Temmuz"
-  "8": "Ağustos"
-  "9": "Eylül"
-  "10": "Ekim"
-  "11": "Kasım"
-  "12": "Aralık"
+time.minute_singular: "%{count} dakika önce"
+time.minutes_other: "%{count} dakika önce"
+time.hour_singular: "%{count} saat önce"
+time.hours_other: "%{count} saat önce"
+time.day_singular: "%{count} gün önce"
+time.days_other: "%{count} gün önce"

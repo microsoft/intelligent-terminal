@@ -161,29 +161,9 @@ hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wt
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "ką tik"
-time.minutes_ago:
-  one: "prieš %{count} minutę"
-  few: "prieš %{count} minutes"
-  other: "prieš %{count} minučių"
-time.hours_ago:
-  one: "prieš %{count} valandą"
-  few: "prieš %{count} valandas"
-  other: "prieš %{count} valandų"
-time.days_ago:
-  one: "prieš %{count} dieną"
-  few: "prieš %{count} dienas"
-  other: "prieš %{count} dienų"
-time.date_format: "%{day} %{month} %{year} m."
-time.month:
-  "1": "sausio"
-  "2": "vasario"
-  "3": "kovo"
-  "4": "balandžio"
-  "5": "gegužės"
-  "6": "birželio"
-  "7": "liepos"
-  "8": "rugpjūčio"
-  "9": "rugsėjo"
-  "10": "spalio"
-  "11": "lapkričio"
-  "12": "gruodžio"
+time.minute_singular: "prieš %{count} minutę"
+time.minutes_other: "prieš %{count} minučių"
+time.hour_singular: "prieš %{count} valandą"
+time.hours_other: "prieš %{count} valandų"
+time.day_singular: "prieš %{count} dieną"
+time.days_other: "prieš %{count} dienų"

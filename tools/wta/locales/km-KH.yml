@@ -181,23 +181,9 @@ hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wt
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ទើបតែឥឡូវនេះ"
-time.minutes_ago:
-  other: "%{count} នាទីមុន"
-time.hours_ago:
-  other: "%{count} ម៉ោងមុន"
-time.days_ago:
-  other: "%{count} ថ្ងៃមុន"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "មករា"
-  "2": "កុម្ភៈ"
-  "3": "មីនា"
-  "4": "មេសា"
-  "5": "ឧសភា"
-  "6": "មិថុនា"
-  "7": "កក្កដា"
-  "8": "សីហា"
-  "9": "កញ្ញា"
-  "10": "តុលា"
-  "11": "វិច្ឆិកា"
-  "12": "ធ្នូ"
+time.minute_singular: "%{count} នាទីមុន"
+time.minutes_other: "%{count} នាទីមុន"
+time.hour_singular: "%{count} ម៉ោងមុន"
+time.hours_other: "%{count} ម៉ោងមុន"
+time.day_singular: "%{count} ថ្ងៃមុន"
+time.days_other: "%{count} ថ្ងៃមុន"

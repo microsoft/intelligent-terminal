@@ -161,26 +161,18 @@ hooks.uninstall_skipped: "[śķïṗṗéď (CLI ñöţ öñ PATH)!!!! !!!!]"
 hooks.install_attempted: "[wt-agent-hooks ïñśţåĺĺ åţţéḿṗţéď (ïďéḿṗöţéñţ). Ŕûñ `wta hooks status` ţö ïñśṗéçţ ţĥé ŕéśûĺţ. Ţŕåçé ĺöğ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log!!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "just now"
-time.minutes_ago:
-  one: "%{count} minute ago"
-  other: "%{count} minutes ago"
-time.hours_ago:
-  one: "%{count} hour ago"
-  other: "%{count} hours ago"
-time.days_ago:
-  one: "%{count} day ago"
-  other: "%{count} days ago"
-time.date_format: "%{month} %{day}, %{year}"
-time.month:
-  "1": "January"
-  "2": "February"
-  "3": "March"
-  "4": "April"
-  "5": "May"
-  "6": "June"
-  "7": "July"
-  "8": "August"
-  "9": "September"
-  "10": "October"
-  "11": "November"
-  "12": "December"
+time.minute_singular: "%{count} minute ago"
+time.minutes_other: "%{count} minutes ago"
+time.hour_singular: "%{count} hour ago"
+time.hours_other: "%{count} hours ago"
+time.day_singular: "%{count} day ago"
+time.days_other: "%{count} days ago"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+commands.help.summary: "[Śĥöŵ ţĥïś çöɱɱåñð ĺïśţ]"
+commands.clear.summary: "[Çĺéåŕ ţĥé çĥåţ śçŕöĺĺɓåçķ (ķéépś śéśśïöñ)]"
+commands.new.summary: "[Śţåŕţ å ƒŕéśĥ ACP śéśśïöñ (ðŕöpś ĥïśţöŕý)]"
+commands.restart.summary: "[Ŕéçöññéçţ: ķïĺĺ åğéñţ pŕöçéśś åñð ŕéśpåŵñ]"
+commands.stop.summary: "[Çåñçéĺ ţĥé ïñ-ƒĺïğĥţ pŕöɱpţ]"
+commands.sessions.summary: "[Öpéñ ţĥé ĥïśţöŕïçåĺ śéśśïöñś pïçķéŕ (Çţŕĺ+Śĥïƒţ+/)]"

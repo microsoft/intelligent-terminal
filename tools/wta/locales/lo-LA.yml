@@ -161,23 +161,9 @@ hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wt
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ເມື່ອກີ້ນີ້"
-time.minutes_ago:
-  other: "%{count} ນາທີກ່ອນ"
-time.hours_ago:
-  other: "%{count} ຊົ່ວໂມງກ່ອນ"
-time.days_ago:
-  other: "%{count} ມື້ກ່ອນ"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "ມັງກອນ"
-  "2": "ກຸມພາ"
-  "3": "ມີນາ"
-  "4": "ເມສາ"
-  "5": "ພຶດສະພາ"
-  "6": "ມິຖຸນາ"
-  "7": "ກໍລະກົດ"
-  "8": "ສິງຫາ"
-  "9": "ກັນຍາ"
-  "10": "ຕຸລາ"
-  "11": "ພະຈິກ"
-  "12": "ທັນວາ"
+time.minute_singular: "%{count} ນາທີກ່ອນ"
+time.minutes_other: "%{count} ນາທີກ່ອນ"
+time.hour_singular: "%{count} ຊົ່ວໂມງກ່ອນ"
+time.hours_other: "%{count} ຊົ່ວໂມງກ່ອນ"
+time.day_singular: "%{count} ມື້ກ່ອນ"
+time.days_other: "%{count} ມື້ກ່ອນ"

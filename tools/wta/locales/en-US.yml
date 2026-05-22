@@ -70,6 +70,15 @@ commands.help_title: " Help "
 commands.help_header: "Slash commands — type / in the input box."
 commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command parser)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
+# Slash-command summaries shown in the popup and /help overlay.
+# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
+# English. Only the descriptions are localized.
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.restart.summary: "Reconnect: kill agent process and respawn"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
@@ -187,42 +196,24 @@ hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
-# rust-i18n plural keys: each *_ago key has `one` / `other` (CLDR English
-# plural categories). Locales with different plural rules should add the
-# categories they need: `zero` (e.g. ar), `two`, `few`, `many` (Slavic, ar),
-# `other` (default). %{count} = numeric count.
-# Locales that don't pluralize (zh, ja, ko, vi, th, …) only need `other`.
+# rust-i18n 3.x has no CLDR plural support — only string interpolation. So we
+# use two flat keys per duration (singular for n=1, "other" for n≠1) and let
+# Rust pick which to use. Languages without grammatical singular/plural
+# distinction (CJK, Vietnamese, Thai, …) can map both keys to the same
+# template. Languages with 3+ plural forms (Slavic, Arabic) compromise by
+# mapping "other" to whichever form reads acceptably for the typical 2-59 /
+# 2-23 / 2-6 counts in our UI; use the "many" form (5+) which sounds more
+# natural for higher numbers.
+# %{count} = numeric count (interpolated).
 time.just_now: "just now"
-time.minutes_ago:
-  one: "%{count} minute ago"
-  other: "%{count} minutes ago"
-time.hours_ago:
-  one: "%{count} hour ago"
-  other: "%{count} hours ago"
-time.days_ago:
-  one: "%{count} day ago"
-  other: "%{count} days ago"
-# Locale-specific date format for rows older than a week. Placeholders:
-#   %{month} = localized month name (full or abbreviated, locale's choice)
-#   %{day}   = numeric day-of-month
-#   %{year}  = 4-digit year
-# Reorder for locales that put day before month (de-DE, fr-FR, ru-RU, …) or
-# year first (zh-CN, ja-JP, ko-KR, hu-HU).
-time.date_format: "%{month} %{day}, %{year}"
-# Full month names for use with time.date_format. Some locales may prefer
-# abbreviated forms; that's fine — keep them consistent across the 12.
-# Numeric keys must be quoted strings so rust-i18n looks them up as
-# "time.month.1" instead of integer 1.
-time.month:
-  "1": "January"
-  "2": "February"
-  "3": "March"
-  "4": "April"
-  "5": "May"
-  "6": "June"
-  "7": "July"
-  "8": "August"
-  "9": "September"
-  "10": "October"
-  "11": "November"
-  "12": "December"
+time.minute_singular: "1 minute ago"
+time.minutes_other: "%{count} minutes ago"
+time.hour_singular: "1 hour ago"
+time.hours_other: "%{count} hours ago"
+time.day_singular: "1 day ago"
+time.days_other: "%{count} days ago"
+# Locale-aware date format for rows older than a week is handled via
+# Windows GetDateFormatEx (DATE_LONGDATE) — no yml entries needed for
+# month names or day/month/year ordering. Microsoft's CLDR data covers
+# every locale Windows supports with higher fidelity than we could
+# maintain by hand.

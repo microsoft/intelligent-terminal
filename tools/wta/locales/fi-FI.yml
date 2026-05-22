@@ -161,26 +161,9 @@ hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wt
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "juuri nyt"
-time.minutes_ago:
-  one: "%{count} minuutti sitten"
-  other: "%{count} minuuttia sitten"
-time.hours_ago:
-  one: "%{count} tunti sitten"
-  other: "%{count} tuntia sitten"
-time.days_ago:
-  one: "%{count} päivä sitten"
-  other: "%{count} päivää sitten"
-time.date_format: "%{day}. %{month} %{year}"
-time.month:
-  "1": "tammikuuta"
-  "2": "helmikuuta"
-  "3": "maaliskuuta"
-  "4": "huhtikuuta"
-  "5": "toukokuuta"
-  "6": "kesäkuuta"
-  "7": "heinäkuuta"
-  "8": "elokuuta"
-  "9": "syyskuuta"
-  "10": "lokakuuta"
-  "11": "marraskuuta"
-  "12": "joulukuuta"
+time.minute_singular: "%{count} minuutti sitten"
+time.minutes_other: "%{count} minuuttia sitten"
+time.hour_singular: "%{count} tunti sitten"
+time.hours_other: "%{count} tuntia sitten"
+time.day_singular: "%{count} päivä sitten"
+time.days_other: "%{count} päivää sitten"

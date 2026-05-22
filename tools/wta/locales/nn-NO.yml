@@ -161,26 +161,9 @@ hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wt
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "nett no"
-time.minutes_ago:
-  one: "%{count} minutt sidan"
-  other: "%{count} minutt sidan"
-time.hours_ago:
-  one: "%{count} time sidan"
-  other: "%{count} timar sidan"
-time.days_ago:
-  one: "%{count} dag sidan"
-  other: "%{count} dagar sidan"
-time.date_format: "%{day}. %{month} %{year}"
-time.month:
-  "1": "januar"
-  "2": "februar"
-  "3": "mars"
-  "4": "april"
-  "5": "mai"
-  "6": "juni"
-  "7": "juli"
-  "8": "august"
-  "9": "september"
-  "10": "oktober"
-  "11": "november"
-  "12": "desember"
+time.minute_singular: "%{count} minutt sidan"
+time.minutes_other: "%{count} minutt sidan"
+time.hour_singular: "%{count} time sidan"
+time.hours_other: "%{count} timar sidan"
+time.day_singular: "%{count} dag sidan"
+time.days_other: "%{count} dagar sidan"

@@ -63,6 +63,16 @@ commands.help_header: "Слэш боерыклары — кертү кырына
 commands.help_escape_hint: "  //text     Туры мәгънәдәге '/' җибәрү (боерык анализаторын читләп үтү)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Бу ярдәмне ябу"  # {Locked="Esc"}
 
+# Slash-command summaries shown in the popup and /help overlay.
+# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
+# English. Only the descriptions are localized.
+commands.help.summary: "Бу боерыклар исемлеген күрсәтү"
+commands.clear.summary: "Чат әйләндерү тарихын чистарту (сеансны саклый)"
+commands.new.summary: "Яңа ACP сеансын башлау (тарихны ташлый)"  # {Locked="ACP"}
+commands.restart.summary: "Яңадан тоташу: агент процессын туктатып, яңадан эшләтү"
+commands.stop.summary: "Башкарылучы сорауны кире кагу"
+commands.sessions.summary: "Тарихи сеанслар сайлагычын ачу (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ навигация өчен • ← → төймәләр арасында күчү өчен • Enter сайлау өчен • Esc баш тарту өчен)"
@@ -160,23 +170,9 @@ hooks.uninstall_skipped: "калдырылды (CLI PATH-та түгел)"
 hooks.install_attempted: "wt-agent-hooks урнату тырышылды (idempotent). Нәтиҗәне тикшерү өчен `wta hooks status` башкарыгыз. Эз журналы: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "яңа гына"
-time.minutes_ago:
-  other: "%{count} минут элек"
-time.hours_ago:
-  other: "%{count} сәгать элек"
-time.days_ago:
-  other: "%{count} көн элек"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "гыйнвар"
-  "2": "февраль"
-  "3": "март"
-  "4": "апрель"
-  "5": "май"
-  "6": "июнь"
-  "7": "июль"
-  "8": "август"
-  "9": "сентябрь"
-  "10": "октябрь"
-  "11": "ноябрь"
-  "12": "декабрь"
+time.minute_singular: "%{count} минут элек"
+time.minutes_other: "%{count} минут элек"
+time.hour_singular: "%{count} сәгать элек"
+time.hours_other: "%{count} сәгать элек"
+time.day_singular: "%{count} көн элек"
+time.days_other: "%{count} көн элек"

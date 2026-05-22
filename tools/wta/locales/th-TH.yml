@@ -161,23 +161,9 @@ hooks.install_attempted: "พยายามติดตั้ง wt-agent-hooks
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "เมื่อสักครู่"
-time.minutes_ago:
-  other: "%{count} นาทีที่แล้ว"
-time.hours_ago:
-  other: "%{count} ชั่วโมงที่แล้ว"
-time.days_ago:
-  other: "%{count} วันที่แล้ว"
-time.date_format: "%{day} %{month} %{year}"
-time.month:
-  "1": "มกราคม"
-  "2": "กุมภาพันธ์"
-  "3": "มีนาคม"
-  "4": "เมษายน"
-  "5": "พฤษภาคม"
-  "6": "มิถุนายน"
-  "7": "กรกฎาคม"
-  "8": "สิงหาคม"
-  "9": "กันยายน"
-  "10": "ตุลาคม"
-  "11": "พฤศจิกายน"
-  "12": "ธันวาคม"
+time.minute_singular: "%{count} นาทีที่แล้ว"
+time.minutes_other: "%{count} นาทีที่แล้ว"
+time.hour_singular: "%{count} ชั่วโมงที่แล้ว"
+time.hours_other: "%{count} ชั่วโมงที่แล้ว"
+time.day_singular: "%{count} วันที่แล้ว"
+time.days_other: "%{count} วันที่แล้ว"

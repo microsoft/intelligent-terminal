@@ -160,23 +160,18 @@ hooks.uninstall_skipped: "已跳过（CLI 不在 PATH 上）"
 hooks.install_attempted: "wt-agent-hooks 安装已尝试（幂等）。运行 `wta hooks status` 检查结果。跟踪日志：%LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "刚刚"
-time.minutes_ago:
-  other: "%{count} 分钟前"
-time.hours_ago:
-  other: "%{count} 小时前"
-time.days_ago:
-  other: "%{count} 天前"
-time.date_format: "%{year}年%{month}月%{day}日"
-time.month:
-  "1": "1月"
-  "2": "2月"
-  "3": "3月"
-  "4": "4月"
-  "5": "5月"
-  "6": "6月"
-  "7": "7月"
-  "8": "8月"
-  "9": "9月"
-  "10": "10月"
-  "11": "11月"
-  "12": "12月"
+time.minute_singular: "%{count} 分钟前"
+time.minutes_other: "%{count} 分钟前"
+time.hour_singular: "%{count} 小时前"
+time.hours_other: "%{count} 小时前"
+time.day_singular: "%{count} 天前"
+time.days_other: "%{count} 天前"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+commands.help.summary: "显示此命令列表"
+commands.clear.summary: "清除聊天记录（保留会话）"
+commands.new.summary: "启动新的 ACP 会话（清空历史记录）"
+commands.restart.summary: "重新连接：终止智能体进程并重新启动"
+commands.stop.summary: "取消进行中的提示"
+commands.sessions.summary: "打开历史会话选择器（Ctrl+Shift+/）"

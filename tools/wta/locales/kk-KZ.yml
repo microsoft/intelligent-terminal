@@ -63,6 +63,16 @@ commands.help_header: "Слэш командалары — енгізу жола
 commands.help_escape_hint: "  //text     Тура мағынадағы '/' жіберу (команда анализаторын айналып өту)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Бұл көмекті жабу"  # {Locked="Esc"}
 
+# Slash-command summaries shown in the popup and /help overlay.
+# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
+# English. Only the descriptions are localized.
+commands.help.summary: "Осы командалар тізімін көрсету"
+commands.clear.summary: "Чаттың айналдыру журналын тазалау (сеансты сақтайды)"
+commands.new.summary: "Жаңа ACP сеансын бастау (тарихты жояды)"  # {Locked="ACP"}
+commands.restart.summary: "Қайта қосылу: агент процесін аяқтап, қайта іске қосу"
+commands.stop.summary: "Орындалып жатқан сұраудан бас тарту"
+commands.sessions.summary: "Тарихи сеанстар таңдағышын ашу (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ шарлау үшін • ← → түймелер арасында ауысу үшін • Enter таңдау үшін • Esc бас тарту үшін)"
@@ -160,23 +170,9 @@ hooks.uninstall_skipped: "өткізілді (CLI PATH-те емес)"
 hooks.install_attempted: "wt-agent-hooks орнату әрекеті жасалды (idempotent). Нәтижені тексеру үшін `wta hooks status` іске қосыңыз. Із журналы: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "жаңа ғана"
-time.minutes_ago:
-  other: "%{count} минут бұрын"
-time.hours_ago:
-  other: "%{count} сағат бұрын"
-time.days_ago:
-  other: "%{count} күн бұрын"
-time.date_format: "%{year} ж. %{day} %{month}"
-time.month:
-  "1": "қаңтар"
-  "2": "ақпан"
-  "3": "наурыз"
-  "4": "сәуір"
-  "5": "мамыр"
-  "6": "маусым"
-  "7": "шілде"
-  "8": "тамыз"
-  "9": "қыркүйек"
-  "10": "қазан"
-  "11": "қараша"
-  "12": "желтоқсан"
+time.minute_singular: "%{count} минут бұрын"
+time.minutes_other: "%{count} минут бұрын"
+time.hour_singular: "%{count} сағат бұрын"
+time.hours_other: "%{count} сағат бұрын"
+time.day_singular: "%{count} күн бұрын"
+time.days_other: "%{count} күн бұрын"

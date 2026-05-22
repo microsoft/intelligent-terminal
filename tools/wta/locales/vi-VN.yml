@@ -161,23 +161,9 @@ hooks.install_attempted: "Đã thử cài đặt wt-agent-hooks (idempotent). Ch
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "vừa xong"
-time.minutes_ago:
-  other: "%{count} phút trước"
-time.hours_ago:
-  other: "%{count} giờ trước"
-time.days_ago:
-  other: "%{count} ngày trước"
-time.date_format: "%{day} %{month} năm %{year}"
-time.month:
-  "1": "tháng 1"
-  "2": "tháng 2"
-  "3": "tháng 3"
-  "4": "tháng 4"
-  "5": "tháng 5"
-  "6": "tháng 6"
-  "7": "tháng 7"
-  "8": "tháng 8"
-  "9": "tháng 9"
-  "10": "tháng 10"
-  "11": "tháng 11"
-  "12": "tháng 12"
+time.minute_singular: "%{count} phút trước"
+time.minutes_other: "%{count} phút trước"
+time.hour_singular: "%{count} giờ trước"
+time.hours_other: "%{count} giờ trước"
+time.day_singular: "%{count} ngày trước"
+time.days_other: "%{count} ngày trước"

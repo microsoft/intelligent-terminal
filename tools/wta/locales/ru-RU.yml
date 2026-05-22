@@ -62,7 +62,13 @@ commands.help_title: " Справка "
 commands.help_header: "Слеш-команды — введите / в поле ввода."
 commands.help_escape_hint: "  //text     Отправить буквальный '/' (экранирует синтаксический анализатор команд)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Закрыть эту справку"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+commands.help.summary: "Показать этот список команд"
+commands.clear.summary: "Очистить историю чата (сеанс сохраняется)"
+commands.new.summary: "Начать новый сеанс ACP (история будет удалена)"  # {Locked="ACP"}
+commands.restart.summary: "Переподключиться: завершить процесс агента и запустить снова"
+commands.stop.summary: "Отменить выполняющийся запрос"
+commands.sessions.summary: "Открыть выбор прошлых сеансов (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Панель рекомендаций (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵"} - названия клавиш и символ клавиши Enter, не переводить
 recommendations.nav_hint: "(↑ ↓ навигация • ← → переключение кнопок • Enter выбрать • Esc отменить)"
@@ -160,34 +166,13 @@ hooks.uninstall_skipped: "Пропущено (CLI не в PATH)"
 hooks.install_attempted: "Попытка установки wt-agent-hooks (идемпотентно). Выполните `wta hooks status` для проверки результата. Журнал трассировки: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
-# CLDR plural categories for this locale; %{count} = numeric count.
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
 time.just_now: "только что"
-time.minutes_ago:
-  one: "%{count} минуту назад"
-  few: "%{count} минуты назад"
-  many: "%{count} минут назад"
-  other: "%{count} минуты назад"
-time.hours_ago:
-  one: "%{count} час назад"
-  few: "%{count} часа назад"
-  many: "%{count} часов назад"
-  other: "%{count} часа назад"
-time.days_ago:
-  one: "%{count} день назад"
-  few: "%{count} дня назад"
-  many: "%{count} дней назад"
-  other: "%{count} дня назад"
-time.date_format: "%{day} %{month} %{year} г."
-time.month:
-  "1": "января"
-  "2": "февраля"
-  "3": "марта"
-  "4": "апреля"
-  "5": "мая"
-  "6": "июня"
-  "7": "июля"
-  "8": "августа"
-  "9": "сентября"
-  "10": "октября"
-  "11": "ноября"
-  "12": "декабря"
+time.minute_singular: "1 минуту назад"
+time.minutes_other: "%{count} минут назад"
+time.hour_singular: "1 час назад"
+time.hours_other: "%{count} часов назад"
+time.day_singular: "1 день назад"
+time.days_other: "%{count} дней назад"
