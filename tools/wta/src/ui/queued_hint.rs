@@ -21,10 +21,6 @@ pub(crate) fn queue_hint_height(app: &App) -> u16 {
 /// Width budget for the preview text inside the hint row. Mirrors the
 /// layout's left/right horizontal padding (1 cell each).
 const HORIZONTAL_PADDING: u16 = 2;
-/// Maximum chars of the preview displayed; the rest is replaced with `…`.
-/// Independent of terminal width so the indicator stays compact even in wide
-/// terminals — long prompts don't dominate the row.
-const PREVIEW_MAX_CHARS: usize = 60;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let tab = app.current_tab();
@@ -38,16 +34,14 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     // by the count alone — the user sees the queue shrink as the agent
     // works through it.
     //
-    // Account for the literal 2-space left padding we prepend on the render
-    // line below — otherwise long localized text gets clipped at the right
-    // edge for no reason. `area.width` is the row budget; subtract the same
-    // padding here so `truncate_to_width` lands on the actual visible width.
-    let visible_width = area.width.saturating_sub(HORIZONTAL_PADDING) as usize;
-    let preview_max = PREVIEW_MAX_CHARS.min(visible_width);
+    // Use the raw collapsed text (no char-truncation) and let the single
+    // width-aware truncation pass below own all clipping. This avoids
+    // double-ellipsis artefacts when both `QueuedPrompt::preview` and
+    // `truncate_to_width` would clip the same string.
     let preview = tab
         .pending_prompts
         .back()
-        .map(|p| p.preview(preview_max.max(1)))
+        .map(|p| p.collapsed_text())
         .unwrap_or_default();
     let text = t!(
         "input.queue.indicator",
@@ -55,14 +49,22 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         preview = preview
     )
     .into_owned();
-    // Truncate again at the line level just in case the localized template
-    // expands beyond the available width (e.g. RTL or longer translations).
-    let truncated = truncate_to_width(&text, visible_width);
+    // The render line below prepends up to `HORIZONTAL_PADDING` cells of
+    // left padding, so the truncation budget is `area.width - padding`. In
+    // very narrow panes (`area.width < HORIZONTAL_PADDING + 1`) we'd
+    // otherwise pass 0 to `truncate_to_width` and get an empty string,
+    // making the indicator a row of pure padding. Floor the budget at 1
+    // whenever there's at least 1 cell available so the truncation marker
+    // is always visible — `truncate_to_width(_, 1)` emits a bare `…`.
+    let budget = if area.width == 0 {
+        0
+    } else {
+        (area.width as usize).saturating_sub(HORIZONTAL_PADDING as usize).max(1)
+    };
+    let truncated = truncate_to_width(&text, budget);
     // Clamp the left padding to whatever room is left after the truncated
-    // body. In very narrow terminals (`area.width < HORIZONTAL_PADDING`) we
-    // skip padding entirely so the indicator still shows at least one
-    // visible cell (the ellipsis from `truncate_to_width`) instead of
-    // rendering as a row of pure padding.
+    // body — in very narrow terminals padding shrinks to 0 so the marker
+    // stays visible.
     let prefix_width = (area.width as usize).saturating_sub(
         unicode_width::UnicodeWidthStr::width(truncated.as_str()),
     );

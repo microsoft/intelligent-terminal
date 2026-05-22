@@ -1311,20 +1311,31 @@ pub struct QueuedPrompt {
 }
 
 impl QueuedPrompt {
-    /// One-line preview for the "Queued (N): …" indicator. Trims to N
-    /// chars and collapses whitespace so multi-line drafts stay on one row.
+    /// One-line preview for the transient hint shown after an Esc-dequeue.
+    /// Collapses internal whitespace and truncates at `max_chars` characters
+    /// with an ellipsis. Char-based (not cell-based) because the transient
+    /// hint row is rendered with simple `Paragraph` clipping and doesn't
+    /// need the precise width math `ui/queued_hint` performs.
     pub fn preview(&self, max_chars: usize) -> String {
-        let collapsed: String = self
-            .text
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
+        let collapsed = self.collapsed_text();
         if collapsed.chars().count() <= max_chars {
             collapsed
         } else {
             let taken: String = collapsed.chars().take(max_chars.saturating_sub(1)).collect();
             format!("{}…", taken)
         }
+    }
+
+    /// Internal whitespace-collapsed text (no truncation, no ellipsis).
+    /// `ui/queued_hint` consumes this so it can do one single width-aware
+    /// truncation pass — combining the char-count truncation here with the
+    /// cell-width truncation there could otherwise yield a doubled `…`
+    /// when both clips fire on the same string.
+    pub fn collapsed_text(&self) -> String {
+        self.text
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 
@@ -5113,6 +5124,13 @@ impl App {
     /// drain the right queue.
     pub fn drain_pending_prompts(&mut self) {
         if self.state != ConnectionState::Connected {
+            return;
+        }
+        // Cheap early-out: avoid the keys-clone + sort allocation when no
+        // tab has anything to dispatch. This path runs after every UI tick
+        // so the common "agent idle, nothing queued" case stays allocation-
+        // free. (Suggested by Copilot review round 6.)
+        if !self.tab_sessions.values().any(|t| !t.pending_prompts.is_empty()) {
             return;
         }
         // Snapshot the tab keys so the inner mutable borrow is unambiguous.
