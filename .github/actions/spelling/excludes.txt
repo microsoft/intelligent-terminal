@@ -15,6 +15,7 @@
 (?:^|/|\b)requirements(?:-dev|-doc|-test|)\.txt$
 ignore$
 Resources/(?!en)
+^tools/wta/locales/(?!en-US\.yml)
 [^/]\.vsdx$
 -lock\.yaml$
 \.a$

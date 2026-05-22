@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Chào mừng bạn đến Intelligent Terminal!"
-setup.title.agent_missing: "Không tìm thấy tác tử"
-setup.title.agent_error: "Kết nối tới tác tử thất bại"
-setup.title.switch_agent: "Chuyển tác tử"
+setup.title.first_run: "Chào mừng bạn đến với Đầu cuối thông minh!"
+setup.title.agent_missing: "Không tìm thấy tác nhân AI"
+setup.title.agent_error: "Kết nối tới tác nhân AI thất bại"
+setup.title.switch_agent: "Chuyển tác nhân AI"

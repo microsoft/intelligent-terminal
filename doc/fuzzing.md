@@ -9,8 +9,8 @@ OneFuzz for continuous coverage.
 
 | Project | Path | Targets |
 |---------|------|---------|
-| **WtcliFuzzer** | `src/tools/wtcli/ft_fuzzer/` | `TranslateKeys`, `BuildSendEventJson`, `MatchesEventFilter` |
-| **ProtocolFuzzer** | `src/cascadia/TerminalProtocol/ft_fuzzer/` | `ClassifySendEvent`, `ParseSplitDirection`, `ClassifyPaneOutputSource`, `ValidateQuickPickChoices`, `ValidateSettingsJson` |
+| **WtcliFuzzer** | `src/tools/wtcli/ft_fuzzer/` | `BuildSendEventJson`, `MatchesEventFilter` |
+| **ProtocolFuzzer** | `src/cascadia/TerminalProtocol/ft_fuzzer/` | `ClassifySendEvent`, `ParseSplitDirection`, `ClassifyPaneOutputSource` |
 | **OpenConsoleFuzzer** | `src/host/ft_fuzzer/` | `WriteCharsLegacy` (original host fuzzer) |
 
 Each project contains:

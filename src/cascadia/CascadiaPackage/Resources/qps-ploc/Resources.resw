@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -169,7 +169,7 @@
     <value>Τĥз Йéщ Ẃįńđôẃѕ Тéѓmĩиâļ !!! !!! !</value>
   </data>
   <data name="AppDescriptionDev" xml:space="preserve">
-    <value>The Windows Terminal, but Unofficial</value>
+    <value>AI-native terminal — agents can understand, fix, and automate terminal workflows</value>
     <comment>{Locked} The dev build will never be seen in multiple languages</comment>
   </data>
   <data name="AppDescriptionCan" xml:space="preserve">
@@ -180,7 +180,7 @@
     <value>Щΐňδόŵѕ Ŧęřмĭŉäℓ ẅîťħ à φřеνίëẃ θƒ џрсøмΐŉğ ƒĕāŧųřэś !!! !!! !!! !!! !!! </value>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem_Dev" xml:space="preserve">
-    <value>Open in Terminal (&amp;Dev)</value>
+    <value>Open in Intelligent Terminal</value>
     <comment>{Locked} The dev build will never be seen in multiple languages</comment>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem_Canary" xml:space="preserve">

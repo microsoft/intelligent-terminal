@@ -217,7 +217,6 @@
                 </ToolTipService.ToolTip>
                 <Image Width="16"
                        Height="16"
-                       Opacity="0.7"
                        Stretch="Uniform">
                     <Image.Source>
                         <SvgImageSource UriSource="ms-appx:///AgentIcons/session.svg"

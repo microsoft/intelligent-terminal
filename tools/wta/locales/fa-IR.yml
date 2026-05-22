@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "به Intelligent Terminal خوش آمدید!"
-setup.title.agent_missing: "عامل یافت نشد"
-setup.title.agent_error: "اتصال به عامل ناموفق بود"
-setup.title.switch_agent: "تغییر عامل"
+setup.title.first_run: "به پایانه هوشمند خوش آمدید!"
+setup.title.agent_missing: "عامل هوش مصنوعی یافت نشد"
+setup.title.agent_error: "اتصال به عامل هوش مصنوعی ناموفق بود"
+setup.title.switch_agent: "عامل هوش مصنوعی را تغییر دهید"

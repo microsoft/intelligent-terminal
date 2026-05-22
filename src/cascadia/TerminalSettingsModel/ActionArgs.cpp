@@ -694,6 +694,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             return RS_switchable_(L"ToggleCommandPaletteCommandLineModeCommandKey");
         }
+        if (LaunchMode() == CommandPaletteLaunchMode::AgentDelegation)
+        {
+            return RS_switchable_(L"ToggleCommandPaletteAgentDelegationModeCommandKey");
+        }
         return RS_switchable_(L"ToggleCommandPaletteCommandKey");
     }
 

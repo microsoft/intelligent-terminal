@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Vitajte v Intelligent Terminal!"
+setup.title.first_run: "Vitajte v aplikácii Inteligentný Terminál!"
 setup.title.agent_missing: "Agenta sa nepodarilo nájsť"
 setup.title.agent_error: "Pripojenie k agentovi zlyhalo"
-setup.title.switch_agent: "Prepnúť agenta"
+setup.title.switch_agent: "Prepnite agenta"

@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Intelligent Terminal へようこそ"
+setup.title.first_run: "インテリジェント ターミナル へようこそ"
 setup.title.agent_missing: "エージェントが見つかりません"
 setup.title.agent_error: "エージェントへの接続に失敗しました"
 setup.title.switch_agent: "エージェントを切り替える"

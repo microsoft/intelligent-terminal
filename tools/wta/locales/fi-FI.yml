@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Tervetuloa Intelligent Terminaliin!"
+setup.title.first_run: "Tervetuloa Älykäs Pääte -sovellukseen!"
 setup.title.agent_missing: "Agenttia ei löytynyt"
 setup.title.agent_error: "Yhteys agenttiin epäonnistui"
 setup.title.switch_agent: "Vaihda agentti"

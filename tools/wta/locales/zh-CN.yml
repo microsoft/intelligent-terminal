@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "欢迎使用 Intelligent Terminal！"
+setup.title.first_run: "欢迎使用 智能终端！"
 setup.title.agent_missing: "未找到智能体"
 setup.title.agent_error: "智能体连接失败"
 setup.title.switch_agent: "切换智能体"

@@ -6,6 +6,7 @@
 #include <winrt/Microsoft.Terminal.Protocol.h>
 
 #include "Formatting.h"
+#include "wtcli_functions.h"
 
 #include <CLI/CLI.hpp>
 
@@ -749,30 +750,15 @@ int main()
         try
         {
             Json::Value evt;
-            evt["type"] = "event";
-            evt["method"] = "agent_event";
-
-            Json::Value params;
-            if (!sendEventJson.empty())
+            auto resolvedSessionId = !sendEventPaneTarget.empty()
+                ? sendEventPaneTarget
+                : GuidToString(ResolveSessionId(server, ""));
+            if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, evt))
             {
-                Json::CharReaderBuilder rb;
-                std::string errs;
-                std::istringstream ss(sendEventJson);
-                if (!Json::parseFromStream(rb, ss, &params, &errs) || !params.isObject())
-                {
-                    fprintf(stderr, "Invalid JSON: expected an object\n");
-                    exitCode = 1;
-                    return;
-                }
+                fprintf(stderr, "Invalid JSON for --json: value must be a JSON object (e.g. '{\"key\":\"val\"}')\n");
+                exitCode = 1;
+                return;
             }
-
-            params["event"] = sendEventType;
-            if (!sendEventPaneTarget.empty())
-                params["session_id"] = sendEventPaneTarget;
-            else
-                params["session_id"] = GuidToString(ResolveSessionId(server, ""));
-
-            evt["params"] = params;
 
             Json::StreamWriterBuilder wb;
             wb["indentation"] = "";
@@ -808,38 +794,10 @@ int main()
         auto callback = winrt::make<EventCallback>([&](winrt::hstring const& eventJson) {
             auto eventUtf8 = winrt::to_string(eventJson);
 
-            // Optionally filter by pane_id and/or event type
-            if (!listenTarget.empty() || !listenEventFilter.empty())
+            // Optionally filter by session_id and/or event type
+            if (!wtcli::MatchesEventFilter(eventUtf8, listenTarget, listenEventFilter))
             {
-                Json::Value ev;
-                Json::CharReaderBuilder rb;
-                std::string errs;
-                std::istringstream ss(eventUtf8);
-                if (Json::parseFromStream(rb, ss, &ev, &errs))
-                {
-                    if (!listenTarget.empty())
-                    {
-                        auto sessionId = ev["params"].get("session_id", "").asString();
-                        if (sessionId != listenTarget)
-                            return;
-                    }
-
-                    if (!listenEventFilter.empty())
-                    {
-                        auto eventType = ev["params"].get("event", "").asString();
-                        // Support trailing wildcard: "agent.*" matches "agent.task.started"
-                        if (listenEventFilter.back() == '*')
-                        {
-                            auto prefix = listenEventFilter.substr(0, listenEventFilter.size() - 1);
-                            if (eventType.substr(0, prefix.size()) != prefix)
-                                return;
-                        }
-                        else if (eventType != listenEventFilter)
-                        {
-                            return;
-                        }
-                    }
-                }
+                return;
             }
 
             printf("%s\n", eventUtf8.c_str());

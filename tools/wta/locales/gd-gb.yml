@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Fàilte gu Intelligent Terminal!"
-setup.title.agent_missing: "Cha deach an neach-gníomha a lorg"
-setup.title.agent_error: "Dh’fhàillig ceangal an neach-ghníomha"
-setup.title.switch_agent: "Atharraich neach-gníomha"
+setup.title.first_run: "Fàilte gu Tèirmineal Glic!"
+setup.title.agent_missing: "Cha deach an t-àidseant a lorg"
+setup.title.agent_error: "Dh’fhàillig ceangal ris an àidseant"
+setup.title.switch_agent: "Atharraich àidseant"

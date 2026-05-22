@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Laipni lūdzam Intelligent Terminal!"
+setup.title.first_run: "Laipni lūdzam lietotnē „Viedais Terminālis“!"
 setup.title.agent_missing: "Aģents nav atrasts"
 setup.title.agent_error: "Neizdevās izveidot savienojumu ar aģentu"
-setup.title.switch_agent: "Mainīt aģentu"
+setup.title.switch_agent: "Maini aģentu"

@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Welkom by Intelligent Terminal!"
+setup.title.first_run: "Welkom by Intelligente Terminaal!"
 setup.title.agent_missing: "Agent nie gevind nie"
 setup.title.agent_error: "Agentverbinding het misluk"
 setup.title.switch_agent: "Wissel agent"

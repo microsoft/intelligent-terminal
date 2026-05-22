@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Sveiki atvykę į Intelligent Terminal!"
+setup.title.first_run: "Sveiki atvykę į „Išmanusis Terminalas“ programą!"
 setup.title.agent_missing: "Agentas nerastas"
 setup.title.agent_error: "Nepavyko prisijungti prie agento"
-setup.title.switch_agent: "Pakeisti agentą"
+setup.title.switch_agent: "Pakeiskite agentą"

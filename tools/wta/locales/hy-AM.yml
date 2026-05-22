@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Բարի գալուստ Intelligent Terminal!"
-setup.title.agent_missing: "Գործակալը չի գտնվել"
-setup.title.agent_error: "Գործակալին միանալը ձախողվել է"
-setup.title.switch_agent: "Փոխել գործակալը"
+setup.title.first_run: "Բարի գալուստ «Խելացի տերմինալ»!"
+setup.title.agent_missing: "Ագենտը չի գտնվել"
+setup.title.agent_error: "Ագենտին միանալը ձախողվել է"
+setup.title.switch_agent: "Փոխել ագենտը"

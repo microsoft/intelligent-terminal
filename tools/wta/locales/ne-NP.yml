@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Intelligent Terminal मा स्वागत छ!"
+setup.title.first_run: "इन्टेलिजेन्ट टर्मिनल मा स्वागत छ!"
 setup.title.agent_missing: "एजेन्ट भेटिएन"
 setup.title.agent_error: "एजेन्ट जडान विफल भयो"
 setup.title.switch_agent: "एजेन्ट बदल्नुहोस्"

@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Tere tulemast Intelligent Terminali!"
+setup.title.first_run: "Tere tulemast rakendusse „Nutikas Terminal“!"
 setup.title.agent_missing: "Agenti ei leitud"
 setup.title.agent_error: "Agendiga ühenduse loomine nurjus"
 setup.title.switch_agent: "Vaheta agenti"

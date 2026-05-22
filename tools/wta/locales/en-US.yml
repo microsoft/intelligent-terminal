@@ -1,6 +1,9 @@
-# Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Welcome to Intelligent Terminal!"
-setup.title.agent_missing: "Agent not found"
-setup.title.agent_error: "Agent connection failed"
-setup.title.switch_agent: "Switch agent"
+# ── File-level locks ─────────────────────────────────────────────────────────
+# {Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name
+# "Agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human representative or proxy
+
+# ── Setup screen titles ─────────────────────────────────────────────────────
+setup.title.first_run: "Welcome to Intelligent Terminal!"  # Title shown on first launch setup screen
+setup.title.agent_missing: "Agent not found"  # Title when the configured AI agent binary cannot be located on disk
+setup.title.agent_error: "Agent connection failed"  # Title when the AI agent process fails to start or connect
+setup.title.switch_agent: "Switch agent"  # Button label — verb command to change which AI agent is active

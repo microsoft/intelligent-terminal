@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Selamat datang di Intelligent Terminal!"
-setup.title.agent_missing: "Agen tidak ditemukan"
-setup.title.agent_error: "Koneksi agen gagal"
-setup.title.switch_agent: "Ganti agen"
+setup.title.first_run: "Selamat datang di Terminal Cerdas!"
+setup.title.agent_missing: "Agen AI tidak ditemukan"
+setup.title.agent_error: "Koneksi ke agen AI gagal"
+setup.title.switch_agent: "Ganti agen AI"

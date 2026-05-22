@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "សូមស្វាគម្ន៍មកកាន់ Intelligent Terminal!"
-setup.title.agent_missing: "រកមិនឃើញភ្នាក់ងារ"
-setup.title.agent_error: "ការតភ្ជាប់ទៅភ្នាក់ងារបានបរាជ័យ"
-setup.title.switch_agent: "ប្តូរភ្នាក់ងារ"
+setup.title.first_run: "សូមស្វាគម្ន៍មកកាន់ ស្ថានីយឆ្លាតវៃ!"
+setup.title.agent_missing: "រកមិនឃើញ AI អេជេនต์"
+setup.title.agent_error: "ការតភ្ជាប់ទៅ AI អេជេនต์ បានបរាជ័យ"
+setup.title.switch_agent: "ប្តូរ AI អេជេនต์"

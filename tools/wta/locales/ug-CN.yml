@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Intelligent Terminal هە خوش كەلدىڭىز!"
-setup.title.agent_missing: "ۋەكىل تېپىلمىدى"
-setup.title.agent_error: "ۋەكىل بىلەن باغلىنىش مەغلۇب بولدى"
-setup.title.switch_agent: "ۋەكىلنى الماشتۇرۇش"
+setup.title.first_run: "ئەقلىي تېرمىنالغا خۇش كەلدىڭىز!"
+setup.title.agent_missing: "AI ئاگېنتى تېپىلمىدى"
+setup.title.agent_error: "AI ئاگېنتىغا ئۇلىنىش مەغلۇپ بولدى"
+setup.title.switch_agent: "AI ئاگېنتىنى ئالماشتۇرۇڭ"

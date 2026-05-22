@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Velkomin í Intelligent Terminal!"
-setup.title.agent_missing: "Agent fannst ekki"
-setup.title.agent_error: "Tenging við agent mistókst"
-setup.title.switch_agent: "Skipta um agent"
+setup.title.first_run: "Velkomin í Snjallútstöð!"
+setup.title.agent_missing: "AI-agent fannst ekki"
+setup.title.agent_error: "Tenging við AI-agent mistókst"
+setup.title.switch_agent: "Skipta um AI-agent"

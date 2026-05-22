@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Intelligent Terminal에 오신 것을 환영합니다!"
+setup.title.first_run: "지능형 터미널에 오신 것을 환영합니다!"
 setup.title.agent_missing: "에이전트를 찾을 수 없음"
 setup.title.agent_error: "에이전트 연결 실패"
-setup.title.switch_agent: "에이전트 전환"
+setup.title.switch_agent: "에이전트 변경"

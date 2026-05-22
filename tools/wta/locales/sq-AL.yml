@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Mirë se vini në Intelligent Terminal!"
+setup.title.first_run: "Mirë se vini në Terminalin inteligjent!"
 setup.title.agent_missing: "Agjenti nuk u gjet"
 setup.title.agent_error: "Lidhja me agjentin dështoi"
 setup.title.switch_agent: "Ndrysho agjentin"

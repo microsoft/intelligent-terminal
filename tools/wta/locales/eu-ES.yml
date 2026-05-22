@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Ongi etorri Intelligent Terminal-era!"
+setup.title.first_run: "Ongi etorri Terminal Adimenduna-era!"
 setup.title.agent_missing: "Agentea ez da aurkitu"
 setup.title.agent_error: "Agentearekin konektatzeak huts egin du"
 setup.title.switch_agent: "Aldatu agentea"

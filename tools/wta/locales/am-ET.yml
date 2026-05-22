@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "እንኳን ወደ Intelligent Terminal በደህና መጡ!"
+setup.title.first_run: "እንኳን ወደ ብልህ ተርሚናል በደህና መጡ!"
 setup.title.agent_missing: "ኤጅንት አልተገኘም"
 setup.title.agent_error: "ኤጅንት ግንኙነት አልተሳካም"
 setup.title.switch_agent: "ኤጅንትን ቀይር"

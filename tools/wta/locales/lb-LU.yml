@@ -1,5 +1,5 @@
 # Setup screen titles
-setup.title.first_run: "Wëllkomm am Intelligent Terminal!"
+setup.title.first_run: "Wëllkomm am Intelligenten Terminal!"
 setup.title.agent_missing: "Agent net fonnt"
 setup.title.agent_error: "Verbindung mam Agent ass gescheitert"
 setup.title.switch_agent: "Agent wiesselen"
