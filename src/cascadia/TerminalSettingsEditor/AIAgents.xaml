@@ -188,14 +188,13 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
                                 <TextBlock Text="GitHub Copilot" TextWrapping="Wrap" />
-                                <!--  Subtitle always rendered (no Visibility binding) so the row
-                                      height stays uniform across CLIs even when the subtitle is
-                                      empty (fully-installed state). MinHeight reserves one
-                                      caption line.  -->
+                                <!--  Subtitle collapses to zero height when empty (no MinHeight
+                                      reservation), so the agent name stays vertically centered
+                                      in the row in the typical clean-install state.  -->
                                 <TextBlock Text="{x:Bind ViewModel.CopilotHooksSubtitle, Mode=OneWay}"
+                                           Visibility="{x:Bind ViewModel.ShowCopilotHooksSubtitle, Mode=OneWay}"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Opacity="0.6"
-                                           MinHeight="16"
                                            TextWrapping="Wrap" />
                             </StackPanel>
                             <Button Grid.Column="1"
@@ -216,9 +215,9 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
                                 <TextBlock Text="Claude Code" TextWrapping="Wrap" />
                                 <TextBlock Text="{x:Bind ViewModel.ClaudeHooksSubtitle, Mode=OneWay}"
+                                           Visibility="{x:Bind ViewModel.ShowClaudeHooksSubtitle, Mode=OneWay}"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Opacity="0.6"
-                                           MinHeight="16"
                                            TextWrapping="Wrap" />
                             </StackPanel>
                             <Button Grid.Column="1"
@@ -239,9 +238,9 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
                                 <TextBlock Text="Gemini CLI" TextWrapping="Wrap" />
                                 <TextBlock Text="{x:Bind ViewModel.GeminiHooksSubtitle, Mode=OneWay}"
+                                           Visibility="{x:Bind ViewModel.ShowGeminiHooksSubtitle, Mode=OneWay}"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Opacity="0.6"
-                                           MinHeight="16"
                                            TextWrapping="Wrap" />
                             </StackPanel>
                             <Button Grid.Column="1"

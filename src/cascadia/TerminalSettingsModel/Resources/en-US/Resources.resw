@@ -466,6 +466,9 @@
   <data name="ToggleCommandPaletteCommandLineModeCommandKey" xml:space="preserve">
     <value>Toggle command palette in command line mode</value>
   </data>
+  <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
+    <value>Toggle command palette in agent delegation mode</value>
+  </data>
   <data name="ToggleFocusModeCommandKey" xml:space="preserve">
     <value>Toggle focus mode</value>
     <comment>"Focus mode" is a mode with minimal UI elements, for a distraction-free experience</comment>
@@ -737,6 +740,10 @@
   <data name="OpenAboutCommandKey" xml:space="preserve">
     <value>Open about dialog</value>
     <comment>This will open the "about" dialog, to display version info and other documentation</comment>
+  </data>
+  <data name="BugReportCommandKey" xml:space="preserve">
+    <value>Report a bug (collect logs)</value>
+    <comment>Command palette entry that collects diagnostic log files into a zip archive on the user's Desktop, for attaching to a bug report.</comment>
   </data>
   <data name="SaveSnippetNamePrefix" xml:space="preserve">
     <value>Save Snippet</value>

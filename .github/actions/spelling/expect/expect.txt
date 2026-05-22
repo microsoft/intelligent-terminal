@@ -528,6 +528,7 @@ ETW
 EUDC
 eventing
 evflags
+EOFs
 execd
 executionengine
 exemain
@@ -1641,6 +1642,7 @@ tdbuild
 TDP
 Teb
 Techo
+taskkill
 tellp
 teraflop
 terminalcore
@@ -2016,6 +2018,7 @@ testname
 transitioning
 unk
 unparseable
+unregisters
 Virt
 VMs
 webpage

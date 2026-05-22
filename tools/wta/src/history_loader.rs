@@ -43,38 +43,6 @@ use crate::agent_sessions::{AgentSession, AgentStatus, CliSource};
 const MAX_PER_CLI: usize = 50;
 const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 
-/// Fingerprint of wta's embedded auto-fix prompt template
-/// (`tools/wta/prompts/auto-fix.md` first sentence). Whenever wta opens its
-/// internal headless Copilot ACP connection for autofix, Copilot CLI
-/// persists a real `~/.copilot/session-state/<acp-uuid>/{workspace.yaml,
-/// events.jsonl}` for that ACP session. The first prompt in
-/// `events.jsonl` is always the autofix template, which begins with this
-/// fixed sentence — none of a user's hand-typed Copilot prompts would
-/// start that way. So we use it as a fingerprint to recognise (and
-/// hide) wta's own autofix sessions in F2's Historical list.
-///
-/// Note: if a user customises `~/.copilot/prompts/auto-fix.md` to begin
-/// differently, their phantom rows won't be filtered. Acceptable
-/// trade-off; restoring the default would re-enable filtering.
-const AUTOFIX_PROMPT_FINGERPRINT: &str = "A command failed in the terminal. Look at the output below";
-
-/// Returns true iff `events.jsonl` of a Copilot session-state dir
-/// looks like wta's own autofix ACP session (its first prompt matches
-/// the autofix-template fingerprint). We only need to peek at the head
-/// of the file because the first prompt is written within the first
-/// few KB.
-fn is_wta_autofix_copilot_session(events_jsonl: &Path) -> bool {
-    use std::io::Read;
-    let Ok(mut f) = fs::File::open(events_jsonl) else { return false };
-    let mut buf = [0u8; 8192];
-    let n = match f.read(&mut buf) {
-        Ok(n) => n,
-        Err(_) => return false,
-    };
-    let head = String::from_utf8_lossy(&buf[..n]);
-    head.contains(AUTOFIX_PROMPT_FINGERPRINT)
-}
-
 pub fn load_all() -> Vec<AgentSession> {
     let mut out = Vec::new();
     let Some(home) = home_dir() else { return out };
@@ -104,13 +72,6 @@ pub fn lookup_title_for_session(cli: CliSource, key: &str) -> Option<String> {
 fn copilot_title_for_key(home: &Path, key: &str) -> Option<String> {
     let dir = home.join(".copilot").join("session-state").join(key);
     let workspace = dir.join("workspace.yaml");
-    // Defensive: also skip title lookup for wta-internal autofix sessions.
-    // Normally these don't exist as live keys (the round-15 routing
-    // filter blocks them), but a stale lookup must still be a no-op.
-    let events = dir.join("events.jsonl");
-    if events.is_file() && is_wta_autofix_copilot_session(&events) {
-        return None;
-    }
     let yaml = fs::read_to_string(&workspace).ok()?;
     parse_simple_yaml(&yaml, "summary").filter(|s| !s.is_empty())
         .or_else(|| parse_simple_yaml(&yaml, "name").filter(|s| !s.is_empty()))
@@ -191,22 +152,6 @@ fn load_copilot(home: &Path) -> Vec<AgentSession> {
             .map(|m| m.is_file() && m.len() > 0)
             .unwrap_or(false);
         if !has_real_activity { continue; }
-
-        // Round 16: skip wta's own autofix ACP sessions. When wta opens
-        // its headless Copilot ACP connection, Copilot CLI persists the
-        // session under ~/.copilot/session-state/<uuid>/ exactly like a
-        // user-launched Copilot session — and on the next wta startup
-        // history_loader would surface it in F2 as a "phantom"
-        // <uuid8>-copilot-… Historical row that the user never created.
-        // Filter by fingerprint of our embedded autofix prompt template.
-        if is_wta_autofix_copilot_session(&events) {
-            tracing::debug!(
-                target: "history_loader",
-                key = %id,
-                "skipping wta-internal autofix Copilot session-state dir"
-            );
-            continue;
-        }
 
         let last_activity = events.metadata()
             .and_then(|m| m.modified()).ok()
@@ -385,30 +330,180 @@ fn short_id(id: &str, cli: &str) -> String {
 }
 
 /// Extract a value from a flat key:value YAML file. Strings may be unquoted
-/// (Copilot's workspace.yaml) or quoted. Does NOT support nested structures.
+/// (Copilot's workspace.yaml) or quoted. Supports block scalars (`|`, `|-`,
+/// `|+`, `>`, `>-`, `>+`) for multi-line values — Copilot writes long
+/// `summary:` fields this way, and a naive line read would otherwise
+/// surface the literal `|-` indicator instead of the prose. Does NOT
+/// support nested mapping structures.
 pub(crate) fn parse_simple_yaml(text: &str, key: &str) -> Option<String> {
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix(key) {
-            // Reject prefix matches like key="summa" against "summary: ...".
-            // Allow only whitespace or `:` immediately after the key.
-            let next = rest.chars().next();
-            if !matches!(next, Some(':') | Some(' ') | Some('\t') | None) {
-                continue;
-            }
-            let rest = rest.trim_start();
-            if let Some(after_colon) = rest.strip_prefix(':') {
-                let mut v = after_colon.trim().to_string();
-                if (v.starts_with('"') && v.ends_with('"') && v.len() >= 2)
-                    || (v.starts_with('\'') && v.ends_with('\'') && v.len() >= 2)
-                {
-                    v = v[1..v.len() - 1].to_string();
-                }
-                return Some(v);
-            }
+    let mut lines = text.lines().enumerate().peekable();
+    while let Some((_, line)) = lines.next() {
+        let key_indent = line.len() - line.trim_start().len();
+        let trimmed = &line[key_indent..];
+        let Some(rest) = trimmed.strip_prefix(key) else { continue };
+        // Reject prefix matches like key="summa" against "summary: ...".
+        // Allow only whitespace or `:` immediately after the key.
+        let next = rest.chars().next();
+        if !matches!(next, Some(':') | Some(' ') | Some('\t') | None) {
+            continue;
         }
+        let rest = rest.trim_start();
+        let Some(after_colon) = rest.strip_prefix(':') else { continue };
+        let inline = after_colon.trim();
+
+        // Block scalar: `|`, `|-`, `|+`, `>`, `>-`, `>+`. Anything trailing
+        // (a comment after the indicator) is tolerated but ignored.
+        if let Some(style) = block_scalar_style(inline) {
+            return Some(read_block_scalar(&mut lines, key_indent, style));
+        }
+
+        let mut v = inline.to_string();
+        if (v.starts_with('"') && v.ends_with('"') && v.len() >= 2)
+            || (v.starts_with('\'') && v.ends_with('\'') && v.len() >= 2)
+        {
+            v = v[1..v.len() - 1].to_string();
+        }
+        return Some(v);
     }
     None
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum BlockScalarStyle {
+    /// `|` — keep newlines, default chomping (single trailing newline kept).
+    LiteralClip,
+    /// `|-` — keep newlines, strip trailing newlines.
+    LiteralStrip,
+    /// `|+` — keep newlines, keep all trailing newlines.
+    LiteralKeep,
+    /// `>` — fold newlines to spaces, default chomping.
+    FoldedClip,
+    /// `>-` — fold newlines to spaces, strip trailing newlines.
+    FoldedStrip,
+    /// `>+` — fold newlines to spaces, keep all trailing newlines.
+    FoldedKeep,
+}
+
+fn block_scalar_style(inline: &str) -> Option<BlockScalarStyle> {
+    // Strip a trailing `#`-comment if present so `summary: |- # note` parses.
+    let head = inline.split('#').next().unwrap_or("").trim_end();
+    match head {
+        "|"  => Some(BlockScalarStyle::LiteralClip),
+        "|-" => Some(BlockScalarStyle::LiteralStrip),
+        "|+" => Some(BlockScalarStyle::LiteralKeep),
+        ">"  => Some(BlockScalarStyle::FoldedClip),
+        ">-" => Some(BlockScalarStyle::FoldedStrip),
+        ">+" => Some(BlockScalarStyle::FoldedKeep),
+        _ => None,
+    }
+}
+
+/// Read content lines of a YAML block scalar. Consumes lines from `iter`
+/// up to (but not including) the first line whose indent is `<= key_indent`
+/// and which is non-blank — that line belongs to the next mapping entry
+/// and must not be eaten. Blank lines inside the block are preserved.
+///
+/// Folded styles (`>`) collapse consecutive non-empty content lines into a
+/// single space-joined run; blank lines remain as paragraph separators
+/// (rendered as `\n`). Literal styles (`|`) keep every line as-is.
+/// Chomping (`-` strip / `+` keep / default clip) controls trailing
+/// newlines, matching YAML 1.2 §8.1.1.
+fn read_block_scalar<'a, I>(
+    iter:       &mut std::iter::Peekable<I>,
+    key_indent: usize,
+    style:      BlockScalarStyle,
+) -> String
+where
+    I: Iterator<Item = (usize, &'a str)>,
+{
+    let mut content_indent: Option<usize> = None;
+    let mut raw: Vec<String> = Vec::new();
+
+    while let Some(&(_, line)) = iter.peek() {
+        let trimmed = line.trim_start();
+        let indent  = line.len() - trimmed.len();
+
+        if trimmed.is_empty() {
+            // Blank lines belong to the block regardless of indent.
+            raw.push(String::new());
+            iter.next();
+            continue;
+        }
+        if indent <= key_indent {
+            // Dedented to the parent mapping level — block ends here.
+            break;
+        }
+        // First non-blank line fixes the block's content indent. All
+        // subsequent lines indent ≥ this will be stripped of `content_indent`
+        // leading spaces; lines that happen to be more indented keep the
+        // extra indent (matching YAML semantics).
+        let ci = *content_indent.get_or_insert(indent);
+        // Defensive: if a later line is *less* indented than the first
+        // content line but still > key_indent, just strip what we can.
+        let strip = ci.min(indent);
+        raw.push(line[strip..].to_string());
+        iter.next();
+    }
+
+    join_block(&raw, style)
+}
+
+fn join_block(raw: &[String], style: BlockScalarStyle) -> String {
+    use BlockScalarStyle::*;
+    let folded = matches!(style, FoldedClip | FoldedStrip | FoldedKeep);
+    let chomp_strip = matches!(style, LiteralStrip | FoldedStrip);
+    let chomp_keep  = matches!(style, LiteralKeep  | FoldedKeep);
+
+    let mut out = String::new();
+    if folded {
+        // Group consecutive non-empty lines and join them with a single
+        // space; blank lines become `\n` paragraph separators.
+        let mut pending_blank = false;
+        let mut wrote_run = false;
+        for line in raw {
+            if line.is_empty() {
+                pending_blank = true;
+                continue;
+            }
+            if pending_blank {
+                out.push('\n');
+                pending_blank = false;
+                wrote_run = false;
+            }
+            if wrote_run {
+                out.push(' ');
+            }
+            out.push_str(line);
+            wrote_run = true;
+        }
+    } else {
+        for (i, line) in raw.iter().enumerate() {
+            if i > 0 { out.push('\n'); }
+            out.push_str(line);
+        }
+    }
+
+    // Chomping. YAML's default (clip) keeps a single trailing newline.
+    // `-` strips all; `+` keeps all. For our title-extraction use case
+    // we always trim trailing whitespace at the call site, but honor
+    // the semantics so the function is correct for other callers.
+    if chomp_strip {
+        while out.ends_with('\n') { out.pop(); }
+    } else if !chomp_keep {
+        while out.ends_with("\n\n") { out.pop(); }
+        if !out.ends_with('\n') && !out.is_empty() {
+            // clip keeps exactly one trailing \n iff the block had any content;
+            // a fully-empty block stays empty.
+            out.push('\n');
+        }
+    }
+    // Trim trailing whitespace from the final value: callers (title
+    // extraction) treat the result as a single-line label, and trailing
+    // newlines/spaces would render as awkward gaps after the prose.
+    while matches!(out.chars().last(), Some(c) if c.is_whitespace()) {
+        out.pop();
+    }
+    out
 }
 
 /// Decode Claude's drive-dash project directory back into a CWD path.
@@ -587,16 +682,6 @@ mod tests {
     }
 
     #[test]
-    fn yaml_extraction_handles_unquoted_and_quoted_values() {
-        let text = "id: abc-123\ncwd: C:\\Users\\foo\nname: 'My session'\nsummary: \"Bug fix #42\"\n";
-        assert_eq!(parse_simple_yaml(text, "id").as_deref(),      Some("abc-123"));
-        assert_eq!(parse_simple_yaml(text, "cwd").as_deref(),     Some("C:\\Users\\foo"));
-        assert_eq!(parse_simple_yaml(text, "name").as_deref(),    Some("My session"));
-        assert_eq!(parse_simple_yaml(text, "summary").as_deref(), Some("Bug fix #42"));
-        assert_eq!(parse_simple_yaml(text, "missing"),            None);
-    }
-
-    #[test]
     fn yaml_only_matches_full_keys_not_substrings() {
         // Robustness: a line `summary_count: 0` must not match key `summary`.
         let text = "summary: hello\nsummary_count: 0\n";
@@ -604,6 +689,77 @@ mod tests {
         assert_eq!(parse_simple_yaml(text, "summary_count").as_deref(), Some("0"));
         // Querying a non-existent prefix must not partial-match a longer key.
         assert_eq!(parse_simple_yaml(text, "summa"), None);
+    }
+
+    #[test]
+    fn yaml_block_scalar_literal_strip_returns_joined_content() {
+        // Copilot writes long `summary:` fields as `|-` block scalars when
+        // the prose contains line breaks. Before the parser learned about
+        // block scalars, this regressed to a literal `|-` title.
+        let text = "id: x\nsummary: |-\n  A command failed.\n  Diagnose the error.\nname: short\n";
+        assert_eq!(
+            parse_simple_yaml(text, "summary").as_deref(),
+            Some("A command failed.\nDiagnose the error.")
+        );
+        // Adjacent keys after the block scalar are still discoverable.
+        assert_eq!(parse_simple_yaml(text, "name").as_deref(), Some("short"));
+    }
+
+    #[test]
+    fn yaml_block_scalar_literal_default_clip_strips_trailing_blank() {
+        // `|` (no chomp indicator) is clip — keep a single trailing newline
+        // for the raw value, but title-extraction trims trailing whitespace
+        // so the visible string ends at the last non-blank char.
+        let text = "summary: |\n  one\n  two\n\nname: x\n";
+        assert_eq!(parse_simple_yaml(text, "summary").as_deref(), Some("one\ntwo"));
+    }
+
+    #[test]
+    fn yaml_block_scalar_folded_collapses_lines_to_spaces() {
+        // `>` folds line breaks within a paragraph into single spaces.
+        let text = "summary: >\n  hello there\n  world\nname: x\n";
+        assert_eq!(
+            parse_simple_yaml(text, "summary").as_deref(),
+            Some("hello there world")
+        );
+    }
+
+    #[test]
+    fn yaml_block_scalar_terminates_at_dedent() {
+        // The block must end at the first line that returns to the parent
+        // indent level — otherwise we would consume the next mapping key
+        // (`name`) as part of the block.
+        let text = "summary: |-\n  body line\nname: tail\n";
+        assert_eq!(parse_simple_yaml(text, "summary").as_deref(), Some("body line"));
+        assert_eq!(parse_simple_yaml(text, "name").as_deref(),    Some("tail"));
+    }
+
+    #[test]
+    fn yaml_block_scalar_handles_blank_line_inside_block() {
+        // Blank lines belong to the block (folded styles use them as
+        // paragraph breaks; literal styles preserve them verbatim).
+        let text = "summary: |-\n  first paragraph\n\n  second paragraph\nname: x\n";
+        let v = parse_simple_yaml(text, "summary").unwrap();
+        assert!(v.contains("first paragraph"));
+        assert!(v.contains("second paragraph"));
+    }
+
+    #[test]
+    fn yaml_block_scalar_indicator_does_not_leak_for_inline_values() {
+        // Sanity: a value that *contains* `|` but isn't a bare block
+        // indicator must still parse as a plain scalar.
+        let text = "summary: a | b\n";
+        assert_eq!(parse_simple_yaml(text, "summary").as_deref(), Some("a | b"));
+    }
+
+    #[test]
+    fn yaml_extraction_handles_unquoted_and_quoted_values() {
+        let text = "id: abc-123\ncwd: C:\\Users\\foo\nname: 'My session'\nsummary: \"Bug fix #42\"\n";
+        assert_eq!(parse_simple_yaml(text, "id").as_deref(),      Some("abc-123"));
+        assert_eq!(parse_simple_yaml(text, "cwd").as_deref(),     Some("C:\\Users\\foo"));
+        assert_eq!(parse_simple_yaml(text, "name").as_deref(),    Some("My session"));
+        assert_eq!(parse_simple_yaml(text, "summary").as_deref(), Some("Bug fix #42"));
+        assert_eq!(parse_simple_yaml(text, "missing"),            None);
     }
 
     #[test]

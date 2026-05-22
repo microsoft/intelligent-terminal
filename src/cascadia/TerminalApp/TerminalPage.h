@@ -634,6 +634,48 @@ namespace winrt::TerminalApp::implementation
         std::vector<std::shared_ptr<AgentDelegationEntry>> _agentPipeServers;
         void _RemoveAgentPipeServer(AgentDelegationEntry* entry);
 
+        // Agent-pane wta lifetime management. Solves two problems at once:
+        //
+        // (1) Detect wta death (crash / external taskkill / clean exit) so we
+        //     tear the pane down. Conpty StateChanged can't be used because
+        //     wta spawns long-lived children (npx → npm → node → ACP adapter)
+        //     that inherit the conpty client handles, so the pipe never EOFs
+        //     even when wta itself is gone.
+        // (2) Reclaim those orphaned children. Without explicit job
+        //     containment, killing wta leaves node.exe / npx running.
+        //
+        // _agentPaneJob: KILL_ON_JOB_CLOSE Job Object containing wta and (by
+        // inheritance) all its descendants. Resetting the handle terminates
+        // every member — used during teardown to sweep orphans, and (via OS)
+        // when WT itself exits abnormally. Only the agent pane uses a job;
+        // ordinary shell panes keep their existing free-running lifetime.
+        //
+        // _agentPaneWtaHandle: duplicated SYNCHRONIZE handle to wta. Owned
+        // independently of ConptyConnection's _piClient so the wait stays
+        // valid across teardown ordering.
+        //
+        // _agentPaneWtaWait + _agentPaneWtaWaitContext: RegisterWaitForSingleObject
+        // registration. Context is heap-allocated (so the threadpool callback
+        // has stable storage even if TerminalPage tears down before the wait
+        // unregisters); it carries a weak_ref + cancelled flag so we can race
+        // safely with deliberate teardown.
+        struct AgentPaneWtaWaitContext;
+        wil::unique_handle _agentPaneJob;
+        wil::unique_handle _agentPaneWtaHandle;
+        HANDLE _agentPaneWtaWait{ nullptr };
+        std::unique_ptr<AgentPaneWtaWaitContext> _agentPaneWtaWaitContext;
+        // Generation counter bumped on every _SetupAgentPaneWtaWatch and
+        // _TearDownAgentPaneWtaWatch. The dispatched UI-thread continuation
+        // captures the generation it was scheduled under and compares
+        // against the live value before tearing the pane down. Without
+        // this, a callback that posts to the UI thread can land after a
+        // teardown-then-rebuild and tear down the freshly-armed
+        // replacement pane. UI-thread only — no atomic needed.
+        uint64_t _agentPaneWtaGen{ 0 };
+        void _SetupAgentPaneWtaWatch(HANDLE wtaProcessHandle) noexcept;
+        void _TearDownAgentPaneWtaWatch() noexcept;
+        static void NTAPI _OnAgentPaneWtaExit(PVOID context, BOOLEAN timedOut) noexcept;
+
         // Pending pipe handles for the next agent-pane wta launch. Set by
         // _OpenOrReuseAgentPane just before _MakeTerminalPane runs, consumed
         // by _CreateConnectionFromSettings when it builds the ConptyConnection

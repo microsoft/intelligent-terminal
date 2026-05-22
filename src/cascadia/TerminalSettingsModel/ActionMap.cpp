@@ -75,6 +75,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 { ShortcutAction::AdjustFontSize, USES_RESOURCE(L"AdjustFontSizeCommandKey") },
                 { ShortcutAction::AdjustOpacity, USES_RESOURCE(L"AdjustOpacity") },
                 { ShortcutAction::BreakIntoDebugger, USES_RESOURCE(L"BreakIntoDebuggerCommandKey") },
+                { ShortcutAction::BugReport, USES_RESOURCE(L"BugReportCommandKey") },
                 { ShortcutAction::ClearAllMarks, USES_RESOURCE(L"ClearAllMarksCommandKey") },
                 { ShortcutAction::ClearBuffer, USES_RESOURCE(L"ClearBuffer") },
                 { ShortcutAction::ClearMark, USES_RESOURCE(L"ClearMarkCommandKey") },

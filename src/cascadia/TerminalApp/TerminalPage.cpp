@@ -236,6 +236,14 @@ namespace winrt::TerminalApp::implementation
 
     TerminalPage::~TerminalPage()
     {
+        // Critical ordering: disarm the wta process watch BEFORE other
+        // members destruct. The threadpool wait holds a raw pointer into
+        // _agentPaneWtaWaitContext (a unique_ptr member). If we let that
+        // member destruct while the wait is still registered, a wta exit
+        // after this point would fire the callback against freed memory.
+        // _TearDownAgentPaneWtaWatch calls UnregisterWaitEx blocking, so
+        // by the time it returns no callback can fire.
+        _TearDownAgentPaneWtaWatch();
     }
 
     // Method Description:
@@ -1335,9 +1343,210 @@ namespace winrt::TerminalApp::implementation
                a.delegateCustomCommand != b.delegateCustomCommand;
     }
 
+    // Heap-allocated context for the threadpool wait callback. Keeps the
+    // weak_ref + cancellation flag alive independently of TerminalPage so the
+    // callback never dereferences freed memory. Owned by
+    // _agentPaneWtaWaitContext on the page; freed only after the wait has
+    // been unregistered (callback can no longer fire) or after the callback
+    // has run and we marshal back to the UI thread.
+    struct TerminalPage::AgentPaneWtaWaitContext
+    {
+        winrt::weak_ref<TerminalPage> page;
+        std::atomic<bool> cancelled{ false };
+        // The page-level _agentPaneWtaGen value that was current when this
+        // watch was armed. Copied into the dispatched continuation so it
+        // can detect "I was scheduled for a previous wta; that pane has
+        // since been replaced — bail" instead of incorrectly tearing down
+        // the new pane.
+        uint64_t gen{ 0 };
+    };
+
+    // Arm process-exit detection + Job-Object containment for the agent
+    // pane's wta. Called from the agent pane's Initialized callback once
+    // ConptyConnection has spawned wta and RootProcessHandle is valid.
+    //
+    // The Job carries JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: closing our handle
+    // (or losing it via WT crash) terminates wta + every descendant. wta's
+    // future children inherit job membership automatically.
+    //
+    // Race window: wta could (in principle) spawn a child between
+    // CreateProcessW and AssignProcessToJobObject. wta does ACP/npx setup
+    // before spawning anything, so in practice the window is empty. A
+    // future tightening could move this into ConptyConnection with
+    // CREATE_SUSPENDED + AssignProcessToJobObject + ResumeThread.
+    void TerminalPage::_SetupAgentPaneWtaWatch(HANDLE wtaProcessHandle) noexcept
+    try
+    {
+        if (!wtaProcessHandle || wtaProcessHandle == INVALID_HANDLE_VALUE)
+        {
+            return;
+        }
+        if (_agentPaneWtaWait)
+        {
+            // Already armed for some prior wta — disarm first.
+            _TearDownAgentPaneWtaWatch();
+        }
+
+        // ORDER MATTERS. The watch (death detection) must be set up BEFORE
+        // the Job Object (orphan containment). If we created the job first
+        // and a later step failed, the local `unique_handle job` would
+        // destruct, fire KILL_ON_JOB_CLOSE, and turn a "watch arm failed"
+        // soft error into a hard kill of wta + its children. Setting up
+        // the watch first also means death detection still works even if
+        // job containment is unavailable (e.g. nested-job restrictions).
+
+        // 1) Independent SYNCHRONIZE handle so the wait survives across
+        // the ordering of ConptyConnection cleanup.
+        HANDLE dup{ nullptr };
+        if (!DuplicateHandle(GetCurrentProcess(), wtaProcessHandle,
+                             GetCurrentProcess(), &dup,
+                             SYNCHRONIZE, FALSE, 0))
+        {
+            _agentPaneLog("DuplicateHandle(wta) failed");
+            return;
+        }
+        wil::unique_handle wtaDup{ dup };
+
+        // 2) Heap-allocate the callback context. Stamp it with a fresh
+        // generation so the dispatched UI-thread continuation can detect
+        // a teardown-then-rearm sequence and bail instead of tearing down
+        // the replacement pane.
+        auto ctx = std::make_unique<AgentPaneWtaWaitContext>();
+        ctx->page = get_weak();
+        ctx->gen = ++_agentPaneWtaGen;
+
+        // 3) Register the wait. From here on, if we early-return without
+        // committing to members, UnregisterWaitEx is the cleanup; ctx
+        // auto-frees via unique_ptr.
+        HANDLE waitHandle{ nullptr };
+        if (!RegisterWaitForSingleObject(
+                &waitHandle,
+                wtaDup.get(),
+                &TerminalPage::_OnAgentPaneWtaExit,
+                ctx.get(),
+                INFINITE,
+                WT_EXECUTEONLYONCE | WT_EXECUTEDEFAULT))
+        {
+            _agentPaneLog("RegisterWaitForSingleObject(wta) failed");
+            return;
+        }
+
+        // 4) Commit the watch immediately. Death detection is the core
+        // fix — we keep it even if job setup below fails (we just lose
+        // the orphan-cleanup nice-to-have, not the hang fix).
+        _agentPaneWtaHandle = std::move(wtaDup);
+        _agentPaneWtaWait = waitHandle;
+        _agentPaneWtaWaitContext = std::move(ctx);
+
+        // 5) Now attempt Job Object containment. This is best-effort;
+        // failure just means orphans won't be reaped automatically.
+        wil::unique_handle job{ CreateJobObjectW(nullptr, nullptr) };
+        if (!job)
+        {
+            _agentPaneLog("CreateJobObject failed; orphan cleanup disabled (death-watch still active)");
+            return;
+        }
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if (!SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
+        {
+            _agentPaneLog("SetInformationJobObject(KILL_ON_JOB_CLOSE) failed; orphan cleanup disabled (death-watch still active)");
+            return;
+        }
+        if (!AssignProcessToJobObject(job.get(), wtaProcessHandle))
+        {
+            _agentPaneLog("AssignProcessToJobObject failed; orphan cleanup disabled (death-watch still active)");
+            return;
+        }
+        // Commit the job immediately after Assign — no fallible call may
+        // appear between Assign and this assignment, or the local `job`
+        // destructor would fire KILL_ON_JOB_CLOSE on the live wta.
+        _agentPaneJob = std::move(job);
+        _agentPaneLog("agent pane wta watch armed (job + process wait)");
+    }
+    CATCH_LOG()
+
+    // Disarm wait + drop job. Closing the job handle terminates wta and
+    // every surviving descendant (KILL_ON_JOB_CLOSE) — single source of
+    // truth for "stop the agent process group".
+    void TerminalPage::_TearDownAgentPaneWtaWatch() noexcept
+    {
+        // Bump the generation so any UI-thread continuation that was
+        // already dispatched (but hasn't run yet) sees a stale gen on
+        // wake and bails instead of tearing down whatever pane is alive
+        // by the time it runs.
+        ++_agentPaneWtaGen;
+        if (_agentPaneWtaWaitContext)
+        {
+            _agentPaneWtaWaitContext->cancelled.store(true, std::memory_order_release);
+        }
+        if (_agentPaneWtaWait)
+        {
+            // INVALID_HANDLE_VALUE blocks until any in-flight callback
+            // completes — safe because we never call this from inside the
+            // callback (the callback dispatches to the UI thread and the
+            // UI-thread continuation handles teardown there).
+            UnregisterWaitEx(_agentPaneWtaWait, INVALID_HANDLE_VALUE);
+            _agentPaneWtaWait = nullptr;
+        }
+        _agentPaneWtaWaitContext.reset();
+        _agentPaneWtaHandle.reset();
+        _agentPaneJob.reset(); // KILL_ON_JOB_CLOSE — descendants die here.
+    }
+
+    // Threadpool callback: wta exited. We can't touch most TerminalPage
+    // state from here (wrong thread + no UI marshalling), so just marshal
+    // a teardown request to the UI thread.
+    void NTAPI TerminalPage::_OnAgentPaneWtaExit(PVOID context, BOOLEAN /*timedOut*/) noexcept
+    try
+    {
+        auto* ctx = static_cast<AgentPaneWtaWaitContext*>(context);
+        if (!ctx || ctx->cancelled.load(std::memory_order_acquire))
+        {
+            return;
+        }
+        const auto strong = ctx->page.get();
+        if (!strong)
+        {
+            return;
+        }
+        // Capture the generation this watch was armed under. If the
+        // continuation lands after a teardown-then-rearm cycle, the live
+        // _agentPaneWtaGen will have advanced past myGen and we bail —
+        // otherwise we'd incorrectly tear down the replacement pane.
+        const auto weak = ctx->page;
+        const auto myGen = ctx->gen;
+        strong->Dispatcher().RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [weak, myGen]() {
+                const auto p = weak.get();
+                if (!p)
+                {
+                    return;
+                }
+                // Stale: a deliberate teardown (and possibly a rebuild)
+                // happened between callback fire and now. The current
+                // agent pane — if any — belongs to a different watch.
+                if (p->_agentPaneWtaGen != myGen)
+                {
+                    return;
+                }
+                _agentPaneLog("agent pane wta process exited — tearing down pane");
+                p->_agentPanePreWarming = false;
+                p->_TeardownAgentPane(); // closes job → reaps surviving children
+                p->_UpdateBottomBarState();
+            });
+    }
+    CATCH_LOG()
+
     // Close the shared agent pane if it is still alive.
     void TerminalPage::_TeardownAgentPane()
     {
+        // Disarm + close job FIRST. Closing the job kills wta and every
+        // descendant (KILL_ON_JOB_CLOSE) so conpty actually sees its
+        // pipe go EOF, ControlCore transitions through Closed, and the
+        // existing teardown path runs cleanly.
+        _TearDownAgentPaneWtaWatch();
         if (auto p = _agentPane.lock())
         {
             _agentPaneLog("_TeardownAgentPane: closing agent pane");
@@ -1860,6 +2069,12 @@ namespace winrt::TerminalApp::implementation
                 _agentPaneLog("agent pane closed — _agentPane cleared");
                 if (auto self = weakSelf.get())
                 {
+                    // Backstop disarm — the pane can be closed through
+                    // generic pane-close paths (Ctrl+W, tab close, etc.)
+                    // that don't go through _TeardownAgentPane. Without
+                    // this, the wta job + wait would stay armed and the
+                    // process tree would leak.
+                    self->_TearDownAgentPaneWtaWatch();
                     self->_agentPane.reset();
                     self->_agentPanePreWarming = false;
                     self->_lastNotifiedAgentTabId.reset();
@@ -1923,6 +2138,21 @@ namespace winrt::TerminalApp::implementation
                 if (!self)
                 {
                     return;
+                }
+                // wta is now running (connection.Start() ran inside
+                // _InitializeTerminal just before Initialized fired). Arm
+                // the job + process-exit watch before doing anything else
+                // so we can't miss an early-crash scenario.
+                if (const auto tc = termControlWeak.get())
+                {
+                    if (const auto conn = tc.Connection())
+                    {
+                        if (const auto conpty = conn.try_as<winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection>())
+                        {
+                            const auto raw = reinterpret_cast<HANDLE>(conpty.RootProcessHandle());
+                            self->_SetupAgentPaneWtaWatch(raw);
+                        }
+                    }
                 }
                 // Pre-warm has done its job: connection.Start() ran inside
                 // _InitializeTerminal just before this event, so wta.exe is
@@ -2406,11 +2636,50 @@ namespace winrt::TerminalApp::implementation
                 _agentPaneLog("agent pane closed — _agentPane cleared");
                 if (auto self = weakSelf.get())
                 {
+                    // Backstop disarm — see _AutoCreateHiddenAgentPane's
+                    // Closed handler for rationale. Generic pane-close
+                    // paths don't route through _TeardownAgentPane.
+                    self->_TearDownAgentPaneWtaWatch();
                     self->_agentPane.reset();
                     self->_lastNotifiedAgentTabId.reset();
                     self->_agentSessionsViewActive = false;
                     self->_ClearAllAgentPaneFlags();
                     self->_UpdateBottomBarState();
+                }
+            });
+        }
+
+        // Arm the wta process watch + Job Object for this newly-created
+        // agent pane too (the auto-create path hooks Initialized to do the
+        // same thing — see _AutoCreateHiddenAgentPane).
+        if (const auto termControl = newPane->GetTerminalControl())
+        {
+            auto weakSelfForWatch = get_weak();
+            auto tokenHolder = std::make_shared<winrt::event_token>();
+            *tokenHolder = termControl.Initialized([
+                weakSelfForWatch,
+                termControlWeak = winrt::make_weak(termControl),
+                tokenHolder
+            ](auto&&, auto&&) {
+                if (const auto tc = termControlWeak.get())
+                {
+                    tc.Initialized(*tokenHolder);
+                }
+                const auto self = weakSelfForWatch.get();
+                if (!self)
+                {
+                    return;
+                }
+                if (const auto tc = termControlWeak.get())
+                {
+                    if (const auto conn = tc.Connection())
+                    {
+                        if (const auto conpty = conn.try_as<winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection>())
+                        {
+                            const auto raw = reinterpret_cast<HANDLE>(conpty.RootProcessHandle());
+                            self->_SetupAgentPaneWtaWatch(raw);
+                        }
+                    }
                 }
             });
         }

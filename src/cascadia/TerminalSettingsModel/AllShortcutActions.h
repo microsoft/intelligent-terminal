@@ -119,7 +119,8 @@
     ON_ALL_ACTIONS(FocusAgentPane)          \
     ON_ALL_ACTIONS(OpenAgentSessions)       \
     ON_ALL_ACTIONS(TriggerAutofix)          \
-    ON_ALL_ACTIONS(ShowProtocolInfo)
+    ON_ALL_ACTIONS(ShowProtocolInfo)        \
+    ON_ALL_ACTIONS(BugReport)
 
 #define ALL_SHORTCUT_ACTIONS_WITH_ARGS             \
     ON_ALL_ACTIONS_WITH_ARGS(AdjustFontSize)       \

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -997,5 +997,8 @@
   </data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve">
     <value>提示词</value>
+  </data>
+  <data name="BugReportCommandKey" xml:space="preserve">
+    <value>报告问题（收集日志）</value>
   </data>
 </root>
