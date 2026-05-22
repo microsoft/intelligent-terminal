@@ -330,17 +330,19 @@ namespace winrt::TerminalApp::implementation
         enum class AutofixState
         {
             Idle,      // no error pending
+            Detected,  // suggest-mode: error detected, awaiting user activation
             Pending,   // error detected, WTA is generating a fix
-            Armed,     // fix ready — click or Ctrl+. executes it
+            Armed,     // fix ready — click or Ctrl+Alt+. executes it
             Suggested, // analysis ready but no auto-fix — click opens agent pane
         };
         struct DiagnosticState
         {
             std::wstring lastErrorSessionId;
             AutofixState autofixState{ AutofixState::Idle };
-            std::wstring fixPreview;        // Armed
-            std::wstring hotkeyHint;        // Armed
-            std::wstring suggestionTitle;   // Suggested
+            std::wstring fixPreview;          // Armed
+            std::wstring hotkeyHint;          // Armed / Detected
+            std::wstring suggestionTitle;     // Suggested
+            std::wstring detectedSummary;     // Detected
         };
         DiagnosticState _diagnostics;
         bool _agentPaneVisible{ false };

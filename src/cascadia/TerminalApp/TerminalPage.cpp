@@ -4003,6 +4003,25 @@ namespace winrt::TerminalApp::implementation
             // Fix ready — execute it.
             _TriggerAutofix();
             break;
+        case AutofixState::Detected:
+        {
+            // Suggest-mode pill: user opts in to call the LLM. Send the
+            // event to WTA; WTA replays the trigger as if auto-suggest
+            // were on (transitioning the bar to Pending → Armed) without
+            // mutating local state here.
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "autofix_execute_from_detected";
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorSessionId);
+            evt["params"] = params;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            ProtocolVtSequenceReceived.raise(
+                *this,
+                winrt::to_hstring(Json::writeString(wb, evt)));
+            break;
+        }
         case AutofixState::Suggested:
         {
             // No executable fix — auto-fix produced an explanation that lives
@@ -4206,6 +4225,43 @@ namespace winrt::TerminalApp::implementation
                     box_value(winrt::hstring{ tooltip }));
                 break;
             }
+            case AutofixState::Detected:
+            {
+                // Suggest-mode default: error happened, LLM not invoked.
+                // Clickable pill asking the user to opt in. Same warning
+                // hue as Armed since both demand attention.
+                diagBtn.Opacity(1.0);
+                diagBtn.IsEnabled(true);
+
+                const auto hotkey = _diagnostics.hotkeyHint.empty()
+                                        ? std::wstring{ L"Ctrl+Alt+." }
+                                        : _diagnostics.hotkeyHint;
+                std::wstring labelText = L"Click " + hotkey + L" to fix error";
+                const auto accent = SolidColorBrush{
+                    ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
+                };
+                if (icon)
+                {
+                    icon.Foreground(accent);
+                }
+                if (label)
+                {
+                    label.Text(winrt::hstring{ labelText });
+                    label.Foreground(accent);
+                    label.Visibility(Visibility::Visible);
+                }
+                std::wstring tooltip = L"Error detected. Click or press " + hotkey +
+                                       L" to ask the AI agent to diagnose and suggest a fix.";
+                if (!_diagnostics.detectedSummary.empty())
+                {
+                    tooltip += L"\n\n";
+                    tooltip += _diagnostics.detectedSummary;
+                }
+                ToolTipService::SetToolTip(
+                    diagBtn,
+                    box_value(winrt::hstring{ tooltip }));
+                break;
+            }
             case AutofixState::Idle:
             default:
             {
@@ -4267,12 +4323,22 @@ namespace winrt::TerminalApp::implementation
         {
             _diagnostics.autofixState = AutofixState::Suggested;
         }
+        else if (state == "detected")
+        {
+            _diagnostics.autofixState = AutofixState::Detected;
+        }
         else if (state == "cleared")
         {
             _diagnostics.autofixState = AutofixState::Idle;
             _diagnostics.fixPreview.clear();
             _diagnostics.suggestionTitle.clear();
+            _diagnostics.detectedSummary.clear();
             _diagnostics.lastErrorSessionId.clear();
+        }
+        if (params.isMember("summary") && params["summary"].isString())
+        {
+            const auto s = params["summary"].asString();
+            _diagnostics.detectedSummary.assign(s.begin(), s.end());
         }
         if (params.isMember("pane_id") && params["pane_id"].isString())
         {
@@ -5046,9 +5112,11 @@ namespace winrt::TerminalApp::implementation
                             if (!page || !term2)
                                 return;
 
-                            // Autofix pipeline: skip forwarding if disabled at runtime.
-                            if (!page->_settings.GlobalSettings().AutoFixEnabled())
-                                return;
+                            // Autofix pipeline always forwards vt_sequence
+                            // events. The `autoFixEnabled` setting only
+                            // controls whether WTA *automatically* invokes
+                            // the LLM; the Detected pill (suggest-mode
+                            // default) needs these events too.
 
                             const auto paneIdStr = page->_FindSessionIdForControl(term2);
                             if (paneIdStr.empty())

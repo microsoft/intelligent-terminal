@@ -907,6 +907,15 @@ pub struct TabAutofixState {
 pub enum AutofixBarSnapshot {
     #[default]
     Idle,
+    /// Suggest mode: an error was detected but the LLM has not been
+    /// invoked. The bar shows a hint inviting the user to press the
+    /// hotkey / click the pill to request a fix. Carries enough
+    /// context to replay the LLM trigger when the user activates it.
+    Detected {
+        pane_id: String,
+        summary: String,
+        hotkey_hint: String,
+    },
     Pending {
         pane_id: String,
         summary: String,
@@ -3173,6 +3182,14 @@ impl App {
                     return;
                 }
 
+                if method == "autofix_execute_from_detected" {
+                    // User pressed the pill / hotkey in Detected state.
+                    // Replay the trigger as if auto-suggest were on, so
+                    // the LLM call fires and we transition to Pending.
+                    self.handle_autofix_execute_from_detected();
+                    return;
+                }
+
                 if method == "tab_changed" {
                     tracing::info!(
                         target: "tab_session",
@@ -3470,15 +3487,16 @@ impl App {
                         // throws E_FAIL on the C++ side. Surface those as a
                         // System message instead.
                         let is_autofix_candidate = method == "vt_sequence";
-                        if self.autofix_enabled && is_autofix_candidate {
-                            // maybe_trigger_autofix pushes ChatMessage::Error (red dot)
-                            // itself — don't double-push here as a System message.
+                        if is_autofix_candidate {
+                            // Always run the autofix trigger — when
+                            // auto-suggest is on we Pending+submit; when
+                            // off we just surface the Detected pill so
+                            // the user can opt in. Either way the
+                            // function pushes its own chat message.
                             self.maybe_trigger_autofix(&notification);
                         } else {
-                            // Autofix disabled OR event isn't an autofix
-                            // candidate (e.g. connection_state:closed):
-                            // surface the event in chat so the user still
-                            // sees it.
+                            // Not an autofix candidate (e.g. connection_state:closed):
+                            // surface the event in chat so the user still sees it.
                             self.current_tab_mut().messages
                                 .push(ChatMessage::System(notification.summary.clone()));
                             self.scroll_to_bottom();
@@ -3555,6 +3573,31 @@ impl App {
                                         .take();
                                     if let Some(pane) = pane_to_clear {
                                         self.emit_autofix_state_cleared(&t_owned, &pane);
+                                    }
+                                }
+                            }
+                            // Detected (suggest-mode pill): dismiss when
+                            // the user makes a fresh successful run in
+                            // the same pane. The Detected snapshot has
+                            // no in-flight turn to cancel — just clear
+                            // the bar.
+                            if is_exit_zero {
+                                if let Some(t) = event_tab.as_deref() {
+                                    let t_owned = t.to_string();
+                                    let detected_pane = match &self
+                                        .tab_mut(&t_owned)
+                                        .autofix
+                                        .bar_snapshot
+                                    {
+                                        AutofixBarSnapshot::Detected { pane_id: bar_pane, .. }
+                                            if bar_pane == pane_id.as_str() =>
+                                        {
+                                            Some(bar_pane.clone())
+                                        }
+                                        _ => None,
+                                    };
+                                    if let Some(bar_pane) = detected_pane {
+                                        self.emit_autofix_state_cleared(&t_owned, &bar_pane);
                                     }
                                 }
                             }
@@ -4766,9 +4809,15 @@ impl App {
     /// Auto-fix: when a command fails in another pane, ask the coordinator
     /// agent to suggest a fix. The user confirms before execution.
     fn maybe_trigger_autofix(&mut self, notification: &WtNotification) {
-        if !self.autofix_enabled {
-            return;
-        }
+        self.trigger_autofix_inner(notification, false);
+    }
+
+    /// Core autofix-trigger logic. `forced=true` bypasses the
+    /// `autofix_enabled` gate (used when the user explicitly activates a
+    /// Detected pill via click or hotkey). When `forced=false` and the
+    /// auto-suggest setting is off, this just emits the Detected
+    /// snapshot — the LLM is not invoked.
+    fn trigger_autofix_inner(&mut self, notification: &WtNotification, forced: bool) {
         if self.state != ConnectionState::Connected {
             return;
         }
@@ -4813,6 +4862,26 @@ impl App {
                 return;
             }
         };
+
+        // Suggest-mode: when auto-suggest is off AND this isn't a user-
+        // forced activation, just surface the Detected pill and let the
+        // user decide whether to call the LLM. Skips the busy / generation
+        // / submit logic below — none of that machinery applies until the
+        // user activates the pill.
+        if !self.autofix_enabled && !forced {
+            tracing::info!(
+                target: "autofix",
+                pane_id = %notification.pane_id,
+                tab_id = %target_tab_id,
+                "auto-suggest off — surfacing Detected pill, no LLM call",
+            );
+            self.emit_autofix_state_detected(
+                &target_tab_id,
+                &notification.pane_id,
+                &notification.summary,
+            );
+            return;
+        }
 
         // Latest event always wins — but only if we can actually act on it.
         // The ACP transport single-flights at the tab level, so if the
@@ -4946,6 +5015,19 @@ impl App {
         self.set_bar_snapshot(target_tab_id, snapshot);
     }
 
+    /// Suggest-mode entry: error detected but LLM not yet invoked. The
+    /// bar shows a clickable hint; the user activates the fix via the
+    /// pill or the hotkey, which fires `autofix_execute_from_detected`
+    /// and replays through `trigger_autofix_inner` with `force=true`.
+    fn emit_autofix_state_detected(&mut self, target_tab_id: &str, pane_id: &str, summary: &str) {
+        let snapshot = AutofixBarSnapshot::Detected {
+            pane_id: pane_id.to_string(),
+            summary: summary.to_string(),
+            hotkey_hint: "Ctrl+Alt+.".to_string(),
+        };
+        self.set_bar_snapshot(target_tab_id, snapshot);
+    }
+
     fn emit_autofix_state_armed(&mut self, target_tab_id: &str, pane_id: &str, fix_preview: &str) {
         let snapshot = AutofixBarSnapshot::Armed {
             pane_id: pane_id.to_string(),
@@ -4959,6 +5041,35 @@ impl App {
     /// clicked the bottom-bar button or pressed Ctrl+. in the terminal
     /// window). Mirrors the Enter-key path in the recommendations handler
     /// but without requiring the agent pane to be focused.
+    /// User activated the Detected pill (click or hotkey). Read the
+    /// active tab's cached snapshot, synthesize a `WtNotification` from
+    /// it, and replay through `trigger_autofix_inner` with `forced=true`
+    /// so the auto-suggest off gate is bypassed and the LLM call fires.
+    fn handle_autofix_execute_from_detected(&mut self) {
+        let active_tab = self.active_tab_key().to_string();
+        let snapshot = self.current_tab().autofix.bar_snapshot.clone();
+        let (pane_id, summary) = match snapshot {
+            AutofixBarSnapshot::Detected { pane_id, summary, .. } => (pane_id, summary),
+            other => {
+                tracing::info!(
+                    target: "autofix",
+                    state = ?other,
+                    "autofix_execute_from_detected: bar not in Detected state — ignoring",
+                );
+                return;
+            }
+        };
+        let notification = WtNotification {
+            severity: WtEventSeverity::Actionable,
+            pane_id,
+            tab_id: Some(active_tab),
+            summary,
+            acknowledged: false,
+            age_ticks: 0,
+        };
+        self.trigger_autofix_inner(&notification, true);
+    }
+
     fn handle_autofix_execute_request(&mut self, requested_pane_id: &str) {
         let active_tab = self.active_tab_key().to_string();
         let active_armed = self.current_tab().autofix.pane_id.clone();
@@ -6017,6 +6128,16 @@ fn send_bar_event(snapshot: &AutofixBarSnapshot) {
             "type": "event",
             "method": "autofix_state",
             "params": { "state": "cleared" }
+        }),
+        AutofixBarSnapshot::Detected { pane_id, summary, hotkey_hint } => serde_json::json!({
+            "type": "event",
+            "method": "autofix_state",
+            "params": {
+                "state": "detected",
+                "pane_id": pane_id,
+                "summary": summary,
+                "hotkey_hint": hotkey_hint,
+            }
         }),
         AutofixBarSnapshot::Pending { pane_id, summary } => serde_json::json!({
             "type": "event",

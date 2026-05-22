@@ -739,13 +739,13 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>Auto-error detection</value>
-    <comment>Header for the toggle that enables automatic fix suggestions when commands fail. 
+    <value>Auto-suggest fixes for failed commands</value>
+    <comment>Header for the toggle that controls whether the AI agent automatically diagnoses failed commands. When off, errors still show a clickable hint in the status bar but the agent is only invoked on demand.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>Detect command errors and suggest fixes automatically.</value>
-    <comment>Supplementary description for the auto-error-detection setting. 
+    <value>When enabled, the AI agent automatically analyzes failed commands and proposes a fix. When disabled, failed commands surface a clickable hint in the status bar — press Ctrl+Alt+. or click the hint to request a fix.</value>
+    <comment>Supplementary description for the auto-suggest-fixes setting.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
