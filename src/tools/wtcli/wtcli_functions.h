@@ -24,8 +24,18 @@ namespace wtcli
     inline std::wstring JoinAsUtf16(const std::vector<std::string>& parts)
     {
         std::wstring result;
+        bool first = true;
         for (const auto& p : parts)
         {
+            // Space-separate consecutive args so an unquoted human invocation
+            // like `wtcli send-keys --raw hello world` reaches the pane as
+            // "hello world" rather than "helloworld". wta callers pass a
+            // single positional via `--`, so they are unaffected.
+            if (!first)
+            {
+                result += L' ';
+            }
+            first = false;
             if (p.empty())
                 continue;
             const int wlen = MultiByteToWideChar(CP_UTF8, 0, p.data(), static_cast<int>(p.size()), nullptr, 0);
@@ -56,7 +66,7 @@ namespace wtcli
                 result += L" ";
             else if (key == "Tab" || key == "tab")
                 result += L"\t";
-            else if (key == "Escape" || key == "escape" || key == "Esc")
+            else if (key == "Escape" || key == "escape" || key == "Esc" || key == "esc")
                 result += L"\x1b";
             else if (key == "BSpace" || key == "bspace")
                 result += L"\b";

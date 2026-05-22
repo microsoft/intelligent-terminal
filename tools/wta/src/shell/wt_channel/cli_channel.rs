@@ -559,9 +559,16 @@ impl WtChannel for CliChannel {
                     .ok_or_else(|| anyhow!("send_input: 'text' must be a JSON string"))?;
                 // Empty text is an explicit no-op — short-circuit before
                 // spawning wtcli; the downstream COM SendInput would treat
-                // it the same way.
+                // it the same way. Mirror the response shape that
+                // `wtcli send-keys --json` produces (`ok` + `session_id`)
+                // so callers see a consistent schema regardless of whether
+                // the spawn happened. `noop: true` is an extra hint.
                 if text.is_empty() {
-                    return Ok(serde_json::json!({ "ok": true, "noop": true }));
+                    return Ok(serde_json::json!({
+                        "ok": true,
+                        "session_id": pane_id,
+                        "noop": true,
+                    }));
                 }
                 let text_owned = text.to_string();
                 // `--raw` bypasses wtcli's tmux-style token translation so a
