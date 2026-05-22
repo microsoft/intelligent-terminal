@@ -579,7 +579,13 @@ void TerminalProtocolComServer::SendInput(winrt::guid sessionId, winrt::hstring 
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
     THROW_HR_IF(E_INVALIDARG, sessionId == winrt::guid{});
-    THROW_HR_IF(E_INVALIDARG, text.empty());
+
+    // Empty input is a no-op, matching ControlCore::SendInput semantics so
+    // COM clients that send "" don't see surprising E_INVALIDARG failures.
+    if (text.empty())
+    {
+        return;
+    }
 
     for (const auto& host : s_emperor->GetWindows())
     {

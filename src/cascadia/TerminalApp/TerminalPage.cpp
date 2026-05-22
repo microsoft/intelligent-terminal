@@ -1131,7 +1131,10 @@ namespace winrt::TerminalApp::implementation
             &pi);
         if (!launched)
         {
-            _agentPaneLog("FAILED to launch delegate process");
+            const auto err = GetLastError();
+            _agentPaneLog("FAILED to launch delegate process: GetLastError=" +
+                          std::to_string(err) +
+                          " cmdline=" + winrt::to_string(winrt::hstring{ cmdline }));
             return;
         }
 

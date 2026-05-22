@@ -551,6 +551,11 @@ impl WtChannel for CliChannel {
                 if !pane_id.is_empty() {
                     args.extend(["-t", &pane_id]);
                 }
+                // `--` stops CLI11 option parsing so a text payload starting
+                // with `-`/`--` (e.g. `--release`, `--help`) is treated as
+                // positional key data instead of being interpreted as a
+                // wtcli flag.
+                args.push("--");
                 args.push(&text_owned);
                 self.run_wtcli(&args).await
             }
