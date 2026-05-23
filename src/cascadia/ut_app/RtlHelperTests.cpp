@@ -5,21 +5,23 @@
 //
 // Smoke tests for the RTL detection helper at
 // src/cascadia/inc/RtlHelper.h. The helper is a thin wrapper around
-// `Windows::Globalization::Language::LayoutDirection()` — the OS owns
-// the authoritative classifier — so these tests deliberately do NOT
-// maintain a parallel list of "what counts as RTL". They only pin
-// that:
+// `GetLocaleInfoEx` — the OS owns the authoritative classifier — so
+// these tests deliberately do NOT maintain a parallel list of "what
+// counts as RTL". They only pin that:
 //
 //   * The wrapper correctly calls into the OS (i.e. our well-known
 //     fork-shipping locales classify the way users expect).
 //   * Garbage input is treated as LTR (the safe default) and does not
 //     crash.
 //
-// For every RTL locale the helper *needs* to classify, we ask the OS
-// itself for the expected answer and assert agreement — there is no
-// hardcoded "Arabic = RTL" knowledge in this file.
+// For every locale the helper needs to classify, we ask the OS itself
+// for the expected answer and assert agreement — there is no
+// hardcoded "Arabic = RTL" knowledge in this file. No WinRT
+// activation required.
 
 #include "precomp.h"
+
+#include <winnls.h>
 
 #include "../inc/RtlHelper.h"
 
@@ -44,8 +46,8 @@ namespace TerminalAppUnitTests
 
     // The set of locales whose layout direction we *care about* in
     // this product. For each, the OS is the source of truth — we just
-    // assert our helper agrees with what `Windows.Globalization.Language`
-    // reports. Tests don't hardcode the LTR/RTL answer.
+    // assert our helper agrees with what the OS reports. Tests don't
+    // hardcode the LTR/RTL answer.
     static constexpr std::wstring_view kLocalesToProbe[] = {
         // RTL locales the fork ships translations for.
         L"ar-SA", L"he-IL", L"fa-IR", L"ur-PK", L"ug-CN",
@@ -55,10 +57,19 @@ namespace TerminalAppUnitTests
         L"ru-RU", L"pt-BR", L"it-IT", L"pl-PL", L"tr-TR",
     };
 
+    // Ask the OS directly via the same Win32 API the helper wraps.
+    // Tests derive the expected answer from this — no hardcoded
+    // "language X is RTL".
     static bool OsSaysRtl(std::wstring_view tag)
     {
-        const winrt::Windows::Globalization::Language lang{ winrt::hstring{ tag } };
-        return lang.LayoutDirection() == winrt::Windows::Globalization::LanguageLayoutDirection::Rtl;
+        const std::wstring nullTerminated{ tag };
+        DWORD value{};
+        const int chars = ::GetLocaleInfoEx(
+            nullTerminated.c_str(),
+            LOCALE_IREADINGLAYOUT | LOCALE_RETURN_NUMBER,
+            reinterpret_cast<LPWSTR>(&value),
+            static_cast<int>(sizeof(value) / sizeof(wchar_t)));
+        return chars > 0 && value == 1;
     }
 
     void RtlHelperTests::EmptyStringIsLtr()
@@ -68,8 +79,8 @@ namespace TerminalAppUnitTests
 
     void RtlHelperTests::MalformedTagsAreLtr()
     {
-        // The WinRT `Language` constructor throws for these; the
-        // helper must swallow that and return false (LTR default).
+        // `GetLocaleInfoEx` returns 0 for these; the helper must treat
+        // failure as LTR (the safe default).
         VERIFY_IS_FALSE(IsRtlLocale(L"-"));
         VERIFY_IS_FALSE(IsRtlLocale(L"-ar"));
         VERIFY_IS_FALSE(IsRtlLocale(L"not a tag"));
@@ -90,7 +101,7 @@ namespace TerminalAppUnitTests
 
     void RtlHelperTests::PseudoMirroredIsRtl()
     {
-        // qps-plocm is the Microsoft pseudo-mirrored pseudo-locale —
+        // `qps-plocm` is the Microsoft pseudo-mirrored pseudo-locale —
         // it is the canonical way to validate FlowDirection plumbing.
         // The OS classifies it as RTL; we just verify we don't lose
         // that on the way through.
@@ -100,7 +111,8 @@ namespace TerminalAppUnitTests
 
     void RtlHelperTests::PseudoLtrPseudoLocalesAreLtr()
     {
-        // qps-ploc / qps-ploca accent + pad strings but do not mirror.
+        // `qps-ploc` / `qps-ploca` accent + pad strings but do not
+        // mirror.
         VERIFY_IS_FALSE(OsSaysRtl(L"qps-ploc"));
         VERIFY_IS_FALSE(IsRtlLocale(L"qps-ploc"));
         VERIFY_IS_FALSE(OsSaysRtl(L"qps-ploca"));

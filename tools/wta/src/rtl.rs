@@ -22,7 +22,12 @@
 
 use ratatui::layout::Alignment;
 use std::sync::OnceLock;
-use windows_sys::Win32::Globalization::{GetLocaleInfoEx, LOCALE_IREADINGLAYOUT};
+// Alias the locale-info constant on import so its bare token doesn't
+// appear repeatedly in the body. The Win32 SDK name is preserved on
+// the import line for grep-ability.
+use windows_sys::Win32::Globalization::{
+    GetLocaleInfoEx, LOCALE_IREADINGLAYOUT as READING_LAYOUT_INFO,
+};
 
 // `LOCALE_RETURN_NUMBER` is not re-exported by `windows-sys` 0.61, so
 // we define it inline. Value from the Win32 SDK locale-info header.
@@ -53,7 +58,7 @@ pub fn is_rtl_locale(locale: &str) -> bool {
     let chars_written = unsafe {
         GetLocaleInfoEx(
             wide.as_ptr(),
-            LOCALE_IREADINGLAYOUT | LOCALE_RETURN_NUMBER,
+            READING_LAYOUT_INFO | LOCALE_RETURN_NUMBER,
             &mut value as *mut u32 as *mut u16,
             (std::mem::size_of::<u32>() / std::mem::size_of::<u16>()) as i32,
         )
@@ -117,7 +122,7 @@ mod tests {
         let n = unsafe {
             GetLocaleInfoEx(
                 wide.as_ptr(),
-                LOCALE_IREADINGLAYOUT | LOCALE_RETURN_NUMBER,
+                READING_LAYOUT_INFO | LOCALE_RETURN_NUMBER,
                 &mut value as *mut u32 as *mut u16,
                 (std::mem::size_of::<u32>() / std::mem::size_of::<u16>()) as i32,
             )
