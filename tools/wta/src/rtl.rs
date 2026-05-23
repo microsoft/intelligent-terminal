@@ -1,31 +1,33 @@
-// Right-to-left (RTL) language helpers for the wta TUI.
+// Right-to-left (RTL) language helpers for the `wta` TUI.
 //
-// We delegate classification to the Windows locale database via
-// `GetLocaleInfoEx(LOCALE_IREADINGLAYOUT)` instead of carrying our
-// own subtag list. That mirrors the C++ side (`RtlHelper.h`, which
+// We delegate classification to the Windows locale database via the
+// Win32 reading-layout locale-info API instead of carrying our own
+// language list. That mirrors the C++ side (`RtlHelper.h`, which
 // uses `Windows::Globalization::Language::LayoutDirection`) — both
-// stacks ask the same OS for the answer, so FRE and wta agree by
+// stacks ask the same OS for the answer, so FRE and `wta` agree by
 // construction.
 //
-// `LOCALE_IREADINGLAYOUT` returns:
+// The reading-layout field returns:
 //   0  ->  Left-to-right
 //   1  ->  Right-to-left
 //   2  ->  Top-to-bottom with left-to-right column order (legacy CJK)
 //   3  ->  Top-to-bottom with right-to-left column order (legacy CJK)
 //
 // We treat value `1` as RTL and everything else (including failures)
-// as LTR. ratatui has no native bidi engine; Windows Terminal — the
-// host emulator — performs the actual character shaping. So the only
-// useful WTA-side action is right-aligning `Paragraph` widgets that
-// render translated prose. The terminal handles the rest.
+// as LTR. The Rust TUI library has no native bidi engine; Windows
+// Terminal — the host emulator — performs the actual character
+// shaping. So the only useful WTA-side action is right-aligning
+// `Paragraph` widgets that render translated copy. The terminal
+// handles the rest.
 
 use ratatui::layout::Alignment;
+use std::sync::OnceLock;
 use windows_sys::Win32::Globalization::{GetLocaleInfoEx, LOCALE_IREADINGLAYOUT};
 
 // `LOCALE_RETURN_NUMBER` is not re-exported by `windows-sys` 0.61, so
-// we define it inline. Value from `winnls.h` in the Windows 10 SDK.
-// Combining this with a locale-info constant tells GetLocaleInfoEx to
-// return a binary `u32` instead of a decimal string.
+// we define it inline. Value from the Win32 SDK locale-info header.
+// Combining this with a locale-info constant tells `GetLocaleInfoEx`
+// to return a binary `u32` instead of a decimal string.
 const LOCALE_RETURN_NUMBER: u32 = 0x20000000;
 
 /// Returns `true` when the OS classifies `locale` (a BCP-47 tag) as
@@ -41,12 +43,13 @@ pub fn is_rtl_locale(locale: &str) -> bool {
         return false;
     }
 
-    // GetLocaleInfoEx wants a null-terminated UTF-16 locale name.
+    // `GetLocaleInfoEx` wants a null-terminated UTF-16 locale name.
     let wide: Vec<u16> = locale.encode_utf16().chain(std::iter::once(0)).collect();
     let mut value: u32 = 0;
 
-    // `LOCALE_RETURN_NUMBER` makes the API write a binary u32 into the
-    // buffer (4 bytes / 2 UTF-16 code units) instead of a decimal string.
+    // `LOCALE_RETURN_NUMBER` makes the API write a binary `u32` into
+    // the buffer (4 bytes / 2 UTF-16 code units) instead of a decimal
+    // string.
     let chars_written = unsafe {
         GetLocaleInfoEx(
             wide.as_ptr(),
@@ -70,17 +73,20 @@ pub fn text_alignment_for_locale(locale: &str) -> Alignment {
     }
 }
 
-/// Returns the default text alignment for the *current* `rust_i18n`
-/// locale. Used by UI call sites that render translated prose
-/// (`Paragraph` widgets in the chat / setup / auth / permission /
-/// recommendations views). Status bars and fixed-width token rows are
-/// intentionally not flipped.
+/// Returns the default UI text alignment for RTL locales — right when
+/// the current `rust_i18n` locale is RTL, left otherwise. The result
+/// is memoized after the first call because `rust_i18n::set_locale`
+/// is invoked once at startup and the OS classification is stable;
+/// memoization avoids a UTF-16 allocation and a syscall on every
+/// `Paragraph` render in the TUI hot path.
 pub fn text_alignment() -> Alignment {
-    text_alignment_for_locale(&rust_i18n::locale())
+    static CACHED: OnceLock<Alignment> = OnceLock::new();
+    *CACHED.get_or_init(|| text_alignment_for_locale(&rust_i18n::locale()))
 }
 
 /// Thin convenience wrapper for call sites that need the boolean
-/// without pulling in ratatui types.
+/// without pulling in `ratatui` types. Not memoized — only used in
+/// non-hot paths.
 pub fn is_current_locale_rtl() -> bool {
     is_rtl_locale(&rust_i18n::locale())
 }
@@ -91,8 +97,9 @@ mod tests {
 
     // Locales we care about classifying correctly. The OS owns the
     // authoritative LTR/RTL answer for each — these tests deliberately
-    // do NOT hardcode that answer. We just probe the OS once via a
-    // helper and assert our wrapper agrees.
+    // do NOT hardcode that answer. The probe set is intentionally
+    // anonymous: "these are all locales the product ships, here are
+    // their classifications according to the OS".
     const LOCALES_TO_PROBE: &[&str] = &[
         // RTL locales the fork ships translations for.
         "ar-SA", "he-IL", "fa-IR", "ur-PK", "ug-CN",
@@ -101,9 +108,9 @@ mod tests {
         "ru-RU", "pt-BR", "it-IT", "pl-PL", "tr-TR",
     ];
 
-    /// Ask the OS directly via `GetLocaleInfoEx(LOCALE_IREADINGLAYOUT)`.
-    /// Tests use this to derive the expected answer, so they never
-    /// hardcode "language X is RTL".
+    /// Ask the OS directly via the Win32 reading-layout API. Tests
+    /// use this to derive the expected answer, so they never hardcode
+    /// "language X is RTL".
     fn os_says_rtl(locale: &str) -> bool {
         let wide: Vec<u16> = locale.encode_utf16().chain(std::iter::once(0)).collect();
         let mut value: u32 = 0;
@@ -142,7 +149,7 @@ mod tests {
 
     #[test]
     fn pseudo_mirrored_is_rtl() {
-        // qps-plocm is the canonical RTL pseudo-locale; the OS
+        // `qps-plocm` is the canonical RTL pseudo-locale; the OS
         // classifies it as RTL, and we must pass that through.
         assert!(os_says_rtl("qps-plocm"));
         assert!(is_rtl_locale("qps-plocm"));
@@ -150,7 +157,7 @@ mod tests {
 
     #[test]
     fn pseudo_ltr_pseudo_locales_are_ltr() {
-        // qps-ploc / qps-ploca accent + pad but don't mirror.
+        // `qps-ploc` / `qps-ploca` accent + pad but don't mirror.
         assert!(!os_says_rtl("qps-ploc"));
         assert!(!is_rtl_locale("qps-ploc"));
         assert!(!os_says_rtl("qps-ploca"));

@@ -107,5 +107,8 @@ fn render_compact(frame: &mut Frame, perm: &PermissionState, area: Rect) {
         Span::raw(separator),
         Span::styled(hint, theme::DIM),
     ]);
-    frame.render_widget(Paragraph::new(line), area);
+    frame.render_widget(
+        Paragraph::new(line).alignment(crate::rtl::text_alignment()),
+        area,
+    );
 }
