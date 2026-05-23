@@ -57,19 +57,23 @@ namespace TerminalAppUnitTests
         L"ru-RU", L"pt-BR", L"it-IT", L"pl-PL", L"tr-TR",
     };
 
-    // Ask the OS directly via the same Win32 API the helper wraps.
-    // Tests derive the expected answer from this — no hardcoded
-    // "language X is RTL".
+    // Ask the OS via a *different* code path than the helper uses,
+    // so a flag / buffer-sizing bug in `IsRtlLocale` can't mask itself
+    // when the test compares expected vs. actual. The helper reads
+    // the value as a binary `DWORD` via `LOCALE_RETURN_NUMBER`; here
+    // we deliberately omit that flag so the OS returns the value as a
+    // decimal string ("0" .. "3"), which we parse. Independent path,
+    // same underlying classifier.
     static bool OsSaysRtl(std::wstring_view tag)
     {
         const std::wstring nullTerminated{ tag };
-        DWORD value{};
+        wchar_t buf[8]{};
         const int chars = ::GetLocaleInfoEx(
             nullTerminated.c_str(),
-            LOCALE_IREADINGLAYOUT | LOCALE_RETURN_NUMBER,
-            reinterpret_cast<LPWSTR>(&value),
-            static_cast<int>(sizeof(value) / sizeof(wchar_t)));
-        return chars > 0 && value == 1;
+            LOCALE_IREADINGLAYOUT,
+            buf,
+            static_cast<int>(std::size(buf)));
+        return chars > 1 && buf[0] == L'1';
     }
 
     void RtlHelperTests::EmptyStringIsLtr()

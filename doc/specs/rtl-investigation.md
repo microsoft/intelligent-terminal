@@ -36,13 +36,14 @@ each gets its own one-line wrapper around the OS locale database.
   `FlowDirection` is `RightToLeft`).
 - `FreOverlay::Initialize` reads the resolved UI language
   (`globals.Language()` first, then `ApplicationLanguages::Languages()`)
-  and sets `RootGrid().FlowDirection(...)` on both branches. Setting
+  and sets `RootGrid().FlowDirection(...)` on both branches —
+  `RightToLeft` for RTL languages, `LeftToRight` otherwise. Setting
   both branches explicitly matters because the FRE element is reused
   across shows; without an explicit LTR assignment, an RTL session
   could leak its mirrored layout into a subsequent LTR show.
-- Classification itself is delegated to
-  `Windows::Globalization::Language::LayoutDirection()` so we don't
-  carry a parallel list of "what counts as RTL".
+- Classification itself is delegated to `GetLocaleInfoEx` with the
+  Win32 reading-layout locale-info field — the same OS API the Rust
+  side uses, so we have one cross-stack source of truth.
 
 ### `wta` TUI (Rust)
 
@@ -73,8 +74,11 @@ Set `"language": "qps-plocm"` in `settings.json`:
 - Agent pane: setup / auth / permission / recommendations / chat
   prose right-aligns.
 
-Non-RTL locales are byte-for-byte identical — the OS returns LTR for
-them and no `FlowDirection` mutation happens.
+Non-RTL locales explicitly receive `FlowDirection::LeftToRight` on the
+FRE root grid (we set both branches so the cascade always reflects the
+current locale, not whatever was set on the previous show). The OS
+returns LTR for the vast majority of locales, so the visible behavior
+is unchanged for them.
 
 ## What was intentionally skipped
 

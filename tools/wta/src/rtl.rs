@@ -2,10 +2,9 @@
 //
 // We delegate classification to the Windows locale database via the
 // Win32 reading-layout locale-info API instead of carrying our own
-// language list. That mirrors the C++ side (`RtlHelper.h`, which
-// uses `Windows::Globalization::Language::LayoutDirection`) — both
-// stacks ask the same OS for the answer, so FRE and `wta` agree by
-// construction.
+// language list. The C++ side (`RtlHelper.h`) uses the same Win32
+// API — both stacks ask the same OS for the answer, so FRE and `wta`
+// agree by construction.
 //
 // The reading-layout field returns:
 //   0  ->  Left-to-right
@@ -113,21 +112,31 @@ mod tests {
         "ru-RU", "pt-BR", "it-IT", "pl-PL", "tr-TR",
     ];
 
-    /// Ask the OS directly via the Win32 reading-layout API. Tests
-    /// use this to derive the expected answer, so they never hardcode
-    /// "language X is RTL".
+    /// Ask the OS for the reading-layout value via a *different* code
+    /// path than the helper uses, so a flag / buffer-sizing mistake in
+    /// `is_rtl_locale` can't mask itself when the test compares
+    /// expected vs. actual. The helper uses `LOCALE_RETURN_NUMBER` to
+    /// read the value as a binary `u32`; here we deliberately omit
+    /// that flag so the OS returns the value as a decimal string
+    /// ("0" .. "3"), which we then parse. Independent path, same
+    /// underlying classifier.
     fn os_says_rtl(locale: &str) -> bool {
         let wide: Vec<u16> = locale.encode_utf16().chain(std::iter::once(0)).collect();
-        let mut value: u32 = 0;
+        let mut buf = [0u16; 8];
         let n = unsafe {
             GetLocaleInfoEx(
                 wide.as_ptr(),
-                READING_LAYOUT_INFO | LOCALE_RETURN_NUMBER,
-                &mut value as *mut u32 as *mut u16,
-                (std::mem::size_of::<u32>() / std::mem::size_of::<u16>()) as i32,
+                READING_LAYOUT_INFO,
+                buf.as_mut_ptr(),
+                buf.len() as i32,
             )
         };
-        n > 0 && value == 1
+        if n <= 1 {
+            return false;
+        }
+        // `n` includes the terminating null; the digit is at buf[0].
+        let digit = char::from_u32(buf[0] as u32).unwrap_or('\0');
+        digit == '1'
     }
 
     #[test]
