@@ -2762,8 +2762,8 @@
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>このエージェントで使用するモデルを選択します。</value><comment>Supplementary description for the model setting.</comment></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>エージェント</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>コマンド パレットでのクイック アクションに使用するエージェントを選択します。</value><comment>Supplementary description for the command palette agent setting.</comment></data>
-  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>自動エラー検出</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
-  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>コマンド エラーを検出し、自動的に修正候補を提案します。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>失敗したコマンドの修正候補を自動的に提案する</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
+  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>有効にすると、AI エージェントが失敗したコマンドを自動的に分析し、修正案を提案します。無効にすると、失敗したコマンドはステータス バーにクリック可能なヒントを表示します — Ctrl+Alt+. を押すか、ヒントをクリックすると修正をリクエストできます。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>ペインの位置</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>エージェント ペインをターミナルのどこに開くかを指定します。</value><comment>Supplementary description for the pane position setting.</comment></data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>エージェント Hooks</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>

@@ -60,10 +60,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Detezzjoni awtomatika tal-iżbalji</value>
+    <value>Issuġġerixxi awtomatikament tiswijiet għal kmandi li jfallu</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Agħti lill-Intelligent Terminal permess biex jaċċessa l-qoxra tiegħek u jiddettekta l-iżbalji awtomatikament.</value>
+    <value>Meta tkun attivata, l-aġent tal-IA janalizza awtomatikament il-kmandi li jfallu u jipproponi tiswija. Meta tkun diżattivata, il-kmandi li jfallu juru ħjiel li tista' tikklikkja fil-bar tal-istat — agħfas Ctrl+Alt+. jew ikklikkja l-ħjiel biex titlob tiswija.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">

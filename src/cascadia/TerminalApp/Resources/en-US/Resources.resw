@@ -1079,11 +1079,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Auto-error detection</value>
+    <value>Auto-suggest fixes for failed commands</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Give Intelligent Terminal permission to access your shell and auto detect errors.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>When enabled, the AI agent automatically analyzes failed commands and proposes a fix. When disabled, failed commands surface a clickable hint in the status bar — press Ctrl+Alt+. or click the hint to request a fix.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} Description for the auto-suggest-fixes toggle in the first-run wizard. "AI agent" is a generic role name (Copilot, Claude, Gemini), not a human.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Session management</value>

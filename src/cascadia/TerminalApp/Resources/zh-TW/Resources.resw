@@ -1016,10 +1016,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>自動錯誤偵測</value>
+    <value>自動為失敗的命令建議修正</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>授予 Intelligent Terminal 存取您的 Shell 並自動偵測錯誤的權限。</value>
+    <value>啟用時,AI 代理會自動分析失敗的命令並提出修正建議。停用時,失敗的命令會在狀態列中顯示可點擊的提示 — 按 Ctrl+Alt+. 或點擊提示以要求修正。</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">

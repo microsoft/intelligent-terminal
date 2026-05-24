@@ -326,17 +326,23 @@ namespace winrt::TerminalApp::implementation
         enum class AutofixState
         {
             Idle,      // no error pending
+            Detected,  // suggest-mode: error detected, awaiting user activation
             Pending,   // error detected, WTA is generating a fix
-            Armed,     // fix ready — click or Ctrl+. executes it
+            Armed,     // fix ready — click or Ctrl+Alt+. executes it
             Suggested, // analysis ready but no auto-fix — click opens agent pane
         };
         struct DiagnosticState
         {
-            std::wstring lastErrorSessionId;
+            // Pane GUID of the most recent error (matches the wire-level
+            // `pane_id` rename in this PR). The historical name
+            // `lastErrorSessionId` was a misnomer — this never held an
+            // ACP session id, only a WT pane GUID.
+            std::wstring lastErrorPaneId;
             AutofixState autofixState{ AutofixState::Idle };
-            std::wstring fixPreview;        // Armed
-            std::wstring hotkeyHint;        // Armed
-            std::wstring suggestionTitle;   // Suggested
+            std::wstring fixPreview;          // Armed
+            std::wstring hotkeyHint;          // Armed / Detected
+            std::wstring suggestionTitle;     // Suggested
+            std::wstring detectedSummary;     // Detected
         };
         DiagnosticState _diagnostics;
         bool _agentPaneVisible{ false };
@@ -361,6 +367,12 @@ namespace winrt::TerminalApp::implementation
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
+        // Snapshot of AutoFixEnabled at last SetSettings call. When the
+        // user toggles "Auto-suggest fixes" we send the new value to WTA
+        // over the protocol so it can update its in-memory gate without
+        // requiring the agent pane to be torn down and restarted.
+        bool _lastAutoFixEnabled{ false };
+        bool _autoFixEnabledSnapshotInitialized{ false };
         bool _agentRebuilding{ false };
         // Set when a settings change wants a rebuild but the active
         // tab can't host an agent pane (e.g. the Settings tab itself).
@@ -498,6 +510,7 @@ namespace winrt::TerminalApp::implementation
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);
         std::string _FindSessionIdForControl(const Microsoft::Terminal::Control::TermControl& control);
+        std::string _FindTabIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         void _RegisterTabEvents(Tab& hostingTab);
 
         void _DismissTabContextMenus();

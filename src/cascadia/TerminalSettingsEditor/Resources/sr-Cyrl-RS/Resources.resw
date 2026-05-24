@@ -723,10 +723,10 @@
     <value>Изаберите агента који се користи за брзе радње у палети команди.</value>
     <comment>Supplementary description for the command palette agent setting.</comment>
   </data><data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>Аутоматско откривање грешака</value>
+    <value>Аутоматски предложи исправке за неуспеле команде</value>
     <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
   </data><data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>Аутоматски открива грешке у командама и предлаже исправке.</value>
+    <value>Када је омогућено, ВИ агент аутоматски анализира неуспеле команде и предлаже исправку. Када је онемогућено, неуспеле команде приказују наговештај на који је могуће кликнути у статусној траци — притисните Ctrl+Alt+. или кликните на наговештај да бисте затражили исправку.</value>
     <comment>Supplementary description for the auto-error-detection setting.</comment>
   </data><data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Позиција панела</value>

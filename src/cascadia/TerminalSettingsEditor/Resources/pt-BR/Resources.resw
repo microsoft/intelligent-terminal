@@ -2784,10 +2784,10 @@
     <value>Escolha o agente usado para ações rápidas na paleta de comandos.</value>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>Detecção automática de erros</value>
+    <value>Sugerir correções automaticamente para comandos com falha</value>
   </data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>Detecte erros de comando e sugira correções automaticamente.</value>
+    <value>Quando habilitado, o agente de IA analisa automaticamente os comandos com falha e propõe uma correção. Quando desabilitado, os comandos com falha exibem uma dica clicável na barra de status — pressione Ctrl+Alt+. ou clique na dica para solicitar uma correção.</value>
   </data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Posição do painel</value>

@@ -174,10 +174,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>تشخیص خودکار خطا</value>
+    <value>پیشنهاد خودکار رفع‌ها برای فرمان‌های ناموفق</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>به Intelligent Terminal اجازه دسترسی به شِل شما و تشخیص خودکار خطاها را بدهید.</value>
+    <value>هنگام فعال بودن، عامل هوش مصنوعی به طور خودکار فرمان‌های ناموفق را تحلیل می‌کند و یک رفع پیشنهاد می‌دهد. هنگام غیرفعال بودن، فرمان‌های ناموفق یک راهنمای قابل کلیک در نوار وضعیت نمایش می‌دهند — برای درخواست رفع، Ctrl+Alt+. را فشار دهید یا روی راهنما کلیک کنید.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">

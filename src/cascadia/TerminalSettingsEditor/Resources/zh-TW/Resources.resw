@@ -2762,8 +2762,8 @@
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>選擇此代理使用的模型。</value><comment>Supplementary description for the model setting.</comment></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>代理</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>選擇要在命令選擇區中用於快速動作的代理。</value><comment>Supplementary description for the command palette agent setting.</comment></data>
-  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>自動錯誤偵測</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
-  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>自動偵測命令錯誤並提出修正建議。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>自動為失敗的命令建議修正</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
+  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>啟用時,AI 代理會自動分析失敗的命令並提出修正建議。停用時,失敗的命令會在狀態列中顯示可點擊的提示 — 按 Ctrl+Alt+. 或點擊提示以要求修正。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>窗格位置</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>指定代理窗格相對於終端機的開啟位置。</value><comment>Supplementary description for the pane position setting.</comment></data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>代理 Hooks</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>

@@ -60,10 +60,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>የስህተት በራስ-ሰር ማወቅ</value>
+    <value>ለተሳኩ ትዕዛዞች ጥገናዎችን በራስ-ሰር ይጠቁሙ</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>ለ Intelligent Terminal የሴልዎን ለማግኘት እና ስህተቶችን በራስ-ሰር ለማወቅ ፍቃድ ይስጡ።</value>
+    <value>ሲነቃ፣ AI ወኪሉ የተሳኩ ትዕዛዞችን በራስ-ሰር ይተነትናል እና ጥገና ያቀርባል። ሲጠፋ፣ የተሳኩ ትዕዛዞች በሁኔታ አሞሌ ላይ ሊጫን የሚችል ፍንጭ ያሳያሉ — ጥገና ለመጠየቅ Ctrl+Alt+. ይጫኑ ወይም ፍንጩን ጠቅ ያድርጉ።</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
