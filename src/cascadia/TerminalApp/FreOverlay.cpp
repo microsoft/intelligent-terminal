@@ -339,20 +339,19 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // 5. Install shell integration for autofix (if enabled)
+        // 5. Install shell integration unconditionally. The Detected pill
+        // (suggest-mode default — toggle off) also needs OSC 133 emitted
+        // by the shell to drive the bottom-bar state machine. The toggle
+        // only controls whether WTA *automatically* invokes the LLM on
+        // failure, not whether errors are detected at all.
         {
             auto self = weak.get();
             if (!self) co_return;
 
-            bool doShellInteg = AutoErrorToggle().IsOn();
-
-            if (doShellInteg)
-            {
-                co_await winrt::resume_background();
-                namespace SI = ::Microsoft::Terminal::ShellIntegration;
-                SI::InstallForTarget(SI::Target::Pwsh);
-                SI::InstallForTarget(SI::Target::WindowsPowerShell);
-            }
+            co_await winrt::resume_background();
+            namespace SI = ::Microsoft::Terminal::ShellIntegration;
+            SI::InstallForTarget(SI::Target::Pwsh);
+            SI::InstallForTarget(SI::Target::WindowsPowerShell);
         }
 
         // 6. Resume UI thread before touching controls / raising events

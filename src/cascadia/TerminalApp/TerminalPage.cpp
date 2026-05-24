@@ -309,6 +309,37 @@ namespace winrt::TerminalApp::implementation
             _agentSettingsSnapshotInitialized = true;
         }
 
+        // Auto-suggest toggle hot-reload: when the effective auto-fix
+        // value changes between settings reloads, push the new value
+        // to WTA over the protocol. Tracks `EffectiveAutoFixEnabled`
+        // (not the raw user pref) so GPO Forced/Blocked transitions
+        // also propagate. WTA's `autofix_enabled` flag would
+        // otherwise stay pinned to whatever `--no-autofix` value it
+        // was launched with.
+        {
+            const bool currentAutoFix = _settings.GlobalSettings().EffectiveAutoFixEnabled();
+            if (!_autoFixEnabledSnapshotInitialized)
+            {
+                _lastAutoFixEnabled = currentAutoFix;
+                _autoFixEnabledSnapshotInitialized = true;
+            }
+            else if (_lastAutoFixEnabled != currentAutoFix)
+            {
+                _lastAutoFixEnabled = currentAutoFix;
+                Json::Value evt;
+                evt["type"] = "event";
+                evt["method"] = "autofix_enabled_changed";
+                Json::Value params;
+                params["enabled"] = currentAutoFix;
+                evt["params"] = params;
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                ProtocolVtSequenceReceived.raise(
+                    *this,
+                    winrt::to_hstring(Json::writeString(wb, evt)));
+            }
+        }
+
         // Make sure to call SetCommands before _RefreshUIForSettingsReload.
         // SetCommands will make sure the KeyChordText of Commands is updated, which needs
         // to happen before the Settings UI is reloaded and tries to re-read those values.
@@ -3876,15 +3907,47 @@ namespace winrt::TerminalApp::implementation
             // Fix ready — execute it.
             _TriggerAutofix();
             break;
+        case AutofixState::Detected:
+        {
+            // Suggest-mode pill: user opts in to call the LLM. Send the
+            // event to WTA; WTA replays the trigger as if auto-suggest
+            // were on (transitioning the bar to Pending → Armed) without
+            // mutating local state here.
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "autofix_execute_from_detected";
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
+            evt["params"] = params;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            ProtocolVtSequenceReceived.raise(
+                *this,
+                winrt::to_hstring(Json::writeString(wb, evt)));
+            break;
+        }
         case AutofixState::Suggested:
+        {
             // No executable fix — auto-fix produced an explanation that lives
             // in the agent pane chat history. Open the pane so the user can
-            // read it, then drop back to Idle (the suggestion has been "seen").
+            // read it, then ask WTA to clear the suggestion for the active
+            // tab. WTA is the authoritative state owner, so we don't mutate
+            // _diagnostics locally — we wait for the inbound
+            // autofix_state:cleared event to roll us back to Idle.
             _OpenOrReuseAgentPane(L"");
-            _diagnostics.autofixState = AutofixState::Idle;
-            _diagnostics.suggestionTitle.clear();
-            _UpdateBottomBarState();
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "autofix_dismiss_suggestion";
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
+            evt["params"] = params;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            ProtocolVtSequenceReceived.raise(
+                *this,
+                winrt::to_hstring(Json::writeString(wb, evt)));
             break;
+        }
         case AutofixState::Pending:
             // Analysis in flight — show the agent pane so the user can watch
             // progress. Keep Pending state until WTA confirms armed/cleared.
@@ -4066,6 +4129,43 @@ namespace winrt::TerminalApp::implementation
                     box_value(winrt::hstring{ tooltip }));
                 break;
             }
+            case AutofixState::Detected:
+            {
+                // Suggest-mode default: error happened, LLM not invoked.
+                // Clickable pill asking the user to opt in. Same warning
+                // hue as Armed since both demand attention.
+                diagBtn.Opacity(1.0);
+                diagBtn.IsEnabled(true);
+
+                const auto hotkey = _diagnostics.hotkeyHint.empty()
+                                        ? std::wstring{ L"Ctrl+Alt+." }
+                                        : _diagnostics.hotkeyHint;
+                std::wstring labelText = L"Click " + hotkey + L" to fix error";
+                const auto accent = SolidColorBrush{
+                    ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
+                };
+                if (icon)
+                {
+                    icon.Foreground(accent);
+                }
+                if (label)
+                {
+                    label.Text(winrt::hstring{ labelText });
+                    label.Foreground(accent);
+                    label.Visibility(Visibility::Visible);
+                }
+                std::wstring tooltip = L"Error detected. Click or press " + hotkey +
+                                       L" to ask the AI agent to diagnose and suggest a fix.";
+                if (!_diagnostics.detectedSummary.empty())
+                {
+                    tooltip += L"\n\n";
+                    tooltip += _diagnostics.detectedSummary;
+                }
+                ToolTipService::SetToolTip(
+                    diagBtn,
+                    box_value(winrt::hstring{ tooltip }));
+                break;
+            }
             case AutofixState::Idle:
             default:
             {
@@ -4093,12 +4193,17 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Inbound event from WTA carrying an autofix_state update. Called by the
-    // COM server on the UI thread. Payload shape:
-    //   {"type":"event","method":"autofix_state",
-    //    "params":{"state":"pending|armed|cleared",
-    //              "session_id":"...", "summary":"...",
-    //              "fix_preview":"...", "hotkey_hint":"Ctrl+."}}
+    // Inbound event from WTA carrying an autofix_state update. Called by
+    // the COM server on the UI thread. Per-state payload shape:
+    //   detected  : { state, pane_id, summary,           hotkey_hint }
+    //   pending   : { state, pane_id, summary }
+    //   armed     : { state, pane_id, fix_preview,       hotkey_hint }
+    //   suggested : { state, pane_id, suggestion_title }
+    //   cleared   : { state }   ← no pane_id; clears lastErrorPaneId
+    // All non-`state` fields are optional from this consumer's
+    // perspective — missing fields just leave the previous value in
+    // place (except on `cleared`, which resets pane_id / previews /
+    // titles explicitly).
     void TerminalPage::OnAutofixStateChanged(hstring eventJson)
     {
         Json::Value evt;
@@ -4127,16 +4232,27 @@ namespace winrt::TerminalApp::implementation
         {
             _diagnostics.autofixState = AutofixState::Suggested;
         }
+        else if (state == "detected")
+        {
+            _diagnostics.autofixState = AutofixState::Detected;
+        }
         else if (state == "cleared")
         {
             _diagnostics.autofixState = AutofixState::Idle;
             _diagnostics.fixPreview.clear();
             _diagnostics.suggestionTitle.clear();
+            _diagnostics.detectedSummary.clear();
+            _diagnostics.lastErrorPaneId.clear();
         }
-        if (params.isMember("session_id") && params["session_id"].isString())
+        if (params.isMember("summary") && params["summary"].isString())
         {
-            const auto s = params["session_id"].asString();
-            _diagnostics.lastErrorSessionId.assign(s.begin(), s.end());
+            const auto s = params["summary"].asString();
+            _diagnostics.detectedSummary.assign(s.begin(), s.end());
+        }
+        if (params.isMember("pane_id") && params["pane_id"].isString())
+        {
+            const auto s = params["pane_id"].asString();
+            _diagnostics.lastErrorPaneId.assign(s.begin(), s.end());
         }
         if (params.isMember("fix_preview") && params["fix_preview"].isString())
         {
@@ -4433,7 +4549,7 @@ namespace winrt::TerminalApp::implementation
         evt["type"] = "event";
         evt["method"] = "autofix_execute";
         Json::Value params;
-        params["session_id"] = winrt::to_string(_diagnostics.lastErrorSessionId);
+        params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
         evt["params"] = params;
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
@@ -4812,6 +4928,40 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    // Walk every tab's pane tree and return the StableId of the tab that
+    // owns the given control. Used to tag protocol events with both pane
+    // GUID and tab id so wta can route per-tab regardless of which tab is
+    // currently active.
+    std::string TerminalPage::_FindTabIdForControl(const TermControl& control)
+    {
+        if (!control)
+        {
+            return {};
+        }
+        for (const auto& tab : _tabs)
+        {
+            const auto tabImpl = _GetTabImpl(tab);
+            if (!tabImpl)
+            {
+                continue;
+            }
+            const auto rootPane = tabImpl->GetRootPane();
+            if (!rootPane)
+            {
+                continue;
+            }
+            const auto match = rootPane->WalkTree([&](const auto& p) -> std::shared_ptr<Pane> {
+                const auto ctl = p->GetTerminalControl();
+                return (ctl && ctl == control) ? p : nullptr;
+            });
+            if (match)
+            {
+                return winrt::to_string(tabImpl->StableId());
+            }
+        }
+        return {};
+    }
+
     void TerminalPage::_RegisterTerminalEvents(TermControl term)
     {
         term.RaiseNotice({ this, &TerminalPage::_ControlNoticeRaisedHandler });
@@ -4871,19 +5021,50 @@ namespace winrt::TerminalApp::implementation
                             if (!page || !term2)
                                 return;
 
-                            // Autofix pipeline: skip forwarding if disabled at runtime.
-                            if (!page->_settings.GlobalSettings().EffectiveAutoFixEnabled())
+                            // GPO-blocked gate: when administrator policy
+                            // explicitly disables auto-fix, the feature
+                            // is off across the board — no Pending, no
+                            // Detected pill, no background analysis.
+                            // `IsAutoFixPolicyLocked()` returns true only
+                            // for the Blocked policy state; Forced-on
+                            // states the user can change fall through.
+                            if (page->_settings.GlobalSettings().IsAutoFixPolicyLocked())
                                 return;
 
-                            const auto sessionIdStr = page->_FindSessionIdForControl(term2);
-                            if (sessionIdStr.empty())
-                                return;
-
+                            // Early filter: WTA only acts on osc:133;*
+                            // and AgentEvent payloads. Every other VT
+                            // sequence (cursor moves, OSC 0/1 titles,
+                            // color resets, …) gets classified as
+                            // Informational and dropped on the other
+                            // side, so skip the pane/tab lookup, JSON
+                            // encode, and IPC for those entirely. This
+                            // matters because VtSequenceReceived can
+                            // fire hundreds of times a second on a
+                            // busy terminal.
+                            //
+                            // (The `autoFixEnabled` user setting only
+                            // controls whether WTA *automatically*
+                            // invokes the LLM; the Detected pill needs
+                            // these events too. Toggle changes
+                            // hot-reload into WTA via
+                            // `autofix_enabled_changed`, so no
+                            // user-pref gate is needed here.)
                             auto seqStr = winrt::to_string(seq);
-
-                            // Check for AgentEvent sub-action: "AgentEvent;{json}"
                             static constexpr std::string_view agentPrefix = "AgentEvent;";
-                            if (seqStr.starts_with(agentPrefix))
+                            static constexpr std::string_view osc133Prefix = "osc:133;";
+                            const bool isAgentEvent = seqStr.starts_with(agentPrefix);
+                            const bool isOsc133 = seqStr.starts_with(osc133Prefix);
+                            if (!isAgentEvent && !isOsc133)
+                            {
+                                return;
+                            }
+
+                            const auto paneIdStr = page->_FindSessionIdForControl(term2);
+                            if (paneIdStr.empty())
+                                return;
+                            const auto tabIdStr = page->_FindTabIdForControl(term2);
+
+                            if (isAgentEvent)
                             {
                                 auto jsonPayload = seqStr.substr(agentPrefix.size());
                                 Json::Value agentParams;
@@ -4895,7 +5076,11 @@ namespace winrt::TerminalApp::implementation
                                     agentParams.isMember("event") &&
                                     agentParams["event"].isString())
                                 {
-                                    agentParams["session_id"] = sessionIdStr;
+                                    agentParams["pane_id"] = paneIdStr;
+                                    if (!tabIdStr.empty())
+                                    {
+                                        agentParams["tab_id"] = tabIdStr;
+                                    }
 
                                     Json::Value evt;
                                     evt["type"] = "event";
@@ -4907,32 +5092,20 @@ namespace winrt::TerminalApp::implementation
                                     page->ProtocolVtSequenceReceived.raise(
                                         *page,
                                         winrt::to_hstring(Json::writeString(wb, evt)));
-                                    return; // Don't also emit as raw vt_sequence
                                 }
+                                return; // AgentEvent never falls through to vt_sequence
                             }
 
-                            // Track command failures for the bottom bar diagnostics button.
-                            // OSC 133;D;N with N>0 means the last command failed.
-                            // seqStr format: "osc:133;D;1"
-                            static constexpr std::string_view osc133Prefix = "osc:133;";
-                            if (seqStr.starts_with(osc133Prefix))
-                            {
-                                auto rest = seqStr.substr(osc133Prefix.size());
-                                // rest is e.g. "D;1" or "D;0"
-                                if (rest.starts_with("D;"))
-                                {
-                                    auto codeStr = rest.substr(2);
-                                    int exitCode = 0;
-                                    try { exitCode = std::stoi(codeStr); } catch (...) {}
-                                    // All bar state transitions come from WTA via autofix_state events.
-                                }
-                            }
-
+                            // isOsc133 path — forward as vt_sequence.
                             Json::Value evt;
                             evt["type"] = "event";
                             evt["method"] = "vt_sequence";
                             Json::Value params;
-                            params["session_id"] = sessionIdStr;
+                            params["pane_id"] = paneIdStr;
+                            if (!tabIdStr.empty())
+                            {
+                                params["tab_id"] = tabIdStr;
+                            }
                             params["sequence"] = seqStr;
                             evt["params"] = params;
                             Json::StreamWriterBuilder wb;
@@ -4976,7 +5149,7 @@ namespace winrt::TerminalApp::implementation
                         return;
                     }
 
-                    // Resolve the session id SYNCHRONOUSLY here, while the
+                    // Resolve the pane id SYNCHRONOUSLY here, while the
                     // control is still alive. If we deferred it into the
                     // dispatched lambda below, a `Closed` event raised as
                     // part of tab teardown would race with the
@@ -4988,17 +5161,20 @@ namespace winrt::TerminalApp::implementation
                     // `_FindSessionIdForControl` only reads
                     // `control.Connection().SessionId()`, no `_tabs`
                     // access, so it is safe off the UI thread.
-                    const auto sessionIdStr = strongThis->_FindSessionIdForControl(control);
-                    if (sessionIdStr.empty())
+                    const auto paneIdStr = strongThis->_FindSessionIdForControl(control);
+                    if (paneIdStr.empty())
                         return;
 
-                    // Dispatch only the actual event raise to the UI
-                    // thread — `ProtocolVtSequenceReceived` has UI-thread
-                    // affinity. The captured `sessionIdStr` is a plain
-                    // std::string and survives the term's destruction.
+                    // Dispatch only the actual event raise (and the
+                    // `tab_id` lookup, which DOES touch `_tabs`) to the
+                    // UI thread. The captured `paneIdStr` is a plain
+                    // std::string and survives the term's destruction;
+                    // `tab_id` falls back to empty when the term is
+                    // already gone, but the event still fires with the
+                    // pane_id so wta's PaneClosed prune can run.
                     strongThis->Dispatcher().RunAsync(
                         winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-                        [weakThis, sessionIdStr, stateStr]() {
+                        [weakThis, weakTerm, paneIdStr, stateStr]() {
                             auto page = weakThis.get();
                             if (!page)
                                 return;
@@ -5009,11 +5185,28 @@ namespace winrt::TerminalApp::implementation
                             // when an agent CLI exits and the pane is closed.
                             // Volume is low (a handful of events per pane
                             // lifecycle), so always forward.
+                            // `_FindTabIdForControl` walks `_tabs`, so it
+                            // must run on the UI thread AND have a live
+                            // term to compare panes against. If the term
+                            // already died (close-time race), fall back
+                            // to no tab_id — autofix routing may be
+                            // imperfect for this one event, but the
+                            // pane_id alone is sufficient for the
+                            // session-list / PaneClosed prune path.
+                            auto term2 = weakTerm.get();
+                            const auto tabIdStr = term2
+                                ? page->_FindTabIdForControl(term2)
+                                : std::string{};
+
                             Json::Value evt;
                             evt["type"] = "event";
                             evt["method"] = "connection_state";
                             Json::Value params;
-                            params["session_id"] = sessionIdStr;
+                            params["pane_id"] = paneIdStr;
+                            if (!tabIdStr.empty())
+                            {
+                                params["tab_id"] = tabIdStr;
+                            }
                             params["state"] = stateStr;
                             evt["params"] = params;
                             Json::StreamWriterBuilder wb;

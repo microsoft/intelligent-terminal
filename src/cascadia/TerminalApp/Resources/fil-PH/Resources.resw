@@ -173,10 +173,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Awtomatikong pag-detect ng error</value>
+    <value>Awtomatikong magmungkahi ng mga ayos para sa mga nabigong utos</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Payagan ang Intelligent Terminal na i-access ang iyong shell at awtomatikong ma-detect ang mga error.</value>
+    <value>Kapag pinagana, awtomatikong sinusuri ng AI agent ang mga nabigong utos at nagmumungkahi ng ayos. Kapag hindi pinagana, ang mga nabigong utos ay nagpapakita ng mai-click na pahiwatig sa status bar — pindutin ang Ctrl+Alt+. o i-click ang pahiwatig upang humiling ng ayos.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">

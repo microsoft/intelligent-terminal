@@ -173,10 +173,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Avtomatik xato aniqlash</value>
+    <value>Bajarilmagan buyruqlar uchun tuzatishlarni avtomatik taklif qilish</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal-ga qobiqingizga kirish va xatolarni avtomatik aniqlash ruxsatini bering.</value>
+    <value>Yoqilganda, AI agenti bajarilmagan buyruqlarni avtomatik tahlil qilib, tuzatish taklif qiladi. O'chirilganda, bajarilmagan buyruqlar holat panelida bosish mumkin bo'lgan maslahatni ko'rsatadi — tuzatish so'rash uchun Ctrl+Alt+. tugmasini bosing yoki maslahatga bosing.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">

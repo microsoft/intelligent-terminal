@@ -60,10 +60,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Lorg mearachdan gu fèin-obrachail</value>
+    <value>Mol càraidhean gu fèin-obrachail airson àitheantan a dh'fhàillig</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Thoir cead do Intelligent Terminal ruigsinneachd fhaighinn air do shlige agus mearachdan a lorg gu fèin-obrachail.</value>
+    <value>Nuair a tha e an comas, bidh an riochdaire IF a' mion-sgrùdadh àitheantan a dh'fhàillig gu fèin-obrachail agus a' moladh càradh. Nuair a tha e à comas, seallaidh àitheantan a dh'fhàillig sanas as urrainn briogadh air sa bhàr-staid — brùth Ctrl+Alt+. no briog air an t-sanas gus càradh iarraidh.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">

@@ -173,10 +173,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Автоматично откриване на грешки</value>
+    <value>Автоматично предлагане на корекции за неуспешни команди</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Дайте на Intelligent Terminal разрешение за достъп до вашата обвивка и автоматично откриване на грешки.</value>
+    <value>Когато е активирано, AI агентът автоматично анализира неуспешните команди и предлага корекция. Когато е деактивирано, неуспешните команди показват подсказка с възможност за щракване в лентата на състоянието — натиснете Ctrl+Alt+. или щракнете върху подсказката, за да поискате корекция.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">

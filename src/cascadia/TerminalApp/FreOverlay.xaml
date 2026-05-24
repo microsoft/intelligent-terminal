@@ -238,7 +238,7 @@
                                                    TextWrapping="Wrap" />
                                     </StackPanel>
                                     <ToggleSwitch x:Name="AutoErrorToggle" Grid.Column="1"
-                                                  IsOn="True" VerticalAlignment="Center"
+                                                  IsOn="False" VerticalAlignment="Center"
                                                   HorizontalAlignment="Right" MinWidth="0" />
                                 </Grid>
                                 <TextBlock x:Name="AutoErrorPolicyNotice"

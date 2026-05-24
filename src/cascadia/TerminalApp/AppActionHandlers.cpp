@@ -11,6 +11,7 @@
 #include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "Utils.h"
+#include <json/json.h>
 
 using namespace winrt::Windows::ApplicationModel::DataTransfer;
 using namespace winrt::Windows::UI::Xaml;
@@ -1740,11 +1741,31 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_HandleTriggerAutofix(const IInspectable& /*sender*/,
                                               const ActionEventArgs& args)
     {
-        // Only act when a fix is actually armed. In Pending/Idle the hotkey
-        // does nothing, so the chord can fall through to other consumers.
+        // Two activation states:
+        //   * Armed    — fix is cached, execute it (existing path)
+        //   * Detected — suggest-mode pill, ask WTA to invoke the LLM now
+        // Pending/Suggested/Idle let the chord fall through to other consumers.
         if (_diagnostics.autofixState == AutofixState::Armed)
         {
             _TriggerAutofix();
+            args.Handled(true);
+        }
+        else if (_diagnostics.autofixState == AutofixState::Detected)
+        {
+            // Mirror the Detected branch of `_DiagnosticsButtonOnClick`:
+            // send autofix_execute_from_detected; WTA replays the trigger
+            // with the auto-suggest gate bypassed.
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "autofix_execute_from_detected";
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
+            evt["params"] = params;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            ProtocolVtSequenceReceived.raise(
+                *this,
+                winrt::to_hstring(Json::writeString(wb, evt)));
             args.Handled(true);
         }
     }

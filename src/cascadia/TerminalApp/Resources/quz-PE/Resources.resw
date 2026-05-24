@@ -60,10 +60,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Huchha kikinmanta tariy</value>
+    <value>Mana atisqa kamachiykunapaq allichaykunata kikinmanta yuyaychay</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal nisqaman shell nisqaykiman yaykuyta quy chaymanta huchhakunata kikinmanta tarinapaq.</value>
+    <value>Kachasqa kaspa, AI yanapaqqa mana atisqa kamachiykunata kikinmanta yachay, hinaspa allichayta yuyaychan. Mana kachasqa kaspa, mana atisqa kamachiykunaqa qhawana siq'ipi ñit'inalla willakuyta rikuchinku — allichayta mañakunapaq Ctrl+Alt+. ñit'iy utaq willakuy patapi ñit'iy.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">

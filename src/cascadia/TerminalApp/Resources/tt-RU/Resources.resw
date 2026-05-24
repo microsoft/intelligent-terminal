@@ -173,10 +173,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Автоматик хата ачыклау</value>
+    <value>Уңышсыз боерыклар өчен төзәтмәләрне автоматик тәкъдим итү</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal-га кабыгыгызга керергә һәм хаталарны автоматик ачыкларга рөхсәт бирегез.</value>
+    <value>Кушылган булса, ЯИ-агент уңышсыз боерыкларны автоматик рәвештә тикшерә һәм төзәтмә тәкъдим итә. Сүндерелгән булса, уңышсыз боерыклар хәл сызыгында басып була торган киңәш күрсәтә — төзәтмә сорау өчен Ctrl+Alt+. басыгыз яки киңәшкә басыгыз.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
