@@ -112,26 +112,9 @@ function Invoke-RustBuild {
         [string]$RustTarget
     )
 
-    $previousRustFlags = $env:RUSTFLAGS
-    try {
-        $crtFlags = '-C target-feature=+crt-static'
-        if ([string]::IsNullOrWhiteSpace($previousRustFlags)) {
-            $env:RUSTFLAGS = $crtFlags
-        } else {
-            $env:RUSTFLAGS = '{0} {1}' -f $previousRustFlags, $crtFlags
-        }
-
-        & $CargoPath build --manifest-path $ManifestPath --release --target $RustTarget
-        if ($LASTEXITCODE -ne 0) {
-            throw "cargo build failed for $ManifestPath."
-        }
-    }
-    finally {
-        if ([string]::IsNullOrWhiteSpace($previousRustFlags)) {
-            Remove-Item Env:RUSTFLAGS -ErrorAction SilentlyContinue
-        } else {
-            $env:RUSTFLAGS = $previousRustFlags
-        }
+    & $CargoPath build --manifest-path $ManifestPath --release --target $RustTarget
+    if ($LASTEXITCODE -ne 0) {
+        throw "cargo build failed for $ManifestPath."
     }
 }
 
