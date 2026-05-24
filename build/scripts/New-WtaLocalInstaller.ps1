@@ -109,15 +109,22 @@ function Invoke-RustBuild {
         [string]$ManifestPath,
 
         [Parameter(Mandatory = $true)]
-        [string]$RustTarget
+        [string]$RustTarget,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
     )
 
     # Cargo's config discovery walks up from the current working directory,
-    # not from the manifest path. Pin CWD to the manifest's directory so
-    # Cargo always finds the repo-root .cargo/config.toml that supplies
-    # `+crt-static` — even when this script is launched from outside the repo.
-    $manifestDir = Split-Path -Parent $ManifestPath
-    Push-Location $manifestDir
+    # not from the manifest path. Pin CWD to the repo root so Cargo finds the
+    # repo-root .cargo/config.toml that supplies `+crt-static` — even when
+    # this script is launched from outside the repo.
+    #
+    # Important: do NOT push into the manifest's directory. tools/wta/ has a
+    # rust-toolchain.toml pinning the ms-prod channel that only resolves on
+    # internal MSRustup hosts; if rustup sees it from CWD, local builds fail
+    # with "custom toolchain 'ms-prod-*' is not installed".
+    Push-Location $RepoRoot
     try {
         & $CargoPath build --manifest-path $ManifestPath --release --target $RustTarget
         if ($LASTEXITCODE -ne 0) {
@@ -492,7 +499,7 @@ if ($SkipWtaBuild) {
 } else {
     Write-Status "Building wta.exe for $rustTarget with a static CRT ..."
     $manifestPath = Join-Path $repoRoot 'tools\wta\Cargo.toml'
-    Invoke-RustBuild -CargoPath $cargoPath -ManifestPath $manifestPath -RustTarget $rustTarget
+    Invoke-RustBuild -CargoPath $cargoPath -ManifestPath $manifestPath -RustTarget $rustTarget -RepoRoot $repoRoot
     $resolvedWtaExePath = Join-Path $repoRoot ("tools\wta\target\{0}\release\wta.exe" -f $rustTarget)
 }
 
@@ -546,7 +553,7 @@ Copy-Item -Path $installerCmd -Destination (Join-Path $installerSourceRoot 'inst
 Copy-Item -Path $payloadZip -Destination (Join-Path $installerSourceRoot 'payload.zip') -Force
 
 Write-Status "Building installer bootstrap for $rustTarget ..."
-Invoke-RustBuild -CargoPath $cargoPath -ManifestPath $installerBootstrapManifest -RustTarget $rustTarget
+Invoke-RustBuild -CargoPath $cargoPath -ManifestPath $installerBootstrapManifest -RustTarget $rustTarget -RepoRoot $repoRoot
 $bootstrapExePath = Join-Path $repoRoot ("installer\bootstrap\target\{0}\release\intelligent-terminal-installer-bootstrap.exe" -f $rustTarget)
 if (-not (Test-Path $bootstrapExePath -PathType Leaf)) {
     throw "Installer bootstrap not found: $bootstrapExePath"
