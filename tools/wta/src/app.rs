@@ -3210,7 +3210,7 @@ impl App {
                         .autofix
                         .suggested_pane_id
                         .take();
-                    if let Some(pane) = suggested {
+                    if suggested.is_some() {
                         self.emit_autofix_state_cleared(&active);
                     }
                     return;
@@ -3606,16 +3606,15 @@ impl App {
                                         tab.clear_recommendations();
                                         tab.autofix.pane_id.take()
                                     };
-                                    if let Some(pane) = pane_to_clear {
+                                    if pane_to_clear.is_some() {
                                         self.emit_autofix_state_cleared(&target_tab);
                                     }
                                 }
                             }
                             // Suggested: dismiss on prompt activity (exit-zero
                             // or a fresh prompt-start) in the event's tab.
-                            // Emit cleared against the original suggested
-                            // pane so the bar's lastErrorPaneId stays
-                            // consistent.
+                            // Emit cleared so the bar's per-tab snapshot
+                            // resets to Idle.
                             if is_exit_zero || is_prompt_start {
                                 if let Some(t) = event_tab.as_deref() {
                                     let t_owned = t.to_string();
@@ -3624,7 +3623,7 @@ impl App {
                                         .autofix
                                         .suggested_pane_id
                                         .take();
-                                    if let Some(pane) = pane_to_clear {
+                                    if pane_to_clear.is_some() {
                                         self.emit_autofix_state_cleared(&t_owned);
                                     }
                                 }
@@ -3637,19 +3636,12 @@ impl App {
                             if is_exit_zero {
                                 if let Some(t) = event_tab.as_deref() {
                                     let t_owned = t.to_string();
-                                    let detected_pane = match &self
-                                        .tab_mut(&t_owned)
-                                        .autofix
-                                        .bar_snapshot
-                                    {
+                                    let detected_matches = matches!(
+                                        &self.tab_mut(&t_owned).autofix.bar_snapshot,
                                         AutofixBarSnapshot::Detected { pane_id: bar_pane, .. }
-                                            if bar_pane == pane_id.as_str() =>
-                                        {
-                                            Some(bar_pane.clone())
-                                        }
-                                        _ => None,
-                                    };
-                                    if let Some(bar_pane) = detected_pane {
+                                            if bar_pane == pane_id.as_str()
+                                    );
+                                    if detected_matches {
                                         self.emit_autofix_state_cleared(&t_owned);
                                     }
                                 }
@@ -4230,7 +4222,7 @@ impl App {
                         tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
                         tab.autofix.pane_id.take()
                     };
-                    if let Some(p) = pane_to_clear {
+                    if pane_to_clear.is_some() {
                         let active = self.active_tab_key().to_string();
                         self.emit_autofix_state_cleared(&active);
                     }
@@ -4247,7 +4239,7 @@ impl App {
             // the attach client would need to send a HostCommand::DismissSuggestion.
             // TODO: wire that path when shared-host mode is exercised.
             KeyCode::Esc if self.current_tab().autofix.suggested_pane_id.is_some() => {
-                let pane = self.current_tab_mut().autofix.suggested_pane_id.take().unwrap();
+                self.current_tab_mut().autofix.suggested_pane_id = None;
                 let active = self.active_tab_key().to_string();
                 self.emit_autofix_state_cleared(&active);
             }
@@ -5583,7 +5575,7 @@ impl App {
             outcome: TurnOutcome::Empty,
             end_pending: true,
         };
-        if let Some(pane) = autofix_pane {
+        if autofix_pane.is_some() {
             self.emit_autofix_state_cleared(&target_tab);
             self.session_tab_mut(session_id).autofix.pane_id = None;
         }
@@ -5611,7 +5603,7 @@ impl App {
                     "autofix_ignore",
                     &format!("pane={:?}", pane_id),
                 );
-                if let Some(pane_id) = pane_id {
+                if pane_id.is_some() {
                     self.emit_autofix_state_cleared(&target_tab);
                 }
                 self.session_tab_mut(session_id).autofix.pane_id = None;
@@ -5742,7 +5734,7 @@ impl App {
         let _ = self
             .recommendation_tx
             .send(crate::coordinator::ChoiceExecution { choice, insert_only });
-        if let Some(pane_id) = armed_pane {
+        if armed_pane.is_some() {
             self.emit_autofix_state_cleared(&target_tab);
         }
         self.session_tab_mut(session_id).autofix.pane_id = None;
@@ -5777,7 +5769,7 @@ impl App {
                 .map(|a| a.target_pane_id.clone())
                 .or_else(|| tab.autofix.pane_id.clone())
         };
-        if let Some(pane_id) = pane_id {
+        if pane_id.is_some() {
             self.emit_autofix_state_cleared(&target_tab);
         }
         let tab = self.session_tab_mut(session_id);

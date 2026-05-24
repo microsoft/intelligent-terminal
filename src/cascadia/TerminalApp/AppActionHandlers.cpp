@@ -1759,7 +1759,7 @@ namespace winrt::TerminalApp::implementation
             evt["type"] = "event";
             evt["method"] = "autofix_execute_from_detected";
             Json::Value params;
-            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorSessionId);
+            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
             evt["params"] = params;
             Json::StreamWriterBuilder wb;
             wb["indentation"] = "";

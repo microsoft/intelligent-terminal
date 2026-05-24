@@ -333,7 +333,11 @@ namespace winrt::TerminalApp::implementation
         };
         struct DiagnosticState
         {
-            std::wstring lastErrorSessionId;
+            // Pane GUID of the most recent error (matches the wire-level
+            // `pane_id` rename in this PR). The historical name
+            // `lastErrorSessionId` was a misnomer — this never held an
+            // ACP session id, only a WT pane GUID.
+            std::wstring lastErrorPaneId;
             AutofixState autofixState{ AutofixState::Idle };
             std::wstring fixPreview;          // Armed
             std::wstring hotkeyHint;          // Armed / Detected
@@ -366,7 +370,7 @@ namespace winrt::TerminalApp::implementation
         // Snapshot of AutoFixEnabled at last SetSettings call. When the
         // user toggles "Auto-suggest fixes" we send the new value to WTA
         // over the protocol so it can update its in-memory gate without
-        // requiring the agent pane to be torn down and respawned.
+        // requiring the agent pane to be torn down and restarted.
         bool _lastAutoFixEnabled{ false };
         bool _autoFixEnabledSnapshotInitialized{ false };
         bool _agentRebuilding{ false };

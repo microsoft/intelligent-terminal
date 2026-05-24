@@ -3917,7 +3917,7 @@ namespace winrt::TerminalApp::implementation
             evt["type"] = "event";
             evt["method"] = "autofix_execute_from_detected";
             Json::Value params;
-            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorSessionId);
+            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
             evt["params"] = params;
             Json::StreamWriterBuilder wb;
             wb["indentation"] = "";
@@ -3939,7 +3939,7 @@ namespace winrt::TerminalApp::implementation
             evt["type"] = "event";
             evt["method"] = "autofix_dismiss_suggestion";
             Json::Value params;
-            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorSessionId);
+            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
             evt["params"] = params;
             Json::StreamWriterBuilder wb;
             wb["indentation"] = "";
@@ -4199,7 +4199,7 @@ namespace winrt::TerminalApp::implementation
     //   pending   : { state, pane_id, summary }
     //   armed     : { state, pane_id, fix_preview,       hotkey_hint }
     //   suggested : { state, pane_id, suggestion_title }
-    //   cleared   : { state }   ← no pane_id; clears lastErrorSessionId
+    //   cleared   : { state }   ← no pane_id; clears lastErrorPaneId
     // All non-`state` fields are optional from this consumer's
     // perspective — missing fields just leave the previous value in
     // place (except on `cleared`, which resets pane_id / previews /
@@ -4242,7 +4242,7 @@ namespace winrt::TerminalApp::implementation
             _diagnostics.fixPreview.clear();
             _diagnostics.suggestionTitle.clear();
             _diagnostics.detectedSummary.clear();
-            _diagnostics.lastErrorSessionId.clear();
+            _diagnostics.lastErrorPaneId.clear();
         }
         if (params.isMember("summary") && params["summary"].isString())
         {
@@ -4252,7 +4252,7 @@ namespace winrt::TerminalApp::implementation
         if (params.isMember("pane_id") && params["pane_id"].isString())
         {
             const auto s = params["pane_id"].asString();
-            _diagnostics.lastErrorSessionId.assign(s.begin(), s.end());
+            _diagnostics.lastErrorPaneId.assign(s.begin(), s.end());
         }
         if (params.isMember("fix_preview") && params["fix_preview"].isString())
         {
@@ -4549,7 +4549,7 @@ namespace winrt::TerminalApp::implementation
         evt["type"] = "event";
         evt["method"] = "autofix_execute";
         Json::Value params;
-        params["pane_id"] = winrt::to_string(_diagnostics.lastErrorSessionId);
+        params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
         evt["params"] = params;
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
@@ -5027,7 +5027,7 @@ namespace winrt::TerminalApp::implementation
                             // Detected pill, no background analysis.
                             // `IsAutoFixPolicyLocked()` returns true only
                             // for the Blocked policy state; Forced-on
-                            // and user-toggleable states fall through.
+                            // states the user can change fall through.
                             if (page->_settings.GlobalSettings().IsAutoFixPolicyLocked())
                                 return;
 
