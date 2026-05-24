@@ -4976,12 +4976,30 @@ namespace winrt::TerminalApp::implementation
                         return;
                     }
 
-                    // Dispatch to UI thread: _FindSessionIdForControl accesses _tabs.
+                    // Resolve the session id SYNCHRONOUSLY here, while the
+                    // control is still alive. If we deferred it into the
+                    // dispatched lambda below, a `Closed` event raised as
+                    // part of tab teardown would race with the
+                    // TermControl/Connection destructors: by the time the
+                    // UI thread runs the dispatched continuation,
+                    // `weakTerm.get()` returns null and the event is
+                    // dropped silently — leaving wta's session-list row
+                    // stuck at Idle after the user closed the tab.
+                    // `_FindSessionIdForControl` only reads
+                    // `control.Connection().SessionId()`, no `_tabs`
+                    // access, so it is safe off the UI thread.
+                    const auto sessionIdStr = strongThis->_FindSessionIdForControl(control);
+                    if (sessionIdStr.empty())
+                        return;
+
+                    // Dispatch only the actual event raise to the UI
+                    // thread — `ProtocolVtSequenceReceived` has UI-thread
+                    // affinity. The captured `sessionIdStr` is a plain
+                    // std::string and survives the term's destruction.
                     strongThis->Dispatcher().RunAsync(
                         winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-                        [weakThis, weakTerm, stateStr]() {
+                        [weakThis, sessionIdStr, stateStr]() {
                             auto page = weakThis.get();
-                            auto term2 = weakTerm.get();
                             if (!page)
                                 return;
 
@@ -4991,12 +5009,6 @@ namespace winrt::TerminalApp::implementation
                             // when an agent CLI exits and the pane is closed.
                             // Volume is low (a handful of events per pane
                             // lifecycle), so always forward.
-                            const auto sessionIdStr = term2
-                                ? page->_FindSessionIdForControl(term2)
-                                : std::string{};
-                            if (sessionIdStr.empty())
-                                return;
-
                             Json::Value evt;
                             evt["type"] = "event";
                             evt["method"] = "connection_state";

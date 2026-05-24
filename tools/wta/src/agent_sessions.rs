@@ -548,6 +548,15 @@ impl AgentSessionRegistry {
         self.sessions.contains_key(key)
     }
 
+    /// Read-only borrow of the [`AgentSession`] for `key`, or `None` if
+    /// the key isn't tracked. Used by post-apply hooks in the routing
+    /// layer that need to inspect the session's `cli_source` / `status`
+    /// to decide whether to prune (e.g. dropping a "phantom" row whose
+    /// on-disk artefact has no resumable content).
+    pub fn get(&self, key: &AgentKey) -> Option<&AgentSession> {
+        self.sessions.get(key)
+    }
+
     /// Update the `origin` field on an existing session entry. No-op if
     /// `key` is not in the registry. Used by the routing layer to stamp
     /// `AgentPane` on live rows once the agent-pane origin index has
@@ -575,6 +584,17 @@ impl AgentSessionRegistry {
         // WT-native vt_sequence/connection_state events emit uppercase.
         // active_by_pane is keyed by lowercase via apply()'s normaliser.
         self.active_by_pane.contains_key(&pane_session_id.to_ascii_lowercase())
+    }
+
+    /// Look up the [`AgentKey`] currently bound to `pane_session_id`, if
+    /// any. Returns `None` for panes that aren't tracked or that have
+    /// already had their binding cleared (e.g. after `PaneClosed`).
+    /// Callers that want to act on a key *just before* `PaneClosed`
+    /// unbinds it must take this lookup before applying the event.
+    pub fn key_for_pane(&self, pane_session_id: &str) -> Option<AgentKey> {
+        self.active_by_pane
+            .get(&pane_session_id.to_ascii_lowercase())
+            .cloned()
     }
 
     pub fn remove(&mut self, key: &AgentKey) {

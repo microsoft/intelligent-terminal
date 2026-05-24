@@ -634,6 +634,23 @@ namespace winrt::TerminalApp::implementation
                 // work correctly.
                 _tabView.SelectedItem(newSelectedTab.TabViewItem());
             }
+
+            // `_OnTabSelectionChanged` is suppressed while `_removing` is
+            // true, so the agent-pane reconcile + `tab_changed`
+            // notification that normally runs through that path never
+            // fires for the auto-selected new active tab. Without this
+            // explicit reconcile call, wta would never learn about the
+            // new active tab — its `tab_id` stays at the None state set
+            // by `tab_closed`, and `current_tab()` silently falls back
+            // to the empty `DEFAULT_TAB_ID` slot. The user-visible
+            // symptom is per-tab UI state (e.g. an open session-list
+            // view) appearing to vanish after closing some other tab:
+            // the previous tab's `TabSession` is still in wta's
+            // `tab_sessions` map but inaccessible until the user
+            // manually re-clicks the tab to provoke a fresh
+            // SelectionChanged.
+            _FlushPendingAgentRebuild();
+            _ReconcileAgentPaneForActiveTab();
         }
 
         // GH#5559 - If we were in the middle of a drag/drop, end it by clearing
