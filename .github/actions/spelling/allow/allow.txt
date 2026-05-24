@@ -66,6 +66,7 @@ Retargets
 rlig
 rubyw
 runtimes
+rustflags
 servicebus
 slnt
 ssh

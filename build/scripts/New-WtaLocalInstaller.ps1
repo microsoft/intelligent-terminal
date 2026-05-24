@@ -112,9 +112,20 @@ function Invoke-RustBuild {
         [string]$RustTarget
     )
 
-    & $CargoPath build --manifest-path $ManifestPath --release --target $RustTarget
-    if ($LASTEXITCODE -ne 0) {
-        throw "cargo build failed for $ManifestPath."
+    # Cargo's config discovery walks up from the current working directory,
+    # not from the manifest path. Pin CWD to the manifest's directory so
+    # Cargo always finds the repo-root .cargo/config.toml that supplies
+    # `+crt-static` — even when this script is launched from outside the repo.
+    $manifestDir = Split-Path -Parent $ManifestPath
+    Push-Location $manifestDir
+    try {
+        & $CargoPath build --manifest-path $ManifestPath --release --target $RustTarget
+        if ($LASTEXITCODE -ne 0) {
+            throw "cargo build failed for $ManifestPath."
+        }
+    }
+    finally {
+        Pop-Location
     }
 }
 
