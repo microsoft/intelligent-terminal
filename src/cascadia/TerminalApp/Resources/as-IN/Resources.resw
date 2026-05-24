@@ -174,10 +174,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>স্বয়ংক্ৰিয় ভুল চিনাক্তকৰণ</value>
+    <value>বিফল কমাণ্ডসমূহৰ বাবে স্বয়ংক্ৰিয়ভাৱে সমাধান পৰামৰ্শ দিয়ক</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal ক আপোনাৰ শ্বেল এক্সেছ কৰিবলৈ আৰু ভুলসমূহ স্বয়ংক্ৰিয়ভাৱে চিনাক্ত কৰিবলৈ অনুমতি দিয়ক।</value>
+    <value>সক্ষম কৰিলে, AI এজেণ্টে স্বয়ংক্ৰিয়ভাৱে বিফল কমাণ্ডসমূহ বিশ্লেষণ কৰে আৰু সমাধান প্ৰস্তাৱ কৰে। অক্ষম কৰিলে, বিফল কমাণ্ডসমূহে স্থিতি বাৰত ক্লিক কৰিব পৰা ইংগিত দেখুৱায় — সমাধান বিচাৰিবলৈ Ctrl+Alt+. টিপক বা ইংগিতত ক্লিক কৰক।</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">

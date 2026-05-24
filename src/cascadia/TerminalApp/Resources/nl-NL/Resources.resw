@@ -167,10 +167,10 @@
     <comment>{Locked="Node.js","NPX"}</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Automatische foutdetectie</value>
+    <value>Automatisch oplossingen voorstellen voor mislukte opdrachten</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Geef Intelligent Terminal toestemming om toegang te krijgen tot uw shell en fouten automatisch te detecteren.</value>
+    <value>Wanneer ingeschakeld, analyseert de AI-agent automatisch mislukte opdrachten en stelt een oplossing voor. Wanneer uitgeschakeld, tonen mislukte opdrachten een klikbare hint in de statusbalk — druk op Ctrl+Alt+. of klik op de hint om een oplossing aan te vragen.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">

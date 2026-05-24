@@ -2793,11 +2793,11 @@
     <comment>Supplementary description for the command palette agent setting.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>자동 오류 감지</value>
+    <value>실패한 명령에 대한 수정 사항 자동 제안</value>
     <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
   </data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>명령 오류를 감지하고 수정 사항을 자동으로 제안합니다.</value>
+    <value>사용하도록 설정하면 AI 에이전트가 실패한 명령을 자동으로 분석하고 수정 사항을 제안합니다. 사용하지 않도록 설정하면 실패한 명령에 대해 상태 표시줄에 클릭 가능한 힌트가 표시됩니다 — Ctrl+Alt+. 를 누르거나 힌트를 클릭하여 수정을 요청합니다.</value>
     <comment>Supplementary description for the auto-error-detection setting.</comment>
   </data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">

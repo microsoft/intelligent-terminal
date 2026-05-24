@@ -2793,11 +2793,11 @@
     <comment>Supplementary description for the command palette agent setting.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>自动错误检测</value>
+    <value>自动为失败的命令建议修复方案</value>
     <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
   </data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>自动检测命令错误并建议修复方案。</value>
+    <value>启用后,AI 智能体将自动分析失败的命令并提出修复建议。禁用后,失败的命令会在状态栏中显示一个可点击的提示 — 按 Ctrl+Alt+. 或单击该提示以请求修复。</value>
     <comment>Supplementary description for the auto-error-detection setting.</comment>
   </data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
