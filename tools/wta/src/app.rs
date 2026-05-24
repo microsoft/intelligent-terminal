@@ -4751,6 +4751,17 @@ impl App {
         }
         let removed = self.tab_sessions.remove(closed_tab_id);
         self.session_to_tab.retain(|_, tab| tab != closed_tab_id);
+
+        // Tell the ACP client to release the binding for this tab so
+        // the agent process can `session/cancel` the orphaned session.
+        // Without this, every closed tab leaves a live ACP session
+        // behind on the CLI side — `tab_sessions` and `session_to_tab`
+        // are cleaned above but the ACP layer's own `tab_to_session`
+        // map and the agent's session state are not.
+        let _ = self.drop_session_tx.send(DropSessionRequest {
+            tab_id: closed_tab_id.to_string(),
+        });
+
         if self.tab_id.as_deref() == Some(closed_tab_id) {
             // Active tab is gone; the next focused tab's tab_changed will
             // arrive imminently, but in the meantime `current_tab()` must
