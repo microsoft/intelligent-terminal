@@ -120,10 +120,10 @@ function Invoke-RustBuild {
     # repo-root .cargo/config.toml that supplies `+crt-static` — even when
     # this script is launched from outside the repo.
     #
-    # Important: do NOT push into the manifest's directory. tools/wta/ has a
-    # rust-toolchain.toml pinning the ms-prod channel that only resolves on
-    # internal MSRustup hosts; if rustup sees it from CWD, local builds fail
-    # with "custom toolchain 'ms-prod-*' is not installed".
+    # Important: do NOT push into the manifest's directory. tools/wta/ has its
+    # own rust-toolchain.toml, so letting rustup discover that file from CWD
+    # can change toolchain resolution compared to the repo-root configuration
+    # this script relies on for local builds.
     Push-Location $RepoRoot
     try {
         & $CargoPath build --manifest-path $ManifestPath --release --target $RustTarget
