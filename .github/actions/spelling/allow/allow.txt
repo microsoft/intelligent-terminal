@@ -67,6 +67,7 @@ rlig
 rubyw
 runtimes
 rustflags
+rustup
 servicebus
 slnt
 ssh
