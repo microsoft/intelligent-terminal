@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "Fàilte gu Tèirmineal Glic!"
-setup.title.agent_missing: "Cha deach an t-àidseant a lorg"
-setup.title.agent_error: "Dh’fhàillig ceangal ris an àidseant"
+# Tiotalan sgrìn stèidheachaidh
+# {Locked="Intelligent Terminal"} - ainm an toraidh, na eadar-theangaich
+setup.title.first_run: "Fàilte gu Intelligent Terminal!"
+setup.title.agent_missing: "Cha deach an àidseant a lorg"
+setup.title.agent_error: "Dh'fhàillig ceangal an àidseant"
 setup.title.switch_agent: "Atharraich àidseant"
+setup.title.not_available: "Chan eil an àidseant ri fhaighinn"
+setup.title.sign_in: "Feumaidh tu clàradh a-steach"
+
+# Thèid %{agent} a chur an àite ainm-taisbeanaidh an àidseant aig àm ruith.
+setup.subtitle.copilot_missing: "Chan eil an àidseant agad \"%{agent}\" air a stàladh. Lean na ceumannan gu h-ìosal gus a stàladh. Airson àidseant atharrachadh, rach gu Settings."
+setup.subtitle.agent_missing: "Chan eil an àidseant agad \"%{agent}\" air a stàladh. Ath-stàlaich e le làimh, an uair sin feuch a-rithist. Airson àidseant atharrachadh, rach gu Settings."
+setup.subtitle.copilot_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Lean na ceumannan gu h-ìosal gus clàradh a-steach. Airson àidseant atharrachadh, rach gu Settings."
+setup.subtitle.agent_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Clàraich a-steach tron CLI àidseant, an uair sin feuch a-rithist. Airson àidseant atharrachadh, rach gu Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Tagh an CLI àidseant bunaiteach a bu mhath leat a chleachdadh ann an Intelligent Terminal. 'S urrainn dhut"
+setup.description.fre_line2: "a dhol gu Settings gus an raon-obrach agad a rèiteachadh."
+
+setup.option.reinstall: "Ath-stàlaich %{agent}"
+setup.option.reinstall_hint: "(Thèid a stàladh gu fèin-obrachail)"
+setup.option.signin: "Clàraich a-steach gu %{agent}"
+setup.option.retry_detection: "Feuch a-rithist ri lorg"
+setup.option.retry_auth: "Tha mi air clàradh a-steach — feuch ris a' cheangal a-rithist"
+setup.option.retry_connection: "Feuch ris a' cheangal a-rithist"
+setup.option.switch_to: "Atharraich gu %{agent}"
+setup.status.installing: "Ga stàladh..."
+setup.status.install_failed: "Dh'fhàillig an stàladh: "
+setup.status.installing_winget: " Ga stàladh tro winget..."
+
+# ── Sruth dearbhaidh (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - giorrachadh, cleachdadh cumanta tarsainn ionadaileachaidhean Microsoft
+auth.agent_selected: "Tha CLI àidseant %{name} air a thaghadh"
+auth.agent_selected_with_status: "CLI àidseant %{name} — "
+auth.checking_authentication: "  %{spinner} A' sgrùdadh dearbhaidh..."
+auth.waiting_for_authorization: "  %{spinner} A' feitheamh ri ùghdarrachadh..."
+auth.code_copied_hint: "  Chaidh an còd a chopaigeadh dhan stòr-bhùird — cuir ann ad bhrobhsair e."
+auth.sign_in_prompt: "Clàraich a-steach gus an àidseant agad a chleachdadh:"
+auth.card_connect: "  Ceangail %{name} gus gleusan àidseant a chur an comas"
+auth.button_sign_in_github: "[ Clàraich a-steach le GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Clàraich a-steach le %{name} ]"
+auth.hint_footer: "  Brùth Enter gus clàradh a-steach, Esc gus tilleadh"  # {Locked="Enter","Esc"}
+
+# ── Sealladh còmhraidh (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "A' smaoineachadh…"
+# {Locked="Intelligent Terminal"} - ainm an toraidh, na eadar-theangaich
+chat.welcome_title: "Fàilte gu Intelligent Terminal!"
+chat.plan_header: "Plana:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Àiteachan-suidhe ion-chuir (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Faighnich rud sam bith, / airson òrdughan.."  # {Locked="/"}
+input.placeholder.connecting: "a' ceangal..."
+input.placeholder.disconnected: "air a dhì-cheangal"
+
+# ── Priob-uinneag òrdughan (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - ro-leasachan àithne sgian-dubh, feumaidh e fuireach ASCII
+commands.popup_title: " / òrdughan "
+commands.help_title: " Cuideachadh "
+commands.help_header: "Òrdughan sgian-dubh — clò-sgrìobh / anns a' bhogsa ion-chuir."
+commands.help_escape_hint: "  //text     Cuir '/' litireil (teich bhon pharsair òrdughan)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Dùin an cuideachadh seo"  # {Locked="Esc"}
+
+# ── Panail mholaidhean (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - ainmean iuchraichean agus samhla iuchair Tilleadh, na eadar-theangaich
+recommendations.nav_hint: "(↑ ↓ gus seòladh • Enter gus taghadh • Esc gus sgur dheth)"
+recommendations.button_run_command: "[ Ruith òrdugh ]"
+recommendations.button_insert_in_terminal: "Cuir a-steach san Teirmineal"
+recommendations.button_open_in_new_tab: "Fosgail ann an Taba Ùr ↵"
+recommendations.button_open_in_new_panel: "Fosgail ann am Panail Ùr ↵"
+recommendations.button_open_tab: "Fosgail Taba ↵"
+recommendations.button_open_panel: "Fosgail Panail ↵"
+recommendations.button_execute: "Cuir an gnìomh ↵"
+recommendations.agent_fallback: "àidseant"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "taba"
+recommendations.open_kind_panel: "panail"
+recommendations.open_kind_panel_direction: "panail (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} ùr (%{title}) ann an %{cwd}"
+recommendations.open_new_with_title: "%{kind} ùr (%{title})"
+recommendations.open_new_with_cwd: "%{kind} ùr ann an %{cwd}"
+recommendations.open_new_empty: "%{kind} falamh ùr"
+
+# ── Còmhradh-ceadan modh dùmhail (src/ui/permission.rs) ───────────────────────────
+permission.compact.default_description: "Cead air iarraidh"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N gus freagairt · atharraich meud airson cairt iomlan]"  # {Locked="Y/N"}
+
+# ── Inbhe àidseant (src/agent_check.rs) ───────────────────────────────────
+agent.status.not_installed_auto: "Gun stàladh — tagh gus stàladh gu fèin-obrachail"
+agent.status.not_found: "Cha deach a lorg"
+agent.status.detected: "Chaidh a lorg"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - ainmean innealan agus àithne, feumaidh iad ruith mar a tha
+agent.install.running_winget: "A' ruith: winget install GitHub.Copilot"
+agent.install.launch_failed: "Dh'fhàillig winget a chur air bhog: %{error}"
+agent.install.winget_exited: "Dh'fhàg winget gun dùil: %{error}"
+agent.install.winget_failed_code: "Dh'fhàillig stàladh winget (còd fàgail %{code})"
+agent.install.unsupported: "Chan eil stàladh fèin-obrachail ga thaic airson %{agent}"
+agent.custom.auth_hint: "Dèan cinnteach gu bheil %{name} air a stàladh agus air do PATH."  # {Locked="PATH"}
+
+# ── Sealladh àidseant (src/ui/agents_view.rs) ─────────────────────────────────
+agents.loading: "Ga luchdadh..."
+# {Locked="Enter","Shift+enter","Esc"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
+agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog ann an taba ùr • Shift+enter gus seisean a chur air bhog ann am panail àidseant • Esc gus fàgail)"
+agents.status.active: "Gnìomhach"
+agents.status.waiting_for_input: "A' feitheamh ri ion-chur"
+agents.status.error: "Mearachd"
+agents.status.idle: "Na thàmh"
+
+# ── Sanas fàilte cruth (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. gus panail àidseant a shealltainn/fhalach • Ctrl+Alt+/ gus seisean àidseant a shealltainn/fhalach)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Staid ceangail ────────────────────────────────────────────────────────
+connection.starting: "A' tòiseachadh an àidseant..."
+connection.reconnecting: "Ag ath-cheangal..."
+
+# ── Teachdaireachdan siostam (src/app.rs) ────────────────────────────────────
+system.cancelled: "Air a sgur dheth."
+system.no_prompt_in_flight: "Chan eil brodadh air an t-slighe."
+system.authentication_failed: "Dh'fhàillig an dearbhadh"
+system.command_copied_retry: "Àithne air a chopaigeadh — ruith e ann an teirmineal eile, an uair sin brùth Enter gus feuchainn a-rithist"  # {Locked="Enter"}
+
+# ── Toradh CLI àm-ruith (src/main.rs) ────────────────────────────────────
+output.no_windows: "Cha deach uinneagan a lorg."
+output.no_tabs: "Cha deach tabhan a lorg."
+output.no_panes: "Cha deach panailean a lorg."
+output.no_windows_in_list: "Cha deach uinneagan a lorg"
+output.no_tabs_in_window: "Cha deach tabhan a lorg ann an uinneag %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - comharran colbh, cùm ASCII airson parsadh
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Panail ghnìomhach: %{pane} (taba: %{tab}, uinneag: %{window})"
+output.pane_running: "A' ruith (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Air fàgail (còd: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Taba %{tab_id} air a chruthachadh (panail %{pane_id})"
+output.created_pane: "Panail %{pane_id} air a chruthachadh"
+output.pane_closed: "Panail %{pane_id} air a dhùnadh."
+
+# ── Mearachdan (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Cha deach panail ghnìomhach a lorg. Cleachd -t gus ID panail a shònrachadh."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "Chan eil WT_COM_CLSID air a shuidheachadh. Ruith taobh a-staigh panail Windows Terminal."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Seòrsa slige neo-aithnichte '%{shell}'. Cleachd: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - ainm àithne, na eadar-theangaich
+error.wtcli_wait_for_spawn: "Dh'fhàillig wtcli wait-for a thòiseachadh"
+error.wtcli_wait_for_parse: "Dh'fhàillig toradh wtcli wait-for a pharsadh"
+error.wtcli_wait_for_failed: "Dh'fhàillig wtcli wait-for: %{stderr}"
+
+# ── Toradh inbhe dubhan (src/main.rs) ───────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - ainmean innealan/CLI, caochladairean àrainneachd, ainmean fhaidhlichean loga
+hooks.bundle_source: "tùs buidhne: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI chan eil air PATH"
+hooks.installed: "✓ air a stàladh"
+hooks.marketplace_path_stale: "⚠ slighe margaidh seann-fhasanta"
+hooks.installed_but_disabled: "⚠ air a stàladh ach air a chur à comas"
+hooks.not_installed: "✗ gun stàladh"
+hooks.uninstall_skipped: "air a leum seachad (CLI chan eil air PATH)"
+hooks.install_attempted: "Chaidh feuchainn ri wt-agent-hooks a stàladh (idempotent). Ruith `wta hooks status` gus an toradh a sgrùdadh. Loga lorg: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

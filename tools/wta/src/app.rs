@@ -452,6 +452,20 @@ pub fn route_agent_event_to_registry(
 
     reg.apply(ev);
 
+    // Stamp `AgentPane` origin on the live session if the agent-pane
+    // origin index recorded its session id. This is what flips the
+    // "agent pane" prefix on for *live* rows — historical rows pick up
+    // the same flag through `history_loader::load_all`'s join. We
+    // re-read the index on every routed event (small file, infrequent
+    // event) rather than caching, to stay correct after a new session
+    // is created while wta is already running.
+    if !key_for_refresh.is_empty() {
+        let agent_pane_keys = crate::agent_pane_origin::load_default_set();
+        if agent_pane_keys.contains(&key_for_refresh) {
+            reg.set_origin(&key_for_refresh, crate::agent_sessions::SessionOrigin::AgentPane);
+        }
+    }
+
     // Upgrade synthetic title from disk if the CLI has now written one.
     if reg.title_is_synthetic(&key_for_refresh) {
         if let Some(cli) = reg.cli_source_for(&key_for_refresh) {
@@ -1429,7 +1443,7 @@ impl App {
             pending_agent_selection: None,
             show_welcome_hint: false,
             deferred_acp: None,
-            state: ConnectionState::Connecting("Starting agent...".to_string()),
+            state: ConnectionState::Connecting(t!("connection.starting").into_owned()),
             current_agent_id: String::new(),
             preflight_setup_active: false,
             agent_name: String::new(),
@@ -1631,7 +1645,30 @@ impl App {
         match s.status {
             Idle | Working | Attention | Error => {
                 if let Some(pane) = &s.pane_session_id {
-                    crate::shell::wt_channel::spawn_wtcli_focus_pane(pane);
+                    // Skip self-focus: if the user pressed Enter on the
+                    // row that represents the pane this WTA is already
+                    // running in, the focus call is a no-op for them and
+                    // can throw `winrt::hresult_error` (E_FAIL /
+                    // 0x80004005) on the WT side. Compare case-insensitively
+                    // because pane GUIDs arrive in mixed case (hooks emit
+                    // lowercase, WT-native events emit canonical
+                    // uppercase) and `self.pane_id` is populated from
+                    // whichever path discovered it first.
+                    let is_self = self
+                        .pane_id
+                        .as_deref()
+                        .map(|own| own.eq_ignore_ascii_case(pane.as_str()))
+                        .unwrap_or(false);
+                    if is_self {
+                        tracing::info!(
+                            target: "agents_view",
+                            key = %s.key,
+                            pane = %pane,
+                            "skipping focus_pane: row points at our own pane",
+                        );
+                    } else {
+                        crate::shell::wt_channel::spawn_wtcli_focus_pane(pane);
+                    }
                     #[cfg(test)]
                     {
                         self.last_dispatched_command = Some(DispatchedCommand {
@@ -2194,7 +2231,7 @@ impl App {
                         // Credential found → connect directly
                         self.update_deferred_acp_agent(&agent_id);
                         self.mode = AppMode::Chat;
-                        self.state = ConnectionState::Connecting("Starting agent...".to_string());
+                        self.state = ConnectionState::Connecting(t!("connection.starting").into_owned());
                         // FRE mode uses deferred_acp, preflight mode uses restart_tx
                         if self.deferred_acp.is_some() {
                             self.pending_acp_start = true;
@@ -2271,8 +2308,8 @@ impl App {
                         install_log: Vec::new(),
                         install_error: None,
                         options,
-                        title: "Agent not available".to_string(),
-                        subtitle: format!("Your agent \"{}\" is not installed. Please reinstall it manually, then retry. To switch agents, go to Settings.", agent_name),
+                        title: t!("setup.title.not_available").into_owned(),
+                        subtitle: t!("setup.subtitle.agent_missing", agent = &agent_name).into_owned(),
                     });
                 }
             }
@@ -2286,7 +2323,7 @@ impl App {
                     setup.install_in_progress = true;
                     setup.install_error = None;
                     setup.install_log.clear();
-                    setup.install_log.push(format!("Installing {}...", agent_id));
+                    setup.install_log.push(format!("{} {}", t!("setup.status.installing"), agent_id));
                 }
                 // Spawn async winget install via agent_check
                 if let Some(ref tx) = self.event_tx {
@@ -2332,7 +2369,7 @@ impl App {
                             // of red error text in Chat if ACP fails immediately.
                             self.update_deferred_acp_agent(&agent_id);
                             self.state =
-                                ConnectionState::Connecting("Reconnecting...".to_string());
+                                ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
                             self.preflight_setup_active = false;
                             if self.deferred_acp.is_some() {
                                 self.pending_acp_start = true;
@@ -2859,7 +2896,7 @@ impl App {
                             display_name: profile.display_name.to_string(),
                             cli_status: CheckStatus::Passed,
                             cli_path: None,
-                            auth_status: CheckStatus::Failed("Authentication failed".to_string()),
+                            auth_status: CheckStatus::Failed(t!("system.authentication_failed").into_owned()),
                             install_hint: profile.install_hint.to_string(),
                             install_url: String::new(),
                             auth_hint: profile.auth_hint.to_string(),
@@ -2868,11 +2905,11 @@ impl App {
                         install_log: Vec::new(),
                         install_error: None,
                         options,
-                        title: "Sign in required".to_string(),
+                        title: t!("setup.title.sign_in").into_owned(),
                         subtitle: if profile.id == "copilot" {
-                            format!("Your agent \"{}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Settings.", profile.display_name)
+                            t!("setup.subtitle.copilot_auth", agent = profile.display_name).into_owned()
                         } else {
-                            format!("Your agent \"{}\" requires authentication. Please sign in via the agent CLI, then retry. To switch agents, go to Settings.", profile.display_name)
+                            t!("setup.subtitle.agent_auth", agent = profile.display_name).into_owned()
                         },
                     });
                     // Clear error messages
@@ -3070,12 +3107,9 @@ impl App {
                     let options = build_setup_options(&reason, Some(&current_status), &all_agents);
                     let title = reason.title().to_string();
                     let subtitle = if current_status.can_auto_install() {
-                        format!(
-                            "Your agent \"{}\" is not installed. Follow the steps below to install it. To switch agents, go to Settings.",
-                            result.display_name
-                        )
+                        t!("setup.subtitle.copilot_missing", agent = &result.display_name).into_owned()
                     } else {
-                        format!("Your agent \"{}\" is not installed. Please reinstall it manually, then retry. To switch agents, go to Settings.", result.display_name)
+                        t!("setup.subtitle.agent_missing", agent = &result.display_name).into_owned()
                     };
                     self.mode = AppMode::Setup;
                     self.preflight_setup_active = true;
@@ -3655,7 +3689,7 @@ impl App {
                                 let _ = self.restart_tx.send(RestartRequest { agent_cmd: Some(new_cmd) });
                             }
                             self.mode = AppMode::Chat;
-                            self.state = ConnectionState::Connecting("Starting agent...".to_string());
+                            self.state = ConnectionState::Connecting(t!("connection.starting").into_owned());
                             let tab = self.current_tab_mut();
                             tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
                             tab.chat_scroll.reset();
@@ -3724,7 +3758,7 @@ impl App {
                     // Login succeeded → transition to Chat and start ACP
                     self.mode = AppMode::Chat;
                     self.setup = None;
-                    self.state = ConnectionState::Connecting("Starting agent...".to_string());
+                    self.state = ConnectionState::Connecting(t!("connection.starting").into_owned());
                     let agent_id = self.auth.as_ref().map(|a| a.agent_id.clone()).unwrap_or_default();
                     self.update_deferred_acp_agent(&agent_id);
                     if self.deferred_acp.is_some() {
@@ -3739,7 +3773,7 @@ impl App {
                     if let Some(ref mut auth) = self.auth {
                         auth.checking = false;
                         if !auth.login_command.contains("copilot") {
-                            auth.status_message = "Command copied — run it in another terminal, then press Enter to retry".to_string();
+                            auth.status_message = t!("system.command_copied_retry").into_owned();
                         }
                     }
                 }
@@ -3868,7 +3902,7 @@ impl App {
                                     display_name: profile.display_name.to_string(),
                                     cli_status: CheckStatus::Passed,
                                     cli_path: None,
-                                    auth_status: CheckStatus::Failed("Authentication failed".to_string()),
+                                    auth_status: CheckStatus::Failed(t!("system.authentication_failed").into_owned()),
                                     install_hint: profile.install_hint.to_string(),
                                     install_url: String::new(),
                                     auth_hint: profile.auth_hint.to_string(),
@@ -3877,11 +3911,11 @@ impl App {
                                 install_log: Vec::new(),
                                 install_error: None,
                                 options,
-                                title: "Sign in required".to_string(),
+                                title: t!("setup.title.sign_in").into_owned(),
                                 subtitle: if profile.id == "copilot" {
-                                    format!("Your agent \"{}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Settings.", profile.display_name)
+                                    t!("setup.subtitle.copilot_auth", agent = profile.display_name).into_owned()
                                 } else {
-                                    format!("Your agent \"{}\" requires authentication. Please sign in via the agent CLI, then retry. To switch agents, go to Settings.", profile.display_name)
+                                    t!("setup.subtitle.agent_auth", agent = profile.display_name).into_owned()
                                 },
                             });
                         } else {
@@ -4140,7 +4174,7 @@ impl App {
                         self.turn_cancel(&sid);
                     }
                     let tab = self.current_tab_mut();
-                    tab.messages.push(ChatMessage::System("Cancelled.".to_string()));
+                    tab.messages.push(ChatMessage::System(t!("system.cancelled").into_owned()));
                     tab.scroll_to_bottom();
                     self.close_pane_armed_at = None;
                 } else if !self.current_tab().input.is_empty() {
@@ -4523,12 +4557,12 @@ impl App {
                     }
                     let tab = self.current_tab_mut();
                     tab.messages
-                        .push(ChatMessage::System("Cancelled.".to_string()));
+                        .push(ChatMessage::System(t!("system.cancelled").into_owned()));
                     tab.scroll_to_bottom();
                 } else {
                     let tab = self.current_tab_mut();
                     tab.messages
-                        .push(ChatMessage::System("No prompt in flight.".to_string()));
+                        .push(ChatMessage::System(t!("system.no_prompt_in_flight").into_owned()));
                     tab.scroll_to_bottom();
                 }
             }
@@ -7246,6 +7280,11 @@ mod tests {
 
         // Bind, then unbind — mirrors the Copilot order: agent.session.end
         // hook arrives and runs SessionStopped before WT emits closed.
+        // The session is NOT tagged with `SessionOrigin::AgentPane` (this
+        // test sets up state via raw SessionStarted, so origin defaults
+        // to Unknown), which means SessionStopped immediately transitions
+        // to Ended and releases the pane binding — exactly the precondition
+        // this test depends on.
         app.agent_sessions.apply(SessionEvent::SessionStarted {
             key: "copilot-key".into(),
             cli_source: CliSource::Copilot,

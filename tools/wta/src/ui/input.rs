@@ -53,10 +53,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         // own span so the placeholder/typed text/cursor all sit in the same
         // column whether the input is empty or not.
         let placeholder = match &app.state {
-            ConnectionState::Connected => "Ask anything, / for commands..".to_string(),
-            ConnectionState::Connecting(_) => "connecting...".to_string(),
-            ConnectionState::Disconnected => "disconnect".to_string(),
-            ConnectionState::Failed(_) => "disconnect".to_string(),
+            ConnectionState::Connected => t!("input.placeholder.connected").into_owned(),
+            ConnectionState::Connecting(_) => t!("input.placeholder.connecting").into_owned(),
+            ConnectionState::Disconnected => t!("input.placeholder.disconnected").into_owned(),
+            ConnectionState::Failed(_) => t!("input.placeholder.disconnected").into_owned(),
         };
         // Paint the first cell of the placeholder as "white block with
         // black glyph" directly in the buffer. The WT block cursor lands

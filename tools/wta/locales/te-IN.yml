@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "ఇంటెలిజెంట్ టెర్మినల్‌కు స్వాగతం!"
+# సెటప్ స్క్రీన్ శీర్షికలు
+# {Locked="Intelligent Terminal"} - ఉత్పత్తి పేరు, అనువదించవద్దు
+setup.title.first_run: "Intelligent Terminal-కు స్వాగతం!"
 setup.title.agent_missing: "ఏజెంట్ కనుగొనబడలేదు"
 setup.title.agent_error: "ఏజెంట్ కనెక్షన్ విఫలమైంది"
 setup.title.switch_agent: "ఏజెంట్‌ను మార్చండి"
+setup.title.not_available: "ఏజెంట్ అందుబాటులో లేదు"
+setup.title.sign_in: "సైన్ ఇన్ అవసరం"
+
+# %{agent} రన్‌టైమ్‌లో ఏజెంట్ ప్రదర్శన పేరుతో భర్తీ చేయబడుతుంది.
+setup.subtitle.copilot_missing: "మీ ఏజెంట్ \"%{agent}\" ఇన్‌స్టాల్ చేయబడలేదు. ఇన్‌స్టాల్ చేయడానికి దిగువ దశలను అనుసరించండి. ఏజెంట్‌ను మార్చడానికి Settings కు వెళ్ళండి."
+setup.subtitle.agent_missing: "మీ ఏజెంట్ \"%{agent}\" ఇన్‌స్టాల్ చేయబడలేదు. దయచేసి మాన్యువల్‌గా మళ్ళీ ఇన్‌స్టాల్ చేసి, మళ్ళీ ప్రయత్నించండి. ఏజెంట్‌ను మార్చడానికి Settings కు వెళ్ళండి."
+setup.subtitle.copilot_auth: "మీ ఏజెంట్ \"%{agent}\" కు ప్రమాణీకరణ అవసరం. సైన్ ఇన్ చేయడానికి దిగువ దశలను అనుసరించండి. ఏజెంట్‌ను మార్చడానికి Settings కు వెళ్ళండి."
+setup.subtitle.agent_auth: "మీ ఏజెంట్ \"%{agent}\" కు ప్రమాణీకరణ అవసరం. దయచేసి ఏజెంట్ CLI ద్వారా సైన్ ఇన్ చేసి, మళ్ళీ ప్రయత్నించండి. ఏజెంట్‌ను మార్చడానికి Settings కు వెళ్ళండి."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal లో ఉపయోగించడానికి డిఫాల్ట్ ఏజెంట్ CLI ని ఎంచుకోండి. మీరు"
+setup.description.fre_line2: "మీ వర్క్‌స్పేస్‌ను కాన్ఫిగర్ చేసి సెటప్ చేయడానికి Settings కు నావిగేట్ చేయవచ్చు."
+
+setup.option.reinstall: "%{agent} మళ్ళీ ఇన్‌స్టాల్ చేయండి"
+setup.option.reinstall_hint: "(ఆటోమేటిక్‌గా ఇన్‌స్టాల్ చేయబడుతుంది)"
+setup.option.signin: "%{agent} లో సైన్ ఇన్ చేయండి"
+setup.option.retry_detection: "గుర్తింపును మళ్ళీ ప్రయత్నించండి"
+setup.option.retry_auth: "నేను సైన్ ఇన్ చేసాను — కనెక్షన్ మళ్ళీ ప్రయత్నించండి"
+setup.option.retry_connection: "కనెక్షన్ మళ్ళీ ప్రయత్నించండి"
+setup.option.switch_to: "%{agent} కు మారండి"
+setup.status.installing: "ఇన్‌స్టాల్ అవుతోంది..."
+setup.status.install_failed: "ఇన్‌స్టాల్ విఫలమైంది: "
+setup.status.installing_winget: " winget ద్వారా ఇన్‌స్టాల్ అవుతోంది..."
+
+# ── ప్రమాణీకరణ ప్రవాహం (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - సంక్షిప్తం, Microsoft స్థానీయీకరణల్లో సాధారణ వాడుక
+auth.agent_selected: "ఏజెంట్ %{name} ఎంపిక చేయబడింది"
+auth.agent_selected_with_status: "ఏజెంట్ %{name} — "
+auth.checking_authentication: "  %{spinner} ప్రమాణీకరణ తనిఖీ చేయబడుతోంది..."
+auth.waiting_for_authorization: "  %{spinner} అధికారం కోసం వేచి ఉంది..."
+auth.code_copied_hint: "  కోడ్ క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది — మీ బ్రౌజర్‌లో పేస్ట్ చేయండి."
+auth.sign_in_prompt: "మీ ఏజెంట్‌ను ఉపయోగించడానికి సైన్ ఇన్ చేయండి:"
+auth.card_connect: "  ఏజెంట్ ఫీచర్లను ఎనేబుల్ చేయడానికి %{name} ను కనెక్ట్ చేయండి"
+auth.button_sign_in_github: "[ GitHub తో సైన్ ఇన్ చేయండి ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name} తో సైన్ ఇన్ చేయండి ]"
+auth.hint_footer: "  సైన్ ఇన్ చేయడానికి Enter నొక్కండి, వెనుకకు వెళ్ళడానికి Esc నొక్కండి"  # {Locked="Enter","Esc"}
+
+# ── చాట్ వ్యూ (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "ఆలోచిస్తోంది…"
+# {Locked="Intelligent Terminal"} - ఉత్పత్తి పేరు, అనువదించవద్దు
+chat.welcome_title: "Intelligent Terminal-కు స్వాగతం!"
+chat.plan_header: "ప్లాన్:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── ఇన్‌పుట్ ప్లేస్‌హోల్డర్‌లు (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "ఏదైనా అడగండి, / కమాండ్‌ల కోసం.."  # {Locked="/"}
+input.placeholder.connecting: "కనెక్ట్ అవుతోంది..."
+input.placeholder.disconnected: "డిస్‌కనెక్ట్"
+
+# ── కమాండ్ పాపప్ (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - స్లాష్-కమాండ్ ప్రిఫిక్స్, ASCII ఉండాలి
+commands.popup_title: " / కమాండ్‌లు "
+commands.help_title: " సహాయం "
+commands.help_header: "స్లాష్ కమాండ్‌లు — ఇన్‌పుట్ బాక్స్‌లో / టైప్ చేయండి."
+commands.help_escape_hint: "  //text     అక్షరాల '/' పంపండి (కమాండ్ పార్సర్‌ను ఎస్కేప్ చేస్తుంది)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        ఈ సహాయాన్ని మూసివేయండి"  # {Locked="Esc"}
+
+# ── సిఫార్సుల ప్యానెల్ (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - కీ పేర్లు మరియు Return-కీ గ్లిఫ్, అనువదించవద్దు
+recommendations.nav_hint: "(↑ ↓ నావిగేట్ చేయండి • Enter ఎంచుకోండి • Esc రద్దు చేయండి)"
+recommendations.button_run_command: "[ కమాండ్ అమలు చేయండి ]"
+recommendations.button_insert_in_terminal: "టెర్మినల్‌లో చొప్పించండి"
+recommendations.button_open_in_new_tab: "కొత్త ట్యాబ్‌లో తెరవండి ↵"
+recommendations.button_open_in_new_panel: "కొత్త ప్యానెల్‌లో తెరవండి ↵"
+recommendations.button_open_tab: "ట్యాబ్ తెరవండి ↵"
+recommendations.button_open_panel: "ప్యానెల్ తెరవండి ↵"
+recommendations.button_execute: "అమలు చేయండి ↵"
+recommendations.agent_fallback: "ఏజెంట్"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ట్యాబ్"
+recommendations.open_kind_panel: "ప్యానెల్"
+recommendations.open_kind_panel_direction: "ప్యానెల్ (%{direction})"
+recommendations.open_new_with_title_and_cwd: "కొత్త %{kind} (%{title}) %{cwd}లో"
+recommendations.open_new_with_title: "కొత్త %{kind} (%{title})"
+recommendations.open_new_with_cwd: "కొత్త %{kind} %{cwd}లో"
+recommendations.open_new_empty: "కొత్త ఖాళీ %{kind}"
+
+# ── అనుమతి డైలాగ్ కాంపాక్ట్ మోడ్ (src/ui/permission.rs) ───────────────────────
+permission.compact.default_description: "అనుమతి అభ్యర్థించబడింది"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N సమాధానం ఇవ్వండి · పూర్తి కార్డ్ కోసం రీసైజ్ చేయండి]"  # {Locked="Y/N"}
+
+# ── ఏజెంట్ స్థితి (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "ఇన్‌స్టాల్ చేయబడలేదు — ఆటోమేటిక్‌గా ఇన్‌స్టాల్ చేయడానికి ఎంచుకోండి"
+agent.status.not_found: "కనుగొనబడలేదు"
+agent.status.detected: "గుర్తించబడింది"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - టూల్ పేర్లు మరియు కమాండ్, యథాతథంగా అమలు చేయాలి
+agent.install.running_winget: "అమలవుతోంది: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget ప్రారంభించడం విఫలమైంది: %{error}"
+agent.install.winget_exited: "winget అనుకోకుండా నిలిచిపోయింది: %{error}"
+agent.install.winget_failed_code: "winget ఇన్‌స్టాల్ విఫలమైంది (ఎగ్జిట్ కోడ్ %{code})"
+agent.install.unsupported: "%{agent} కోసం ఆటోమేటిక్ ఇన్‌స్టాల్ మద్దతు లేదు"
+agent.custom.auth_hint: "%{name} ఇన్‌స్టాల్ చేయబడిందని మరియు మీ PATH లో ఉందని నిర్ధారించుకోండి."  # {Locked="PATH"}
+
+# ── ఏజెంట్‌ల వ్యూ (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "లోడ్ అవుతోంది..."
+# {Locked="Enter","Shift+enter","Esc"} - కీ కాంబినేషన్‌లు, అనువదించవద్దు
+agents.footer_hint: "(↑ ↓ నావిగేట్ చేయండి • Enter కొత్త ట్యాబ్‌లో సెషన్ ప్రారంభించండి • Shift+enter ఏజెంట్ పేన్‌లో సెషన్ ప్రారంభించండి • Esc నిష్క్రమించండి)"
+agents.status.active: "సక్రియం"
+agents.status.waiting_for_input: "ఇన్‌పుట్ కోసం వేచి ఉంది"
+agents.status.error: "ఎర్రర్"
+agents.status.idle: "నిష్క్రియం"
+
+# ── లేఔట్ స్వాగత సూచన (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. ఏజెంట్ పేన్ చూపించు/దాచు • Ctrl+Alt+/ ఏజెంట్ సెషన్ చూపించు/దాచు)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── కనెక్షన్ స్థితి ────────────────────────────────────────────────────────
+connection.starting: "ఏజెంట్ ప్రారంభమవుతోంది..."
+connection.reconnecting: "మళ్ళీ కనెక్ట్ అవుతోంది..."
+
+# ── సిస్టమ్ సందేశాలు (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "రద్దు చేయబడింది."
+system.no_prompt_in_flight: "ప్రగతిలో ఎటువంటి ప్రాంప్ట్ లేదు."
+system.authentication_failed: "ప్రమాణీకరణ విఫలమైంది"
+system.command_copied_retry: "కమాండ్ కాపీ చేయబడింది — మరొక టెర్మినల్‌లో దాన్ని అమలు చేసి, మళ్ళీ ప్రయత్నించడానికి Enter నొక్కండి"  # {Locked="Enter"}
+
+# ── రన్‌టైమ్ CLI అవుట్‌పుట్ (src/main.rs) ────────────────────────────────────────
+output.no_windows: "విండోలు కనుగొనబడలేదు."
+output.no_tabs: "ట్యాబ్‌లు కనుగొనబడలేదు."
+output.no_panes: "పేన్‌లు కనుగొనబడలేదు."
+output.no_windows_in_list: "విండోలు కనుగొనబడలేదు"
+output.no_tabs_in_window: "విండో %{window_id} లో ట్యాబ్‌లు కనుగొనబడలేదు"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - కాలమ్ ఐడెంటిఫైయర్‌లు, పార్సింగ్ కోసం ASCII లో ఉంచండి
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "సక్రియ పేన్: %{pane} (ట్యాబ్: %{tab}, విండో: %{window})"
+output.pane_running: "అమలవుతోంది (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "నిష్క్రమించింది (కోడ్: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "ట్యాబ్ %{tab_id} సృష్టించబడింది (పేన్ %{pane_id})"
+output.created_pane: "పేన్ %{pane_id} సృష్టించబడింది"
+output.pane_closed: "పేన్ %{pane_id} మూసివేయబడింది."
+
+# ── ఎర్రర్‌లు (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "సక్రియ పేన్ కనుగొనబడలేదు. పేన్ ID ను పేర్కొనడానికి -t ఉపయోగించండి."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID సెట్ చేయబడలేదు. Windows Terminal పేన్ లోపల అమలు చేయండి."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "తెలియని షెల్ రకం '%{shell}'. ఉపయోగించండి: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - కమాండ్ పేరు, అనువదించవద్దు
+error.wtcli_wait_for_spawn: "wtcli wait-for ప్రారంభించడం విఫలమైంది"
+error.wtcli_wait_for_parse: "wtcli wait-for అవుట్‌పుట్ పార్స్ చేయడం విఫలమైంది"
+error.wtcli_wait_for_failed: "wtcli wait-for విఫలమైంది: %{stderr}"
+
+# ── హూక్స్ స్థితి అవుట్‌పుట్ (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - టూల్/CLI పేర్లు, ఎన్విరాన్‌మెంట్ వేరియబుల్స్, లాగ్ ఫైల్ పేర్లు
+hooks.bundle_source: "బండిల్ సోర్స్: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI PATH లో లేదు"
+hooks.installed: "✓ ఇన్‌స్టాల్ చేయబడింది"
+hooks.marketplace_path_stale: "⚠ మార్కెట్‌ప్లేస్ పాత్ పాతది"
+hooks.installed_but_disabled: "⚠ ఇన్‌స్టాల్ చేయబడింది కానీ డిజేబుల్ చేయబడింది"
+hooks.not_installed: "✗ ఇన్‌స్టాల్ చేయబడలేదు"
+hooks.uninstall_skipped: "దాటవేయబడింది (CLI PATH లో లేదు)"
+hooks.install_attempted: "wt-agent-hooks ఇన్‌స్టాల్ ప్రయత్నించబడింది (ఐడెంపోటెంట్). ఫలితాన్ని తనిఖీ చేయడానికి `wta hooks status` అమలు చేయండి. ట్రేస్ లాగ్: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

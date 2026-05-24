@@ -9,11 +9,9 @@ It provides three interfaces:
 - **MCP server** (`wta mcp`) -- headless tool server that an external agent calls to interact with shells and Windows Terminal.
 - **CLI helpers** (`wta list-panes`, `wta capture-pane`, `wta new-tab`, etc.) -- thin commands for humans and agents that can shell out. Direct keystroke injection is not exposed by the CLI.
 
-ACP and MCP modes share `ShellManager`, which routes operations to either local subprocesses or Windows Terminal panes. WT pane operations use a `WtChannel` abstraction:
+ACP and MCP modes share `ShellManager`, which routes operations to either local subprocesses or Windows Terminal panes. WT pane operations use a `WtChannel` abstraction with a single implementation today:
 
-- `CliChannel` shells out to `wtcli.exe`, which calls WT's COM `IProtocolServer`.
-- `PipeChannel` uses an inherited anonymous pipe pair and is reserved for capability-gated methods, currently `send_input`.
-- `RoutedChannel` sends `send_input` to `PipeChannel` and falls back to `CliChannel` for the remaining methods.
+- `CliChannel` shells out to `wtcli.exe`, which calls WT's COM `IProtocolServer`. All WT operations — including `send_input` (via `wtcli send-keys`) — go through this path.
 
 ## System Diagram
 
@@ -31,21 +29,16 @@ ACP and MCP modes share `ShellManager`, which routes operations to either local 
                        |                                   |
                  ShellManager                              |
                        |                                   |
-                 RoutedChannel                             |
-                  |          |                             |
-                  |          +-----------------------------+
-                  |
-      +-----------+----------------+
-      |                            |
- PipeChannel                 CliChannel
- inherited HANDLE            wtcli.exe -> COM IProtocolServer
- send_input only             reads + non-input WT control
-      |                            |
-      v                            v
- TerminalProtocolPipeServer   TerminalProtocolComServer
-      \____________________________/
-                    |
-             Windows Terminal
+                  CliChannel <-------------------------+---+
+                       |
+                       v
+              wtcli.exe -> COM IProtocolServer
+                       |
+                       v
+              TerminalProtocolComServer
+                       |
+                       v
+              Windows Terminal
 ```
 
 ## Protocol Stack
@@ -90,12 +83,12 @@ Tools exposed:
 | WT Query | `wt_get_process_status` | Running/exit status |
 | WT Control | `wt_create_tab` | Create new tab |
 | WT Control | `wt_split_pane` | Split a pane |
-| WT Control | `wt_send_input` | Type text into a pane via the inherited pipe when available |
+| WT Control | `wt_send_input` | Type text into a pane via `wtcli send-keys` / COM `SendInput` |
 | WT Control | `wt_close_pane` | Close a pane |
 
 ### WT COM Protocol
 
-Most WT operations flow through `wtcli.exe` to WT's out-of-process COM server.
+All WT operations flow through `wtcli.exe` to WT's out-of-process COM server.
 
 - Client wrapper: `src/shell/wt_channel/cli_channel.rs`
 - CLI executable: `src/tools/wtcli/main.cpp`
@@ -103,20 +96,7 @@ Most WT operations flow through `wtcli.exe` to WT's out-of-process COM server.
 - WT-side server: `src/cascadia/WindowsTerminal/TerminalProtocolComServer.cpp`
 - Discovery: `WT_COM_CLSID`, injected into panes by WT
 
-The COM surface currently exposes reads and several mutations, including `list_*`, `read_pane_output`, `create_tab`, `split_pane`, `close_pane`, `focus_pane`, and event subscribe/publish. It does **not** expose direct shell input.
-
-### Per-WTA Inherited Pipe
-
-Shell input is capability-gated through an anonymous duplex pipe pair created by WT when it launches WTA.
-
-- WTA-side client: `src/shell/wt_channel/pipe_channel.rs`
-- WT-side launcher: `src/cascadia/TerminalApp/WtaProcessLauncher.cpp`
-- WT-side server: `src/cascadia/TerminalApp/TerminalProtocolPipeServer.cpp`
-- Environment handles: `WT_PROTOCOL_PIPE_R` and `WT_PROTOCOL_PIPE_W`
-- Wire format: 4-byte little-endian length + JSON-RPC 2.0 body
-- Current methods: `hello`, `send_input`
-
-WT passes only the WTA-side handles using `STARTUPINFOEX` + `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`. WTA consumes the handle values, removes the environment variables, and clears `HANDLE_FLAG_INHERIT` so child agent CLIs do not inherit the shell-input capability.
+The COM surface exposes reads and mutations, including `list_*`, `read_pane_output`, `create_tab`, `split_pane`, `close_pane`, `focus_pane`, `send_input` (via `wtcli send-keys`), and event subscribe/publish.
 
 ## Agent Integration
 
@@ -171,9 +151,7 @@ Agents that can shell out, and humans debugging WTA, can use WTA as a small WT h
 
 `CliChannel` uses `wtcli.exe`, and `wtcli.exe` discovers WT through `WT_COM_CLSID`. WT injects this environment variable into pane shells.
 
-The inherited pipe is separate from COM discovery. It is available only to WTA processes that WT launched with `WT_PROTOCOL_PIPE_R/W`; arbitrary shell-launched WTA processes cannot synthesize those handle capabilities.
-
-`pipe-id` and `set-env` are diagnostic subcommands that surface the inherited `WT_COM_CLSID` value. They should not be described as a named-pipe security boundary.
+`pipe-id` and `set-env` are diagnostic subcommands that surface the inherited `WT_COM_CLSID` value. They should not be described as a security boundary.
 
 ## Pane Identity
 

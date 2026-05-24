@@ -1,5 +1,160 @@
 # Setup screen titles
-setup.title.first_run: "Maligayang pagdating sa Matalinong Terminal!"
-setup.title.agent_missing: "Hindi nahanap ang AI agent"
-setup.title.agent_error: "Nabigo ang koneksyon sa AI agent"
-setup.title.switch_agent: "Palitan ang AI agent"
+# {Locked="Intelligent Terminal"} - pangalan ng produkto, huwag isalin
+setup.title.first_run: "Maligayang pagdating sa Intelligent Terminal!"
+setup.title.agent_missing: "Hindi nahanap ang agent"
+setup.title.agent_error: "Nabigo ang koneksyon sa agent"
+setup.title.switch_agent: "Palitan ang agent"
+setup.title.not_available: "Hindi available ang agent"
+setup.title.sign_in: "Kailangang mag-sign in"
+
+# %{agent} ay pinapalitan ng display name ng agent sa runtime.
+setup.subtitle.copilot_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-install. Sundin ang mga hakbang sa ibaba para i-install ito. Para magpalit ng agent, pumunta sa Settings."
+setup.subtitle.agent_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-install. Mangyaring i-reinstall nang manu-mano, pagkatapos ay subukang muli. Para magpalit ng agent, pumunta sa Settings."
+setup.subtitle.copilot_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Sundin ang mga hakbang sa ibaba para mag-sign in. Para magpalit ng agent, pumunta sa Settings."
+setup.subtitle.agent_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Mangyaring mag-sign in sa pamamagitan ng agent CLI, pagkatapos ay subukang muli. Para magpalit ng agent, pumunta sa Settings."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Pumili ng default na agent CLI na gusto mong gamitin sa Intelligent Terminal. Maaari kang"
+setup.description.fre_line2: "pumunta sa Settings para i-configure at i-set up ang iyong workspace."
+
+setup.option.reinstall: "I-reinstall ang %{agent}"
+setup.option.reinstall_hint: "(Awtomatikong mai-install)"
+setup.option.signin: "Mag-sign in sa %{agent}"
+setup.option.retry_detection: "Subukang muli ang detection"
+setup.option.retry_auth: "Naka-sign in na ako — subukang muli ang koneksyon"
+setup.option.retry_connection: "Subukang muli ang koneksyon"
+setup.option.switch_to: "Lumipat sa %{agent}"
+setup.status.installing: "Ini-install..."
+setup.status.install_failed: "Nabigo ang pag-install: "
+setup.status.installing_winget: " Ini-install sa pamamagitan ng winget..."
+
+# ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "Napili ang agent %{name}"
+auth.agent_selected_with_status: "Agent %{name} — "
+auth.checking_authentication: "  %{spinner} Sinusuri ang authentication..."
+auth.waiting_for_authorization: "  %{spinner} Naghihintay ng authorization..."
+auth.code_copied_hint: "  Nakopya ang code sa clipboard — i-paste ito sa iyong browser."
+auth.sign_in_prompt: "Mag-sign in para magamit ang iyong agent:"
+auth.card_connect: "  Ikonekta ang %{name} para paganahin ang mga feature ng agent"
+auth.button_sign_in_github: "[ Mag-sign in gamit ang GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Mag-sign in gamit ang %{name} ]"
+auth.hint_footer: "  Pindutin ang Enter para mag-sign in, Esc para bumalik"  # {Locked="Enter","Esc"}
+
+# ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Nag-iisip…"
+# {Locked="Intelligent Terminal"} - pangalan ng produkto, huwag isalin
+chat.welcome_title: "Maligayang pagdating sa Intelligent Terminal!"
+chat.plan_header: "Plano:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Magtanong ng kahit ano, / para sa mga command.."  # {Locked="/"}
+input.placeholder.connecting: "kumokonekta..."
+input.placeholder.disconnected: "nadiskonekta"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / mga command "
+commands.help_title: " Tulong "
+commands.help_header: "Mga slash command — i-type ang / sa input box."
+commands.help_escape_hint: "  //text     Magpadala ng literal na '/' (iniiwasan ang command parser)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Isara ang tulong na ito"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ para mag-navigate • Enter para pumili • Esc para mag-cancel)"
+recommendations.button_run_command: "[ Patakbuhin ang command ]"
+recommendations.button_insert_in_terminal: "Ilagay sa Terminal"
+recommendations.button_open_in_new_tab: "Buksan sa Bagong Tab ↵"
+recommendations.button_open_in_new_panel: "Buksan sa Bagong Panel ↵"
+recommendations.button_open_tab: "Buksan ang Tab ↵"
+recommendations.button_open_panel: "Buksan ang Panel ↵"
+recommendations.button_execute: "Isagawa ↵"
+recommendations.agent_fallback: "ahente"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "tab"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Bagong %{kind} (%{title}) sa %{cwd}"
+recommendations.open_new_with_title: "Bagong %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Bagong %{kind} sa %{cwd}"
+recommendations.open_new_empty: "Bagong walang laman na %{kind}"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+permission.compact.default_description: "Hinihiling ang pahintulot"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N para sumagot · i-resize para sa buong card]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Hindi pa naka-install — piliin para awtomatikong mai-install"
+agent.status.not_found: "Hindi nahanap"
+agent.status.detected: "Na-detect"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "Pinapatakbo: winget install GitHub.Copilot"
+agent.install.launch_failed: "Hindi mailunsad ang winget: %{error}"
+agent.install.winget_exited: "Hindi inaasahang lumabas ang winget: %{error}"
+agent.install.winget_failed_code: "Nabigo ang winget install (exit code %{code})"
+agent.install.unsupported: "Hindi suportado ang awtomatikong pag-install para sa %{agent}"
+agent.custom.auth_hint: "Tiyaking naka-install ang %{name} at nasa iyong PATH."  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Naglo-load..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ para mag-navigate • Enter para magbukas ng session sa bagong tab • Shift+enter para magbukas ng session sa agent pane • Esc para lumabas)"
+agents.status.active: "Aktibo"
+agents.status.waiting_for_input: "Naghihintay ng input"
+agents.status.error: "May error"
+agents.status.idle: "Walang ginagawa"
+
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. para ipakita/itago ang agent pane • Ctrl+Alt+/ para ipakita/itago ang agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Connection state ────────────────────────────────────────────────────────
+connection.starting: "Sinisimulan ang agent..."
+connection.reconnecting: "Kumokonekta muli..."
+
+# ── System messages (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Kinansela."
+system.no_prompt_in_flight: "Walang prompt na kasalukuyang pinapatakbo."
+system.authentication_failed: "Nabigo ang authentication"
+system.command_copied_retry: "Nakopya ang command — patakbuhin sa ibang terminal, pagkatapos ay pindutin ang Enter para subukang muli"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Walang nahanap na window."
+output.no_tabs: "Walang nahanap na tab."
+output.no_panes: "Walang nahanap na pane."
+output.no_windows_in_list: "Walang nahanap na window"
+output.no_tabs_in_window: "Walang nahanap na tab sa window %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Aktibong pane: %{pane} (tab: %{tab}, window: %{window})"
+output.pane_running: "Tumatakbo (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Lumabas na (code: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Nagawa ang tab %{tab_id} (pane %{pane_id})"
+output.created_pane: "Nagawa ang pane %{pane_id}"
+output.pane_closed: "Isinara ang pane %{pane_id}."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Walang nahanap na aktibong pane. Gamitin ang -t para tukuyin ang pane ID."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "Hindi nakatakda ang WT_COM_CLSID. Patakbuhin sa loob ng Windows Terminal pane."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Hindi kilalang uri ng shell '%{shell}'. Gamitin: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "Hindi mailunsad ang wtcli wait-for"
+error.wtcli_wait_for_parse: "Hindi ma-parse ang output ng wtcli wait-for"
+error.wtcli_wait_for_failed: "Nabigo ang wtcli wait-for: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "pinagmulan ng bundle: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ Wala ang CLI sa PATH"
+hooks.installed: "✓ naka-install"
+hooks.marketplace_path_stale: "⚠ luma na ang marketplace path"
+hooks.installed_but_disabled: "⚠ naka-install pero naka-disable"
+hooks.not_installed: "✗ hindi naka-install"
+hooks.uninstall_skipped: "nilaktawan (wala ang CLI sa PATH)"
+hooks.install_attempted: "Sinubukang i-install ang wt-agent-hooks (idempotent). Patakbuhin ang `wta hooks status` para suriin ang resulta. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

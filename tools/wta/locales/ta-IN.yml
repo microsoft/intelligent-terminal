@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "அறிவாண் முனையம்-க்கு வரவேற்கிறோம்!"
+# அமைவு திரை தலைப்புகள்
+# {Locked="Intelligent Terminal"} - தயாரிப்பு பெயர், மொழிபெயர்க்க வேண்டாம்
+setup.title.first_run: "Intelligent Terminal-க்கு வரவேற்கிறோம்!"
 setup.title.agent_missing: "ஏஜெண்ட் கிடைக்கவில்லை"
 setup.title.agent_error: "ஏஜெண்ட் இணைப்பு தோல்வியடைந்தது"
-setup.title.switch_agent: "ஏஜெண்டை மாற்று"
+setup.title.switch_agent: "முகவரை மாற்று"
+setup.title.not_available: "ஏஜெண்ட் கிடைக்கவில்லை"
+setup.title.sign_in: "உள்நுழைவு தேவை"
+
+# %{agent} இயக்க நேரத்தில் ஏஜெண்ட் காட்சிப் பெயரால் மாற்றப்படும்.
+setup.subtitle.copilot_missing: "உங்கள் ஏஜெண்ட் \"%{agent}\" நிறுவப்படவில்லை. நிறுவ கீழே உள்ள படிகளைப் பின்பற்றுங்கள். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
+setup.subtitle.agent_missing: "உங்கள் ஏஜெண்ட் \"%{agent}\" நிறுவப்படவில்லை. தயவுசெய்து கைமுறையாக மீண்டும் நிறுவி, மீண்டும் முயற்சிக்கவும். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
+setup.subtitle.copilot_auth: "உங்கள் ஏஜெண்ட் \"%{agent}\"-க்கு அங்கீகாரம் தேவை. உள்நுழைய கீழே உள்ள படிகளைப் பின்பற்றுங்கள். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
+setup.subtitle.agent_auth: "உங்கள் ஏஜெண்ட் \"%{agent}\"-க்கு அங்கீகாரம் தேவை. தயவுசெய்து ஏஜெண்ட் CLI மூலம் உள்நுழைந்து, மீண்டும் முயற்சிக்கவும். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal-ல் பயன்படுத்த இயல்புநிலை ஏஜெண்ட் CLI-ஐத் தேர்ந்தெடுக்கவும். நீங்கள்"
+setup.description.fre_line2: "உங்கள் பணியிடத்தை உள்ளமைக்க Settings-க்குச் செல்லலாம்."
+
+setup.option.reinstall: "%{agent} மீண்டும் நிறுவு"
+setup.option.reinstall_hint: "(தானாக நிறுவப்படும்)"
+setup.option.signin: "%{agent}-ல் உள்நுழையவும்"
+setup.option.retry_detection: "கண்டறிதலை மீண்டும் முயற்சிக்கவும்"
+setup.option.retry_auth: "நான் உள்நுழைந்துவிட்டேன் — இணைப்பை மீண்டும் முயற்சிக்கவும்"
+setup.option.retry_connection: "இணைப்பை மீண்டும் முயற்சிக்கவும்"
+setup.option.switch_to: "%{agent}-க்கு மாறு"
+setup.status.installing: "நிறுவப்படுகிறது..."
+setup.status.install_failed: "நிறுவல் தோல்வி: "
+setup.status.installing_winget: " winget வழியாக நிறுவப்படுகிறது..."
+
+# ── அங்கீகாரப் போக்கு (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - சுருக்கம், Microsoft உள்ளூர்மயமாக்கல்களில் பொதுவான பயன்பாடு
+auth.agent_selected: "ஏஜெண்ட் %{name} தேர்ந்தெடுக்கப்பட்டது"
+auth.agent_selected_with_status: "ஏஜெண்ட் %{name} — "
+auth.checking_authentication: "  %{spinner} அங்கீகாரம் சரிபார்க்கப்படுகிறது..."
+auth.waiting_for_authorization: "  %{spinner} அங்கீகாரத்திற்காகக் காத்திருக்கிறது..."
+auth.code_copied_hint: "  குறியீடு கிளிப்போர்டுக்கு நகலெடுக்கப்பட்டது — உங்கள் உலாவியில் ஒட்டவும்."
+auth.sign_in_prompt: "உங்கள் முகவரைப் பயன்படுத்த உள்நுழையவும்:"
+auth.card_connect: "  ஏஜெண்ட் அம்சங்களை இயக்க %{name}-ஐ இணைக்கவும்"
+auth.button_sign_in_github: "[ GitHub மூலம் உள்நுழையவும் ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name} மூலம் உள்நுழையவும் ]"
+auth.hint_footer: "  உள்நுழைய Enter அழுத்தவும், திரும்பிச் செல்ல Esc அழுத்தவும்"  # {Locked="Enter","Esc"}
+
+# ── அரட்டைக் காட்சி (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "யோசிக்கிறது…"
+# {Locked="Intelligent Terminal"} - தயாரிப்பு பெயர், மொழிபெயர்க்க வேண்டாம்
+chat.welcome_title: "Intelligent Terminal-க்கு வரவேற்கிறோம்!"
+chat.plan_header: "திட்டம்:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── உள்ளீடு இடப்பிடி (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "எதையும் கேளுங்கள், / கட்டளைகளுக்கு.."  # {Locked="/"}
+input.placeholder.connecting: "இணைக்கப்படுகிறது..."
+input.placeholder.disconnected: "துண்டிக்கப்பட்டது"
+
+# ── கட்டளை பாப்அப் (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - ஸ்லாஷ்-கட்டளை முன்னொட்டு, ASCII ஆக இருக்க வேண்டும்
+commands.popup_title: " / கட்டளைகள் "
+commands.help_title: " உதவி "
+commands.help_header: "ஸ்லாஷ் கட்டளைகள் — உள்ளீட்டுப் பெட்டியில் / தட்டச்சு செய்யுங்கள்."
+commands.help_escape_hint: "  //text     நேரடி '/' அனுப்பு (கட்டளை பாகுபடுத்தியை எஸ்கேப் செய்கிறது)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        இந்த உதவியை மூடு"  # {Locked="Esc"}
+
+# ── பரிந்துரைகள் பலகம் (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - விசைப் பெயர்கள் மற்றும் Return-விசை குறியீடு, மொழிபெயர்க்க வேண்டாம்
+recommendations.nav_hint: "(↑ ↓ வழிசெலுத்து • Enter தேர்ந்தெடு • Esc ரத்துசெய்)"
+recommendations.button_run_command: "[ கட்டளையை இயக்கு ]"
+recommendations.button_insert_in_terminal: "டெர்மினலில் செருகு"
+recommendations.button_open_in_new_tab: "புதிய தாவலில் திற ↵"
+recommendations.button_open_in_new_panel: "புதிய பலகத்தில் திற ↵"
+recommendations.button_open_tab: "தாவலைத் திற ↵"
+recommendations.button_open_panel: "பலகத்தைத் திற ↵"
+recommendations.button_execute: "செயல்படுத்து ↵"
+recommendations.agent_fallback: "முகவர்"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "தத்தல்"
+recommendations.open_kind_panel: "பலகம்"
+recommendations.open_kind_panel_direction: "பலகம் (%{direction})"
+recommendations.open_new_with_title_and_cwd: "புதிய %{kind} (%{title}) %{cwd} இல்"
+recommendations.open_new_with_title: "புதிய %{kind} (%{title})"
+recommendations.open_new_with_cwd: "புதிய %{kind} %{cwd} இல்"
+recommendations.open_new_empty: "புதிய காலி %{kind}"
+
+# ── அனுமதி உரையாடல் சுருக்க முறை (src/ui/permission.rs) ───────────────────────
+permission.compact.default_description: "அனுமதி கோரப்பட்டது"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N பதிலளிக்கவும் · முழு அட்டையைக் காண அளவை மாற்றவும்]"  # {Locked="Y/N"}
+
+# ── ஏஜெண்ட் நிலை (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "நிறுவப்படவில்லை — தானாக நிறுவ தேர்ந்தெடுக்கவும்"
+agent.status.not_found: "கிடைக்கவில்லை"
+agent.status.detected: "கண்டறியப்பட்டது"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - கருவிப் பெயர்கள் மற்றும் கட்டளை, அப்படியே இயக்க வேண்டும்
+agent.install.running_winget: "இயக்கப்படுகிறது: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget தொடங்குவதில் தோல்வி: %{error}"
+agent.install.winget_exited: "winget எதிர்பாராதவிதமாக வெளியேறியது: %{error}"
+agent.install.winget_failed_code: "winget நிறுவல் தோல்வி (வெளியேற்றக் குறியீடு %{code})"
+agent.install.unsupported: "%{agent}-க்கு தானியங்கி நிறுவல் ஆதரிக்கப்படவில்லை"
+agent.custom.auth_hint: "%{name} நிறுவப்பட்டுள்ளதையும் உங்கள் PATH-ல் இருப்பதையும் உறுதிசெய்யவும்."  # {Locked="PATH"}
+
+# ── ஏஜெண்ட்கள் காட்சி (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "ஏற்றப்படுகிறது..."
+# {Locked="Enter","Shift+enter","Esc"} - விசைச் சேர்க்கைகள், மொழிபெயர்க்க வேண்டாம்
+agents.footer_hint: "(↑ ↓ வழிசெலுத்து • Enter புதிய தாவலில் அமர்வைத் தொடங்கு • Shift+enter ஏஜெண்ட் பலகத்தில் அமர்வைத் தொடங்கு • Esc வெளியேறு)"
+agents.status.active: "செயலில்"
+agents.status.waiting_for_input: "உள்ளீட்டுக்காகக் காத்திருக்கிறது"
+agents.status.error: "பிழை"
+agents.status.idle: "செயலற்றது"
+
+# ── தளவமைப்பு வரவேற்பு குறிப்பு (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. ஏஜெண்ட் பலகத்தைக் காட்டு/மறை • Ctrl+Alt+/ ஏஜெண்ட் அமர்வைக் காட்டு/மறை)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── இணைப்பு நிலை ────────────────────────────────────────────────────────
+connection.starting: "ஏஜெண்ட் தொடங்கப்படுகிறது..."
+connection.reconnecting: "மீண்டும் இணைக்கப்படுகிறது..."
+
+# ── கணினி செய்திகள் (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "ரத்துசெய்யப்பட்டது."
+system.no_prompt_in_flight: "நிலுவையில் எந்தப் பிராம்ப்ட்டும் இல்லை."
+system.authentication_failed: "அங்கீகாரம் தோல்வியடைந்தது"
+system.command_copied_retry: "கட்டளை நகலெடுக்கப்பட்டது — அதை மற்றொரு டெர்மினலில் இயக்கவும், பின்னர் மீண்டும் முயற்சிக்க Enter அழுத்தவும்"  # {Locked="Enter"}
+
+# ── இயக்க நேர CLI வெளியீடு (src/main.rs) ────────────────────────────────────────
+output.no_windows: "சாளரங்கள் கிடைக்கவில்லை."
+output.no_tabs: "தாவல்கள் கிடைக்கவில்லை."
+output.no_panes: "பலகங்கள் கிடைக்கவில்லை."
+output.no_windows_in_list: "சாளரங்கள் கிடைக்கவில்லை"
+output.no_tabs_in_window: "சாளரம் %{window_id}-ல் தாவல்கள் கிடைக்கவில்லை"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - நெடுவரிசை அடையாளங்காட்டிகள், பாகுபடுத்துவதற்கு ASCII-யில் வைக்கவும்
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "செயலில் உள்ள பலகம்: %{pane} (தாவல்: %{tab}, சாளரம்: %{window})"
+output.pane_running: "இயங்குகிறது (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "வெளியேறியது (குறியீடு: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "தாவல் %{tab_id} உருவாக்கப்பட்டது (பலகம் %{pane_id})"
+output.created_pane: "பலகம் %{pane_id} உருவாக்கப்பட்டது"
+output.pane_closed: "பலகம் %{pane_id} மூடப்பட்டது."
+
+# ── பிழைகள் (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "செயலில் உள்ள பலகம் கிடைக்கவில்லை. பலக ID-ஐக் குறிப்பிட -t பயன்படுத்தவும்."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID அமைக்கப்படவில்லை. Windows Terminal பலகத்தினுள் இயக்கவும்."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "அறியப்படாத ஷெல் வகை '%{shell}'. பயன்படுத்தவும்: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - கட்டளைப் பெயர், மொழிபெயர்க்க வேண்டாம்
+error.wtcli_wait_for_spawn: "wtcli wait-for தொடங்குவதில் தோல்வி"
+error.wtcli_wait_for_parse: "wtcli wait-for வெளியீட்டைப் பாகுபடுத்துவதில் தோல்வி"
+error.wtcli_wait_for_failed: "wtcli wait-for தோல்வி: %{stderr}"
+
+# ── ஹூக்ஸ் நிலை வெளியீடு (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - கருவி/CLI பெயர்கள், சூழல் மாறிகள், பதிவுக் கோப்புப் பெயர்கள்
+hooks.bundle_source: "தொகுப்பு மூலம்: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI PATH-ல் இல்லை"
+hooks.installed: "✓ நிறுவப்பட்டுள்ளது"
+hooks.marketplace_path_stale: "⚠ சந்தைப் பாதை காலாவதியானது"
+hooks.installed_but_disabled: "⚠ நிறுவப்பட்டுள்ளது ஆனால் முடக்கப்பட்டுள்ளது"
+hooks.not_installed: "✗ நிறுவப்படவில்லை"
+hooks.uninstall_skipped: "தவிர்க்கப்பட்டது (CLI PATH-ல் இல்லை)"
+hooks.install_attempted: "wt-agent-hooks நிறுவல் முயற்சிக்கப்பட்டது (இடம்போடென்ட்). முடிவை ஆய்வு செய்ய `wta hooks status` இயக்கவும். தடயப் பதிவு: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

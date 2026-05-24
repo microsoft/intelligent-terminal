@@ -1,5 +1,160 @@
 # Setup screen titles
-setup.title.first_run: "እንኳን ወደ ብልህ ተርሚናል በደህና መጡ!"
-setup.title.agent_missing: "ኤጅንት አልተገኘም"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+setup.title.first_run: "እንኳን ወደ Intelligent Terminal በደህና መጡ!"
+setup.title.agent_missing: "ኤጅንት አልተገኙም"
 setup.title.agent_error: "ኤጅንት ግንኙነት አልተሳካም"
 setup.title.switch_agent: "ኤጅንትን ቀይር"
+setup.title.not_available: "ኤጅንት አይገኙም"
+setup.title.sign_in: "መግባት ያስፈልጋል"
+
+# %{agent} is replaced with the agent display name at runtime.
+setup.subtitle.copilot_missing: "ኤጅንትዎ \"%{agent}\" አልተጠቀመም። ለመጠቀም ከታች ያሉትን ደረጃዎች ይተግበሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
+setup.subtitle.agent_missing: "ኤጅንትዎ \"%{agent}\" አልተጠቀመም። እባክዎን በእጥ ይጠቅሙት እና እንደገና ይሞክሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
+setup.subtitle.copilot_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገወል። ለመግባት ከታች ያሉትን ደረጃዎች ይተግበሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
+setup.subtitle.agent_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገወል። እባክዎን በኤጅንት CLI በኩል ይግቡ እና እንደገና ይሞክሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "በ Intelligent Terminal ውስጥ ላይጠቀሙት የሚፈልጉትን ነባሪ CLI ኤጅንት ይምረጡ። ወደ"
+setup.description.fre_line2: "Settings ሂደው የስራ ቀጠርዎን ላያያዙ ይችላሉ።"
+
+setup.option.reinstall: "%{agent} እንደገና ጠቅም"
+setup.option.reinstall_hint: "(በራሱ ይጠቀማል)"
+setup.option.signin: "ወደ %{agent} ይግቡ"
+setup.option.retry_detection: "እንደገና ፍለጋ"
+setup.option.retry_auth: "ገብቻለሁ — ግንኙነት እንደገና ሞክር"
+setup.option.retry_connection: "ግንኙነት እንደገና ሞክር"
+setup.option.switch_to: "ወደ %{agent} ቀይር"
+setup.status.installing: "በመጠቀም ላይ..."
+setup.status.install_failed: "መጠቀም አልተሳካም፡ "
+setup.status.installing_winget: " በ winget በኩል በመጠቀም ላይ..."
+
+# ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "ኤጅንት %{name} ተመርጧል"
+auth.agent_selected_with_status: "ኤጅንት %{name} — "
+auth.checking_authentication: "  %{spinner} ማረጋገጥ በመፈተሽ..."
+auth.waiting_for_authorization: "  %{spinner} ፍቃድ በመጠበቅ..."
+auth.code_copied_hint: "ኮዱ ተቀድቷል — በአስሳሽዎ ላይ ይለጥፉት።"
+auth.sign_in_prompt: "ኤጅንትዎን ለመጠቀም ይግቡ፡"
+auth.card_connect: "የኤጅንት ባህሪያትን ለማንቃት %{name} ይጋኙ"
+auth.button_sign_in_github: "[ በ GitHub ይግቡ ]"
+auth.button_sign_in_with: "[ በ %{name} ይግቡ ]"
+auth.hint_footer: "ለመግባት Enter ይጫኑ, ለመመለስ Esc ይጫኑ"
+
+# ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "በማሰብ…"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+chat.welcome_title: "እንኳን ወደ Intelligent Terminal በደህና መጡ!"
+chat.plan_header: "እቅድ፡"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
+input.placeholder.connecting: "connecting..."
+input.placeholder.disconnected: "disconnect"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / commands "
+commands.help_title: " Help "
+commands.help_header: "Slash commands — type / in the input box."
+commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command parser)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ to navigate • Enter to select • Esc to cancel)"
+recommendations.button_run_command: "[ Run command ]"
+recommendations.button_insert_in_terminal: "Insert in Terminal"
+recommendations.button_open_in_new_tab: "Open in New Tab ↵"
+recommendations.button_open_in_new_panel: "Open in New Panel ↵"
+recommendations.button_open_tab: "Open Tab ↵"
+recommendations.button_open_panel: "Open Panel ↵"
+recommendations.button_execute: "Execute ↵"
+recommendations.agent_fallback: "ወኪል"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ትር"
+recommendations.open_kind_panel: "ፓነል"
+recommendations.open_kind_panel_direction: "ፓነል (%{direction})"
+recommendations.open_new_with_title_and_cwd: "አዲስ %{kind} (%{title}) በ %{cwd}"
+recommendations.open_new_with_title: "አዲስ %{kind} (%{title})"
+recommendations.open_new_with_cwd: "አዲስ %{kind} በ %{cwd}"
+recommendations.open_new_empty: "አዲስ ባዶ %{kind}"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+permission.compact.default_description: "Permission requested"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N to answer · resize for full card]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "አልተጠቀመም — በራስ-ሰር ለመጠቀም ይምረጡ"
+agent.status.not_found: "አልተገኙም"
+agent.status.detected: "ተገኙቷል"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "Running: winget install GitHub.Copilot"
+agent.install.launch_failed: "Failed to launch winget: %{error}"
+agent.install.winget_exited: "winget exited unexpectedly: %{error}"
+agent.install.winget_failed_code: "winget install failed (exit code %{code})"
+agent.install.unsupported: "Automatic install not supported for %{agent}"
+agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Loading..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit)"
+agents.status.active: "Active"
+agents.status.waiting_for_input: "Waiting for input"
+agents.status.error: "Error"
+agents.status.idle: "Idle"
+
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "(Ctrl+Shift+. የኤጅንት ገጽታ ማሳየት/መደበቅ • Ctrl+Alt+/ የኤጅንት ክፍለጥ ማሳየት/መደበቅ)"
+
+# ── Connection state ────────────────────────────────────────────────────────
+connection.starting: "ኤጅንት በመጀመር..."
+connection.reconnecting: "እንደገና በመጋኘት..."
+
+# ── System messages (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Cancelled."
+system.no_prompt_in_flight: "No prompt in flight."
+system.authentication_failed: "Authentication failed"
+system.command_copied_retry: "Command copied — run it in another terminal, then press Enter to retry"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
+output.no_windows: "No windows found."
+output.no_tabs: "No tabs found."
+output.no_panes: "No panes found."
+output.no_windows_in_list: "No windows found"
+output.no_tabs_in_window: "No tabs found in window %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Active pane: %{pane} (tab: %{tab}, window: %{window})"
+output.pane_running: "Running (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Exited (code: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Created tab %{tab_id} (pane %{pane_id})"
+output.created_pane: "Created pane %{pane_id}"
+output.pane_closed: "Pane %{pane_id} closed."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "No active pane found. Use -t to specify a pane ID."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID not set. Run inside a Windows Terminal pane."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Unknown shell type '%{shell}'. Use: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "Failed to spawn wtcli wait-for"
+error.wtcli_wait_for_parse: "Failed to parse wtcli wait-for output"
+error.wtcli_wait_for_failed: "wtcli wait-for failed: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "bundle source: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI not on PATH"
+hooks.installed: "✓ installed"
+hooks.marketplace_path_stale: "⚠ marketplace path stale"
+hooks.installed_but_disabled: "⚠ installed but disabled"
+hooks.not_installed: "✗ not installed"
+hooks.uninstall_skipped: "skipped (CLI not on PATH)"
+hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

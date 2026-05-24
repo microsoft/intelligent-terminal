@@ -34,12 +34,12 @@ impl AgentStatus {
     pub fn status_label(&self) -> String {
         if !self.cli_found {
             if self.id == "copilot" {
-                "Not installed — select to install automatically".to_string()
+                t!("agent.status.not_installed_auto").into_owned()
             } else {
-                "Not found".to_string()
+                t!("agent.status.not_found").into_owned()
             }
         } else {
-            "Detected".to_string()
+            t!("agent.status.detected").into_owned()
         }
     }
 
@@ -182,7 +182,7 @@ pub fn build_login_cmd(agent_id: &str) -> String {
 pub async fn install(agent_id: &str, on_line: impl FnMut(String) + Send + 'static) -> Result<(), String> {
     match agent_id {
         "copilot" => install_copilot(on_line).await,
-        _ => Err(format!("Automatic install not supported for {}", agent_id)),
+        _ => Err(t!("agent.install.unsupported", agent = agent_id).into_owned()),
     }
 }
 
@@ -264,7 +264,7 @@ pub fn check_agent_cmd(agent_cmd: &str) -> AgentStatus {
         cli_path,
         has_credential: false, // unknown for custom agents
         install_hint: String::new(),
-        auth_hint: format!("Make sure {} is installed and on your PATH.", exe_name),
+        auth_hint: t!("agent.custom.auth_hint", name = exe_name).into_owned(),
     }
 }
 
@@ -310,11 +310,11 @@ async fn install_copilot(mut on_line: impl FnMut(String) + Send + 'static) -> Re
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    on_line("Running: winget install GitHub.Copilot".to_string());
+    on_line(t!("agent.install.running_winget").into_owned());
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
-        Err(e) => return Err(format!("Failed to launch winget: {}", e)),
+        Err(e) => return Err(t!("agent.install.launch_failed", error = e.to_string()).into_owned()),
     };
 
     let stdout = child.stdout.take();
@@ -352,7 +352,7 @@ async fn install_copilot(mut on_line: impl FnMut(String) + Send + 'static) -> Re
 
     let status = match child.wait().await {
         Ok(s) => s,
-        Err(e) => return Err(format!("winget exited unexpectedly: {}", e)),
+        Err(e) => return Err(t!("agent.install.winget_exited", error = e.to_string()).into_owned()),
     };
 
     let _ = forward.await;
@@ -362,7 +362,7 @@ async fn install_copilot(mut on_line: impl FnMut(String) + Send + 'static) -> Re
         Ok(())
     } else {
         let code = status.code().unwrap_or(-1);
-        Err(format!("winget install failed (exit code {})", code))
+        Err(t!("agent.install.winget_failed_code", code = code.to_string()).into_owned())
     }
 }
 

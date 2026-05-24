@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "Wëllkomm am Intelligenten Terminal!"
+# Astellungs-Écran Titelen
+# {Locked="Intelligent Terminal"} - Produktnumm, net iwwersetzen
+setup.title.first_run: "Wëllkomm am Intelligent Terminal!"
 setup.title.agent_missing: "Agent net fonnt"
 setup.title.agent_error: "Verbindung mam Agent ass gescheitert"
 setup.title.switch_agent: "Agent wiesselen"
+setup.title.not_available: "Agent net disponibel"
+setup.title.sign_in: "Umeldung erfuerderlech"
+
+# %{agent} gëtt zur Laufzäit duerch den Unzeignumm vum Agent ersat.
+setup.subtitle.copilot_missing: "Ären Agent \"%{agent}\" ass net installéiert. Follegt de Schrëtt hei drënner fir en z'installéieren. Fir den Agent ze wiesselen, gitt op Settings."
+setup.subtitle.agent_missing: "Ären Agent \"%{agent}\" ass net installéiert. Installéiert en nach eng Kéier manuell an probéiert et nach eng Kéier. Fir den Agent ze wiesselen, gitt op Settings."
+setup.subtitle.copilot_auth: "Ären Agent \"%{agent}\" brauch eng Authentifizéierung. Follegt de Schrëtt hei drënner fir Iech unzemellen. Fir den Agent ze wiesselen, gitt op Settings."
+setup.subtitle.agent_auth: "Ären Agent \"%{agent}\" brauch eng Authentifizéierung. Mellt Iech iwwer den Agent CLI un an probéiert et nach eng Kéier. Fir den Agent ze wiesselen, gitt op Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Wielt de Standard-Agent CLI deen Dir am Intelligent Terminal benotze wëllt. Dir kënnt"
+setup.description.fre_line2: "op Settings goen fir Ären Aarbechtsberäich ze konfiguréieren an anzeriichten."
+
+setup.option.reinstall: "%{agent} nei installéieren"
+setup.option.reinstall_hint: "(Gëtt automatesch installéiert)"
+setup.option.signin: "Bei %{agent} umellen"
+setup.option.retry_detection: "Erkennung nach eng Kéier probéieren"
+setup.option.retry_auth: "Ech sinn ugemellt — Verbindung nach eng Kéier probéieren"
+setup.option.retry_connection: "Verbindung nach eng Kéier probéieren"
+setup.option.switch_to: "Op %{agent} wiesselen"
+setup.status.installing: "Gëtt installéiert..."
+setup.status.install_failed: "Installatioun gescheitert: "
+setup.status.installing_winget: " Gëtt iwwer winget installéiert..."
+
+# ── Authentifizéierungs-Flux (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - Ofkierzung, allgemeng Benotzung an Microsoft-Lokaliséierungen
+auth.agent_selected: "Agent %{name} ass ausgewielt"
+auth.agent_selected_with_status: "Agent %{name} — "
+auth.checking_authentication: "  %{spinner} Authentifizéierung gëtt iwwerpréift..."
+auth.waiting_for_authorization: "  %{spinner} Waart op Autorisatioun..."
+auth.code_copied_hint: "  Code an d'Tëschoflag kopéiert — setzt en an Ärem Browser an."
+auth.sign_in_prompt: "Mellt Iech un fir Ären Agent ze benotzen:"
+auth.card_connect: "  Verbinnt %{name} fir Agent-Funktiounen z'aktivéieren"
+auth.button_sign_in_github: "[ Mat GitHub umellen ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Mat %{name} umellen ]"
+auth.hint_footer: "  Dréckt Enter fir Iech unzemellen, Esc fir zréckzegoen"  # {Locked="Enter","Esc"}
+
+# ── Chat-Vue (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Denkt no…"
+# {Locked="Intelligent Terminal"} - Produktnumm, net iwwersetzen
+chat.welcome_title: "Wëllkomm am Intelligent Terminal!"
+chat.plan_header: "Plang:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input-Plazhalter (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Froen eppes, / fir Kommandoen.."  # {Locked="/"}
+input.placeholder.connecting: "verbënnt..."
+input.placeholder.disconnected: "ofgeschalt"
+
+# ── Kommando-Popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - Schrägstréch-Kommando-Prefix, muss ASCII bleiwen
+commands.popup_title: " / Kommandoen "
+commands.help_title: " Hëllef "
+commands.help_header: "Schrägstréch-Kommandoen — tippt / an d'Inputfeld."
+commands.help_escape_hint: "  //text     Schéckt e literale '/' (escapéiert de Kommando-Parser)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Dës Hëllef zoumaachen"  # {Locked="Esc"}
+
+# ── Recommandatiounen-Panell (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - Schlësselnimm an Enter-Tast-Glyph, net iwwersetzen
+recommendations.nav_hint: "(↑ ↓ fir ze navigéieren • Enter fir auszewielen • Esc fir ofzebriechen)"
+recommendations.button_run_command: "[ Kommando ausféieren ]"
+recommendations.button_insert_in_terminal: "An den Terminal asetzen"
+recommendations.button_open_in_new_tab: "An engem neien Tab opmaachen ↵"
+recommendations.button_open_in_new_panel: "An engem neie Panell opmaachen ↵"
+recommendations.button_open_tab: "Tab opmaachen ↵"
+recommendations.button_open_panel: "Panell opmaachen ↵"
+recommendations.button_execute: "Ausféieren ↵"
+recommendations.agent_fallback: "Agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "Tab"
+recommendations.open_kind_panel: "Panel"
+recommendations.open_kind_panel_direction: "Panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Neien %{kind} (%{title}) an %{cwd}"
+recommendations.open_new_with_title: "Neien %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Neien %{kind} an %{cwd}"
+recommendations.open_new_empty: "Neien eidelen %{kind}"
+
+# ── Erlaabnes-Dialog kompakt Modus (src/ui/permission.rs) ───────────────────────────
+permission.compact.default_description: "Erlaabnes ugefrot"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N fir z'äntwerten · Gréisst änneren fir voll Kaart]"  # {Locked="Y/N"}
+
+# ── Agent-Status (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Net installéiert — wielt fir automatesch z'installéieren"
+agent.status.not_found: "Net fonnt"
+agent.status.detected: "Erkannt"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - Tool-Nimm a Kommando, mussen wéi se sinn ausgefouert ginn
+agent.install.running_winget: "Leeft: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget konnt net gestart ginn: %{error}"
+agent.install.winget_exited: "winget huet onerwaart opgehalen: %{error}"
+agent.install.winget_failed_code: "winget Installatioun gescheitert (Exit-Code %{code})"
+agent.install.unsupported: "Automatesch Installatioun net ënnerstëtzt fir %{agent}"
+agent.custom.auth_hint: "Suergt dofir datt %{name} installéiert ass an op Ärem PATH steet."  # {Locked="PATH"}
+
+# ── Agenten-Vue (src/ui/agents_view.rs) ─────────────────────────────────
+agents.loading: "Gëtt gelueden..."
+# {Locked="Enter","Shift+enter","Esc"} - Tast-Kombinatiounen, net iwwersetzen
+agents.footer_hint: "(↑ ↓ fir ze navigéieren • Enter fir d'Sëtzung an engem neien Tab ze starten • Shift+enter fir d'Sëtzung am Agent-Panell ze starten • Esc fir eraus)"
+agents.status.active: "Aktiv"
+agents.status.waiting_for_input: "Waart op Input"
+agents.status.error: "Feeler"
+agents.status.idle: "Onbeschäftegt"
+
+# ── Layout-Wëllkomm-Hiwäis (src/ui/layout.rs) ──────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. fir den Agent-Panell ze weisen/verstoppen • Ctrl+Alt+/ fir d'Agent-Sëtzung ze weisen/verstoppen)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Verbindungszoustand ────────────────────────────────────────────────────────
+connection.starting: "Agent gëtt gestart..."
+connection.reconnecting: "Gëtt nei verbonnen..."
+
+# ── System-Messagen (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Ofgebrach."
+system.no_prompt_in_flight: "Keen Prompt ënnerwee."
+system.authentication_failed: "Authentifizéierung gescheitert"
+system.command_copied_retry: "Kommando kopéiert — féiert et an engem aneren Terminal aus, da dréckt Enter fir nach eng Kéier ze probéieren"  # {Locked="Enter"}
+
+# ── CLI-Ausgang zur Laufzäit (src/main.rs) ────────────────────────────────────
+output.no_windows: "Keng Fënsteren fonnt."
+output.no_tabs: "Keng Tabs fonnt."
+output.no_panes: "Keng Panellen fonnt."
+output.no_windows_in_list: "Keng Fënsteren fonnt"
+output.no_tabs_in_window: "Keng Tabs an der Fënster %{window_id} fonnt"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - Kolonn-Identifikateuren, ASCII behalen fir d'Parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Aktive Panell: %{pane} (Tab: %{tab}, Fënster: %{window})"
+output.pane_running: "Leeft (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Eraus (Code: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Tab %{tab_id} erstallt (Panell %{pane_id})"
+output.created_pane: "Panell %{pane_id} erstallt"
+output.pane_closed: "Panell %{pane_id} zougemaach."
+
+# ── Feeler (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Keen aktive Panell fonnt. Benotzt -t fir eng Panell-ID unzeginn."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID net gesat. Féiert et bannent enger Windows Terminal Panell aus."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Onbekannte Shell-Typ '%{shell}'. Benotzt: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - Kommando-Numm, net iwwersetzen
+error.wtcli_wait_for_spawn: "wtcli wait-for konnt net gestart ginn"
+error.wtcli_wait_for_parse: "wtcli wait-for Ausgang konnt net geparst ginn"
+error.wtcli_wait_for_failed: "wtcli wait-for gescheitert: %{stderr}"
+
+# ── Hook-Status-Ausgang (src/main.rs) ───────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - Tool/CLI-Nimm, Ëmfeldvariablen, Log-Dateinimm
+hooks.bundle_source: "Bundle-Quell: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI net op PATH"
+hooks.installed: "✓ installéiert"
+hooks.marketplace_path_stale: "⚠ Marketplace-Wee verélzt"
+hooks.installed_but_disabled: "⚠ installéiert awer deaktivéiert"
+hooks.not_installed: "✗ net installéiert"
+hooks.uninstall_skipped: "iwwersprong (CLI net op PATH)"
+hooks.install_attempted: "wt-agent-hooks Installatioun probéiert (idempotent). Féiert `wta hooks status` aus fir d'Resultat z'iwwerpréiwen. Trace-Log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

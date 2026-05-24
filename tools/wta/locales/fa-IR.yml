@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "به پایانه هوشمند خوش آمدید!"
+# عناوین صفحه راه‌اندازی
+# {Locked="Intelligent Terminal"} - نام محصول، ترجمه نکنید
+setup.title.first_run: "به Intelligent Terminal خوش آمدید!"
 setup.title.agent_missing: "عامل هوش مصنوعی یافت نشد"
 setup.title.agent_error: "اتصال به عامل هوش مصنوعی ناموفق بود"
-setup.title.switch_agent: "عامل هوش مصنوعی را تغییر دهید"
+setup.title.switch_agent: "تغییر عامل هوش مصنوعی"
+setup.title.not_available: "عامل هوش مصنوعی در دسترس نیست"
+setup.title.sign_in: "ورود به سیستم لازم است"
+
+# %{agent} در زمان اجرا با نام نمایشی عامل هوش مصنوعی جایگزین می‌شود.
+setup.subtitle.copilot_missing: "عامل هوش مصنوعی \"%{agent}\" نصب نشده است. مراحل زیر را برای نصب آن دنبال کنید. برای تغییر عامل‌های هوش مصنوعی، به Settings بروید."
+setup.subtitle.agent_missing: "عامل هوش مصنوعی \"%{agent}\" نصب نشده است. لطفاً آن را به صورت دستی دوباره نصب کنید، سپس دوباره تلاش کنید. برای تغییر عامل‌های هوش مصنوعی، به Settings بروید."
+setup.subtitle.copilot_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. مراحل زیر را برای ورود دنبال کنید. برای تغییر عامل‌های هوش مصنوعی، به Settings بروید."
+setup.subtitle.agent_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. لطفاً از طریق CLI عامل هوش مصنوعی وارد شوید، سپس دوباره تلاش کنید. برای تغییر عامل‌های هوش مصنوعی، به Settings بروید."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "CLI عامل هوش مصنوعی پیش‌فرضی را که می‌خواهید در Intelligent Terminal استفاده کنید انتخاب نمایید. می‌توانید"
+setup.description.fre_line2: "به Settings بروید تا فضای کاری خود را پیکربندی و راه‌اندازی کنید."
+
+setup.option.reinstall: "نصب مجدد %{agent}"
+setup.option.reinstall_hint: "(به صورت خودکار نصب خواهد شد)"
+setup.option.signin: "ورود به %{agent}"
+setup.option.retry_detection: "تلاش مجدد برای شناسایی"
+setup.option.retry_auth: "وارد شدم — تلاش مجدد اتصال"
+setup.option.retry_connection: "تلاش مجدد اتصال"
+setup.option.switch_to: "تغییر به %{agent}"
+setup.status.installing: "در حال نصب..."
+setup.status.install_failed: "نصب ناموفق بود: "
+setup.status.installing_winget: " در حال نصب از طریق winget..."
+
+# ── جریان احراز هویت (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - مخفف، استفاده رایج در بومی‌سازی‌های Microsoft
+auth.agent_selected: "CLI عامل هوش مصنوعی %{name} انتخاب شده است"
+auth.agent_selected_with_status: "CLI عامل هوش مصنوعی %{name} — "
+auth.checking_authentication: "  %{spinner} در حال بررسی احراز هویت..."
+auth.waiting_for_authorization: "  %{spinner} در انتظار مجوز..."
+auth.code_copied_hint: "  کد در کلیپ‌بورد کپی شد — آن را در مرورگر خود جای‌گذاری کنید."
+auth.sign_in_prompt: "برای استفاده از عامل هوش مصنوعی خود وارد شوید:"
+auth.card_connect: "  %{name} را متصل کنید تا قابلیت‌های عامل هوش مصنوعی فعال شوند"
+auth.button_sign_in_github: "[ ورود با GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ ورود با %{name} ]"
+auth.hint_footer: "  Enter را برای ورود فشار دهید، Esc برای بازگشت"  # {Locked="Enter","Esc"}
+
+# ── نمای گفتگو (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "در حال فکر کردن…"
+# {Locked="Intelligent Terminal"} - نام محصول، ترجمه نکنید
+chat.welcome_title: "به Intelligent Terminal خوش آمدید!"
+chat.plan_header: "طرح:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── جای‌نگهدارهای ورودی (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "هرچیزی بپرسید، / برای دستورات.."  # {Locked="/"}
+input.placeholder.connecting: "در حال اتصال..."
+input.placeholder.disconnected: "قطع شده"
+
+# ── پنجره بازشو دستورات (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - پیشوند دستور اسلش، باید ASCII بماند
+commands.popup_title: " / دستورات "
+commands.help_title: " راهنما "
+commands.help_header: "دستورات اسلش — / را در کادر ورودی تایپ کنید."
+commands.help_escape_hint: "  //text     ارسال '/' تحت‌اللفظی (تجزیه‌کننده دستور را رد می‌کند)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        بستن این راهنما"  # {Locked="Esc"}
+
+# ── پنل پیشنهادات (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - نام کلیدها و نماد کلید بازگشت، ترجمه نکنید
+recommendations.nav_hint: "(↑ ↓ ناوبری • Enter انتخاب • Esc لغو)"
+recommendations.button_run_command: "[ اجرای دستور ]"
+recommendations.button_insert_in_terminal: "درج در ترمینال"
+recommendations.button_open_in_new_tab: "باز کردن در زبانه جدید ↵"
+recommendations.button_open_in_new_panel: "باز کردن در پنل جدید ↵"
+recommendations.button_open_tab: "باز کردن زبانه ↵"
+recommendations.button_open_panel: "باز کردن پنل ↵"
+recommendations.button_execute: "اجرا ↵"
+recommendations.agent_fallback: "عامل"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "زبانه"
+recommendations.open_kind_panel: "پنل"
+recommendations.open_kind_panel_direction: "پنل (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} جدید (%{title}) در %{cwd}"
+recommendations.open_new_with_title: "%{kind} جدید (%{title})"
+recommendations.open_new_with_cwd: "%{kind} جدید در %{cwd}"
+recommendations.open_new_empty: "%{kind} خالی جدید"
+
+# ── کادر محاوره‌ای مجوز در حالت فشرده (src/ui/permission.rs) ───────────────────────
+permission.compact.default_description: "مجوز درخواست شده است"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N برای پاسخ · تغییر اندازه برای کارت کامل]"  # {Locked="Y/N"}
+
+# ── وضعیت عامل هوش مصنوعی (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "نصب نشده — برای نصب خودکار انتخاب کنید"
+agent.status.not_found: "یافت نشد"
+agent.status.detected: "شناسایی شد"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - نام ابزارها و دستور، باید عیناً اجرا شوند
+agent.install.running_winget: "در حال اجرا: winget install GitHub.Copilot"
+agent.install.launch_failed: "راه‌اندازی winget ناموفق بود: %{error}"
+agent.install.winget_exited: "winget به طور غیرمنتظره خارج شد: %{error}"
+agent.install.winget_failed_code: "نصب winget ناموفق بود (کد خروج %{code})"
+agent.install.unsupported: "نصب خودکار برای %{agent} پشتیبانی نمی‌شود"
+agent.custom.auth_hint: "مطمئن شوید که %{name} نصب شده و در PATH شما قرار دارد."  # {Locked="PATH"}
+
+# ── نمای عامل‌های هوش مصنوعی (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "در حال بارگذاری..."
+# {Locked="Enter","Shift+enter","Esc"} - ترکیب کلیدها، ترجمه نکنید
+agents.footer_hint: "(↑ ↓ ناوبری • Enter شروع نشست در زبانه جدید • Shift+enter شروع نشست در پنل عامل هوش مصنوعی • Esc خروج)"
+agents.status.active: "فعال"
+agents.status.waiting_for_input: "در انتظار ورودی"
+agents.status.error: "خطا"
+agents.status.idle: "بیکار"
+
+# ── راهنمای خوشامدگویی چیدمان (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. نمایش/پنهان کردن پنل عامل هوش مصنوعی • Ctrl+Alt+/ نمایش/پنهان کردن نشست عامل هوش مصنوعی)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── وضعیت اتصال ────────────────────────────────────────────────────────
+connection.starting: "در حال راه‌اندازی عامل هوش مصنوعی..."
+connection.reconnecting: "در حال اتصال مجدد..."
+
+# ── پیام‌های سیستم (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "لغو شد."
+system.no_prompt_in_flight: "هیچ درخواستی در حال اجرا نیست."
+system.authentication_failed: "احراز هویت ناموفق بود"
+system.command_copied_retry: "دستور کپی شد — آن را در ترمینال دیگری اجرا کنید، سپس Enter را برای تلاش مجدد فشار دهید"  # {Locked="Enter"}
+
+# ── خروجی CLI در زمان اجرا (src/main.rs) ────────────────────────────────────────
+output.no_windows: "هیچ پنجره‌ای یافت نشد."
+output.no_tabs: "هیچ زبانه‌ای یافت نشد."
+output.no_panes: "هیچ پنلی یافت نشد."
+output.no_windows_in_list: "هیچ پنجره‌ای یافت نشد"
+output.no_tabs_in_window: "هیچ زبانه‌ای در پنجره %{window_id} یافت نشد"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - شناسه‌های ستون، برای تجزیه در ASCII نگه داشته می‌شوند
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "پنل فعال: %{pane} (زبانه: %{tab}، پنجره: %{window})"
+output.pane_running: "در حال اجرا (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "خارج شده (کد: %{code}، PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "زبانه %{tab_id} ایجاد شد (پنل %{pane_id})"
+output.created_pane: "پنل %{pane_id} ایجاد شد"
+output.pane_closed: "پنل %{pane_id} بسته شد."
+
+# ── خطاها (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "هیچ پنل فعالی یافت نشد. از -t برای تعیین شناسه پنل استفاده کنید."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID تنظیم نشده است. در داخل پنل Windows Terminal اجرا کنید."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "نوع shell ناشناخته '%{shell}'. استفاده کنید: bash، powershell، cmd، fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - نام دستور، ترجمه نکنید
+error.wtcli_wait_for_spawn: "راه‌اندازی wtcli wait-for ناموفق بود"
+error.wtcli_wait_for_parse: "تجزیه خروجی wtcli wait-for ناموفق بود"
+error.wtcli_wait_for_failed: "wtcli wait-for ناموفق بود: %{stderr}"
+
+# ── خروجی وضعیت hooks (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - نام ابزارها/CLI، متغیرهای محیطی، نام فایل‌های گزارش
+hooks.bundle_source: "منبع بسته: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI در PATH نیست"
+hooks.installed: "✓ نصب شده"
+hooks.marketplace_path_stale: "⚠ مسیر فروشگاه قدیمی است"
+hooks.installed_but_disabled: "⚠ نصب شده اما غیرفعال"
+hooks.not_installed: "✗ نصب نشده"
+hooks.uninstall_skipped: "رد شد (CLI در PATH نیست)"
+hooks.install_attempted: "تلاش نصب wt-agent-hooks انجام شد (بی‌توان). برای بررسی نتیجه `wta hooks status` را اجرا کنید. گزارش ردیابی: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

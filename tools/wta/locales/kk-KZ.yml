@@ -1,5 +1,160 @@
 # Setup screen titles
-setup.title.first_run: "«Зияткер терминал» қолданбасына қош келдіңіз!"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+setup.title.first_run: "Intelligent Terminal-ға қош келдіңіз!"
 setup.title.agent_missing: "Агент табылмады"
 setup.title.agent_error: "Агентке қосылу сәтсіз аяқталды"
-setup.title.switch_agent: "Агентті ауыстыр"
+setup.title.switch_agent: "Агентті ауыстыру"
+setup.title.not_available: "Агент қолжетімсіз"
+setup.title.sign_in: "Жүйеге кіру қажет"
+
+# %{agent} is replaced with the agent display name at runtime.
+setup.subtitle.copilot_missing: "Сіздің \"%{agent}\" агентіңіз орнатылмаған. Орнату үшін төмендегі қадамдарды орындаңыз. Агентті ауыстыру үшін Settings бөліміне өтіңіз."
+setup.subtitle.agent_missing: "Сіздің \"%{agent}\" агентіңіз орнатылмаған. Қолмен қайта орнатып, қайталап көріңіз. Агентті ауыстыру үшін Settings бөліміне өтіңіз."
+setup.subtitle.copilot_auth: "Сіздің \"%{agent}\" агентіңіз аутентификацияны талап етеді. Жүйеге кіру үшін төмендегі қадамдарды орындаңыз. Агентті ауыстыру үшін Settings бөліміне өтіңіз."
+setup.subtitle.agent_auth: "Сіздің \"%{agent}\" агентіңіз аутентификацияны талап етеді. Агент CLI арқылы жүйеге кіріп, қайталап көріңіз. Агентті ауыстыру үшін Settings бөліміне өтіңіз."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal-да қолданғыңыз келетін әдепкі агент CLI таңдаңыз. Жұмыс кеңістігіңізді"
+setup.description.fre_line2: "баптау және реттеу үшін Settings бөліміне өтуіңізге болады."
+
+setup.option.reinstall: "%{agent} қайта орнату"
+setup.option.reinstall_hint: "(Автоматты түрде орнатылады)"
+setup.option.signin: "%{agent} жүйеге кіру"
+setup.option.retry_detection: "Анықтауды қайталау"
+setup.option.retry_auth: "Жүйеге кірдім — қосылуды қайталау"
+setup.option.retry_connection: "Қосылуды қайталау"
+setup.option.switch_to: "%{agent} ауыстыру"
+setup.status.installing: "Орнатылуда..."
+setup.status.install_failed: "Орнату сәтсіз: "
+setup.status.installing_winget: " winget арқылы орнатылуда..."
+
+# ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "Агент %{name} таңдалды"
+auth.agent_selected_with_status: "Агент %{name} — "
+auth.checking_authentication: "  %{spinner} Аутентификация тексерілуде..."
+auth.waiting_for_authorization: "  %{spinner} Авторизация күтілуде..."
+auth.code_copied_hint: "  Код буферге көшірілді — браузерге қойыңыз."
+auth.sign_in_prompt: "Агентіңізді пайдалану үшін жүйеге кіріңіз:"
+auth.card_connect: "  Агент мүмкіндіктерін қосу үшін %{name} қосыңыз"
+auth.button_sign_in_github: "[ GitHub арқылы кіру ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name} арқылы кіру ]"
+auth.hint_footer: "  Жүйеге кіру үшін Enter, артқа қайту үшін Esc басыңыз"  # {Locked="Enter","Esc"}
+
+# ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Ойланып жатырмын…"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+chat.welcome_title: "Intelligent Terminal-ға қош келдіңіз!"
+chat.plan_header: "Жоспар:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Кез келген сұрақ қойыңыз, / командалар үшін.."  # {Locked="/"}
+input.placeholder.connecting: "қосылуда..."
+input.placeholder.disconnected: "ажыратылды"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / командалар "
+commands.help_title: " Көмек "
+commands.help_header: "Слэш командалары — енгізу жолағына / теріңіз."
+commands.help_escape_hint: "  //text     Тура мағынадағы '/' жіберу (команда анализаторын айналып өту)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Бұл көмекті жабу"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ шарлау үшін • Enter таңдау үшін • Esc бас тарту үшін)"
+recommendations.button_run_command: "[ Команданы іске қосу ]"
+recommendations.button_insert_in_terminal: "Terminal-ға кірістіру"
+recommendations.button_open_in_new_tab: "Жаңа қойындыда ашу ↵"
+recommendations.button_open_in_new_panel: "Жаңа панельде ашу ↵"
+recommendations.button_open_tab: "Қойындыны ашу ↵"
+recommendations.button_open_panel: "Панельді ашу ↵"
+recommendations.button_execute: "Орындау ↵"
+recommendations.agent_fallback: "агент"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "қойынды"
+recommendations.open_kind_panel: "тақта"
+recommendations.open_kind_panel_direction: "тақта (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Жаңа %{kind} (%{title}) %{cwd} ішінде"
+recommendations.open_new_with_title: "Жаңа %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Жаңа %{kind} %{cwd} ішінде"
+recommendations.open_new_empty: "Жаңа бос %{kind}"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+permission.compact.default_description: "Рұқсат сұралуда"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N жауап үшін · толық карта үшін өлшемін өзгертіңіз]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Орнатылмаған — автоматты орнату үшін таңдаңыз"
+agent.status.not_found: "Табылмады"
+agent.status.detected: "Анықталды"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "Іске қосылуда: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget іске қосылмады: %{error}"
+agent.install.winget_exited: "winget күтпеген жерден шықты: %{error}"
+agent.install.winget_failed_code: "winget install сәтсіз аяқталды (шығу коды %{code})"
+agent.install.unsupported: "%{agent} үшін автоматты орнату қолдау көрсетілмейді"
+agent.custom.auth_hint: "%{name} орнатылғанына және PATH-те екеніне көз жеткізіңіз."  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Жүктелуде..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ шарлау үшін • Enter жаңа қойындыда сеанс ашу үшін • Shift+enter агент панелінде сеанс ашу үшін • Esc шығу үшін)"
+agents.status.active: "Белсенді"
+agents.status.waiting_for_input: "Енгізу күтілуде"
+agents.status.error: "Қате"
+agents.status.idle: "Бос"
+
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. агент панелін көрсету/жасыру • Ctrl+Alt+/ агент сеансын көрсету/жасыру)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Connection state ────────────────────────────────────────────────────────
+connection.starting: "Агент іске қосылуда..."
+connection.reconnecting: "Қайта қосылуда..."
+
+# ── System messages (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Бас тартылды."
+system.no_prompt_in_flight: "Орындалып жатқан сұрау жоқ."
+system.authentication_failed: "Аутентификация сәтсіз аяқталды"
+system.command_copied_retry: "Команда көшірілді — басқа терминалда іске қосыңыз, содан кейін қайталау үшін Enter басыңыз"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Терезелер табылмады."
+output.no_tabs: "Қойындылар табылмады."
+output.no_panes: "Панельдер табылмады."
+output.no_windows_in_list: "Терезелер табылмады"
+output.no_tabs_in_window: "%{window_id} терезесінде қойындылар табылмады"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Белсенді панель: %{pane} (қойынды: %{tab}, терезе: %{window})"
+output.pane_running: "Жұмыс істеуде (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Шықты (код: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "%{tab_id} қойындысы жасалды (панель %{pane_id})"
+output.created_pane: "%{pane_id} панелі жасалды"
+output.pane_closed: "%{pane_id} панелі жабылды."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Белсенді панель табылмады. Панель ID-ін көрсету үшін -t пайдаланыңыз."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID орнатылмаған. Windows Terminal панелі ішінде іске қосыңыз."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Белгісіз shell түрі '%{shell}'. Пайдаланыңыз: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "wtcli wait-for іске қосылмады"
+error.wtcli_wait_for_parse: "wtcli wait-for шығысын талдау сәтсіз"
+error.wtcli_wait_for_failed: "wtcli wait-for сәтсіз аяқталды: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "бума көзі: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI PATH-те емес"
+hooks.installed: "✓ орнатылған"
+hooks.marketplace_path_stale: "⚠ marketplace жолы ескірген"
+hooks.installed_but_disabled: "⚠ орнатылған бірақ өшірілген"
+hooks.not_installed: "✗ орнатылмаған"
+hooks.uninstall_skipped: "өткізілді (CLI PATH-те емес)"
+hooks.install_attempted: "wt-agent-hooks орнату әрекеті жасалды (idempotent). Нәтижені тексеру үшін `wta hooks status` іске қосыңыз. Із журналы: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

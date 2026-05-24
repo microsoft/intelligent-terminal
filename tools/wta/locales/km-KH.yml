@@ -1,5 +1,180 @@
 # Setup screen titles
-setup.title.first_run: "សូមស្វាគម្ន៍មកកាន់ ស្ថានីយឆ្លាតវៃ!"
-setup.title.agent_missing: "រកមិនឃើញ AI អេជេនต์"
-setup.title.agent_error: "ការតភ្ជាប់ទៅ AI អេជេនต์ បានបរាជ័យ"
-setup.title.switch_agent: "ប្តូរ AI អេជេនต์"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+setup.title.first_run: "សូមស្វាគមន៍មកកាន់ Intelligent Terminal!"
+setup.title.agent_missing: "រកមិនឃើញ AI អេជេន្ត់"
+setup.title.agent_error: "ការតភ្ជាប់ទៅ AI អេជេន្ត់បានបរាជ័យ"
+# Button label — verb command to change which AI agent is active
+setup.title.switch_agent: "ប្តូរ AI អេជេន្ត់"
+# Title when the configured AI agent is not available
+setup.title.not_available: "AI អេជេន្ត់មិនអាចប្រើបាន"
+# Title when authentication is required
+setup.title.sign_in: "ត្រូវការចូល"
+
+# %{agent} is replaced with the agent display name at runtime.
+setup.subtitle.copilot_missing: "AI អេជេន្ត់របស់អ្នក \"%{agent}\" មិនត្រូវបានតំឡើងទេ។ សូមធ្វើតាមជំហានខាងក្រោមដើម្បីតំឡើង។ ដើម្បីប្តូរ AI អេជេន្ត់ សូមទៅ Settings។"
+setup.subtitle.agent_missing: "AI អេជេន្ត់របស់អ្នក \"%{agent}\" មិនត្រូវបានតំឡើងទេ។ សូមតំឡើងដោយដៃឡើងវិញ រួចសាកល្បង។ ដើម្បីប្តូរ AI អេជេន្ត់ សូមទៅ Settings។"
+setup.subtitle.copilot_auth: "AI អេជេន្ត់របស់អ្នក \"%{agent}\" ត្រូវការផ្ទៀងផ្ទាត់។ សូមធ្វើតាមជំហានខាងក្រោមដើម្បីចូល។ ដើម្បីប្តូរ AI អេជេន្ត់ សូមទៅ Settings។"
+setup.subtitle.agent_auth: "AI អេជេន្ត់របស់អ្នក \"%{agent}\" ត្រូវការផ្ទៀងផ្ទាត់។ សូមចូលតាមរយៈ AI អេជេន្ត់ CLI រួចសាកល្បង។ ដើម្បីប្តូរ AI អេជេន្ត់ សូមទៅ Settings។"
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "រើស AI អេជេន្ត់ CLI លំនាំដើមដែលអ្នកចង់ប្រើនៅក្នុង Intelligent Terminal។ អ្នកអាច"
+setup.description.fre_line2: "ទៅ Settings ដើម្បីកំណត់រចនាសម្ព័ន្ធ និងរៀបចំតំបន់ការងាររបស់អ្នក។"
+
+setup.option.reinstall: "តំឡើង %{agent} ឡើងវិញ"
+setup.option.reinstall_hint: "(នឹងត្រូវបានតំឡើងដោយស្វ័យប្រវត្តិ)"
+setup.option.signin: "ចូល %{agent}"
+setup.option.retry_detection: "សាកល្បងរកឡើងវិញ"
+setup.option.retry_auth: "ខ្ញុំបានចូលហើយ — សាកល្បងតភ្ជាប់ឡើងវិញ"
+setup.option.retry_connection: "សាកល្បងតភ្ជាប់ឡើងវិញ"
+setup.option.switch_to: "ប្តូរទៅ %{agent}"
+setup.status.installing: "កំពុងតំឡើង..."
+setup.status.install_failed: "ការតំឡើងបរាជ័យ: "
+setup.status.installing_winget: " កំពុងតំឡើងតាមរយៈ winget..."
+
+# ── Auth flow (src/ui/auth.rs) ────────────────────────────────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "AI អេជេន្ត់ %{name} ត្រូវបានជ្រើសរើស"
+auth.agent_selected_with_status: "AI អេជេន្ត់ %{name} — "
+auth.checking_authentication: "  %{spinner} កំពុងផ្ទៀងផ្ទាត់..."
+auth.waiting_for_authorization: "  %{spinner} កំពុងរង់ចាំការអនុញ្ញាត..."
+auth.code_copied_hint: "  កូដត្រូវបានចម្លង — សូមបិទនៅក្នុងកម្មវិធីអានរបស់អ្នក។"
+auth.sign_in_prompt: "ចូលដើម្បីប្រើ AI អេជេន្ត់របស់អ្នក:"
+auth.card_connect: "  តភ្ជាប់ %{name} ដើម្បីបើកមុខងារ AI អេជេន្ត់"
+auth.button_sign_in_github: "[ ចូលដោយ GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ ចូលដោយ %{name} ]"
+auth.hint_footer: "  ចុច Enter ដើម្បីចូល, Esc ដើម្បីត្រឡប់ក្រោយ"  # {Locked="Enter","Esc"}
+
+# ── Chat view (src/ui/chat.rs) ────────────────────────────────────────────────────────────────────────
+chat.activity_thinking: "កំពុងគិត…"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+chat.welcome_title: "សូមស្វាគមន៍មកកាន់ Intelligent Terminal!"
+# Header label for the AI agent’s step-by-step plan section
+chat.plan_header: "ផែនការ:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────────────────────────────────────
+input.placeholder.connected: "សួរអ្វីក៏បាន, / សម្រាប់ពាក្យបញ្ជា.."  # {Locked="/"}
+# Input box placeholder while agent connection is being established
+input.placeholder.connecting: "កំពុងតភ្ជាប់..."
+# Input box placeholder when agent is disconnected
+input.placeholder.disconnected: "ផ្តាច់"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / ពាក្យបញ្ជា "
+# Title bar of the slash-commands help popup
+commands.help_title: " ជំនួយ "
+commands.help_header: "ពាក្យបញ្ជាស្លាស — វាយ / នៅក្នុងប្រអប់បញ្ចូល។"
+commands.help_escape_hint: "  //text     ផ្ញើ '/' ជាអក្សរ (រំលងកម្មវិធីវិភាគពាក្យបញ្ជា)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        បិទជំនួយនេះ"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────────────────────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ ដើម្បីរុករក • Enter ដើម្បីជ្រើសរើស • Esc ដើម្បីបោះបង់)"
+recommendations.button_run_command: "[ ដំណើរការពាក្យបញ្ជា ]"
+recommendations.button_insert_in_terminal: "បញ្ចូលក្នុង Terminal"
+recommendations.button_open_in_new_tab: "បើកក្នុងផ្ទាំងថ្មី ↵"
+recommendations.button_open_in_new_panel: "បើកក្នុងផ្តាំងថ្មី ↵"
+recommendations.button_open_tab: "បើកផ្ទាំង ↵"
+recommendations.button_open_panel: "បើកផ្តាំង ↵"
+# Button label — run the selected command (not "kill/execute a person")
+recommendations.button_execute: "ប្រតិបត្តិ ↵"
+recommendations.agent_fallback: "ភ្នាក់ងារ"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ផ្ទាំង"
+recommendations.open_kind_panel: "បន្ទះ"
+recommendations.open_kind_panel_direction: "បន្ទះ (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} ថ្មី (%{title}) នៅក្នុង %{cwd}"
+recommendations.open_new_with_title: "%{kind} ថ្មី (%{title})"
+recommendations.open_new_with_cwd: "%{kind} ថ្មី នៅក្នុង %{cwd}"
+recommendations.open_new_empty: "%{kind} ទទេថ្មី"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────────────────────────────────────
+# Default description shown in compact permission dialog when no specific description is provided
+permission.compact.default_description: "សំណើសុំការអនុញ្ញាត"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N ដើម្បីឆ្លើយ · ផ្លាស់ប្តូរទំហំសម្រាប់កាតពេញ]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────────────────────────────
+agent.status.not_installed_auto: "មិនត្រូវបានតំឡើង — ជ្រើសរើសដើម្បីតំឡើងដោយស្វ័យប្រវត្តិ"
+# Status badge when agent CLI binary is not on PATH
+agent.status.not_found: "រកមិនឃើញ"
+# Status badge when agent CLI binary is found on PATH
+agent.status.detected: "រកឃើញ"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "Running: winget install GitHub.Copilot"
+agent.install.launch_failed: "បរាជ័យក្នុងការចាប់ផ្តើម winget: %{error}"
+agent.install.winget_exited: "winget បានបញ្ចប់ដោយមិនរំពឹង: %{error}"
+agent.install.winget_failed_code: "ការតំឡើង winget បរាជ័យ (កូដចាកចេញ %{code})"
+agent.install.unsupported: "ការតំឡើងស្វ័យប្រវត្តិមិនត្រូវបានគាំទ្រសម្រាប់ %{agent}"
+agent.custom.auth_hint: "សូមប្រាកដថា %{name} ត្រូវបានតំឡើង និងនៅលើ PATH របស់អ្នក។"  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ───────────────────────────────────────────────────────────────
+agents.loading: "កំពុងផ្ទុក..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ ដើម្បីរុករក • Enter ដើម្បីចាប់ផ្តើមវគ្គនៅក្នុងផ្ទាំងថ្មី • Shift+enter ដើម្បីចាប់ផ្តើមវគ្គនៅក្នុងផ្តាំង AI អេជេន្ត់ • Esc ដើម្បីចាកចេញ)"
+# Status badge when agent session is actively processing
+agents.status.active: "សកម្ម"
+agents.status.waiting_for_input: "រង់ចាំការបញ្ចូល"
+# Status badge when agent session encountered an error
+agents.status.error: "កំហុស"
+# Status badge when agent session has no active work
+agents.status.idle: "ទំនេរ"
+
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. បង្ហាញ/លាក់ផ្តាំង AI អេជេន្ត់ • Ctrl+Alt+/ បង្ហាញ/លាក់វគ្គ AI អេជេន្ត់)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Connection state ────────────────────────────────────────────────────────────────────────
+# Status text shown while launching the agent process
+connection.starting: "កំពុងចាប់ផ្តើម AI អេជេន្ត់..."
+# Status text shown while re-establishing agent connection
+connection.reconnecting: "កំពុងតភ្ជាប់ឡើងវិញ..."
+
+# ── System messages (src/app.rs) ──────────────────────────────────────────────────────────────────
+system.cancelled: "បានបោះបង់។"
+system.no_prompt_in_flight: "គ្មានសំណើកំពុងដំណើរការ។"
+system.authentication_failed: "ការផ្ទៀងផ្ទាត់បរាជ័យ"
+system.command_copied_retry: "ពាក្យបញ្ជាត្រូវបានចម្លង — ដំណើរការវានៅក្នុង terminal មួយទៀត រួចចុច Enter ដើម្បីសាកល្បង"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────────
+output.no_windows: "រកមិនឃើញបង្អូច។"
+output.no_tabs: "រកមិនឃើញផ្ទាំង។"
+output.no_panes: "រកមិនឃើញផ្តាំង។"
+output.no_windows_in_list: "រកមិនឃើញបង្អូច"
+output.no_tabs_in_window: "រកមិនឃើញផ្ទាំងនៅក្នុងបង្អូច %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "ផ្តាំងសកម្ម: %{pane} (ផ្ទាំង: %{tab}, បង្អូច: %{window})"
+output.pane_running: "កំពុងដំណើរការ (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "បានចាកចេញ (កូដ: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "បានបង្កើតផ្ទាំង %{tab_id} (ផ្តាំង %{pane_id})"
+output.created_pane: "បានបង្កើតផ្តាំង %{pane_id}"
+output.pane_closed: "ផ្តាំង %{pane_id} ត្រូវបានបិទ។"
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────────────────────────────────
+error.no_active_pane: "រកមិនឃើញផ្តាំងសកម្ម។ ប្រើ -t ដើម្បីបញ្ជាក់លេខសម្គាល់ផ្តាំង។"  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID មិនត្រូវបានកំណត់។ ដំណើរការនៅក្នុងផ្តាំង Windows Terminal។"  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "ប្រភេទ shell មិនស្គាល់ '%{shell}'។ ប្រើ: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "បរាជ័យក្នុងការចាប់ផ្តើម wtcli wait-for"
+error.wtcli_wait_for_parse: "បរាជ័យក្នុងការវិភាគលទ្ធផលវាយ wtcli wait-for"
+error.wtcli_wait_for_failed: "wtcli wait-for បរាជ័យ: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "bundle source: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI មិននៅលើ PATH"
+# Shown when a shell hook is successfully installed
+hooks.installed: "✓ បានតំឡើង"
+# Badge in hooks-status table when the extension install path is outdated
+hooks.marketplace_path_stale: "⚠ ផ្លូវ marketplace ហួសសម័យ"
+# Badge when the shell hook extension is installed but the user has disabled it
+hooks.installed_but_disabled: "⚠ បានតំឡើងប៉ុន្តែត្រូវបានបិទ"
+# Shown when a shell hook is not yet installed
+hooks.not_installed: "✗ មិនត្រូវបានតំឡើង"
+hooks.uninstall_skipped: "រំលង (CLI មិននៅលើ PATH)"
+hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

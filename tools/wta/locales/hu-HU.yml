@@ -1,5 +1,160 @@
 # Setup screen titles
-setup.title.first_run: "Üdvözli az Intelligens Terminál!"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+setup.title.first_run: "Üdvözli az Intelligent Terminal!"
 setup.title.agent_missing: "Az ügynök nem található"
 setup.title.agent_error: "Az ügynökhöz való kapcsolódás sikertelen"
 setup.title.switch_agent: "Ügynök váltása"
+setup.title.not_available: "Az ügynök nem érhető el"
+setup.title.sign_in: "Bejelentkezés szükséges"
+
+# %{agent} is replaced with the agent display name at runtime.
+setup.subtitle.copilot_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Kövesse az alábbi lépéseket a telepítéshez. Az ügynök váltásához lépjen a Settings oldalra."
+setup.subtitle.agent_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Telepítse újra manuálisan, majd próbálja újra. Az ügynök váltásához lépjen a Settings oldalra."
+setup.subtitle.copilot_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Kövesse az alábbi lépéseket a bejelentkezéshez. Az ügynök váltásához lépjen a Settings oldalra."
+setup.subtitle.agent_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Jelentkezzen be az ügynök CLI-n keresztül, majd próbálja újra. Az ügynök váltásához lépjen a Settings oldalra."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Válassza ki az Intelligent Terminal alkalmazásban használni kívánt alapértelmezett ügynök CLI-t. A"
+setup.description.fre_line2: "Settings oldalon konfigurálhatja és beállíthatja a munkaterületét."
+
+setup.option.reinstall: "%{agent} újratelepítése"
+setup.option.reinstall_hint: "(Automatikusan telepítve lesz)"
+setup.option.signin: "Bejelentkezés a következőbe: %{agent}"
+setup.option.retry_detection: "Észlelés újrapróbálása"
+setup.option.retry_auth: "Bejelentkeztem — kapcsolódás újrapróbálása"
+setup.option.retry_connection: "Kapcsolódás újrapróbálása"
+setup.option.switch_to: "Váltás erre: %{agent}"
+setup.status.installing: "Telepítés..."
+setup.status.install_failed: "A telepítés sikertelen: "
+setup.status.installing_winget: " Telepítés a winget segítségével..."
+
+# ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "A(z) %{name} ügynök CLI ki van választva"
+auth.agent_selected_with_status: "Ügynök %{name} — "
+auth.checking_authentication: "  %{spinner} Hitelesítés ellenőrzése..."
+auth.waiting_for_authorization: "  %{spinner} Várakozás az engedélyezésre..."
+auth.code_copied_hint: "  A kód a vágólapra másolva — illessze be a böngészőben."
+auth.sign_in_prompt: "Jelentkezzen be az ügynök használatához:"
+auth.card_connect: "  Csatlakoztassa a(z) %{name} ügynököt az ügynökfunkciók engedélyezéséhez"
+auth.button_sign_in_github: "[ Bejelentkezés GitHub fiókkal ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Bejelentkezés a következővel: %{name} ]"
+auth.hint_footer: "  Nyomja meg az Entert a bejelentkezéshez, az Esc-et a visszalépéshez"  # {Locked="Enter","Esc"}
+
+# ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Gondolkodás..."
+# {Locked="Intelligent Terminal"} - product name, do not translate
+chat.welcome_title: "Üdvözli az Intelligent Terminal!"
+chat.plan_header: "Terv:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Kérdezzen bármit, / a parancsokhoz.."  # {Locked="/"}
+input.placeholder.connecting: "csatlakozás..."
+input.placeholder.disconnected: "lecsatlakozva"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / parancsok "
+commands.help_title: " Súgó "
+commands.help_header: "Perjel parancsok — írja be a / karaktert a beviteli mezőbe."
+commands.help_escape_hint: "  //text     Szó szerinti '/' küldése (megkerüli a parancselemzőt)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Súgó bezárása"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ navigáláshoz • Enter kiválasztáshoz • Esc megszakításhoz)"
+recommendations.button_run_command: "[ Parancs futtatása ]"
+recommendations.button_insert_in_terminal: "Beszúrás a terminálba"
+recommendations.button_open_in_new_tab: "Megnyitás új lapon ↵"
+recommendations.button_open_in_new_panel: "Megnyitás új panelen ↵"
+recommendations.button_open_tab: "Lap megnyitása ↵"
+recommendations.button_open_panel: "Panel megnyitása ↵"
+recommendations.button_execute: "Végrehajtás ↵"
+recommendations.agent_fallback: "ügynök"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "lap"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Új %{kind} (%{title}), hely: %{cwd}"
+recommendations.open_new_with_title: "Új %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Új %{kind}, hely: %{cwd}"
+recommendations.open_new_empty: "Új üres %{kind}"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+permission.compact.default_description: "Engedély kérve"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N a válaszhoz · méretezze át a teljes kártyához]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Nincs telepítve — válassza ki az automatikus telepítéshez"
+agent.status.not_found: "Nem található"
+agent.status.detected: "Észlelve"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "Running: winget install GitHub.Copilot"
+agent.install.launch_failed: "Failed to launch winget: %{error}"
+agent.install.winget_exited: "winget exited unexpectedly: %{error}"
+agent.install.winget_failed_code: "winget install failed (exit code %{code})"
+agent.install.unsupported: "Automatic install not supported for %{agent}"
+agent.custom.auth_hint: "Győződjön meg róla, hogy a(z) %{name} telepítve van és elérhető a PATH-ban."  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Betöltés..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ navigáláshoz • Enter munkamenet indításához új lapon • Shift+enter munkamenet indításához az ügynök panelen • Esc kilépéshez)"
+agents.status.active: "Aktív"
+agents.status.waiting_for_input: "Bemenetre vár"
+agents.status.error: "Hiba"
+agents.status.idle: "Tétlen"
+
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. ügynökpanel megjelenítése/elrejtése • Ctrl+Alt+/ ügynökmunkamenet megjelenítése/elrejtése)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Connection state ────────────────────────────────────────────────────────
+connection.starting: "Ügynök indítása..."
+connection.reconnecting: "Újrakapcsolódás..."
+
+# ── System messages (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Megszakítva."
+system.no_prompt_in_flight: "Nincs folyamatban lévő kérés."
+system.authentication_failed: "A hitelesítés sikertelen"
+system.command_copied_retry: "Parancs másolva — futtassa egy másik terminálban, majd nyomja meg az Entert az újrapróbálkozáshoz"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Nem találhatók ablakok."
+output.no_tabs: "Nem találhatók lapok."
+output.no_panes: "Nem találhatók panelek."
+output.no_windows_in_list: "Nem találhatók ablakok"
+output.no_tabs_in_window: "Nem találhatók lapok a(z) %{window_id} ablakban"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Aktív panel: %{pane} (lap: %{tab}, ablak: %{window})"
+output.pane_running: "Fut (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Kilépett (kód: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Létrehozva: lap %{tab_id} (panel %{pane_id})"
+output.created_pane: "Létrehozva: panel %{pane_id}"
+output.pane_closed: "Panel %{pane_id} bezárva."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Nem található aktív panel. Használja a -t kapcsolót a panel azonosító megadásához."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID not set. Run inside a Windows Terminal pane."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Unknown shell type '%{shell}'. Use: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "Failed to spawn wtcli wait-for"
+error.wtcli_wait_for_parse: "Failed to parse wtcli wait-for output"
+error.wtcli_wait_for_failed: "wtcli wait-for failed: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "bundle source: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI not on PATH"
+hooks.installed: "✓ installed"
+hooks.marketplace_path_stale: "⚠ marketplace path stale"
+hooks.installed_but_disabled: "⚠ installed but disabled"
+hooks.not_installed: "✗ not installed"
+hooks.uninstall_skipped: "skipped (CLI not on PATH)"
+hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

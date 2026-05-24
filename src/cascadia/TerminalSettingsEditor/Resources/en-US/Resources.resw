@@ -2870,4 +2870,27 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>This text will be inserted between the paths of multiple files dropped into the terminal.</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
+  <!-- Agent display names — localizable. GPO policy values use the English
+       id (copilot, claude, codex, gemini) regardless of locale. -->
+  <data name="AgentName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub","Copilot"} Display name for the GitHub Copilot agent CLI.</comment>
+  </data>
+  <data name="AgentName_Claude" xml:space="preserve">
+    <value>Claude</value>
+    <comment>{Locked="Claude"} Display name for the Anthropic Claude agent CLI.</comment>
+  </data>
+  <data name="AgentName_Codex" xml:space="preserve">
+    <value>Codex</value>
+    <comment>{Locked="Codex"} Display name for the OpenAI Codex agent CLI.</comment>
+  </data>
+  <data name="AgentName_Gemini" xml:space="preserve">
+    <value>Gemini</value>
+    <comment>{Locked="Gemini"} Display name for the Google Gemini agent CLI.</comment>
+  </data>
+  <!-- GPO policy-locked indicators shown in Settings UI -->
+  <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
+    <value>This setting is managed by your organization.</value>
+    <comment>Text displayed when a setting is controlled by Group Policy (GPO). Standard Windows policy notice wording.</comment>
+  </data>
 </root>

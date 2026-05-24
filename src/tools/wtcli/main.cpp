@@ -427,6 +427,42 @@ int main()
         }
     });
 
+    // ── send-keys ──
+    std::string sendKeysTarget;
+    std::vector<std::string> sendKeysArgs;
+    bool sendKeysRaw = false;
+    auto* sendKeysCmd = app.add_subcommand("send-keys", "Send keys to a pane")->alias("send");
+    sendKeysCmd->add_option("-t,--target", sendKeysTarget, "Session ID (GUID)");
+    sendKeysCmd->add_flag("--raw", sendKeysRaw,
+                          "Treat the payload as literal UTF-8 text — skip tmux-style "
+                          "token translation (Enter/Tab/Escape/BSpace/C-x). Use this when "
+                          "forwarding arbitrary agent-supplied text.");
+    sendKeysCmd->add_option("keys", sendKeysArgs, "Keys to send")->required();
+    sendKeysCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        try
+        {
+            auto sessionId = ResolveSessionId(server, sendKeysTarget);
+            auto text = sendKeysRaw
+                ? wtcli::JoinAsUtf16(sendKeysArgs)
+                : wtcli::TranslateKeys(sendKeysArgs);
+            server.SendInput(sessionId, text);
+            if (jsonMode)
+            {
+                Json::Value v;
+                v["ok"] = true;
+                v["session_id"] = GuidToString(sessionId);
+                PrintJson(v);
+            }
+        }
+        catch (const winrt::hresult_error& e)
+        {
+            fprintf(stderr, "SendInput failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
+            exitCode = 1;
+        }
+    });
+
     // ── focus-pane ──
     std::string focusPaneTarget;
     auto* focusPaneCmd = app.add_subcommand("focus-pane", "Switch focus to a pane")->alias("focusp");

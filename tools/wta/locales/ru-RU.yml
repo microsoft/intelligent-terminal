@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "Добро пожаловать в Интеллектуальный Терминал!"
+# Заголовки экрана настройки
+# {Locked="Intelligent Terminal"} - название продукта, не переводить
+setup.title.first_run: "Добро пожаловать в Intelligent Terminal!"
 setup.title.agent_missing: "Агент не найден"
 setup.title.agent_error: "Сбой подключения к агенту"
-setup.title.switch_agent: "Смените агента"
+setup.title.switch_agent: "Сменить агента"
+setup.title.not_available: "Агент недоступен"
+setup.title.sign_in: "Требуется вход"
+
+# %{agent} заменяется отображаемым именем агента во время выполнения.
+setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" не установлен. Выполните указанные ниже шаги для его установки. Чтобы сменить агента, перейдите в настройки."
+setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" не установлен. Переустановите его вручную и повторите попытку. Чтобы сменить агента, перейдите в настройки."
+setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" требует аутентификации. Выполните указанные ниже шаги для входа. Чтобы сменить агента, перейдите в настройки."
+setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" требует аутентификации. Войдите через CLI агента и повторите попытку. Чтобы сменить агента, перейдите в настройки."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Выберите CLI агента по умолчанию для использования в Intelligent Terminal. Вы можете"
+setup.description.fre_line2: "перейти в настройки для настройки рабочей области."
+
+setup.option.reinstall: "Переустановить %{agent}"
+setup.option.reinstall_hint: "(Будет установлен автоматически)"
+setup.option.signin: "Войти в %{agent}"
+setup.option.retry_detection: "Повторить обнаружение"
+setup.option.retry_auth: "Я вошёл — повторить подключение"
+setup.option.retry_connection: "Повторить подключение"
+setup.option.switch_to: "Переключиться на %{agent}"
+setup.status.installing: "Установка..."
+setup.status.install_failed: "Ошибка установки: "
+setup.status.installing_winget: " Установка через winget..."
+
+# ── Поток аутентификации (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - аббревиатура, не переводить
+auth.agent_selected: "Выбран CLI агента %{name}"
+auth.agent_selected_with_status: "CLI агента %{name} — "
+auth.checking_authentication: "  %{spinner} Проверка аутентификации..."
+auth.waiting_for_authorization: "  %{spinner} Ожидание авторизации..."
+auth.code_copied_hint: "  Код скопирован в буфер обмена — вставьте его в браузере."
+auth.sign_in_prompt: "Войдите, чтобы использовать агента:"
+auth.card_connect: "  Подключите %{name} для включения функций агента"
+auth.button_sign_in_github: "[ Войти через GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Войти через %{name} ]"
+auth.hint_footer: "  Нажмите Enter для входа, Esc для возврата"  # {Locked="Enter","Esc"}
+
+# ── Представление чата (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Думаю…"
+# {Locked="Intelligent Terminal"} - название продукта, не переводить
+chat.welcome_title: "Добро пожаловать в Intelligent Terminal!"
+chat.plan_header: "План:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Заполнители ввода (src/ui/input.rs) ────────────────────────────────────────────
+input.placeholder.connected: "Спросите что угодно, / для команд.."  # {Locked="/"}
+input.placeholder.connecting: "Подключение..."
+input.placeholder.disconnected: "Отключено"
+
+# ── Всплывающее окно команд (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - префикс слеш-команды, должен оставаться ASCII
+commands.popup_title: " / команды "
+commands.help_title: " Справка "
+commands.help_header: "Слеш-команды — введите / в поле ввода."
+commands.help_escape_hint: "  //text     Отправить буквальный '/' (экранирует синтаксический анализатор команд)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Закрыть эту справку"  # {Locked="Esc"}
+
+# ── Панель рекомендаций (src/ui/recommendations.rs) ───────────────────────────────────
+# {Locked="Enter","Esc","↵"} - названия клавиш и символ клавиши Enter, не переводить
+recommendations.nav_hint: "(↑ ↓ навигация • Enter выбрать • Esc отменить)"
+recommendations.button_run_command: "[ Выполнить команду ]"
+recommendations.button_insert_in_terminal: "Вставить в терминал"
+recommendations.button_open_in_new_tab: "Открыть в новой вкладке ↵"
+recommendations.button_open_in_new_panel: "Открыть в новой панели ↵"
+recommendations.button_open_tab: "Открыть вкладку ↵"
+recommendations.button_open_panel: "Открыть панель ↵"
+recommendations.button_execute: "Выполнить ↵"
+recommendations.agent_fallback: "агент"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "вкладка"
+recommendations.open_kind_panel: "панель"
+recommendations.open_kind_panel_direction: "панель (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Новая %{kind} (%{title}) в %{cwd}"
+recommendations.open_new_with_title: "Новая %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Новая %{kind} в %{cwd}"
+recommendations.open_new_empty: "Новая пустая %{kind}"
+
+# ── Компактный режим диалога разрешений (src/ui/permission.rs) ───────────────────────────────
+permission.compact.default_description: "Запрошено разрешение"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N для ответа · измените размер для полной карточки]"  # {Locked="Y/N"}
+
+# ── Статус агента (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Не установлен — выберите для автоматической установки"
+agent.status.not_found: "Не найден"
+agent.status.detected: "Обнаружен"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - названия инструментов и команды, сохранять как есть
+agent.install.running_winget: "Выполняется: winget install GitHub.Copilot"
+agent.install.launch_failed: "Не удалось запустить winget: %{error}"
+agent.install.winget_exited: "winget завершился неожиданно: %{error}"
+agent.install.winget_failed_code: "Установка winget не удалась (код завершения %{code})"
+agent.install.unsupported: "Автоматическая установка не поддерживается для %{agent}"
+agent.custom.auth_hint: "Убедитесь, что %{name} установлен и находится в PATH."  # {Locked="PATH"}
+
+# ── Представление агентов (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Загрузка..."
+# {Locked="Enter","Shift+enter","Esc"} - комбинации клавиш, не переводить
+agents.footer_hint: "(↑ ↓ навигация • Enter запустить сеанс в новой вкладке • Shift+enter запустить сеанс в панели агента • Esc выход)"
+agents.status.active: "Активен"
+agents.status.waiting_for_input: "Ожидание ввода"
+agents.status.error: "Ошибка"
+agents.status.idle: "Простаивает"
+
+# ── Подсказка приветствия макета (src/ui/layout.rs) ──────────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. — показать/скрыть панель агента • Ctrl+Alt+/ — показать/скрыть сеанс агента)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Состояние подключения ────────────────────────────────────────────────────────────
+connection.starting: "Запуск агента..."
+connection.reconnecting: "Переподключение..."
+
+# ── Системные сообщения (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "Отменено."
+system.no_prompt_in_flight: "Нет активного запроса."
+system.authentication_failed: "Ошибка аутентификации"
+system.command_copied_retry: "Команда скопирована — выполните её в другом терминале, затем нажмите Enter для повтора"  # {Locked="Enter"}
+
+# ── Вывод CLI времени выполнения (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Окна не найдены."
+output.no_tabs: "Вкладки не найдены."
+output.no_panes: "Панели не найдены."
+output.no_windows_in_list: "Окна не найдены"
+output.no_tabs_in_window: "Вкладки не найдены в окне %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - идентификаторы столбцов, ASCII для парсинга
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Активная панель: %{pane} (вкладка: %{tab}, окно: %{window})"
+output.pane_running: "Выполняется (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Завершён (код: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Создана вкладка %{tab_id} (панель %{pane_id})"
+output.created_pane: "Создана панель %{pane_id}"
+output.pane_closed: "Панель %{pane_id} закрыта."
+
+# ── Ошибки (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Активная панель не найдена. Используйте -t для указания ID панели."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID не задан. Запустите в панели Windows Terminal."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Неизвестный тип оболочки '%{shell}'. Используйте: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - название команды, не переводить
+error.wtcli_wait_for_spawn: "Не удалось запустить wtcli wait-for"
+error.wtcli_wait_for_parse: "Не удалось разобрать вывод wtcli wait-for"
+error.wtcli_wait_for_failed: "wtcli wait-for завершился с ошибкой: %{stderr}"
+
+# ── Вывод статуса хуков (src/main.rs) ───────────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - названия инструментов/CLI, переменные среды, имена файлов журналов
+hooks.bundle_source: "источник пакета: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI не в PATH"
+hooks.installed: "✓ Установлен"
+hooks.marketplace_path_stale: "⚠ Устаревший путь к marketplace"
+hooks.installed_but_disabled: "⚠ Установлен, но отключён"
+hooks.not_installed: "✗ Не установлен"
+hooks.uninstall_skipped: "Пропущено (CLI не в PATH)"
+hooks.install_attempted: "Попытка установки wt-agent-hooks (идемпотентно). Выполните `wta hooks status` для проверки результата. Журнал трассировки: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

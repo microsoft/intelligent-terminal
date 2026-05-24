@@ -283,10 +283,8 @@ Protocol::AuthResult TerminalProtocolComServer::Authenticate(winrt::hstring cons
 
     Protocol::AuthResult result{};
     result.Authenticated = _authenticated;
-    // 2.1 — IProtocolServer no longer exposes SendInput. Keystroke injection
-    // is restricted to per-wta secure pipes (TerminalProtocolPipeServer).
-    // Pane identifiers are GUIDs (WT_SESSION) instead of UInt32 pane ids.
-    result.ProtocolVersion = L"2.1";
+    // 2.2 — SendInput restored on the COM surface; pane identifiers remain GUIDs.
+    result.ProtocolVersion = L"2.2";
     return result;
 }
 
@@ -306,6 +304,7 @@ winrt::hstring TerminalProtocolComServer::GetCapabilities()
         "create_tab",
         "split_pane",
         "close_pane",
+        "send_input",
         "set_session_variable",
         "subscribe",
         "unsubscribe",
@@ -570,6 +569,31 @@ void TerminalProtocolComServer::ClosePane(winrt::guid sessionId)
             continue;
 
         if (page.CloseProtocolPane(sessionId).get())
+            return;
+    }
+
+    winrt::throw_hresult(E_FAIL);
+}
+
+void TerminalProtocolComServer::SendInput(winrt::guid sessionId, winrt::hstring const& text)
+{
+    THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    THROW_HR_IF(E_INVALIDARG, sessionId == winrt::guid{});
+
+    // Empty input is a no-op, matching ControlCore::SendInput semantics so
+    // COM clients that send "" don't see surprising E_INVALIDARG failures.
+    if (text.empty())
+    {
+        return;
+    }
+
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+            continue;
+
+        if (page.SendProtocolInput(sessionId, text).get())
             return;
     }
 

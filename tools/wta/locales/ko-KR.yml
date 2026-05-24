@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "지능형 터미널에 오신 것을 환영합니다!"
+# 설정 화면 제목
+# {Locked="Intelligent Terminal"} - 제품 이름, 번역하지 마세요
+setup.title.first_run: "Intelligent Terminal에 오신 것을 환영합니다!"
 setup.title.agent_missing: "에이전트를 찾을 수 없음"
 setup.title.agent_error: "에이전트 연결 실패"
-setup.title.switch_agent: "에이전트 변경"
+setup.title.switch_agent: "에이전트 전환"
+setup.title.not_available: "에이전트를 사용할 수 없음"
+setup.title.sign_in: "로그인 필요"
+
+# %{agent}는 런타임에 에이전트 표시 이름으로 대체됩니다.
+setup.subtitle.copilot_missing: "에이전트 \"%{agent}\"이(가) 설치되어 있지 않습니다. 아래 단계에 따라 설치하세요. 에이전트를 전환하려면 설정으로 이동하세요."
+setup.subtitle.agent_missing: "에이전트 \"%{agent}\"이(가) 설치되어 있지 않습니다. 수동으로 다시 설치한 후 재시도하세요. 에이전트를 전환하려면 설정으로 이동하세요."
+setup.subtitle.copilot_auth: "에이전트 \"%{agent}\"에 인증이 필요합니다. 아래 단계에 따라 로그인하세요. 에이전트를 전환하려면 설정으로 이동하세요."
+setup.subtitle.agent_auth: "에이전트 \"%{agent}\"에 인증이 필요합니다. 에이전트 CLI를 통해 로그인한 후 재시도하세요. 에이전트를 전환하려면 설정으로 이동하세요."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal에서 사용할 기본 에이전트 CLI를 선택하세요."
+setup.description.fre_line2: "설정으로 이동하여 작업 영역을 구성하고 설정할 수 있습니다."
+
+setup.option.reinstall: "%{agent} 다시 설치"
+setup.option.reinstall_hint: "(자동으로 설치됩니다)"
+setup.option.signin: "%{agent}에 로그인"
+setup.option.retry_detection: "감지 재시도"
+setup.option.retry_auth: "로그인 완료 — 연결 재시도"
+setup.option.retry_connection: "연결 재시도"
+setup.option.switch_to: "%{agent}(으)로 전환"
+setup.status.installing: "설치 중..."
+setup.status.install_failed: "설치 실패: "
+setup.status.installing_winget: " winget을 통해 설치 중..."
+
+# ── 인증 흐름 (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - 약어, 번역하지 마세요
+auth.agent_selected: "에이전트 %{name}이(가) 선택되었습니다"
+auth.agent_selected_with_status: "에이전트 %{name} — "
+auth.checking_authentication: "  %{spinner} 인증 확인 중..."
+auth.waiting_for_authorization: "  %{spinner} 승인 대기 중..."
+auth.code_copied_hint: "  코드가 클립보드에 복사되었습니다 — 브라우저에 붙여넣으세요."
+auth.sign_in_prompt: "에이전트를 사용하려면 로그인하세요:"
+auth.card_connect: "  %{name}을(를) 연결하여 에이전트 기능 사용"
+auth.button_sign_in_github: "[ GitHub로 로그인 ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name}(으)로 로그인 ]"
+auth.hint_footer: "  Enter를 눌러 로그인, Esc를 눌러 뒤로 가기"  # {Locked="Enter","Esc"}
+
+# ── 채팅 보기 (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "생각 중…"
+# {Locked="Intelligent Terminal"} - 제품 이름, 번역하지 마세요
+chat.welcome_title: "Intelligent Terminal에 오신 것을 환영합니다!"
+chat.plan_header: "계획:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── 입력 자리 표시자 (src/ui/input.rs) ────────────────────────────────────────────
+input.placeholder.connected: "무엇이든 물어보세요, / 명령어.."  # {Locked="/"}
+input.placeholder.connecting: "연결 중..."
+input.placeholder.disconnected: "연결 끊김"
+
+# ── 명령어 팝업 (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - 슬래시 명령 접두사, ASCII로 유지
+commands.popup_title: " / 명령어 "
+commands.help_title: " 도움말 "
+commands.help_header: "슬래시 명령어 — 입력 상자에 /를 입력하세요."
+commands.help_escape_hint: "  //text     리터럴 '/' 전송(명령 파서 이스케이프)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        이 도움말 닫기"  # {Locked="Esc"}
+
+# ── 추천 패널 (src/ui/recommendations.rs) ───────────────────────────────────
+# {Locked="Enter","Esc","↵"} - 키 이름과 Return 키 문자, 번역하지 마세요
+recommendations.nav_hint: "(↑ ↓ 탐색 • Enter 선택 • Esc 취소)"
+recommendations.button_run_command: "[ 명령 실행 ]"
+recommendations.button_insert_in_terminal: "터미널에 삽입"
+recommendations.button_open_in_new_tab: "새 탭에서 열기 ↵"
+recommendations.button_open_in_new_panel: "새 패널에서 열기 ↵"
+recommendations.button_open_tab: "탭 열기 ↵"
+recommendations.button_open_panel: "패널 열기 ↵"
+recommendations.button_execute: "실행 ↵"
+recommendations.agent_fallback: "에이전트"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "탭"
+recommendations.open_kind_panel: "패널"
+recommendations.open_kind_panel_direction: "패널 (%{direction})"
+recommendations.open_new_with_title_and_cwd: "새 %{kind} (%{title}) - %{cwd}"
+recommendations.open_new_with_title: "새 %{kind} (%{title})"
+recommendations.open_new_with_cwd: "새 %{kind} - %{cwd}"
+recommendations.open_new_empty: "새 빈 %{kind}"
+
+# ── 권한 대화 상자 간결 모드 (src/ui/permission.rs) ───────────────────────────────
+permission.compact.default_description: "권한 요청됨"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N으로 응답 · 전체 카드를 보려면 크기 조정]"  # {Locked="Y/N"}
+
+# ── 에이전트 상태 (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "설치되지 않음 — 선택하면 자동으로 설치됩니다"
+agent.status.not_found: "찾을 수 없음"
+agent.status.detected: "감지됨"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - 도구 이름 및 명령, 그대로 유지
+agent.install.running_winget: "실행 중: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget을 시작할 수 없습니다: %{error}"
+agent.install.winget_exited: "winget이 예기치 않게 종료되었습니다: %{error}"
+agent.install.winget_failed_code: "winget 설치 실패(종료 코드 %{code})"
+agent.install.unsupported: "%{agent}에 대한 자동 설치가 지원되지 않습니다"
+agent.custom.auth_hint: "%{name}이(가) 설치되어 있고 PATH에 있는지 확인하세요."  # {Locked="PATH"}
+
+# ── 에이전트 보기 (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "로드 중..."
+# {Locked="Enter","Shift+enter","Esc"} - 키 조합, 번역하지 마세요
+agents.footer_hint: "(↑ ↓ 탐색 • Enter 새 탭에서 세션 시작 • Shift+enter 에이전트 창에서 세션 시작 • Esc 종료)"
+agents.status.active: "활성"
+agents.status.waiting_for_input: "입력 대기 중"
+agents.status.error: "오류"
+agents.status.idle: "유휴"
+
+# ── 레이아웃 환영 힌트 (src/ui/layout.rs) ──────────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. 에이전트 창 표시/숨기기 • Ctrl+Alt+/ 에이전트 세션 표시/숨기기)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── 연결 상태 ────────────────────────────────────────────────────────────
+connection.starting: "에이전트 시작 중..."
+connection.reconnecting: "다시 연결 중..."
+
+# ── 시스템 메시지 (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "취소되었습니다."
+system.no_prompt_in_flight: "진행 중인 프롬프트가 없습니다."
+system.authentication_failed: "인증 실패"
+system.command_copied_retry: "명령이 복사되었습니다 — 다른 터미널에서 실행한 후 Enter를 눌러 재시도하세요"  # {Locked="Enter"}
+
+# ── 런타임 CLI 출력 (src/main.rs) ────────────────────────────────────────
+output.no_windows: "창을 찾을 수 없습니다."
+output.no_tabs: "탭을 찾을 수 없습니다."
+output.no_panes: "창을 찾을 수 없습니다."
+output.no_windows_in_list: "창을 찾을 수 없음"
+output.no_tabs_in_window: "창 %{window_id}에서 탭을 찾을 수 없음"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - 열 식별자, 구문 분석을 위해 ASCII로 유지
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "활성 창: %{pane} (탭: %{tab}, 창: %{window})"
+output.pane_running: "실행 중 (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "종료됨 (코드: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "탭 %{tab_id} 생성됨 (창 %{pane_id})"
+output.created_pane: "창 %{pane_id} 생성됨"
+output.pane_closed: "창 %{pane_id}이(가) 닫혔습니다."
+
+# ── 오류 (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "활성 창을 찾을 수 없습니다. -t를 사용하여 창 ID를 지정하세요."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID가 설정되지 않았습니다. Windows Terminal 창 내에서 실행하세요."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "알 수 없는 셸 유형 '%{shell}'. 사용 가능: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - 명령 이름, 번역하지 마세요
+error.wtcli_wait_for_spawn: "wtcli wait-for를 시작할 수 없습니다"
+error.wtcli_wait_for_parse: "wtcli wait-for 출력을 구문 분석할 수 없습니다"
+error.wtcli_wait_for_failed: "wtcli wait-for 실패: %{stderr}"
+
+# ── 후크 상태 출력 (src/main.rs) ───────────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - 도구/CLI 이름, 환경 변수, 로그 파일 이름
+hooks.bundle_source: "번들 원본: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI가 PATH에 없음"
+hooks.installed: "✓ 설치됨"
+hooks.marketplace_path_stale: "⚠ 마켓플레이스 경로가 오래됨"
+hooks.installed_but_disabled: "⚠ 설치되었지만 사용하지 않도록 설정됨"
+hooks.not_installed: "✗ 설치되지 않음"
+hooks.uninstall_skipped: "건너뜀(CLI가 PATH에 없음)"
+hooks.install_attempted: "wt-agent-hooks 설치가 시도되었습니다(멱등). 결과를 확인하려면 `wta hooks status`를 실행하세요. 추적 로그: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

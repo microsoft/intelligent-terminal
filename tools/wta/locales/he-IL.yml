@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "ברוכים הבאים למסוף חכם!"
-setup.title.agent_missing: "סוכן AI לא נמצא"
-setup.title.agent_error: "החיבור לסוכן AI נכשל"
-setup.title.switch_agent: "החלף סוכן AI"
+# כותרות מסך הגדרה
+# {Locked="Intelligent Terminal"} - שם המוצר, אין לתרגם
+setup.title.first_run: "ברוכים הבאים ל-Intelligent Terminal!"
+setup.title.agent_missing: "הסוכן לא נמצא"
+setup.title.agent_error: "החיבור לסוכן נכשל"
+setup.title.switch_agent: "החלף סוכן"
+setup.title.not_available: "הסוכן אינו זמין"
+setup.title.sign_in: "נדרשת כניסה"
+
+# %{agent} מוחלף בשם התצוגה של הסוכן בזמן ריצה.
+setup.subtitle.copilot_missing: "הסוכן \"%{agent}\" אינו מותקן. בצע את השלבים שלהלן כדי להתקין אותו. כדי להחליף סוכנים, עבור אל Settings."
+setup.subtitle.agent_missing: "הסוכן \"%{agent}\" אינו מותקן. התקן אותו מחדש באופן ידני ולאחר מכן נסה שוב. כדי להחליף סוכנים, עבור אל Settings."
+setup.subtitle.copilot_auth: "הסוכן \"%{agent}\" דורש אימות. בצע את השלבים שלהלן כדי להיכנס. כדי להחליף סוכנים, עבור אל Settings."
+setup.subtitle.agent_auth: "הסוכן \"%{agent}\" דורש אימות. היכנס דרך CLI של הסוכן ולאחר מכן נסה שוב. כדי להחליף סוכנים, עבור אל Settings."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "בחר את CLI הסוכן שברצונך להשתמש בו כברירת מחדל ב-Intelligent Terminal. ניתן"
+setup.description.fre_line2: "לנווט אל Settings כדי להגדיר את סביבת העבודה שלך."
+
+setup.option.reinstall: "התקן מחדש את %{agent}"
+setup.option.reinstall_hint: "(יותקן באופן אוטומטי)"
+setup.option.signin: "היכנס אל %{agent}"
+setup.option.retry_detection: "נסה שוב לזהות"
+setup.option.retry_auth: "נכנסתי — נסה שוב להתחבר"
+setup.option.retry_connection: "נסה שוב להתחבר"
+setup.option.switch_to: "עבור אל %{agent}"
+setup.status.installing: "מתקין..."
+setup.status.install_failed: "ההתקנה נכשלה: "
+setup.status.installing_winget: " מתקין באמצעות winget..."
+
+# ── זרימת אימות (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - ראשי תיבות, שימוש נפוץ בלוקליזציות של Microsoft
+auth.agent_selected: "CLI הסוכן %{name} נבחר"
+auth.agent_selected_with_status: "CLI הסוכן %{name} — "
+auth.checking_authentication: "  %{spinner} בודק אימות..."
+auth.waiting_for_authorization: "  %{spinner} ממתין לאישור..."
+auth.code_copied_hint: "  הקוד הועתק ללוח — הדבק אותו בדפדפן."
+auth.sign_in_prompt: "היכנס כדי להשתמש בסוכן שלך:"
+auth.card_connect: "  חבר את %{name} כדי לאפשר תכונות סוכן"
+auth.button_sign_in_github: "[ היכנס באמצעות GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ היכנס באמצעות %{name} ]"
+auth.hint_footer: "  לחץ Enter כדי להיכנס, Esc כדי לחזור"  # {Locked="Enter","Esc"}
+
+# ── תצוגת צ'אט (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "חושב…"
+# {Locked="Intelligent Terminal"} - שם המוצר, אין לתרגם
+chat.welcome_title: "ברוכים הבאים ל-Intelligent Terminal!"
+chat.plan_header: "תוכנית:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── מצייני מיקום לקלט (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "שאל כל דבר, / לפקודות.."  # {Locked="/"}
+input.placeholder.connecting: "מתחבר..."
+input.placeholder.disconnected: "מנותק"
+
+# ── חלון פקודות מוקפץ (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - קידומת פקודת לוכסן, חייב להישאר ASCII
+commands.popup_title: " / פקודות "
+commands.help_title: " עזרה "
+commands.help_header: "פקודות לוכסן — הקלד / בתיבת הקלט."
+commands.help_escape_hint: "  //text     שלח '/' מילולי (בורח ממנתח הפקודות)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        סגור עזרה זו"  # {Locked="Esc"}
+
+# ── לוח המלצות (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - שמות מקשים וסמל מקש Enter, אין לתרגם
+recommendations.nav_hint: "(↑ ↓ לניווט • Enter לבחירה • Esc לביטול)"
+recommendations.button_run_command: "[ הפעל פקודה ]"
+recommendations.button_insert_in_terminal: "הכנס למסוף"
+recommendations.button_open_in_new_tab: "פתח בכרטיסייה חדשה ↵"
+recommendations.button_open_in_new_panel: "פתח בחלונית חדשה ↵"
+recommendations.button_open_tab: "פתח כרטיסייה ↵"
+recommendations.button_open_panel: "פתח חלונית ↵"
+recommendations.button_execute: "הפעל ↵"
+recommendations.agent_fallback: "סוכן"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "כרטיסייה"
+recommendations.open_kind_panel: "חלונית"
+recommendations.open_kind_panel_direction: "חלונית (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} חדש (%{title}) ב-%{cwd}"
+recommendations.open_new_with_title: "%{kind} חדש (%{title})"
+recommendations.open_new_with_cwd: "%{kind} חדש ב-%{cwd}"
+recommendations.open_new_empty: "%{kind} ריק חדש"
+
+# ── דיאלוג הרשאות במצב מצומצם (src/ui/permission.rs) ───────────────────────
+permission.compact.default_description: "התבקשה הרשאה"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N לתשובה · שנה גודל לכרטיס מלא]"  # {Locked="Y/N"}
+
+# ── מצב סוכן (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "לא מותקן — בחר להתקנה אוטומטית"
+agent.status.not_found: "לא נמצא"
+agent.status.detected: "זוהה"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - שמות כלים ופקודה, חייבים לפעול כפי שהם
+agent.install.running_winget: "מריץ: winget install GitHub.Copilot"
+agent.install.launch_failed: "כשל בהפעלת winget: %{error}"
+agent.install.winget_exited: "winget יצא באופן בלתי צפוי: %{error}"
+agent.install.winget_failed_code: "התקנת winget נכשלה (קוד יציאה %{code})"
+agent.install.unsupported: "התקנה אוטומטית אינה נתמכת עבור %{agent}"
+agent.custom.auth_hint: "ודא ש-%{name} מותקן ונמצא ב-PATH שלך."  # {Locked="PATH"}
+
+# ── תצוגת סוכנים (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "טוען..."
+# {Locked="Enter","Shift+enter","Esc"} - צירופי מקשים, אין לתרגם
+agents.footer_hint: "(↑ ↓ לניווט • Enter להפעלת הפעלה בכרטיסייה חדשה • Shift+enter להפעלת הפעלה בחלונית הסוכן • Esc ליציאה)"
+agents.status.active: "פעיל"
+agents.status.waiting_for_input: "ממתין לקלט"
+agents.status.error: "שגיאה"
+agents.status.idle: "לא פעיל"
+
+# ── רמז ברכה בפריסה (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. להצגה/הסתרה של חלונית הסוכן • Ctrl+Alt+/ להצגה/הסתרה של הפעלת הסוכן)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── מצב חיבור ────────────────────────────────────────────────────────
+connection.starting: "מפעיל את הסוכן..."
+connection.reconnecting: "מתחבר מחדש..."
+
+# ── הודעות מערכת (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "בוטל."
+system.no_prompt_in_flight: "אין בקשה בתהליך."
+system.authentication_failed: "האימות נכשל"
+system.command_copied_retry: "הפקודה הועתקה — הפעל אותה במסוף אחר, ואז לחץ Enter לניסיון חוזר"  # {Locked="Enter"}
+
+# ── פלט CLI בזמן ריצה (src/main.rs) ────────────────────────────────────────
+output.no_windows: "לא נמצאו חלונות."
+output.no_tabs: "לא נמצאו כרטיסיות."
+output.no_panes: "לא נמצאו חלוניות."
+output.no_windows_in_list: "לא נמצאו חלונות"
+output.no_tabs_in_window: "לא נמצאו כרטיסיות בחלון %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - מזהי עמודות, נשמרים ב-ASCII לצורך ניתוח
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "חלונית פעילה: %{pane} (כרטיסייה: %{tab}, חלון: %{window})"
+output.pane_running: "פועל (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "יצא (קוד: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "נוצרה כרטיסייה %{tab_id} (חלונית %{pane_id})"
+output.created_pane: "נוצרה חלונית %{pane_id}"
+output.pane_closed: "חלונית %{pane_id} נסגרה."
+
+# ── שגיאות (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "לא נמצאה חלונית פעילה. השתמש ב--t כדי לציין מזהה חלונית."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID לא מוגדר. הפעל בתוך חלונית Windows Terminal."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "סוג shell לא מוכר '%{shell}'. השתמש ב: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - שם פקודה, אין לתרגם
+error.wtcli_wait_for_spawn: "כשל בהפעלת wtcli wait-for"
+error.wtcli_wait_for_parse: "כשל בניתוח פלט wtcli wait-for"
+error.wtcli_wait_for_failed: "wtcli wait-for נכשל: %{stderr}"
+
+# ── פלט מצב hooks (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - שמות כלים/CLI, משתני סביבה, שמות קובצי יומן
+hooks.bundle_source: "מקור חבילה: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI לא נמצא ב-PATH"
+hooks.installed: "✓ מותקן"
+hooks.marketplace_path_stale: "⚠ נתיב חנות מיושן"
+hooks.installed_but_disabled: "⚠ מותקן אך מושבת"
+hooks.not_installed: "✗ לא מותקן"
+hooks.uninstall_skipped: "דולג (CLI לא נמצא ב-PATH)"
+hooks.install_attempted: "בוצע ניסיון התקנת wt-agent-hooks (אידמפוטנטי). הפעל `wta hooks status` כדי לבדוק את התוצאה. יומן מעקב: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

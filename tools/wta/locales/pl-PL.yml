@@ -1,5 +1,160 @@
 # Setup screen titles
-setup.title.first_run: "Witamy w aplikacji Inteligentny Terminal!"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+setup.title.first_run: "Witamy w Intelligent Terminal!"
 setup.title.agent_missing: "Nie znaleziono agenta"
 setup.title.agent_error: "Połączenie z agentem nie powiodło się"
 setup.title.switch_agent: "Zmień agenta"
+setup.title.not_available: "Agent niedostępny"
+setup.title.sign_in: "Wymagane logowanie"
+
+# %{agent} is replaced with the agent display name at runtime.
+setup.subtitle.copilot_missing: "Agent \"%{agent}\" nie jest zainstalowany. Wykonaj poniższe kroki, aby go zainstalować. Aby zmienić agenta, przejdź do Settings."
+setup.subtitle.agent_missing: "Agent \"%{agent}\" nie jest zainstalowany. Zainstaluj go ponownie ręcznie, a następnie spróbuj ponownie. Aby zmienić agenta, przejdź do Settings."
+setup.subtitle.copilot_auth: "Agent \"%{agent}\" wymaga uwierzytelnienia. Wykonaj poniższe kroki, aby się zalogować. Aby zmienić agenta, przejdź do Settings."
+setup.subtitle.agent_auth: "Agent \"%{agent}\" wymaga uwierzytelnienia. Zaloguj się za pomocą agenta CLI, a następnie spróbuj ponownie. Aby zmienić agenta, przejdź do Settings."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Wybierz domyślny agent CLI, którego chcesz używać w Intelligent Terminal. Możesz"
+setup.description.fre_line2: "przejść do Settings, aby skonfigurować obszar roboczy."
+
+setup.option.reinstall: "Zainstaluj ponownie %{agent}"
+setup.option.reinstall_hint: "(Zostanie zainstalowany automatycznie)"
+setup.option.signin: "Zaloguj się do %{agent}"
+setup.option.retry_detection: "Ponów wykrywanie"
+setup.option.retry_auth: "Zalogowałem się — ponów połączenie"
+setup.option.retry_connection: "Ponów połączenie"
+setup.option.switch_to: "Przełącz na %{agent}"
+setup.status.installing: "Instalowanie..."
+setup.status.install_failed: "Instalacja nie powiodła się: "
+setup.status.installing_winget: " Instalowanie za pomocą winget..."
+
+# ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "Wybrano agent %{name}"
+auth.agent_selected_with_status: "Agent %{name} — "
+auth.checking_authentication: "  %{spinner} Sprawdzanie uwierzytelnienia..."
+auth.waiting_for_authorization: "  %{spinner} Oczekiwanie na autoryzację..."
+auth.code_copied_hint: "  Kod skopiowany do schowka — wklej go w przeglądarce."
+auth.sign_in_prompt: "Zaloguj się, aby użyć agenta:"
+auth.card_connect: "  Połącz %{name}, aby włączyć funkcje agenta"
+auth.button_sign_in_github: "[ Zaloguj się przez GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Zaloguj się przez %{name} ]"
+auth.hint_footer: "  Naciśnij Enter, aby się zalogować, Esc, aby wrócić"  # {Locked="Enter","Esc"}
+
+# ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Myślenie..."
+# {Locked="Intelligent Terminal"} - product name, do not translate
+chat.welcome_title: "Witamy w Intelligent Terminal!"
+chat.plan_header: "Plan:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Zapytaj o cokolwiek, / dla poleceń.."  # {Locked="/"}
+input.placeholder.connecting: "łączenie..."
+input.placeholder.disconnected: "rozłączono"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / polecenia "
+commands.help_title: " Pomoc "
+commands.help_header: "Polecenia ukośnika — wpisz / w polu wprowadzania."
+commands.help_escape_hint: "  //text     Wyślij dosłowne '/' (pomija parser poleceń)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Zamknij tę pomoc"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ do nawigacji • Enter aby wybrać • Esc aby anulować)"
+recommendations.button_run_command: "[ Uruchom polecenie ]"
+recommendations.button_insert_in_terminal: "Wstaw w terminalu"
+recommendations.button_open_in_new_tab: "Otwórz w nowej karcie ↵"
+recommendations.button_open_in_new_panel: "Otwórz w nowym panelu ↵"
+recommendations.button_open_tab: "Otwórz kartę ↵"
+recommendations.button_open_panel: "Otwórz panel ↵"
+recommendations.button_execute: "Wykonaj ↵"
+recommendations.agent_fallback: "agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "karta"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Nowa %{kind} (%{title}) w %{cwd}"
+recommendations.open_new_with_title: "Nowa %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Nowa %{kind} w %{cwd}"
+recommendations.open_new_empty: "Nowa pusta %{kind}"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+permission.compact.default_description: "Żądanie uprawnienia"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N aby odpowiedzieć · zmień rozmiar dla pełnej karty]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Nie zainstalowano — wybierz, aby zainstalować automatycznie"
+agent.status.not_found: "Nie znaleziono"
+agent.status.detected: "Wykryto"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "Running: winget install GitHub.Copilot"
+agent.install.launch_failed: "Failed to launch winget: %{error}"
+agent.install.winget_exited: "winget exited unexpectedly: %{error}"
+agent.install.winget_failed_code: "winget install failed (exit code %{code})"
+agent.install.unsupported: "Automatic install not supported for %{agent}"
+agent.custom.auth_hint: "Upewnij się, że %{name} jest zainstalowany i znajduje się w PATH."  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Ładowanie..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ do nawigacji • Enter aby uruchomić sesję w nowej karcie • Shift+enter aby uruchomić sesję w panelu agenta • Esc aby wyjść)"
+agents.status.active: "Aktywny"
+agents.status.waiting_for_input: "Oczekiwanie na dane"
+agents.status.error: "Błąd"
+agents.status.idle: "Bezczynny"
+
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. pokaż/ukryj panel agenta • Ctrl+Alt+/ pokaż/ukryj sesję agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Connection state ────────────────────────────────────────────────────────
+connection.starting: "Uruchamianie agenta..."
+connection.reconnecting: "Ponowne łączenie..."
+
+# ── System messages (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Anulowano."
+system.no_prompt_in_flight: "Brak aktywnego zapytania."
+system.authentication_failed: "Uwierzytelnianie nie powiodło się"
+system.command_copied_retry: "Polecenie skopiowane — uruchom je w innym terminalu, a następnie naciśnij Enter, aby ponowić próbę"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Nie znaleziono okien."
+output.no_tabs: "Nie znaleziono kart."
+output.no_panes: "Nie znaleziono paneli."
+output.no_windows_in_list: "Nie znaleziono okien"
+output.no_tabs_in_window: "Nie znaleziono kart w oknie %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Aktywny panel: %{pane} (karta: %{tab}, okno: %{window})"
+output.pane_running: "Działa (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Zakończono (kod: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Utworzono kartę %{tab_id} (panel %{pane_id})"
+output.created_pane: "Utworzono panel %{pane_id}"
+output.pane_closed: "Panel %{pane_id} zamknięty."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Nie znaleziono aktywnego panelu. Użyj -t, aby określić ID panelu."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID not set. Run inside a Windows Terminal pane."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Unknown shell type '%{shell}'. Use: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "Failed to spawn wtcli wait-for"
+error.wtcli_wait_for_parse: "Failed to parse wtcli wait-for output"
+error.wtcli_wait_for_failed: "wtcli wait-for failed: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "bundle source: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI not on PATH"
+hooks.installed: "✓ installed"
+hooks.marketplace_path_stale: "⚠ marketplace path stale"
+hooks.installed_but_disabled: "⚠ installed but disabled"
+hooks.not_installed: "✗ not installed"
+hooks.uninstall_skipped: "skipped (CLI not on PATH)"
+hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

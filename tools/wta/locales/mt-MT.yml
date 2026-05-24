@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "Merħba fl-Terminal Intelliġenti!"
+# Titli tal-iskrin tas-setup
+# {Locked="Intelligent Terminal"} - isem il-prodott, tittradux
+setup.title.first_run: "Merħba fl-Intelligent Terminal!"
 setup.title.agent_missing: "L-aġent ma nstabx"
 setup.title.agent_error: "Il-konnessjoni mal-aġent falliet"
 setup.title.switch_agent: "Ibdel l-aġent"
+setup.title.not_available: "L-aġent mhuwiex disponibbli"
+setup.title.sign_in: "Hemm bżonn li tidħol"
+
+# %{agent} jiġi sostitwit bl-isem tal-aġent waqt l-eżekuzzjoni.
+setup.subtitle.copilot_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Segwi l-passi t'hawn taħt biex tinstallaw. Biex tibdel l-aġenti, mur għal Settings."
+setup.subtitle.agent_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Erġa' installah manwalment, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Settings."
+setup.subtitle.copilot_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Segwi l-passi t'hawn taħt biex tidħol. Biex tibdel l-aġenti, mur għal Settings."
+setup.subtitle.agent_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Idħol permezz tal-CLI tal-aġent, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Settings."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Agħżel il-CLI tal-aġent awtomatiku li tixtieq tuża fl-Intelligent Terminal. Tista'"
+setup.description.fre_line2: "tmur għal Settings biex tikkonfigura u twaqqaf l-ispazju tax-xogħol tiegħek."
+
+setup.option.reinstall: "Erġa' installa %{agent}"
+setup.option.reinstall_hint: "(Se jiġi installat awtomatikament)"
+setup.option.signin: "Idħol f'%{agent}"
+setup.option.retry_detection: "Erġa' pprova d-detezzjoni"
+setup.option.retry_auth: "Dħalt — erġa' pprova l-konnessjoni"
+setup.option.retry_connection: "Erġa' pprova l-konnessjoni"
+setup.option.switch_to: "Ibdel għal %{agent}"
+setup.status.installing: "Qed jiġi installat..."
+setup.status.install_failed: "L-installazzjoni falliet: "
+setup.status.installing_winget: " Qed jiġi installat permezz ta' winget..."
+
+# ── Fluss tal-awtentikazzjoni (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - akronimu, użu komuni fil-lokalizzazzjonijiet ta' Microsoft
+auth.agent_selected: "CLI tal-aġent %{name} magħżul"
+auth.agent_selected_with_status: "CLI tal-aġent %{name} — "
+auth.checking_authentication: "  %{spinner} Qed tiġi vverifikata l-awtentikazzjoni..."
+auth.waiting_for_authorization: "  %{spinner} Qed jistenna l-awtorizzazzjoni..."
+auth.code_copied_hint: "  Il-kodiċi ġie kkupjat fil-clipboard — waħħlu fil-browser tiegħek."
+auth.sign_in_prompt: "Idħol biex tuża l-aġent tiegħek:"
+auth.card_connect: "  Qabbad %{name} biex tattiva l-karatteristiċi tal-aġent"
+auth.button_sign_in_github: "[ Idħol b'GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Idħol b'%{name} ]"
+auth.hint_footer: "  Agħfas Enter biex tidħol, Esc biex tmur lura"  # {Locked="Enter","Esc"}
+
+# ── Vista taċ-ċatt (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Qed jaħseb…"
+# {Locked="Intelligent Terminal"} - isem il-prodott, tittradux
+chat.welcome_title: "Merħba fl-Intelligent Terminal!"
+chat.plan_header: "Pjan:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Placeholders tal-input (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Staqsi kull ħaġa, / għall-kmandat.."  # {Locked="/"}
+input.placeholder.connecting: "qed jikkonnettja..."
+input.placeholder.disconnected: "diskonnettjat"
+
+# ── Popup tal-kmandati (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - prefiss tal-kmand slash, irid jibqa' ASCII
+commands.popup_title: " / kmandati "
+commands.help_title: " Għajnuna "
+commands.help_header: "Kmandati slash — ittajpja / fil-kaxxa tal-input."
+commands.help_escape_hint: "  //text     Ibgħat '/' litterali (eskejpja l-parser tal-kmandati)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Agħlaq din l-għajnuna"  # {Locked="Esc"}
+
+# ── Pannell tar-rakkomandazzjonijiet (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - ismijiet taċ-ċwievet u glyph taċ-ċavetta Return, tittradux
+recommendations.nav_hint: "(↑ ↓ biex tinnaviga • Enter biex tagħżel • Esc biex tikkanċella)"
+recommendations.button_run_command: "[ Ħaddem il-kmand ]"
+recommendations.button_insert_in_terminal: "Daħħal fit-Terminal"
+recommendations.button_open_in_new_tab: "Iftaħ f'Tab Ġdid ↵"
+recommendations.button_open_in_new_panel: "Iftaħ f'Pannell Ġdid ↵"
+recommendations.button_open_tab: "Iftaħ Tab ↵"
+recommendations.button_open_panel: "Iftaħ Pannell ↵"
+recommendations.button_execute: "Eżegwixxi ↵"
+recommendations.agent_fallback: "aġent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "tab"
+recommendations.open_kind_panel: "pannell"
+recommendations.open_kind_panel_direction: "pannell (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} ġdid (%{title}) f’%{cwd}"
+recommendations.open_new_with_title: "%{kind} ġdid (%{title})"
+recommendations.open_new_with_cwd: "%{kind} ġdid f’%{cwd}"
+recommendations.open_new_empty: "%{kind} vojt ġdid"
+
+# ── Djalogu tal-permessi modalità kompatta (src/ui/permission.rs) ───────────────────────────
+permission.compact.default_description: "Permess mitlub"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N biex twieġeb · irridimensjona għal karta sħiħa]"  # {Locked="Y/N"}
+
+# ── Status tal-aġent (src/agent_check.rs) ───────────────────────────────────
+agent.status.not_installed_auto: "Mhux installat — agħżel biex tinstalla awtomatikament"
+agent.status.not_found: "Ma nstabx"
+agent.status.detected: "Misjub"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - ismijiet tal-għodda u kmand, iridu jiġu eżegwiti kif inhuma
+agent.install.running_winget: "Qed iħaddem: winget install GitHub.Copilot"
+agent.install.launch_failed: "Ma setgħax jitnieda winget: %{error}"
+agent.install.winget_exited: "winget ħareġ b'mod mhux mistenni: %{error}"
+agent.install.winget_failed_code: "L-installazzjoni ta' winget falliet (kodiċi tal-ħruġ %{code})"
+agent.install.unsupported: "L-installazzjoni awtomatika mhix sostnuta għal %{agent}"
+agent.custom.auth_hint: "Kun żgur li %{name} huwa installat u fuq il-PATH tiegħek."  # {Locked="PATH"}
+
+# ── Vista tal-aġenti (src/ui/agents_view.rs) ─────────────────────────────────
+agents.loading: "Qed jitgħabba..."
+# {Locked="Enter","Shift+enter","Esc"} - kombinazzjonijiet taċ-ċwievet, tittradux
+agents.footer_hint: "(↑ ↓ biex tinnaviga • Enter biex tniedi sessjoni f'tab ġdid • Shift+enter biex tniedi sessjoni fil-pannell tal-aġent • Esc biex toħroġ)"
+agents.status.active: "Attiv"
+agents.status.waiting_for_input: "Qed jistenna input"
+agents.status.error: "Żball"
+agents.status.idle: "Inattiv"
+
+# ── Suġġeriment tal-merħba tad-disinn (src/ui/layout.rs) ──────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. biex turi/taħbi l-pannell tal-aġent • Ctrl+Alt+/ biex turi/taħbi s-sessjoni tal-aġent)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Stat tal-konnessjoni ────────────────────────────────────────────────────────
+connection.starting: "L-aġent qed jibda..."
+connection.reconnecting: "Qed jerġa' jikkonnettja..."
+
+# ── Messaġġi tas-sistema (src/app.rs) ────────────────────────────────────────
+system.cancelled: "Ikkanċellat."
+system.no_prompt_in_flight: "L-ebda prompt fl-arja."
+system.authentication_failed: "L-awtentikazzjoni falliet"
+system.command_copied_retry: "Kmand ikkupjat — ħaddmu f'terminal ieħor, imbagħad agħfas Enter biex terġa' tipprova"  # {Locked="Enter"}
+
+# ── Output CLI waqt l-eżekuzzjoni (src/main.rs) ────────────────────────────────────
+output.no_windows: "Ma nstabet l-ebda tieqa."
+output.no_tabs: "Ma nstab l-ebda tab."
+output.no_panes: "Ma nstab l-ebda pannell."
+output.no_windows_in_list: "Ma nstabet l-ebda tieqa"
+output.no_tabs_in_window: "Ma nstab l-ebda tab fit-tieqa %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - identifikaturi tal-kolonna, żomm ASCII għall-parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Pannell attiv: %{pane} (tab: %{tab}, tieqa: %{window})"
+output.pane_running: "Qed jaħdem (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Ħareġ (kodiċi: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Tab %{tab_id} maħluq (pannell %{pane_id})"
+output.created_pane: "Pannell %{pane_id} maħluq"
+output.pane_closed: "Pannell %{pane_id} magħluq."
+
+# ── Żbalji (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Ma nstab l-ebda pannell attiv. Uża -t biex tispeċifika ID tal-pannell."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID mhix issettjata. Ħaddem ġo pannell ta' Windows Terminal."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Tip ta' shell mhux magħruf '%{shell}'. Uża: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - isem il-kmand, tittradux
+error.wtcli_wait_for_spawn: "Ma setgħax jitnieda wtcli wait-for"
+error.wtcli_wait_for_parse: "Ma setgħax jiġi parsed l-output ta' wtcli wait-for"
+error.wtcli_wait_for_failed: "wtcli wait-for falliet: %{stderr}"
+
+# ── Output tal-istatus tal-hooks (src/main.rs) ───────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - ismijiet tal-għodda/CLI, varjabbli tal-ambjent, ismijiet tal-fajls tal-log
+hooks.bundle_source: "sors tal-bundle: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI mhix fuq PATH"
+hooks.installed: "✓ installat"
+hooks.marketplace_path_stale: "⚠ triq tal-marketplace skaduta"
+hooks.installed_but_disabled: "⚠ installat imma diżattivat"
+hooks.not_installed: "✗ mhux installat"
+hooks.uninstall_skipped: "maqbuż (CLI mhix fuq PATH)"
+hooks.install_attempted: "Saret tentattiv biex jiġi installat wt-agent-hooks (idempotenti). Ħaddem `wta hooks status` biex tispezzjona r-riżultat. Log tat-trace: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

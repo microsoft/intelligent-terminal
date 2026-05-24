@@ -1,5 +1,169 @@
 # Setup screen titles
-setup.title.first_run: "ئەقلىي تېرمىنالغا خۇش كەلدىڭىز!"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+setup.title.first_run: "Intelligent Terminal ھە خوش كەلدىڭىز!"
 setup.title.agent_missing: "AI ئاگېنتى تېپىلمىدى"
-setup.title.agent_error: "AI ئاگېنتىغا ئۇلىنىش مەغلۇپ بولدى"
-setup.title.switch_agent: "AI ئاگېنتىنى ئالماشتۇرۇڭ"
+setup.title.agent_error: "AI ئاگېنتى بىلەن باغلىنىش مەغلۇب بولدى"
+setup.title.switch_agent: "AI ئاگېنتىنى الماشتۇرۇش"
+setup.title.not_available: "AI ئاگېنتى ئىشلەتكىلى ئەمەس"
+setup.title.sign_in: "كىرىش تەلەپ قىلىنىدۇ"
+
+# %{agent} is replaced with the agent display name at runtime.
+setup.subtitle.copilot_missing: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" ئورنىتىلمىغان. ئورنىتىش ئۈچۈن تۆۋەندىكى قەدەملەرنى بېسىڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
+setup.subtitle.agent_missing: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" ئورنىتىلمىغان. قولدا قايتا ئورنىتىپ سىناڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
+setup.subtitle.copilot_auth: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. كىرىش ئۈچۈن تۆۋەندىكى قەدەملەرنى بېسىڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
+setup.subtitle.agent_auth: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. AI ئاگېنتى CLI ئارقىلىق كىرىپ قايتا سىناڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن Settings قا كىرىڭ."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal دا ئىشلەتمەكچى كۆڭۈلمە AI ئاگېنتى CLI نى تاللاڭ. سىز"
+setup.description.fre_line2: "Settings قا كىرىپ ئىش بوشلۇقىڭىزنى تەڭشىيەلەيسىز."
+
+setup.option.reinstall: "%{agent} نى قايتا ئورنىتىش"
+setup.option.reinstall_hint: "(ئاپتوماتىك ئورنىتىلىدۇ)"
+setup.option.signin: "%{agent} غا كىرىش"
+setup.option.retry_detection: "قايتا بايقاش"
+setup.option.retry_auth: "كىردىم — قايتا باغلان"
+setup.option.retry_connection: "قايتا باغلان"
+setup.option.switch_to: "%{agent} غا الماشتۇرۇش"
+setup.status.installing: "ئورنىتىلىۋاتىدۇ..."
+setup.status.install_failed: "ئورنىتىش مەغلۇب بولدى: "
+setup.status.installing_winget: " winget ئارقىلىق ئورنىتىلىۋاتىدۇ..."
+
+# ── Auth flow (src/ui/auth.rs) ────────────────────────────────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "AI ئاگېنتى %{name} تاللاندى"
+auth.agent_selected_with_status: "AI ئاگېنتى %{name} — "
+auth.checking_authentication: "  %{spinner} تونۇقتۇرۇش تەكشۈرۈلۈۋاتىدۇ..."
+auth.waiting_for_authorization: "  %{spinner} ئىكرامىيەت كۈتۈلۈۋاتىدۇ..."
+auth.code_copied_hint: "  كود چاپلىغەن — توركۆرۈڭۈزگە چاپلاڭ."
+auth.sign_in_prompt: "AI ئاگېنتىڭىزنى ئىشلىتىش ئۈچۈن كىرىڭ:"
+auth.card_connect: "  AI ئاگېنتى ئىقتىدارلىرىنى ئاچىش ئۈچۈن %{name} نى باغلاڭ"
+auth.button_sign_in_github: "[ GitHub بىلەن كىرىش ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name} بىلەن كىرىش ]"
+auth.hint_footer: "  Enter كىرىش ئۈچۈن, Esc قايتىش ئۈچۈن بېسىڭ"  # {Locked="Enter","Esc"}
+
+# ── Chat view (src/ui/chat.rs) ────────────────────────────────────────────────────────────────────────
+chat.activity_thinking: "ئويلىنىۋاتىدۇ…"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+chat.welcome_title: "Intelligent Terminal ھە خوش كەلدىڭىز!"
+chat.plan_header: "پىلان:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────────────────────────────────────
+input.placeholder.connected: "ئىختىيارچە سوراڭ، / بۇيرۇقلار ئۈچۈن.."  # {Locked="/"}
+# Input box placeholder while agent connection is being established
+input.placeholder.connecting: "باغلىنىۋاتىدۇ..."
+# Input box placeholder when agent is disconnected
+input.placeholder.disconnected: "ئۈزۈلدى"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / بۇيرۇقلار "
+# Title bar of the slash-commands help popup
+commands.help_title: " ياردەم "
+commands.help_header: "ئىسلەش بۇيرۇقلىرى — كىرگۈزۈش رامكىسىغا / كىرگۈزۈڭ."
+commands.help_escape_hint: "  //text     ئەسلى '/' ئەۋەتىش (بۇيرۇق ئانالىزلىغۇچتىن قېچىش)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        بۇ ياردەمنى تاقاش"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ يۆتكەش • Enter تاللاش • Esc بېكىتىش)"
+recommendations.button_run_command: "[ بۇيرۇقنى ئىجرا قىلىش ]"
+recommendations.button_insert_in_terminal: "تېرمىنالغا قىستۇرۇش"
+recommendations.button_open_in_new_tab: "يېڭى بەتكۈچتە ئېچىش ↵"
+recommendations.button_open_in_new_panel: "يېڭى تاختىدا ئېچىش ↵"
+recommendations.button_open_tab: "بەتكۈچ ئېچىش ↵"
+recommendations.button_open_panel: "تاختا ئېچىش ↵"
+# Button label — run the selected command (not "kill/execute a person")
+recommendations.button_execute: "ئىجرا قىلىش ↵"
+recommendations.agent_fallback: "ۋاكالەتچى"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "بەتكۈچ"
+recommendations.open_kind_panel: "تاختا"
+recommendations.open_kind_panel_direction: "تاختا (%{direction})"
+recommendations.open_new_with_title_and_cwd: "يېڭى %{kind} (%{title}) %{cwd} دا"
+recommendations.open_new_with_title: "يېڭى %{kind} (%{title})"
+recommendations.open_new_with_cwd: "يېڭى %{kind} %{cwd} دا"
+recommendations.open_new_empty: "يېڭى قۇرۇق %{kind}"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────────────────────────────────
+# Default description shown in compact permission dialog when no specific description is provided
+permission.compact.default_description: "ئىجازەت سورىلدى"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N جاۋاپ بېرىش · تولۇق كارتىنى كۆرۈش ئۈچۈن چوڭلۇقنى ئۆزگەرتىڭ]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────────────────────────────
+agent.status.not_installed_auto: "ئورنىتىلمىغان — ئاپتوماتىك ئورنىتىش ئۈچۈن تاللاڭ"
+agent.status.not_found: "تېپىلمىدى"
+agent.status.detected: "بايقىلدى"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "ئىجرا قىلىنىۋاتىدۇ: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget نى ئىشقا چۈشۈرۈش مەغلۇب بولدى: %{error}"
+agent.install.winget_exited: "winget كۈتۈلمىگەن چىقىپ كەتتى: %{error}"
+agent.install.winget_failed_code: "winget ئورنىتىش مەغلۇب بولدى (چىقىش كودى %{code})"
+agent.install.unsupported: "%{agent} ئۈچۈن ئاپتوماتىك ئورنىتىش قوللىمايدۇ"
+agent.custom.auth_hint: "%{name} نىڭ ئورنىتىلغانلىقى ۋە PATH دا بارلىقىنى تەكشۈرۈڭ."  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────────────────────────────────
+agents.loading: "يۈكلەنۋاتىدۇ..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ يۆتكەش • Enter يېڭى بەتكۈچتە ئوتتۇرا ئېچىش • Shift+enter AI ئاگېنتى تاختىسىدا ئوتتۇرا ئېچىش • Esc چىقىش)"
+agents.status.active: "ئاكتىۋ"
+agents.status.waiting_for_input: "كىرگۈزۈش كۈتۈلۈۋاتىدۇ"
+# Status badge when agent session encountered an error
+agents.status.error: "خاتالىق"
+# Status badge when agent session has no active work
+agents.status.idle: "بوش"
+
+# ── Layout welcome hint (src/ui/layout.rs) ────────────────────────────────────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. AI ئاگېنتى تاختىسىنى كۆرسەت/يوشۇرۇش • Ctrl+Alt+/ AI ئاگېنتى ئوتتۇرىسىنى كۆرسەت/يوشۇرۇش)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Connection state ────────────────────────────────────────────────────────────────────────
+# Status text shown while launching the agent process
+connection.starting: "AI ئاگېنتى ئىشقا چۈشۈرۈلۈۋاتىدۇ..."
+# Status text shown while re-establishing agent connection
+connection.reconnecting: "قايتا باغلىنىۋاتىدۇ..."
+
+# ── System messages (src/app.rs) ──────────────────────────────────────────────────────────────
+system.cancelled: "بېكىت قىلىندى."
+system.no_prompt_in_flight: "ئېۋەتىلىۋاتقان سوراق يوق."
+system.authentication_failed: "تونۇقتۇرۇش مەغلۇب بولدى"
+system.command_copied_retry: "بۇيرۇق كۆچۈرۈلدى — باشقا تېرمىنالدا ئىجرا قىلىڭ، اندىن Enter بېسىپ قايتا سىناڭ"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────
+output.no_windows: "كۆزنەك تېپىلمىدى."
+output.no_tabs: "بەتكۈچ تېپىلمىدى."
+output.no_panes: "تاختا تېپىلمىدى."
+output.no_windows_in_list: "كۆزنەك تېپىلمىدى"
+output.no_tabs_in_window: "%{window_id} كۆزنەكتە بەتكۈچ تېپىلمىدى"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "ئاكتىۋ تاختا: %{pane} (بەتكۈچ: %{tab}، كۆزنەك: %{window})"
+output.pane_running: "ئىجرا بولۇۋاتىدۇ (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "چىقتى (code: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "%{tab_id} بەتكۈچ قۇرۇلدى (تاختا %{pane_id})"
+output.created_pane: "%{pane_id} تاختا قۇرۇلدى"
+output.pane_closed: "%{pane_id} تاختا تاقالدى."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ─────────────────────────────────────────────────────────
+error.no_active_pane: "ئاكتىۋ تاختا تېپىلمىدى. تاختا ID سىنى بەلگىلەش ئۈچۈن -t نى ئىشلىتىڭ."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID بەلگىلەنمىگەن. Windows Terminal تاختىسىدا ئىجرا قىلىڭ."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "نامەلۇم shell تىپى '%{shell}'. ئىشلىتىڭ: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "wtcli wait-for نى ئىشقا چۈشۈرۈش مەغلۇب بولدى"
+error.wtcli_wait_for_parse: "wtcli wait-for نەتىجىسىنى ئانالىزلاش مەغلۇب بولدى"
+error.wtcli_wait_for_failed: "wtcli wait-for مەغلۇب بولدى: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ─────────────────────────────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "bundle source: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI PATH دا ئەمەس"
+hooks.installed: "✓ ئورنىتىلدى"
+hooks.marketplace_path_stale: "⚠ marketplace يولى ئەسكىردى"
+hooks.installed_but_disabled: "⚠ ئورنىتىلدى بىراق چەكلەنگەن"
+hooks.not_installed: "✗ ئورنىتىلمىغان"
+hooks.uninstall_skipped: "ئاتلىدى (CLI PATH دا ئەمەس)"
+hooks.install_attempted: "wt-agent-hooks ئورنىتىش سىنالدى (idempotent). نەتىجىنى تەكشۈرۈش ئۈچۈن `wta hooks status` نى ئىجرا قىلىڭ. ئىز خاتىرىسى: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

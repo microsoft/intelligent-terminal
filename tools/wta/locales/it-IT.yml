@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "Benvenuto in Terminale Intelligente!"
+# Titoli della schermata di configurazione
+# {Locked="Intelligent Terminal"} - nome del prodotto, non tradurre
+setup.title.first_run: "Benvenuto in Intelligent Terminal!"
 setup.title.agent_missing: "Agente non trovato"
 setup.title.agent_error: "Connessione all'agente non riuscita"
 setup.title.switch_agent: "Cambia agente"
+setup.title.not_available: "Agente non disponibile"
+setup.title.sign_in: "Accesso richiesto"
+
+# %{agent} viene sostituito con il nome visualizzato dell'agente in fase di esecuzione.
+setup.subtitle.copilot_missing: "L'agente \"%{agent}\" non è installato. Segui i passaggi seguenti per installarlo. Per cambiare agente, vai alle impostazioni."
+setup.subtitle.agent_missing: "L'agente \"%{agent}\" non è installato. Reinstallalo manualmente, quindi riprova. Per cambiare agente, vai alle impostazioni."
+setup.subtitle.copilot_auth: "L'agente \"%{agent}\" richiede l'autenticazione. Segui i passaggi seguenti per accedere. Per cambiare agente, vai alle impostazioni."
+setup.subtitle.agent_auth: "L'agente \"%{agent}\" richiede l'autenticazione. Accedi tramite la CLI dell'agente, quindi riprova. Per cambiare agente, vai alle impostazioni."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Scegli la CLI dell'agente predefinita da utilizzare in Intelligent Terminal. Puoi"
+setup.description.fre_line2: "accedere alle impostazioni per configurare e impostare il tuo spazio di lavoro."
+
+setup.option.reinstall: "Reinstalla %{agent}"
+setup.option.reinstall_hint: "(Verrà installato automaticamente)"
+setup.option.signin: "Accedi a %{agent}"
+setup.option.retry_detection: "Riprova rilevamento"
+setup.option.retry_auth: "Ho effettuato l'accesso — riprova connessione"
+setup.option.retry_connection: "Riprova connessione"
+setup.option.switch_to: "Passa a %{agent}"
+setup.status.installing: "Installazione in corso..."
+setup.status.install_failed: "Installazione non riuscita: "
+setup.status.installing_winget: " Installazione tramite winget..."
+
+# ── Flusso di autenticazione (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - abbreviazione, non tradurre
+auth.agent_selected: "CLI dell'agente %{name} selezionata"
+auth.agent_selected_with_status: "CLI dell'agente %{name} — "
+auth.checking_authentication: "  %{spinner} Verifica dell'autenticazione..."
+auth.waiting_for_authorization: "  %{spinner} In attesa dell'autorizzazione..."
+auth.code_copied_hint: "  Codice copiato negli appunti — incollalo nel browser."
+auth.sign_in_prompt: "Accedi per usare il tuo agente:"
+auth.card_connect: "  Connetti %{name} per abilitare le funzionalità dell'agente"
+auth.button_sign_in_github: "[ Accedi con GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Accedi con %{name} ]"
+auth.hint_footer: "  Premi Enter per accedere, Esc per tornare indietro"  # {Locked="Enter","Esc"}
+
+# ── Vista chat (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Elaborazione in corso…"
+# {Locked="Intelligent Terminal"} - nome del prodotto, non tradurre
+chat.welcome_title: "Benvenuto in Intelligent Terminal!"
+chat.plan_header: "Piano:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Segnaposto di input (src/ui/input.rs) ────────────────────────────────────────────
+input.placeholder.connected: "Chiedi qualsiasi cosa, / per i comandi.."  # {Locked="/"}
+input.placeholder.connecting: "Connessione in corso..."
+input.placeholder.disconnected: "Disconnesso"
+
+# ── Popup dei comandi (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - prefisso del comando slash, deve rimanere ASCII
+commands.popup_title: " / comandi "
+commands.help_title: " Guida "
+commands.help_header: "Comandi slash — digita / nella casella di input."
+commands.help_escape_hint: "  //text     Invia un '/' letterale (esce dal parser dei comandi)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Chiudi questa guida"  # {Locked="Esc"}
+
+# ── Pannello dei suggerimenti (src/ui/recommendations.rs) ───────────────────────────────────
+# {Locked="Enter","Esc","↵"} - nomi dei tasti e glifo del tasto Invio, non tradurre
+recommendations.nav_hint: "(↑ ↓ per navigare • Enter per selezionare • Esc per annullare)"
+recommendations.button_run_command: "[ Esegui comando ]"
+recommendations.button_insert_in_terminal: "Inserisci nel terminale"
+recommendations.button_open_in_new_tab: "Apri in nuova scheda ↵"
+recommendations.button_open_in_new_panel: "Apri in nuovo pannello ↵"
+recommendations.button_open_tab: "Apri scheda ↵"
+recommendations.button_open_panel: "Apri pannello ↵"
+recommendations.button_execute: "Esegui ↵"
+recommendations.agent_fallback: "agente"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "scheda"
+recommendations.open_kind_panel: "pannello"
+recommendations.open_kind_panel_direction: "pannello (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Nuova %{kind} (%{title}) in %{cwd}"
+recommendations.open_new_with_title: "Nuova %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Nuova %{kind} in %{cwd}"
+recommendations.open_new_empty: "Nuova %{kind} vuota"
+
+# ── Finestra di dialogo autorizzazione in modalità compatta (src/ui/permission.rs) ───────────────────────────────
+permission.compact.default_description: "Autorizzazione richiesta"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N per rispondere · ridimensiona per la scheda completa]"  # {Locked="Y/N"}
+
+# ── Stato dell'agente (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Non installato — seleziona per installare automaticamente"
+agent.status.not_found: "Non trovato"
+agent.status.detected: "Rilevato"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - nomi degli strumenti e comando, mantenere invariato
+agent.install.running_winget: "Esecuzione: winget install GitHub.Copilot"
+agent.install.launch_failed: "Impossibile avviare winget: %{error}"
+agent.install.winget_exited: "winget terminato in modo imprevisto: %{error}"
+agent.install.winget_failed_code: "Installazione winget non riuscita (codice di uscita %{code})"
+agent.install.unsupported: "L'installazione automatica non è supportata per %{agent}"
+agent.custom.auth_hint: "Assicurati che %{name} sia installato e nel PATH."  # {Locked="PATH"}
+
+# ── Vista agenti (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Caricamento..."
+# {Locked="Enter","Shift+enter","Esc"} - combinazioni di tasti, non tradurre
+agents.footer_hint: "(↑ ↓ per navigare • Enter per avviare la sessione in una nuova scheda • Shift+enter per avviare la sessione nel riquadro dell'agente • Esc per uscire)"
+agents.status.active: "Attivo"
+agents.status.waiting_for_input: "In attesa di input"
+agents.status.error: "Errore"
+agents.status.idle: "Inattivo"
+
+# ── Suggerimento di benvenuto del layout (src/ui/layout.rs) ──────────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. per mostrare/nascondere il riquadro agente • Ctrl+Alt+/ per mostrare/nascondere la sessione dell'agente)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Stato della connessione ────────────────────────────────────────────────────────────
+connection.starting: "Avvio dell'agente..."
+connection.reconnecting: "Riconnessione..."
+
+# ── Messaggi di sistema (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "Annullato."
+system.no_prompt_in_flight: "Nessun prompt in corso."
+system.authentication_failed: "Autenticazione non riuscita"
+system.command_copied_retry: "Comando copiato — eseguilo in un altro terminale, quindi premi Enter per riprovare"  # {Locked="Enter"}
+
+# ── Output CLI di runtime (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Nessuna finestra trovata."
+output.no_tabs: "Nessuna scheda trovata."
+output.no_panes: "Nessun riquadro trovato."
+output.no_windows_in_list: "Nessuna finestra trovata"
+output.no_tabs_in_window: "Nessuna scheda trovata nella finestra %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - identificatori di colonna, mantenere in ASCII per l'analisi
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Riquadro attivo: %{pane} (scheda: %{tab}, finestra: %{window})"
+output.pane_running: "In esecuzione (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Terminato (codice: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Scheda %{tab_id} creata (riquadro %{pane_id})"
+output.created_pane: "Riquadro %{pane_id} creato"
+output.pane_closed: "Riquadro %{pane_id} chiuso."
+
+# ── Errori (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Nessun riquadro attivo trovato. Usa -t per specificare un ID del riquadro."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID non impostato. Esegui all'interno di un riquadro di Windows Terminal."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Tipo di shell sconosciuto '%{shell}'. Usa: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - nome del comando, non tradurre
+error.wtcli_wait_for_spawn: "Impossibile avviare wtcli wait-for"
+error.wtcli_wait_for_parse: "Impossibile analizzare l'output di wtcli wait-for"
+error.wtcli_wait_for_failed: "wtcli wait-for non riuscito: %{stderr}"
+
+# ── Output dello stato degli hook (src/main.rs) ───────────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - nomi di strumenti/CLI, variabili d'ambiente, nomi di file di registro
+hooks.bundle_source: "origine del bundle: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI non nel PATH"
+hooks.installed: "✓ Installato"
+hooks.marketplace_path_stale: "⚠ Percorso del marketplace obsoleto"
+hooks.installed_but_disabled: "⚠ Installato ma disabilitato"
+hooks.not_installed: "✗ Non installato"
+hooks.uninstall_skipped: "Ignorato (CLI non nel PATH)"
+hooks.install_attempted: "Installazione di wt-agent-hooks tentata (idempotente). Esegui `wta hooks status` per ispezionare il risultato. Log di traccia: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

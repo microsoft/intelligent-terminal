@@ -85,6 +85,7 @@
     <ClInclude Include="GlobalAppSettings.h">
       <DependentUpon>GlobalAppSettings.idl</DependentUpon>
     </ClInclude>
+    <ClInclude Include="..\inc\AgentPolicy.h" />
     <ClInclude Include="IInheritable.h" />
     <ClInclude Include="MTSMSettings.h" />
     <ClInclude Include="IDynamicProfileGenerator.h" />
@@ -162,6 +163,7 @@
     <ClCompile Include="Command.cpp">
       <DependentUpon>Command.idl</DependentUpon>
     </ClCompile>
+    <ClCompile Include="AgentPolicy.cpp" />
     <ClCompile Include="DynamicProfileUtils.cpp" />
     <ClCompile Include="FileUtils.cpp" />
     <ClCompile Include="GlobalAppSettings.cpp">

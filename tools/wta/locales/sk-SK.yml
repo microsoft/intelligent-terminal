@@ -1,5 +1,160 @@
 # Setup screen titles
-setup.title.first_run: "Vitajte v aplikácii Inteligentný Terminál!"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+setup.title.first_run: "Vitajte v Intelligent Terminal!"
 setup.title.agent_missing: "Agenta sa nepodarilo nájsť"
 setup.title.agent_error: "Pripojenie k agentovi zlyhalo"
-setup.title.switch_agent: "Prepnite agenta"
+setup.title.switch_agent: "Prepnúť agenta"
+setup.title.not_available: "Agent nie je k dispozícii"
+setup.title.sign_in: "Vyžaduje sa prihlásenie"
+
+# %{agent} is replaced with the agent display name at runtime.
+setup.subtitle.copilot_missing: "Váš agent \"%{agent}\" nie je nainštalovaný. Postupujte podľa krokov nižšie a nainštalujte ho. Ak chcete zmeniť agenta, prejdite do Settings."
+setup.subtitle.agent_missing: "Váš agent \"%{agent}\" nie je nainštalovaný. Preinštalujte ho manuálne a skúste to znova. Ak chcete zmeniť agenta, prejdite do Settings."
+setup.subtitle.copilot_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Postupujte podľa krokov nižšie a prihláste sa. Ak chcete zmeniť agenta, prejdite do Settings."
+setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Prihláste sa cez CLI agenta a skúste to znova. Ak chcete zmeniť agenta, prejdite do Settings."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Vyberte predvolený CLI agenta, ktorý chcete používať v Intelligent Terminal. Môžete"
+setup.description.fre_line2: "prejsť do Settings a nakonfigurovať svoj pracovný priestor."
+
+setup.option.reinstall: "Preinštalovať %{agent}"
+setup.option.reinstall_hint: "(Bude nainštalovaný automaticky)"
+setup.option.signin: "Prihlásiť sa do %{agent}"
+setup.option.retry_detection: "Zopakovať detekciu"
+setup.option.retry_auth: "Prihlásil(a) som sa — zopakovať pripojenie"
+setup.option.retry_connection: "Zopakovať pripojenie"
+setup.option.switch_to: "Prepnúť na %{agent}"
+setup.status.installing: "Inštalácia..."
+setup.status.install_failed: "Inštalácia zlyhala: "
+setup.status.installing_winget: " Inštalácia cez winget..."
+
+# ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "Je vybraný agent %{name}"
+auth.agent_selected_with_status: "Agent %{name} — "
+auth.checking_authentication: "  %{spinner} Kontrola overenia..."
+auth.waiting_for_authorization: "  %{spinner} Čakanie na autorizáciu..."
+auth.code_copied_hint: "  Kód skopírovaný do schránky — prilepte ho v prehliadači."
+auth.sign_in_prompt: "Prihláste sa, aby ste mohli používať agenta:"
+auth.card_connect: "  Pripojte %{name} na povolenie funkcií agenta"
+auth.button_sign_in_github: "[ Prihlásiť sa cez GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Prihlásiť sa cez %{name} ]"
+auth.hint_footer: "  Stlačte Enter na prihlásenie, Esc na návrat"  # {Locked="Enter","Esc"}
+
+# ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Premýšľam..."
+# {Locked="Intelligent Terminal"} - product name, do not translate
+chat.welcome_title: "Vitajte v Intelligent Terminal!"
+chat.plan_header: "Plán:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Opýtajte sa čokoľvek, / pre príkazy.."  # {Locked="/"}
+input.placeholder.connecting: "pripájanie..."
+input.placeholder.disconnected: "odpojené"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / príkazy "
+commands.help_title: " Pomoc "
+commands.help_header: "Príkazy lomítka — zadajte / do vstupného poľa."
+commands.help_escape_hint: "  //text     Odoslanie doslovného '/' (obíde analyzátor príkazov)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Zatvoriť túto pomoc"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ na navigáciu • Enter na výber • Esc na zrušenie)"
+recommendations.button_run_command: "[ Spustiť príkaz ]"
+recommendations.button_insert_in_terminal: "Vložiť do terminálu"
+recommendations.button_open_in_new_tab: "Otvoriť v novej karte ↵"
+recommendations.button_open_in_new_panel: "Otvoriť v novom paneli ↵"
+recommendations.button_open_tab: "Otvoriť kartu ↵"
+recommendations.button_open_panel: "Otvoriť panel ↵"
+recommendations.button_execute: "Spustiť ↵"
+recommendations.agent_fallback: "agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "karta"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Nová %{kind} (%{title}) v %{cwd}"
+recommendations.open_new_with_title: "Nová %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Nová %{kind} v %{cwd}"
+recommendations.open_new_empty: "Nová prázdna %{kind}"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+permission.compact.default_description: "Vyžiadané povolenie"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N na odpoveď · zmeňte veľkosť pre úplnú kartu]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Nenainštalovaný — vyberte na automatickú inštaláciu"
+agent.status.not_found: "Nenájdený"
+agent.status.detected: "Zistený"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "Running: winget install GitHub.Copilot"
+agent.install.launch_failed: "Failed to launch winget: %{error}"
+agent.install.winget_exited: "winget exited unexpectedly: %{error}"
+agent.install.winget_failed_code: "winget install failed (exit code %{code})"
+agent.install.unsupported: "Automatic install not supported for %{agent}"
+agent.custom.auth_hint: "Uistite sa, že %{name} je nainštalovaný a je v PATH."  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Načítava sa..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ na navigáciu • Enter na spustenie relácie v novej karte • Shift+enter na spustenie relácie v paneli agenta • Esc na ukončenie)"
+agents.status.active: "Aktívny"
+agents.status.waiting_for_input: "Čaká na vstup"
+agents.status.error: "Chyba"
+agents.status.idle: "Nečinný"
+
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. zobraziť/skryť panel agenta • Ctrl+Alt+/ zobraziť/skryť reláciu agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Connection state ────────────────────────────────────────────────────────
+connection.starting: "Spúšťanie agenta..."
+connection.reconnecting: "Opätovné pripájanie..."
+
+# ── System messages (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Zrušené."
+system.no_prompt_in_flight: "Žiadna prebiehajúca požiadavka."
+system.authentication_failed: "Overenie zlyhalo"
+system.command_copied_retry: "Príkaz skopírovaný — spustite ho v inom termináli a stlačte Enter na zopakovanie"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Nenašli sa žiadne okná."
+output.no_tabs: "Nenašli sa žiadne karty."
+output.no_panes: "Nenašli sa žiadne panely."
+output.no_windows_in_list: "Nenašli sa žiadne okná"
+output.no_tabs_in_window: "V okne %{window_id} sa nenašli žiadne karty"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Aktívny panel: %{pane} (karta: %{tab}, okno: %{window})"
+output.pane_running: "Beží (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Ukončené (kód: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Vytvorená karta %{tab_id} (panel %{pane_id})"
+output.created_pane: "Vytvorený panel %{pane_id}"
+output.pane_closed: "Panel %{pane_id} zatvorený."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Nenašiel sa žiadny aktívny panel. Použite -t na zadanie ID panela."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID not set. Run inside a Windows Terminal pane."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Unknown shell type '%{shell}'. Use: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "Failed to spawn wtcli wait-for"
+error.wtcli_wait_for_parse: "Failed to parse wtcli wait-for output"
+error.wtcli_wait_for_failed: "wtcli wait-for failed: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "bundle source: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI not on PATH"
+hooks.installed: "✓ installed"
+hooks.marketplace_path_stale: "⚠ marketplace path stale"
+hooks.installed_but_disabled: "⚠ installed but disabled"
+hooks.not_installed: "✗ not installed"
+hooks.uninstall_skipped: "skipped (CLI not on PATH)"
+hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

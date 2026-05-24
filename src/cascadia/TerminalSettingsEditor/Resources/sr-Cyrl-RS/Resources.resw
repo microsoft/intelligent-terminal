@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -2854,6 +2854,8 @@
     <value>Овај текст ће бити уметнут између путања више датотека превучених у терминал.</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
-
-
+  <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
+    <value>Овом поставком управља ваша организација.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
 </root>

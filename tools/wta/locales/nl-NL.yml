@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "Welkom bij Intelligente Terminal!"
+# Titels van het installatiescherm
+# {Locked="Intelligent Terminal"} - productnaam, niet vertalen
+setup.title.first_run: "Welkom bij Intelligent Terminal!"
 setup.title.agent_missing: "Agent niet gevonden"
 setup.title.agent_error: "Verbinding met agent mislukt"
-setup.title.switch_agent: "Agent wisselen"
+setup.title.switch_agent: "Van agent wisselen"
+setup.title.not_available: "Agent niet beschikbaar"
+setup.title.sign_in: "Aanmelden vereist"
+
+# %{agent} wordt tijdens runtime vervangen door de weergavenaam van de agent.
+setup.subtitle.copilot_missing: "Uw agent \"%{agent}\" is niet geïnstalleerd. Volg de onderstaande stappen om deze te installeren. Om van agent te wisselen, ga naar de instellingen."
+setup.subtitle.agent_missing: "Uw agent \"%{agent}\" is niet geïnstalleerd. Installeer deze handmatig opnieuw en probeer het opnieuw. Om van agent te wisselen, ga naar de instellingen."
+setup.subtitle.copilot_auth: "Uw agent \"%{agent}\" vereist verificatie. Volg de onderstaande stappen om u aan te melden. Om van agent te wisselen, ga naar de instellingen."
+setup.subtitle.agent_auth: "Uw agent \"%{agent}\" vereist verificatie. Meld u aan via de agent-CLI en probeer het opnieuw. Om van agent te wisselen, ga naar de instellingen."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Kies de standaard agent-CLI die u wilt gebruiken in Intelligent Terminal. U kunt"
+setup.description.fre_line2: "naar de instellingen navigeren om uw werkruimte te configureren en in te richten."
+
+setup.option.reinstall: "%{agent} opnieuw installeren"
+setup.option.reinstall_hint: "(Wordt automatisch geïnstalleerd)"
+setup.option.signin: "Aanmelden bij %{agent}"
+setup.option.retry_detection: "Detectie opnieuw proberen"
+setup.option.retry_auth: "Ik heb me aangemeld — verbinding opnieuw proberen"
+setup.option.retry_connection: "Verbinding opnieuw proberen"
+setup.option.switch_to: "Overschakelen naar %{agent}"
+setup.status.installing: "Installeren..."
+setup.status.install_failed: "Installatie mislukt: "
+setup.status.installing_winget: " Installeren via winget..."
+
+# ── Verificatiestroom (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - afkorting, niet vertalen
+auth.agent_selected: "Agent-%{name} is geselecteerd"
+auth.agent_selected_with_status: "Agent-%{name} — "
+auth.checking_authentication: "  %{spinner} Verificatie controleren..."
+auth.waiting_for_authorization: "  %{spinner} Wachten op autorisatie..."
+auth.code_copied_hint: "  Code gekopieerd naar klembord — plak deze in uw browser."
+auth.sign_in_prompt: "Meld u aan om uw agent te gebruiken:"
+auth.card_connect: "  %{name} verbinden om agentfuncties in te schakelen"
+auth.button_sign_in_github: "[ Aanmelden met GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Aanmelden met %{name} ]"
+auth.hint_footer: "  Druk op Enter om aan te melden, Esc om terug te gaan"  # {Locked="Enter","Esc"}
+
+# ── Chatweergave (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Bezig met nadenken…"
+# {Locked="Intelligent Terminal"} - productnaam, niet vertalen
+chat.welcome_title: "Welkom bij Intelligent Terminal!"
+chat.plan_header: "Plan:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Invoertijdelijke aanduidingen (src/ui/input.rs) ────────────────────────────────────────────
+input.placeholder.connected: "Stel een vraag, / voor opdrachten.."  # {Locked="/"}
+input.placeholder.connecting: "Verbinden..."
+input.placeholder.disconnected: "Verbroken"
+
+# ── Opdrachtpopup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - schuine-streep-opdrachtvoorvoegsel, moet ASCII blijven
+commands.popup_title: " / opdrachten "
+commands.help_title: " Help "
+commands.help_header: "Schuine-streep-opdrachten — typ / in het invoervak."
+commands.help_escape_hint: "  //text     Letterlijke '/' verzenden (omzeilt de opdrachtparser)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Deze help sluiten"  # {Locked="Esc"}
+
+# ── Aanbevelingenpaneel (src/ui/recommendations.rs) ───────────────────────────────────
+# {Locked="Enter","Esc","↵"} - toetsnamen en Enter-toetssymbool, niet vertalen
+recommendations.nav_hint: "(↑ ↓ navigeren • Enter selecteren • Esc annuleren)"
+recommendations.button_run_command: "[ Opdracht uitvoeren ]"
+recommendations.button_insert_in_terminal: "Invoegen in terminal"
+recommendations.button_open_in_new_tab: "Openen in nieuw tabblad ↵"
+recommendations.button_open_in_new_panel: "Openen in nieuw deelvenster ↵"
+recommendations.button_open_tab: "Tabblad openen ↵"
+recommendations.button_open_panel: "Deelvenster openen ↵"
+recommendations.button_execute: "Uitvoeren ↵"
+recommendations.agent_fallback: "agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "tabblad"
+recommendations.open_kind_panel: "deelvenster"
+recommendations.open_kind_panel_direction: "deelvenster (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Nieuw %{kind} (%{title}) in %{cwd}"
+recommendations.open_new_with_title: "Nieuw %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Nieuw %{kind} in %{cwd}"
+recommendations.open_new_empty: "Nieuw leeg %{kind}"
+
+# ── Machtigingsdialoogvenster compacte modus (src/ui/permission.rs) ───────────────────────────────
+permission.compact.default_description: "Machtiging gevraagd"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N om te antwoorden · formaat wijzigen voor volledige kaart]"  # {Locked="Y/N"}
+
+# ── Agentstatus (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Niet geïnstalleerd — selecteer om automatisch te installeren"
+agent.status.not_found: "Niet gevonden"
+agent.status.detected: "Gedetecteerd"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - toolnamen en opdracht, ongewijzigd bewaren
+agent.install.running_winget: "Wordt uitgevoerd: winget install GitHub.Copilot"
+agent.install.launch_failed: "Kan winget niet starten: %{error}"
+agent.install.winget_exited: "winget is onverwacht gestopt: %{error}"
+agent.install.winget_failed_code: "winget-installatie mislukt (afsluitcode %{code})"
+agent.install.unsupported: "Automatische installatie niet ondersteund voor %{agent}"
+agent.custom.auth_hint: "Zorg dat %{name} is geïnstalleerd en in het PATH staat."  # {Locked="PATH"}
+
+# ── Agentweergave (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Laden..."
+# {Locked="Enter","Shift+enter","Esc"} - toetscombinaties, niet vertalen
+agents.footer_hint: "(↑ ↓ navigeren • Enter sessie starten in nieuw tabblad • Shift+enter sessie starten in agentdeelvenster • Esc afsluiten)"
+agents.status.active: "Actief"
+agents.status.waiting_for_input: "Wachten op invoer"
+agents.status.error: "Fout"
+agents.status.idle: "Inactief"
+
+# ── Welkomsthint voor indeling (src/ui/layout.rs) ──────────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. om het agentdeelvenster te tonen/verbergen • Ctrl+Alt+/ om de agentsessie te tonen/verbergen)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Verbindingsstatus ────────────────────────────────────────────────────────────
+connection.starting: "Agent starten..."
+connection.reconnecting: "Opnieuw verbinden..."
+
+# ── Systeemberichten (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "Geannuleerd."
+system.no_prompt_in_flight: "Geen prompt actief."
+system.authentication_failed: "Verificatie mislukt"
+system.command_copied_retry: "Opdracht gekopieerd — voer deze uit in een andere terminal en druk op Enter om opnieuw te proberen"  # {Locked="Enter"}
+
+# ── Runtime CLI-uitvoer (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Geen vensters gevonden."
+output.no_tabs: "Geen tabbladen gevonden."
+output.no_panes: "Geen deelvensters gevonden."
+output.no_windows_in_list: "Geen vensters gevonden"
+output.no_tabs_in_window: "Geen tabbladen gevonden in venster %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - kolomaanduidingen, als ASCII bewaren voor parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Actief deelvenster: %{pane} (tabblad: %{tab}, venster: %{window})"
+output.pane_running: "Wordt uitgevoerd (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Afgesloten (code: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Tabblad %{tab_id} aangemaakt (deelvenster %{pane_id})"
+output.created_pane: "Deelvenster %{pane_id} aangemaakt"
+output.pane_closed: "Deelvenster %{pane_id} gesloten."
+
+# ── Fouten (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Geen actief deelvenster gevonden. Gebruik -t om een deelvenster-ID op te geven."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID niet ingesteld. Voer uit in een Windows Terminal-deelvenster."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Onbekend shelltype '%{shell}'. Gebruik: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - opdrachtnaam, niet vertalen
+error.wtcli_wait_for_spawn: "Kan wtcli wait-for niet starten"
+error.wtcli_wait_for_parse: "Kan uitvoer van wtcli wait-for niet parseren"
+error.wtcli_wait_for_failed: "wtcli wait-for mislukt: %{stderr}"
+
+# ── Hookstatusuitvoer (src/main.rs) ───────────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool-/CLI-namen, omgevingsvariabelen, logbestandsnamen
+hooks.bundle_source: "bundelbron: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI niet in PATH"
+hooks.installed: "✓ Geïnstalleerd"
+hooks.marketplace_path_stale: "⚠ Marketplace-pad verouderd"
+hooks.installed_but_disabled: "⚠ Geïnstalleerd maar uitgeschakeld"
+hooks.not_installed: "✗ Niet geïnstalleerd"
+hooks.uninstall_skipped: "Overgeslagen (CLI niet in PATH)"
+hooks.install_attempted: "wt-agent-hooks-installatie geprobeerd (idempotent). Voer `wta hooks status` uit om het resultaat te bekijken. Traceerlogboek: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "इंटेलिजंट टर्मिनलमध्ये आपले स्वागत आहे!"
+# सेटअप स्क्रीन शीर्षके
+# {Locked="Intelligent Terminal"} - उत्पादन नाव, भाषांतर करू नका
+setup.title.first_run: "Intelligent Terminal मध्ये आपले स्वागत आहे!"
 setup.title.agent_missing: "एजंट आढळला नाही"
 setup.title.agent_error: "एजंट कनेक्शन अयशस्वी झाले"
 setup.title.switch_agent: "एजंट बदला"
+setup.title.not_available: "एजंट उपलब्ध नाही"
+setup.title.sign_in: "साइन इन आवश्यक आहे"
+
+# %{agent} रनटाइमला एजंट प्रदर्शन नावाने बदलले जाते.
+setup.subtitle.copilot_missing: "तुमचा एजंट \"%{agent}\" इंस्टॉल केलेला नाही. इंस्टॉल करण्यासाठी खालील चरणांचे अनुसरण करा. एजंट बदलण्यासाठी Settings वर जा."
+setup.subtitle.agent_missing: "तुमचा एजंट \"%{agent}\" इंस्टॉल केलेला नाही. कृपया व्यक्तिचलितपणे पुन्हा इंस्टॉल करा, नंतर पुन्हा प्रयत्न करा. एजंट बदलण्यासाठी Settings वर जा."
+setup.subtitle.copilot_auth: "तुमच्या एजंट \"%{agent}\" ला प्रमाणीकरण आवश्यक आहे. साइन इन करण्यासाठी खालील चरणांचे अनुसरण करा. एजंट बदलण्यासाठी Settings वर जा."
+setup.subtitle.agent_auth: "तुमच्या एजंट \"%{agent}\" ला प्रमाणीकरण आवश्यक आहे. कृपया एजंट CLI द्वारे साइन इन करा, नंतर पुन्हा प्रयत्न करा. एजंट बदलण्यासाठी Settings वर जा."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal मध्ये वापरण्यासाठी डीफॉल्ट एजंट CLI निवडा. तुम्ही"
+setup.description.fre_line2: "तुमचे कार्यक्षेत्र कॉन्फिगर आणि सेटअप करण्यासाठी Settings वर नेव्हिगेट करू शकता."
+
+setup.option.reinstall: "%{agent} पुन्हा इंस्टॉल करा"
+setup.option.reinstall_hint: "(आपोआप इंस्टॉल केले जाईल)"
+setup.option.signin: "%{agent} मध्ये साइन इन करा"
+setup.option.retry_detection: "शोध पुन्हा प्रयत्न करा"
+setup.option.retry_auth: "मी साइन इन केले आहे — कनेक्शन पुन्हा प्रयत्न करा"
+setup.option.retry_connection: "कनेक्शन पुन्हा प्रयत्न करा"
+setup.option.switch_to: "%{agent} वर स्विच करा"
+setup.status.installing: "इंस्टॉल होत आहे..."
+setup.status.install_failed: "इंस्टॉल अयशस्वी: "
+setup.status.installing_winget: " winget द्वारे इंस्टॉल होत आहे..."
+
+# ── प्रमाणीकरण प्रवाह (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - संक्षिप्त रूप, Microsoft स्थानिकीकरणांमध्ये सामान्य वापर
+auth.agent_selected: "एजंट %{name} निवडला आहे"
+auth.agent_selected_with_status: "एजंट %{name} — "
+auth.checking_authentication: "  %{spinner} प्रमाणीकरण तपासले जात आहे..."
+auth.waiting_for_authorization: "  %{spinner} प्राधिकरणाची प्रतीक्षा आहे..."
+auth.code_copied_hint: "  कोड क्लिपबोर्डवर कॉपी केला — तुमच्या ब्राउझरमध्ये पेस्ट करा."
+auth.sign_in_prompt: "तुमचा एजंट वापरण्यासाठी साइन इन करा:"
+auth.card_connect: "  एजंट वैशिष्ट्ये सक्षम करण्यासाठी %{name} कनेक्ट करा"
+auth.button_sign_in_github: "[ GitHub ने साइन इन करा ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name} ने साइन इन करा ]"
+auth.hint_footer: "  साइन इन करण्यासाठी Enter दाबा, मागे जाण्यासाठी Esc दाबा"  # {Locked="Enter","Esc"}
+
+# ── चॅट दृश्य (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "विचार करत आहे…"
+# {Locked="Intelligent Terminal"} - उत्पादन नाव, भाषांतर करू नका
+chat.welcome_title: "Intelligent Terminal मध्ये आपले स्वागत आहे!"
+chat.plan_header: "योजना:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── इनपुट प्लेसहोल्डर (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "काहीही विचारा, / कमांडसाठी.."  # {Locked="/"}
+input.placeholder.connecting: "कनेक्ट होत आहे..."
+input.placeholder.disconnected: "डिस्कनेक्ट"
+
+# ── कमांड पॉपअप (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - स्लॅश-कमांड उपसर्ग, ASCII असणे आवश्यक
+commands.popup_title: " / कमांड "
+commands.help_title: " मदत "
+commands.help_header: "स्लॅश कमांड — इनपुट बॉक्समध्ये / टाइप करा."
+commands.help_escape_hint: "  //text     शाब्दिक '/' पाठवा (कमांड पार्सर एस्केप करते)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        ही मदत बंद करा"  # {Locked="Esc"}
+
+# ── शिफारस पॅनेल (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - की नावे आणि Return-की ग्लिफ, भाषांतर करू नका
+recommendations.nav_hint: "(↑ ↓ नेव्हिगेट करा • Enter निवडा • Esc रद्द करा)"
+recommendations.button_run_command: "[ कमांड चालवा ]"
+recommendations.button_insert_in_terminal: "टर्मिनलमध्ये घाला"
+recommendations.button_open_in_new_tab: "नवीन टॅबमध्ये उघडा ↵"
+recommendations.button_open_in_new_panel: "नवीन पॅनेलमध्ये उघडा ↵"
+recommendations.button_open_tab: "टॅब उघडा ↵"
+recommendations.button_open_panel: "पॅनेल उघडा ↵"
+recommendations.button_execute: "कार्यान्वित करा ↵"
+recommendations.agent_fallback: "एजंट"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "टॅब"
+recommendations.open_kind_panel: "पॅनेल"
+recommendations.open_kind_panel_direction: "पॅनेल (%{direction})"
+recommendations.open_new_with_title_and_cwd: "नवीन %{kind} (%{title}) %{cwd} मध्ये"
+recommendations.open_new_with_title: "नवीन %{kind} (%{title})"
+recommendations.open_new_with_cwd: "नवीन %{kind} %{cwd} मध्ये"
+recommendations.open_new_empty: "नवीन रिक्त %{kind}"
+
+# ── अनुमती संवाद संक्षिप्त मोड (src/ui/permission.rs) ───────────────────────
+permission.compact.default_description: "अनुमती विनंती केली"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N उत्तर द्या · पूर्ण कार्ड पाहण्यासाठी आकार बदला]"  # {Locked="Y/N"}
+
+# ── एजंट स्थिती (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "इंस्टॉल केलेले नाही — आपोआप इंस्टॉल करण्यासाठी निवडा"
+agent.status.not_found: "आढळले नाही"
+agent.status.detected: "आढळले"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - टूल नावे आणि कमांड, जसेच्या तसे चालवावे
+agent.install.running_winget: "चालवत आहे: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget सुरू करण्यात अयशस्वी: %{error}"
+agent.install.winget_exited: "winget अनपेक्षितपणे बंद झाले: %{error}"
+agent.install.winget_failed_code: "winget इंस्टॉल अयशस्वी (एक्झिट कोड %{code})"
+agent.install.unsupported: "%{agent} साठी स्वयंचलित इंस्टॉल समर्थित नाही"
+agent.custom.auth_hint: "%{name} इंस्टॉल आहे आणि तुमच्या PATH वर आहे याची खात्री करा."  # {Locked="PATH"}
+
+# ── एजंट दृश्य (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "लोड होत आहे..."
+# {Locked="Enter","Shift+enter","Esc"} - की संयोजन, भाषांतर करू नका
+agents.footer_hint: "(↑ ↓ नेव्हिगेट करा • Enter नवीन टॅबमध्ये सत्र सुरू करा • Shift+enter एजंट पेनमध्ये सत्र सुरू करा • Esc बाहेर पडा)"
+agents.status.active: "सक्रिय"
+agents.status.waiting_for_input: "इनपुटची प्रतीक्षा"
+agents.status.error: "त्रुटी"
+agents.status.idle: "निष्क्रिय"
+
+# ── लेआउट स्वागत संकेत (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. एजंट पेन दाखवा/लपवा • Ctrl+Alt+/ एजंट सत्र दाखवा/लपवा)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── कनेक्शन स्थिती ────────────────────────────────────────────────────────
+connection.starting: "एजंट सुरू होत आहे..."
+connection.reconnecting: "पुन्हा कनेक्ट होत आहे..."
+
+# ── सिस्टम संदेश (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "रद्द केले."
+system.no_prompt_in_flight: "प्रगतीत कोणताही प्रॉम्प्ट नाही."
+system.authentication_failed: "प्रमाणीकरण अयशस्वी"
+system.command_copied_retry: "कमांड कॉपी केली — ती दुसऱ्या टर्मिनलमध्ये चालवा, नंतर पुन्हा प्रयत्न करण्यासाठी Enter दाबा"  # {Locked="Enter"}
+
+# ── रनटाइम CLI आउटपुट (src/main.rs) ────────────────────────────────────────
+output.no_windows: "कोणत्याही विंडो आढळल्या नाहीत."
+output.no_tabs: "कोणत्याही टॅब आढळल्या नाहीत."
+output.no_panes: "कोणतेही पेन आढळले नाहीत."
+output.no_windows_in_list: "कोणत्याही विंडो आढळल्या नाहीत"
+output.no_tabs_in_window: "विंडो %{window_id} मध्ये कोणत्याही टॅब आढळल्या नाहीत"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - कॉलम ओळखकर्ते, पार्सिंगसाठी ASCII मध्ये ठेवा
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "सक्रिय पेन: %{pane} (टॅब: %{tab}, विंडो: %{window})"
+output.pane_running: "चालू आहे (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "बंद झाले (कोड: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "टॅब %{tab_id} तयार केली (पेन %{pane_id})"
+output.created_pane: "पेन %{pane_id} तयार केला"
+output.pane_closed: "पेन %{pane_id} बंद झाला."
+
+# ── त्रुटी (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "सक्रिय पेन आढळला नाही. पेन ID निर्दिष्ट करण्यासाठी -t वापरा."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID सेट नाही. Windows Terminal पेनच्या आत चालवा."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "अज्ञात शेल प्रकार '%{shell}'. वापरा: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - कमांड नाव, भाषांतर करू नका
+error.wtcli_wait_for_spawn: "wtcli wait-for सुरू करण्यात अयशस्वी"
+error.wtcli_wait_for_parse: "wtcli wait-for आउटपुट पार्स करण्यात अयशस्वी"
+error.wtcli_wait_for_failed: "wtcli wait-for अयशस्वी: %{stderr}"
+
+# ── हुक्स स्थिती आउटपुट (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - टूल/CLI नावे, वातावरण चल, लॉग फाइल नावे
+hooks.bundle_source: "बंडल स्रोत: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI PATH वर नाही"
+hooks.installed: "✓ इंस्टॉल आहे"
+hooks.marketplace_path_stale: "⚠ मार्केटप्लेस पथ जुना आहे"
+hooks.installed_but_disabled: "⚠ इंस्टॉल आहे पण अक्षम आहे"
+hooks.not_installed: "✗ इंस्टॉल नाही"
+hooks.uninstall_skipped: "वगळले (CLI PATH वर नाही)"
+hooks.install_attempted: "wt-agent-hooks इंस्टॉल प्रयत्न केला (आइडेम्पोटंट). परिणाम तपासण्यासाठी `wta hooks status` चालवा. ट्रेस लॉग: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

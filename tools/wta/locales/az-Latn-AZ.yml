@@ -1,5 +1,160 @@
 # Setup screen titles
-setup.title.first_run: "Ağıllı Terminal tətbiqinə xoş gəlmisiniz!"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+setup.title.first_run: "Intelligent Terminal-a xoş gəlmisiniz!"
 setup.title.agent_missing: "Agent tapılmadı"
 setup.title.agent_error: "Agent bağlantısı uğursuz oldu"
 setup.title.switch_agent: "Agenti dəyiş"
+setup.title.not_available: "Agent əlçatan deyil"
+setup.title.sign_in: "Daxil olma tələb olunur"
+
+# %{agent} is replaced with the agent display name at runtime.
+setup.subtitle.copilot_missing: "Agentiniz \"%{agent}\" quraşdırılmayıb. Quraşdırmaq üçün aşağıdakı addımları izləyin. Agenti dəyişmək üçün Settings-ə keçin."
+setup.subtitle.agent_missing: "Agentiniz \"%{agent}\" quraşdırılmayıb. Lütfən əllə yenidən quraşdırın, sonra yenidən cəhd edin. Agenti dəyişmək üçün Settings-ə keçin."
+setup.subtitle.copilot_auth: "Agentiniz \"%{agent}\" kimlik doğrulaması tələb edir. Daxil olmaq üçün aşağıdakı addımları izləyin. Agenti dəyişmək üçün Settings-ə keçin."
+setup.subtitle.agent_auth: "Agentiniz \"%{agent}\" kimlik doğrulaması tələb edir. Lütfən agent CLI vasitəsilə daxil olun, sonra yenidən cəhd edin. Agenti dəyişmək üçün Settings-ə keçin."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal-da istifadə etmək istədiyiniz standart agent CLI seçin. İş sahənizi"
+setup.description.fre_line2: "konfiqurasiya etmək və qurmaq üçün Settings-ə keçə bilərsiniz."
+
+setup.option.reinstall: "%{agent} yenidən quraşdır"
+setup.option.reinstall_hint: "(Avtomatik quraşdırılacaq)"
+setup.option.signin: "%{agent} daxil ol"
+setup.option.retry_detection: "Aşkarlanmanı yenidən sına"
+setup.option.retry_auth: "Daxil oldum — bağlantını yenidən sına"
+setup.option.retry_connection: "Bağlantını yenidən sına"
+setup.option.switch_to: "%{agent} dəyiş"
+setup.status.installing: "Quraşdırılır..."
+setup.status.install_failed: "Quraşdırma uğursuz oldu: "
+setup.status.installing_winget: " winget vasitəsilə quraşdırılır..."
+
+# ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "Agent %{name} seçilib"
+auth.agent_selected_with_status: "Agent %{name} — "
+auth.checking_authentication: "  %{spinner} Kimlik doğrulaması yoxlanılır..."
+auth.waiting_for_authorization: "  %{spinner} İcazə gözlənilir..."
+auth.code_copied_hint: "  Kod buferə kopyalandı — brauzerdə yapışdırın."
+auth.sign_in_prompt: "Agentinizi istifadə etmək üçün daxil olun:"
+auth.card_connect: "  Agent xüsusiyyətlərini aktivləşdirmək üçün %{name} qoşun"
+auth.button_sign_in_github: "[ GitHub ilə daxil ol ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name} ilə daxil ol ]"
+auth.hint_footer: "  Daxil olmaq üçün Enter, geri qayıtmaq üçün Esc basın"  # {Locked="Enter","Esc"}
+
+# ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Düşünür…"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+chat.welcome_title: "Intelligent Terminal-a xoş gəlmisiniz!"
+chat.plan_header: "Plan:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Hər şeyi soruşun, / əmrlər üçün.."  # {Locked="/"}
+input.placeholder.connecting: "qoşulur..."
+input.placeholder.disconnected: "əlaqə kəsilib"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / əmrlər "
+commands.help_title: " Kömək "
+commands.help_header: "Slash əmrlər — giriş qutusuna / yazın."
+commands.help_escape_hint: "  //text     Hərfi '/' göndər (əmr analizatorunu keç)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Bu köməyi bağla"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ naviqasiya üçün • Enter seçmək üçün • Esc ləğv etmək üçün)"
+recommendations.button_run_command: "[ Əmri icra et ]"
+recommendations.button_insert_in_terminal: "Terminal-a daxil et"
+recommendations.button_open_in_new_tab: "Yeni Sekmədə Aç ↵"
+recommendations.button_open_in_new_panel: "Yeni Paneldə Aç ↵"
+recommendations.button_open_tab: "Sekməni Aç ↵"
+recommendations.button_open_panel: "Paneli Aç ↵"
+recommendations.button_execute: "İcra et ↵"
+recommendations.agent_fallback: "agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "nişan"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Yeni %{kind} (%{title}) — %{cwd}"
+recommendations.open_new_with_title: "Yeni %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Yeni %{kind} — %{cwd}"
+recommendations.open_new_empty: "Yeni boş %{kind}"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+permission.compact.default_description: "İcazə tələb olunur"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N cavab üçün · tam kart üçün ölçüsünü dəyişin]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Quraşdırılmayıb — avtomatik quraşdırmaq üçün seçin"
+agent.status.not_found: "Tapılmadı"
+agent.status.detected: "Aşkar edildi"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "İcra olunur: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget işə salına bilmədi: %{error}"
+agent.install.winget_exited: "winget gözlənilmədən çıxdı: %{error}"
+agent.install.winget_failed_code: "winget install uğursuz oldu (çıxış kodu %{code})"
+agent.install.unsupported: "%{agent} üçün avtomatik quraşdırma dəstəklənmir"
+agent.custom.auth_hint: "%{name} quraşdırıldığına və PATH-də olduğuna əmin olun."  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Yüklənir..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ naviqasiya üçün • Enter yeni sekmədə sessiya açmaq üçün • Shift+enter agent panelində sessiya açmaq üçün • Esc çıxmaq üçün)"
+agents.status.active: "Aktiv"
+agents.status.waiting_for_input: "Giriş gözlənilir"
+agents.status.error: "Xəta"
+agents.status.idle: "Boş"
+
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. agent panelini göstər/gizlə • Ctrl+Alt+/ agent sessiyasını göstər/gizlə)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Connection state ────────────────────────────────────────────────────────
+connection.starting: "Agent başladılır..."
+connection.reconnecting: "Yenidən qoşulur..."
+
+# ── System messages (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Ləğv edildi."
+system.no_prompt_in_flight: "İcra olunan sorğu yoxdur."
+system.authentication_failed: "Kimlik doğrulaması uğursuz oldu"
+system.command_copied_retry: "Əmr kopyalandı — başqa terminalda icra edin, sonra yenidən sınamaq üçün Enter basın"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Pəncərə tapılmadı."
+output.no_tabs: "Sekmə tapılmadı."
+output.no_panes: "Panel tapılmadı."
+output.no_windows_in_list: "Pəncərə tapılmadı"
+output.no_tabs_in_window: "%{window_id} pəncərəsində sekmə tapılmadı"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Aktiv panel: %{pane} (sekmə: %{tab}, pəncərə: %{window})"
+output.pane_running: "İcra olunur (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Çıxdı (kod: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Sekmə %{tab_id} yaradıldı (panel %{pane_id})"
+output.created_pane: "Panel %{pane_id} yaradıldı"
+output.pane_closed: "Panel %{pane_id} bağlandı."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Aktiv panel tapılmadı. Panel ID-ni təyin etmək üçün -t istifadə edin."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID təyin olunmayıb. Windows Terminal paneli daxilində icra edin."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Naməlum shell növü '%{shell}'. İstifadə edin: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "wtcli wait-for işə salına bilmədi"
+error.wtcli_wait_for_parse: "wtcli wait-for çıxışı təhlil edilə bilmədi"
+error.wtcli_wait_for_failed: "wtcli wait-for uğursuz oldu: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "paket mənbəyi: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI PATH-də deyil"
+hooks.installed: "✓ quraşdırılıb"
+hooks.marketplace_path_stale: "⚠ marketplace yolu köhnəlib"
+hooks.installed_but_disabled: "⚠ quraşdırılıb amma deaktiv edilib"
+hooks.not_installed: "✗ quraşdırılmayıb"
+hooks.uninstall_skipped: "keçildi (CLI PATH-də deyil)"
+hooks.install_attempted: "wt-agent-hooks quraşdırması cəhd edildi (idempotent). Nəticəni yoxlamaq üçün `wta hooks status` icra edin. İzləmə jurnalı: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

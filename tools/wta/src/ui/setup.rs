@@ -57,11 +57,11 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         || setup.reason == crate::app::SetupReason::SwitchAgent
     {
         lines.push(Line::from(Span::styled(
-            "  Choose the default agent CLI you would like to use in Intelligent Terminal. You can",
+            format!("  {}", t!("setup.description.fre_line1")),
             DIM_TEXT,
         )));
         lines.push(Line::from(Span::styled(
-            "  navigate to Settings to configure and set up your workspace.",
+            format!("  {}", t!("setup.description.fre_line2")),
             DIM_TEXT,
         )));
         lines.push(Line::from(""));
@@ -92,7 +92,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                     && agent.can_auto_install()
                     && !agent.cli_found;
                 let status = if is_installing {
-                    format!("  {} Installing...", spinner_char)
+                    format!("  {} {}", spinner_char, t!("setup.status.installing"))
                 } else {
                     format!("  ({})", agent.status_label())
                 };
@@ -100,26 +100,26 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             }
             SetupOption::Reinstall { display_name, .. } => {
                 let status = if setup.install_in_progress {
-                    format!("  {} installing...", spinner_char)
+                    format!("  {} {}", spinner_char, t!("setup.status.installing"))
                 } else {
-                    "  (Will be installed automatically)".to_string()
+                    format!("  {}", t!("setup.option.reinstall_hint"))
                 };
-                (format!("Reinstall {}", display_name), status)
+                (t!("setup.option.reinstall", agent = display_name.as_str()).into_owned(), status)
             }
             SetupOption::SignIn { display_name, .. } => {
-                (format!("Sign in to {}", display_name), String::new())
+                (t!("setup.option.signin", agent = display_name.as_str()).into_owned(), String::new())
             }
             SetupOption::SwitchAgent { agent } => (
-                format!("Switch to {}", agent.display_name),
+                t!("setup.option.switch_to", agent = agent.display_name.as_str()).into_owned(),
                 format!("  ({})", agent.status_label()),
             ),
             SetupOption::Retry => {
                 let label = match setup.reason {
-                    crate::app::SetupReason::AgentMissing => "Retry detection",
-                    crate::app::SetupReason::AgentError => "I've signed in — retry connection",
-                    _ => "Retry connection",
+                    crate::app::SetupReason::AgentMissing => t!("setup.option.retry_detection").into_owned(),
+                    crate::app::SetupReason::AgentError => t!("setup.option.retry_auth").into_owned(),
+                    _ => t!("setup.option.retry_connection").into_owned(),
                 };
-                (label.to_string(), String::new())
+                (label, String::new())
             }
         };
 
@@ -165,7 +165,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 Style::new().fg(Color::Yellow),
             ),
             Span::styled(
-                " Installing via winget...",
+                t!("setup.status.installing_winget").into_owned(),
                 Style::new().fg(Color::White),
             ),
         ]));
@@ -183,7 +183,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
             Span::styled("  ", DIM_TEXT),
-            Span::styled("Install failed: ", Style::new().fg(Color::Red)),
+            Span::styled(t!("setup.status.install_failed").into_owned(), Style::new().fg(Color::Red)),
             Span::styled(err.clone(), Style::new().fg(Color::Red)),
         ]));
         for log_line in setup

@@ -106,6 +106,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void AutoFixEnabled(bool value);
         bool HasAutoFixEnabled() const;
 
+        // GPO policy lock indicators
+        bool IsAgentPolicyLocked() const { return _GlobalSettings.IsAgentPolicyLocked(); }
+        bool IsCustomAgentPolicyLocked() const { return _GlobalSettings.IsCustomAgentPolicyLocked(); }
+        bool IsAutoFixPolicyLocked() const { return _GlobalSettings.IsAutoFixPolicyLocked(); }
+        bool IsAgentSessionHooksPolicyLocked() const { return _GlobalSettings.IsAgentSessionHooksPolicyLocked(); }
+
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> AgentPanePositionList();
         winrt::Windows::Foundation::IInspectable CurrentAgentPanePosition();
         void CurrentAgentPanePosition(const winrt::Windows::Foundation::IInspectable& value);
@@ -135,6 +141,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool ShowCopilotHooksSubtitle() const noexcept { return !_copilotHooksSubtitle.empty(); }
         bool ShowClaudeHooksSubtitle() const noexcept { return !_claudeHooksSubtitle.empty(); }
         bool ShowGeminiHooksSubtitle() const noexcept { return !_geminiHooksSubtitle.empty(); }
+        bool CanInstallAgentHooks() const noexcept
+        {
+            return IsAnyAgentCliDetected() && !IsAgentSessionHooksPolicyLocked();
+        }
         bool IsInstallingAgentHooks() const noexcept { return _installingAgentHooks; }
         winrt::hstring AgentHooksInstallSummary() const { return _agentHooksInstallSummary; }
         bool HasAgentHooksInstallSummary() const noexcept { return !_agentHooksInstallSummary.empty(); }

@@ -1,5 +1,160 @@
 # Setup screen titles
-setup.title.first_run: "Chào mừng bạn đến với Đầu cuối thông minh!"
+# {Locked="Intelligent Terminal"} - tên sản phẩm, không dịch
+setup.title.first_run: "Chào mừng bạn đến Intelligent Terminal!"
 setup.title.agent_missing: "Không tìm thấy tác nhân AI"
 setup.title.agent_error: "Kết nối tới tác nhân AI thất bại"
 setup.title.switch_agent: "Chuyển tác nhân AI"
+setup.title.not_available: "Tác nhân AI không khả dụng"
+setup.title.sign_in: "Cần đăng nhập"
+
+# %{agent} được thay thế bằng tên hiển thị của tác nhân AI khi chạy.
+setup.subtitle.copilot_missing: "Tác nhân AI \"%{agent}\" của bạn chưa được cài đặt. Thực hiện theo các bước bên dưới để cài đặt. Để chuyển tác nhân AI, hãy đi tới Settings."
+setup.subtitle.agent_missing: "Tác nhân AI \"%{agent}\" của bạn chưa được cài đặt. Vui lòng cài đặt lại thủ công, sau đó thử lại. Để chuyển tác nhân AI, hãy đi tới Settings."
+setup.subtitle.copilot_auth: "Tác nhân AI \"%{agent}\" của bạn yêu cầu xác thực. Thực hiện theo các bước bên dưới để đăng nhập. Để chuyển tác nhân AI, hãy đi tới Settings."
+setup.subtitle.agent_auth: "Tác nhân AI \"%{agent}\" của bạn yêu cầu xác thực. Vui lòng đăng nhập qua CLI của tác nhân AI, sau đó thử lại. Để chuyển tác nhân AI, hãy đi tới Settings."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Chọn CLI tác nhân AI mặc định mà bạn muốn sử dụng trong Intelligent Terminal. Bạn có thể"
+setup.description.fre_line2: "đi tới Settings để cấu hình và thiết lập không gian làm việc của bạn."
+
+setup.option.reinstall: "Cài đặt lại %{agent}"
+setup.option.reinstall_hint: "(Sẽ được cài đặt tự động)"
+setup.option.signin: "Đăng nhập vào %{agent}"
+setup.option.retry_detection: "Thử phát hiện lại"
+setup.option.retry_auth: "Tôi đã đăng nhập — thử kết nối lại"
+setup.option.retry_connection: "Thử kết nối lại"
+setup.option.switch_to: "Chuyển sang %{agent}"
+setup.status.installing: "Đang cài đặt..."
+setup.status.install_failed: "Cài đặt thất bại: "
+setup.status.installing_winget: " Đang cài đặt qua winget..."
+
+# ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "Đã chọn CLI tác nhân AI %{name}"
+auth.agent_selected_with_status: "CLI tác nhân AI %{name} — "
+auth.checking_authentication: "  %{spinner} Đang kiểm tra xác thực..."
+auth.waiting_for_authorization: "  %{spinner} Đang chờ ủy quyền..."
+auth.code_copied_hint: "  Mã đã được sao chép vào bộ nhớ tạm — hãy dán vào trình duyệt của bạn."
+auth.sign_in_prompt: "Đăng nhập để sử dụng tác nhân AI của bạn:"
+auth.card_connect: "  Kết nối %{name} để bật tính năng tác nhân AI"
+auth.button_sign_in_github: "[ Đăng nhập bằng GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Đăng nhập bằng %{name} ]"
+auth.hint_footer: "  Nhấn Enter để đăng nhập, Esc để quay lại"  # {Locked="Enter","Esc"}
+
+# ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Đang suy nghĩ…"
+# {Locked="Intelligent Terminal"} - tên sản phẩm, không dịch
+chat.welcome_title: "Chào mừng bạn đến Intelligent Terminal!"
+chat.plan_header: "Kế hoạch:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Hỏi bất cứ điều gì, / cho lệnh.."  # {Locked="/"}
+input.placeholder.connecting: "đang kết nối..."
+input.placeholder.disconnected: "đã ngắt kết nối"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / lệnh "
+commands.help_title: " Trợ giúp "
+commands.help_header: "Lệnh dấu gạch chéo — nhập / trong ô nhập liệu."
+commands.help_escape_hint: "  //text     Gửi ký tự '/' theo nghĩa đen (bỏ qua trình phân tích lệnh)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Đóng trợ giúp này"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ để di chuyển • Enter để chọn • Esc để hủy)"
+recommendations.button_run_command: "[ Chạy lệnh ]"
+recommendations.button_insert_in_terminal: "Chèn vào Terminal"
+recommendations.button_open_in_new_tab: "Mở trong Tab mới ↵"
+recommendations.button_open_in_new_panel: "Mở trong Bảng mới ↵"
+recommendations.button_open_tab: "Mở Tab ↵"
+recommendations.button_open_panel: "Mở Bảng ↵"
+recommendations.button_execute: "Thực thi ↵"
+recommendations.agent_fallback: "tác nhân"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "tab"
+recommendations.open_kind_panel: "bảng"
+recommendations.open_kind_panel_direction: "bảng (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} mới (%{title}) trong %{cwd}"
+recommendations.open_new_with_title: "%{kind} mới (%{title})"
+recommendations.open_new_with_cwd: "%{kind} mới trong %{cwd}"
+recommendations.open_new_empty: "%{kind} trống mới"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+permission.compact.default_description: "Yêu cầu quyền"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N để trả lời · thay đổi kích thước để xem đầy đủ]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Chưa cài đặt — chọn để cài đặt tự động"
+agent.status.not_found: "Không tìm thấy"
+agent.status.detected: "Đã phát hiện"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "Đang chạy: winget install GitHub.Copilot"
+agent.install.launch_failed: "Không thể khởi chạy winget: %{error}"
+agent.install.winget_exited: "winget đã thoát bất ngờ: %{error}"
+agent.install.winget_failed_code: "winget install thất bại (mã thoát %{code})"
+agent.install.unsupported: "Không hỗ trợ cài đặt tự động cho %{agent}"
+agent.custom.auth_hint: "Hãy đảm bảo %{name} đã được cài đặt và nằm trong PATH của bạn."  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Đang tải..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ để di chuyển • Enter để mở phiên trong tab mới • Shift+enter để mở phiên trong bảng tác nhân AI • Esc để thoát)"
+agents.status.active: "Đang hoạt động"
+agents.status.waiting_for_input: "Đang chờ nhập liệu"
+agents.status.error: "Lỗi"
+agents.status.idle: "Rảnh"
+
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. để hiện/ẩn bảng tác nhân AI • Ctrl+Alt+/ để hiện/ẩn phiên tác nhân AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Connection state ────────────────────────────────────────────────────────
+connection.starting: "Đang khởi động tác nhân AI..."
+connection.reconnecting: "Đang kết nối lại..."
+
+# ── System messages (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Đã hủy."
+system.no_prompt_in_flight: "Không có lệnh nào đang chạy."
+system.authentication_failed: "Xác thực thất bại"
+system.command_copied_retry: "Đã sao chép lệnh — chạy trong terminal khác, sau đó nhấn Enter để thử lại"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Không tìm thấy cửa sổ nào."
+output.no_tabs: "Không tìm thấy tab nào."
+output.no_panes: "Không tìm thấy bảng nào."
+output.no_windows_in_list: "Không tìm thấy cửa sổ nào"
+output.no_tabs_in_window: "Không tìm thấy tab nào trong cửa sổ %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Bảng đang hoạt động: %{pane} (tab: %{tab}, cửa sổ: %{window})"
+output.pane_running: "Đang chạy (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Đã thoát (mã: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Đã tạo tab %{tab_id} (bảng %{pane_id})"
+output.created_pane: "Đã tạo bảng %{pane_id}"
+output.pane_closed: "Đã đóng bảng %{pane_id}."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Không tìm thấy bảng đang hoạt động. Dùng -t để chỉ định ID bảng."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID chưa được đặt. Hãy chạy bên trong bảng Windows Terminal."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Loại shell không xác định '%{shell}'. Dùng: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "Không thể khởi chạy wtcli wait-for"
+error.wtcli_wait_for_parse: "Không thể phân tích kết quả wtcli wait-for"
+error.wtcli_wait_for_failed: "wtcli wait-for thất bại: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "nguồn gói: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI không nằm trong PATH"
+hooks.installed: "✓ đã cài đặt"
+hooks.marketplace_path_stale: "⚠ đường dẫn marketplace đã cũ"
+hooks.installed_but_disabled: "⚠ đã cài đặt nhưng bị tắt"
+hooks.not_installed: "✗ chưa cài đặt"
+hooks.uninstall_skipped: "đã bỏ qua (CLI không nằm trong PATH)"
+hooks.install_attempted: "Đã thử cài đặt wt-agent-hooks (idempotent). Chạy `wta hooks status` để kiểm tra kết quả. Nhật ký: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

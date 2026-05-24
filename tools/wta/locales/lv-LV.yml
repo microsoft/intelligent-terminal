@@ -1,5 +1,160 @@
 # Setup screen titles
-setup.title.first_run: "Laipni lūdzam lietotnē „Viedais Terminālis“!"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+setup.title.first_run: "Laipni lūdzam Intelligent Terminal!"
 setup.title.agent_missing: "Aģents nav atrasts"
 setup.title.agent_error: "Neizdevās izveidot savienojumu ar aģentu"
-setup.title.switch_agent: "Maini aģentu"
+setup.title.switch_agent: "Mainīt aģentu"
+setup.title.not_available: "Aģents nav pieejams"
+setup.title.sign_in: "Nepieciešama pierakstīšanās"
+
+# %{agent} is replaced with the agent display name at runtime.
+setup.subtitle.copilot_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Izpildiet tālāk norādītās darbības, lai to instalētu. Lai mainītu aģentu, dodieties uz Settings."
+setup.subtitle.agent_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Pārinstalējiet to manuāli un mēģiniet vēlreiz. Lai mainītu aģentu, dodieties uz Settings."
+setup.subtitle.copilot_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Izpildiet tālāk norādītās darbības, lai pierakstītos. Lai mainītu aģentu, dodieties uz Settings."
+setup.subtitle.agent_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Pierakstieties, izmantojot aģenta CLI, un mēģiniet vēlreiz. Lai mainītu aģentu, dodieties uz Settings."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Izvēlieties noklusējuma aģenta CLI, ko vēlaties izmantot Intelligent Terminal. Varat"
+setup.description.fre_line2: "doties uz Settings, lai konfigurētu un iestatītu savu darbvietu."
+
+setup.option.reinstall: "Pārinstalēt %{agent}"
+setup.option.reinstall_hint: "(Tiks instalēts automātiski)"
+setup.option.signin: "Pierakstīties %{agent}"
+setup.option.retry_detection: "Mēģināt noteikt vēlreiz"
+setup.option.retry_auth: "Esmu pierakstījies — mēģināt savienojumu vēlreiz"
+setup.option.retry_connection: "Mēģināt savienojumu vēlreiz"
+setup.option.switch_to: "Pārslēgties uz %{agent}"
+setup.status.installing: "Instalē..."
+setup.status.install_failed: "Instalēšana neizdevās: "
+setup.status.installing_winget: " Instalē, izmantojot winget..."
+
+# ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "Agent %{name} ir izvēlēts"
+auth.agent_selected_with_status: "Agent %{name} — "
+auth.checking_authentication: "  %{spinner} Pārbauda autentifikāciju..."
+auth.waiting_for_authorization: "  %{spinner} Gaida autorizāciju..."
+auth.code_copied_hint: "  Kods nokopēts starpliktuvē — ielīmējiet to pārlūkprogrammā."
+auth.sign_in_prompt: "Pierakstieties, lai izmantotu savu aģentu:"
+auth.card_connect: "  Savienojiet %{name}, lai iespējotu aģenta funkcijas"
+auth.button_sign_in_github: "[ Pierakstīties ar GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Pierakstīties ar %{name} ]"
+auth.hint_footer: "  Nospiediet Enter, lai pierakstītos, Esc, lai atgrieztos"  # {Locked="Enter","Esc"}
+
+# ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Domā..."
+# {Locked="Intelligent Terminal"} - product name, do not translate
+chat.welcome_title: "Laipni lūdzam Intelligent Terminal!"
+chat.plan_header: "Plāns:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Jautājiet jebko, / komandām.."  # {Locked="/"}
+input.placeholder.connecting: "savienojas..."
+input.placeholder.disconnected: "atvienots"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / komandas "
+commands.help_title: " Palīdzība "
+commands.help_header: "Slīpsvītras komandas — ierakstiet / ievades laukā."
+commands.help_escape_hint: "  //text     Nosūtīt burtisku '/' (apiet komandu parsētāju)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Aizvērt šo palīdzību"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ lai pārvietotos • Enter lai izvēlētos • Esc lai atceltu)"
+recommendations.button_run_command: "[ Izpildīt komandu ]"
+recommendations.button_insert_in_terminal: "Ievietot terminālī"
+recommendations.button_open_in_new_tab: "Atvērt jaunā cilnē ↵"
+recommendations.button_open_in_new_panel: "Atvērt jaunā panelī ↵"
+recommendations.button_open_tab: "Atvērt cilni ↵"
+recommendations.button_open_panel: "Atvērt paneli ↵"
+recommendations.button_execute: "Izpildīt ↵"
+recommendations.agent_fallback: "aģents"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "cilne"
+recommendations.open_kind_panel: "panelis"
+recommendations.open_kind_panel_direction: "panelis (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Jauns %{kind} (%{title}) — %{cwd}"
+recommendations.open_new_with_title: "Jauns %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Jauns %{kind} — %{cwd}"
+recommendations.open_new_empty: "Jauns tukšs %{kind}"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+permission.compact.default_description: "Pieprasīta atļauja"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N lai atbildētu · mainiet izmēru pilnai kartītei]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Nav instalēts — izvēlieties, lai instalētu automātiski"
+agent.status.not_found: "Nav atrasts"
+agent.status.detected: "Noteikts"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "Running: winget install GitHub.Copilot"
+agent.install.launch_failed: "Failed to launch winget: %{error}"
+agent.install.winget_exited: "winget exited unexpectedly: %{error}"
+agent.install.winget_failed_code: "winget install failed (exit code %{code})"
+agent.install.unsupported: "Automatic install not supported for %{agent}"
+agent.custom.auth_hint: "Pārliecinieties, ka %{name} ir instalēts un atrodas jūsu PATH."  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Ielādē..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ lai pārvietotos • Enter lai sāktu sesiju jaunā cilnē • Shift+enter lai sāktu sesiju aģenta panelī • Esc lai izietu)"
+agents.status.active: "Aktīvs"
+agents.status.waiting_for_input: "Gaida ievadi"
+agents.status.error: "Kļūda"
+agents.status.idle: "Dīkstāvē"
+
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. lai rādītu/paslēptu aģenta paneli • Ctrl+Alt+/ lai rādītu/paslēptu aģenta sesiju)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Connection state ────────────────────────────────────────────────────────
+connection.starting: "Startē aģentu..."
+connection.reconnecting: "Atkārtoti savienojas..."
+
+# ── System messages (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Atcelts."
+system.no_prompt_in_flight: "Nav aktīvu pieprasījumu."
+system.authentication_failed: "Autentifikācija neizdevās"
+system.command_copied_retry: "Komanda nokopēta — palaidiet to citā terminālī, pēc tam nospiediet Enter, lai mēģinātu vēlreiz"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Logi nav atrasti."
+output.no_tabs: "Cilnes nav atrastas."
+output.no_panes: "Paneļi nav atrasti."
+output.no_windows_in_list: "Logi nav atrasti"
+output.no_tabs_in_window: "Cilnes nav atrastas logā %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Aktīvais panelis: %{pane} (cilne: %{tab}, logs: %{window})"
+output.pane_running: "Darbojas (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Beidzies (kods: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Izveidota cilne %{tab_id} (panelis %{pane_id})"
+output.created_pane: "Izveidots panelis %{pane_id}"
+output.pane_closed: "Panelis %{pane_id} aizvērts."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Aktīvs panelis nav atrasts. Izmantojiet -t, lai norādītu paneļa ID."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID not set. Run inside a Windows Terminal pane."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Unknown shell type '%{shell}'. Use: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "Failed to spawn wtcli wait-for"
+error.wtcli_wait_for_parse: "Failed to parse wtcli wait-for output"
+error.wtcli_wait_for_failed: "wtcli wait-for failed: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "bundle source: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI not on PATH"
+hooks.installed: "✓ installed"
+hooks.marketplace_path_stale: "⚠ marketplace path stale"
+hooks.installed_but_disabled: "⚠ installed but disabled"
+hooks.not_installed: "✗ not installed"
+hooks.uninstall_skipped: "skipped (CLI not on PATH)"
+hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

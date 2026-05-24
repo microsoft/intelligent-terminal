@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::{bail, Context};
+use anyhow::{anyhow, bail, Context};
 use tokio::sync::mpsc;
 
 use crate::app::DebugMessage;
@@ -335,7 +335,6 @@ pub fn spawn_wtcli_split_then_focus_with_callback(
 }
 
 /// Channel that invokes `wtcli.exe` for protocol operations.
-/// Used for COM-backed methods; direct shell input stays on PipeChannel.
 pub struct CliChannel {
     available: AtomicBool,
     debug_tx: Option<mpsc::UnboundedSender<DebugMessage>>,
@@ -544,9 +543,52 @@ impl WtChannel for CliChannel {
                 let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
                 self.run_wtcli(&["focus-pane", "-t", &pane_id]).await
             }
-            // send_input intentionally not handled here. It now requires a
-            // PipeChannel attached via inherited handles — only the wta
-            // processes WT itself launches can satisfy it.
+            "send_input" => {
+                let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
+                // Strict validation: caller errors must surface as errors,
+                // not silently degrade to a no-op SendInput("") that wta
+                // then reports as success. The downstream COM layer treats
+                // empty text as a deliberate no-op, so a malformed request
+                // that fell through to "" here would otherwise look
+                // identical to a successful send and be very hard to
+                // diagnose.
+                let text = params
+                    .get("text")
+                    .ok_or_else(|| anyhow!("send_input: missing 'text' parameter"))?
+                    .as_str()
+                    .ok_or_else(|| anyhow!("send_input: 'text' must be a JSON string"))?;
+                // Empty text is an explicit no-op — short-circuit before
+                // spawning wtcli; the downstream COM SendInput would treat
+                // it the same way. Mirror the response shape that
+                // `wtcli send-keys --json` produces (`ok` + `session_id`)
+                // so callers see a consistent schema regardless of whether
+                // the spawn happened. `noop: true` is an extra hint.
+                if text.is_empty() {
+                    return Ok(serde_json::json!({
+                        "ok": true,
+                        "session_id": pane_id,
+                        "noop": true,
+                    }));
+                }
+                let text_owned = text.to_string();
+                // `--raw` bypasses wtcli's tmux-style token translation so a
+                // payload that literally equals "Enter" / "Tab" / "C-c" is
+                // sent verbatim instead of being rewritten to CR / TAB /
+                // Ctrl+C. wta forwards agent-supplied text — token semantics
+                // belong on the human-facing `wtcli send-keys` path, not on
+                // this routed transport.
+                let mut args = vec!["send-keys", "--raw"];
+                if !pane_id.is_empty() {
+                    args.extend(["-t", &pane_id]);
+                }
+                // `--` stops CLI11 option parsing so a text payload starting
+                // with `-`/`--` (e.g. `--release`, `--help`) is treated as
+                // positional key data instead of being interpreted as a
+                // wtcli flag.
+                args.push("--");
+                args.push(&text_owned);
+                self.run_wtcli(&args).await
+            }
             "get_capabilities" => self.run_wtcli(&["info"]).await,
             other => bail!("Unsupported method: {}", other),
         }

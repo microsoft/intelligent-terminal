@@ -17,6 +17,7 @@
 #include "../../types/inc/ColorFix.hpp"
 #include "../../types/inc/utils.hpp"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentPolicy.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "App.h"
 #include "DebugTapConnection.h"
@@ -29,8 +30,6 @@
 #include "SnippetsPaneContent.h"
 #include "TabRowControl.h"
 #include "TerminalSettingsCache.h"
-#include "TerminalProtocolPipeServer.h"
-#include "WtaProcessLauncher.h"
 
 #include "LaunchPositionRequest.g.cpp"
 #include "RenameWindowRequestedArgs.g.cpp"
@@ -52,6 +51,7 @@ using namespace winrt::Windows::UI::Text;
 using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Media;
+namespace AgentPolicy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
 using namespace ::TerminalApp;
 using namespace ::Microsoft::Console;
 using namespace ::Microsoft::Terminal::Core;
@@ -309,12 +309,15 @@ namespace winrt::TerminalApp::implementation
             _agentSettingsSnapshotInitialized = true;
         }
 
-        // Auto-suggest toggle hot-reload: when AutoFixEnabled changes
-        // between settings reloads, push the new value to WTA over the
-        // protocol. WTA's `autofix_enabled` flag would otherwise stay
-        // pinned to whatever `--no-autofix` value it was launched with.
+        // Auto-suggest toggle hot-reload: when the effective auto-fix
+        // value changes between settings reloads, push the new value
+        // to WTA over the protocol. Tracks `EffectiveAutoFixEnabled`
+        // (not the raw user pref) so GPO Forced/Blocked transitions
+        // also propagate. WTA's `autofix_enabled` flag would
+        // otherwise stay pinned to whatever `--no-autofix` value it
+        // was launched with.
         {
-            const bool currentAutoFix = _settings.GlobalSettings().AutoFixEnabled();
+            const bool currentAutoFix = _settings.GlobalSettings().EffectiveAutoFixEnabled();
             if (!_autoFixEnabledSnapshotInitialized)
             {
                 _lastAutoFixEnabled = currentAutoFix;
@@ -741,31 +744,29 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Method Description:
-    // - Auto-detects an installed agent CLI by searching the system PATH.
-    //   Checks for known CLIs in priority order: copilot, claude.
+    // - Auto-detects an installed agent CLI by iterating the GPO-filtered
+    //   built-in agent list and searching the system PATH for each.
     // Arguments:
     // - <none>
     // Return Value:
-    // - The name of the first found CLI, or empty string if none found.
+    // - The bare agent id (e.g. "copilot", "claude") of the first found
+    //   CLI, or empty string if none found.  Callers must pass the result
+    //   through _BuildAgentCommandLine to get a launchable command.
     winrt::hstring TerminalPage::_DetectAgentCli() const
     {
         wchar_t buffer[MAX_PATH];
 
-        // Prefer GitHub Copilot CLI in ACP mode (JSON-RPC over stdio).
-        // The --acp flag starts the agent as an ACP server; stdio is the
-        // default transport.
-        if (SearchPathW(nullptr, L"copilot", L".exe", MAX_PATH, buffer, nullptr) > 0)
+        // Walk the policy-filtered agent list so we never auto-detect an
+        // agent that is blocked by GPO.  FilteredAcpAgents() returns only
+        // agents whose id passes AgentPolicy::IsAgentAllowed(); when no
+        // AllowedAgents policy is configured it returns all built-in agents.
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        for (const auto& agent : Reg::FilteredAcpAgents())
         {
-            return winrt::hstring{ L"copilot --acp --stdio" };
-        }
-
-        // Fall back to other known agent CLIs
-        static constexpr std::wstring_view fallbackClis[] = { L"claude" };
-        for (const auto& cli : fallbackClis)
-        {
-            if (SearchPathW(nullptr, cli.data(), L".exe", MAX_PATH, buffer, nullptr) > 0)
+            if (SearchPathW(nullptr, agent.id.data(), L".exe", MAX_PATH, buffer, nullptr) > 0 ||
+                SearchPathW(nullptr, agent.id.data(), L".cmd", MAX_PATH, buffer, nullptr) > 0)
             {
-                return winrt::hstring{ cli };
+                return winrt::hstring{ agent.id };
             }
         }
         return winrt::hstring{};
@@ -980,38 +981,23 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Resolve the effective ACP agent commandline from structured settings.
-    // Build: "<agent> <acp_flags> [--model <model>]".
-    // The Rust agent_registry knows the ACP flags for each known agent, but the
-    // C++ side doesn't import Rust code — so we duplicate just the flag knowledge
-    // for the two ACP-capable agents.  WTA's registry is still the authority at
-    // runtime; this is only used to build the --agent value.
     // Check if this is a custom agent ID (starts with "custom:").
     static bool _IsCustomAgentId(const winrt::hstring& id)
     {
         return winrt::to_string(id).starts_with("custom:");
     }
 
-    static winrt::hstring _ResolveEffectiveAgentCliPath(
-        const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals,
-        const std::function<winrt::hstring()>& detectFallback)
+    // Build a launchable command line from a bare agent id (e.g. "copilot"
+    // → "copilot --acp --stdio").  This is the single source of truth for
+    // id-to-commandline mapping; both the settings path and the auto-detect
+    // fallback route through here.
+    static winrt::hstring _BuildAgentCommandLine(
+        const winrt::hstring& agentId,
+        const winrt::hstring& model)
     {
-        const auto acpAgent = globals.AcpAgent();
-
-        // Custom agents: use the stored custom command directly.
-        if (_IsCustomAgentId(acpAgent))
-        {
-            const auto customCmd = globals.AcpCustomCommand();
-            if (!customCmd.empty()) return customCmd;
-        }
-
-        // Built-in agents: append known ACP flags + model.
-        const auto lower = winrt::to_string(acpAgent);
+        const auto lower = winrt::to_string(agentId);
 
         // Adapter-style launches: claude/codex CLIs don't speak ACP themselves.
-        // We invoke the npm adapter via npx; the npm-installed claude/codex
-        // shim implies node/npx are present. Model is sent via ACP
-        // setSessionModel after handshake, not on the command line.
         if (lower == "claude")
         {
             return winrt::hstring{ L"npx -y @zed-industries/claude-code-acp" };
@@ -1021,7 +1007,7 @@ namespace winrt::TerminalApp::implementation
             return winrt::hstring{ L"npx -y @zed-industries/codex-acp" };
         }
 
-        std::wstring cmd{ acpAgent };
+        std::wstring cmd{ agentId };
         if (lower == "copilot")
         {
             cmd += L" --acp --stdio";
@@ -1033,28 +1019,61 @@ namespace winrt::TerminalApp::implementation
 
         if (lower == "copilot" || lower == "gemini")
         {
-            const auto acpModel = globals.AcpModel();
-            if (!acpModel.empty())
+            if (!model.empty())
             {
                 cmd += L" --model ";
-                cmd += std::wstring_view{ acpModel };
+                cmd += std::wstring_view{ model };
             }
             return winrt::hstring{ cmd };
         }
 
-        // Unknown agent — try auto-detection as last resort.
-        if (detectFallback)
+        // Unknown agent — return the bare id as-is.
+        return agentId;
+    }
+
+    static winrt::hstring _ResolveEffectiveAgentCliPath(
+        const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals,
+        const std::function<winrt::hstring()>& detectFallback)
+    {
+        // Use the policy-aware getter — returns empty if the selected agent
+        // is blocked by GPO, ensuring we never launch a disallowed agent.
+        const auto acpAgent = globals.EffectiveAcpAgent();
+        if (acpAgent.empty())
         {
-            return detectFallback();
+            // The user's selection is blocked or absent. Try auto-detection
+            // which will itself only pick a policy-allowed agent.
+            if (detectFallback)
+            {
+                const auto detected = detectFallback();
+                if (!detected.empty())
+                {
+                    return _BuildAgentCommandLine(detected, globals.AcpModel());
+                }
+            }
+            return winrt::hstring{};
         }
-        return acpAgent;
+
+        // Custom agents: use the stored custom command directly.
+        if (_IsCustomAgentId(acpAgent))
+        {
+            const auto customCmd = globals.AcpCustomCommand();
+            if (!customCmd.empty()) return customCmd;
+        }
+
+        return _BuildAgentCommandLine(acpAgent, globals.AcpModel());
     }
 
     // Resolve the effective delegate agent name from structured settings.
     static winrt::hstring _ResolveEffectiveDelegateAgent(
         const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals)
     {
-        const auto delegateAgent = globals.DelegateAgent();
+        // Use the policy-aware getter — returns empty if the selected agent
+        // is blocked by GPO.
+        const auto delegateAgent = globals.EffectiveDelegateAgent();
+        if (delegateAgent.empty())
+        {
+            return winrt::hstring{};
+        }
         // For custom agents, pass the full command so WTA can launch it.
         if (_IsCustomAgentId(delegateAgent))
         {
@@ -1062,125 +1081,6 @@ namespace winrt::TerminalApp::implementation
             if (!customCmd.empty()) return customCmd;
         }
         return delegateAgent;
-    }
-
-    // Holds the spawned wta process and its protocol pipe server. Owned by
-    // TerminalPage in `_agentPipeServers`; entries self-remove when the IO
-    // thread exits (peer EOF or wta crash), via the SetOnShutdown callback.
-    struct AgentDelegationEntry
-    {
-        wil::unique_process_information processInfo;
-        std::shared_ptr<TerminalProtocol::PipeServer> pipeServer;
-    };
-
-    void TerminalPage::_RemoveAgentPipeServer(AgentDelegationEntry* entry)
-    {
-        std::lock_guard lock{ _agentPipeServersMutex };
-        std::erase_if(_agentPipeServers,
-                      [entry](const auto& e) { return e.get() == entry; });
-    }
-
-    // Move the pending wta-side pipe handles into the connection's valueSet
-    // as decimal HANDLE values. Ownership transfers to ConptyConnection,
-    // which closes them after CreateProcessW. Called from
-    // _CreateConnectionFromSettings just before connection.Initialize.
-    void TerminalPage::_ConsumePendingProtocolPipeIntoValueSet(
-        Windows::Foundation::Collections::ValueSet& valueSet)
-    {
-        if (!_pendingProtocolPipeHandles.has_value())
-        {
-            return;
-        }
-        auto pending = std::move(*_pendingProtocolPipeHandles);
-        _pendingProtocolPipeHandles.reset();
-
-        // release() detaches the HANDLE without closing it — ownership passes
-        // through the valueSet (and eventually to ConptyConnection).
-        const auto rValue = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pending.wtaRead.release()));
-        const auto wValue = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pending.wtaWrite.release()));
-        valueSet.Insert(L"protocolPipeReadHandle",
-                        Windows::Foundation::PropertyValue::CreateUInt64(rValue));
-        valueSet.Insert(L"protocolPipeWriteHandle",
-                        Windows::Foundation::PropertyValue::CreateUInt64(wValue));
-    }
-
-    bool TerminalPage::_PrepareAgentPanePipe(wil::unique_handle& wtRead,
-                                              wil::unique_handle& wtWrite)
-    {
-        try
-        {
-            auto pipes = WtaProcessLauncher::CreateInheritablePipePair();
-            wtRead = std::move(pipes.wtRead);
-            wtWrite = std::move(pipes.wtWrite);
-            _pendingProtocolPipeHandles = PendingProtocolPipe{
-                std::move(pipes.wtaRead),
-                std::move(pipes.wtaWrite),
-            };
-            return true;
-        }
-        catch (...)
-        {
-            _agentPaneLog("CreateInheritablePipePair failed; agent pane will use legacy CliChannel");
-            return false;
-        }
-    }
-
-    void TerminalPage::_AttachAgentPanePipeServer(wil::unique_handle wtRead,
-                                                   wil::unique_handle wtWrite)
-    {
-        try
-        {
-            auto entry = std::make_shared<AgentDelegationEntry>();
-            const auto weakThis = get_weak();
-
-            entry->pipeServer = std::make_shared<TerminalProtocol::PipeServer>(
-                std::move(wtRead),
-                std::move(wtWrite),
-                [weakThis](winrt::guid sessionId, std::wstring_view text) -> bool {
-                    auto strong = weakThis.get();
-                    if (!strong)
-                    {
-                        return false;
-                    }
-                    try
-                    {
-                        return strong->SendProtocolInput(sessionId, winrt::hstring{ text }).get();
-                    }
-                    catch (...)
-                    {
-                        return false;
-                    }
-                });
-
-            {
-                std::lock_guard lock{ _agentPipeServersMutex };
-                _agentPipeServers.push_back(entry);
-            }
-
-            AgentDelegationEntry* const entryPtr = entry.get();
-            entry->pipeServer->SetOnShutdown([weakThis, entryPtr]() {
-                auto strong = weakThis.get();
-                if (!strong)
-                {
-                    return;
-                }
-                strong->Dispatcher().RunAsync(
-                    winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-                    [weakThis, entryPtr]() {
-                        if (auto p = weakThis.get())
-                        {
-                            p->_RemoveAgentPipeServer(entryPtr);
-                        }
-                    });
-            });
-
-            entry->pipeServer->Start();
-            _agentPaneLog("agent pane pipe attached");
-        }
-        catch (...)
-        {
-            _agentPaneLog("failed to attach agent pane pipe server");
-        }
     }
 
     void TerminalPage::_DelegatePromptToAgent(const winrt::hstring& prompt)
@@ -1198,6 +1098,24 @@ namespace winrt::TerminalApp::implementation
         // Resolve agent CLI from structured settings (acpAgent/acpModel).
         const auto& globals = _settings.GlobalSettings();
         const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
+
+        // If no agent resolved and an AllowedAgents policy is active, bail out.
+        // This covers both "policy blocks ALL agents" and "policy allows some
+        // agents but none are installed" — in either case we must not launch
+        // WTA without --agent, because WTA's own fallback detection would
+        // bypass GPO and pick an unauthorized agent (e.g. copilot).
+        if (agentCliPath.empty() && AgentPolicy::IsAllowedAgentsPolicyConfigured())
+        {
+            _agentPaneLog("ABORT: delegation blocked by GPO — no agents allowed");
+            if (auto tip{ FindName(L"WindowIdToast").try_as<MUX::Controls::TeachingTip>() })
+            {
+                _UpdateTeachingTipTheme(tip.try_as<winrt::Windows::UI::Xaml::FrameworkElement>());
+                tip.Title(RS_(L"AgentBlockedByPolicyTitle"));
+                tip.Subtitle(RS_(L"AgentBlockedByPolicySubtitle"));
+                tip.IsOpen(true);
+            }
+            return;
+        }
 
         // Helper: escape and quote an argument for the command line.
         auto quoteArg = [](std::wstring_view arg) -> std::wstring {
@@ -1228,7 +1146,10 @@ namespace winrt::TerminalApp::implementation
             cmdline += L" --delegate-model " + quoteArg(std::wstring_view{ delegateModel });
         }
 
-
+        if (const auto lang = globals.Language(); !lang.empty())
+        {
+            cmdline += L" --language " + quoteArg(std::wstring_view{ lang });
+        }
 
         // Pass CWD from the active pane.
         winrt::hstring activeCwd;
@@ -1259,83 +1180,35 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("launching: " + winrt::to_string(winrt::hstring{ cmdline }));
 
-        // Launch via WtaProcessLauncher: creates a duplex anonymous pipe pair,
-        // inherits the wta-side handles into the child via STARTUPINFOEX
-        // PROC_THREAD_ATTRIBUTE_HANDLE_LIST, and exposes them as
-        // WT_PROTOCOL_PIPE_R / WT_PROTOCOL_PIPE_W env vars. The wt-side
-        // handles drive a per-wta TerminalProtocol::PipeServer.
-        try
+        // Launch as a hidden background process.
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+
+        wil::unique_process_information pi;
+        auto mutableCmdline = cmdline;
+        if (!CreateProcessW(
+                wtaPath.c_str(),
+                mutableCmdline.data(),
+                nullptr,
+                nullptr,
+                FALSE,
+                CREATE_NO_WINDOW,
+                nullptr,
+                nullptr,
+                &si,
+                &pi))
         {
-            WtaProcessLauncher::LaunchOptions opts;
-            opts.exePath = wtaPath;
-            opts.commandLine = cmdline;
-            opts.hidden = true;
-
-            auto launchResult = WtaProcessLauncher::LaunchWta(opts);
-
-            auto entry = std::make_shared<AgentDelegationEntry>();
-            entry->processInfo = std::move(launchResult.processInfo);
-
-            const auto weakThis = get_weak();
-
-            entry->pipeServer = std::make_shared<TerminalProtocol::PipeServer>(
-                std::move(launchResult.wtRead),
-                std::move(launchResult.wtWrite),
-                [weakThis](winrt::guid sessionId, std::wstring_view text) -> bool {
-                    auto strong = weakThis.get();
-                    if (!strong)
-                    {
-                        return false;
-                    }
-                    try
-                    {
-                        return strong->SendProtocolInput(sessionId, winrt::hstring{ text }).get();
-                    }
-                    catch (...)
-                    {
-                        return false;
-                    }
-                });
-
-            {
-                std::lock_guard lock{ _agentPipeServersMutex };
-                _agentPipeServers.push_back(entry);
-            }
-
-            // Self-remove on IO-thread exit. Marshal to the UI thread so the
-            // IO thread does not destruct itself (which would deadlock on
-            // PipeServer::Stop()'s self-join).
-            AgentDelegationEntry* const entryPtr = entry.get();
-            entry->pipeServer->SetOnShutdown([weakThis, entryPtr]() {
-                auto strong = weakThis.get();
-                if (!strong)
-                {
-                    return;
-                }
-                strong->Dispatcher().RunAsync(
-                    winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-                    [weakThis, entryPtr]() {
-                        if (auto p = weakThis.get())
-                        {
-                            p->_RemoveAgentPipeServer(entryPtr);
-                        }
-                    });
-            });
-
-            entry->pipeServer->Start();
-            _agentPaneLog("delegate process launched OK (pipe attached)");
-        }
-        catch (const wil::ResultException& ex)
-        {
-            _agentPaneLog(std::string{ "FAILED to launch delegate process: hr=" } +
-                          std::to_string(ex.GetErrorCode()));
+            const auto err = GetLastError();
+            _agentPaneLog("FAILED to launch delegate process: GetLastError=" +
+                          std::to_string(err) +
+                          " cmdline=" + winrt::to_string(winrt::hstring{ cmdline }));
             return;
         }
-        catch (...)
-        {
-            _agentPaneLog("FAILED to launch delegate process: unknown error");
-            return;
-        }
+
+        // pi destructor closes hProcess + hThread on scope exit.
+        _agentPaneLog("delegate process launched OK");
     }
 
     // --- Hot-reload of agent/model settings -------------------------------
@@ -1971,6 +1844,11 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
+        if (agentCliPath.empty() && AgentPolicy::IsAllowedAgentsPolicyConfigured())
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPane: ABORT — all agents blocked by GPO policy");
+            return;
+        }
         if (!agentCliPath.empty())
         {
             std::wstring s{ agentCliPath };
@@ -1982,7 +1860,9 @@ namespace winrt::TerminalApp::implementation
         // See `_OpenOrReuseAgentPane` for the rationale: wta needs the
         // canonical `acpAgent` setting value (not the expanded command
         // line) to drive the session-management view's CLI filter.
-        if (const auto acpAgent = globals.AcpAgent(); !acpAgent.empty())
+        // Use EffectiveAcpAgent so the id matches the actual agent launched
+        // (a fallback agent when the configured one is policy-blocked).
+        if (const auto acpAgent = globals.EffectiveAcpAgent(); !acpAgent.empty())
         {
             std::wstring s{ acpAgent };
             for (size_t pos = 0; (pos = s.find(L'"', pos)) != std::wstring::npos; pos += 2)
@@ -2022,9 +1902,16 @@ namespace winrt::TerminalApp::implementation
             cmdline += fmt::format(FMT_COMPILE(L" --acp-model \"{}\""), s);
         }
 
-        if (!globals.AutoFixEnabled())
+        if (!globals.EffectiveAutoFixEnabled())
         {
             cmdline += L" --no-autofix";
+        }
+        if (const auto lang = globals.Language(); !lang.empty())
+        {
+            std::wstring langStr{ lang };
+            for (size_t pos = 0; (pos = langStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
+                langStr.replace(pos, 1, L"\"\"");
+            cmdline += fmt::format(FMT_COMPILE(L" --language \"{}\""), langStr);
         }
 
         _agentPaneLog("_AutoCreateHiddenAgentPane: cmdline=" + winrt::to_string(winrt::hstring{ cmdline }));
@@ -2051,29 +1938,11 @@ namespace winrt::TerminalApp::implementation
             args.StartingDirectory(startingDirectory);
         }
 
-        // Stage secure-pipe handles for this agent-pane wta. Same flow as
-        // _OpenOrReuseAgentPane: wt-side stays here for the PipeServer,
-        // wta-side flows into _CreateConnectionFromSettings → ConptyConnection.
-        wil::unique_handle autoPaneWtRead;
-        wil::unique_handle autoPaneWtWrite;
-        const bool autoPanePipePrepared = _PrepareAgentPanePipe(autoPaneWtRead, autoPaneWtWrite);
-
         auto rawPane = _MakeTerminalPane(args, nullptr, nullptr);
         if (!rawPane)
         {
             _agentPaneLog("_AutoCreateHiddenAgentPane: _MakeTerminalPane returned null");
-            _pendingProtocolPipeHandles.reset();
             return;
-        }
-
-        if (autoPanePipePrepared && !_pendingProtocolPipeHandles.has_value() &&
-            autoPaneWtRead && autoPaneWtWrite)
-        {
-            _AttachAgentPanePipeServer(std::move(autoPaneWtRead), std::move(autoPaneWtWrite));
-        }
-        else
-        {
-            _pendingProtocolPipeHandles.reset();
         }
 
         auto newPane = _WrapInAgentPaneContent(rawPane);
@@ -2379,7 +2248,24 @@ namespace winrt::TerminalApp::implementation
             cmdline = std::wstring{ wtaPath };
 
             const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
-            if (!agentCliPath.empty())
+            if (agentCliPath.empty())
+            {
+                // No agent resolved and an AllowedAgents policy is active — bail.
+                // See the delegation abort comment for full rationale.
+                if (AgentPolicy::IsAllowedAgentsPolicyConfigured())
+                {
+                    _agentPaneLog("EARLY RETURN: all agents blocked by GPO policy");
+                    if (auto tip{ FindName(L"WindowIdToast").try_as<MUX::Controls::TeachingTip>() })
+                    {
+                        _UpdateTeachingTipTheme(tip.try_as<winrt::Windows::UI::Xaml::FrameworkElement>());
+                        tip.Title(RS_(L"AgentBlockedByPolicyTitle"));
+                        tip.Subtitle(RS_(L"AgentBlockedByPolicySubtitle"));
+                        tip.IsOpen(true);
+                    }
+                    return;
+                }
+            }
+            else
             {
                 std::wstring agentStr{ agentCliPath };
                 for (size_t pos = 0; (pos = agentStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
@@ -2394,7 +2280,8 @@ namespace winrt::TerminalApp::implementation
             // `--agent` command line is fragile (adapter launches expand
             // to "npx -y …" and lose the agent's name). Passing it through
             // here keeps a single source of truth.
-            if (const auto acpAgent = globals.AcpAgent(); !acpAgent.empty())
+            // Use EffectiveAcpAgent so the id matches the actual agent launched.
+            if (const auto acpAgent = globals.EffectiveAcpAgent(); !acpAgent.empty())
             {
                 std::wstring idStr{ acpAgent };
                 for (size_t pos = 0; (pos = idStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
@@ -2420,9 +2307,20 @@ namespace winrt::TerminalApp::implementation
                 cmdline += fmt::format(FMT_COMPILE(L" --delegate-model \"{}\""), modelStr);
             }
 
-            if (!globals.AutoFixEnabled())
+            if (!globals.EffectiveAutoFixEnabled())
             {
                 cmdline += L" --no-autofix";
+            }
+
+            // Pass the user's Language override so the agent pane displays
+            // the same language as the Terminal chrome (aligns with the
+            // PrimaryLanguageOverride set by AppLogic).
+            if (const auto lang = globals.Language(); !lang.empty())
+            {
+                std::wstring langStr{ lang };
+                for (size_t pos = 0; (pos = langStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
+                    langStr.replace(pos, 1, L"\"\"");
+                cmdline += fmt::format(FMT_COMPILE(L" --language \"{}\""), langStr);
             }
 
             if (intoSessionsView)
@@ -2440,6 +2338,7 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("EARLY RETURN: cmdline is empty — no AI assistant configured");
             if (auto tip{ FindName(L"WindowIdToast").try_as<MUX::Controls::TeachingTip>() })
             {
+                _UpdateTeachingTipTheme(tip.try_as<winrt::Windows::UI::Xaml::FrameworkElement>());
                 tip.Title(RS_(L"AgentNotConfiguredTitle"));
                 tip.Subtitle(RS_(L"AgentNotConfiguredSubtitle"));
                 tip.IsOpen(true);
@@ -2602,31 +2501,10 @@ namespace winrt::TerminalApp::implementation
             newTerminalArgs.StartingDirectory(startingDirectory);
         }
 
-        // Stage the secure-pipe pair for this agent-pane wta. wt-side handles
-        // stay here for PipeServer registration; wta-side handles flow into
-        // _CreateConnectionFromSettings via _pendingProtocolPipeHandles.
-        wil::unique_handle pendingWtRead;
-        wil::unique_handle pendingWtWrite;
-        const bool pipePrepared = _PrepareAgentPanePipe(pendingWtRead, pendingWtWrite);
-
         auto rawPane = _MakeTerminalPane(newTerminalArgs, nullptr, nullptr);
         if (!rawPane)
         {
-            _pendingProtocolPipeHandles.reset();
             return;
-        }
-
-        // If the pipe pair was prepared and consumed by _CreateConnectionFromSettings
-        // (i.e. _pendingProtocolPipeHandles is now empty), wire up the PipeServer.
-        if (pipePrepared && !_pendingProtocolPipeHandles.has_value() && pendingWtRead && pendingWtWrite)
-        {
-            _AttachAgentPanePipeServer(std::move(pendingWtRead), std::move(pendingWtWrite));
-        }
-        else
-        {
-            // _CreateConnectionFromSettings was bypassed (e.g. existing connection
-            // path); drop pending handles to avoid dangling.
-            _pendingProtocolPipeHandles.reset();
         }
 
         // Wrap in AgentPaneContent so the 36px XAML agent bar renders above
@@ -3825,8 +3703,6 @@ namespace winrt::TerminalApp::implementation
         {
             valueSet.Insert(L"sessionId", Windows::Foundation::PropertyValue::CreateGuid(id));
         }
-
-        _ConsumePendingProtocolPipeIntoValueSet(valueSet);
 
         connection.Initialize(valueSet);
 
@@ -5145,20 +5021,34 @@ namespace winrt::TerminalApp::implementation
                             if (!page || !term2)
                                 return;
 
-                            // Early filter: WTA only acts on osc:133;* and
-                            // AgentEvent payloads. Every other VT sequence
-                            // (cursor moves, OSC 0/1 titles, color resets,
-                            // …) gets classified as Informational and
-                            // dropped on the other side, so skip the
-                            // pane/tab lookup, JSON encode, and IPC for
-                            // those entirely. This matters because
-                            // VtSequenceReceived can fire hundreds of times
-                            // a second on a busy terminal.
+                            // GPO-blocked gate: when administrator policy
+                            // explicitly disables auto-fix, the feature
+                            // is off across the board — no Pending, no
+                            // Detected pill, no background analysis.
+                            // `IsAutoFixPolicyLocked()` returns true only
+                            // for the Blocked policy state; Forced-on
+                            // and user-toggleable states fall through.
+                            if (page->_settings.GlobalSettings().IsAutoFixPolicyLocked())
+                                return;
+
+                            // Early filter: WTA only acts on osc:133;*
+                            // and AgentEvent payloads. Every other VT
+                            // sequence (cursor moves, OSC 0/1 titles,
+                            // color resets, …) gets classified as
+                            // Informational and dropped on the other
+                            // side, so skip the pane/tab lookup, JSON
+                            // encode, and IPC for those entirely. This
+                            // matters because VtSequenceReceived can
+                            // fire hundreds of times a second on a
+                            // busy terminal.
                             //
-                            // (The `autoFixEnabled` setting only controls
-                            // whether WTA *automatically* invokes the LLM;
-                            // the Detected pill needs these events too,
-                            // which is why there's no enable-gate here.)
+                            // (The `autoFixEnabled` user setting only
+                            // controls whether WTA *automatically*
+                            // invokes the LLM; the Detected pill needs
+                            // these events too. Toggle changes
+                            // hot-reload into WTA via
+                            // `autofix_enabled_changed`, so no
+                            // user-pref gate is needed here.)
                             auto seqStr = winrt::to_string(seq);
                             static constexpr std::string_view agentPrefix = "AgentEvent;";
                             static constexpr std::string_view osc133Prefix = "osc:133;";

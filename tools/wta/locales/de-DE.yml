@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "Willkommen beim Intelligenten Terminal!"
+# Setup-Bildschirmtitel
+# {Locked="Intelligent Terminal"} - Produktname, nicht übersetzen
+setup.title.first_run: "Willkommen bei Intelligent Terminal!"
 setup.title.agent_missing: "Agent nicht gefunden"
 setup.title.agent_error: "Verbindung zum Agenten fehlgeschlagen"
 setup.title.switch_agent: "Agent wechseln"
+setup.title.not_available: "Agent nicht verfügbar"
+setup.title.sign_in: "Anmeldung erforderlich"
+
+# %{agent} wird zur Laufzeit durch den Anzeigenamen des Agenten ersetzt.
+setup.subtitle.copilot_missing: "Ihr Agent \"%{agent}\" ist nicht installiert. Führen Sie die folgenden Schritte aus, um ihn zu installieren. Um den Agenten zu wechseln, gehen Sie zu den Einstellungen."
+setup.subtitle.agent_missing: "Ihr Agent \"%{agent}\" ist nicht installiert. Bitte installieren Sie ihn manuell neu und versuchen Sie es erneut. Um den Agenten zu wechseln, gehen Sie zu den Einstellungen."
+setup.subtitle.copilot_auth: "Ihr Agent \"%{agent}\" erfordert eine Authentifizierung. Führen Sie die folgenden Schritte aus, um sich anzumelden. Um den Agenten zu wechseln, gehen Sie zu den Einstellungen."
+setup.subtitle.agent_auth: "Ihr Agent \"%{agent}\" erfordert eine Authentifizierung. Bitte melden Sie sich über die Agent-CLI an und versuchen Sie es erneut. Um den Agenten zu wechseln, gehen Sie zu den Einstellungen."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Wählen Sie die Standard-Agent-CLI aus, die Sie in Intelligent Terminal verwenden möchten. Sie können"
+setup.description.fre_line2: "zu den Einstellungen navigieren, um Ihren Arbeitsbereich zu konfigurieren und einzurichten."
+
+setup.option.reinstall: "%{agent} neu installieren"
+setup.option.reinstall_hint: "(Wird automatisch installiert)"
+setup.option.signin: "Bei %{agent} anmelden"
+setup.option.retry_detection: "Erkennung wiederholen"
+setup.option.retry_auth: "Ich habe mich angemeldet — Verbindung erneut versuchen"
+setup.option.retry_connection: "Verbindung erneut versuchen"
+setup.option.switch_to: "Wechseln zu %{agent}"
+setup.status.installing: "Installation läuft..."
+setup.status.install_failed: "Installation fehlgeschlagen: "
+setup.status.installing_winget: " Installation über winget..."
+
+# ── Authentifizierungsablauf (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - Abkürzung, nicht übersetzen
+auth.agent_selected: "Agent-%{name} ist ausgewählt"
+auth.agent_selected_with_status: "Agent-%{name} — "
+auth.checking_authentication: "  %{spinner} Authentifizierung wird überprüft..."
+auth.waiting_for_authorization: "  %{spinner} Warten auf Autorisierung..."
+auth.code_copied_hint: "  Code in die Zwischenablage kopiert — fügen Sie ihn in Ihren Browser ein."
+auth.sign_in_prompt: "Melden Sie sich an, um Ihren Agenten zu verwenden:"
+auth.card_connect: "  %{name} verbinden, um Agentfunktionen zu aktivieren"
+auth.button_sign_in_github: "[ Mit GitHub anmelden ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Mit %{name} anmelden ]"
+auth.hint_footer: "  Drücken Sie Enter zum Anmelden, Esc zum Zurückkehren"  # {Locked="Enter","Esc"}
+
+# ── Chatansicht (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Denke nach…"
+# {Locked="Intelligent Terminal"} - Produktname, nicht übersetzen
+chat.welcome_title: "Willkommen bei Intelligent Terminal!"
+chat.plan_header: "Plan:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Eingabeplatzhalter (src/ui/input.rs) ────────────────────────────────────────────
+input.placeholder.connected: "Frag etwas, / für Befehle.."  # {Locked="/"}
+input.placeholder.connecting: "Verbindung wird hergestellt..."
+input.placeholder.disconnected: "Getrennt"
+
+# ── Befehlspopup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - Schrägstrich-Befehlspräfix, muss ASCII bleiben
+commands.popup_title: " / Befehle "
+commands.help_title: " Hilfe "
+commands.help_header: "Schrägstrichbefehle — geben Sie / im Eingabefeld ein."
+commands.help_escape_hint: "  //text     Literales '/' senden (Befehlsparser umgehen)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Diese Hilfe schließen"  # {Locked="Esc"}
+
+# ── Empfehlungsbereich (src/ui/recommendations.rs) ───────────────────────────────────
+# {Locked="Enter","Esc","↵"} - Tastennamen und Eingabetaste-Symbol, nicht übersetzen
+recommendations.nav_hint: "(↑ ↓ navigieren • Enter auswählen • Esc abbrechen)"
+recommendations.button_run_command: "[ Befehl ausführen ]"
+recommendations.button_insert_in_terminal: "In Terminal einfügen"
+recommendations.button_open_in_new_tab: "In neuer Registerkarte öffnen ↵"
+recommendations.button_open_in_new_panel: "In neuem Bereich öffnen ↵"
+recommendations.button_open_tab: "Registerkarte öffnen ↵"
+recommendations.button_open_panel: "Bereich öffnen ↵"
+recommendations.button_execute: "Ausführen ↵"
+recommendations.agent_fallback: "Agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "Registerkarte"
+recommendations.open_kind_panel: "Bereich"
+recommendations.open_kind_panel_direction: "Bereich (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Neue(r) %{kind} (%{title}) in %{cwd}"
+recommendations.open_new_with_title: "Neue(r) %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Neue(r) %{kind} in %{cwd}"
+recommendations.open_new_empty: "Neue(r) leere(r) %{kind}"
+
+# ── Berechtigungsdialog Kompaktmodus (src/ui/permission.rs) ───────────────────────────────
+permission.compact.default_description: "Berechtigung angefordert"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N zum Antworten · Größe ändern für vollständige Karte]"  # {Locked="Y/N"}
+
+# ── Agentstatus (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Nicht installiert — auswählen, um automatisch zu installieren"
+agent.status.not_found: "Nicht gefunden"
+agent.status.detected: "Erkannt"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - Toolnamen und Befehl, unverändert beibehalten
+agent.install.running_winget: "Wird ausgeführt: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget konnte nicht gestartet werden: %{error}"
+agent.install.winget_exited: "winget wurde unerwartet beendet: %{error}"
+agent.install.winget_failed_code: "winget-Installation fehlgeschlagen (Exitcode %{code})"
+agent.install.unsupported: "Automatische Installation für %{agent} wird nicht unterstützt"
+agent.custom.auth_hint: "Stellen Sie sicher, dass %{name} installiert und im PATH ist."  # {Locked="PATH"}
+
+# ── Agentenansicht (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Laden..."
+# {Locked="Enter","Shift+enter","Esc"} - Tastenkombinationen, nicht übersetzen
+agents.footer_hint: "(↑ ↓ navigieren • Enter Sitzung in neuer Registerkarte starten • Shift+enter Sitzung im Agentbereich starten • Esc beenden)"
+agents.status.active: "Aktiv"
+agents.status.waiting_for_input: "Wartet auf Eingabe"
+agents.status.error: "Fehler"
+agents.status.idle: "Inaktiv"
+
+# ── Layout-Willkommenshinweis (src/ui/layout.rs) ──────────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. zum Ein-/Ausblenden des Agentbereichs • Ctrl+Alt+/ zum Ein-/Ausblenden der Agentsitzung)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Verbindungsstatus ────────────────────────────────────────────────────────────
+connection.starting: "Agent wird gestartet..."
+connection.reconnecting: "Verbindung wird wiederhergestellt..."
+
+# ── Systemnachrichten (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "Abgebrochen."
+system.no_prompt_in_flight: "Kein Prompt aktiv."
+system.authentication_failed: "Authentifizierung fehlgeschlagen"
+system.command_copied_retry: "Befehl kopiert — führen Sie ihn in einem anderen Terminal aus und drücken Sie Enter zum Wiederholen"  # {Locked="Enter"}
+
+# ── Laufzeit-CLI-Ausgabe (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Keine Fenster gefunden."
+output.no_tabs: "Keine Registerkarten gefunden."
+output.no_panes: "Keine Bereiche gefunden."
+output.no_windows_in_list: "Keine Fenster gefunden"
+output.no_tabs_in_window: "Keine Registerkarten in Fenster %{window_id} gefunden"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - Spaltenbezeichner, für Analyse als ASCII beibehalten
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Aktiver Bereich: %{pane} (Registerkarte: %{tab}, Fenster: %{window})"
+output.pane_running: "Wird ausgeführt (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Beendet (Code: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Registerkarte %{tab_id} erstellt (Bereich %{pane_id})"
+output.created_pane: "Bereich %{pane_id} erstellt"
+output.pane_closed: "Bereich %{pane_id} geschlossen."
+
+# ── Fehler (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Kein aktiver Bereich gefunden. Verwenden Sie -t, um eine Bereich-ID anzugeben."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID nicht festgelegt. Führen Sie den Befehl in einem Windows Terminal-Bereich aus."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Unbekannter Shelltyp '%{shell}'. Verwenden Sie: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - Befehlsname, nicht übersetzen
+error.wtcli_wait_for_spawn: "wtcli wait-for konnte nicht gestartet werden"
+error.wtcli_wait_for_parse: "Ausgabe von wtcli wait-for konnte nicht analysiert werden"
+error.wtcli_wait_for_failed: "wtcli wait-for fehlgeschlagen: %{stderr}"
+
+# ── Hook-Statusausgabe (src/main.rs) ───────────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - Tool-/CLI-Namen, Umgebungsvariablen, Protokolldateinamen
+hooks.bundle_source: "Bundle-Quelle: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI nicht im PATH"
+hooks.installed: "✓ Installiert"
+hooks.marketplace_path_stale: "⚠ Marketplace-Pfad veraltet"
+hooks.installed_but_disabled: "⚠ Installiert, aber deaktiviert"
+hooks.not_installed: "✗ Nicht installiert"
+hooks.uninstall_skipped: "Übersprungen (CLI nicht im PATH)"
+hooks.install_attempted: "wt-agent-hooks Installation versucht (idempotent). Führen Sie `wta hooks status` aus, um das Ergebnis zu überprüfen. Ablaufverfolgungsprotokoll: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

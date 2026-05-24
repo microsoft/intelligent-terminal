@@ -6,9 +6,9 @@ WTA is a Rust application that provides three modes of operation:
 
 - **ACP mode** (default): TUI client that calls an agent subprocess via the Agent Client Protocol (ACP) over stdio
 - **MCP mode** (`wta mcp`): Headless MCP server exposing shell tools for an external agent to call
-- **CLI mode** (subcommands): tmux-like commands (`wta list-panes`, `wta capture-pane`, etc.) that talk directly to the WT pipe -- useful for humans and agents that can shell out
+- **CLI mode** (subcommands): tmux-like commands (`wta list-panes`, `wta capture-pane`, etc.) that talk to WT over COM via `wtcli.exe` -- useful for humans and agents that can shell out
 
-Both ACP and MCP modes share a common **ShellManager** shell integration layer. CLI subcommands are thin wrappers over `PipeChannel::request()` that don't need ShellManager. A **WtChannel** abstraction enables bidirectional communication with Windows Terminal for tab/pane management and state queries.
+Both ACP and MCP modes share a common **ShellManager** shell integration layer. CLI subcommands are thin wrappers over `CliChannel::request()` that don't need ShellManager. A **WtChannel** abstraction enables bidirectional communication with Windows Terminal for tab/pane management and state queries.
 
 ```
                   ┌──────────────────────────┐
@@ -56,7 +56,7 @@ src/
 │       ├── mod.rs                  #     WtChannel trait definition
 │       ├── types.rs                #     WtAction, WtRequest, WtResponse
 │       ├── vt_channel.rs           #     OSC 9001 escape sequence transport
-│       └── pipe_channel.rs         #     Named pipe transport (stub)
+│       └── cli_channel.rs          #     wtcli.exe subprocess (COM transport)
 ├── protocol/                       # Protocol Adapters
 │   ├── mod.rs                      #   pub mod acp; pub mod mcp;
 │   ├── acp/                        #   ACP client mode
@@ -102,11 +102,10 @@ Steps 1–9 refactored WTA from an ACP-only client into the dual-mode architectu
 
 ## Part 2: Windows Terminal Integration (DONE, COM-first)
 
-The current implementation talks to Windows Terminal primarily through a local
+The current implementation talks to Windows Terminal through a single local
 COM server. WTA shells out to `wtcli.exe`, which calls `CoCreateInstance` on
-the `IProtocolServer` interface registered by Windows Terminal. An inherited
-duplex anonymous-pipe pair carries `send_input` only — every other method
-goes through COM.
+the `IProtocolServer` interface registered by Windows Terminal. All methods,
+including `send_input` (via `wtcli send-keys`), go through COM.
 
 > Historical note: this part of the doc originally planned an OSC 9001 / named-pipe
 > protocol (see "Wire Format" and "WT C++ Side" sections below). That approach was
@@ -123,9 +122,7 @@ WTA (Rust, child process)                Windows Terminal (C++)
     │                                        │ via wtcli.exe subprocess
     └── WtChannel (trait)                    │
          │                                   │
-         ├── CliChannel  ────────────────────┘  (primary, all methods)
-         │
-         └── PipeChannel (inherited duplex pipe pair, send_input only)
+         └── CliChannel  ────────────────────┘  (all methods, incl. send_input)
 ```
 
 ### WTA Rust-Side Steps
@@ -135,7 +132,7 @@ WTA (Rust, child process)                Windows Terminal (C++)
 | 10 | Create `shell/wt_channel/types.rs` — WtAction enum, WtRequest, WtResponse structs | Done |
 | 11 | Create `shell/wt_channel/mod.rs` — WtChannel trait (`request`, `is_available`) | Done |
 | 12 | Create `shell/wt_channel/vt_channel.rs` — VT discovery helper | Done |
-| 13 | Create `shell/wt_channel/pipe_channel.rs` — named pipe transport | Done |
+| 13 | Create `shell/wt_channel/cli_channel.rs` — wtcli subprocess (COM) transport | Done |
 | 14 | Enhance `shell_manager.rs` — add `wt_channel: Option<Arc<dyn WtChannel>>`, dispatch to WT or local, add tab/pane/query ops | Done |
 | 15 | Update `main.rs` — wire CLI subcommands and pipe discovery | Done |
 | 16 | Verify with `cargo build` and CLI/manual testing | Done |
@@ -255,8 +252,8 @@ serde = { version = "1", features = ["derive"] }
 ### Part 2 (Done)
 - [x] `cargo build` — compiles with wt_channel module
 - [x] `WT_COM_CLSID` discovery via inherited env var works
-- [x] CliChannel (wtcli + COM) carries all methods
-- [x] PipeChannel (inherited duplex pipe pair) carries `send_input`
+- [x] CliChannel (wtcli + COM) carries all methods, including `send_input` (via `wtcli send-keys`)
+- [ ] ~~PipeChannel (inherited duplex pipe pair) carries `send_input`~~ — Reverted 2026-05; `send_input` is back on COM
 
 ### Part 3: CLI Subcommands (Done)
 - [x] `cargo build` — compiles with all subcommands

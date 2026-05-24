@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -2832,5 +2832,9 @@
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
     <value>https://aka.ms/intelligentterminal/portable-mode</value>
     <comment>{Locked}</comment>
+  </data>
+  <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
+    <value>Этот параметр управляется вашей организацией.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
   </data>
 </root>

@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "इंटेलिजेंट टर्मिनल में आपका स्वागत है!"
+# सेटअप स्क्रीन शीर्षक
+# {Locked="Intelligent Terminal"} - उत्पाद नाम, अनुवाद न करें
+setup.title.first_run: "Intelligent Terminal में आपका स्वागत है!"
 setup.title.agent_missing: "एजेंट नहीं मिला"
 setup.title.agent_error: "एजेंट कनेक्शन विफल हुआ"
 setup.title.switch_agent: "एजेंट बदलें"
+setup.title.not_available: "एजेंट उपलब्ध नहीं है"
+setup.title.sign_in: "साइन इन आवश्यक है"
+
+# %{agent} रनटाइम पर एजेंट प्रदर्शन नाम से बदला जाता है।
+setup.subtitle.copilot_missing: "आपका एजेंट \"%{agent}\" इंस्टॉल नहीं है। इसे इंस्टॉल करने के लिए नीचे दिए गए चरणों का पालन करें। एजेंट बदलने के लिए Settings पर जाएँ।"
+setup.subtitle.agent_missing: "आपका एजेंट \"%{agent}\" इंस्टॉल नहीं है। कृपया इसे मैन्युअल रूप से पुनः इंस्टॉल करें, फिर पुनः प्रयास करें। एजेंट बदलने के लिए Settings पर जाएँ।"
+setup.subtitle.copilot_auth: "आपके एजेंट \"%{agent}\" को प्रमाणीकरण की आवश्यकता है। साइन इन करने के लिए नीचे दिए गए चरणों का पालन करें। एजेंट बदलने के लिए Settings पर जाएँ।"
+setup.subtitle.agent_auth: "आपके एजेंट \"%{agent}\" को प्रमाणीकरण की आवश्यकता है। कृपया एजेंट CLI से साइन इन करें, फिर पुनः प्रयास करें। एजेंट बदलने के लिए Settings पर जाएँ।"
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal में उपयोग के लिए डिफ़ॉल्ट एजेंट CLI चुनें। आप"
+setup.description.fre_line2: "अपने कार्यक्षेत्र को कॉन्फ़िगर और सेटअप करने के लिए Settings पर जा सकते हैं।"
+
+setup.option.reinstall: "%{agent} पुनः इंस्टॉल करें"
+setup.option.reinstall_hint: "(स्वचालित रूप से इंस्टॉल किया जाएगा)"
+setup.option.signin: "%{agent} में साइन इन करें"
+setup.option.retry_detection: "पहचान पुनः प्रयास करें"
+setup.option.retry_auth: "मैंने साइन इन कर लिया है — कनेक्शन पुनः प्रयास करें"
+setup.option.retry_connection: "कनेक्शन पुनः प्रयास करें"
+setup.option.switch_to: "%{agent} पर स्विच करें"
+setup.status.installing: "इंस्टॉल हो रहा है..."
+setup.status.install_failed: "इंस्टॉल विफल: "
+setup.status.installing_winget: " winget के माध्यम से इंस्टॉल हो रहा है..."
+
+# ── प्रमाणीकरण प्रवाह (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - संक्षिप्त रूप, Microsoft स्थानीयकरणों में सामान्य उपयोग
+auth.agent_selected: "एजेंट %{name} चयनित है"
+auth.agent_selected_with_status: "एजेंट %{name} — "
+auth.checking_authentication: "  %{spinner} प्रमाणीकरण जाँचा जा रहा है..."
+auth.waiting_for_authorization: "  %{spinner} प्राधिकरण की प्रतीक्षा हो रही है..."
+auth.code_copied_hint: "  कोड क्लिपबोर्ड पर कॉपी किया गया — इसे अपने ब्राउज़र में पेस्ट करें।"
+auth.sign_in_prompt: "अपने एजेंट का उपयोग करने के लिए साइन इन करें:"
+auth.card_connect: "  एजेंट सुविधाएँ सक्षम करने के लिए %{name} कनेक्ट करें"
+auth.button_sign_in_github: "[ GitHub से साइन इन करें ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name} से साइन इन करें ]"
+auth.hint_footer: "  साइन इन के लिए Enter दबाएँ, वापस जाने के लिए Esc दबाएँ"  # {Locked="Enter","Esc"}
+
+# ── चैट दृश्य (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "सोच रहा है…"
+# {Locked="Intelligent Terminal"} - उत्पाद नाम, अनुवाद न करें
+chat.welcome_title: "Intelligent Terminal में आपका स्वागत है!"
+chat.plan_header: "योजना:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── इनपुट प्लेसहोल्डर (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "कुछ भी पूछें, / कमांड के लिए.."  # {Locked="/"}
+input.placeholder.connecting: "कनेक्ट हो रहा है..."
+input.placeholder.disconnected: "डिस्कनेक्ट"
+
+# ── कमांड पॉपअप (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - स्लैश-कमांड उपसर्ग, ASCII रहना चाहिए
+commands.popup_title: " / कमांड "
+commands.help_title: " सहायता "
+commands.help_header: "स्लैश कमांड — इनपुट बॉक्स में / टाइप करें।"
+commands.help_escape_hint: "  //text     शाब्दिक '/' भेजें (कमांड पार्सर को एस्केप करता है)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        यह सहायता बंद करें"  # {Locked="Esc"}
+
+# ── अनुशंसा पैनल (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - कुंजी नाम और Return-कुंजी ग्लिफ़, अनुवाद न करें
+recommendations.nav_hint: "(↑ ↓ नेविगेट करें • Enter चुनें • Esc रद्द करें)"
+recommendations.button_run_command: "[ कमांड चलाएँ ]"
+recommendations.button_insert_in_terminal: "टर्मिनल में सम्मिलित करें"
+recommendations.button_open_in_new_tab: "नई टैब में खोलें ↵"
+recommendations.button_open_in_new_panel: "नए पैनल में खोलें ↵"
+recommendations.button_open_tab: "टैब खोलें ↵"
+recommendations.button_open_panel: "पैनल खोलें ↵"
+recommendations.button_execute: "निष्पादित करें ↵"
+recommendations.agent_fallback: "एजेंट"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "टैब"
+recommendations.open_kind_panel: "पैनल"
+recommendations.open_kind_panel_direction: "पैनल (%{direction})"
+recommendations.open_new_with_title_and_cwd: "नया %{kind} (%{title}) %{cwd} में"
+recommendations.open_new_with_title: "नया %{kind} (%{title})"
+recommendations.open_new_with_cwd: "नया %{kind} %{cwd} में"
+recommendations.open_new_empty: "नया खाली %{kind}"
+
+# ── अनुमति संवाद संक्षिप्त मोड (src/ui/permission.rs) ───────────────────────
+permission.compact.default_description: "अनुमति का अनुरोध किया गया"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N उत्तर दें · पूर्ण कार्ड के लिए आकार बदलें]"  # {Locked="Y/N"}
+
+# ── एजेंट स्थिति (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "इंस्टॉल नहीं है — स्वचालित रूप से इंस्टॉल करने के लिए चुनें"
+agent.status.not_found: "नहीं मिला"
+agent.status.detected: "पहचाना गया"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - टूल नाम और कमांड, यथावत चलाना आवश्यक
+agent.install.running_winget: "चल रहा है: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget लॉन्च करने में विफल: %{error}"
+agent.install.winget_exited: "winget अप्रत्याशित रूप से बंद हुआ: %{error}"
+agent.install.winget_failed_code: "winget इंस्टॉल विफल (एग्ज़िट कोड %{code})"
+agent.install.unsupported: "%{agent} के लिए स्वचालित इंस्टॉल समर्थित नहीं है"
+agent.custom.auth_hint: "सुनिश्चित करें कि %{name} इंस्टॉल है और आपके PATH पर है।"  # {Locked="PATH"}
+
+# ── एजेंट दृश्य (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "लोड हो रहा है..."
+# {Locked="Enter","Shift+enter","Esc"} - कुंजी संयोजन, अनुवाद न करें
+agents.footer_hint: "(↑ ↓ नेविगेट करें • Enter नई टैब में सत्र शुरू करें • Shift+enter एजेंट पेन में सत्र शुरू करें • Esc बाहर निकलें)"
+agents.status.active: "सक्रिय"
+agents.status.waiting_for_input: "इनपुट की प्रतीक्षा"
+agents.status.error: "त्रुटि"
+agents.status.idle: "निष्क्रिय"
+
+# ── लेआउट स्वागत संकेत (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. एजेंट पेन दिखाएँ/छिपाएँ • Ctrl+Alt+/ एजेंट सत्र दिखाएँ/छिपाएँ)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── कनेक्शन स्थिति ────────────────────────────────────────────────────────
+connection.starting: "एजेंट प्रारंभ हो रहा है..."
+connection.reconnecting: "पुनः कनेक्ट हो रहा है..."
+
+# ── सिस्टम संदेश (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "रद्द किया गया।"
+system.no_prompt_in_flight: "कोई प्रॉम्प्ट प्रगति में नहीं है।"
+system.authentication_failed: "प्रमाणीकरण विफल"
+system.command_copied_retry: "कमांड कॉपी किया गया — इसे किसी अन्य टर्मिनल में चलाएँ, फिर पुनः प्रयास के लिए Enter दबाएँ"  # {Locked="Enter"}
+
+# ── रनटाइम CLI आउटपुट (src/main.rs) ────────────────────────────────────────
+output.no_windows: "कोई विंडो नहीं मिली।"
+output.no_tabs: "कोई टैब नहीं मिली।"
+output.no_panes: "कोई पेन नहीं मिला।"
+output.no_windows_in_list: "कोई विंडो नहीं मिली"
+output.no_tabs_in_window: "विंडो %{window_id} में कोई टैब नहीं मिली"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - कॉलम पहचानकर्ता, पार्सिंग के लिए ASCII में रखें
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "सक्रिय पेन: %{pane} (टैब: %{tab}, विंडो: %{window})"
+output.pane_running: "चल रहा है (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "बंद हुआ (कोड: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "टैब %{tab_id} बनाई गई (पेन %{pane_id})"
+output.created_pane: "पेन %{pane_id} बनाया गया"
+output.pane_closed: "पेन %{pane_id} बंद हुआ।"
+
+# ── त्रुटियाँ (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "कोई सक्रिय पेन नहीं मिला। पेन ID निर्दिष्ट करने के लिए -t का उपयोग करें।"  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID सेट नहीं है। Windows Terminal पेन के अंदर चलाएँ।"  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "अज्ञात शेल प्रकार '%{shell}'। उपयोग करें: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - कमांड नाम, अनुवाद न करें
+error.wtcli_wait_for_spawn: "wtcli wait-for प्रारंभ करने में विफल"
+error.wtcli_wait_for_parse: "wtcli wait-for आउटपुट पार्स करने में विफल"
+error.wtcli_wait_for_failed: "wtcli wait-for विफल: %{stderr}"
+
+# ── हुक्स स्थिति आउटपुट (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - टूल/CLI नाम, परिवेश चर, लॉग फ़ाइल नाम
+hooks.bundle_source: "बंडल स्रोत: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI PATH पर नहीं है"
+hooks.installed: "✓ इंस्टॉल है"
+hooks.marketplace_path_stale: "⚠ मार्केटप्लेस पथ पुराना है"
+hooks.installed_but_disabled: "⚠ इंस्टॉल है लेकिन अक्षम है"
+hooks.not_installed: "✗ इंस्टॉल नहीं है"
+hooks.uninstall_skipped: "छोड़ दिया गया (CLI PATH पर नहीं है)"
+hooks.install_attempted: "wt-agent-hooks इंस्टॉल का प्रयास किया गया (आइडेम्पोटेंट)। परिणाम की जाँच के लिए `wta hooks status` चलाएँ। ट्रेस लॉग: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

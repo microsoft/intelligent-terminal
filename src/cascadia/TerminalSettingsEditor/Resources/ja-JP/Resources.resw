@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -2778,4 +2778,8 @@
   <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>複数のタブまたはペイン</value><comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment></data>
   <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>デスクトップ通知</value><comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment></data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://aka.ms/intelligentterminal/portable-mode</value><comment>{Locked}</comment></data>
+  <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
+    <value>この設定は組織によって管理されています。</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
 </root>

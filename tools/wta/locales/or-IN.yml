@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲକୁ ସ୍ୱାଗତ!"
+# ସେଟଅପ୍ ସ୍କ୍ରିନ୍ ଶୀର୍ଷକ
+# {Locked="Intelligent Terminal"} - ଉତ୍ପାଦ ନାମ, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
+setup.title.first_run: "Intelligent Terminal କୁ ସ୍ୱାଗତ!"
 setup.title.agent_missing: "ଏଜେଣ୍ଟ ମିଳିଲା ନାହିଁ"
 setup.title.agent_error: "ଏଜେଣ୍ଟ ସଂଯୋଗ ବିଫଳ ହେଲା"
 setup.title.switch_agent: "ଏଜେଣ୍ଟ ବଦଳାନ୍ତୁ"
+setup.title.not_available: "ଏଜେଣ୍ଟ ଉପಲବ୍ଧ ନାହିଁ"
+setup.title.sign_in: "ସାଇନ୍ ଇନ୍ ଆବଶ୍ୟକ"
+
+# %{agent} ରନ୍‌ଟାଇମ୍‌ରେ ଏଜେଣ୍ଟ ଡିସ୍‌ପ୍ଲେ ନାମ ସହ ବଦଳିଯାଏ।
+setup.subtitle.copilot_missing: "ଆପଣଙ୍କ ଏଜେଣ୍ଟ \"%{agent}\" ଇନ୍‌ଷ୍ଟଲ୍ ହୋଇନାହିଁ। ଏହାକୁ ଇନ୍‌ଷ୍ଟଲ୍ କରିବା ପାଇଁ ନିମ୍ନ ପଦକ୍ଷେପଗୁଡ଼ିକ ଅନୁସରଣ କରନ୍ତୁ। ଏଜେଣ୍ଟ ବଦଳାଇବା ପାଇଁ Settings କୁ ଯାଆନ୍ତୁ।"
+setup.subtitle.agent_missing: "ଆପଣଙ୍କ ଏଜେଣ୍ଟ \"%{agent}\" ଇନ୍‌ଷ୍ଟଲ୍ ହୋଇନାହିଁ। ଦୟାକରି ଏହାକୁ ମାନୁଆଲୀ ପୁଣି ଇନ୍‌ଷ୍ଟଲ୍ କରନ୍ତୁ, ତାପରେ ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ। ଏଜେଣ୍ଟ ବଦଳାଇବା ପାଇଁ Settings କୁ ଯାଆନ୍ତୁ।"
+setup.subtitle.copilot_auth: "ଆପଣଙ୍କ ଏଜେଣ୍ଟ \"%{agent}\" ପ୍ରମାଣୀକରଣ ଆବଶ୍ୟକ କରେ। ସାଇନ୍ ଇନ୍ କରିବା ପାଇଁ ନିମ୍ନ ପଦକ୍ଷେପଗୁଡ଼ିକ ଅନୁସରଣ କରନ୍ତୁ। ଏଜେଣ୍ଟ ବଦଳାଇବା ପାଇଁ Settings କୁ ଯାଆନ୍ତୁ।"
+setup.subtitle.agent_auth: "ଆପଣଙ୍କ ଏଜେଣ୍ଟ \"%{agent}\" ପ୍ରମାଣୀକରଣ ଆବଶ୍ୟକ କରେ। ଦୟାକରି ଏଜେଣ୍ଟ CLI ମାଧ୍ୟମରେ ସାଇନ୍ ଇନ୍ କରନ୍ତୁ, ତାପରେ ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ। ଏଜେଣ୍ଟ ବଦଳାଇବା ପାଇଁ Settings କୁ ଯାଆନ୍ତୁ।"
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal ରେ ବ୍ୟବହାର କରିବା ପାଇଁ ଡିଫଲ୍ଟ ଏଜେଣ୍ଟ CLI ବାଛନ୍ତୁ। ଆପଣ"
+setup.description.fre_line2: "ଆପଣଙ୍କ ୱାର୍କସ୍ପେସ୍ କନ୍‌ଫିଗର୍ ଏବଂ ସେଟଅପ୍ କରିବା ପାଇଁ Settings କୁ ଯାଇପାରିବେ।"
+
+setup.option.reinstall: "%{agent} ପୁଣି ଇନ୍‌ଷ୍ଟଲ୍ କରନ୍ତୁ"
+setup.option.reinstall_hint: "(ସ୍ୱୟଂଚାଳିତ ଭାବରେ ଇନ୍‌ଷ୍ଟଲ୍ ହେବ)"
+setup.option.signin: "%{agent} ରେ ସାଇନ୍ ଇନ୍ କରନ୍ତୁ"
+setup.option.retry_detection: "ପୁଣି ଚିହ୍ନଟ କରନ୍ତୁ"
+setup.option.retry_auth: "ମୁଁ ସାଇନ୍ ଇନ୍ କରିସାରିଛି — ସଂଯୋଗ ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ"
+setup.option.retry_connection: "ସଂଯୋଗ ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ"
+setup.option.switch_to: "%{agent} କୁ ବଦଳାନ୍ତୁ"
+setup.status.installing: "ଇନ୍‌ଷ୍ଟଲ୍ ହେଉଛି..."
+setup.status.install_failed: "ଇନ୍‌ଷ୍ଟଲ୍ ବିଫଳ: "
+setup.status.installing_winget: " winget ମାଧ୍ୟମରେ ଇନ୍‌ଷ୍ଟଲ୍ ହେଉଛି..."
+
+# ── ପ୍ରମାଣୀକରଣ ପ୍ରବାହ (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - ସଂକ୍ଷିପ୍ତ ରୂପ, Microsoft ସ୍ଥାନୀୟକରଣରେ ସାଧାରଣ ବ୍ୟବହାର
+auth.agent_selected: "ଏଜେଣ୍ଟ %{name} ଚୟନ ହୋଇଛି"
+auth.agent_selected_with_status: "ଏଜେଣ୍ଟ %{name} — "
+auth.checking_authentication: "  %{spinner} ପ୍ରମାଣୀକରଣ ଯାଞ୍ଚ ହେଉଛି..."
+auth.waiting_for_authorization: "  %{spinner} ଅନୁମୋଦନ ପାଇଁ ଅପେକ୍ଷା ହେଉଛି..."
+auth.code_copied_hint: "  କୋଡ୍ କ୍ଲିପ୍‌ବୋର୍ଡକୁ କପି ହୋଇଛି — ଏହାକୁ ଆପଣଙ୍କ ବ୍ରାଉଜରରେ ପେଷ୍ଟ କରନ୍ତୁ।"
+auth.sign_in_prompt: "ଆପଣଙ୍କ ଏଜେଣ୍ଟ ବ୍ୟବହାର କରିବା ପାଇଁ ସାଇନ୍ ଇନ୍ କରନ୍ତୁ:"
+auth.card_connect: "  ଏଜେଣ୍ଟ ବୈଶିଷ୍ଟ୍ୟ ସକ୍ଷମ କରିବା ପାଇଁ %{name} ସଂଯୋଗ କରନ୍ତୁ"
+auth.button_sign_in_github: "[ GitHub ସହ ସାଇନ୍ ଇନ୍ କରନ୍ତୁ ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name} ସହ ସାଇନ୍ ଇନ୍ କରନ୍ତୁ ]"
+auth.hint_footer: "  ସାଇନ୍ ଇନ୍ ପାଇଁ Enter ଦବାନ୍ତୁ, ଫେରିଯିବା ପାଇଁ Esc ଦବାନ୍ତୁ"  # {Locked="Enter","Esc"}
+
+# ── ଚାଟ୍ ଦୃଶ୍ୟ (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "ଚିନ୍ତା କରୁଛି…"
+# {Locked="Intelligent Terminal"} - ଉତ୍ପାଦ ନାମ, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
+chat.welcome_title: "Intelligent Terminal କୁ ସ୍ୱାଗତ!"
+chat.plan_header: "ଯୋଜନା:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── ଇନ୍‌ପୁଟ୍ ପ୍ଲେସହୋଲ୍ଡର (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "କିଛି ବି ପଚାରନ୍ତୁ, / କମାଣ୍ଡ ପାଇଁ.."  # {Locked="/"}
+input.placeholder.connecting: "ସଂଯୋଗ ହେଉଛି..."
+input.placeholder.disconnected: "ବିଚ୍ଛିନ୍ନ"
+
+# ── କମାଣ୍ଡ ପପଅପ୍ (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - ସ୍ଲାଶ୍-କମାଣ୍ଡ ଉପସର୍ଗ, ASCII ହେବା ଆବଶ୍ୟକ
+commands.popup_title: " / କମାଣ୍ଡ "
+commands.help_title: " ସାହାଯ୍ୟ "
+commands.help_header: "ସ୍ଲାଶ୍ କମାଣ୍ଡ — ଇନ୍‌ପୁଟ୍ ବକ୍ସରେ / ଟାଇପ୍ କରନ୍ତୁ।"
+commands.help_escape_hint: "  //text     ଅକ୍ଷରିକ '/' ପଠାନ୍ତୁ (କମାଣ୍ଡ ପାର୍ସର୍ ଏସ୍କେପ୍ କରେ)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        ଏହି ସାହାଯ୍ୟ ବନ୍ଦ କରନ୍ତୁ"  # {Locked="Esc"}
+
+# ── ସୁପାରିଶ ପ୍ୟାନେଲ (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - କୀ ନାମ ଏବଂ Return-କୀ ଗ୍ଲିଫ୍, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
+recommendations.nav_hint: "(↑ ↓ ନେଭିଗେଟ୍ କରନ୍ତୁ • Enter ଚୟନ କରନ୍ତୁ • Esc ବାତିଲ କରନ୍ତୁ)"
+recommendations.button_run_command: "[ କମାଣ୍ଡ ଚଳାନ୍ତୁ ]"
+recommendations.button_insert_in_terminal: "ଟର୍ମିନାଲରେ ସନ୍ନିବେଶ କରନ୍ତୁ"
+recommendations.button_open_in_new_tab: "ନୂଆ ଟ୍ୟାବରେ ଖୋଲନ୍ତୁ ↵"
+recommendations.button_open_in_new_panel: "ନୂଆ ପ୍ୟାନେଲରେ ଖୋଲନ୍ତୁ ↵"
+recommendations.button_open_tab: "ଟ୍ୟାବ ଖୋଲନ୍ତୁ ↵"
+recommendations.button_open_panel: "ପ୍ୟାନେଲ ଖୋଲନ୍ତୁ ↵"
+recommendations.button_execute: "କାର୍ଯ୍ୟକାରୀ କରନ୍ତୁ ↵"
+recommendations.agent_fallback: "ଏଜେଣ୍ଟ"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ଟ୍ଯାବ୍"
+recommendations.open_kind_panel: "ପ୍ଯାନେଲ୍"
+recommendations.open_kind_panel_direction: "ପ୍ଯାନେଲ୍ (%{direction})"
+recommendations.open_new_with_title_and_cwd: "ନୂଆ %{kind} (%{title}) %{cwd} ରେ"
+recommendations.open_new_with_title: "ନୂଆ %{kind} (%{title})"
+recommendations.open_new_with_cwd: "ନୂଆ %{kind} %{cwd} ରେ"
+recommendations.open_new_empty: "ନୂଆ ଖାଲି %{kind}"
+
+# ── ଅନୁମତି ସଂଳାପ ସଂକ୍ଷିପ୍ତ ମୋଡ୍ (src/ui/permission.rs) ───────────────────────
+permission.compact.default_description: "ଅନୁମତି ଅନୁରୋଧ କରାଯାଇଛି"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N ଉତ୍ତର ଦିଅନ୍ତୁ · ସମ୍ପୂର୍ଣ୍ଣ କାର୍ଡ ପାଇଁ ଆକାର ବଦଳାନ୍ତୁ]"  # {Locked="Y/N"}
+
+# ── ଏଜେଣ୍ଟ ସ୍ଥିତି (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "ଇନ୍‌ଷ୍ଟଲ୍ ହୋଇନାହିଁ — ସ୍ୱୟଂଚାଳିତ ଇନ୍‌ଷ୍ଟଲ୍ ପାଇଁ ଚୟନ କରନ୍ତୁ"
+agent.status.not_found: "ମିଳିଲା ନାହିଁ"
+agent.status.detected: "ଚିହ୍ନଟ ହୋଇଛି"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - ଟୁଲ୍ ନାମ ଏବଂ କମାଣ୍ଡ, ଯଥାସ୍ଥିତି ଚଳାଇବା ଆବଶ୍ୟକ
+agent.install.running_winget: "ଚାଲୁଛି: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget ଆରମ୍ଭ କରିବାରେ ବିଫଳ: %{error}"
+agent.install.winget_exited: "winget ଅପ୍ରତ୍ୟାଶିତ ଭାବେ ବନ୍ଦ ହେଲା: %{error}"
+agent.install.winget_failed_code: "winget ଇନ୍‌ଷ୍ଟଲ୍ ବିଫଳ (ଏକ୍ସିଟ୍ କୋଡ୍ %{code})"
+agent.install.unsupported: "%{agent} ପାଇଁ ସ୍ୱୟଂଚାଳିତ ଇନ୍‌ଷ୍ଟଲ୍ ସମର୍ଥିତ ନୁହେଁ"
+agent.custom.auth_hint: "%{name} ଇନ୍‌ଷ୍ଟଲ୍ ଅଛି ଏବଂ ଆପଣଙ୍କ PATH ରେ ଅଛି ବୋಲି ନିଶ୍ଚିତ କରନ୍ତୁ।"  # {Locked="PATH"}
+
+# ── ଏଜେଣ୍ଟ ଦୃଶ୍ୟ (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "ଲୋଡ୍ ହେଉଛି..."
+# {Locked="Enter","Shift+enter","Esc"} - କୀ ସଂଯୋଜନ, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
+agents.footer_hint: "(↑ ↓ ନେଭିଗେଟ୍ କରନ୍ତୁ • Enter ନୂଆ ଟ୍ୟାବରେ ସେସନ୍ ଆରମ୍ଭ କରନ୍ତୁ • Shift+enter ଏଜେଣ୍ଟ ପେନ୍ ରେ ସେସନ୍ ଆରମ୍ଭ କରନ୍ତୁ • Esc ବାହାରନ୍ତୁ)"
+agents.status.active: "ସକ୍ରିୟ"
+agents.status.waiting_for_input: "ଇନ୍‌ପୁଟ୍ ପାଇଁ ଅପେକ୍ଷା"
+agents.status.error: "ତ୍ରୁଟି"
+agents.status.idle: "ନିଷ୍କ୍ରିୟ"
+
+# ── ଲେଆଉଟ୍ ସ୍ୱାଗତ ସଂକେତ (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. ଏଜେଣ୍ଟ ପେନ୍ ଦେଖାନ୍ତୁ/ଲୁଚାନ୍ତୁ • Ctrl+Alt+/ ଏଜେଣ୍ଟ ସେସନ୍ ଦେଖାନ୍ତୁ/ଲୁଚାନ୍ତୁ)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── ସଂଯୋଗ ସ୍ଥିତି ────────────────────────────────────────────────────────
+connection.starting: "ଏଜେଣ୍ଟ ଆରମ୍ଭ ହେଉଛି..."
+connection.reconnecting: "ପୁଣି ସଂଯୋଗ ହେଉଛି..."
+
+# ── ସିଷ୍ଟମ ସନ୍ଦେଶ (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "ବାତିଲ ହୋଇଛି।"
+system.no_prompt_in_flight: "ପ୍ରଗତିରେ କୌଣସି ପ୍ରମ୍ପ୍ଟ ନାହିଁ।"
+system.authentication_failed: "ପ୍ରମାଣୀକରଣ ବିଫଳ"
+system.command_copied_retry: "କମାଣ୍ଡ କପି ହୋଇଛି — ଏହାକୁ ଅନ୍ୟ ଏକ ଟର୍ମିନାଲରେ ଚଳାନ୍ତୁ, ତାପରେ ପୁଣି ଚେଷ୍ଟା ପାଇଁ Enter ଦବାନ୍ତୁ"  # {Locked="Enter"}
+
+# ── ରନ୍‌ଟାଇମ୍ CLI ଆଉଟପୁଟ୍ (src/main.rs) ────────────────────────────────────────
+output.no_windows: "କୌଣସି ୱିଣ୍ଡୋ ମିଳିଲା ନାହିଁ।"
+output.no_tabs: "କୌଣସି ଟ୍ୟାବ ମିଳିଲା ନାହିଁ।"
+output.no_panes: "କୌଣସି ପେନ୍ ମିଳିଲା ନାହିଁ।"
+output.no_windows_in_list: "କୌଣସି ୱିଣ୍ଡୋ ମିଳିଲା ନାହିଁ"
+output.no_tabs_in_window: "ୱିଣ୍ଡୋ %{window_id} ରେ କୌଣସି ଟ୍ୟାବ ମିଳିଲା ନାହିଁ"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - କଲମ ଚିହ୍ନଟକାରୀ, ପାର୍ସିଙ୍ଗ ପାଇଁ ASCII ରେ ରଖନ୍ତୁ
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "ସକ୍ରିୟ ପେନ୍: %{pane} (ଟ୍ୟାବ: %{tab}, ୱିଣ୍ଡୋ: %{window})"
+output.pane_running: "ଚାଲୁଛି (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "ବାହାରିଛି (କୋଡ୍: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "ଟ୍ୟାବ %{tab_id} ସୃଷ୍ଟି ହୋଇଛି (ପେନ୍ %{pane_id})"
+output.created_pane: "ପେନ୍ %{pane_id} ସୃଷ୍ଟି ହୋଇଛି"
+output.pane_closed: "ପେନ୍ %{pane_id} ବନ୍ଦ ହୋଇଛି।"
+
+# ── ତ୍ରୁଟି (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "କୌଣସି ସକ୍ରିୟ ପେନ୍ ମିଳିଲା ନାହିଁ। ପେନ୍ ID ନିର୍ଦ୍ଦିଷ୍ଟ କରିବା ପାଇଁ -t ବ୍ୟବହାର କରନ୍ତୁ।"  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID ସେଟ୍ ହୋଇନାହିଁ। Windows Terminal ପେନ୍ ଭିତରେ ଚଳାନ୍ତୁ।"  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "ଅଜ୍ଞାତ ଶେଲ୍ ପ୍ରକାର '%{shell}'। ବ୍ୟବହାର କରନ୍ତୁ: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - କମାଣ୍ଡ ନାମ, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
+error.wtcli_wait_for_spawn: "wtcli wait-for ଆରମ୍ଭ କରିବାରେ ବିଫଳ"
+error.wtcli_wait_for_parse: "wtcli wait-for ଆଉଟପୁଟ୍ ପାର୍ସ କରିବାରେ ବିଫଳ"
+error.wtcli_wait_for_failed: "wtcli wait-for ବିଫଳ: %{stderr}"
+
+# ── ହୁକ୍ସ ସ୍ଥିତି ଆଉଟପୁଟ୍ (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - ଟୁଲ୍/CLI ନାମ, ପରିବେଶ ଭେରିଏବଲ୍, ଲଗ୍ ଫାଇଲ ନାମ
+hooks.bundle_source: "ବଣ୍ଡଲ ଉତ୍ସ: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI PATH ରେ ନାହିଁ"
+hooks.installed: "✓ ଇନ୍‌ଷ୍ଟଲ୍ ଅଛି"
+hooks.marketplace_path_stale: "⚠ ମାର୍କେଟପ୍ଲେସ ପଥ ପୁରୁଣା"
+hooks.installed_but_disabled: "⚠ ଇନ୍‌ଷ୍ଟଲ୍ ଅଛି କିନ୍ତୁ ନିଷ୍କ୍ରିୟ"
+hooks.not_installed: "✗ ଇନ୍‌ଷ୍ଟଲ୍ ନାହିଁ"
+hooks.uninstall_skipped: "ଛାଡ଼ି ଦିଆଗଲା (CLI PATH ରେ ନାହିଁ)"
+hooks.install_attempted: "wt-agent-hooks ଇନ୍‌ଷ୍ଟଲ୍ ଚେଷ୍ଟା ହୋଇଛି (ଆଇଡେମ୍ପୋଟେଣ୍ଟ)। ଫଳାଫଳ ଯାଞ୍ଚ କରିବା ପାଇଁ `wta hooks status` ଚଳାନ୍ତୁ। ଟ୍ରେସ ଲଗ୍: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

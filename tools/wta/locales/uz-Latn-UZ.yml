@@ -1,5 +1,160 @@
 # Setup screen titles
-setup.title.first_run: "«Aqlli terminal» ilovasiga xush kelibsiz!"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+setup.title.first_run: "Intelligent Terminal-ga xush kelibsiz!"
 setup.title.agent_missing: "Agent topilmadi"
 setup.title.agent_error: "Agentga ulanish amalga oshmadi"
-setup.title.switch_agent: "Agentni almashtir"
+setup.title.switch_agent: "Agentni almashtirish"
+setup.title.not_available: "Agent mavjud emas"
+setup.title.sign_in: "Tizimga kirish talab qilinadi"
+
+# %{agent} is replaced with the agent display name at runtime.
+setup.subtitle.copilot_missing: "Agentingiz \"%{agent}\" oʻrnatilmagan. Oʻrnatish uchun quyidagi qadamlarni bajaring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
+setup.subtitle.agent_missing: "Agentingiz \"%{agent}\" oʻrnatilmagan. Iltimos, qoʻlda qayta oʻrnating, keyin qayta urinib koʻring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
+setup.subtitle.copilot_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Tizimga kirish uchun quyidagi qadamlarni bajaring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
+setup.subtitle.agent_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Iltimos, agent CLI orqali tizimga kiring, keyin qayta urinib koʻring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal-da foydalanmoqchi boʻlgan standart agent CLI tanlang. Ish"
+setup.description.fre_line2: "muhitingizni sozlash va oʻrnatish uchun Settings boʻlimiga oʻtishingiz mumkin."
+
+setup.option.reinstall: "%{agent} qayta oʻrnatish"
+setup.option.reinstall_hint: "(Avtomatik oʻrnatiladi)"
+setup.option.signin: "%{agent} tizimga kirish"
+setup.option.retry_detection: "Aniqlashni qayta sinash"
+setup.option.retry_auth: "Tizimga kirdim — ulanishni qayta sinash"
+setup.option.retry_connection: "Ulanishni qayta sinash"
+setup.option.switch_to: "%{agent} ga almashtirish"
+setup.status.installing: "Oʻrnatilmoqda..."
+setup.status.install_failed: "Oʻrnatish amalga oshmadi: "
+setup.status.installing_winget: " winget orqali oʻrnatilmoqda..."
+
+# ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acronym, common usage across Microsoft localizations
+auth.agent_selected: "Agent %{name} tanlangan"
+auth.agent_selected_with_status: "Agent %{name} — "
+auth.checking_authentication: "  %{spinner} Autentifikatsiya tekshirilmoqda..."
+auth.waiting_for_authorization: "  %{spinner} Avtorizatsiya kutilmoqda..."
+auth.code_copied_hint: "  Kod buferga nusxalandi — brauzeringizga joylang."
+auth.sign_in_prompt: "Agentingizdan foydalanish uchun tizimga kiring:"
+auth.card_connect: "  Agent xususiyatlarini yoqish uchun %{name} ulang"
+auth.button_sign_in_github: "[ GitHub orqali kirish ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name} orqali kirish ]"
+auth.hint_footer: "  Tizimga kirish uchun Enter, orqaga qaytish uchun Esc bosing"  # {Locked="Enter","Esc"}
+
+# ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Oʻylayapman…"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+chat.welcome_title: "Intelligent Terminal-ga xush kelibsiz!"
+chat.plan_header: "Reja:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Istalgan narsa soʻrang, / buyruqlar uchun.."  # {Locked="/"}
+input.placeholder.connecting: "ulanilmoqda..."
+input.placeholder.disconnected: "uzilgan"
+
+# ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - slash-command prefix, must remain ASCII
+commands.popup_title: " / buyruqlar "
+commands.help_title: " Yordam "
+commands.help_header: "Slash buyruqlari — kiritish maydoniga / yozing."
+commands.help_escape_hint: "  //text     Toʻgʻridan-toʻgʻri '/' yuborish (buyruq tahlilchisini chetlab oʻtish)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Bu yordamni yopish"  # {Locked="Esc"}
+
+# ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
+# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ navigatsiya uchun • Enter tanlash uchun • Esc bekor qilish uchun)"
+recommendations.button_run_command: "[ Buyruqni bajarish ]"
+recommendations.button_insert_in_terminal: "Terminal-ga kiritish"
+recommendations.button_open_in_new_tab: "Yangi varaqda ochish ↵"
+recommendations.button_open_in_new_panel: "Yangi panelda ochish ↵"
+recommendations.button_open_tab: "Varaqni ochish ↵"
+recommendations.button_open_panel: "Panelni ochish ↵"
+recommendations.button_execute: "Bajarish ↵"
+recommendations.agent_fallback: "agent"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "varaq"
+recommendations.open_kind_panel: "panel"
+recommendations.open_kind_panel_direction: "panel (%{direction})"
+recommendations.open_new_with_title_and_cwd: "Yangi %{kind} (%{title}) — %{cwd}"
+recommendations.open_new_with_title: "Yangi %{kind} (%{title})"
+recommendations.open_new_with_cwd: "Yangi %{kind} — %{cwd}"
+recommendations.open_new_empty: "Yangi bo‘sh %{kind}"
+
+# ── Permission dialog compact mode (src/ui/permission.rs) ───────────────────
+permission.compact.default_description: "Ruxsat soʻralmoqda"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N javob uchun · toʻliq karta uchun oʻlchamni oʻzgartiring]"  # {Locked="Y/N"}
+
+# ── Agent status (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "Oʻrnatilmagan — avtomatik oʻrnatish uchun tanlang"
+agent.status.not_found: "Topilmadi"
+agent.status.detected: "Aniqlandi"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
+agent.install.running_winget: "Bajarilmoqda: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget ishga tushmadi: %{error}"
+agent.install.winget_exited: "winget kutilmaganda chiqdi: %{error}"
+agent.install.winget_failed_code: "winget install amalga oshmadi (chiqish kodi %{code})"
+agent.install.unsupported: "%{agent} uchun avtomatik oʻrnatish qoʻllab-quvvatlanmaydi"
+agent.custom.auth_hint: "%{name} oʻrnatilganligiga va PATH-da ekanligiga ishonch hosil qiling."  # {Locked="PATH"}
+
+# ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "Yuklanmoqda..."
+# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ navigatsiya uchun • Enter yangi varaqda seansni ochish uchun • Shift+enter agent panelida seansni ochish uchun • Esc chiqish uchun)"
+agents.status.active: "Faol"
+agents.status.waiting_for_input: "Kiritish kutilmoqda"
+agents.status.error: "Xatolik"
+agents.status.idle: "Boʻsh"
+
+# ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. agent panelini koʻrsatish/yashirish • Ctrl+Alt+/ agent seansini koʻrsatish/yashirish)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Connection state ────────────────────────────────────────────────────────
+connection.starting: "Agent ishga tushirilmoqda..."
+connection.reconnecting: "Qayta ulanilmoqda..."
+
+# ── System messages (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Bekor qilindi."
+system.no_prompt_in_flight: "Bajarilayotgan soʻrov yoʻq."
+system.authentication_failed: "Autentifikatsiya amalga oshmadi"
+system.command_copied_retry: "Buyruq nusxalandi — boshqa terminalda bajaring, keyin qayta sinash uchun Enter bosing"  # {Locked="Enter"}
+
+# ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
+output.no_windows: "Oynalar topilmadi."
+output.no_tabs: "Varaqlar topilmadi."
+output.no_panes: "Panellar topilmadi."
+output.no_windows_in_list: "Oynalar topilmadi"
+output.no_tabs_in_window: "%{window_id} oynasida varaqlar topilmadi"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - column identifiers, kept ASCII for parsing
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Faol panel: %{pane} (varaq: %{tab}, oyna: %{window})"
+output.pane_running: "Ishlayapti (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Chiqdi (kod: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "%{tab_id} varagʻi yaratildi (panel %{pane_id})"
+output.created_pane: "%{pane_id} paneli yaratildi"
+output.pane_closed: "%{pane_id} paneli yopildi."
+
+# ── Errors (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Faol panel topilmadi. Panel ID-ni belgilash uchun -t foydalaning."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID oʻrnatilmagan. Windows Terminal paneli ichida bajaring."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Nomaʼlum shell turi '%{shell}'. Foydalaning: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - command name, do not translate
+error.wtcli_wait_for_spawn: "wtcli wait-for ishga tushmadi"
+error.wtcli_wait_for_parse: "wtcli wait-for chiqishini tahlil qilib boʻlmadi"
+error.wtcli_wait_for_failed: "wtcli wait-for amalga oshmadi: %{stderr}"
+
+# ── Hooks status output (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
+hooks.bundle_source: "toʻplam manbai: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI PATH-da emas"
+hooks.installed: "✓ oʻrnatilgan"
+hooks.marketplace_path_stale: "⚠ marketplace yoʻli eskirgan"
+hooks.installed_but_disabled: "⚠ oʻrnatilgan lekin oʻchirilgan"
+hooks.not_installed: "✗ oʻrnatilmagan"
+hooks.uninstall_skipped: "oʻtkazib yuborildi (CLI PATH-da emas)"
+hooks.install_attempted: "wt-agent-hooks oʻrnatish urinildi (idempotent). Natijani tekshirish uchun `wta hooks status` bajaring. Iz jurnali: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

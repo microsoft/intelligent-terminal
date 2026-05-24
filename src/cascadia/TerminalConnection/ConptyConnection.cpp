@@ -35,19 +35,13 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         siEx.StartupInfo.cb = sizeof(STARTUPINFOEX);
         siEx.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
         SIZE_T size{};
-
-        // Attribute count: PSEUDOCONSOLE always; HANDLE_LIST when the caller
-        // supplied secure-pipe handles for an agent-pane wta launch.
-        const bool hasProtocolPipe = _protocolPipeReadHandle && _protocolPipeWriteHandle;
-        const DWORD attrCount = hasProtocolPipe ? 2 : 1;
-
         // This call will return an error (by design); we are ignoring it.
-        InitializeProcThreadAttributeList(nullptr, attrCount, 0, &size);
+        InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
 #pragma warning(suppress : 26414) // We don't move/touch this smart pointer, but we have to allocate strangely for the adjustable size list.
         auto attrList{ std::make_unique<std::byte[]>(size) };
 #pragma warning(suppress : 26490) // We have to use reinterpret_cast because we allocated a byte array as a proxy for the adjustable size list.
         siEx.lpAttributeList = reinterpret_cast<PPROC_THREAD_ATTRIBUTE_LIST>(attrList.get());
-        THROW_IF_WIN32_BOOL_FALSE(InitializeProcThreadAttributeList(siEx.lpAttributeList, attrCount, 0, &size));
+        THROW_IF_WIN32_BOOL_FALSE(InitializeProcThreadAttributeList(siEx.lpAttributeList, 1, 0, &size));
 
         THROW_IF_WIN32_BOOL_FALSE(UpdateProcThreadAttribute(
             siEx.lpAttributeList,
@@ -57,23 +51,6 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             sizeof(HPCON),
             nullptr,
             nullptr));
-
-        // Constrain inheritance to exactly the two protocol pipe handles (no
-        // other handles leak in via bInheritHandles=TRUE).
-        HANDLE protocolHandlesToInherit[2]{};
-        if (hasProtocolPipe)
-        {
-            protocolHandlesToInherit[0] = _protocolPipeReadHandle.get();
-            protocolHandlesToInherit[1] = _protocolPipeWriteHandle.get();
-            THROW_IF_WIN32_BOOL_FALSE(UpdateProcThreadAttribute(
-                siEx.lpAttributeList,
-                0,
-                PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                protocolHandlesToInherit,
-                sizeof(protocolHandlesToInherit),
-                nullptr,
-                nullptr));
-        }
 
         auto cmdline{ wil::ExpandEnvironmentStringsW<std::wstring>(_commandline.c_str()) }; // mutable copy -- required for CreateProcessW
         auto environment = _initialEnv;
@@ -94,19 +71,6 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
                 wchar_t buf[512];
                 if (GetEnvironmentVariableW(L"WT_COM_CLSID", buf, ARRAYSIZE(buf)))
                     environment.as_map().insert_or_assign(L"WT_COM_CLSID", buf);
-            }
-
-            // Secure-pipe handles for an agent-pane wta launch (Phase 3).
-            // The decimal HANDLE values let wta's PipeChannel::from_env claim
-            // the inherited handles. Only emitted when both handles are set.
-            if (hasProtocolPipe)
-            {
-                environment.as_map().insert_or_assign(
-                    L"WT_PROTOCOL_PIPE_R",
-                    std::to_wstring(reinterpret_cast<uintptr_t>(_protocolPipeReadHandle.get())));
-                environment.as_map().insert_or_assign(
-                    L"WT_PROTOCOL_PIPE_W",
-                    std::to_wstring(reinterpret_cast<uintptr_t>(_protocolPipeWriteHandle.get())));
             }
 
             // WSLENV is a colon-delimited list of environment variables (+flags) that should appear inside WSL
@@ -210,15 +174,12 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         auto [newCommandLine, newStartingDirectory] = Utils::MangleStartingDirectoryForWSL(cmdline, _startingDirectory);
         const auto startingDirectory = newStartingDirectory.size() > 0 ? newStartingDirectory.c_str() : nullptr;
 
-        // bInheritHandles must be TRUE when PROC_THREAD_ATTRIBUTE_HANDLE_LIST
-        // is present — the list then constrains inheritance to exactly those
-        // handles, which is strictly safer than legacy raw inheritance.
         THROW_IF_WIN32_BOOL_FALSE(CreateProcessW(
             nullptr,
             newCommandLine.data(),
             nullptr, // lpProcessAttributes
             nullptr, // lpThreadAttributes
-            hasProtocolPipe ? TRUE : FALSE, // bInheritHandles
+            false, // bInheritHandles
             EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT, // dwCreationFlags
             lpEnvironment, // lpEnvironment
             startingDirectory,
@@ -227,14 +188,6 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             ));
 
         DeleteProcThreadAttributeList(siEx.lpAttributeList);
-
-        // The child now holds its inherited copies of the protocol pipe
-        // handles. Release ours so EOF semantics work when the child exits.
-        if (hasProtocolPipe)
-        {
-            _protocolPipeReadHandle.reset();
-            _protocolPipeWriteHandle.reset();
-        }
 
         const std::filesystem::path processName = wil::GetModuleFileNameExW<std::wstring>(_piClient.hProcess, nullptr);
         _clientName = processName.filename().wstring();
@@ -316,19 +269,6 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             _sessionId = unbox_prop_or<winrt::guid>(settings, L"sessionId", _sessionId);
             _environment = settings.TryLookup(L"environment").try_as<Windows::Foundation::Collections::ValueSet>();
             _profileGuid = unbox_prop_or<winrt::guid>(settings, L"profileGuid", _profileGuid);
-
-            // Optional secure-pipe handles from TerminalPage (agent-pane wta
-            // launch). Stored as UInt64 in the valueSet; ownership transfers
-            // here. The handles are inheritable on the wt side; we list them
-            // in PROC_THREAD_ATTRIBUTE_HANDLE_LIST during _LaunchAttachedClient
-            // and close our copies after CreateProcessW.
-            const auto pipeR = unbox_prop_or<uint64_t>(settings, L"protocolPipeReadHandle", 0);
-            const auto pipeW = unbox_prop_or<uint64_t>(settings, L"protocolPipeWriteHandle", 0);
-            if (pipeR != 0 && pipeW != 0)
-            {
-                _protocolPipeReadHandle.reset(reinterpret_cast<HANDLE>(static_cast<uintptr_t>(pipeR)));
-                _protocolPipeWriteHandle.reset(reinterpret_cast<HANDLE>(static_cast<uintptr_t>(pipeW)));
-            }
 
             _flags = 0;
 

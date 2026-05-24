@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "歡迎使用 智慧終端機！"
+# 設定畫面標題
+# {Locked="Intelligent Terminal"} - 產品名稱，請勿翻譯
+setup.title.first_run: "歡迎使用 Intelligent Terminal！"
 setup.title.agent_missing: "找不到智慧代理"
 setup.title.agent_error: "智慧代理連線失敗"
 setup.title.switch_agent: "切換智慧代理"
+setup.title.not_available: "智慧代理無法使用"
+setup.title.sign_in: "需要登入"
+
+# %{agent} 會在執行階段替換為智慧代理的顯示名稱。
+setup.subtitle.copilot_missing: "您的智慧代理 \"%{agent}\" 尚未安裝。請依照下列步驟進行安裝。若要切換智慧代理，請前往設定。"
+setup.subtitle.agent_missing: "您的智慧代理 \"%{agent}\" 尚未安裝。請手動重新安裝，然後重試。若要切換智慧代理，請前往設定。"
+setup.subtitle.copilot_auth: "您的智慧代理 \"%{agent}\" 需要驗證。請依照下列步驟登入。若要切換智慧代理，請前往設定。"
+setup.subtitle.agent_auth: "您的智慧代理 \"%{agent}\" 需要驗證。請透過智慧代理 CLI 登入，然後重試。若要切換智慧代理，請前往設定。"
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "選擇您要在 Intelligent Terminal 中使用的預設智慧代理 CLI。您可以"
+setup.description.fre_line2: "前往設定來配置及設定您的工作區。"
+
+setup.option.reinstall: "重新安裝 %{agent}"
+setup.option.reinstall_hint: "（將自動安裝）"
+setup.option.signin: "登入 %{agent}"
+setup.option.retry_detection: "重試偵測"
+setup.option.retry_auth: "我已登入 — 重試連線"
+setup.option.retry_connection: "重試連線"
+setup.option.switch_to: "切換到 %{agent}"
+setup.status.installing: "安裝中..."
+setup.status.install_failed: "安裝失敗："
+setup.status.installing_winget: " 正在透過 winget 安裝..."
+
+# ── 驗證流程 (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - 縮寫，不翻譯
+auth.agent_selected: "已選取智慧代理 %{name}"
+auth.agent_selected_with_status: "智慧代理 %{name} — "
+auth.checking_authentication: "  %{spinner} 正在檢查驗證..."
+auth.waiting_for_authorization: "  %{spinner} 正在等待授權..."
+auth.code_copied_hint: "  代碼已複製到剪貼簿 — 請在瀏覽器中貼上。"
+auth.sign_in_prompt: "登入以使用您的智慧代理："
+auth.card_connect: "  連接 %{name} 以啟用智慧代理功能"
+auth.button_sign_in_github: "[ 使用 GitHub 登入 ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ 使用 %{name} 登入 ]"
+auth.hint_footer: "  按 Enter 登入，按 Esc 返回"  # {Locked="Enter","Esc"}
+
+# ── 聊天檢視 (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "思考中…"
+# {Locked="Intelligent Terminal"} - 產品名稱，請勿翻譯
+chat.welcome_title: "歡迎使用 Intelligent Terminal！"
+chat.plan_header: "計畫："
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── 輸入預留位置 (src/ui/input.rs) ────────────────────────────────────────────
+input.placeholder.connected: "隨意提問，/ 查看命令.."  # {Locked="/"}
+input.placeholder.connecting: "連線中..."
+input.placeholder.disconnected: "已中斷連線"
+
+# ── 命令快顯視窗 (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - 斜線命令前綴，必須保持 ASCII
+commands.popup_title: " / 命令 "
+commands.help_title: " 說明 "
+commands.help_header: "斜線命令 — 在輸入方塊中鍵入 /。"
+commands.help_escape_hint: "  //text     傳送字面 '/'（跳脫命令剖析器）"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        關閉此說明"  # {Locked="Esc"}
+
+# ── 建議面板 (src/ui/recommendations.rs) ───────────────────────────────────
+# {Locked="Enter","Esc","↵"} - 按鍵名稱和 Return 鍵符號，請勿翻譯
+recommendations.nav_hint: "(↑ ↓ 瀏覽 • Enter 選取 • Esc 取消)"
+recommendations.button_run_command: "[ 執行命令 ]"
+recommendations.button_insert_in_terminal: "插入終端機"
+recommendations.button_open_in_new_tab: "在新索引標籤中開啟 ↵"
+recommendations.button_open_in_new_panel: "在新面板中開啟 ↵"
+recommendations.button_open_tab: "開啟索引標籤 ↵"
+recommendations.button_open_panel: "開啟面板 ↵"
+recommendations.button_execute: "執行 ↵"
+recommendations.agent_fallback: "智慧代理"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "索引標籤"
+recommendations.open_kind_panel: "面板"
+recommendations.open_kind_panel_direction: "面板 (%{direction})"
+recommendations.open_new_with_title_and_cwd: "新建 %{kind}（%{title}）— %{cwd}"
+recommendations.open_new_with_title: "新建 %{kind}（%{title}）"
+recommendations.open_new_with_cwd: "新建 %{kind} — %{cwd}"
+recommendations.open_new_empty: "新建空白 %{kind}"
+
+# ── 權限對話方塊精簡模式 (src/ui/permission.rs) ───────────────────────────────
+permission.compact.default_description: "已要求權限"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N 回答 · 調整視窗大小以檢視完整卡片]"  # {Locked="Y/N"}
+
+# ── 智慧代理狀態 (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "未安裝 — 選取以自動安裝"
+agent.status.not_found: "找不到"
+agent.status.detected: "已偵測到"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - 工具名稱和命令，必須原樣保留
+agent.install.running_winget: "正在執行：winget install GitHub.Copilot"
+agent.install.launch_failed: "無法啟動 winget：%{error}"
+agent.install.winget_exited: "winget 異常結束：%{error}"
+agent.install.winget_failed_code: "winget 安裝失敗（結束代碼 %{code}）"
+agent.install.unsupported: "不支援自動安裝 %{agent}"
+agent.custom.auth_hint: "請確認 %{name} 已安裝並位於 PATH 上。"  # {Locked="PATH"}
+
+# ── 智慧代理檢視 (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "載入中..."
+# {Locked="Enter","Shift+enter","Esc"} - 組合鍵，請勿翻譯
+agents.footer_hint: "(↑ ↓ 瀏覽 • Enter 在新索引標籤中啟動工作階段 • Shift+enter 在智慧代理窗格中啟動工作階段 • Esc 結束)"
+agents.status.active: "使用中"
+agents.status.waiting_for_input: "等待輸入"
+agents.status.error: "錯誤"
+agents.status.idle: "閒置"
+
+# ── 版面配置歡迎提示 (src/ui/layout.rs) ──────────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. 顯示/隱藏智慧代理窗格 • Ctrl+Alt+/ 顯示/隱藏智慧代理工作階段)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── 連線狀態 ────────────────────────────────────────────────────────────
+connection.starting: "正在啟動智慧代理..."
+connection.reconnecting: "正在重新連線..."
+
+# ── 系統訊息 (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "已取消。"
+system.no_prompt_in_flight: "沒有進行中的提示。"
+system.authentication_failed: "驗證失敗"
+system.command_copied_retry: "命令已複製 — 在另一個終端機中執行，然後按 Enter 重試"  # {Locked="Enter"}
+
+# ── 執行階段 CLI 輸出 (src/main.rs) ────────────────────────────────────────
+output.no_windows: "找不到視窗。"
+output.no_tabs: "找不到索引標籤。"
+output.no_panes: "找不到窗格。"
+output.no_windows_in_list: "找不到視窗"
+output.no_tabs_in_window: "視窗 %{window_id} 中找不到索引標籤"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - 欄標識符，保持 ASCII 以便剖析
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "使用中窗格：%{pane}（索引標籤：%{tab}，視窗：%{window}）"
+output.pane_running: "執行中（PID：%{pid}）"  # {Locked="PID"}
+output.pane_exited: "已結束（代碼：%{code}，PID：%{pid}）"  # {Locked="PID"}
+output.created_tab: "已建立索引標籤 %{tab_id}（窗格 %{pane_id}）"
+output.created_pane: "已建立窗格 %{pane_id}"
+output.pane_closed: "窗格 %{pane_id} 已關閉。"
+
+# ── 錯誤 (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "找不到使用中的窗格。請使用 -t 指定窗格 ID。"  # {Locked="-t"}
+error.wt_com_clsid_not_set: "未設定 WT_COM_CLSID。請在 Windows Terminal 窗格內執行。"  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "未知的殼層類型 '%{shell}'。請使用：bash、powershell、cmd、fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - 命令名稱，請勿翻譯
+error.wtcli_wait_for_spawn: "無法啟動 wtcli wait-for"
+error.wtcli_wait_for_parse: "無法剖析 wtcli wait-for 輸出"
+error.wtcli_wait_for_failed: "wtcli wait-for 失敗：%{stderr}"
+
+# ── 掛勾狀態輸出 (src/main.rs) ───────────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - 工具/CLI 名稱、環境變數、記錄檔名稱
+hooks.bundle_source: "套件組合來源：%{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI 不在 PATH 上"
+hooks.installed: "✓ 已安裝"
+hooks.marketplace_path_stale: "⚠ 商店路徑已過期"
+hooks.installed_but_disabled: "⚠ 已安裝但已停用"
+hooks.not_installed: "✗ 未安裝"
+hooks.uninstall_skipped: "已略過（CLI 不在 PATH 上）"
+hooks.install_attempted: "wt-agent-hooks 安裝已嘗試（冪等）。執行 `wta hooks status` 檢查結果。追蹤記錄：%LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

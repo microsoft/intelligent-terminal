@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "ഇന്റലിജന്റ് ടെർമിനലിലേക്ക് സ്വാഗതം!"
+# സെറ്റപ്പ് സ്ക്രീന്‍ ശീര്‍ഷകങ്ങള്‍
+# {Locked="Intelligent Terminal"} - ഉല്‍പ്പന്ന നാമം, വിവര്‍ത്തനം ചെയ്യരുത്
+setup.title.first_run: "Intelligent Terminal-ലേക്ക് സ്വാഗതം!"
 setup.title.agent_missing: "ഏജന്റ് കണ്ടെത്തിയില്ല"
-setup.title.agent_error: "ഏജന്റ് കണക്ഷൻ പരാജയപ്പെട്ടു"
+setup.title.agent_error: "ഏജന്റ് കണക്ഷന്‍ പരാജയപ്പെട്ടു"
 setup.title.switch_agent: "ഏജന്റ് മാറ്റുക"
+setup.title.not_available: "ഏജന്റ് ലഭ്യമല്ല"
+setup.title.sign_in: "സൈന്‍ ഇന്‍ ആവശ്യമാണ്"
+
+# %{agent} റണ്‍ടൈമില്‍ ഏജന്റ് പ്രദര്‍ശന നാമം ഉപയോഗിച്ച് മാറ്റിസ്ഥാപിക്കപ്പെടുന്നു.
+setup.subtitle.copilot_missing: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\" ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടില്ല. ഇന്‍സ്റ്റാള്‍ ചെയ്യാന്‍ താഴെയുള്ള ഘട്ടങ്ങള്‍ പിന്തുടരുക. ഏജന്റ് മാറ്റാന്‍ Settings-ലേക്ക് പോകുക."
+setup.subtitle.agent_missing: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\" ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടില്ല. ദയവായി സ്വമേധയാ വീണ്ടും ഇന്‍സ്റ്റാള്‍ ചെയ്ത്, വീണ്ടും ശ്രമിക്കുക. ഏജന്റ് മാറ്റാന്‍ Settings-ലേക്ക് പോകുക."
+setup.subtitle.copilot_auth: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\"-ന് പ്രമാണീകരണം ആവശ്യമാണ്. സൈന്‍ ഇന്‍ ചെയ്യാന്‍ താഴെയുള്ള ഘട്ടങ്ങള്‍ പിന്തുടരുക. ഏജന്റ് മാറ്റാന്‍ Settings-ലേക്ക് പോകുക."
+setup.subtitle.agent_auth: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\"-ന് പ്രമാണീകരണം ആവശ്യമാണ്. ദയവായി ഏജന്റ് CLI വഴി സൈന്‍ ഇന്‍ ചെയ്ത്, വീണ്ടും ശ്രമിക്കുക. ഏജന്റ് മാറ്റാന്‍ Settings-ലേക്ക് പോകുക."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal-ല്‍ ഉപയോഗിക്കാന്‍ ഡിഫോള്‍ട്ട് ഏജന്റ് CLI തിരഞ്ഞെടുക്കുക. നിങ്ങള്‍ക്ക്"
+setup.description.fre_line2: "നിങ്ങളുടെ വര്‍ക്ക്‌സ്‌പേസ് കോണ്‍ഫിഗര്‍ ചെയ്ത് സജ്ജീകരിക്കാന്‍ Settings-ലേക്ക് നാവിഗേറ്റ് ചെയ്യാം."
+
+setup.option.reinstall: "%{agent} വീണ്ടും ഇന്‍സ്റ്റാള്‍ ചെയ്യുക"
+setup.option.reinstall_hint: "(സ്വയമേവ ഇന്‍സ്റ്റാള്‍ ചെയ്യപ്പെടും)"
+setup.option.signin: "%{agent}-ല്‍ സൈന്‍ ഇന്‍ ചെയ്യുക"
+setup.option.retry_detection: "കണ്ടെത്തല്‍ വീണ്ടും ശ്രമിക്കുക"
+setup.option.retry_auth: "ഞാന്‍ സൈന്‍ ഇന്‍ ചെയ്‌തു — കണക്ഷന്‍ വീണ്ടും ശ്രമിക്കുക"
+setup.option.retry_connection: "കണക്ഷന്‍ വീണ്ടും ശ്രമിക്കുക"
+setup.option.switch_to: "%{agent}-ലേക്ക് മാറുക"
+setup.status.installing: "ഇന്‍സ്റ്റാള്‍ ചെയ്യുന്നു..."
+setup.status.install_failed: "ഇന്‍സ്റ്റാള്‍ പരാജയപ്പെട്ടു: "
+setup.status.installing_winget: " winget വഴി ഇന്‍സ്റ്റാള്‍ ചെയ്യുന്നു..."
+
+# ── പ്രമാണീകരണ പ്രവാഹം (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - ചുരുക്കെഴുത്ത്, Microsoft പ്രാദേശികവല്‍ക്കരണങ്ങളില്‍ സാധാരണ ഉപയോഗം
+auth.agent_selected: "ഏജന്റ് %{name} തിരഞ്ഞെടുത്തു"
+auth.agent_selected_with_status: "ഏജന്റ് %{name} — "
+auth.checking_authentication: "  %{spinner} പ്രമാണീകരണം പരിശോധിക്കുന്നു..."
+auth.waiting_for_authorization: "  %{spinner} അംഗീകാരത്തിനായി കാത്തിരിക്കുന്നു..."
+auth.code_copied_hint: "  കോഡ് ക്ലിപ്ബോര്‍ഡിലേക്ക് പകര്‍ത്തി — നിങ്ങളുടെ ബ്രൗസറില്‍ ഒട്ടിക്കുക."
+auth.sign_in_prompt: "നിങ്ങളുടെ ഏജന്റ് ഉപയോഗിക്കാന്‍ സൈന്‍ ഇന്‍ ചെയ്യുക:"
+auth.card_connect: "  ഏജന്റ് ഫീച്ചറുകള്‍ പ്രവര്‍ത്തനക്ഷമമാക്കാന്‍ %{name} കണക്ട് ചെയ്യുക"
+auth.button_sign_in_github: "[ GitHub ഉപയോഗിച്ച് സൈന്‍ ഇന്‍ ചെയ്യുക ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name} ഉപയോഗിച്ച് സൈന്‍ ഇന്‍ ചെയ്യുക ]"
+auth.hint_footer: "  സൈന്‍ ഇന്‍ ചെയ്യാന്‍ Enter അമര്‍ത്തുക, തിരികെ പോകാന്‍ Esc അമര്‍ത്തുക"  # {Locked="Enter","Esc"}
+
+# ── ചാറ്റ് വ്യൂ (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "ചിന്തിക്കുന്നു…"
+# {Locked="Intelligent Terminal"} - ഉല്‍പ്പന്ന നാമം, വിവര്‍ത്തനം ചെയ്യരുത്
+chat.welcome_title: "Intelligent Terminal-ലേക്ക് സ്വാഗതം!"
+chat.plan_header: "പദ്ധതി:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── ഇന്‍പുട്ട് പ്ലേസ്‌ഹോള്‍ഡറുകള്‍ (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "എന്തും ചോദിക്കൂ, / കമാന്‍ഡുകള്‍ക്ക്.."  # {Locked="/"}
+input.placeholder.connecting: "കണക്ട് ചെയ്യുന്നു..."
+input.placeholder.disconnected: "വിച്ഛേദിച്ചു"
+
+# ── കമാന്‍ഡ് പോപ്പ്അപ്പ് (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - സ്ലാഷ്-കമാന്‍ഡ് പ്രിഫിക്സ്, ASCII ആയിരിക്കണം
+commands.popup_title: " / കമാന്‍ഡുകള്‍ "
+commands.help_title: " സഹായം "
+commands.help_header: "സ്ലാഷ് കമാന്‍ഡുകള്‍ — ഇന്‍പുട്ട് ബോക്സില്‍ / ടൈപ്പ് ചെയ്യുക."
+commands.help_escape_hint: "  //text     അക്ഷരാര്‍ഥ '/' അയയ്ക്കുക (കമാന്‍ഡ് പാര്‍സര്‍ എസ്കേപ്പ് ചെയ്യുന്നു)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        ഈ സഹായം അടയ്ക്കുക"  # {Locked="Esc"}
+
+# ── ശുപാര്‍ശ പാനല്‍ (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - കീ പേരുകളും Return-കീ ഗ്ലിഫും, വിവര്‍ത്തനം ചെയ്യരുത്
+recommendations.nav_hint: "(↑ ↓ നാവിഗേറ്റ് ചെയ്യുക • Enter തിരഞ്ഞെടുക്കുക • Esc റദ്ദാക്കുക)"
+recommendations.button_run_command: "[ കമാന്‍ഡ് പ്രവര്‍ത്തിപ്പിക്കുക ]"
+recommendations.button_insert_in_terminal: "ടെര്‍മിനലില്‍ ചേര്‍ക്കുക"
+recommendations.button_open_in_new_tab: "പുതിയ ടാബില്‍ തുറക്കുക ↵"
+recommendations.button_open_in_new_panel: "പുതിയ പാനലില്‍ തുറക്കുക ↵"
+recommendations.button_open_tab: "ടാബ് തുറക്കുക ↵"
+recommendations.button_open_panel: "പാനല്‍ തുറക്കുക ↵"
+recommendations.button_execute: "നടപ്പിലാക്കുക ↵"
+recommendations.agent_fallback: "ഏജന്റ്"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ടാബ്"
+recommendations.open_kind_panel: "പാനൽ"
+recommendations.open_kind_panel_direction: "പാനൽ (%{direction})"
+recommendations.open_new_with_title_and_cwd: "പുതിയ %{kind} (%{title}) %{cwd}-ൽ"
+recommendations.open_new_with_title: "പുതിയ %{kind} (%{title})"
+recommendations.open_new_with_cwd: "പുതിയ %{kind} %{cwd}-ൽ"
+recommendations.open_new_empty: "പുതിയ ശൂന്യമായ %{kind}"
+
+# ── അനുമതി ഡയലോഗ് കോംപാക്ട് മോഡ് (src/ui/permission.rs) ───────────────────────
+permission.compact.default_description: "അനുമതി അഭ്യര്‍ഥിച്ചു"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N ഉത്തരം നല്‍കുക · മുഴുവന്‍ കാര്‍ഡിനായി വലുപ്പം മാറ്റുക]"  # {Locked="Y/N"}
+
+# ── ഏജന്റ് നില (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടില്ല — സ്വയമേവ ഇന്‍സ്റ്റാള്‍ ചെയ്യാന്‍ തിരഞ്ഞെടുക്കുക"
+agent.status.not_found: "കണ്ടെത്തിയില്ല"
+agent.status.detected: "കണ്ടെത്തി"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - ടൂള്‍ പേരുകളും കമാന്‍ഡും, അതേപടി പ്രവര്‍ത്തിപ്പിക്കണം
+agent.install.running_winget: "പ്രവര്‍ത്തിപ്പിക്കുന്നു: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget ലോഞ്ച് ചെയ്യുന്നതില്‍ പരാജയം: %{error}"
+agent.install.winget_exited: "winget അപ്രതീക്ഷിതമായി നിലച്ചു: %{error}"
+agent.install.winget_failed_code: "winget ഇന്‍സ്റ്റാള്‍ പരാജയപ്പെട്ടു (എക്സിറ്റ് കോഡ് %{code})"
+agent.install.unsupported: "%{agent}-ന് ഓട്ടോമാറ്റിക് ഇന്‍സ്റ്റാള്‍ പിന്തുണയ്ക്കുന്നില്ല"
+agent.custom.auth_hint: "%{name} ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടുണ്ടെന്നും നിങ്ങളുടെ PATH-ല്‍ ഉണ്ടെന്നും ഉറപ്പാക്കുക."  # {Locked="PATH"}
+
+# ── ഏജന്റുകളുടെ വ്യൂ (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "ലോഡ് ചെയ്യുന്നു..."
+# {Locked="Enter","Shift+enter","Esc"} - കീ കോമ്പിനേഷനുകള്‍, വിവര്‍ത്തനം ചെയ്യരുത്
+agents.footer_hint: "(↑ ↓ നാവിഗേറ്റ് ചെയ്യുക • Enter പുതിയ ടാബില്‍ സെഷന്‍ ആരംഭിക്കുക • Shift+enter ഏജന്റ് പേനില്‍ സെഷന്‍ ആരംഭിക്കുക • Esc പുറത്തുകടക്കുക)"
+agents.status.active: "സജീവം"
+agents.status.waiting_for_input: "ഇന്‍പുട്ടിനായി കാത്തിരിക്കുന്നു"
+agents.status.error: "പിശക്"
+agents.status.idle: "നിഷ്ക്രിയം"
+
+# ── ലേഔട്ട് സ്വാഗത സൂചന (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. ഏജന്റ് പേന്‍ കാണിക്കുക/മറയ്ക്കുക • Ctrl+Alt+/ ഏജന്റ് സെഷന്‍ കാണിക്കുക/മറയ്ക്കുക)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── കണക്ഷന്‍ നില ────────────────────────────────────────────────────────
+connection.starting: "ഏജന്റ് ആരംഭിക്കുന്നു..."
+connection.reconnecting: "വീണ്ടും കണക്ട് ചെയ്യുന്നു..."
+
+# ── സിസ്റ്റം സന്ദേശങ്ങള്‍ (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "റദ്ദാക്കി."
+system.no_prompt_in_flight: "പുരോഗതിയില്‍ പ്രോംപ്റ്റ് ഇല്ല."
+system.authentication_failed: "പ്രമാണീകരണം പരാജയപ്പെട്ടു"
+system.command_copied_retry: "കമാന്‍ഡ് പകര്‍ത്തി — മറ്റൊരു ടെര്‍മിനലില്‍ അത് പ്രവര്‍ത്തിപ്പിക്കുക, എന്നിട്ട് വീണ്ടും ശ്രമിക്കാന്‍ Enter അമര്‍ത്തുക"  # {Locked="Enter"}
+
+# ── റണ്‍ടൈം CLI ഔട്ട്പുട്ട് (src/main.rs) ────────────────────────────────────────
+output.no_windows: "വിന്‍ഡോകള്‍ കണ്ടെത്തിയില്ല."
+output.no_tabs: "ടാബുകള്‍ കണ്ടെത്തിയില്ല."
+output.no_panes: "പേനുകള്‍ കണ്ടെത്തിയില്ല."
+output.no_windows_in_list: "വിന്‍ഡോകള്‍ കണ്ടെത്തിയില്ല"
+output.no_tabs_in_window: "വിന്‍ഡോ %{window_id}-ല്‍ ടാബുകള്‍ കണ്ടെത്തിയില്ല"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - കോളം ഐഡന്റിഫയറുകള്‍, പാര്‍സിംഗിനായി ASCII-ല്‍ നിലനിര്‍ത്തുക
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "സജീവ പേന്‍: %{pane} (ടാബ്: %{tab}, വിന്‍ഡോ: %{window})"
+output.pane_running: "പ്രവര്‍ത്തിക്കുന്നു (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "പുറത്തുകടന്നു (കോഡ്: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "ടാബ് %{tab_id} സൃഷ്ടിച്ചു (പേന്‍ %{pane_id})"
+output.created_pane: "പേന്‍ %{pane_id} സൃഷ്ടിച്ചു"
+output.pane_closed: "പേന്‍ %{pane_id} അടച്ചു."
+
+# ── പിശകുകള്‍ (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "സജീവ പേന്‍ കണ്ടെത്തിയില്ല. പേന്‍ ID നിര്‍ദ്ദേശിക്കാന്‍ -t ഉപയോഗിക്കുക."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID സെറ്റ് ചെയ്തിട്ടില്ല. Windows Terminal പേനിനുള്ളില്‍ പ്രവര്‍ത്തിപ്പിക്കുക."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "അറിയാത്ത ഷെല്‍ തരം '%{shell}'. ഉപയോഗിക്കുക: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - കമാന്‍ഡ് പേര്, വിവര്‍ത്തനം ചെയ്യരുത്
+error.wtcli_wait_for_spawn: "wtcli wait-for ലോഞ്ച് ചെയ്യുന്നതില്‍ പരാജയം"
+error.wtcli_wait_for_parse: "wtcli wait-for ഔട്ട്പുട്ട് പാര്‍സ് ചെയ്യുന്നതില്‍ പരാജയം"
+error.wtcli_wait_for_failed: "wtcli wait-for പരാജയപ്പെട്ടു: %{stderr}"
+
+# ── ഹൂക്കുകളുടെ നില ഔട്ട്പുട്ട് (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - ടൂള്‍/CLI പേരുകള്‍, എന്‍വയണ്‍മെന്റ് വേരിയബിളുകള്‍, ലോഗ് ഫയല്‍ പേരുകള്‍
+hooks.bundle_source: "ബണ്ടില്‍ ഉറവിടം: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI PATH-ല്‍ ഇല്ല"
+hooks.installed: "✓ ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടുണ്ട്"
+hooks.marketplace_path_stale: "⚠ മാര്‍ക്കറ്റ്‌പ്ലേസ് പാത്ത് കാലഹരണപ്പെട്ടതാണ്"
+hooks.installed_but_disabled: "⚠ ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടുണ്ട് പക്ഷേ നിഷ്ക്രിയമാക്കിയിട്ടുണ്ട്"
+hooks.not_installed: "✗ ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടില്ല"
+hooks.uninstall_skipped: "ഒഴിവാക്കി (CLI PATH-ല്‍ ഇല്ല)"
+hooks.install_attempted: "wt-agent-hooks ഇന്‍സ്റ്റാള്‍ ശ്രമിച്ചു (ഐഡംപോറ്റന്റ്). ഫലം പരിശോധിക്കാന്‍ `wta hooks status` പ്രവര്‍ത്തിപ്പിക്കുക. ട്രേസ് ലോഗ്: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

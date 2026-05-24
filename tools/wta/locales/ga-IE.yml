@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "Fáilte go Teirminéal Cliste!"
-setup.title.agent_missing: "Níor aimsíodh an gníomhaire"
-setup.title.agent_error: "Theip ar an gceangal leis an ngníomhaire"
+# Teidil scáileán socraithe
+# {Locked="Intelligent Terminal"} - ainm an táirge, ná haistrigh
+setup.title.first_run: "Fáilte go Intelligent Terminal!"
+setup.title.agent_missing: "Nír aimsíodh an gníomhaire"
+setup.title.agent_error: "Theip ar cheangal an ghníomhaire"
 setup.title.switch_agent: "Athraigh gníomhaire"
+setup.title.not_available: "Níl an gníomhaire ar fáil"
+setup.title.sign_in: "Sínigh isteach riachtanach"
+
+# Cuirtear %{agent} in ionad ainm taispeána an ghníomhaire ag am rite.
+setup.subtitle.copilot_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Lean na céimeanna thíos chun é a shuiteáil. Chun gníomhairí a athrú, téigh go Settings."
+setup.subtitle.agent_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Athshuiteáil de láimh é, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Settings."
+setup.subtitle.copilot_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Lean na céimeanna thíos chun síniú isteach. Chun gníomhairí a athrú, téigh go Settings."
+setup.subtitle.agent_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Sínigh isteach tríd an CLI gníomhaire, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Settings."
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Roghnaigh an CLI gníomhaire réamhshocraithe ba mhaith leat a úsáid in Intelligent Terminal. Is féidir leat"
+setup.description.fre_line2: "dul go Settings chun do spás oibre a chumrú agus a shocrú."
+
+setup.option.reinstall: "Athshuiteáil %{agent}"
+setup.option.reinstall_hint: "(Suiteálfar go huathoibríoch)"
+setup.option.signin: "Sínigh isteach chuig %{agent}"
+setup.option.retry_detection: "Bain triail eile as aimsiú"
+setup.option.retry_auth: "Tá mé sínithe isteach — bain triail eile as ceangal"
+setup.option.retry_connection: "Bain triail eile as ceangal"
+setup.option.switch_to: "Athraigh go %{agent}"
+setup.status.installing: "Á shuiteáil..."
+setup.status.install_failed: "Theip ar shuiteáil: "
+setup.status.installing_winget: " Á shuiteáil trí winget..."
+
+# ── Sreabhadh fíordheimhnithe (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - acrainm, úsáid choitianta i logánú Microsoft
+auth.agent_selected: "Tá CLI gníomhaire %{name} roghnaithe"
+auth.agent_selected_with_status: "CLI gníomhaire %{name} — "
+auth.checking_authentication: "  %{spinner} Fíordheimhniú á sheiceáil..."
+auth.waiting_for_authorization: "  %{spinner} Ag fanacht le húdarú..."
+auth.code_copied_hint: "  Cód cóipeáilte chuig an ngearrthaisce — greamaigh é i do bhrabhsálaí."
+auth.sign_in_prompt: "Sínigh isteach chun do ghníomhaire a úsáid:"
+auth.card_connect: "  Ceangail %{name} chun gnéithe gníomhaire a chumasú"
+auth.button_sign_in_github: "[ Sínigh isteach le GitHub ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Sínigh isteach le %{name} ]"
+auth.hint_footer: "  Brúigh Enter chun síniú isteach, Esc chun dul ar ais"  # {Locked="Enter","Esc"}
+
+# ── Amharc comhrá (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Ag smaoineamh…"
+# {Locked="Intelligent Terminal"} - ainm an táirge, ná haistrigh
+chat.welcome_title: "Fáilte go Intelligent Terminal!"
+chat.plan_header: "Plean:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Ionadóirí ionchuir (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Cuir ceist ar bith, / le haghaidh orduithe.."  # {Locked="/"}
+input.placeholder.connecting: "ag ceangal..."
+input.placeholder.disconnected: "dícheangailte"
+
+# ── Aníos orduithe (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - réimír ordú scáth, caithfidh sé fanacht ASCII
+commands.popup_title: " / orduithe "
+commands.help_title: " Cabhair "
+commands.help_header: "Orduithe scáth — clóscríobh / sa bhosca ionchuir."
+commands.help_escape_hint: "  //text     Seol '/' litriúil (éalú ón bparsálaí orduithe)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Dún an chabhair seo"  # {Locked="Esc"}
+
+# ── Painéal moltaí (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - ainmneacha eochracha agus gliof eochair Fillte, ná haistrigh
+recommendations.nav_hint: "(↑ ↓ chun nascleanúint • Enter chun roghnú • Esc chun cealú)"
+recommendations.button_run_command: "[ Rith ordú ]"
+recommendations.button_insert_in_terminal: "Ionsáigh i dTeirminéal"
+recommendations.button_open_in_new_tab: "Oscail i gCluaisín Nua ↵"
+recommendations.button_open_in_new_panel: "Oscail i bPainéal Nua ↵"
+recommendations.button_open_tab: "Oscail Cluaisín ↵"
+recommendations.button_open_panel: "Oscail Painéal ↵"
+recommendations.button_execute: "Rith ↵"
+recommendations.agent_fallback: "gníomhaire"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "cluaisín"
+recommendations.open_kind_panel: "painéal"
+recommendations.open_kind_panel_direction: "painéal (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} nua (%{title}) i %{cwd}"
+recommendations.open_new_with_title: "%{kind} nua (%{title})"
+recommendations.open_new_with_cwd: "%{kind} nua i %{cwd}"
+recommendations.open_new_empty: "%{kind} folamh nua"
+
+# ── Dialóg ceada modh dlúth (src/ui/permission.rs) ───────────────────────────
+permission.compact.default_description: "Cead iarrtha"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N le freagairt · athraigh méid le haghaidh cárta iomlán]"  # {Locked="Y/N"}
+
+# ── Stádas gníomhaire (src/agent_check.rs) ───────────────────────────────────
+agent.status.not_installed_auto: "Níl suiteáilte — roghnaigh chun suiteáil go huathoibríoch"
+agent.status.not_found: "Nár aimsíodh"
+agent.status.detected: "Braitheadh"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - ainmneacha uirlisí agus ordú, caithfidh siad rith mar atá
+agent.install.running_winget: "Ag rith: winget install GitHub.Copilot"
+agent.install.launch_failed: "Theip ar winget a sheoladh: %{error}"
+agent.install.winget_exited: "D'fhág winget gan choinne: %{error}"
+agent.install.winget_failed_code: "Theip ar shuiteáil winget (cód scoir %{code})"
+agent.install.unsupported: "Ní thacaítear le suiteáil uathoibríoch le haghaidh %{agent}"
+agent.custom.auth_hint: "Cinntigh go bhfuil %{name} suiteáilte agus ar do PATH."  # {Locked="PATH"}
+
+# ── Amharc gníomhairí (src/ui/agents_view.rs) ─────────────────────────────────
+agents.loading: "Á luchtú..."
+# {Locked="Enter","Shift+enter","Esc"} - teaglamaí eochracha, ná haistrigh
+agents.footer_hint: "(↑ ↓ chun nascleanúint • Enter chun seisiún a sheoladh i gcluaisín nua • Shift+enter chun seisiún a sheoladh i bpána gníomhaire • Esc chun scor)"
+agents.status.active: "Gníomhach"
+agents.status.waiting_for_input: "Ag fanacht le hionchur"
+agents.status.error: "Earráid"
+agents.status.idle: "Díomhaoin"
+
+# ── Leid fáilte leagan amach (src/ui/layout.rs) ──────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. chun pána gníomhaire a thaispeáint/a cheilt • Ctrl+Alt+/ chun seisiún gníomhaire a thaispeáint/a cheilt)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Staid ceangail ────────────────────────────────────────────────────────
+connection.starting: "Gníomhaire á thosú..."
+connection.reconnecting: "Ag athcheangal..."
+
+# ── Teachtaireachtaí córais (src/app.rs) ────────────────────────────────────
+system.cancelled: "Cealaithe."
+system.no_prompt_in_flight: "Níl aon leid ar siúl."
+system.authentication_failed: "Theip ar fhíordheimhniú"
+system.command_copied_retry: "Ordú cóipeáilte — rith i dteirminéal eile é, ansin brúigh Enter chun triail eile a bhaint as"  # {Locked="Enter"}
+
+# ── Aschur CLI ag am rite (src/main.rs) ────────────────────────────────────
+output.no_windows: "Níor aimsíodh aon fhuinneoga."
+output.no_tabs: "Níor aimsíodh aon chluaisíní."
+output.no_panes: "Níor aimsíodh aon phánaí."
+output.no_windows_in_list: "Níor aimsíodh aon fhuinneoga"
+output.no_tabs_in_window: "Níor aimsíodh aon chluaisíní i bhfuinneog %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - aitheantóirí colún, coinníodh ASCII le haghaidh parsála
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Pána gníomhach: %{pane} (cluaisín: %{tab}, fuinneog: %{window})"
+output.pane_running: "Ag rith (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Scoir (cód: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Cluaisín %{tab_id} cruthaithe (pána %{pane_id})"
+output.created_pane: "Pána %{pane_id} cruthaithe"
+output.pane_closed: "Pána %{pane_id} dúnta."
+
+# ── Earráidí (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Níor aimsíodh aon phána gníomhach. Úsáid -t chun ID pána a shonrú."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "Níl WT_COM_CLSID socraithe. Rith laistigh de phána Windows Terminal."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Cineál blaoisce anaithnid '%{shell}'. Úsáid: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - ainm ordaithe, ná haistrigh
+error.wtcli_wait_for_spawn: "Theip ar wtcli wait-for a thosú"
+error.wtcli_wait_for_parse: "Theip ar aschur wtcli wait-for a pharsáil"
+error.wtcli_wait_for_failed: "Theip ar wtcli wait-for: %{stderr}"
+
+# ── Aschur stádais crúcaí (src/main.rs) ───────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - ainmneacha uirlisí/CLI, athróga timpeallachta, ainmneacha comhad loga
+hooks.bundle_source: "foinse beartáin: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI níl ar PATH"
+hooks.installed: "✓ suiteáilte"
+hooks.marketplace_path_stale: "⚠ conair mhargaidh as feidhm"
+hooks.installed_but_disabled: "⚠ suiteáilte ach díchumasaithe"
+hooks.not_installed: "✗ níl suiteáilte"
+hooks.uninstall_skipped: "léimthe (CLI níl ar PATH)"
+hooks.install_attempted: "Rinneadh iarracht wt-agent-hooks a shuiteáil (iompóiteach). Rith `wta hooks status` chun an toradh a iniúchadh. Loga rianaithe: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

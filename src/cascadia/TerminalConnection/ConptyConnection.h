@@ -93,18 +93,6 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         til::env _initialEnv{};
         guid _profileGuid{};
 
-        // Optional secure-pipe transport between WT and an agent-pane wta:
-        // TerminalPage creates a duplex anonymous pipe pair, retains the
-        // wt-side handles to drive a TerminalProtocolPipeServer, and passes
-        // the wta-side handles into Initialize() via the valueSet keys
-        // "protocolPipeReadHandle" / "protocolPipeWriteHandle" (UInt64).
-        // Ownership transfers to ConptyConnection: the handles are listed in
-        // STARTUPINFOEX PROC_THREAD_ATTRIBUTE_HANDLE_LIST (forcing
-        // bInheritHandles=TRUE) and closed in this process after
-        // CreateProcessW so EOF semantics work correctly when the child exits.
-        wil::unique_handle _protocolPipeReadHandle;
-        wil::unique_handle _protocolPipeWriteHandle;
-
         struct StartupInfoFromDefTerm
         {
             winrt::hstring title{};

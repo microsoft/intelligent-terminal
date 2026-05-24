@@ -48,10 +48,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     bool AIAgentsViewModel::_IsKnownAgent(const winrt::hstring& id)
     {
-        static constexpr std::wstring_view knownIds[] = { L"copilot", L"gemini", L"claude", L"codex" };
-        for (const auto& known : knownIds)
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        for (const auto& a : Reg::BuiltinAcpAgents)
         {
-            if (id == known) return true;
+            if (id == a.id) return true;
+        }
+        for (const auto& a : Reg::BuiltinDelegateAgents)
+        {
+            if (id == a.id) return true;
         }
         return false;
     }
@@ -118,13 +122,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
-        // ACP-capable agents (shared list — see inc/AgentRegistry.h).
-        // Skip agents whose CLI isn't installed — the dropdown only offers
-        // choices the user can actually launch. If the persisted setting
-        // names a missing agent, the SelectedItem fallback in
-        // CurrentAcpAgent picks the "Add New" entry.
+        // ACP-capable agents — use GPO-filtered list so only policy-allowed
+        // agents appear in the dropdown. Also skip agents whose CLI isn't
+        // installed — the dropdown only offers choices the user can actually
+        // launch.
+        const auto filteredAcp = Reg::FilteredAcpAgents();
         std::vector<Editor::AgentEntry> acpEntries;
-        for (const auto& a : Reg::BuiltinAcpAgents)
+        for (const auto& a : filteredAcp)
         {
             if (!_IsAgentInstalled(std::wstring{ a.id }.c_str()))
             {
@@ -136,8 +140,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 true));
         }
         _acpAgentList = winrt::single_threaded_observable_vector(std::move(acpEntries));
-        _MaybeAppendCustomEntry(_acpAgentList, _GlobalSettings.AcpCustomCommand(), _GlobalSettings.AcpAgent());
-        _AppendAddNewEntry(_acpAgentList);
+        // Only show custom entry and "Add New" if custom agents are allowed by policy.
+        if (!_GlobalSettings.IsCustomAgentPolicyLocked())
+        {
+            _MaybeAppendCustomEntry(_acpAgentList, _GlobalSettings.AcpCustomCommand(), _GlobalSettings.AcpAgent());
+            _AppendAddNewEntry(_acpAgentList);
+        }
 
         // ACP-advertised model list. Populated by TerminalPage::OnAgentStatusChanged
         // whenever wta pushes a fresh agent_status event. We hold an
@@ -155,10 +163,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
             });
 
-        // Delegate agents (shared list — see inc/AgentRegistry.h).
-        // Same install-filter rule as the ACP list above.
+        // Delegate agents — same GPO-filtered + install-filter rule.
+        const auto filteredDelegate = Reg::FilteredDelegateAgents();
         std::vector<Editor::AgentEntry> delegateEntries;
-        for (const auto& a : Reg::BuiltinDelegateAgents)
+        for (const auto& a : filteredDelegate)
         {
             if (!_IsAgentInstalled(std::wstring{ a.id }.c_str()))
             {
@@ -170,8 +178,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 true));
         }
         _delegateAgentList = winrt::single_threaded_observable_vector(std::move(delegateEntries));
-        _MaybeAppendCustomEntry(_delegateAgentList, _GlobalSettings.DelegateCustomCommand(), _GlobalSettings.DelegateAgent());
-        _AppendAddNewEntry(_delegateAgentList);
+        if (!_GlobalSettings.IsCustomAgentPolicyLocked())
+        {
+            _MaybeAppendCustomEntry(_delegateAgentList, _GlobalSettings.DelegateCustomCommand(), _GlobalSettings.DelegateAgent());
+            _AppendAddNewEntry(_delegateAgentList);
+        }
 
         // Pane position list
         _agentPanePositionMap = winrt::single_threaded_map<winrt::hstring, Editor::EnumEntry>();
@@ -255,11 +266,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     bool AIAgentsViewModel::IsCustomAcpAgentSelected()
     {
         if (_isAddingCustomAcpAgent) return false;
+        // If custom agents are blocked by GPO, treat as not selected even
+        // if the raw setting still has a custom: value from before policy
+        // was applied.
+        if (_GlobalSettings.IsCustomAgentPolicyLocked()) return false;
         return _StartsWithCustom(_GlobalSettings.AcpAgent());
     }
 
     winrt::hstring AIAgentsViewModel::CustomAcpCommandPreview()
     {
+        if (_GlobalSettings.IsCustomAgentPolicyLocked()) return winrt::hstring{};
         return _StartsWithCustom(_GlobalSettings.AcpAgent()) ? _GlobalSettings.AcpCustomCommand() : winrt::hstring{};
     }
 
@@ -358,7 +374,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 if (_acpAgentList.GetAt(i).IsAddNew()) return _acpAgentList.GetAt(i);
             }
         }
-        return _FindEntryById(_acpAgentList, _GlobalSettings.AcpAgent());
+        auto match = _FindEntryById(_acpAgentList, _GlobalSettings.AcpAgent());
+        if (match) return match;
+
+        // Saved agent is not in the filtered list (blocked by GPO or not
+        // installed). Fall back to the first real entry so the ComboBox
+        // always has a valid SelectedItem and doesn't freeze.
+        for (uint32_t i = 0; i < _acpAgentList.Size(); ++i)
+        {
+            const auto entry = _acpAgentList.GetAt(i);
+            if (!entry.IsAddNew()) return entry;
+        }
+        return nullptr;
     }
 
     void AIAgentsViewModel::CurrentAcpAgent(const Editor::AgentEntry& value)
@@ -414,7 +441,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 if (_delegateAgentList.GetAt(i).IsAddNew()) return _delegateAgentList.GetAt(i);
             }
         }
-        return _FindEntryById(_delegateAgentList, _GlobalSettings.DelegateAgent());
+        auto match = _FindEntryById(_delegateAgentList, _GlobalSettings.DelegateAgent());
+        if (match) return match;
+
+        // Saved agent is not in the filtered list (blocked by GPO or not
+        // installed). Fall back to the first real entry.
+        for (uint32_t i = 0; i < _delegateAgentList.Size(); ++i)
+        {
+            const auto entry = _delegateAgentList.GetAt(i);
+            if (!entry.IsAddNew()) return entry;
+        }
+        return nullptr;
     }
 
     void AIAgentsViewModel::CurrentDelegateAgent(const Editor::AgentEntry& value)
@@ -462,6 +499,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void AIAgentsViewModel::SaveCustomAcpAgent()
     {
+        if (_GlobalSettings.IsCustomAgentPolicyLocked()) return;
         if (_customAcpCommand.empty()) return;
         const auto bareId = _DeriveId(_customAcpCommand);
         _GlobalSettings.AcpCustomCommand(_customAcpCommand);
@@ -498,6 +536,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void AIAgentsViewModel::SaveCustomDelegateAgent()
     {
+        if (_GlobalSettings.IsCustomAgentPolicyLocked()) return;
         if (_customDelegateCommand.empty()) return;
         const auto bareId = _DeriveId(_customDelegateCommand);
         _GlobalSettings.DelegateCustomCommand(_customDelegateCommand);
@@ -585,11 +624,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     bool AIAgentsViewModel::AutoFixEnabled() const
     {
-        return _GlobalSettings.AutoFixEnabled();
+        return _GlobalSettings.EffectiveAutoFixEnabled();
     }
 
     void AIAgentsViewModel::AutoFixEnabled(bool value)
     {
+        // Reject writes when policy blocks autofix.
+        if (_GlobalSettings.IsAutoFixPolicyLocked())
+        {
+            return;
+        }
         if (_GlobalSettings.AutoFixEnabled() == value) return;
         _GlobalSettings.AutoFixEnabled(value);
         _NotifyChanges(L"HasAutoFixEnabled", L"AutoFixEnabled");
@@ -793,7 +837,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void AIAgentsViewModel::InstallAllAgentHooks()
     {
-        if (_installingAgentHooks) return;
+        if (_installingAgentHooks || IsAgentSessionHooksPolicyLocked()) return;
         _installingAgentHooks = true;
         _agentHooksInstallSummary = winrt::hstring{ L"Installing hooks..." };
         _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
@@ -893,7 +937,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // here because the Settings UI project can't include TerminalApp
         // headers. Drift between the two is a real bug (probe would
         // hit a different agent than the pane will eventually launch).
-        const auto acpAgent = _GlobalSettings.AcpAgent();
+        // Use the policy-aware getter so probes respect GPO.
+        const auto acpAgent = _GlobalSettings.EffectiveAcpAgent();
+        if (acpAgent.empty())
+        {
+            return {};
+        }
 
         if (winrt::to_string(acpAgent).starts_with("custom:"))
         {

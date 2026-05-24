@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "Ongi etorri Terminal Adimenduna-era!"
+# Konfigurazio-pantailaren tituluak
+# {Locked="Intelligent Terminal"} - produktuaren izena, ez itzuli
+setup.title.first_run: "Ongi etorri Intelligent Terminal-era!"
 setup.title.agent_missing: "Agentea ez da aurkitu"
 setup.title.agent_error: "Agentearekin konektatzeak huts egin du"
 setup.title.switch_agent: "Aldatu agentea"
+setup.title.not_available: "Agentea ez dago erabilgarri"
+setup.title.sign_in: "Saioa hastea beharrezkoa da"
+
+# %{agent} exekuzio-unean agentearen bistaratze-izenarekin ordezkatzen da.
+setup.subtitle.copilot_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. Jarraitu beheko urratsak instalatzeko. Agenteak aldatzeko, joan Settings atalera."
+setup.subtitle.agent_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. Birinstalatu eskuz, eta saiatu berriro. Agenteak aldatzeko, joan Settings atalera."
+setup.subtitle.copilot_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Jarraitu beheko urratsak saioa hasteko. Agenteak aldatzeko, joan Settings atalera."
+setup.subtitle.agent_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Hasi saioa agentearen CLI bidez, eta saiatu berriro. Agenteak aldatzeko, joan Settings atalera."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "Aukeratu Intelligent Terminal-en erabili nahi duzun agente CLI lehenetsia. Hau egin dezakezu:"
+setup.description.fre_line2: "joan Settings atalera zure lan-eremua konfiguratu eta ezartzeko."
+
+setup.option.reinstall: "Birinstalatu %{agent}"
+setup.option.reinstall_hint: "(Automatikoki instalatuko da)"
+setup.option.signin: "Hasi saioa %{agent}(e)n"
+setup.option.retry_detection: "Saiatu berriro detekzioa"
+setup.option.retry_auth: "Saioa hasi dut — saiatu berriro konexioa"
+setup.option.retry_connection: "Saiatu berriro konexioa"
+setup.option.switch_to: "Aldatu %{agent}(e)ra"
+setup.status.installing: "Instalatzen..."
+setup.status.install_failed: "Instalazioak huts egin du: "
+setup.status.installing_winget: " winget bidez instalatzen..."
+
+# ── Autentifikazio-fluxua (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - laburdura, Microsoften lokalizazioetan ohiko erabilera
+auth.agent_selected: "Agente %{name} hautatuta dago"
+auth.agent_selected_with_status: "Agente %{name} — "
+auth.checking_authentication: "  %{spinner} Autentifikazioa egiaztatzen..."
+auth.waiting_for_authorization: "  %{spinner} Baimenaren zain..."
+auth.code_copied_hint: "  Kodea arbelean kopiatu da — itsatsi zure arakatzailean."
+auth.sign_in_prompt: "Hasi saioa zure agentea erabiltzeko:"
+auth.card_connect: "  Konektatu %{name} agentearen eginbideak gaitzeko"
+auth.button_sign_in_github: "[ Hasi saioa GitHub-ekin ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ Hasi saioa %{name}(e)kin ]"
+auth.hint_footer: "  Sakatu Enter saioa hasteko, Esc atzera joateko"  # {Locked="Enter","Esc"}
+
+# ── Txat-ikuspegia (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "Pentsatzen…"
+# {Locked="Intelligent Terminal"} - produktuaren izena, ez itzuli
+chat.welcome_title: "Ongi etorri Intelligent Terminal-era!"
+chat.plan_header: "Plana:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── Sarrera-leku-markak (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "Galdetu edozer, / komandoetarako.."  # {Locked="/"}
+input.placeholder.connecting: "konektatzen..."
+input.placeholder.disconnected: "deskonektatuta"
+
+# ── Komandoen popup-a (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - barra-komando aurrizkia, ASCII izan behar du
+commands.popup_title: " / komandoak "
+commands.help_title: " Laguntza "
+commands.help_header: "Barra-komandoak — idatzi / sarrera-koadroan."
+commands.help_escape_hint: "  //text     Bidali '/' literala (ihes komando-analizatzailetik)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        Itxi laguntza hau"  # {Locked="Esc"}
+
+# ── Gomendio-panela (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - tekla-izenak eta Itzuli-tekla glifoa, ez itzuli
+recommendations.nav_hint: "(↑ ↓ nabigatzeko • Enter hautatzeko • Esc bertan behera uzteko)"
+recommendations.button_run_command: "[ Exekutatu komandoa ]"
+recommendations.button_insert_in_terminal: "Txertatu Terminalean"
+recommendations.button_open_in_new_tab: "Ireki Fitxa Berrian ↵"
+recommendations.button_open_in_new_panel: "Ireki Panel Berrian ↵"
+recommendations.button_open_tab: "Ireki Fitxa ↵"
+recommendations.button_open_panel: "Ireki Panela ↵"
+recommendations.button_execute: "Exekutatu ↵"
+recommendations.agent_fallback: "agente"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "fitxa"
+recommendations.open_kind_panel: "panela"
+recommendations.open_kind_panel_direction: "panela (%{direction})"
+recommendations.open_new_with_title_and_cwd: "%{kind} berria (%{title}) %{cwd}-(e)n"
+recommendations.open_new_with_title: "%{kind} berria (%{title})"
+recommendations.open_new_with_cwd: "%{kind} berria %{cwd}-(e)n"
+recommendations.open_new_empty: "%{kind} huts berria"
+
+# ── Baimen-elkarrizketa modu trinkoa (src/ui/permission.rs) ───────────────────────────
+permission.compact.default_description: "Baimena eskatuta"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N erantzuteko · aldatu tamaina txartel osoa ikusteko]"  # {Locked="Y/N"}
+
+# ── Agentearen egoera (src/agent_check.rs) ───────────────────────────────────
+agent.status.not_installed_auto: "Instalatu gabe — hautatu automatikoki instalatzeko"
+agent.status.not_found: "Ez da aurkitu"
+agent.status.detected: "Detektatuta"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tresna-izenak eta komandoa, hitzez hitz exekutatu behar dira
+agent.install.running_winget: "Exekutatzen: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget abiarazi ezin izan da: %{error}"
+agent.install.winget_exited: "winget ustekabean irten da: %{error}"
+agent.install.winget_failed_code: "winget instalazioak huts egin du (irteera-kodea %{code})"
+agent.install.unsupported: "Instalazio automatikoa ez da onartzen %{agent}(e)rako"
+agent.custom.auth_hint: "Ziurtatu %{name} instalatuta dagoela eta zure PATH-ean dagoela."  # {Locked="PATH"}
+
+# ── Agenteen ikuspegia (src/ui/agents_view.rs) ─────────────────────────────────
+agents.loading: "Kargatzen..."
+# {Locked="Enter","Shift+enter","Esc"} - tekla-konbinazioak, ez itzuli
+agents.footer_hint: "(↑ ↓ nabigatzeko • Enter saioa fitxa berrian abiarazteko • Shift+enter saioa agente-panelean abiarazteko • Esc irteteko)"
+agents.status.active: "Aktiboa"
+agents.status.waiting_for_input: "Sarreraren zain"
+agents.status.error: "Errorea"
+agents.status.idle: "Inaktibo"
+
+# ── Diseinu-ongietorri argibidea (src/ui/layout.rs) ──────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. agente-panela erakusteko/ezkutatzeko • Ctrl+Alt+/ agente-saioa erakusteko/ezkutatzeko)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── Konexio-egoera ────────────────────────────────────────────────────────
+connection.starting: "Agentea abiarazten..."
+connection.reconnecting: "Birkonektatzen..."
+
+# ── Sistema-mezuak (src/app.rs) ────────────────────────────────────────────
+system.cancelled: "Bertan behera utzia."
+system.no_prompt_in_flight: "Ez dago gonbidapenik abian."
+system.authentication_failed: "Autentifikazioak huts egin du"
+system.command_copied_retry: "Komandoa kopiatu da — exekutatu beste terminal batean, eta sakatu Enter berriro saiatzeko"  # {Locked="Enter"}
+
+# ── CLI irteera exekuzio-unean (src/main.rs) ────────────────────────────────────
+output.no_windows: "Ez da leihorik aurkitu."
+output.no_tabs: "Ez da fitxarik aurkitu."
+output.no_panes: "Ez da panelik aurkitu."
+output.no_windows_in_list: "Ez da leihorik aurkitu"
+output.no_tabs_in_window: "Ez da fitxarik aurkitu %{window_id} leihoan"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - zutabe-identifikatzaileak, ASCII mantendu analisirako
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "Panel aktiboa: %{pane} (fitxa: %{tab}, leihoa: %{window})"
+output.pane_running: "Exekutatzen (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "Irten da (kodea: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "Fitxa %{tab_id} sortua (panel %{pane_id})"
+output.created_pane: "Panel %{pane_id} sortua"
+output.pane_closed: "Panel %{pane_id} itxita."
+
+# ── Erroreak (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "Ez da panel aktiborik aurkitu. Erabili -t panel ID bat zehazteko."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID ez dago ezarrita. Exekutatu Windows Terminal panel baten barruan."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "Shell mota ezezaguna '%{shell}'. Erabili: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - komando-izena, ez itzuli
+error.wtcli_wait_for_spawn: "wtcli wait-for abiarazi ezin izan da"
+error.wtcli_wait_for_parse: "wtcli wait-for irteera analizatu ezin izan da"
+error.wtcli_wait_for_failed: "wtcli wait-for-ek huts egin du: %{stderr}"
+
+# ── Kakoen egoera-irteera (src/main.rs) ───────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tresna/CLI izenak, ingurune-aldagaiak, log fitxategi-izenak
+hooks.bundle_source: "sorta-iturria: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI ez dago PATH-ean"
+hooks.installed: "✓ instalatuta"
+hooks.marketplace_path_stale: "⚠ merkatu-bidea zaharkitua"
+hooks.installed_but_disabled: "⚠ instalatuta baina desgaituta"
+hooks.not_installed: "✗ instalatu gabe"
+hooks.uninstall_skipped: "saltatu da (CLI ez dago PATH-ean)"
+hooks.install_attempted: "wt-agent-hooks instalatzea saiatu da (idempotentea). Exekutatu `wta hooks status` emaitza ikusteko. Aztarna-loga: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

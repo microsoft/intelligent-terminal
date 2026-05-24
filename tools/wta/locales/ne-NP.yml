@@ -1,5 +1,160 @@
-# Setup screen titles
-setup.title.first_run: "इन्टेलिजेन्ट टर्मिनल मा स्वागत छ!"
+# सेटअप स्क्रिन शीर्षकहरू
+# {Locked="Intelligent Terminal"} - उत्पादन नाम, अनुवाद नगर्नुहोस्
+setup.title.first_run: "Intelligent Terminal मा स्वागत छ!"
 setup.title.agent_missing: "एजेन्ट भेटिएन"
 setup.title.agent_error: "एजेन्ट जडान विफल भयो"
 setup.title.switch_agent: "एजेन्ट बदल्नुहोस्"
+setup.title.not_available: "एजेन्ट उपलब्ध छैन"
+setup.title.sign_in: "साइन इन आवश्यक छ"
+
+# %{agent} रनटाइममा एजेन्टको प्रदर्शन नामले प्रतिस्थापित हुन्छ।
+setup.subtitle.copilot_missing: "तपाईँको एजेन्ट \"%{agent}\" स्थापना भएको छैन। यसलाई स्थापना गर्न तलका चरणहरू पालना गर्नुहोस्। एजेन्ट बदल्न Settings मा जानुहोस्।"
+setup.subtitle.agent_missing: "तपाईँको एजेन्ट \"%{agent}\" स्थापना भएको छैन। कृपया यसलाई म्यानुअल रूपमा पुनः स्थापना गर्नुहोस्, त्यसपछि पुनः प्रयास गर्नुहोस्। एजेन्ट बदल्न Settings मा जानुहोस्।"
+setup.subtitle.copilot_auth: "तपाईँको एजेन्ट \"%{agent}\" लाई प्रमाणीकरण चाहिन्छ। साइन इन गर्न तलका चरणहरू पालना गर्नुहोस्। एजेन्ट बदल्न Settings मा जानुहोस्।"
+setup.subtitle.agent_auth: "तपाईँको एजेन्ट \"%{agent}\" लाई प्रमाणीकरण चाहिन्छ। कृपया एजेन्ट CLI मार्फत साइन इन गर्नुहोस्, त्यसपछि पुनः प्रयास गर्नुहोस्। एजेन्ट बदल्न Settings मा जानुहोस्।"
+
+# {Locked="Intelligent Terminal"}
+setup.description.fre_line1: "Intelligent Terminal मा प्रयोग गर्न पूर्वनिर्धारित एजेन्ट CLI छान्नुहोस्। तपाईँ"
+setup.description.fre_line2: "आफ्नो कार्यक्षेत्र कन्फिगर र सेटअप गर्न Settings मा जान सक्नुहुन्छ।"
+
+setup.option.reinstall: "%{agent} पुनः स्थापना गर्नुहोस्"
+setup.option.reinstall_hint: "(स्वचालित रूपमा स्थापना हुनेछ)"
+setup.option.signin: "%{agent} मा साइन इन गर्नुहोस्"
+setup.option.retry_detection: "पुनः पत्ता लगाउनुहोस्"
+setup.option.retry_auth: "मैले साइन इन गरेँ — जडान पुनः प्रयास गर्नुहोस्"
+setup.option.retry_connection: "जडान पुनः प्रयास गर्नुहोस्"
+setup.option.switch_to: "%{agent} मा बदल्नुहोस्"
+setup.status.installing: "स्थापना हुँदैछ..."
+setup.status.install_failed: "स्थापना विफल: "
+setup.status.installing_winget: " winget मार्फत स्थापना हुँदैछ..."
+
+# ── प्रमाणीकरण प्रवाह (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - संक्षिप्त रूप, Microsoft स्थानीयकरणमा सामान्य प्रयोग
+auth.agent_selected: "एजेन्ट %{name} चयन भएको छ"
+auth.agent_selected_with_status: "एजेन्ट %{name} — "
+auth.checking_authentication: "  %{spinner} प्रमाणीकरण जाँच हुँदैछ..."
+auth.waiting_for_authorization: "  %{spinner} अधिकृतिको प्रतीक्षा हुँदैछ..."
+auth.code_copied_hint: "  कोड क्लिपबोर्डमा प्रतिलिपि गरियो — आफ्नो ब्राउजरमा टाँस्नुहोस्।"
+auth.sign_in_prompt: "आफ्नो एजेन्ट प्रयोग गर्न साइन इन गर्नुहोस्:"
+auth.card_connect: "  एजेन्ट सुविधाहरू सक्षम गर्न %{name} जोड्नुहोस्"
+auth.button_sign_in_github: "[ GitHub बाट साइन इन गर्नुहोस् ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name} बाट साइन इन गर्नुहोस् ]"
+auth.hint_footer: "  साइन इन गर्न Enter थिच्नुहोस्, फिर्ता जान Esc थिच्नुहोस्"  # {Locked="Enter","Esc"}
+
+# ── च्याट दृश्य (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "सोचिरहेको छ…"
+# {Locked="Intelligent Terminal"} - उत्पादन नाम, अनुवाद नगर्नुहोस्
+chat.welcome_title: "Intelligent Terminal मा स्वागत छ!"
+chat.plan_header: "योजना:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── इनपुट प्लेसहोल्डर (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "जेसुकै सोध्नुहोस्, / कमाण्डहरूका लागि.."  # {Locked="/"}
+input.placeholder.connecting: "जडान हुँदैछ..."
+input.placeholder.disconnected: "विच्छेद"
+
+# ── कमाण्ड पपअप (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - स्ल्याश-कमाण्ड उपसर्ग, ASCII हुनुपर्छ
+commands.popup_title: " / कमाण्डहरू "
+commands.help_title: " मद्दत "
+commands.help_header: "स्ल्याश कमाण्डहरू — इनपुट बक्समा / टाइप गर्नुहोस्।"
+commands.help_escape_hint: "  //text     शाब्दिक '/' पठाउनुहोस् (कमाण्ड पार्सर एस्केप गर्छ)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        यो मद्दत बन्द गर्नुहोस्"  # {Locked="Esc"}
+
+# ── सिफारिस प्यानल (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - कुञ्जी नामहरू र Return-कुञ्जी ग्लिफ, अनुवाद नगर्नुहोस्
+recommendations.nav_hint: "(↑ ↓ नेभिगेट गर्नुहोस् • Enter छान्नुहोस् • Esc रद्द गर्नुहोस्)"
+recommendations.button_run_command: "[ कमाण्ड चलाउनुहोस् ]"
+recommendations.button_insert_in_terminal: "टर्मिनलमा सम्मिलित गर्नुहोस्"
+recommendations.button_open_in_new_tab: "नयाँ ट्याबमा खोल्नुहोस् ↵"
+recommendations.button_open_in_new_panel: "नयाँ प्यानलमा खोल्नुहोस् ↵"
+recommendations.button_open_tab: "ट्याब खोल्नुहोस् ↵"
+recommendations.button_open_panel: "प्यानल खोल्नुहोस् ↵"
+recommendations.button_execute: "कार्यान्वयन गर्नुहोस् ↵"
+recommendations.agent_fallback: "एजेन्ट"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ट्याब"
+recommendations.open_kind_panel: "प्यानल"
+recommendations.open_kind_panel_direction: "प्यानल (%{direction})"
+recommendations.open_new_with_title_and_cwd: "नयाँ %{kind} (%{title}) %{cwd} मा"
+recommendations.open_new_with_title: "नयाँ %{kind} (%{title})"
+recommendations.open_new_with_cwd: "नयाँ %{kind} %{cwd} मा"
+recommendations.open_new_empty: "नयाँ खाली %{kind}"
+
+# ── अनुमति संवाद कम्प्याक्ट मोड (src/ui/permission.rs) ───────────────────────
+permission.compact.default_description: "अनुमति अनुरोध गरिएको"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N जवाफ दिनुहोस् · पूर्ण कार्ड हेर्न साइज बदल्नुहोस्]"  # {Locked="Y/N"}
+
+# ── एजेन्ट स्थिति (src/agent_check.rs) ───────────────────────────────────────
+agent.status.not_installed_auto: "स्थापना भएको छैन — स्वचालित स्थापनाको लागि चयन गर्नुहोस्"
+agent.status.not_found: "भेटिएन"
+agent.status.detected: "पत्ता लागेको"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - उपकरण नामहरू र कमाण्ड, जस्ताको तस्तै चलाउनुपर्छ
+agent.install.running_winget: "चलिरहेको छ: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget सुरु गर्न विफल: %{error}"
+agent.install.winget_exited: "winget अप्रत्याशित रूपमा बन्द भयो: %{error}"
+agent.install.winget_failed_code: "winget स्थापना विफल (एग्जिट कोड %{code})"
+agent.install.unsupported: "%{agent} को लागि स्वचालित स्थापना समर्थित छैन"
+agent.custom.auth_hint: "%{name} स्थापित छ र तपाईँको PATH मा छ भनी सुनिश्चित गर्नुहोस्।"  # {Locked="PATH"}
+
+# ── एजेन्ट दृश्य (src/ui/agents_view.rs) ─────────────────────────────────────
+agents.loading: "लोड हुँदैछ..."
+# {Locked="Enter","Shift+enter","Esc"} - कुञ्जी संयोजनहरू, अनुवाद नगर्नुहोस्
+agents.footer_hint: "(↑ ↓ नेभिगेट गर्नुहोस् • Enter नयाँ ट्याबमा सत्र सुरु गर्नुहोस् • Shift+enter एजेन्ट पेनमा सत्र सुरु गर्नुहोस् • Esc बाहिर निस्कनुहोस्)"
+agents.status.active: "सक्रिय"
+agents.status.waiting_for_input: "इनपुटको प्रतीक्षा"
+agents.status.error: "त्रुटि"
+agents.status.idle: "निष्क्रिय"
+
+# ── लेआउट स्वागत सङ्केत (src/ui/layout.rs) ──────────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. एजेन्ट पेन देखाउनुहोस्/लुकाउनुहोस् • Ctrl+Alt+/ एजेन्ट सत्र देखाउनुहोस्/लुकाउनुहोस्)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── जडान स्थिति ────────────────────────────────────────────────────────
+connection.starting: "एजेन्ट सुरु हुँदैछ..."
+connection.reconnecting: "पुनः जडान हुँदैछ..."
+
+# ── प्रणाली सन्देशहरू (src/app.rs) ────────────────────────────────────────────────
+system.cancelled: "रद्द गरियो।"
+system.no_prompt_in_flight: "प्रगतिमा कुनै प्रम्प्ट छैन।"
+system.authentication_failed: "प्रमाणीकरण विफल"
+system.command_copied_retry: "कमाण्ड प्रतिलिपि गरियो — अर्को टर्मिनलमा चलाउनुहोस्, त्यसपछि पुनः प्रयासको लागि Enter थिच्नुहोस्"  # {Locked="Enter"}
+
+# ── रनटाइम CLI आउटपुट (src/main.rs) ────────────────────────────────────────
+output.no_windows: "कुनै विन्डो भेटिएन।"
+output.no_tabs: "कुनै ट्याब भेटिएन।"
+output.no_panes: "कुनै पेन भेटिएन।"
+output.no_windows_in_list: "कुनै विन्डो भेटिएन"
+output.no_tabs_in_window: "विन्डो %{window_id} मा कुनै ट्याब भेटिएन"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - स्तम्भ पहिचानकर्ता, पार्सिङका लागि ASCII मा राख्नुहोस्
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "सक्रिय पेन: %{pane} (ट्याब: %{tab}, विन्डो: %{window})"
+output.pane_running: "चलिरहेको छ (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "बाहिरिएको (कोड: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "ट्याब %{tab_id} सिर्जना गरियो (पेन %{pane_id})"
+output.created_pane: "पेन %{pane_id} सिर्जना गरियो"
+output.pane_closed: "पेन %{pane_id} बन्द भयो।"
+
+# ── त्रुटिहरू (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "कुनै सक्रिय पेन भेटिएन। पेन ID निर्दिष्ट गर्न -t प्रयोग गर्नुहोस्।"  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID सेट गरिएको छैन। Windows Terminal पेन भित्र चलाउनुहोस्।"  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "अज्ञात शेल प्रकार '%{shell}'। प्रयोग गर्नुहोस्: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - कमाण्ड नाम, अनुवाद नगर्नुहोस्
+error.wtcli_wait_for_spawn: "wtcli wait-for सुरु गर्न विफल"
+error.wtcli_wait_for_parse: "wtcli wait-for आउटपुट पार्स गर्न विफल"
+error.wtcli_wait_for_failed: "wtcli wait-for विफल: %{stderr}"
+
+# ── हुक्स स्थिति आउटपुट (src/main.rs) ───────────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - उपकरण/CLI नामहरू, वातावरण चरहरू, लग फाइल नामहरू
+hooks.bundle_source: "बन्डल स्रोत: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI PATH मा छैन"
+hooks.installed: "✓ स्थापित छ"
+hooks.marketplace_path_stale: "⚠ मार्केटप्लेस पथ पुरानो छ"
+hooks.installed_but_disabled: "⚠ स्थापित छ तर असक्षम छ"
+hooks.not_installed: "✗ स्थापित छैन"
+hooks.uninstall_skipped: "छोडियो (CLI PATH मा छैन)"
+hooks.install_attempted: "wt-agent-hooks स्थापना प्रयास गरियो (आइडेम्पोटेन्ट)। नतिजा जाँच्न `wta hooks status` चलाउनुहोस्। ट्रेस लग: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"

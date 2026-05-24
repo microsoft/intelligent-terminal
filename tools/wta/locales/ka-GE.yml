@@ -1,5 +1,160 @@
 # Setup screen titles
-setup.title.first_run: "მოგესალმებით ჭკვიან ტერმინალში!"
+# {Locked="Intelligent Terminal"} - product name, do not translate
+setup.title.first_run: "Intelligent Terminal-ში მოგესალმებით!"
 setup.title.agent_missing: "აგენტი ვერ მოიძებნა"
 setup.title.agent_error: "აგენტთან კავშირი ვერ შედგა"
 setup.title.switch_agent: "აგენტის შეცვლა"
+setup.title.not_available: "აგენტი მიუწვდომელია"
+setup.title.sign_in: "საჭიროა შესვლა"
+
+# %{agent} is replaced with the agent display name at runtime.
+setup.subtitle.copilot_missing: "თქვენი აგენტი \"%{agent}\" არ არის დაინსტალირებული. მის დასაინსტალირებლად მიჰყევით ქვემოთ მოცემულ ნაბიჯებს. აგენტის შესაცვლელად გადადით Settings-ში."
+setup.subtitle.agent_missing: "თქვენი აგენტი \"%{agent}\" არ არის დაინსტალირებული. ხელით ხელახლა დააინსტალირეთ და სცადეთ თავიდან. აგენტის შესაცვლელად გადადით Settings-ში."
+setup.subtitle.copilot_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შესასვლელად მიჰყევით ქვემოთ მოცემულ ნაბიჯებს. აგენტის შესაცვლელად გადადით Settings-ში."
+setup.subtitle.agent_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შედით აგენტის CLI-ით და სცადეთ თავიდან. აგენტის შესაცვლელად გადადით Settings-ში."
+
+# {Locked="Intelligent Terminal"}, {Locked="Settings"}
+setup.description.fre_line1: "აირჩიეთ ნაგულისხმევი აგენტის CLI, რომლის გამოყენებაც გსურთ Intelligent Terminal-ში. შეგიძლიათ"
+setup.description.fre_line2: "გადახვიდეთ Settings-ში სამუშაო გარემოს კონფიგურაციისთვის."
+
+setup.option.reinstall: "%{agent}-ის ხელახლა დაინსტალირება"
+setup.option.reinstall_hint: "(ავტომატურად დაინსტალირდება)"
+setup.option.signin: "შესვლა %{agent}-ში"
+setup.option.retry_detection: "ამოცნობის გამეორება"
+setup.option.retry_auth: "შევედი — კავშირის გამეორება"
+setup.option.retry_connection: "კავშირის გამეორება"
+setup.option.switch_to: "გადართვა %{agent}-ზე"
+setup.status.installing: "ინსტალაცია..."
+setup.status.install_failed: "ინსტალაცია ვერ მოხერხდა: "
+setup.status.installing_winget: " winget-ით ინსტალაცია..."
+
+# ── ავთენტიფიკაციის პროცესი (src/ui/auth.rs) ──────────────────────────────────────────────
+# {Locked="CLI"} - აბრევიატურა, Microsoft-ის ლოკალიზაციებში გავრცელებული გამოყენება
+auth.agent_selected: "არჩეულია აგენტის %{name}"
+auth.agent_selected_with_status: "აგენტის %{name} — "
+auth.checking_authentication: "  %{spinner} ავთენტიფიკაციის შემოწმება..."
+auth.waiting_for_authorization: "  %{spinner} ავტორიზაციის მოლოდინში..."
+auth.code_copied_hint: "  კოდი კოპირებულია — ჩასვით ბრაუზერში."
+auth.sign_in_prompt: "შედით აგენტის გამოსაყენებლად:"
+auth.card_connect: "  დაუკავშირეთ %{name} აგენტის ფუნქციების გასააქტიურებლად"
+auth.button_sign_in_github: "[ GitHub-ით შესვლა ]"  # {Locked="GitHub"}
+auth.button_sign_in_with: "[ %{name}-ით შესვლა ]"
+auth.hint_footer: "  დააჭირეთ Enter შესასვლელად, Esc უკან დასაბრუნებლად"  # {Locked="Enter","Esc"}
+
+# ── ჩატის ხედი (src/ui/chat.rs) ──────────────────────────────────────────────
+chat.activity_thinking: "ვფიქრობ…"
+# {Locked="Intelligent Terminal"} - პროდუქტის სახელი, არ ითარგმნება
+chat.welcome_title: "Intelligent Terminal-ში მოგესალმებით!"
+chat.plan_header: "გეგმა:"
+chat.plan_marker_completed: "[x]"  # {Locked}
+chat.plan_marker_in_progress: "[>]"  # {Locked}
+chat.plan_marker_pending: "[ ]"  # {Locked}
+
+# ── შეყვანის ადგილმჩვენებლები (src/ui/input.rs) ────────────────────────────────────
+input.placeholder.connected: "იკითხეთ რაც გნებავთ, / ბრძანებებისთვის.."  # {Locked="/"}
+input.placeholder.connecting: "დაკავშირება..."
+input.placeholder.disconnected: "გათიშული"
+
+# ── ბრძანებების ამომხტარი (src/ui/command_popup.rs) ─────────────────────────────────
+# {Locked="/"} - სლეშ-ბრძანების პრეფიქსი, უნდა დარჩეს ASCII
+commands.popup_title: " / ბრძანებები "
+commands.help_title: " დახმარება "
+commands.help_header: "სლეშ-ბრძანებები — აკრიფეთ / შეყვანის ველში."
+commands.help_escape_hint: "  //text     გაგზავნეთ პირდაპირი '/' (გაექცევა ბრძანებების ანალიზატორს)"  # {Locked="//text","/"}
+commands.help_close_hint: "  Esc        ამ დახმარების დახურვა"  # {Locked="Esc"}
+
+# ── რეკომენდაციების პანელი (src/ui/recommendations.rs) ───────────────────────────────
+# {Locked="Enter","Esc","↵"} - ღილაკების სახელები და Return ღილაკის გლიფი, არ ითარგმნება
+recommendations.nav_hint: "(↑ ↓ ნავიგაციისთვის • Enter არჩევისთვის • Esc გაუქმებისთვის)"
+recommendations.button_run_command: "[ ბრძანების გაშვება ]"
+recommendations.button_insert_in_terminal: "ჩასმა ტერმინალში"
+recommendations.button_open_in_new_tab: "ახალ ჩანართში გახსნა ↵"
+recommendations.button_open_in_new_panel: "ახალ პანელში გახსნა ↵"
+recommendations.button_open_tab: "ჩანართის გახსნა ↵"
+recommendations.button_open_panel: "პანელის გახსნა ↵"
+recommendations.button_execute: "შესრულება ↵"
+recommendations.agent_fallback: "აგენტი"
+recommendations.open_and_send_display: "%{agent}: %{input}"
+recommendations.open_kind_tab: "ჩანართი"
+recommendations.open_kind_panel: "პანელი"
+recommendations.open_kind_panel_direction: "პანელი (%{direction})"
+recommendations.open_new_with_title_and_cwd: "ახალი %{kind} (%{title}) %{cwd}-ში"
+recommendations.open_new_with_title: "ახალი %{kind} (%{title})"
+recommendations.open_new_with_cwd: "ახალი %{kind} %{cwd}-ში"
+recommendations.open_new_empty: "ახალი ცარიელი %{kind}"
+
+# ── ნებართვის დიალოგი კომპაქტური რეჟიმი (src/ui/permission.rs) ───────────────────────────
+permission.compact.default_description: "ნებართვა მოთხოვნილია"
+permission.compact.prefix: "[!] "  # {Locked}
+permission.compact.hint: "[Y/N პასუხისთვის · ზომის შეცვლა სრული ბარათისთვის]"  # {Locked="Y/N"}
+
+# ── აგენტის სტატუსი (src/agent_check.rs) ───────────────────────────────────
+agent.status.not_installed_auto: "არ არის დაინსტალირებული — აირჩიეთ ავტომატური ინსტალაციისთვის"
+agent.status.not_found: "ვერ მოიძებნა"
+agent.status.detected: "აღმოჩენილია"
+# {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - ხელსაწყოების სახელები და ბრძანება, უნდა შესრულდეს ზუსტად
+agent.install.running_winget: "გაშვება: winget install GitHub.Copilot"
+agent.install.launch_failed: "winget-ის გაშვება ვერ მოხერხდა: %{error}"
+agent.install.winget_exited: "winget მოულოდნელად შეწყდა: %{error}"
+agent.install.winget_failed_code: "winget ინსტალაცია ვერ მოხერხდა (გასვლის კოდი %{code})"
+agent.install.unsupported: "ავტომატური ინსტალაცია არ არის მხარდაჭერილი %{agent}-ისთვის"
+agent.custom.auth_hint: "დარწმუნდით, რომ %{name} დაინსტალირებულია და თქვენს PATH-ზეა."  # {Locked="PATH"}
+
+# ── აგენტების ხედი (src/ui/agents_view.rs) ─────────────────────────────────
+agents.loading: "იტვირთება..."
+# {Locked="Enter","Shift+enter","Esc"} - ღილაკების კომბინაციები, არ ითარგმნება
+agents.footer_hint: "(↑ ↓ ნავიგაციისთვის • Enter სესიის ახალ ჩანართში გასახსნელად • Shift+enter სესიის აგენტის პანელში გასახსნელად • Esc გასასვლელად)"
+agents.status.active: "აქტიური"
+agents.status.waiting_for_input: "შეყვანის მოლოდინში"
+agents.status.error: "შეცდომა"
+agents.status.idle: "უმოქმედო"
+
+# ── განლაგების მისასალმი მინიშნება (src/ui/layout.rs) ──────────────────────────────
+layout.welcome_hint: "  (Ctrl+Shift+. აგენტის პანელის ჩვენება/დამალვა • Ctrl+Alt+/ აგენტის სესიის ჩვენება/დამალვა)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+
+# ── კავშირის მდგომარეობა ────────────────────────────────────────────────────────
+connection.starting: "აგენტის გაშვება..."
+connection.reconnecting: "ხელახლა დაკავშირება..."
+
+# ── სისტემური შეტყობინებები (src/app.rs) ────────────────────────────────────
+system.cancelled: "გაუქმებულია."
+system.no_prompt_in_flight: "მიმდინარე მოთხოვნა არ არის."
+system.authentication_failed: "ავთენტიფიკაცია ვერ მოხერხდა"
+system.command_copied_retry: "ბრძანება კოპირებულია — გაუშვით სხვა ტერმინალში, შემდეგ დააჭირეთ Enter ხელახლა საცდელად"  # {Locked="Enter"}
+
+# ── CLI გამოსავალი რანტაიმში (src/main.rs) ────────────────────────────────────
+output.no_windows: "ფანჯრები ვერ მოიძებნა."
+output.no_tabs: "ჩანართები ვერ მოიძებნა."
+output.no_panes: "პანელები ვერ მოიძებნა."
+output.no_windows_in_list: "ფანჯრები ვერ მოიძებნა"
+output.no_tabs_in_window: "ჩანართები ვერ მოიძებნა ფანჯარაში %{window_id}"
+# {Locked="WINDOW_ID","TAB_ID","PANE_ID","PID","ACTIVE","ROWS","COLS","FOCUSED","TITLE"} - სვეტის იდენტიფიკატორები, ASCII-ში დარჩენა ანალიზისთვის
+output.header.windows: "WINDOW_ID    TITLE                          FOCUSED"
+output.header.tabs: "TAB_ID     TITLE                          FOCUSED"
+output.header.panes: "PANE_ID    PID      ACTIVE   ROWS       COLS"
+output.active_pane: "აქტიური პანელი: %{pane} (ჩანართი: %{tab}, ფანჯარა: %{window})"
+output.pane_running: "მუშაობს (PID: %{pid})"  # {Locked="PID"}
+output.pane_exited: "დასრულებულია (კოდი: %{code}, PID: %{pid})"  # {Locked="PID"}
+output.created_tab: "ჩანართი %{tab_id} შეიქმნა (პანელი %{pane_id})"
+output.created_pane: "პანელი %{pane_id} შეიქმნა"
+output.pane_closed: "პანელი %{pane_id} დაიხურა."
+
+# ── შეცდომები (src/main.rs + src/agent_check.rs) ───────────────────────────────
+error.no_active_pane: "აქტიური პანელი ვერ მოიძებნა. გამოიყენეთ -t პანელის ID-ის მისათითებლად."  # {Locked="-t"}
+error.wt_com_clsid_not_set: "WT_COM_CLSID დაყენებული არ არის. გაუშვით Windows Terminal-ის პანელში."  # {Locked="WT_COM_CLSID","Windows Terminal"}
+error.unknown_shell_type: "უცნობი shell ტიპი '%{shell}'. გამოიყენეთ: bash, powershell, cmd, fish"  # {Locked="bash","powershell","cmd","fish"}
+# {Locked="wtcli wait-for"} - ბრძანების სახელი, არ ითარგმნება
+error.wtcli_wait_for_spawn: "wtcli wait-for-ის გაშვება ვერ მოხერხდა"
+error.wtcli_wait_for_parse: "wtcli wait-for-ის გამოსავლის ანალიზი ვერ მოხერხდა"
+error.wtcli_wait_for_failed: "wtcli wait-for ვერ მოხერხდა: %{stderr}"
+
+# ── ჰუკების სტატუსის გამოსავალი (src/main.rs) ───────────────────────────────────
+# {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - ხელსაწყო/CLI სახელები, გარემოს ცვლადები, ლოგ ფაილების სახელები
+hooks.bundle_source: "ბანდლის წყარო: %{source}%{path_suffix}"
+hooks.cli_not_on_path: "✗ CLI არ არის PATH-ზე"
+hooks.installed: "✓ დაინსტალირებული"
+hooks.marketplace_path_stale: "⚠ მარკეტის ბილიკი მოძველებული"
+hooks.installed_but_disabled: "⚠ დაინსტალირებული, მაგრამ გათიშული"
+hooks.not_installed: "✗ არ არის დაინსტალირებული"
+hooks.uninstall_skipped: "გამოტოვებული (CLI არ არის PATH-ზე)"
+hooks.install_attempted: "wt-agent-hooks ინსტალაცია სცადეს (იდემპოტენტური). გაუშვით `wta hooks status` შედეგის სანახავად. თრეის ლოგი: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
