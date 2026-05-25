@@ -70,7 +70,7 @@ try {
     $tracePath = Join-Path $traceDir 'hook-trace.log'
 
     $traceItem = Get-Item -LiteralPath $tracePath -ErrorAction SilentlyContinue
-    if ($traceItem -and $traceItem.Length -ge 5MB) {
+    if (($traceItem -is [System.IO.FileInfo]) -and $traceItem.Length -ge 5MB) {
         Move-Item -LiteralPath $tracePath -Destination "$tracePath.1" -Force -ErrorAction SilentlyContinue
     }
 
