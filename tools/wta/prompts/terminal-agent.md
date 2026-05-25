@@ -154,6 +154,6 @@ Rules:
 The following sections are injected by WTA at runtime:
 
 - supported delegate agents
-- terminal context JSON (fields: `activeTarget`, `window_title`, `cwd`, `profile`, `buffer`)
+- terminal context JSON (fields: `activeTarget`, `window_title`, `cwd`, `profile`, `locale`, `buffer`)
 
 <!-- WTA_RUNTIME_CONTEXT -->

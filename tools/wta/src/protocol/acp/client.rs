@@ -1037,9 +1037,24 @@ async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String>
         "window_title": target_window_title,
         "cwd": target_cwd,
         "profile": target_profile,
+        "locale": user_locale_tag(),
         "buffer": buffer,
     }))
     .ok()
+}
+
+/// User's UI locale as a BCP-47 tag, suitable for embedding in
+/// runtime context JSON shipped to the agent. Pseudo-locales
+/// (`qps-ploc*`) are UI-only and not real BCP-47 tags; map them
+/// to `en-US` so the model sees a real locale. Mirrors the
+/// `qps-*` → `en_US.UTF-8` mapping in `spawn.rs` for `LANG`/`LC_ALL`.
+fn user_locale_tag() -> String {
+    let raw = rust_i18n::locale().to_string();
+    if raw.is_empty() || raw.starts_with("qps-") {
+        "en-US".to_string()
+    } else {
+        raw
+    }
 }
 
 async fn build_prompt_text(
@@ -1148,6 +1163,7 @@ async fn build_prompt_text(
                     let json = serde_json::to_string(&serde_json::json!({
                         "profile": profile,
                         "cwd": cwd,
+                        "locale": user_locale_tag(),
                     }))
                     .unwrap_or_else(|_| "{}".to_string());
                     runtime_sections.push(format!(
@@ -2700,11 +2716,28 @@ async fn dispatch_prompt_body(
 #[cfg(test)]
 mod tests {
     use super::{
-        complete_prompt_request, requested_model_id, summarize_agent_identity,
+        complete_prompt_request, requested_model_id, summarize_agent_identity, user_locale_tag,
         PromptTimingState,
     };
     use crate::app::AppEvent;
     use tokio::sync::mpsc;
+
+    #[test]
+    fn user_locale_tag_maps_pseudo_locales_to_en_us() {
+        // qps-* are UI-only pseudo-locales — agents won't recognize them.
+        rust_i18n::set_locale("qps-ploc");
+        assert_eq!(user_locale_tag(), "en-US");
+        rust_i18n::set_locale("qps-ploca");
+        assert_eq!(user_locale_tag(), "en-US");
+    }
+
+    #[test]
+    fn user_locale_tag_passes_real_locale_through() {
+        rust_i18n::set_locale("zh-CN");
+        assert_eq!(user_locale_tag(), "zh-CN");
+        rust_i18n::set_locale("en-US");
+        assert_eq!(user_locale_tag(), "en-US");
+    }
 
     #[test]
     fn parses_model_from_separate_flag() {
