@@ -120,14 +120,14 @@
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Tervetuloa Intelligent Terminaliin</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Määritä sisäänrakennettu avustajasi auttamaan sinua selittämään virheitä, laatimaan komentoja ja ratkaisemaan tehtäviä suoraan siellä, missä työskentelet. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Lue lisää Intelligent Terminalista</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Pysy työn imussa sisäänrakennetun AI-agenttisi kanssa</value>
@@ -150,7 +150,7 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>Tervetuloa Intelligent Terminaliin</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Valitse, mitä haluat määrittää nyt. Voit muuttaa näitä milloin tahansa kohdassa </value>
@@ -184,7 +184,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>Anna Intelligent Terminalille oikeus seurata käynnissä olevien tai aktiivisten agenttiesi tilaa.</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">

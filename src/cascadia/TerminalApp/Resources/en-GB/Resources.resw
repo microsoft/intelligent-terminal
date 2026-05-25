@@ -120,14 +120,14 @@
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Welcome to Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Set up your built-in assistant to help you explain errors, draft commands, and unblock tasks right where you work. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Learn more about Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Stay in flow with your built-in AI agent</value>
@@ -147,7 +147,7 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>Welcome to Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Choose what to set up now. You can change these anytime in </value>
@@ -178,7 +178,7 @@
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>Give Intelligent Terminal permission to track the status of your running or active agents.</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ Enabling this will install integration hooks to track sessions across your agents.</value>

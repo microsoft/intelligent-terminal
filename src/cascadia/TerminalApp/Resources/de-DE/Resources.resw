@@ -962,7 +962,7 @@
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Willkommen bei Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Richten Sie Ihren integrierten Assistenten ein, um Fehler zu erklären, Befehle zu entwerfen und Aufgaben direkt dort zu lösen, wo Sie arbeiten. </value>
@@ -973,7 +973,7 @@
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Erfahren Sie mehr über Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Bleiben Sie im Fluss mit Ihrem integrierten KI-Agenten</value>
@@ -993,7 +993,7 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>Willkommen bei Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Wählen Sie, was Sie jetzt einrichten möchten. Sie können diese Einstellungen jederzeit in den </value>
@@ -1024,7 +1024,7 @@
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>Erteilen Sie Intelligent Terminal die Berechtigung, den Status Ihrer laufenden oder aktiven Agenten zu verfolgen.</value>
-    <comment>{Locked="Intelligent Terminal",qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ Durch Aktivieren werden Integrations-hooks installiert, um Sitzungen über Ihre Agenten hinweg zu verfolgen.</value>
