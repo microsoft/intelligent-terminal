@@ -1577,9 +1577,31 @@ async fn run_acp_app(
                             .get("params")
                             .cloned()
                             .unwrap_or(serde_json::Value::Null);
+                        // Read `pane_id` (current name) with a fallback
+                        // to `session_id` (the old name before the
+                        // per-tab autofix routing PR renamed it). The
+                        // C++ TerminalPage side now emits `pane_id` for
+                        // `connection_state` / `vt_sequence`, but the
+                        // wtcli `send-event` builder
+                        // (`BuildSendEventJson`) was missed in that
+                        // rename pass — `agent_event` envelopes from
+                        // hook bridge still carried `session_id`.
+                        // Without this fallback every hook event
+                        // arrived with `pane_id = ""`, and downstream
+                        // `route_agent_event_to_registry` collided all
+                        // sessions on the empty-string key in
+                        // `active_by_pane`, triggering spurious
+                        // orphan-handover demotions whenever a second
+                        // session started in the same window (e.g.
+                        // session A → Ended the moment session B's
+                        // first hook fires). Keep the fallback even
+                        // after wtcli is fixed so an old wtcli build
+                        // can talk to a new wta without surprises.
                         let pane_id = params
                             .get("pane_id")
                             .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                            .or_else(|| params.get("session_id").and_then(|v| v.as_str()))
                             .unwrap_or("")
                             .to_string();
                         let tab_id = params
