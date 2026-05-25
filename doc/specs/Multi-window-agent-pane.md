@@ -367,9 +367,9 @@ one process. This is the linchpin enabling shared wta.
 │  │  wta (singleton, PID 5001)                              │    │
 │  │                                                         │    │
 │  │  tab_sessions: {                                        │    │
-│  │     T1 → TabSession(claude, history, autofix),          │    │
-│  │     T2 → TabSession(copilot, history, autofix),         │    │
-│  │     T3 → TabSession(claude, history, autofix),          │    │
+│  │     T1 → TabSession(acp_session=SID_A, history, ...),  │    │
+│  │     T2 → TabSession(acp_session=SID_B, history, ...),  │    │
+│  │     T3 → TabSession(acp_session=SID_C, history, ...),  │    │
 │  │  }                                                      │    │
 │  │                                                         │    │
 │  │  render_ctxs: {                                         │    │
@@ -378,8 +378,11 @@ one process. This is the linchpin enabling shared wta.
 │  │     T3 → RenderCtx(Terminal→conpty_slave_handle_3),     │    │
 │  │  }                                                      │    │
 │  │                                                         │    │
-│  │  ↓ spawns                                               │    │
-│  │  claude-acp child × N    copilot child × M     ...      │    │
+│  │  ACP client (one) ──── stdio ────► agent CLI child      │    │
+│  │      └── manages N sessions (one per tab) in this       │    │
+│  │          single connection. Inbound chunks tagged with  │    │
+│  │          session_id; session_to_tab[] routes to the     │    │
+│  │          right tab_sessions[] / render_ctxs[].          │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐    │
@@ -555,9 +558,21 @@ The biggest delta. Roughly:
 - **Drop the windowId filter**: PR #50's window_id check on
   `set_agent_state` becomes unnecessary; remove it (or assert
   single-window-id and let it become trivially true).
-- **ACP child process accounting**: each `TabSession` still spawns
-  its own agent CLI child (claude/copilot/gemini). N panes = N
-  agent children. Already handled by current per-tab logic.
+- **ACP child process accounting**: **one wta = one ACP child**.
+  All attached panes share the single ACP connection that wta
+  already maintains today; each pane is a separate ACP **session**
+  inside that one connection (PR #50's per-tab session routing
+  carries over unchanged). N panes = 1 child = N sessions. The
+  agent CLI is responsible for keeping its sessions isolated
+  internally (claude / copilot / gemini all do).
+- **All attached panes use the same agent**: the agent CLI is
+  process-wide on wta. `AttachPaneParams.agent_id` is therefore
+  metadata only in this version — it is echoed in tracing logs
+  and may surface in the pane header, but wta cannot switch agent
+  mid-flight. Different agents in different tabs would require a
+  per-agent ACP-connection pool inside wta (see R9, deferred).
+  Switching `acpAgent` setting still implies wta restart + all
+  panes re-attach, same as today.
 
 ### Tests / validation
 
@@ -676,14 +691,21 @@ from one task only. With tokio per-pane tasks this is fine, but
 shared state (`TabSession`) needs the right synchronization
 (`Arc<Mutex<...>>` or actor-style channels).
 
-### R4. ACP child process count
+### R4. (resolved) ACP child process count
 
-N agent panes = N CLI children (claude / copilot / gemini). Each
-brings real resource overhead. We may need to add limits or
-on-demand spawn (delay until first message). Existing behavior is
-the same, but the visibility of "10 wta-spawned claudes in Task
-Manager" is more striking under shared-wta where there's only one
-wta to root them at.
+Earlier drafts assumed N attached panes meant N agent CLI children.
+That was a misread of the ACP layer: wta keeps **one** ACP client
+connection to **one** agent CLI subprocess and creates N sessions
+inside that connection (the same model PR #50 already runs today,
+just hoisted from per-window to per-Terminal-process scope).
+Resource cost is therefore constant in wta+child terms regardless
+of pane count; per-pane overhead is the conpty kernel object +
+TermControl + RenderCtx + a TabSession entry — all small.
+
+Trade-off: the agent CLI must keep its own sessions isolated.
+claude / copilot / gemini all do; if a future agent doesn't, that
+agent is unusable under shared wta and would need a per-tab
+process fallback (deferred to F-series).
 
 ### R5. Backwards compatibility / setting rollout
 
@@ -751,6 +773,16 @@ behaviors that the current code relies on:
 - **Pre-warming** (`_AutoCreateHiddenAgentPane` at first tab init)
   is the wrong granularity under per-tab. Re-think: maybe no
   pre-warming at all, or pre-warm only the first agent-pane open.
+- **Per-tab agent selection**: the v1 model uses one agent CLI
+  per wta process, so all attached panes share the same agent.
+  Changing the global `acpAgent` setting still implies a wta
+  restart + automatic re-attach of every pane. If product later
+  wants T1 on claude and T7 on copilot simultaneously, wta would
+  need to keep an ACP-connection pool keyed by agent_id, with each
+  connection managing its own sessions. The `AttachPaneParams.
+  agent_id` field is already in the wire format for exactly this,
+  used as metadata-only in v1. Deferred until product demand is
+  explicit.
 
 This is a Stage 3 work item but worth flagging early because it
 touches multiple UI paths.
