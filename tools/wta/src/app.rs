@@ -6371,23 +6371,33 @@ impl App {
                         );
 
                         // Side-effects on a successful attach:
-                        //   (a) materialise a TabSession entry so the
-                        //       pane has chat state to render against
-                        //       (subsequent ACP traffic on `tab_id`
-                        //       lands in this slot);
+                        //   (a) materialise a TabSession entry so
+                        //       the pane has chat state to render
+                        //       against. Push a single System
+                        //       welcome line carrying the agent_id
+                        //       so the user can see the pane was
+                        //       successfully wired up before any
+                        //       real ACP traffic arrives. Full
+                        //       per-tab ACP session spawn is a
+                        //       follow-up — once that lands, this
+                        //       welcome line is just a sticky first
+                        //       row, no functional change.
                         //   (b) spawn the input pump that reads user
                         //       keystrokes off the conpty's slave-in
-                        //       handle;
+                        //       handle.
                         //   (c) the post-event render hook
                         //       `render_attached_panes` runs at the
                         //       end of `handle_event` and will draw
-                        //       the new pane automatically — no
-                        //       separate placeholder needed.
-                        self.tab_sessions
+                        //       the new pane automatically.
+                        let tab_entry = self
+                            .tab_sessions
                             .entry(tab_id.clone())
                             .or_insert_with(TabSession::default);
+                        let welcome = format!(
+                            "agent pane attached (agent={agent_id}, tab={tab_id})"
+                        );
+                        tab_entry.messages.push(ChatMessage::System(welcome));
                         self.spawn_pane_input_task(&tab_id);
-                        let _ = &agent_id; // suppress unused-binding lint after removing placeholder draw
 
                         crate::protocol::internal_control::OutboundAck::AttachPaneAck {
                             id: id.clone(),
@@ -7285,8 +7295,12 @@ mod tests {
             "header label missing; got: {rendered:?}",
         );
         assert!(
-            rendered.contains("messages") || rendered.contains("no"),
-            "expected empty-chat hint; got: {rendered:?}",
+            rendered.contains("attached"),
+            "expected attach welcome line; got: {rendered:?}",
+        );
+        assert!(
+            rendered.contains("claude"),
+            "welcome should echo agent_id; got: {rendered:?}",
         );
     }
 
