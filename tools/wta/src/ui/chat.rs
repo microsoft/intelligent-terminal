@@ -41,7 +41,7 @@ fn pending_stream_height(tab: &crate::app::TabSession, wrap_width: usize) -> usi
         return 0;
     };
     let body_width = wrap_width.saturating_sub(2).max(1);
-    wrap_count(&text, body_width)
+    dot_wrap_count(&text, body_width)
 }
 
 fn wrap_count(text: &str, width: usize) -> usize {
@@ -55,14 +55,20 @@ fn wrap_count(text: &str, width: usize) -> usize {
         .max(1)
 }
 
+/// Mirrors `push_dot_prefixed_lines`: leading blank paragraphs are skipped
+/// (the dot lands on the first content row), so they must not be counted
+/// against the chat-area height either.
+fn dot_wrap_count(text: &str, width: usize) -> usize {
+    wrap_count(text.trim_start_matches('\n'), width)
+}
+
 fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
     // Most variants render with a 2-cell prefix ("● " for agent/error,
     // "> " for user) and a trailing blank line.
     let body_width = wrap_width.saturating_sub(2).max(1);
     match msg {
-        ChatMessage::User(t) | ChatMessage::Agent(t) | ChatMessage::Error(t) => {
-            wrap_count(t, body_width) + 1
-        }
+        ChatMessage::Agent(t) | ChatMessage::Error(t) => dot_wrap_count(t, body_width) + 1,
+        ChatMessage::User(t) => wrap_count(t, body_width) + 1,
         ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
         ChatMessage::ToolCall { .. } => 1,
         ChatMessage::Plan(entries) => 2 + entries.len(), // header + each entry + blank

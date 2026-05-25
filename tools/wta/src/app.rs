@@ -5611,24 +5611,32 @@ impl App {
                 let prompt = tab.turn.prompt().cloned().expect("prompt set");
                 // Preserve only what the user actually saw streaming (prose
                 // or extracted `explanation`) — not the raw JSON wrapper.
+                // Any tool calls / plans that streamed during the turn are
+                // included regardless; an empty-buf+prose ignore still
+                // records them so they don't get stranded on screen.
                 let visible = ui::chat::user_visible_stream_text(buf).map(|c| c.into_owned());
+                let mut details = tab.current_turn_details();
                 if let Some(visible) = visible {
+                    details.push(ChatMessage::Agent(visible));
+                }
+                if !details.is_empty() {
                     let pane_label = prompt
                         .autofix
                         .as_ref()
                         .map(|a| a.target_pane_id.clone())
                         .expect("autofix finalize requires autofix prompt");
-                    let mut details = tab.current_turn_details();
-                    details.push(ChatMessage::Agent(visible));
                     tab.completed_turns.push(CompletedTurn {
                         prompt: format!("Auto-diagnosed error in pane {pane_label}"),
                         details,
                         expanded: true,
                     });
-                    tab.messages.clear();
-                    tab.tool_calls.clear();
-                    tab.scroll_to_bottom();
                 }
+                // Always clear in-flight UI state on Ignore — even if there
+                // was nothing to commit, lingering tool-call rows would look
+                // like an active turn.
+                tab.messages.clear();
+                tab.tool_calls.clear();
+                tab.scroll_to_bottom();
                 tab.turn = TurnState::Surfaced {
                     prompt,
                     outcome: TurnOutcome::Empty,
@@ -5793,30 +5801,38 @@ impl App {
             self.emit_autofix_state_cleared(&target_tab);
         }
         let tab = self.session_tab_mut(session_id);
-        // Preserve the user-visible prose before discarding the in-flight
-        // turn, so a mid-stream Esc doesn't erase output the user just saw.
-        // Match `pending_render_text` so we never commit JSON the UI hid.
-        let streamed = if let TurnState::Streaming { prompt, buf } = &tab.turn {
-            ui::chat::user_visible_stream_text(buf).map(|visible| {
-                let label = match prompt.autofix.as_ref() {
-                    Some(autofix) => {
-                        format!("Auto-diagnosed error in pane {}", autofix.target_pane_id)
-                    }
-                    None => prompt.text.clone(),
-                };
-                (label, visible.into_owned())
+        // Preserve whatever the user already saw — visible prose AND any
+        // tool calls / plans that streamed during the turn — before
+        // discarding state. JSON wrappers the UI hid are not committed
+        // (match `pending_render_text`). Always clear UI state after,
+        // so a cancel never leaves stale rows behind.
+        let cancel_label = if let TurnState::Streaming { prompt, .. } = &tab.turn {
+            Some(match prompt.autofix.as_ref() {
+                Some(autofix) => {
+                    format!("Auto-diagnosed error in pane {}", autofix.target_pane_id)
+                }
+                None => prompt.text.clone(),
             })
         } else {
             None
         };
-        if let Some((prompt_label, visible)) = streamed {
+        let cancel_visible = if let TurnState::Streaming { buf, .. } = &tab.turn {
+            ui::chat::user_visible_stream_text(buf).map(|c| c.into_owned())
+        } else {
+            None
+        };
+        if let Some(prompt_label) = cancel_label {
             let mut details = tab.current_turn_details();
-            details.push(ChatMessage::Agent(visible));
-            tab.completed_turns.push(CompletedTurn {
-                prompt: prompt_label,
-                details,
-                expanded: true,
-            });
+            if let Some(visible) = cancel_visible {
+                details.push(ChatMessage::Agent(visible));
+            }
+            if !details.is_empty() {
+                tab.completed_turns.push(CompletedTurn {
+                    prompt: prompt_label,
+                    details,
+                    expanded: true,
+                });
+            }
             tab.messages.clear();
             tab.tool_calls.clear();
             tab.scroll_to_bottom();
@@ -7764,6 +7780,59 @@ mod tests {
         );
         assert!(app.current_tab().turn.is_idle());
         assert!(app.tab_mut(DEFAULT_TAB_ID).autofix.pane_id.is_none());
+    }
+
+    #[test]
+    fn cancel_mid_stream_preserves_visible_prose() {
+        // Esc while prose is streaming → commit partial prose as a
+        // CompletedTurn, default-expanded, and clear in-flight UI state.
+        let mut app = test_app();
+        submit_test_prompt(&mut app, "tell me a story");
+        app.turn_observe_chunk(
+            DEFAULT_TAB_ID,
+            ChunkKind::Message,
+            "\n\nOnce upon a time",
+        );
+        app.turn_cancel(DEFAULT_TAB_ID);
+        let tab = app.current_tab();
+        assert!(tab.turn.is_idle(), "got {:?}", tab.turn);
+        assert_eq!(tab.completed_turns.len(), 1);
+        let committed = &tab.completed_turns[0];
+        assert_eq!(committed.prompt, "tell me a story");
+        assert!(committed.expanded, "cancel-committed turns default expanded");
+        // The leading newlines are preserved verbatim — the renderer / height
+        // estimator skip them, so storing them is harmless and matches what
+        // user_visible_stream_text returned.
+        assert!(committed
+            .details
+            .iter()
+            .any(|m| matches!(m, ChatMessage::Agent(t) if t.contains("Once upon a time"))));
+        assert!(tab.messages.is_empty(), "messages cleared on cancel");
+        assert!(tab.tool_calls.is_empty(), "tool_calls cleared on cancel");
+    }
+
+    #[test]
+    fn cancel_mid_stream_skips_commit_for_json_only_buffer() {
+        // A buffer that's pure JSON (no `explanation` field, no prose
+        // prefix) renders as nothing during streaming; cancelling such a
+        // turn must not commit raw JSON into chat history. UI state is
+        // still cleared so no stale rows linger.
+        let mut app = test_app();
+        submit_test_prompt(&mut app, "kill pid 1234");
+        app.turn_observe_chunk(
+            DEFAULT_TAB_ID,
+            ChunkKind::Message,
+            r#"{"recommended_choice":1,"choices":[{"choice":1,"#,
+        );
+        app.turn_cancel(DEFAULT_TAB_ID);
+        let tab = app.current_tab();
+        assert!(tab.turn.is_idle());
+        assert!(
+            tab.completed_turns.is_empty(),
+            "no user-visible prose → no completed_turn"
+        );
+        assert!(tab.messages.is_empty(), "messages cleared even without commit");
+        assert!(tab.tool_calls.is_empty());
     }
 
     #[test]
