@@ -3376,15 +3376,30 @@ impl App {
 
                 // set_agent_state: unified inbound request from C++ to
                 // change one or more pieces of per-tab agent-pane UI state
-                // on the *active* tab. Every field under `params` is
+                // for a specific tab. Every field under `params` is
                 // optional — only specified ones are applied, the rest
-                // are left untouched. Always followed by a full
-                // `agent_state_changed` projection so C++ mirrors the new
-                // snapshot.
+                // are left untouched.
                 //
                 // Supported fields:
+                //   * `tab_id`: optional WT StableId of the tab to mutate.
+                //               Falls back to the active tab when absent.
+                //               C++ should always include it: defends
+                //               against `tab_changed`/`set_agent_state`
+                //               ordering ambiguity (e.g. resume-in-new-tab
+                //               creates a new tab and immediately requests
+                //               pane_open=true; with `tab_id` we don't
+                //               depend on `tab_changed` arriving first to
+                //               route to the right TabSession).
                 //   * `view`: "chat" | "sessions"
                 //   * `pane_open`: bool
+                //
+                // **Projection rule**: if the target tab is the currently-
+                // active one, immediately project the new snapshot back to
+                // C++ (`agent_state_changed`). If the target is NOT active,
+                // skip projection — the next `tab_changed` to that tab will
+                // project the now-up-to-date state. C++ mirrors are global
+                // per-pane so they only need refreshing when the active tab
+                // changes (or when a mutation lands on the active tab).
                 //
                 // **Round-trip contract**: under the "wta is the sole owner
                 // of agent-pane UI state" architecture, C++ does NOT update
@@ -3421,10 +3436,22 @@ impl App {
                         return;
                     }
 
+                    // Resolve target tab: explicit `tab_id` wins;
+                    // otherwise fall back to the active tab. The explicit
+                    // path is robust against `tab_changed` ordering races
+                    // (e.g. resume-in-new-tab where C++ creates a tab and
+                    // immediately fires `set_agent_state` for it).
+                    let target_tab = params
+                        .get("tab_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| self.active_tab_key().to_string());
+
                     // Apply `view` if present.
                     if let Some(view_str) = params.get("view").and_then(|v| v.as_str()) {
                         tracing::info!(
                             target: "set_agent_state",
+                            tab = %target_tab,
                             view = view_str,
                             "applying view"
                         );
@@ -3436,14 +3463,17 @@ impl App {
                                     self.show_welcome_hint = false;
                                     set_welcome_shown_in_state();
                                 }
-                                let entering_agents =
-                                    self.current_tab().current_view != View::Agents;
+                                let entering_agents = self
+                                    .tab_sessions
+                                    .get(&target_tab)
+                                    .map(|t| t.current_view != View::Agents)
+                                    .unwrap_or(true);
                                 let has_sessions = !self
                                     .agent_sessions
                                     .iter_sorted_filtered(self.current_cli_filter().as_ref())
                                     .is_empty();
                                 {
-                                    let tab = self.current_tab_mut();
+                                    let tab = self.tab_mut(&target_tab);
                                     tab.current_view = View::Agents;
                                     if tab.agents_list_state.selected().is_none()
                                         && has_sessions
@@ -3456,7 +3486,7 @@ impl App {
                                 }
                             }
                             "chat" => {
-                                self.current_tab_mut().current_view = View::Chat;
+                                self.tab_mut(&target_tab).current_view = View::Chat;
                             }
                             other => {
                                 tracing::warn!(
@@ -3472,16 +3502,27 @@ impl App {
                     if let Some(open) = params.get("pane_open").and_then(|v| v.as_bool()) {
                         tracing::info!(
                             target: "set_agent_state",
+                            tab = %target_tab,
                             pane_open = open,
                             "applying pane_open"
                         );
-                        self.current_tab_mut().pane_open = open;
+                        self.tab_mut(&target_tab).pane_open = open;
                     }
 
-                    // Echo the resulting snapshot back so C++ mirrors it
-                    // (the C++ side never writes its own mirror locally
-                    // — see the round-trip contract comment above).
-                    self.project_active_tab_state();
+                    // Only project when the mutation landed on the active
+                    // tab — C++'s mirrors are global per-pane, so a
+                    // non-active mutation has no effect there until the
+                    // next `tab_changed` projects the (now-updated) tab.
+                    if target_tab == self.active_tab_key() {
+                        self.project_active_tab_state();
+                    } else {
+                        tracing::debug!(
+                            target: "set_agent_state",
+                            target = %target_tab,
+                            active = %self.active_tab_key(),
+                            "applied to non-active tab; deferring projection to next tab_changed"
+                        );
+                    }
                     return;
                 }
 

@@ -1715,6 +1715,21 @@ namespace winrt::TerminalApp::implementation
         // wta processes don't cross-talk. wta ignores the event when its
         // own window_id is known and doesn't match.
         params["window_id"] = std::to_string(_WindowProperties.WindowId());
+
+        // Always carry the active tab's StableId so wta routes the
+        // mutation to the right TabSession. Without `tab_id`, wta would
+        // fall back to its own active-tab pointer, which can lag behind
+        // a `tab_changed` we just sent (e.g. resume-in-new-tab fires
+        // tab_changed then set_agent_state back-to-back).
+        if (const auto activeTab = _GetFocusedTabImpl())
+        {
+            const auto stableId = activeTab->StableId();
+            if (!stableId.empty())
+            {
+                params["tab_id"] = winrt::to_string(stableId);
+            }
+        }
+
         std::string logSuffix;
         if (view.has_value())
         {
@@ -4474,7 +4489,9 @@ namespace winrt::TerminalApp::implementation
         // pane_open: drives `Tab.AgentPaneOpen` on the active tab. Then
         // reconcile so the actual XAML pane visibility / placement
         // matches the new intent (relocate from another tab, restore
-        // from hidden, or hide on this tab).
+        // from hidden, or hide on this tab). Reconcile internally calls
+        // `_UpdateBottomBarState`, so skip the redundant call below
+        // when we took the reconcile branch.
         bool didReconcile = false;
         if (params.isMember("pane_open") && params["pane_open"].isBool())
         {
@@ -4490,8 +4507,10 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
 
-        _UpdateBottomBarState();
-        (void)didReconcile; // reserved for future "only reconcile when needed" heuristics
+        if (!didReconcile)
+        {
+            _UpdateBottomBarState();
+        }
     }
 
     // Inbound event from WTA: {method:"close_agent_pane", params:{...}}.

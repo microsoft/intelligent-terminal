@@ -1778,10 +1778,13 @@ async fn run_acp_app(
 
             // Project the initial active-tab state to C++ once, after the
             // --initial-view block has had its say. Without this push,
-            // C++'s `_agentSessionsViewActive` flag (single writer, lives in
-            // `OnAgentViewChanged`) would stay on its default `false` until
-            // the user's first interaction, leaving the bar mislabelled in
-            // the `--initial-view sessions` case. Cheap and idempotent.
+            // C++'s `_agentSessionsViewActive` and `Tab.AgentPaneOpen`
+            // mirrors (single writer lives in `OnAgentStateChanged`)
+            // would stay on their defaults until the user's first
+            // interaction, leaving the bar mislabelled in the
+            // `--initial-view sessions` case and the pane-open flag
+            // out of sync with the seeded `pane_open=true` on the
+            // owner tab. Cheap and idempotent.
             //
             // Safe before the `Setup` mode block below: that block runs
             // its own UI and doesn't read the view flag; if we end up in

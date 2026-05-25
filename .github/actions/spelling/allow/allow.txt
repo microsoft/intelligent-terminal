@@ -13,6 +13,7 @@ consvc
 copyable
 dcs
 deselection
+desync
 diffing
 Dimidium
 downsides
