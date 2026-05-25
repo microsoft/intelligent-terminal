@@ -4295,23 +4295,21 @@ impl App {
                 if self.current_tab().turn.recommendations().is_some() =>
             {
                 // `turn_cancel` bumps generation, emits autofix_state_cleared,
-                // and resets the state machine to Idle.
-                let session_id = self.current_tab().session_id.clone();
-                if let Some(sid) = session_id {
-                    self.turn_cancel(&sid);
-                } else {
-                    // No session attached yet — fall back to manual cleanup
-                    // (no chunks can be in flight in that case).
-                    let pane_to_clear = {
-                        let tab = self.current_tab_mut();
-                        tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
-                        tab.autofix.pane_id.take()
-                    };
-                    if pane_to_clear.is_some() {
-                        let active = self.active_tab_key().to_string();
-                        self.emit_autofix_state_cleared(&active);
-                    }
-                }
+                // and resets the state machine to Idle (which clears the
+                // recommendation card). When the focused tab has no real
+                // ACP session id yet, fall back to DEFAULT_TAB_ID — same
+                // convention `cancel_in_flight_turn` uses — so the card
+                // still gets dismissed via `tab_for_session(DEFAULT_TAB_ID)`
+                // → `self.tab_id` resolving to the focused tab. Without
+                // this fallback, the card would persist on a brand-new tab
+                // that surfaced a recommendation before `SessionAttached`
+                // arrived.
+                let sid = self
+                    .current_tab()
+                    .session_id
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+                self.turn_cancel(&sid);
             }
             // Dismiss the bottom-bar Suggested indicator (autofix produced an
             // explanation, not an executable fix). Reachable only when the user
