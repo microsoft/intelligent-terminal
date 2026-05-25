@@ -8,6 +8,7 @@ mod agent_pane_origin;
 mod agent_hooks_installer;
 mod app;
 mod commands;
+mod conpty_handle;
 mod coordinator;
 mod event;
 mod history_loader;
