@@ -2,10 +2,6 @@
 # (the package strips Microsoft.VCLibs and ships no VC runtime; missing
 # this flag causes wta.exe to fail to launch on clean machines like
 # Windows Sandbox).
-#
-# CI rewrites this file from scratch to add internal-feed registry
-# routing — keep these target blocks in sync with the version in
-# build/pipelines/templates-v2/job-build-project.yml.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
 

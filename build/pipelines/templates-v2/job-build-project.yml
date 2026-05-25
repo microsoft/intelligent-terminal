@@ -205,51 +205,40 @@ jobs:
       # config-file resolution picks it up.
       additionalTargets: 'x86_64-pc-windows-msvc i686-pc-windows-msvc aarch64-pc-windows-msvc'
 
-  # Write .cargo/config.toml from scratch. CI owns this file fully —
-  # it bundles both halves of the configuration in a single Set-Content
-  # call so the step is trivially idempotent (re-runs produce the same
-  # file) and never needs to read the existing content back.
+  # Append the Azure Artifacts source replacement to the repo's
+  # checked-in .cargo/config.toml. We append rather than overwrite
+  # because the repo's version carries the `+crt-static` rustflags
+  # that wta.exe needs to start without VCRUNTIME140.dll on customer
+  # machines (the package ships no VC runtime and strips the
+  # Microsoft.VCLibs dependency). The previous version of this step
+  # used `Set-Content`, which silently clobbered those rustflags and
+  # produced CI-built wta.exe binaries that failed to launch in clean
+  # environments (e.g. Windows Sandbox).
   #
-  # The two halves:
+  # 1ES build agents do a fresh checkout per run, so the file always
+  # starts from its git-pristine state — Add-Content's lack of
+  # idempotency on a hypothetical re-used workspace is not a real
+  # concern in this pipeline.
   #
-  #   1. `[target.*-pc-windows-msvc] rustflags = +crt-static` — static-
-  #      link the MSVC CRT so wta.exe doesn't import VCRUNTIME140.dll
-  #      (the package strips Microsoft.VCLibs and ships no VC runtime;
-  #      missing the flag here causes wta.exe to fail to launch on
-  #      clean machines like Windows Sandbox).
-  #
-  #   2. `[registries] / [source.crates-io]` — route Cargo through
-  #      the internal Azure Artifacts feed. CI-only; the public feed
-  #      isn't reachable from the build agents.
-  #
-  # IMPORTANT: the rustflags block MUST stay in sync with the
-  # repo-root `.cargo/config.toml` used by local builds. If you change
-  # one, change the other. Cargo discovers config.toml by walking up
-  # from CWD (repo root), not from --manifest-path, which is why the
-  # local version lives at the repo root and not inside tools/wta/.
+  # Cargo discovers .cargo/config.toml by walking from the current
+  # working directory (repo root) up — NOT from the manifest directory.
+  # The config must live at the repo root, not inside tools/wta/.
   - pwsh: |-
       $configDir = '.cargo'
       $configPath = Join-Path $configDir 'config.toml'
       New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-      @"
-      [target.x86_64-pc-windows-msvc]
-      rustflags = ["-C", "target-feature=+crt-static"]
-
-      [target.i686-pc-windows-msvc]
-      rustflags = ["-C", "target-feature=+crt-static"]
-
-      [target.aarch64-pc-windows-msvc]
-      rustflags = ["-C", "target-feature=+crt-static"]
+      $registry = @"
 
       [registries]
       WindowsTerminalCargo = { index = "sparse+https://pkgs.dev.azure.com/microsoft/Dart/_packaging/IntelligentTerminal_Cargo/Cargo/index/" }
 
       [source.crates-io]
       replace-with = "WindowsTerminalCargo"
-      "@ | Set-Content -Path $configPath -Encoding utf8NoBOM
-      Write-Host "Wrote $configPath:"
+      "@
+      Add-Content -Path $configPath -Value $registry -Encoding utf8NoBOM
+      Write-Host "Updated $configPath:"
       Get-Content $configPath
-    displayName: Write Cargo config (CI only)
+    displayName: Append Cargo registry config (CI only)
 
   # CargoAuthenticate issues a Bearer token (using System.AccessToken) for
   # every Azure Artifacts Cargo feed referenced in the config file.
