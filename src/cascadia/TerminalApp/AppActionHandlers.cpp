@@ -1685,7 +1685,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        _OpenOrReuseAgentPane(L"", false, L"OpenPaneAction");
+        _OpenOrReuseAgentPane(L"", false, L"Action");
         _UpdateBottomBarState();
         args.Handled(true);
     }
@@ -1733,10 +1733,9 @@ namespace winrt::TerminalApp::implementation
 
         // Either the pane needs opening/relocating, or it's open in chat
         // view and we want to switch it. Both go through the existing
-        // Either the pane needs opening/relocating, or it's open in chat
-        // view and we want to switch it. Both go through the existing
-        // intoSessionsView=true code path, which sets _agentSessionsViewActive
-        // = true on success.
+        // intoSessionsView=true code path; wta emits `agent_state_changed`
+        // back with `view=sessions, pane_open=true` which lands in
+        // `OnAgentStateChanged`.
         _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true, L"SessionsAction");
         _UpdateBottomBarState();
         args.Handled(true);

@@ -936,6 +936,7 @@ namespace winrt::TerminalApp::implementation
         {
             _AutoCreateHiddenAgentPane(tab);
             _OpenOrReuseAgentPane(L"", false, L"FirstRunExperience");
+            // Focus is set in the Initialized callback once the pane is ready.
         }
     }
 
@@ -2461,20 +2462,6 @@ namespace winrt::TerminalApp::implementation
                     return;
                 }
 
-                // Log AgentPaneOpened only when the pane is transitioning to visible
-                // (not when it's already visible and we're just switching views).
-                const bool wasVisible = (activeTab->AgentPaneOpen()) &&
-                                        (_FindTabContainingAgentPane() == activeTab) &&
-                                        !existingPane->IsHidden();
-                if (!wasVisible)
-                {
-                    emitAgentPaneOpened();
-                }
-
-                activeTab->AgentPaneOpen(true);
-                _agentPaneLog("intoSessionsView: forcing active tab AgentPaneOpen=true");
-                _ReconcileAgentPaneForActiveTab();
-
                 if (const auto pane = _FindAgentPane())
                 {
                     if (const auto& content{ pane->GetContent() })
@@ -2484,6 +2471,7 @@ namespace winrt::TerminalApp::implementation
                 }
 
                 _RequestAgentState("sessions", /*pane_open*/ true);
+                emitAgentPaneOpened();
                 return;
             }
 
@@ -2498,25 +2486,17 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
             const bool wantOpen = !activeTab->AgentPaneOpen();
-            activeTab->AgentPaneOpen(wantOpen);
-            _agentPaneLog(std::string{ "toggle: active tab AgentPaneOpen=" } + (wantOpen ? "true" : "false"));
-            _ReconcileAgentPaneForActiveTab();
+            _agentPaneLog(std::string{ "toggle: requesting pane_open=" } + (wantOpen ? "true" : "false"));
+            // When opening via Ctrl+Shift+., also force the view to chat
+            // (pane may have been left in Agents view from a previous
+            // `/sessions` / Ctrl+Shift+/). When closing, leave view as-is
+            // so reopening preserves the user's last view.
+            _RequestAgentState(wantOpen ? std::optional<std::string_view>{ "chat" } : std::nullopt,
+                               wantOpen);
             if (wantOpen)
             {
                 emitAgentPaneOpened();
-
-                // Transitioning hidden → visible via the chat keybinding
-                // (Ctrl+Shift+.). Force wta into chat view in case it was
-                // last left in the Agents view (the pane stays alive when
-                // hidden, so wta retains its previous view). Without this
-                // the user would press the chat key and still see the
-                // session list.
-                _BroadcastAgentSetView("chat");
             }
-            // Toggle path opens to chat (default) or hides the pane —
-            // either way the sessions view is no longer active.
-            _agentSessionsViewActive = false;
-            _UpdateBottomBarState();
             return;
         }
 
@@ -4021,11 +4001,22 @@ namespace winrt::TerminalApp::implementation
         {
             // No executable fix — auto-fix produced an explanation that lives
             // in the agent pane chat history. Open the pane so the user can
-            // read it, then drop back to Idle (the suggestion has been "seen").
+            // read it, then ask WTA to clear the suggestion for the active
+            // tab. WTA is the authoritative state owner, so we don't mutate
+            // _diagnostics locally — we wait for the inbound
+            // autofix_state:cleared event to roll us back to Idle.
             _OpenOrReuseAgentPane(L"", false, L"DiagnosticsButton");
-            _diagnostics.autofixState = AutofixState::Idle;
-            _diagnostics.suggestionTitle.clear();
-            _UpdateBottomBarState();
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "autofix_dismiss_suggestion";
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
+            evt["params"] = params;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            ProtocolVtSequenceReceived.raise(
+                *this,
+                winrt::to_hstring(Json::writeString(wb, evt)));
             break;
         }
         case AutofixState::Pending:
@@ -4844,23 +4835,6 @@ namespace winrt::TerminalApp::implementation
         ProtocolVtSequenceReceived.raise(
             *this,
             winrt::to_hstring(Json::writeString(wb, outEvt)));
-
-#if defined(WT_BRANDING_RELEASE)
-        constexpr uint8_t branding = 3;
-#elif defined(WT_BRANDING_PREVIEW)
-        constexpr uint8_t branding = 2;
-#elif defined(WT_BRANDING_CANARY)
-        constexpr uint8_t branding = 1;
-#else
-        constexpr uint8_t branding = 0;
-#endif
-        TraceLoggingWrite(
-            g_hTerminalAppProvider,
-            "SessionResumed",
-            TraceLoggingDescription("Event emitted when a prior agent session resume is dispatched"),
-            TraceLoggingValue(branding, "Branding"),
-            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 
         _agentPaneLog("OnResumeInNewAgentTabRequested: load_session event published for tab " +
                       winrt::to_string(newStableId));
