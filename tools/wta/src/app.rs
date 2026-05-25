@@ -5734,6 +5734,10 @@ impl App {
         else {
             return;
         };
+        // Snapshot the title before `choice` is moved into ChoiceExecution,
+        // so we can stamp the chat history with an "executed" marker after
+        // dispatch.
+        let executed_title = choice.title.clone();
         let insert_only =
             self.session_tab(session_id).selected_button == 1 && self.is_send_choice(&choice);
         // Autofill parent for Send actions when this is an autofix turn.
@@ -5775,6 +5779,12 @@ impl App {
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
         tab.rec_scroll.reset();
+        // Stamp the matching completed_turn (pushed during surface) with an
+        // "executed" marker so chat history reflects the user's choice.
+        if let Some(last) = tab.completed_turns.last_mut() {
+            let marker = t!("chat.turn_executed", title = &executed_title).into_owned();
+            last.details.push(ChatMessage::System(marker));
+        }
         // commit pending turn (in case eager surface staged one).
         tab.turn = TurnState::Surfaced {
             prompt,
@@ -5801,41 +5811,57 @@ impl App {
             self.emit_autofix_state_cleared(&target_tab);
         }
         let tab = self.session_tab_mut(session_id);
-        // Preserve whatever the user already saw — visible prose AND any
-        // tool calls / plans that streamed during the turn — before
-        // discarding state. JSON wrappers the UI hid are not committed
-        // (match `pending_render_text`). Always clear UI state after,
-        // so a cancel never leaves stale rows behind.
-        let cancel_label = if let TurnState::Streaming { prompt, .. } = &tab.turn {
-            Some(match prompt.autofix.as_ref() {
-                Some(autofix) => {
-                    format!("Auto-diagnosed error in pane {}", autofix.target_pane_id)
-                }
-                None => prompt.text.clone(),
-            })
-        } else {
-            None
+        let canceled_marker = t!("chat.turn_canceled").into_owned();
+        // Three paths into cancel:
+        //   - Submitted / Streaming → commit a fresh completed_turn (prompt +
+        //     whatever streamed + canceled marker) so the user always sees
+        //     that this turn happened and that they cancelled it.
+        //   - Surfaced{Recommendation}: turn_surface_* already pushed a
+        //     completed_turn; just append the canceled marker to its details.
+        //   - Other states (Idle / Surfaced{Empty / ChatTurn}) → no-op.
+        let new_turn_data: Option<(String, Option<String>)> = match &tab.turn {
+            TurnState::Submitted(prompt) => {
+                let label = match prompt.autofix.as_ref() {
+                    Some(a) => format!("Auto-diagnosed error in pane {}", a.target_pane_id),
+                    None => prompt.text.clone(),
+                };
+                Some((label, None))
+            }
+            TurnState::Streaming { prompt, buf } => {
+                let label = match prompt.autofix.as_ref() {
+                    Some(a) => format!("Auto-diagnosed error in pane {}", a.target_pane_id),
+                    None => prompt.text.clone(),
+                };
+                let visible = ui::chat::user_visible_stream_text(buf).map(|c| c.into_owned());
+                Some((label, visible))
+            }
+            _ => None,
         };
-        let cancel_visible = if let TurnState::Streaming { buf, .. } = &tab.turn {
-            ui::chat::user_visible_stream_text(buf).map(|c| c.into_owned())
-        } else {
-            None
-        };
-        if let Some(prompt_label) = cancel_label {
+        let annotate_card = matches!(
+            &tab.turn,
+            TurnState::Surfaced {
+                outcome: TurnOutcome::Recommendation(_),
+                ..
+            }
+        );
+        if let Some((prompt_label, visible)) = new_turn_data {
             let mut details = tab.current_turn_details();
-            if let Some(visible) = cancel_visible {
-                details.push(ChatMessage::Agent(visible));
+            if let Some(v) = visible {
+                details.push(ChatMessage::Agent(v));
             }
-            if !details.is_empty() {
-                tab.completed_turns.push(CompletedTurn {
-                    prompt: prompt_label,
-                    details,
-                    expanded: true,
-                });
-            }
+            details.push(ChatMessage::System(canceled_marker));
+            tab.completed_turns.push(CompletedTurn {
+                prompt: prompt_label,
+                details,
+                expanded: true,
+            });
             tab.messages.clear();
             tab.tool_calls.clear();
             tab.scroll_to_bottom();
+        } else if annotate_card {
+            if let Some(last) = tab.completed_turns.last_mut() {
+                last.details.push(ChatMessage::System(canceled_marker));
+            }
         }
         tab.autofix.pane_id = None;
         tab.selected_recommendation = 0;
@@ -7783,9 +7809,10 @@ mod tests {
     }
 
     #[test]
-    fn cancel_mid_stream_preserves_visible_prose() {
+    fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
         // Esc while prose is streaming → commit partial prose as a
-        // CompletedTurn, default-expanded, and clear in-flight UI state.
+        // CompletedTurn (default-expanded) with a trailing canceled marker
+        // so the user can see both what arrived and that they cancelled.
         let mut app = test_app();
         submit_test_prompt(&mut app, "tell me a story");
         app.turn_observe_chunk(
@@ -7800,23 +7827,25 @@ mod tests {
         let committed = &tab.completed_turns[0];
         assert_eq!(committed.prompt, "tell me a story");
         assert!(committed.expanded, "cancel-committed turns default expanded");
-        // The leading newlines are preserved verbatim — the renderer / height
-        // estimator skip them, so storing them is harmless and matches what
-        // user_visible_stream_text returned.
         assert!(committed
             .details
             .iter()
             .any(|m| matches!(m, ChatMessage::Agent(t) if t.contains("Once upon a time"))));
+        assert!(committed
+            .details
+            .iter()
+            .any(|m| matches!(m, ChatMessage::System(t) if t.contains("canceled"))));
         assert!(tab.messages.is_empty(), "messages cleared on cancel");
         assert!(tab.tool_calls.is_empty(), "tool_calls cleared on cancel");
     }
 
     #[test]
-    fn cancel_mid_stream_skips_commit_for_json_only_buffer() {
+    fn cancel_mid_stream_records_canceled_marker_even_without_visible_prose() {
         // A buffer that's pure JSON (no `explanation` field, no prose
-        // prefix) renders as nothing during streaming; cancelling such a
-        // turn must not commit raw JSON into chat history. UI state is
-        // still cleared so no stale rows linger.
+        // prefix) renders as nothing during streaming. We must NOT commit
+        // raw JSON, but we still record a completed_turn with just the
+        // canceled marker so the user sees that the prompt was sent and
+        // cancelled.
         let mut app = test_app();
         submit_test_prompt(&mut app, "kill pid 1234");
         app.turn_observe_chunk(
@@ -7827,11 +7856,21 @@ mod tests {
         app.turn_cancel(DEFAULT_TAB_ID);
         let tab = app.current_tab();
         assert!(tab.turn.is_idle());
+        assert_eq!(tab.completed_turns.len(), 1);
+        let committed = &tab.completed_turns[0];
+        assert_eq!(committed.prompt, "kill pid 1234");
         assert!(
-            tab.completed_turns.is_empty(),
-            "no user-visible prose → no completed_turn"
+            !committed
+                .details
+                .iter()
+                .any(|m| matches!(m, ChatMessage::Agent(_))),
+            "JSON-only buffer must not be committed as agent prose"
         );
-        assert!(tab.messages.is_empty(), "messages cleared even without commit");
+        assert!(committed
+            .details
+            .iter()
+            .any(|m| matches!(m, ChatMessage::System(t) if t.contains("canceled"))));
+        assert!(tab.messages.is_empty());
         assert!(tab.tool_calls.is_empty());
     }
 
