@@ -95,15 +95,15 @@ namespace wtcli
     }
 
 
-    // Build the JSON envelope for a send-event command.
-    // Returns true on success (outEvt is populated), false if paramsJson
-    // Build the standard JSON object the COM server expects for an
-    // agent_event. Caller passes the event name and optional extra
-    // params (as a JSON object string); we fold in pane_id and emit
-    // the wrapped {type, method, params} envelope.
+    // Build the standard JSON envelope the COM server expects for an
+    // `agent_event`. The caller provides the event name, an optional JSON
+    // object string containing extra params, and the source pane Guid; this
+    // function folds in `pane_id` and emits the wrapped
+    // `{ type, method, params }` object in `outEvt`.
     //
-    // Returns false (and leaves outEvt untouched) if |paramsJson|
-    // is non-empty but not a valid JSON object.
+    // Returns true on success and populates `outEvt`.
+    // Returns false and leaves `outEvt` untouched if `paramsJson` is
+    // non-empty but not a valid JSON object.
     //
     // |eventType|  — required event name (e.g. "agent.task.started")
     // |paramsJson| — optional JSON object string with extra params
