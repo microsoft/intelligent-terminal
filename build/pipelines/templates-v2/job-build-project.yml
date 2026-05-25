@@ -209,11 +209,16 @@ jobs:
   # The repo's .cargo/config.toml is checked in and carries the
   # `+crt-static` rustflags that wta.exe needs to start without
   # VCRUNTIME140.dll on customer machines (the package ships no VC
-  # runtime and strips the Microsoft.VCLibs dependency; see commit
-  # fbbb367c8). Earlier this step used `Set-Content`, which silently
-  # clobbered those rustflags and produced CI-built wta.exe binaries
-  # that imported VCRUNTIME140.dll and failed to launch in clean
-  # environments (e.g. Windows Sandbox).
+  # runtime and strips the Microsoft.VCLibs dependency). Earlier this
+  # step used `Set-Content`, which silently clobbered those rustflags
+  # and produced CI-built wta.exe binaries that imported
+  # VCRUNTIME140.dll and failed to launch in clean environments
+  # (e.g. Windows Sandbox).
+  #
+  # The grep guard makes the step idempotent: if `WindowsTerminalCargo`
+  # is already present (re-run on a dirty workspace, or the repo grows
+  # its own registry entry later), skip the append so we don't produce
+  # a config file with duplicate TOML keys that Cargo refuses to parse.
   #
   # Cargo discovers .cargo/config.toml by walking from the current
   # working directory (repo root) up — NOT from the manifest directory.
@@ -222,7 +227,10 @@ jobs:
       $configDir = '.cargo'
       $configPath = Join-Path $configDir 'config.toml'
       New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-      $registry = @"
+      if ((Test-Path $configPath) -and (Select-String -Path $configPath -Pattern 'WindowsTerminalCargo' -SimpleMatch -Quiet)) {
+        Write-Host "Registry replacement already present in $configPath, skipping append."
+      } else {
+        $registry = @"
 
       [registries]
       WindowsTerminalCargo = { index = "sparse+https://pkgs.dev.azure.com/microsoft/Dart/_packaging/IntelligentTerminal_Cargo/Cargo/index/" }
@@ -230,8 +238,9 @@ jobs:
       [source.crates-io]
       replace-with = "WindowsTerminalCargo"
       "@
-      Add-Content -Path $configPath -Value $registry -Encoding utf8NoBOM
-      Write-Host "Updated $configPath"
+        Add-Content -Path $configPath -Value $registry -Encoding utf8NoBOM
+        Write-Host "Appended registry replacement to $configPath."
+      }
       Get-Content $configPath
     displayName: Append Cargo registry config (CI only)
 
