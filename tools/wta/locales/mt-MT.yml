@@ -8,21 +8,21 @@ setup.title.not_available: "L-aġent mhuwiex disponibbli"
 setup.title.sign_in: "Hemm bżonn li tidħol"
 
 # %{agent} jiġi sostitwit bl-isem tal-aġent waqt l-eżekuzzjoni.
-setup.subtitle.copilot_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Segwi l-passi t'hawn taħt biex tinstallaw. Biex tibdel l-aġenti, mur għal Settings."
-setup.subtitle.agent_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Erġa' installah manwalment, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Settings."
-setup.subtitle.copilot_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Segwi l-passi t'hawn taħt biex tidħol. Biex tibdel l-aġenti, mur għal Settings."
-setup.subtitle.agent_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Idħol permezz tal-CLI tal-aġent, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Settings."
+setup.subtitle.copilot_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Segwi l-passi t'hawn taħt biex tinstallaw. Biex tibdel l-aġenti, mur għal Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Erġa' installah manwalment, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Segwi l-passi t'hawn taħt biex tidħol. Biex tibdel l-aġenti, mur għal Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Idħol permezz tal-aġent, imbagħad agħżel \"Dħalt\" hawn taħt. Biex tibdel l-aġenti, mur għal Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Agħżel il-CLI tal-aġent awtomatiku li tixtieq tuża fl-Intelligent Terminal. Tista'"
+setup.description.fre_line1: "Agħżel l-aġent awtomatiku li tixtieq tuża fl-Intelligent Terminal. Tista'"
 setup.description.fre_line2: "tmur għal Settings biex tikkonfigura u twaqqaf l-ispazju tax-xogħol tiegħek."
 
-setup.option.reinstall: "Erġa' installa %{agent}"
-setup.option.reinstall_hint: "(Se jiġi installat awtomatikament)"
+setup.option.install: "Installa %{agent}"
+setup.option.install_hint: "(Se jiġi installat awtomatikament)"
 setup.option.signin: "Idħol f'%{agent}"
-setup.option.retry_detection: "Erġa' pprova d-detezzjoni"
-setup.option.retry_auth: "Dħalt — erġa' pprova l-konnessjoni"
-setup.option.retry_connection: "Erġa' pprova l-konnessjoni"
+setup.option.retry_detection: "Erġa' pprova"
+setup.option.retry_auth: "Dħalt — erġa' pprova tikkonnettja"
+setup.option.retry_connection: "Erġa' pprova tikkonnettja"
 setup.option.switch_to: "Ibdel għal %{agent}"
 setup.status.installing: "Qed jiġi installat..."
 setup.status.install_failed: "L-installazzjoni falliet: "
@@ -66,8 +66,8 @@ commands.help_escape_hint: "  //text     Ibgħat '/' litterali (eskejpja l-parse
 commands.help_close_hint: "  Esc        Agħlaq din l-għajnuna"  # {Locked="Esc"}
 
 # ── Pannell tar-rakkomandazzjonijiet (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - ismijiet taċ-ċwievet u glyph taċ-ċavetta Return, tittradux
-recommendations.nav_hint: "(↑ ↓ biex tinnaviga • Enter biex tagħżel • Esc biex tikkanċella)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - ismijiet taċ-ċwievet u glyph taċ-ċavetta Return, tittradux
+recommendations.nav_hint: "(↑ ↓ biex tinnaviga • ← → biex taqleb il-buttuni • Enter biex tagħżel • Esc biex tikkanċella)"
 recommendations.button_run_command: "[ Ħaddem il-kmand ]"
 recommendations.button_insert_in_terminal: "Daħħal fit-Terminal"
 recommendations.button_open_in_new_tab: "Iftaħ f'Tab Ġdid ↵"
@@ -104,7 +104,7 @@ agent.custom.auth_hint: "Kun żgur li %{name} huwa installat u fuq il-PATH tieg�
 
 # ── Vista tal-aġenti (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Qed jitgħabba..."
-# {Locked="Enter","Shift+enter","Esc"} - kombinazzjonijiet taċ-ċwievet, tittradux
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - kombinazzjonijiet taċ-ċwievet, tittradux
 agents.footer_hint: "(↑ ↓ biex tinnaviga • Enter biex tniedi sessjoni f'tab ġdid • Shift+enter biex tniedi sessjoni fil-pannell tal-aġent • Esc biex toħroġ)"
 agents.status.active: "Attiv"
 agents.status.waiting_for_input: "Qed jistenna input"
@@ -160,3 +160,11 @@ hooks.installed_but_disabled: "⚠ installat imma diżattivat"
 hooks.not_installed: "✗ mhux installat"
 hooks.uninstall_skipped: "maqbuż (CLI mhix fuq PATH)"
 hooks.install_attempted: "Saret tentattiv biex jiġi installat wt-agent-hooks (idempotenti). Ħaddem `wta hooks status` biex tispezzjona r-riżultat. Log tat-trace: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "issa stess"
+time.minute_singular: "%{count} minuta ilu"
+time.minutes_other: "%{count}-il minuta ilu"
+time.hour_singular: "%{count} siegħa ilu"
+time.hours_other: "%{count}-il siegħa ilu"
+time.day_singular: "%{count} ġurnata ilu"
+time.days_other: "%{count}-il ġurnata ilu"

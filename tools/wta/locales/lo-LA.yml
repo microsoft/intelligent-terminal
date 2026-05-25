@@ -8,21 +8,21 @@ setup.title.not_available: "Agent ບໍ່ພ້ອມໃຊ້ງານ"
 setup.title.sign_in: "ຕ້ອງການເຂົ້າສູ່ລະບົບ"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອຕິດຕັ້ງ། ເພື່ອປ່ຽນ agent, ໄປທີ່ Settings།"
-setup.subtitle.agent_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ກະລຸນາຕິດຕັ້ງໃໝ່ດ້ວຍມື ແລ້ວລອງໃໝ່། ເພື່ອປ່ຽນ agent, ໄປທີ່ Settings།"
-setup.subtitle.copilot_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອເຂົ້າສູ່ລະບົບ། ເພື່ອປ່ຽນ agent, ໄປທີ່ Settings།"
-setup.subtitle.agent_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ກະລຸນາເຂົ້າສູ່ລະບົບຜ່ານ agent CLI ແລ້ວລອງໃໝ່། ເພື່ອປ່ຽນ agent, ໄປທີ່ Settings།"
+setup.subtitle.copilot_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອຕິດຕັ້ງ། ເພື່ອປ່ຽນ agent, ໄປທີ່ Intelligent Terminal Settings > Agent།"
+setup.subtitle.agent_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ກະລຸນາຕິດຕັ້ງໃໝ່ດ້ວຍມື ແລ້ວລອງໃໝ່། ເພື່ອປ່ຽນ agent, ໄປທີ່ Intelligent Terminal Settings > Agent།"
+setup.subtitle.copilot_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອເຂົ້າສູ່ລະບົບ། ເພື່ອປ່ຽນ agent, ໄປທີ່ Intelligent Terminal Settings > Agent།"
+setup.subtitle.agent_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ກະລຸນາເຂົ້າສູ່ລະບົບຜ່ານ agent, ຈາກນັ້ນເລືອກ \"ຂ້ອຍໄດ້ເຂົ້າສູ່ລະບົບແລ້ວ\" ຂ້າງລຸ່ມ། ເພື່ອປ່ຽນ agent, ໄປທີ່ Intelligent Terminal Settings > Agent།"
 
 # {Locked="Intelligent Terminal"}
 setup.description.fre_line1: "ເລືອກ agent CLI ເລີ່ມຕົ້ນທີ່ທ່ານຕ້ອງການໃຊ້ໃນ Intelligent Terminal། ທ່ານສາມາດ"
 setup.description.fre_line2: "ໄປທີ່ Settings ເພື່ອຕັ້ງຄ່າ ແລະຕັ້ງຄ່າພື້ນທີ່ເຮັດວຽກຂອງທ່ານ།"
 
-setup.option.reinstall: "ຕິດຕັ້ງໃໝ່ %{agent}"
-setup.option.reinstall_hint: "(ຈະຕິດຕັ້ງໂດຍອັດຕະໂນມັດ)"
+setup.option.install: "ຕິດຕັ້ງ %{agent}"
+setup.option.install_hint: "(ຈະຕິດຕັ້ງໂດຍອັດຕະໂນມັດ)"
 setup.option.signin: "ເຂົ້າສູ່ລະບົບ %{agent}"
-setup.option.retry_detection: "ລອງກວດຈັບໃໝ່"
-setup.option.retry_auth: "ຂ້ອຍໄດ້ເຂົ້າສູ່ລະບົບແລ້ວ — ລອງເຊື່ອມຕໍ່ໃໝ່"
-setup.option.retry_connection: "ລອງເຊື່ອມຕໍ່ໃໝ່"
+setup.option.retry_detection: "ລອງໃໝ່"
+setup.option.retry_auth: "ຂ້ອຍໄດ້ເຂົ້າສູ່ລະບົບແລ້ວ — ລອງເຊື່ອມຕໍ່ອີກຄັ້ງ"
+setup.option.retry_connection: "ລອງເຊື່ອມຕໍ່ອີກຄັ້ງ"
 setup.option.switch_to: "ປ່ຽນໄປ %{agent}"
 setup.status.installing: "ກຳລັງຕິດຕັ້ງ..."
 setup.status.install_failed: "ການຕິດຕັ້ງລົ້ມເຫລວ: "
@@ -66,8 +66,8 @@ commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command
 commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ to navigate • Enter to select • Esc to cancel)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ to navigate • ← → ສະຫຼັບການກະທຳ • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
@@ -104,7 +104,7 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit)"
 agents.status.active: "Active"
 agents.status.waiting_for_input: "Waiting for input"
@@ -160,3 +160,12 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting ─────────────────────────────────────
+time.just_now: "ເມື່ອກີ້ນີ້"
+time.minute_singular: "%{count} ນາທີກ່ອນ"
+time.minutes_other: "%{count} ນາທີກ່ອນ"
+time.hour_singular: "%{count} ຊົ່ວໂມງກ່ອນ"
+time.hours_other: "%{count} ຊົ່ວໂມງກ່ອນ"
+time.day_singular: "%{count} ມື້ກ່ອນ"
+time.days_other: "%{count} ມື້ກ່ອນ"

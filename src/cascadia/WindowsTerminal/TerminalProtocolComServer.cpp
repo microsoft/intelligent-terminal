@@ -686,11 +686,13 @@ void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
         // thread and tell TerminalPage to tear down the shared agent pane.
         _dispatchCloseAgentPaneToPage(eventJson);
         return;
-    case ProtocolParsing::SendEventRoute::ViewChanged:
-        // wta TUI flipped its internal view (Esc out of session view,
-        // `/sessions` slash command). C++ mirrors the new view onto the
-        // agent bar title + the bottom bar's sessions/chat highlight.
-        _dispatchViewChangedToPage(eventJson);
+    case ProtocolParsing::SendEventRoute::AgentState:
+        // Unified per-tab agent-pane UI snapshot from wta. Drives
+        // `_agentSessionsViewActive` (bar title + bottom-bar highlight)
+        // and `Tab.AgentPaneOpen` (which tab wants the shared pane
+        // visible). One handler, one event, future per-tab state plugs
+        // in as another field on the same payload.
+        _dispatchAgentStateChangedToPage(eventJson);
         return;
     case ProtocolParsing::SendEventRoute::ResumeInNewAgentTab:
         // Session view's Shift+Enter handler in the wta TUI. Carries
@@ -822,7 +824,7 @@ void TerminalProtocolComServer::_dispatchCloseAgentPaneToPage(const winrt::hstri
     }
 }
 
-void TerminalProtocolComServer::_dispatchViewChangedToPage(const winrt::hstring& eventJson)
+void TerminalProtocolComServer::_dispatchAgentStateChangedToPage(const winrt::hstring& eventJson)
 {
     if (!s_emperor)
     {
@@ -830,7 +832,7 @@ void TerminalProtocolComServer::_dispatchViewChangedToPage(const winrt::hstring&
     }
     // Same fan-out shape as the other dispatchers: the agent pane lives in
     // exactly one window, but we don't know which from here, and pages with
-    // no agent pane no-op the call (see OnAgentViewChanged).
+    // no agent pane no-op the call (see OnAgentStateChanged).
     for (const auto& host : s_emperor->GetWindows())
     {
         auto page = _getPage(host.get());
@@ -848,7 +850,7 @@ void TerminalProtocolComServer::_dispatchViewChangedToPage(const winrt::hstring&
             [page, eventJson]() {
                 try
                 {
-                    page.OnAgentViewChanged(eventJson);
+                    page.OnAgentStateChanged(eventJson);
                 }
                 catch (...)
                 {

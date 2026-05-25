@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -955,11 +955,11 @@
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve"><value>Error de integración del shell</value></data>
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>No se pudo inicializar la integración del shell. No se pudo determinar la ruta del perfil de PowerShell. Asegúrese de que el shell de destino esté instalado.</value><comment>{Locked="PowerShell"}</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>El agente de IA no está disponible</value></data>
-  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>No se ha encontrado ningún agente de IA. Instale una CLI de agente (p. ej., copilot, gemini) y asegúrese de que esté en PATH, o configure un agente en Configuración &gt; Agentes de IA.</value><comment>{Locked="CLI","PATH","copilot","gemini"}</comment></data>
+  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>No se ha encontrado ningún agente de IA. Instale un agente (p. ej., copilot, gemini) y asegúrese de que esté en PATH, o configure uno en Configuración &gt; Agentes de IA.</value><comment>{Locked="PATH","copilot","gemini"}</comment></data>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Bienvenido a Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Configura tu asistente integrado para ayudarte a explicar errores, redactar comandos y desbloquear tareas justo donde trabajas. </value>
@@ -970,7 +970,7 @@
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Más información sobre Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Mantén tu flujo de trabajo con tu agente de IA integrado</value>
@@ -990,7 +990,7 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>Bienvenido a Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Elige qué configurar ahora. Puedes cambiar estos ajustes en cualquier momento en </value>
@@ -1002,8 +1002,8 @@
     <value>Agente</value>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Elige la CLI de agente utilizada en el panel del agente. Se detectará cualquier CLI ACP compatible.</value>
-    <comment>{Locked="CLI","ACP"}</comment>
+    <value>Elige el agente utilizado en el panel del agente. Se detectará cualquier agente ACP compatible.</value>
+    <comment>{Locked="ACP"}</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
     <value>ℹ Este agente requiere Node.js y NPX, que se instalarán automáticamente si no están presentes.</value>
@@ -1021,11 +1021,11 @@
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>Otorga permiso a Intelligent Terminal para rastrear el estado de tus agentes en ejecución o activos.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Habilitar esto instalará hooks de integración para rastrear sesiones en tus CLI de agente.</value>
-    <comment>{Locked="CLI"}</comment>
+    <value>ℹ Habilitar esto instalará hooks de integración para rastrear sesiones en tus agentes.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Posición del panel</value>
@@ -1079,5 +1079,53 @@
   <data name="AgentBlockedByPolicySubtitle" xml:space="preserve">
     <value>La pol├¡tica de su organizaci├│n no permite ning├║n agente de IA. P├│ngase en contacto con su administrador de TI para obtener ayuda.</value>
     <comment>Subtitle shown when Group Policy blocks all AI agents from running.</comment>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Analizando error…</value>
+    <comment>Información sobre la herramienta del botón de diagnóstico mientras se ejecuta el análisis.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Error detectado: analizando…</value>
+    <comment>Etiqueta de estado mientras se analiza el error.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Error detectado: {0} para corregir</value>
+    <comment>{0} = atajo de teclado.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Corrección lista — {0} para aplicar</value>
+    <comment>{0} = atajo de teclado.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Corrección lista — {0} para aplicar: {1}</value>
+    <comment>{0} = atajo de teclado; {1} = vista previa.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Sugerencia lista — abrir el panel del agente</value>
+    <comment>Etiqueta de estado cuando hay una sugerencia disponible.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>La corrección automática se negó a corregir directamente. </value>
+    <comment>Primera oración. Conservar el espacio final.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Haga clic aquí o presione Ctrl+Mayús+. para abrir el panel del agente y leer la sugerencia completa.</value>
+    <comment>{Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Diagnóstico</value>
+    <comment>Información sobre la herramienta en reposo.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Sesiones del agente</value>
+    <comment>Título del panel cuando la administración de sesiones está activa.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Sesiones del agente: {0}</value>
+    <comment>{0} = nombre del agente.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
   </data>
 </root>

@@ -8,21 +8,21 @@ setup.title.not_available: "Agent not available"
 setup.title.sign_in: "Sign in required"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Your agent \"%{agent}\" is not installed. Follow the steps below to install it. To switch agents, go to Settings."
-setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please reinstall it manually, then retry. To switch agents, go to Settings."
-setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Settings."
-setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent CLI, then retry. To switch agents, go to Settings."
+setup.subtitle.copilot_missing: "Your agent \"%{agent}\" is not installed. Follow the steps below to install it. To switch agents, go to Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please install it manually, then try again. To switch agents, go to Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Choose the default agent CLI you would like to use in Intelligent Terminal. You can"
+setup.description.fre_line1: "Choose the default agent you would like to use in Intelligent Terminal. You can"
 setup.description.fre_line2: "navigate to Settings to configure and set up your workspace."
 
-setup.option.reinstall: "Reinstall %{agent}"
-setup.option.reinstall_hint: "(Will be installed automatically)"
+setup.option.install: "Install %{agent}"
+setup.option.install_hint: "(Will be installed automatically)"
 setup.option.signin: "Sign in to %{agent}"
-setup.option.retry_detection: "Retry detection"
-setup.option.retry_auth: "I've signed in — retry connection"
-setup.option.retry_connection: "Retry connection"
+setup.option.retry_detection: "Try again"
+setup.option.retry_auth: "I've signed in — try connecting again"
+setup.option.retry_connection: "Try connecting again"
 setup.option.switch_to: "Switch to %{agent}"
 setup.status.installing: "Installing..."
 setup.status.install_failed: "Install failed: "
@@ -66,8 +66,8 @@ commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command
 commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ to navigate • Enter to select • Esc to cancel)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ to navigate • ← → to switch actions • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
@@ -104,7 +104,7 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit)"
 agents.status.active: "Active"
 agents.status.waiting_for_input: "Waiting for input"
@@ -160,3 +160,12 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "just now"
+time.minute_singular: "%{count} minute ago"
+time.minutes_other: "%{count} minutes ago"
+time.hour_singular: "%{count} hour ago"
+time.hours_other: "%{count} hours ago"
+time.day_singular: "%{count} day ago"
+time.days_other: "%{count} days ago"

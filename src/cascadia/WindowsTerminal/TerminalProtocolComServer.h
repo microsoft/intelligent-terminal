@@ -133,10 +133,11 @@ private:
     // the user presses Ctrl+C twice. TerminalPage tears down the agent pane.
     static void _dispatchCloseAgentPaneToPage(const winrt::hstring& eventJson);
 
-    // Same shape, for {method:"view_changed"} emitted by the wta TUI when its
-    // internal view flips (Esc out of Agents, `/sessions` slash command).
-    // TerminalPage mirrors the new view onto its agent bar + bottom bar state.
-    static void _dispatchViewChangedToPage(const winrt::hstring& eventJson);
+    // Same shape, for {method:"agent_state_changed"} — the unified per-tab
+    // agent-pane UI snapshot from wta. TerminalPage::OnAgentStateChanged
+    // is the single writer of `_agentSessionsViewActive` (view) and
+    // `Tab.AgentPaneOpen` (pane visibility intent) for the active tab.
+    static void _dispatchAgentStateChangedToPage(const winrt::hstring& eventJson);
 
     // Same shape, for {method:"resume_in_new_agent_tab"} emitted by the wta
     // TUI on Shift+Enter in the session view. TerminalPage creates a new

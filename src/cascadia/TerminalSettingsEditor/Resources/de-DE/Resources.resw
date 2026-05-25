@@ -2757,7 +2757,7 @@
   <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>Agentbereich</value><comment>Section header for the agent pane settings group.</comment></data>
   <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve"><value>Befehlspalette</value><comment>Section header for the command palette agent settings group.</comment></data>
   <data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>Agent</value><comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment></data>
-  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Wählen Sie die Agent-CLI aus, die im Agentbereich verwendet wird. Jede kompatible ACP-CLI wird erkannt.</value><comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment></data>
+  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Wählen Sie den Agenten aus, der im Agentbereich verwendet wird. Jeder kompatible ACP-Agent wird erkannt.</value><comment>Supplementary description for the agent pane agent setting. {Locked="ACP"}</comment></data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>Modell</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Wählen Sie das Modell aus, das von diesem Agenten verwendet wird.</value><comment>Supplementary description for the model setting.</comment></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Agent</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
@@ -2768,7 +2768,7 @@
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>Legt fest, wo der Agentbereich relativ zu Ihrem Terminal geöffnet wird.</value><comment>Supplementary description for the pane position setting.</comment></data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>Agent-Hooks</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>Hook-Skripte für Agenten installieren</value><comment>Header for the Agent Hooks install section.</comment></data>
-  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Erforderlich für die Verwaltung von Agentensitzungen. Installiert Hooks in jede erkannte CLI (Copilot, Claude, Gemini), damit Sitzungen und Status an den Agentbereich gemeldet werden. Starten Sie alle geöffneten Agent-CLIs nach der Installation neu.</value><comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment></data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Sitzungen über Agenten hinweg verfolgen. Erforderlich für die Verwaltung von Agentensitzungen.</value><comment>Description for the Agent Hooks install section.</comment></data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Hooks installieren</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment></data>
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>Aktualisieren</value><comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment></data>
   <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>Beim Schließen warnen</value><comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment></data>
@@ -2781,5 +2781,41 @@
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>Diese Einstellung wird von Ihrer Organisation verwaltet.</value>
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
+    <value>hooks werden installiert...</value>
+    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
+    <value>Copilot hooks werden entfernt...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
+    <value>Claude hooks werden entfernt...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
+    <value>Gemini hooks werden entfernt...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
+    <value>Fehler: wta.exe konnte nicht gefunden werden</value>
+    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
+    <value>Hooks entfernt. Starten Sie alle geöffneten Agenten neu, um die vorherigen hooks zu entfernen.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
+    <value>Hooks installiert. Starten Sie alle geöffneten Agenten neu, um die neuen hooks zu übernehmen.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
+    <value>Hook-Entfernung fehlgeschlagen. Überprüfen Sie %LOCALAPPDATA%\IntelligentTerminal\logs\ auf Details.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
+    <value>Hooks-Installation fehlgeschlagen. Überprüfen Sie %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log auf Details.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
 </root>

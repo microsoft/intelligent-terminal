@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -958,11 +958,11 @@
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve"><value>Fehler bei der Shellintegration</value></data>
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>Die Shellintegration konnte nicht initialisiert werden. Der Pfad zu Ihrem PowerShell-Profil konnte nicht ermittelt werden. Stellen Sie sicher, dass die Ziel-Shell installiert ist.</value><comment>{Locked="PowerShell"}</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>KI-Agent ist nicht verfügbar</value></data>
-  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>Es konnte kein KI-Agent gefunden werden. Installieren Sie eine Agent-CLI (z. B. copilot, gemini) und stellen Sie sicher, dass sie sich in Ihrem PATH befindet, oder konfigurieren Sie eine unter Einstellungen &gt; Agenten.</value><comment>{Locked="CLI","PATH","copilot","gemini"}</comment></data>
+  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>Es konnte kein KI-Agent gefunden werden. Installieren Sie einen Agenten (z. B. copilot, gemini) und stellen Sie sicher, dass er sich in Ihrem PATH befindet, oder konfigurieren Sie einen unter Einstellungen &gt; Agenten.</value><comment>{Locked="PATH","copilot","gemini"}</comment></data>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Willkommen bei Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Richten Sie Ihren integrierten Assistenten ein, um Fehler zu erklären, Befehle zu entwerfen und Aufgaben direkt dort zu lösen, wo Sie arbeiten. </value>
@@ -973,7 +973,7 @@
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Erfahren Sie mehr über Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Bleiben Sie im Fluss mit Ihrem integrierten KI-Agenten</value>
@@ -993,7 +993,7 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>Willkommen bei Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Wählen Sie, was Sie jetzt einrichten möchten. Sie können diese Einstellungen jederzeit in den </value>
@@ -1005,8 +1005,8 @@
     <value>Agent</value>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Wählen Sie die Agent-CLI aus, die im Agentbereich verwendet wird. Jede kompatible ACP-CLI wird automatisch erkannt.</value>
-    <comment>{Locked="CLI","ACP"}</comment>
+    <value>Wählen Sie den Agenten aus, der im Agentbereich verwendet wird. Jeder kompatible ACP-Agent wird automatisch erkannt.</value>
+    <comment>{Locked="ACP"}</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
     <value>ℹ Dieser Agent erfordert Node.js und NPX, die automatisch installiert werden, falls noch nicht vorhanden.</value>
@@ -1024,11 +1024,11 @@
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>Erteilen Sie Intelligent Terminal die Berechtigung, den Status Ihrer laufenden oder aktiven Agenten zu verfolgen.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Durch Aktivieren werden Integrations-Hooks installiert, um Sitzungen über Ihre Agent-CLIs hinweg zu verfolgen.</value>
-    <comment>{Locked="CLI"}</comment>
+    <value>ℹ Durch Aktivieren werden Integrations-hooks installiert, um Sitzungen über Ihre Agenten hinweg zu verfolgen.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Bereichsposition</value>
@@ -1082,5 +1082,53 @@
   <data name="AgentBlockedByPolicySubtitle" xml:space="preserve">
     <value>Die Richtlinie Ihrer Organisation erlaubt keine KI-Agenten. Wenden Sie sich an Ihren IT-Administrator, wenn Sie Hilfe ben├╢tigen.</value>
     <comment>Subtitle shown when Group Policy blocks all AI agents from running.</comment>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Fehler wird analysiert…</value>
+    <comment>Tooltip für die Diagnoseschaltfläche, während eine automatische Fehleranalyse läuft.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Fehler erkannt: wird analysiert…</value>
+    <comment>Kurze Statusbeschriftung neben der Diagnoseschaltfläche, während eine Fehleranalyse läuft.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Fehler erkannt: {0} zum Beheben</value>
+    <comment>Kurze Statusbeschriftung, wenn eine Korrektur bereit ist. {0} ist das Tastenkürzel.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Korrektur bereit — {0} zum Anwenden</value>
+    <comment>Tooltip, wenn eine Korrektur bereit ist. {0} ist das Tastenkürzel.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Korrektur bereit — {0} zum Anwenden: {1}</value>
+    <comment>Tooltip, wenn eine Korrektur bereit ist. {0} ist das Tastenkürzel; {1} ist eine Vorschau.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Vorschlag bereit — Agentbereich öffnen</value>
+    <comment>Statusbeschriftung, wenn ein Vorschlag im Agentbereich verfügbar ist.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Auto-Fix konnte dies nicht direkt beheben. </value>
+    <comment>Erster Satz des Diagnose-Tooltips, wenn die automatische Korrektur abgelehnt wurde. Bewahrt das nachgestellte Leerzeichen.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Hier klicken oder Strg+Umschalt+. drücken, um den Agentbereich zu öffnen und den vollständigen Vorschlag zu lesen.</value>
+    <comment>{Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Diagnose</value>
+    <comment>Tooltip für die Diagnoseschaltfläche im Ruhezustand.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Agentsitzungen</value>
+    <comment>Titel im Agentbereich, wenn die Sitzungsverwaltung aktiv ist.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Agentsitzungen: {0}</value>
+    <comment>Titel im Agentbereich. {0} wird durch den Agentnamen ersetzt.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
   </data>
 </root>

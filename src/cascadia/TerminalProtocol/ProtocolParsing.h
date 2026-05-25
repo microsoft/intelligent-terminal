@@ -34,7 +34,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         AutofixState,         // Direct to TerminalPage, no broadcast
         AgentStatus,          // Direct to TerminalPage, no broadcast
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
-        ViewChanged,          // Direct to TerminalPage, no broadcast
+        AgentState,           // Direct to TerminalPage, no broadcast — unified per-tab agent-pane UI snapshot (view + pane_open + ...)
         ResumeInNewAgentTab,  // Direct to TerminalPage, no broadcast
         Broadcast,            // Normalize envelope + broadcast to all subscribers
         Invalid               // Failed validation
@@ -77,9 +77,9 @@ namespace Microsoft::Terminal::Protocol::Parsing
             {
                 return SendEventRoute::CloseAgentPane;
             }
-            if (method == "view_changed")
+            if (method == "agent_state_changed")
             {
-                return SendEventRoute::ViewChanged;
+                return SendEventRoute::AgentState;
             }
             if (method == "resume_in_new_agent_tab")
             {

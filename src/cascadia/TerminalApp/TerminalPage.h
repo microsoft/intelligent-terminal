@@ -206,7 +206,7 @@ namespace winrt::TerminalApp::implementation
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
-        void OnAgentViewChanged(hstring eventJson);
+        void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
 
         til::property_changed_event PropertyChanged;
@@ -678,7 +678,8 @@ namespace winrt::TerminalApp::implementation
         static void NTAPI _OnAgentPaneWtaExit(PVOID context, BOOLEAN timedOut) noexcept;
         void _OpenOrReuseAgentPane(const winrt::hstring& prompt, bool intoSessionsView = false);
         void _FocusAgentPane();
-        void _BroadcastAgentSetView(std::string_view view);
+        void _RequestAgentState(std::optional<std::string_view> view,
+                                std::optional<bool> paneOpen);
         void _RepositionAgentPanes();
         static winrt::Microsoft::Terminal::Settings::Model::SplitDirection _AgentPanePositionToSplitDirection(const winrt::hstring& position);
 

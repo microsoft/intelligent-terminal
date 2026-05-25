@@ -2773,8 +2773,8 @@
     <comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment>
   </data>
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
-    <value>에이전트 창에서 사용할 에이전트 CLI를 선택하세요. 호환되는 ACP CLI는 모두 감지됩니다.</value>
-    <comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment>
+    <value>에이전트 창에서 사용할 에이전트를 선택하세요. 호환되는 ACP 에이전트는 모두 감지됩니다.</value>
+    <comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>모델</value>
@@ -2817,8 +2817,8 @@
     <comment>Header for the Agent Hooks install section.</comment>
   </data>
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>에이전트 세션 관리에 필요합니다. 감지된 각 CLI(Copilot, Claude, Gemini)에 Hooks를 설치하여 세션과 상태를 에이전트 창에 보고하도록 합니다. 설치 후 열려 있는 에이전트 CLI를 모두 다시 시작하세요.</value>
-    <comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment>
+    <value>에이전트 간에 세션을 추적합니다. 에이전트 세션 관리에 필요합니다.</value>
+    <comment>Help text shown under the expandable section header.</comment>
   </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Hooks 설치</value>
@@ -2859,5 +2859,41 @@
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>이 설정은 조직에서 관리합니다.</value>
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
+    <value>hooks 설치 중...</value>
+    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
+    <value>Copilot hooks 제거 중...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
+    <value>Claude hooks 제거 중...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
+    <value>Gemini hooks 제거 중...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
+    <value>실패: wta.exe를 찾을 수 없습니다</value>
+    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
+    <value>Hooks가 제거되었습니다. 이전 hooks를 해제하려면 열려 있는 에이전트를 다시 시작하세요.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
+    <value>Hooks가 설치되었습니다. 새 hooks를 적용하려면 열려 있는 에이전트를 다시 시작하세요.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
+    <value>Hook 제거에 실패했습니다. 자세한 내용은 %LOCALAPPDATA%\IntelligentTerminal\logs\를 확인하세요.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
+    <value>Hooks 설치에 실패했습니다. 자세한 내용은 %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log를 확인하세요.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
 </root>

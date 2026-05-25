@@ -31,6 +31,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     if content_inner.width > 0 {
         let content = Paragraph::new(perm.description.clone())
             .style(theme::CARD_DESCRIPTION)
+            .alignment(crate::rtl::text_alignment())
             .wrap(Wrap { trim: false });
         frame.render_widget(content, content_inner);
     }
@@ -106,5 +107,8 @@ fn render_compact(frame: &mut Frame, perm: &PermissionState, area: Rect) {
         Span::raw(separator),
         Span::styled(hint, theme::DIM),
     ]);
-    frame.render_widget(Paragraph::new(line), area);
+    frame.render_widget(
+        Paragraph::new(line).alignment(crate::rtl::text_alignment()),
+        area,
+    );
 }

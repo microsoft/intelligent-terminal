@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -120,14 +120,14 @@
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Intelligent Terminal-ಗೆ ಸ್ವಾಗತ</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>ದೋಷಗಳನ್ನು ವಿವರಿಸಲು, ಆಜ್ಞೆಗಳನ್ನು ಡ್ರಾಫ್ಟ್ ಮಾಡಲು ಮತ್ತು ಕಾರ್ಯಗಳನ್ನು ಅನ್‌ಬ್ಲಾಕ್ ಮಾಡಲು ಸಹಾಯ ಮಾಡಲು ನಿಮ್ಮ ಅಂತರ್ನಿರ್ಮಿತ ಸಹಾಯಕವನ್ನು ಹೊಂದಿಸಿ, ನೀವು ಕೆಲಸ ಮಾಡುವ ಸ್ಥಳದಲ್ಲಿಯೇ. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Intelligent Terminal ಕುರಿತು ಇನ್ನಷ್ಟು ತಿಳಿಯಿರಿ</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>ನಿಮ್ಮ ಅಂತರ್ನಿರ್ಮಿತ AI ಏಜೆಂಟ್‌ನೊಂದಿಗೆ ಪ್ರವಾಹದಲ್ಲಿ ಇರಿ</value>
@@ -150,7 +150,7 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>Intelligent Terminal-ಗೆ ಸ್ವಾಗತ</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>ಈಗ ಏನನ್ನು ಹೊಂದಿಸಬೇಕೆಂದು ಆಯ್ಕೆಮಾಡಿ. ನೀವು ಇವುಗಳನ್ನು ಯಾವಾಗ ಬೇಕಾದರೂ ಬದಲಾಯಿಸಬಹುದು </value>
@@ -163,14 +163,12 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>ಏಜೆಂಟ್ ಪೇನ್‌ನಲ್ಲಿ ಬಳಸುವ ಏಜೆಂಟ್ CLI ಅನ್ನು ಆಯ್ಕೆಮಾಡಿ. ಯಾವುದೇ ಹೊಂದಾಣಿಕೆಯ ACP CLI ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪತ್ತೆಯಾಗುತ್ತದೆ.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ಏಜೆಂಟ್ ಪೇನ್‌ನಲ್ಲಿ ಬಳಸುವ ಏಜೆಂಟ್ ಅನ್ನು ಆಯ್ಕೆಮಾಡಿ. ಯಾವುದೇ ಹೊಂದಾಣಿಕೆಯ ACP ಏಜೆಂಟ್ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪತ್ತೆಯಾಗುತ್ತದೆ.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
     <value>ℹ ಈ ಏಜೆಂಟ್‌ಗೆ Node.js ಮತ್ತು NPX ಅಗತ್ಯವಿದೆ, ಈಗಾಗಲೇ ಇಲ್ಲದಿದ್ದರೆ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಇನ್‌ಸ್ಟಾಲ್ ಆಗುತ್ತವೆ.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>ವಿಫಲವಾದ ಆಜ್ಞೆಗಳಿಗೆ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪರಿಹಾರಗಳನ್ನು ಸೂಚಿಸಿ</value>
@@ -184,13 +182,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal ಗೆ ನಿಮ್ಮ ಚಾಲನೆಯಲ್ಲಿರುವ ಅಥವಾ ಸಕ್ರಿಯ ಏಜೆಂಟ್‌ಗಳ ಸ್ಥಿತಿಯನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಲು ಅನುಮತಿ ನೀಡಿ.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ ಇದನ್ನು ಸಕ್ರಿಯಗೊಳಿಸುವುದರಿಂದ ನಿಮ್ಮ ಏಜೆಂಟ್ CLI ಗಳಲ್ಲಿ ಸೆಶನ್‌ಗಳನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಲು ಇಂಟಿಗ್ರೇಶನ್ ಹುಕ್‌ಗಳು ಇನ್‌ಸ್ಟಾಲ್ ಆಗುತ್ತವೆ.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ℹ ಇದನ್ನು ಸಕ್ರಿಯಗೊಳಿಸುವುದರಿಂದ ನಿಮ್ಮ ಏಜೆಂಟ್‌ಗಳಾದ್ಯಂತ ಸೆಶನ್‌ಗಳನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಲು ಇಂಟಿಗ್ರೇಶನ್ hooks ಇನ್‌ಸ್ಟಾಲ್ ಆಗುತ್ತವೆ.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>ಪೇನ್ ಸ್ಥಾನ</value>
@@ -237,5 +234,53 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>ಆಫ್</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>ದೋಷವನ್ನು ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>ದೋಷ ಪತ್ತೆಯಾಗಿದೆ: ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>ದೋಷ ಪತ್ತೆಯಾಗಿದೆ: ಸರಿಪಡಿಸಲು {0}</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>ಸರಿಪಡಿಸುವಿಕೆ ಸಿದ್ಧ — ಅನ್ವಯಿಸಲು {0}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>ಸರಿಪಡಿಸುವಿಕೆ ಸಿದ್ಧ — ಅನ್ವಯಿಸಲು {0}: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>ಸಲಹೆ ಸಿದ್ಧ — ಏಜೆಂಟ್ ಪೇನ್ ತೆರೆಯಿರಿ</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Auto-fix ಇದನ್ನು ನೇರವಾಗಿ ಸರಿಪಡಿಸಲು ನಿರಾಕರಿಸಿದೆ. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>ಏಜೆಂಟ್ ಪೇನ್ ತೆರೆಯಲು ಮತ್ತು ಸಂಪೂರ್ಣ ಸಲಹೆಯನ್ನು ಓದಲು ಇಲ್ಲಿ ಕ್ಲಿಕ್ ಮಾಡಿ ಅಥವಾ Ctrl+Shift+. ಒತ್ತಿರಿ.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>ಡಯಾಗ್ನೋಸ್ಟಿಕ್ಸ್</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>ಏಜೆಂಟ್ ಸೆಷನ್‌ಗಳು</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>ಏಜೆಂಟ್ ಸೆಷನ್‌ಗಳು: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
 </root>

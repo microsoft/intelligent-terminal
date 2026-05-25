@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -955,10 +955,11 @@
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve"><value>Shell 整合錯誤</value></data>
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>初始化 Shell 整合失敗。無法判斷您的 PowerShell 設定檔路徑。請確認已安裝目標 Shell。</value><comment>{Locked="PowerShell"}</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>AI 代理無法使用</value></data>
-  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>找不到任何 AI 代理。請安裝代理 CLI（例如 copilot、gemini），並確認它位於您的 PATH 中，或在 [設定] &gt; [AI 代理] 中進行設定。</value><comment>{Locked="CLI","PATH","copilot","gemini"}</comment></data>
+  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>找不到任何 AI 代理。請安裝代理（例如 copilot、gemini），並確認它位於您的 PATH 中，或在 [設定] &gt; [AI 代理] 中進行設定。</value><comment>{Locked="PATH","copilot","gemini"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>歡迎使用 Intelligent Terminal</value>
+    <value>歡迎使用智慧型終端機</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
@@ -969,7 +970,7 @@
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>深入了解 Intelligent Terminal</value>
+    <value>深入了解智慧型終端機</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -992,7 +993,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>歡迎使用 Intelligent Terminal</value>
+    <value>歡迎使用智慧型終端機</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -1006,8 +1007,8 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>選擇代理窗格中使用的代理 CLI。任何相容的 ACP CLI 都會被自動偵測。</value>
-    <comment>{Locked="CLI","ACP"}
+    <value>選擇代理窗格中使用的代理。任何相容的 ACP 代理都會被自動偵測。</value>
+    <comment>{Locked="ACP"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
@@ -1026,14 +1027,13 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>工作階段管理</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>授予 Intelligent Terminal 追蹤執行中或活躍代理狀態的權限。</value>
+    <value>授予智慧型終端機追蹤執行中或作用中代理狀態的權限。</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ 啟用此功能將安裝整合掛鉤，以追蹤跨代理 CLI 的工作階段。</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ℹ 啟用此功能將安裝整合 hooks，以追蹤跨代理的工作階段。</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>窗格位置</value>
@@ -1088,5 +1088,53 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="AgentBlockedByPolicySubtitle" xml:space="preserve">
     <value>µé¿τÜäτ╡äτ╣öσÄƒσëçΣ╕ìσàüΦ¿▒Σ╗╗Σ╜ò AI Σ╗úτÉåπÇéΦ½ïΦü»τ╡íµé¿τÜä IT τ│╗τ╡▒τ«íτÉåσôíΣ╗ÑσÅûσ╛ùσìöσè⌐πÇé</value>
     <comment>Subtitle shown when Group Policy blocks all AI agents from running.</comment>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>正在分析錯誤…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>偵測到錯誤：正在分析…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>偵測到錯誤：按 {0} 修正</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>修正已就緒 — 按 {0} 套用</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>修正已就緒 — 按 {0} 套用：{1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>建議已就緒 — 開啟智慧代理窗格</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>自動修正已拒絕直接修正此問題。 </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>按一下這裡或按 Ctrl+Shift+. 開啟智慧代理窗格並閱讀完整建議。</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>診斷</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>智慧代理工作階段</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>智慧代理工作階段：{0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
 </root>

@@ -8,21 +8,21 @@ setup.title.not_available: "Agentas nepasiekiamas"
 setup.title.sign_in: "Reikia prisijungti"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Norėdami jį įdiegti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Settings."
-setup.subtitle.agent_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Įdiekite jį iš naujo rankiniu būdu, tada bandykite dar kartą. Norėdami pakeisti agentą, eikite į Settings."
-setup.subtitle.copilot_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Norėdami prisijungti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Settings."
-setup.subtitle.agent_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Prisijunkite per agento CLI, tada bandykite dar kartą. Norėdami pakeisti agentą, eikite į Settings."
+setup.subtitle.copilot_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Norėdami jį įdiegti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Įdiekite jį iš naujo rankiniu būdu, tada bandykite dar kartą. Norėdami pakeisti agentą, eikite į Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Norėdami prisijungti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Prisijunkite per agentą, tada pasirinkite \"Prisijungiau\" žemiau. Norėdami pakeisti agentą, eikite į Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Pasirinkite numatytąjį agento CLI, kurį norite naudoti Intelligent Terminal. Galite"
+setup.description.fre_line1: "Pasirinkite numatytąjį agentą, kurį norite naudoti Intelligent Terminal. Galite"
 setup.description.fre_line2: "eiti į Settings, kad sukonfigūruotumėte ir nustatytumėte savo darbo sritį."
 
-setup.option.reinstall: "Iš naujo įdiegti %{agent}"
-setup.option.reinstall_hint: "(Bus įdiegta automatiškai)"
+setup.option.install: "Įdiegti %{agent}"
+setup.option.install_hint: "(Bus įdiegta automatiškai)"
 setup.option.signin: "Prisijungti prie %{agent}"
-setup.option.retry_detection: "Bandyti aptikti iš naujo"
-setup.option.retry_auth: "Prisijungiau — bandyti ryšį iš naujo"
-setup.option.retry_connection: "Bandyti ryšį iš naujo"
+setup.option.retry_detection: "Bandyti dar kartą"
+setup.option.retry_auth: "Prisijungiau — bandyti prisijungti dar kartą"
+setup.option.retry_connection: "Bandyti prisijungti dar kartą"
 setup.option.switch_to: "Perjungti į %{agent}"
 setup.status.installing: "Diegiama..."
 setup.status.install_failed: "Diegimas nepavyko: "
@@ -66,8 +66,8 @@ commands.help_escape_hint: "  //text     Siųsti tiesioginį '/' (apeina komand�
 commands.help_close_hint: "  Esc        Uždaryti šią pagalbą"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ naršyti • Enter pasirinkti • Esc atšaukti)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ naršyti • ← → mygtukams perjungti • Enter pasirinkti • Esc atšaukti)"
 recommendations.button_run_command: "[ Vykdyti komandą ]"
 recommendations.button_insert_in_terminal: "Įterpti į Terminal"
 recommendations.button_open_in_new_tab: "Atidaryti naujame skirtuke ↵"
@@ -104,7 +104,7 @@ agent.custom.auth_hint: "Įsitikinkite, kad %{name} yra įdiegtas ir yra jūsų 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Įkeliama..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ naršyti • Enter pradėti seansą naujame skirtuke • Shift+enter pradėti seansą agento skydelyje • Esc išeiti)"
 agents.status.active: "Aktyvus"
 agents.status.waiting_for_input: "Laukia įvesties"
@@ -160,3 +160,12 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
+time.just_now: "ką tik"
+time.minute_singular: "prieš %{count} minutę"
+time.minutes_other: "prieš %{count} minučių"
+time.hour_singular: "prieš %{count} valandą"
+time.hours_other: "prieš %{count} valandų"
+time.day_singular: "prieš %{count} dieną"
+time.days_other: "prieš %{count} dienų"
