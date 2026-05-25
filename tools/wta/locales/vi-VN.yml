@@ -8,19 +8,19 @@ setup.title.not_available: "Tác nhân AI không khả dụng"
 setup.title.sign_in: "Cần đăng nhập"
 
 # %{agent} được thay thế bằng tên hiển thị của tác nhân AI khi chạy.
-setup.subtitle.copilot_missing: "Tác nhân AI \"%{agent}\" của bạn chưa được cài đặt. Thực hiện theo các bước bên dưới để cài đặt. Để chuyển tác nhân AI, hãy đi tới Settings."
-setup.subtitle.agent_missing: "Tác nhân AI \"%{agent}\" của bạn chưa được cài đặt. Vui lòng cài đặt lại thủ công, sau đó thử lại. Để chuyển tác nhân AI, hãy đi tới Settings."
-setup.subtitle.copilot_auth: "Tác nhân AI \"%{agent}\" của bạn yêu cầu xác thực. Thực hiện theo các bước bên dưới để đăng nhập. Để chuyển tác nhân AI, hãy đi tới Settings."
-setup.subtitle.agent_auth: "Tác nhân AI \"%{agent}\" của bạn yêu cầu xác thực. Vui lòng đăng nhập qua CLI của tác nhân AI, sau đó thử lại. Để chuyển tác nhân AI, hãy đi tới Settings."
+setup.subtitle.copilot_missing: "Tác nhân AI \"%{agent}\" của bạn chưa được cài đặt. Thực hiện theo các bước bên dưới để cài đặt. Để chuyển tác nhân AI, hãy đi tới Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Tác nhân AI \"%{agent}\" của bạn chưa được cài đặt. Vui lòng cài đặt lại thủ công, sau đó thử lại. Để chuyển tác nhân AI, hãy đi tới Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Tác nhân AI \"%{agent}\" của bạn yêu cầu xác thực. Thực hiện theo các bước bên dưới để đăng nhập. Để chuyển tác nhân AI, hãy đi tới Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Tác nhân AI \"%{agent}\" của bạn yêu cầu xác thực. Vui lòng đăng nhập qua CLI của tác nhân AI, sau đó chọn \"Tôi đã đăng nhập\" bên dưới. Để chuyển tác nhân AI, hãy đi tới Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
 setup.description.fre_line1: "Chọn CLI tác nhân AI mặc định mà bạn muốn sử dụng trong Intelligent Terminal. Bạn có thể"
 setup.description.fre_line2: "đi tới Settings để cấu hình và thiết lập không gian làm việc của bạn."
 
-setup.option.reinstall: "Cài đặt lại %{agent}"
-setup.option.reinstall_hint: "(Sẽ được cài đặt tự động)"
+setup.option.install: "Cài đặt %{agent}"
+setup.option.install_hint: "(Sẽ được cài đặt tự động)"
 setup.option.signin: "Đăng nhập vào %{agent}"
-setup.option.retry_detection: "Thử phát hiện lại"
+setup.option.retry_detection: "Thử lại"
 setup.option.retry_auth: "Tôi đã đăng nhập — thử kết nối lại"
 setup.option.retry_connection: "Thử kết nối lại"
 setup.option.switch_to: "Chuyển sang %{agent}"

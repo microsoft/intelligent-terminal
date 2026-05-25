@@ -8,21 +8,21 @@ setup.title.not_available: "Ο παράγοντας δεν είναι διαθέ
 setup.title.sign_in: "Απαιτείται σύνδεση"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Ακολουθήστε τα παρακάτω βήματα για να τον εγκαταστήσετε. Για αλλαγή παράγοντα, μεταβείτε στο Settings."
-setup.subtitle.agent_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Εγκαταστήστε τον ξανά χειροκίνητα και δοκιμάστε ξανά. Για αλλαγή παράγοντα, μεταβείτε στο Settings."
-setup.subtitle.copilot_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Ακολουθήστε τα παρακάτω βήματα για να συνδεθείτε. Για αλλαγή παράγοντα, μεταβείτε στο Settings."
-setup.subtitle.agent_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Συνδεθείτε μέσω του CLI του παράγοντα και δοκιμάστε ξανά. Για αλλαγή παράγοντα, μεταβείτε στο Settings."
+setup.subtitle.copilot_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Ακολουθήστε τα παρακάτω βήματα για να τον εγκαταστήσετε. Για αλλαγή παράγοντα, μεταβείτε στο Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Εγκαταστήστε τον ξανά χειροκίνητα και δοκιμάστε ξανά. Για αλλαγή παράγοντα, μεταβείτε στο Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Ακολουθήστε τα παρακάτω βήματα για να συνδεθείτε. Για αλλαγή παράγοντα, μεταβείτε στο Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Συνδεθείτε μέσω του CLI του παράγοντα και στη συνέχεια επιλέξτε \"Έχω συνδεθεί\" παρακάτω. Για αλλαγή παράγοντα, μεταβείτε στο Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
 setup.description.fre_line1: "Επιλέξτε το προεπιλεγμένο CLI παράγοντα που θέλετε να χρησιμοποιήσετε στο Intelligent Terminal. Μπορείτε να"
 setup.description.fre_line2: "μεταβείτε στο Settings για ρύθμιση παραμέτρων του χώρου εργασίας σας."
 
-setup.option.reinstall: "Επανεγκατάσταση %{agent}"
-setup.option.reinstall_hint: "(Θα εγκατασταθεί αυτόματα)"
+setup.option.install: "Εγκατάσταση %{agent}"
+setup.option.install_hint: "(Θα εγκατασταθεί αυτόματα)"
 setup.option.signin: "Σύνδεση στο %{agent}"
-setup.option.retry_detection: "Επανάληψη ανίχνευσης"
-setup.option.retry_auth: "Συνδέθηκα — επανάληψη σύνδεσης"
-setup.option.retry_connection: "Επανάληψη σύνδεσης"
+setup.option.retry_detection: "Δοκιμάστε ξανά"
+setup.option.retry_auth: "Συνδέθηκα — δοκιμάστε να συνδεθείτε ξανά"
+setup.option.retry_connection: "Δοκιμάστε να συνδεθείτε ξανά"
 setup.option.switch_to: "Εναλλαγή σε %{agent}"
 setup.status.installing: "Εγκατάσταση..."
 setup.status.install_failed: "Η εγκατάσταση απέτυχε: "

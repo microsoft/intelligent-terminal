@@ -102,9 +102,9 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 let status = if setup.install_in_progress {
                     format!("  {} {}", spinner_char, t!("setup.status.installing"))
                 } else {
-                    format!("  {}", t!("setup.option.reinstall_hint"))
+                    format!("  {}", t!("setup.option.install_hint"))
                 };
-                (t!("setup.option.reinstall", agent = display_name.as_str()).into_owned(), status)
+                (t!("setup.option.install", agent = display_name.as_str()).into_owned(), status)
             }
             SetupOption::SignIn { display_name, .. } => {
                 (t!("setup.option.signin", agent = display_name.as_str()).into_owned(), String::new())

@@ -8,21 +8,21 @@ setup.title.not_available: "აგენტი მიუწვდომელი
 setup.title.sign_in: "საჭიროა შესვლა"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "თქვენი აგენტი \"%{agent}\" არ არის დაინსტალირებული. მის დასაინსტალირებლად მიჰყევით ქვემოთ მოცემულ ნაბიჯებს. აგენტის შესაცვლელად გადადით Settings-ში."
-setup.subtitle.agent_missing: "თქვენი აგენტი \"%{agent}\" არ არის დაინსტალირებული. ხელით ხელახლა დააინსტალირეთ და სცადეთ თავიდან. აგენტის შესაცვლელად გადადით Settings-ში."
-setup.subtitle.copilot_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შესასვლელად მიჰყევით ქვემოთ მოცემულ ნაბიჯებს. აგენტის შესაცვლელად გადადით Settings-ში."
-setup.subtitle.agent_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შედით აგენტის CLI-ით და სცადეთ თავიდან. აგენტის შესაცვლელად გადადით Settings-ში."
+setup.subtitle.copilot_missing: "თქვენი აგენტი \"%{agent}\" არ არის დაინსტალირებული. მის დასაინსტალირებლად მიჰყევით ქვემოთ მოცემულ ნაბიჯებს. აგენტის შესაცვლელად გადადით Intelligent Terminal Settings > Agent-ში."
+setup.subtitle.agent_missing: "თქვენი აგენტი \"%{agent}\" არ არის დაინსტალირებული. ხელით ხელახლა დააინსტალირეთ და სცადეთ თავიდან. აგენტის შესაცვლელად გადადით Intelligent Terminal Settings > Agent-ში."
+setup.subtitle.copilot_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შესასვლელად მიჰყევით ქვემოთ მოცემულ ნაბიჯებს. აგენტის შესაცვლელად გადადით Intelligent Terminal Settings > Agent-ში."
+setup.subtitle.agent_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შედით აგენტის CLI-ით და აირჩიეთ \"შევედი\" ქვემოთ. აგენტის შესაცვლელად გადადით Intelligent Terminal Settings > Agent-ში."
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
 setup.description.fre_line1: "აირჩიეთ ნაგულისხმევი აგენტის CLI, რომლის გამოყენებაც გსურთ Intelligent Terminal-ში. შეგიძლიათ"
 setup.description.fre_line2: "გადახვიდეთ Settings-ში სამუშაო გარემოს კონფიგურაციისთვის."
 
-setup.option.reinstall: "%{agent}-ის ხელახლა დაინსტალირება"
-setup.option.reinstall_hint: "(ავტომატურად დაინსტალირდება)"
+setup.option.install: "%{agent}-ის დაინსტალირება"
+setup.option.install_hint: "(ავტომატურად დაინსტალირდება)"
 setup.option.signin: "შესვლა %{agent}-ში"
-setup.option.retry_detection: "ამოცნობის გამეორება"
-setup.option.retry_auth: "შევედი — კავშირის გამეორება"
-setup.option.retry_connection: "კავშირის გამეორება"
+setup.option.retry_detection: "სცადეთ თავიდან"
+setup.option.retry_auth: "შევედი — სცადეთ დაკავშირება ხელახლა"
+setup.option.retry_connection: "სცადეთ დაკავშირება ხელახლა"
 setup.option.switch_to: "გადართვა %{agent}-ზე"
 setup.status.installing: "ინსტალაცია..."
 setup.status.install_failed: "ინსტალაცია ვერ მოხერხდა: "

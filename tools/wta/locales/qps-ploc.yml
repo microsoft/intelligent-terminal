@@ -9,21 +9,21 @@ setup.title.sign_in: "[Ŝïğñ ïñ ŕéqûïŕéď!!]"
 
 # %{agent} is replaced with the agent display name at runtime.
 # {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
-setup.subtitle.copilot_missing: "[Ÿöûŕ åğéñţ \"%{agent}\" ïś ñöţ ïñśţåĺĺéď. Ƒöĺĺöŵ ţĥé śţéṗś ƀéĺöŵ ţö ïñśţåĺĺ ïţ. Ţö śŵïţçĥ åğéñţś, ğö ţö Settings.!!!! !!!! !!!! !!!! !!!!]"
-setup.subtitle.agent_missing: "[Ÿöûŕ åğéñţ \"%{agent}\" ïś ñöţ ïñśţåĺĺéď. Ṗĺéåśé ŕéïñśţåĺĺ ïţ ḿåñûåĺĺÿ, ţĥéñ ŕéţŕÿ. Ţö śŵïţçĥ åğéñţś, ğö ţö Settings.!!!! !!!! !!!! !!!! !!!!]"
-setup.subtitle.copilot_auth: "[Ÿöûŕ åğéñţ \"%{agent}\" ŕéqûïŕéś åûţĥéñţïçåţïöñ. Ƒöĺĺöŵ ţĥé śţéṗś ƀéĺöŵ ţö śïğñ ïñ. Ţö śŵïţçĥ åğéñţś, ğö ţö Settings.!!!! !!!! !!!! !!!! !!!!]"
-setup.subtitle.agent_auth: "[Ÿöûŕ åğéñţ \"%{agent}\" ŕéqûïŕéś åûţĥéñţïçåţïöñ. Ṗĺéåśé śïğñ ïñ ṽïå ţĥé åğéñţ CLI, ţĥéñ ŕéţŕÿ. Ţö śŵïţçĥ åğéñţś, ğö ţö Settings.!!!! !!!! !!!! !!!! !!!!]"
+setup.subtitle.copilot_missing: "[Ÿöûŕ åğéñţ \"%{agent}\" ïś ñöţ ïñśţåĺĺéď. Ƒöĺĺöŵ ţĥé śţéṗś ƀéĺöŵ ţö ïñśţåĺĺ ïţ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
+setup.subtitle.agent_missing: "[Ÿöûŕ åğéñţ \"%{agent}\" ïś ñöţ ïñśţåĺĺéď. Ṗĺéåśé ŕéïñśţåĺĺ ïţ ḿåñûåĺĺÿ, ţĥéñ ŕéţŕÿ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
+setup.subtitle.copilot_auth: "[Ÿöûŕ åğéñţ \"%{agent}\" ŕéqûïŕéś åûţĥéñţïçåţïöñ. Ƒöĺĺöŵ ţĥé śţéṗś ƀéĺöŵ ţö śïğñ ïñ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
+setup.subtitle.agent_auth: "[Ÿöûŕ åğéñţ \"%{agent}\" ŕéqûïŕéś åûţĥéñţïçåţïöñ. Ṗĺéåśé śïğñ ïñ ṽïå ţĥé åğéñţ CLI, ţĥéñ śéĺéçţ \"Î'ṽé śïğñéď ïñ\" ƀéĺöŵ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
 setup.description.fre_line1: "[Çĥööśé ţĥé ďéƒåûĺţ åğéñţ CLI ÿöû ŵöûĺď ĺïķé ţö ûśé ïñ Intelligent Terminal. Ÿöû çåñ!!!! !!!! !!!! !!!!]"
 setup.description.fre_line2: "[ñåṽïğåţé ţö Settings ţö çöñƒïğûŕé åñď śéţ ûṗ ÿöûŕ ŵöŕķśṗåçé.!!!! !!!! !!!!]"
 
-setup.option.reinstall: "[Ŕéïñśţåĺĺ %{agent}!!]"
-setup.option.reinstall_hint: "[(Ŵïĺĺ ƀé ïñśţåĺĺéď åûţöḿåţïçåĺĺÿ)!!!! !!!!]"
+setup.option.install: "[Îñśţåĺĺ %{agent}!!]"
+setup.option.install_hint: "[(Ŵïĺĺ ƀé ïñśţåĺĺéď åûţöḿåţïçåĺĺÿ)!!!! !!!!]"
 setup.option.signin: "[Ŝïğñ ïñ ţö %{agent}!!]"
-setup.option.retry_detection: "[Ŕéţŕÿ ďéţéçţïöñ!!]"
-setup.option.retry_auth: "[Î'ṽé śïğñéď ïñ — ŕéţŕÿ çöññéçţïöñ!!!! !!!!]"
-setup.option.retry_connection: "[Ŕéţŕÿ çöññéçţïöñ!!]"
+setup.option.retry_detection: "[Ţŕÿ åğåïñ!!]"
+setup.option.retry_auth: "[Î'ṽé śïğñéď ïñ — ţŕÿ çöññéçţïñğ åğåïñ!!!! !!!!]"
+setup.option.retry_connection: "[Ţŕÿ çöññéçţïñğ åğåïñ!!!! !!!!]"
 setup.option.switch_to: "Switch to %{agent}"
 setup.status.installing: "[Îñśţåĺĺïñğ...!!]"
 setup.status.install_failed: "[Îñśţåĺĺ ƒåïĺéď: !!]"

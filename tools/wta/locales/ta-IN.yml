@@ -8,21 +8,21 @@ setup.title.not_available: "ஏஜெண்ட் கிடைக்கவில
 setup.title.sign_in: "உள்நுழைவு தேவை"
 
 # %{agent} இயக்க நேரத்தில் ஏஜெண்ட் காட்சிப் பெயரால் மாற்றப்படும்.
-setup.subtitle.copilot_missing: "உங்கள் ஏஜெண்ட் \"%{agent}\" நிறுவப்படவில்லை. நிறுவ கீழே உள்ள படிகளைப் பின்பற்றுங்கள். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
-setup.subtitle.agent_missing: "உங்கள் ஏஜெண்ட் \"%{agent}\" நிறுவப்படவில்லை. தயவுசெய்து கைமுறையாக மீண்டும் நிறுவி, மீண்டும் முயற்சிக்கவும். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
-setup.subtitle.copilot_auth: "உங்கள் ஏஜெண்ட் \"%{agent}\"-க்கு அங்கீகாரம் தேவை. உள்நுழைய கீழே உள்ள படிகளைப் பின்பற்றுங்கள். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
-setup.subtitle.agent_auth: "உங்கள் ஏஜெண்ட் \"%{agent}\"-க்கு அங்கீகாரம் தேவை. தயவுசெய்து ஏஜெண்ட் CLI மூலம் உள்நுழைந்து, மீண்டும் முயற்சிக்கவும். முகவரை மாற்ற Settings-க்குச் செல்லுங்கள்."
+setup.subtitle.copilot_missing: "உங்கள் ஏஜெண்ட் \"%{agent}\" நிறுவப்படவில்லை. நிறுவ கீழே உள்ள படிகளைப் பின்பற்றுங்கள். முகவரை மாற்ற Intelligent Terminal Settings > Agent-க்குச் செல்லுங்கள்."
+setup.subtitle.agent_missing: "உங்கள் ஏஜெண்ட் \"%{agent}\" நிறுவப்படவில்லை. தயவுசெய்து கைமுறையாக நிறுவி, மீண்டும் முயற்சிக்கவும். முகவரை மாற்ற Intelligent Terminal Settings > Agent-க்குச் செல்லுங்கள்."
+setup.subtitle.copilot_auth: "உங்கள் ஏஜெண்ட் \"%{agent}\"-க்கு அங்கீகாரம் தேவை. உள்நுழைய கீழே உள்ள படிகளைப் பின்பற்றுங்கள். முகவரை மாற்ற Intelligent Terminal Settings > Agent-க்குச் செல்லுங்கள்."
+setup.subtitle.agent_auth: "உங்கள் ஏஜெண்ட் \"%{agent}\"-க்கு அங்கீகாரம் தேவை. தயவுசெய்து ஏஜெண்ட் CLI மூலம் உள்நுழைந்து, கீழே \"நான் உள்நுழைந்துவிட்டேன்\" என்பதைத் தேர்ந்தெடுக்கவும். முகவரை மாற்ற Intelligent Terminal Settings > Agent-க்குச் செல்லுங்கள்."
 
 # {Locked="Intelligent Terminal"}
 setup.description.fre_line1: "Intelligent Terminal-ல் பயன்படுத்த இயல்புநிலை ஏஜெண்ட் CLI-ஐத் தேர்ந்தெடுக்கவும். நீங்கள்"
 setup.description.fre_line2: "உங்கள் பணியிடத்தை உள்ளமைக்க Settings-க்குச் செல்லலாம்."
 
-setup.option.reinstall: "%{agent} மீண்டும் நிறுவு"
-setup.option.reinstall_hint: "(தானாக நிறுவப்படும்)"
+setup.option.install: "%{agent} நிறுவு"
+setup.option.install_hint: "(தானாக நிறுவப்படும்)"
 setup.option.signin: "%{agent}-ல் உள்நுழையவும்"
-setup.option.retry_detection: "கண்டறிதலை மீண்டும் முயற்சிக்கவும்"
-setup.option.retry_auth: "நான் உள்நுழைந்துவிட்டேன் — இணைப்பை மீண்டும் முயற்சிக்கவும்"
-setup.option.retry_connection: "இணைப்பை மீண்டும் முயற்சிக்கவும்"
+setup.option.retry_detection: "மீண்டும் முயற்சிக்கவும்"
+setup.option.retry_auth: "நான் உள்நுழைந்துவிட்டேன் — மீண்டும் இணைக்கவும்"
+setup.option.retry_connection: "மீண்டும் இணைக்கவும்"
 setup.option.switch_to: "%{agent}-க்கு மாறு"
 setup.status.installing: "நிறுவப்படுகிறது..."
 setup.status.install_failed: "நிறுவல் தோல்வி: "
