@@ -265,6 +265,12 @@ pub struct CompletedTurn {
     /// Enter to toggle. Default false (collapsed) so history stays compact.
     #[serde(default)]
     pub expanded: bool,
+    /// Trailing inline status marker rendered in DIM next to the turn's
+    /// first content line (e.g. "(canceled)" / "→ executed: Run Get-Date").
+    /// Set when the user dismisses or executes a recommendation card, or
+    /// cancels a mid-stream turn — `None` for normal chat turns.
+    #[serde(default)]
+    pub trailing_marker: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -5629,6 +5635,7 @@ impl App {
                         prompt: format!("Auto-diagnosed error in pane {pane_label}"),
                         details,
                         expanded: true,
+                        trailing_marker: None,
                     });
                 }
                 // Always clear in-flight UI state on Ignore — even if there
@@ -5673,6 +5680,7 @@ impl App {
                     prompt: prompt.text.clone(),
                     details,
                     expanded: true,
+                    trailing_marker: None,
                 });
                 tab.messages.clear();
                 tab.tool_calls.clear();
@@ -5783,7 +5791,7 @@ impl App {
         // "executed" marker so chat history reflects the user's choice.
         if let Some(last) = tab.completed_turns.last_mut() {
             let marker = t!("chat.turn_executed", title = &executed_title).into_owned();
-            last.details.push(ChatMessage::System(marker));
+            last.trailing_marker = Some(marker);
         }
         // commit pending turn (in case eager surface staged one).
         tab.turn = TurnState::Surfaced {
@@ -5849,18 +5857,18 @@ impl App {
             if let Some(v) = visible {
                 details.push(ChatMessage::Agent(v));
             }
-            details.push(ChatMessage::System(canceled_marker));
             tab.completed_turns.push(CompletedTurn {
                 prompt: prompt_label,
                 details,
                 expanded: true,
+                trailing_marker: Some(canceled_marker),
             });
             tab.messages.clear();
             tab.tool_calls.clear();
             tab.scroll_to_bottom();
         } else if annotate_card {
             if let Some(last) = tab.completed_turns.last_mut() {
-                last.details.push(ChatMessage::System(canceled_marker));
+                last.trailing_marker = Some(canceled_marker);
             }
         }
         tab.autofix.pane_id = None;
@@ -5901,6 +5909,7 @@ impl App {
             prompt: prompt.text.clone(),
             details,
             expanded: true,
+            trailing_marker: None,
         });
         tab.messages.clear();
         tab.tool_calls.clear();
@@ -5957,6 +5966,7 @@ impl App {
             prompt: turn_prompt_label,
             details,
             expanded: true,
+            trailing_marker: None,
         });
         tab.messages.clear();
         tab.tool_calls.clear();
@@ -6012,6 +6022,7 @@ impl App {
                 prompt: turn_prompt_label,
                 details,
                 expanded: true,
+                trailing_marker: None,
             });
             tab.messages.clear();
             tab.tool_calls.clear();
@@ -7811,8 +7822,8 @@ mod tests {
     #[test]
     fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
         // Esc while prose is streaming → commit partial prose as a
-        // CompletedTurn (default-expanded) with a trailing canceled marker
-        // so the user can see both what arrived and that they cancelled.
+        // CompletedTurn (default-expanded) with the trailing_marker set
+        // so the user sees what arrived and that they cancelled it.
         let mut app = test_app();
         submit_test_prompt(&mut app, "tell me a story");
         app.turn_observe_chunk(
@@ -7831,10 +7842,14 @@ mod tests {
             .details
             .iter()
             .any(|m| matches!(m, ChatMessage::Agent(t) if t.contains("Once upon a time"))));
-        assert!(committed
-            .details
-            .iter()
-            .any(|m| matches!(m, ChatMessage::System(t) if t.contains("canceled"))));
+        assert!(
+            committed
+                .trailing_marker
+                .as_deref()
+                .map_or(false, |m| m.contains("canceled")),
+            "trailing_marker should hold (canceled), got {:?}",
+            committed.trailing_marker
+        );
         assert!(tab.messages.is_empty(), "messages cleared on cancel");
         assert!(tab.tool_calls.is_empty(), "tool_calls cleared on cancel");
     }
@@ -7843,9 +7858,9 @@ mod tests {
     fn cancel_mid_stream_records_canceled_marker_even_without_visible_prose() {
         // A buffer that's pure JSON (no `explanation` field, no prose
         // prefix) renders as nothing during streaming. We must NOT commit
-        // raw JSON, but we still record a completed_turn with just the
-        // canceled marker so the user sees that the prompt was sent and
-        // cancelled.
+        // raw JSON as agent prose, but we still record a completed_turn
+        // with the canceled marker so the user knows the prompt was sent
+        // and cancelled.
         let mut app = test_app();
         submit_test_prompt(&mut app, "kill pid 1234");
         app.turn_observe_chunk(
@@ -7866,10 +7881,14 @@ mod tests {
                 .any(|m| matches!(m, ChatMessage::Agent(_))),
             "JSON-only buffer must not be committed as agent prose"
         );
-        assert!(committed
-            .details
-            .iter()
-            .any(|m| matches!(m, ChatMessage::System(t) if t.contains("canceled"))));
+        assert!(
+            committed
+                .trailing_marker
+                .as_deref()
+                .map_or(false, |m| m.contains("canceled")),
+            "trailing_marker should hold (canceled), got {:?}",
+            committed.trailing_marker
+        );
         assert!(tab.messages.is_empty());
         assert!(tab.tool_calls.is_empty());
     }

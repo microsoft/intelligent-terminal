@@ -224,6 +224,16 @@ fn build_completed_turn_lines<'a>(
         Span::styled(truncate_render_text(&turn.prompt), prompt_style),
     ])];
 
+    // Index of the line that should receive an inline trailing marker (eg
+    // "(canceled)" / "→ executed: …"). Expanded turns attach it to the
+    // first detail row (right after the header chevron line); collapsed
+    // turns put it next to the prompt header.
+    let marker_target_idx = if turn.expanded && !turn.details.is_empty() {
+        Some(lines.len())
+    } else {
+        Some(0)
+    };
+
     if turn.expanded {
         // Render the captured details — the agent reply, tool calls,
         // plans, etc. — using the same builder as the active turn so the
@@ -232,6 +242,14 @@ fn build_completed_turn_lines<'a>(
         // path; details are always finalized by the time they land here.
         for msg in turn.details.iter() {
             lines.extend(build_message_lines(msg, false, false, wrap_width));
+        }
+    }
+
+    if let (Some(marker), Some(idx)) = (turn.trailing_marker.as_deref(), marker_target_idx) {
+        if let Some(line) = lines.get_mut(idx) {
+            line.spans.push(Span::raw("  "));
+            line.spans
+                .push(Span::styled(marker.to_string(), theme::DIM));
         }
     }
 
