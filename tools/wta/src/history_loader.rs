@@ -931,8 +931,8 @@ fn read_cwd_from_claude_jsonl(path: &Path) -> Option<PathBuf> {
 /// only `permission-mode`, `file-history-snapshot`, `last-prompt`, and
 /// meta/slash-command user records is rejected with
 /// `No conversation found with session ID: <id>`. Filtering those
-/// "phantom" JSONLs out of the loader prevents Enter on an F2 row from
-/// dead-ending in that error.
+/// "phantom" JSONL files out of the loader prevents Enter on an F2 row
+/// from dead-ending in that error.
 fn claude_session_has_real_content(path: &Path) -> bool {
     let Ok(text) = read_first_bytes(path, TITLE_TAIL_BYTES) else { return false };
     for line in text.lines() {
@@ -1293,7 +1293,7 @@ mod tests {
         // Loader must skip them; only the real session should appear.
         let home = tmp_root("claude-phantom");
         let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-myproj");
+        let proj = projects.join("C--Users-me-proj");
         fs::create_dir_all(&proj).unwrap();
 
         // Real session — has a non-meta user message Claude can resume.
@@ -1354,7 +1354,7 @@ mod tests {
     #[test]
     fn key_resumable_returns_true_when_artefact_missing_for_all_clis() {
         // Missing on-disk artefact → "defer to CLI" (true) so fresh
-        // in-memory rows / test fixtures aren't blocked pre-emptively.
+        // in-memory rows / test fixtures aren't blocked preemptively.
         use crate::agent_sessions::CliSource;
         let home = tmp_root("resumable-missing-all-clis");
         for cli in [CliSource::Claude, CliSource::Copilot, CliSource::Gemini] {
@@ -1462,9 +1462,9 @@ mod tests {
         let home = tmp_root("gemini-resumable-phantom");
         let chats = home.join(".gemini").join("tmp").join("p").join("chats");
         fs::create_dir_all(&chats).unwrap();
-        let key = "bcb79348-24c2-4d75-9f4b-57017e7e6cc0";
-        write_file(&chats.join("session-2026-05-24T09-01-bcb79348.jsonl"),
-            "{\"sessionId\":\"bcb79348-24c2-4d75-9f4b-57017e7e6cc0\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:40.254Z\",\"kind\":\"main\"}\n");
+        let key = "aabbccdd-24c2-4d75-9f4b-57017e7e6cc0";
+        write_file(&chats.join("session-2026-05-24T09-01-aabbccdd.jsonl"),
+            "{\"sessionId\":\"aabbccdd-24c2-4d75-9f4b-57017e7e6cc0\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:40.254Z\",\"kind\":\"main\"}\n");
         assert!(!key_is_resumable_on_disk_in(&home, &CliSource::Gemini, key));
         let _ = fs::remove_dir_all(&home);
     }
@@ -1654,8 +1654,8 @@ mod tests {
         fs::create_dir_all(&chats).unwrap();
 
         // Phantom: single header line, no `type` field anywhere.
-        write_file(&chats.join("session-2026-05-24T09-01-bcb79348.jsonl"),
-            "{\"sessionId\":\"bcb79348-24c2-4d75-9f4b-57017e7e6cc0\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:40.254Z\",\"kind\":\"main\"}\n");
+        write_file(&chats.join("session-2026-05-24T09-01-aabbccdd.jsonl"),
+            "{\"sessionId\":\"aabbccdd-24c2-4d75-9f4b-57017e7e6cc0\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:40.254Z\",\"kind\":\"main\"}\n");
 
         // Phantom: two duplicate header lines (the 456-byte shape).
         write_file(&chats.join("session-2026-05-24T09-01-a5e06b8a.jsonl"),
@@ -1663,15 +1663,15 @@ mod tests {
              {\"sessionId\":\"a5e06b8a-28a1-4e64-9802-f8b4572e832d\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:43.039Z\",\"kind\":\"main\"}\n");
 
         // Real: header + at least one record carrying a `type` field.
-        write_file(&chats.join("session-2026-05-24T10-00-realreal.jsonl"),
-            "{\"sessionId\":\"realreal-2222-3333-4444-555555555555\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n\
+        write_file(&chats.join("session-2026-05-24T10-00-eeeeffff.jsonl"),
+            "{\"sessionId\":\"eeeeffff-2222-3333-4444-555555555555\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n\
              {\"type\":\"user\",\"content\":[{\"text\":\"hello\"}]}\n");
 
         let v = load_gemini(&home);
         assert_eq!(v.len(), 1,
             "only the real session should survive; got {:?}",
             v.iter().map(|s| s.key.clone()).collect::<Vec<_>>());
-        assert_eq!(v[0].key, "realreal-2222-3333-4444-555555555555");
+        assert_eq!(v[0].key, "eeeeffff-2222-3333-4444-555555555555");
         let _ = fs::remove_dir_all(&home);
     }
 
@@ -1688,12 +1688,12 @@ mod tests {
             r#"{"projects":{"C:\\proj":"p"}}"#);
         let chats = home.join(".gemini").join("tmp").join("p").join("chats");
         fs::create_dir_all(&chats).unwrap();
-        write_file(&chats.join("session-2026-05-24T10-00-infoinfo.jsonl"),
-            "{\"sessionId\":\"infoinfo-1111-2222-3333-444444444444\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n\
+        write_file(&chats.join("session-2026-05-24T10-00-ccccdddd.jsonl"),
+            "{\"sessionId\":\"ccccdddd-1111-2222-3333-444444444444\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n\
              {\"type\":\"info\",\"content\":\"Update successful!\"}\n");
         let v = load_gemini(&home);
         assert_eq!(v.len(), 1);
-        assert_eq!(v[0].key, "infoinfo-1111-2222-3333-444444444444");
+        assert_eq!(v[0].key, "ccccdddd-1111-2222-3333-444444444444");
         let _ = fs::remove_dir_all(&home);
     }
 

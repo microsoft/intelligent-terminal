@@ -2059,7 +2059,7 @@ impl App {
         // has no resumable content would open a new tab + reconcile
         // the agent pane onto it, then dead-end inside the agent with
         // a JSON-RPC `loadSession` error (the agent's own session
-        // store can't find the id). Pre-empt that round trip and drop
+        // store can't find the id). Preempt that round trip and drop
         // the row in place, same as plain Enter.
         if !crate::history_loader::key_is_resumable_on_disk(&s.cli_source, &s.key) {
             tracing::warn!(
@@ -7640,7 +7640,7 @@ mod tests {
         use std::path::PathBuf;
         let mut app = test_app();
         // Mark loadSession supported so the capability gate doesn't
-        // pre-empt the phantom check.
+        // preempt the phantom check.
         app.agent_supports_load_session = true;
         // Use a CLI source for which the real ~/.claude/projects
         // can't have this UUID. The probe falls through to "no
