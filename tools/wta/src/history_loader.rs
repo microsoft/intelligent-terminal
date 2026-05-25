@@ -54,6 +54,17 @@ use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionOrigin}
 const MAX_PER_CLI: usize = 50;
 const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 
+/// Upper bound on bytes read by the `*_has_real_content` classifiers
+/// when streaming a JSONL line-by-line. Picked at 8 MB so a session
+/// whose early meta records (e.g. Claude's `file-history-snapshot`
+/// for a large project) push past `TITLE_TAIL_BYTES` still gets
+/// scanned far enough to find the first real user/assistant record.
+/// The classifiers short-circuit on first hit, so this cap only
+/// matters for genuine phantoms (which are tiny by nature) and the
+/// pathological "JSONL contains only meta records up to the cap"
+/// case (treated as phantom — conservative but safe).
+const CLASSIFY_SCAN_BYTES_CAP: u64 = 8 * 1024 * 1024;
+
 pub fn load_all() -> Vec<AgentSession> {
     let mut out = Vec::new();
     let Some(home) = home_dir() else { return out };
@@ -363,13 +374,21 @@ pub(crate) fn gemini_key_is_resumable_on_disk_in(home: &Path, key: &str) -> bool
 /// Returns `true` iff the Gemini JSONL at `path` contains at least
 /// one record carrying a `type` field (i.e. user / tool / info
 /// activity beyond the bare session header). Mirrors the
-/// `claude_session_has_real_content` filter used to drop phantom
-/// Claude sessions from the F2 list.
+/// `claude_session_has_real_content` filter — including the
+/// streaming + capped read, and the conservative-on-I/O-error
+/// behavior — so a large early header (or duplicated headers)
+/// can't push real records past a fixed window, and so a
+/// transient open failure doesn't drop a real session.
 pub(crate) fn gemini_jsonl_has_real_content(path: &Path) -> bool {
-    let Ok(text) = read_first_bytes(path, TITLE_TAIL_BYTES) else { return false };
-    for line in text.lines() {
+    let Some(lines) = stream_jsonl_lines(path, CLASSIFY_SCAN_BYTES_CAP) else {
+        // I/O failure → conservative: assume real content (don't
+        // drop the row on a transient open error). See the matching
+        // comment on `claude_session_has_real_content`.
+        return true;
+    };
+    for line in lines {
         if line.trim().is_empty() { continue; }
-        let Ok(val): Result<serde_json::Value, _> = serde_json::from_str(line) else { continue };
+        let Ok(val): Result<serde_json::Value, _> = serde_json::from_str(&line) else { continue };
         // Header lines are recognised by a `sessionId` field with no
         // `type` field (see `parse_gemini_meta`). Any record carrying
         // a `type` field is real session activity.
@@ -933,11 +952,30 @@ fn read_cwd_from_claude_jsonl(path: &Path) -> Option<PathBuf> {
 /// `No conversation found with session ID: <id>`. Filtering those
 /// "phantom" JSONL files out of the loader prevents Enter on an F2 row
 /// from dead-ending in that error.
+///
+/// Streams the JSONL line-by-line (bounded by [`CLASSIFY_SCAN_BYTES_CAP`])
+/// rather than reading a fixed 64 KB head, because Claude's early meta
+/// records (notably `file-history-snapshot` for large projects) can
+/// individually exceed 64 KB and push the first real user/assistant
+/// record past a fixed window — misclassifying a real session as
+/// phantom. Short-circuits on first real-content hit.
+///
+/// **Conservative-on-I/O-error**: when the file can't be opened
+/// (locked by AV, transient permission error, race with another
+/// writer), returns `true` to treat the session as resumable. The
+/// caller (loader / strict prune) takes "true" to mean "keep the
+/// row", so this avoids dropping real sessions on transient
+/// filesystem failures. Only a successful open + scan that finds
+/// no real content classifies as phantom.
 fn claude_session_has_real_content(path: &Path) -> bool {
-    let Ok(text) = read_first_bytes(path, TITLE_TAIL_BYTES) else { return false };
-    for line in text.lines() {
+    let Some(lines) = stream_jsonl_lines(path, CLASSIFY_SCAN_BYTES_CAP) else {
+        // I/O failure → conservative: assume real content. See the
+        // doc comment above for why "true" is the safer default here.
+        return true;
+    };
+    for line in lines {
         if line.trim().is_empty() { continue; }
-        let val: serde_json::Value = match serde_json::from_str(line) {
+        let val: serde_json::Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(_) => continue,
         };
@@ -969,6 +1007,28 @@ fn read_first_bytes(path: &Path, max: u64) -> std::io::Result<String> {
     let mut buf = Vec::with_capacity(max as usize);
     let _ = (&mut f).take(max).read_to_end(&mut buf)?;
     Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// Open `path` and return an iterator that yields each line as a
+/// `String`, with the underlying read capped at `cap_bytes` total.
+/// Used by the `*_has_real_content` classifiers so a single huge
+/// early meta record (e.g. Claude's `file-history-snapshot` for a
+/// large project) can't push real records past the read window and
+/// cause the file to be misclassified as phantom.
+///
+/// Lines that fail to decode as UTF-8 cleanly or fail I/O mid-read
+/// are silently skipped — the classifiers parse each line as JSON
+/// independently and treat junk lines as "not real content", which
+/// matches the previous read-then-split-on-lines behavior.
+fn stream_jsonl_lines(
+    path: &Path,
+    cap_bytes: u64,
+) -> Option<impl Iterator<Item = String>> {
+    use std::io::{BufRead, BufReader, Read};
+    let file = fs::File::open(path).ok()?;
+    let limited = file.take(cap_bytes);
+    let reader = BufReader::new(limited);
+    Some(reader.lines().filter_map(|r| r.ok()))
 }
 
 fn truncate_chars(s: &str, n: usize) -> String {
@@ -1346,6 +1406,81 @@ mod tests {
         let v = load_claude(&home);
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].key, sid);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn claude_session_real_content_scans_past_large_early_meta_record() {
+        // Regression: Claude's early meta records (notably
+        // `file-history-snapshot` for a large project) can
+        // individually exceed 64 KB. The previous fixed-window read
+        // (TITLE_TAIL_BYTES = 64 KB) could be entirely consumed by a
+        // single such record, never reaching the first real
+        // user/assistant message — misclassifying a genuinely
+        // resumable session as a phantom and pruning it from F2.
+        //
+        // The streaming refactor (`stream_jsonl_lines` capped at
+        // `CLASSIFY_SCAN_BYTES_CAP`) reads line-by-line and
+        // short-circuits on first hit, so a huge meta record on
+        // line 2 doesn't hide a real user record on line 3.
+        let home = tmp_root("claude-large-meta-then-real");
+        let projects = home.join(".claude").join("projects");
+        let proj = projects.join("C--Users-me-proj");
+        fs::create_dir_all(&proj).unwrap();
+        let sid = "ffffffff-1111-2222-3333-444444444444";
+
+        // Build a `file-history-snapshot` whose JSON line is ~128 KB
+        // — comfortably larger than the old 64 KB read window. Pad
+        // with a synthetic field of repeated `x` characters that
+        // serde_json will parse fine.
+        let big_pad: String = "x".repeat(128 * 1024);
+        let big_meta = format!(
+            "{{\"type\":\"file-history-snapshot\",\"messageId\":\"m\",\"pad\":\"{}\"}}",
+            big_pad
+        );
+        let real_user = "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hello world\"}}";
+        let contents = format!(
+            "{{\"type\":\"permission-mode\",\"sessionId\":\"{sid}\"}}\n\
+             {big_meta}\n\
+             {real_user}\n"
+        );
+        write_file(&proj.join(format!("{}.jsonl", sid)), &contents);
+
+        let v = load_claude(&home);
+        assert_eq!(
+            v.len(), 1,
+            "session must NOT be misclassified as phantom when real \
+             content lives past a 64 KB early meta record; got {:?}",
+            v.iter().map(|s| s.key.clone()).collect::<Vec<_>>()
+        );
+        assert_eq!(v[0].key, sid);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn classifiers_treat_io_error_as_has_content() {
+        // Regression: when `stream_jsonl_lines` can't open the file
+        // (locked by AV, transient permission error, file deleted
+        // between `read_dir` and the classify scan), the classifier
+        // must return `true` so the caller keeps the row. Returning
+        // `false` would let transient I/O failures silently drop
+        // real Claude / Gemini sessions out of F2.
+        //
+        // We exercise the I/O-error branch by pointing at paths
+        // that don't exist — `fs::File::open` fails the same way it
+        // would for a real lock or permission denial as far as the
+        // classifier is concerned (None from `stream_jsonl_lines`).
+        let home = tmp_root("classifier-io-error");
+        let nowhere_claude = home.join(".claude").join("projects").join("no").join("no.jsonl");
+        let nowhere_gemini = home.join(".gemini").join("tmp").join("no").join("chats").join("session-no.jsonl");
+        assert!(
+            claude_session_has_real_content(&nowhere_claude),
+            "Claude classifier must be conservative (true) when the file can't be opened",
+        );
+        assert!(
+            gemini_jsonl_has_real_content(&nowhere_gemini),
+            "Gemini classifier must be conservative (true) when the file can't be opened",
+        );
         let _ = fs::remove_dir_all(&home);
     }
 
