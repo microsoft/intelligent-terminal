@@ -3925,6 +3925,15 @@ impl App {
                 }
             }
         }
+
+        // Shared-wta render hook. Cheap no-op when no panes are
+        // attached (default per-window-wta mode never populates
+        // pane_registry). When panes ARE attached (headless mode
+        // post-attach), this keeps each pane in sync with whatever
+        // mutation the event handler above just performed against
+        // tab_sessions. Ratatui's diff backend makes the redraw
+        // virtually free when nothing changed.
+        self.render_attached_panes();
     }
 
     fn event_requires_redraw(&self, event: &AppEvent) -> bool {
@@ -6362,15 +6371,23 @@ impl App {
                         );
 
                         // Side-effects on a successful attach:
-                        //   (a) draw a placeholder frame so the user
-                        //       sees something rather than a blank
-                        //       pane until per-tab ACP chat state
-                        //       lands in a later commit;
-                        //   (b) spawn the input pump that reads
-                        //       user keystrokes off the conpty's
-                        //       slave-in handle.
-                        self.draw_attach_placeholder(&tab_id, &agent_id);
+                        //   (a) materialise a TabSession entry so the
+                        //       pane has chat state to render against
+                        //       (subsequent ACP traffic on `tab_id`
+                        //       lands in this slot);
+                        //   (b) spawn the input pump that reads user
+                        //       keystrokes off the conpty's slave-in
+                        //       handle;
+                        //   (c) the post-event render hook
+                        //       `render_attached_panes` runs at the
+                        //       end of `handle_event` and will draw
+                        //       the new pane automatically — no
+                        //       separate placeholder needed.
+                        self.tab_sessions
+                            .entry(tab_id.clone())
+                            .or_insert_with(TabSession::default);
                         self.spawn_pane_input_task(&tab_id);
+                        let _ = &agent_id; // suppress unused-binding lint after removing placeholder draw
 
                         crate::protocol::internal_control::OutboundAck::AttachPaneAck {
                             id: id.clone(),
@@ -6495,53 +6512,70 @@ impl App {
         }
     }
 
-    /// Render a one-shot placeholder frame on the freshly-attached
-    /// pane. Real chat UI will overwrite this once per-tab ACP wiring
-    /// lands. Until then it serves as the "yes, the conpty handle
-    /// marshaling worked, you can see this pane" smoke signal.
-    fn draw_attach_placeholder(&mut self, tab_id: &str, agent_id: &str) {
+    /// Re-render every attached agent pane against its tab's chat
+    /// state. Cheap because Ratatui's diff backend only flushes the
+    /// cells that changed since the previous frame, so calling this
+    /// from the end of `handle_event` (regardless of which event
+    /// fired) does not blow up output volume.
+    ///
+    /// This is what makes the shared wta look "live": any state
+    /// mutation that lands in `tab_sessions[tab_id]` (an agent reply,
+    /// a tool call, a system message) shows up on the corresponding
+    /// pane the moment the event handler returns.
+    ///
+    /// The default-mode TUI's `draw_frame` targets the process's own
+    /// stdout Terminal, which is *not* a member of `pane_registry`,
+    /// so this method is a strict addition — it never touches the
+    /// default-mode render path.
+    fn render_attached_panes(&mut self) {
+        if self.pane_registry.is_empty() {
+            return;
+        }
+        for tab_id in self.pane_registry.tab_ids() {
+            self.render_pane_for_tab(&tab_id);
+        }
+    }
+
+    /// Render this tab's view into its attached pane. Snapshots the
+    /// chat lines under an immutable borrow first so the subsequent
+    /// `get_mut` on `pane_registry` doesn't fight the borrow checker.
+    fn render_pane_for_tab(&mut self, tab_id: &str) {
+        let lines = self
+            .tab_sessions
+            .get(tab_id)
+            .map(|t| format_messages_for_pane(&t.messages))
+            .unwrap_or_else(|| vec!["(no chat session attached)".into()]);
+        let header_label = if self.agent_name.is_empty() {
+            format!("wta · tab {tab_id}")
+        } else {
+            format!("wta · {} · tab {tab_id}", self.agent_name)
+        };
         let Some(ctx) = self.pane_registry.get_mut(tab_id) else {
-            tracing::error!(
-                target: "internal_control",
-                step = "render",
-                tab_id = %tab_id,
-                "draw_attach_placeholder: pane not in registry — race?",
-            );
             return;
         };
-        let agent_owned = agent_id.to_string();
-        let tab_owned = tab_id.to_string();
         let draw_result = ctx.terminal_mut().draw(|frame| {
-            use ratatui::widgets::{Block, Borders, Paragraph};
-            let body = format!(
-                "agent pane attached\n\
-                 \n\
-                 tab_id   {tab_owned}\n\
-                 agent    {agent_owned}\n\
-                 \n\
-                 (chat UI lands when per-tab ACP wiring is hooked up)"
-            );
-            let p = Paragraph::new(body).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" wta — shared agent pane "),
-            );
-            frame.render_widget(p, frame.area());
+            use ratatui::layout::{Constraint, Direction, Layout};
+            use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+
+            let area = frame.area();
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(1), Constraint::Min(1)])
+                .split(area);
+
+            frame.render_widget(Paragraph::new(header_label.clone()), chunks[0]);
+            let items: Vec<ListItem> = lines.iter().map(|l| ListItem::new(l.clone())).collect();
+            let list = List::new(items).block(Block::default().borders(Borders::TOP));
+            frame.render_widget(list, chunks[1]);
         });
-        match draw_result {
-            Ok(_) => tracing::debug!(
-                target: "internal_control",
-                step = "render",
-                tab_id = %tab_id,
-                "placeholder frame drawn",
-            ),
-            Err(err) => tracing::warn!(
+        if let Err(err) = draw_result {
+            tracing::warn!(
                 target: "internal_control",
                 step = "render",
                 tab_id = %tab_id,
                 error = %err,
-                "placeholder draw failed",
-            ),
+                "render_pane_for_tab draw failed",
+            );
         }
     }
 
@@ -6959,6 +6993,32 @@ fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max { s.to_string() } else { format!("{}…", &s[..max]) }
 }
 
+/// Render a tab's chat history into the plain-text line list a
+/// shared-wta pane displays. Deliberately simple: no styling, no
+/// truncation, no scrollback — Ratatui's List widget handles
+/// clipping to the viewport. The richer `chat::render` used in the
+/// default-mode TUI will replace this once we factor it into a
+/// reusable per-(tab, terminal) renderer; for now this is the
+/// smallest visible difference between "pane attached" and
+/// "pane attached + conversation going."
+fn format_messages_for_pane(messages: &[ChatMessage]) -> Vec<String> {
+    if messages.is_empty() {
+        return vec!["(no messages yet)".into()];
+    }
+    messages
+        .iter()
+        .map(|m| match m {
+            ChatMessage::User(s) => format!("user > {s}"),
+            ChatMessage::Agent(s) => format!("agent > {s}"),
+            ChatMessage::System(s) => format!("system > {s}"),
+            ChatMessage::ToolCall { title, status, .. } => format!("tool [{status}] > {title}"),
+            ChatMessage::Plan(_) => "plan > …".into(),
+            ChatMessage::Error(s) => format!("error > {s}"),
+            ChatMessage::AgentEvent(s) => format!("event > {s}"),
+        })
+        .collect()
+}
+
 
 fn now_unix_s() -> f64 {
     std::time::SystemTime::now()
@@ -7183,19 +7243,21 @@ mod tests {
     }
 
     #[test]
-    fn handle_internal_control_attach_draws_placeholder_immediately() {
-        // The user shouldn't see a blank pane after attach. The
-        // placeholder render is the early signal that conpty handle
-        // marshaling actually worked end-to-end — long before
-        // per-pane ACP wiring fills in a real chat UI.
+    fn handle_event_attach_pane_renders_initial_frame_to_observer() {
+        // Going through `handle_event` (rather than calling
+        // `handle_internal_control` directly) exercises the
+        // render_attached_panes hook at the tail of the dispatcher,
+        // which is what draws each attached pane after every event.
+        // For a fresh attach the chat is empty, so the visible
+        // result is the per-tab header plus "(no messages yet)".
         use std::io::Read;
 
         let mut app = test_app();
         let (pin, pout, mut observer) = fresh_attach_handles_for_test();
-        let attach = json!({
+        let value = json!({
             "method": "_internal.attach_pane",
             "params": {
-                "tab_id": "TAB_PLACEHOLDER",
+                "tab_id": "TAB_INITIAL",
                 "pty_in": pin, "pty_out": pout,
                 "cols": 60, "rows": 8,
                 "agent_id": "claude",
@@ -7203,28 +7265,76 @@ mod tests {
                 "initial_view": "chat",
             }
         });
-        app.handle_internal_control(attach);
+        app.handle_event(AppEvent::InternalControl { value });
 
         let mut buf = vec![0u8; 8192];
         let n = observer.read(&mut buf).unwrap();
         let rendered = String::from_utf8_lossy(&buf[..n]);
-        // Ratatui's diff render emits per-cell cursor moves so the
-        // phrase "agent pane attached" is split across ANSI cursor
-        // sequences. Each individual token still appears contiguously
-        // in the byte stream, so assert on the distinctive markers
-        // (`TAB_PLACEHOLDER`, the agent id, the title) rather than
-        // the long phrase.
+        // Ratatui's diff render emits per-cell cursor moves so
+        // multi-word strings are split across ANSI sequences in the
+        // byte stream. Individual tokens like "TAB_INITIAL" still
+        // appear contiguously (cell-runs aren't broken mid-word
+        // unless the line wraps), so we assert on distinctive
+        // markers rather than full phrases.
         assert!(
-            rendered.contains("TAB_PLACEHOLDER"),
-            "placeholder did not echo tab_id; got: {rendered:?}",
-        );
-        assert!(
-            rendered.contains("claude"),
-            "placeholder did not echo agent_id; got: {rendered:?}",
+            rendered.contains("TAB_INITIAL"),
+            "header did not echo tab_id; got: {rendered:?}",
         );
         assert!(
             rendered.contains("wta"),
-            "placeholder title missing; got: {rendered:?}",
+            "header label missing; got: {rendered:?}",
+        );
+        assert!(
+            rendered.contains("messages") || rendered.contains("no"),
+            "expected empty-chat hint; got: {rendered:?}",
+        );
+    }
+
+    #[test]
+    fn handle_event_post_attach_redraws_when_chat_state_mutates() {
+        // After a pane is attached, any event that mutates the
+        // tab's chat history should trigger a re-render on that
+        // pane via render_attached_panes. Inject a User message
+        // directly into tab_sessions then dispatch a benign event
+        // (Tick, which goes through handle_event) and check the
+        // observer sees the new message text.
+        use std::io::Read;
+
+        let mut app = test_app();
+        let (pin, pout, mut observer) = fresh_attach_handles_for_test();
+        let attach = json!({
+            "method": "_internal.attach_pane",
+            "params": {
+                "tab_id": "TAB_LIVE",
+                "pty_in": pin, "pty_out": pout,
+                "cols": 60, "rows": 8,
+                "agent_id": "claude",
+                "initial_cwd": "/",
+                "initial_view": "chat",
+            }
+        });
+        app.handle_event(AppEvent::InternalControl { value: attach });
+
+        // Drain the initial render so the next read sees only the
+        // post-mutation diff.
+        let mut throwaway = vec![0u8; 8192];
+        let _ = observer.read(&mut throwaway).unwrap();
+
+        // Mutate chat state, then send any AppEvent so handle_event
+        // runs render_attached_panes.
+        app.tab_sessions
+            .get_mut("TAB_LIVE")
+            .unwrap()
+            .messages
+            .push(ChatMessage::Agent("LIVE_MARKER".into()));
+        app.handle_event(AppEvent::Tick);
+
+        let mut buf = vec![0u8; 8192];
+        let n = observer.read(&mut buf).unwrap();
+        let rendered = String::from_utf8_lossy(&buf[..n]);
+        assert!(
+            rendered.contains("LIVE_MARKER"),
+            "post-mutation redraw did not include new message text; got: {rendered:?}",
         );
     }
 

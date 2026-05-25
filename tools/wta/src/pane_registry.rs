@@ -85,6 +85,13 @@ impl PaneRegistry {
     pub fn is_empty(&self) -> bool {
         self.ctxs.is_empty()
     }
+
+    /// Snapshot of the tab ids that currently have an attached pane.
+    /// Returned owned (cloned) so callers can iterate without holding
+    /// an immutable borrow that would block subsequent `get_mut`s.
+    pub fn tab_ids(&self) -> Vec<String> {
+        self.ctxs.keys().cloned().collect()
+    }
 }
 
 impl Default for PaneRegistry {
