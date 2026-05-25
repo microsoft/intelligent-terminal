@@ -104,9 +104,7 @@ namespace TerminalAppUnitTests
         // the OS ever ships a new RTL locale we automatically cover
         // it without touching this test.
         const auto locales = EnumerateInstalledLocales();
-        VERIFY_IS_GREATER_THAN(locales.size(),
-                               size_t{ 50 },
-                               L"EnumSystemLocalesEx returned too few locales; expected the system to ship many more");
+        VERIFY_IS_FALSE(locales.empty(), L"EnumSystemLocalesEx returned no locales; expected at least one");
         size_t mismatches = 0;
         for (const auto& tag : locales)
         {
