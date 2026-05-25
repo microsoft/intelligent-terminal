@@ -15,6 +15,7 @@ mod history_loader;
 mod logging;
 mod osc52;
 mod protocol;
+mod render_ctx;
 mod runtime_paths;
 mod pane_context;
 mod shell;
