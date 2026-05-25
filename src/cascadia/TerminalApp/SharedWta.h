@@ -20,6 +20,9 @@
 // class decoupled from any specific TerminalPage means it can be
 // reused across windows.
 
+#include <mutex>
+#include <string_view>
+
 #include <wil/resource.h>
 
 namespace winrt::TerminalApp::implementation

@@ -27,6 +27,7 @@
 #include "Remoting.h"
 #include "ScratchpadContent.h"
 #include "SettingsPaneContent.h"
+#include "SharedWta.h"
 #include "SnippetsPaneContent.h"
 #include "TabRowControl.h"
 #include "TerminalSettingsCache.h"
@@ -1876,6 +1877,22 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        // Shared-wta singleton path: one wta.exe per Terminal process
+        // serves every tab's agent pane via per-tab AgentPipeConnection
+        // + COM `_internal.attach_pane`. The legacy single-process
+        // path below (spawn one wta.exe as the conpty child of this
+        // pane) is kept for users with the setting off.
+        if (_settings.GlobalSettings().SharedWtaProcess())
+        {
+            if (_AutoCreateHiddenAgentPaneShared(tab))
+            {
+                return;
+            }
+            // Shared path didn't take — fall through to the legacy path
+            // so the user still gets *an* agent pane, just not the
+            // shared one. The shared helper has already logged why.
+        }
+
         const auto wtaPath = _DetectWtaPath();
         if (wtaPath.empty())
         {
@@ -2165,6 +2182,264 @@ namespace winrt::TerminalApp::implementation
         }
 
         _agentPaneLog("_AutoCreateHiddenAgentPane: done — split done, awaiting Initialized to launch wta");
+    }
+
+    // Shared-wta path for _AutoCreateHiddenAgentPane. See doc/specs/Multi-window-agent-pane.md.
+    bool TerminalPage::_AutoCreateHiddenAgentPaneShared(winrt::com_ptr<Tab> tab)
+    {
+        const auto wtaPath = _DetectWtaPath();
+        if (wtaPath.empty())
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: no WTA path");
+            return false;
+        }
+
+        auto& shared = winrt::TerminalApp::implementation::SharedWta::Instance();
+        if (!shared.EnsureRunning(std::wstring_view{ wtaPath }))
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: SharedWta::EnsureRunning failed");
+            return false;
+        }
+        const auto wtaProcess = shared.ProcessHandle();
+        if (wtaProcess == INVALID_HANDLE_VALUE)
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: wta process handle invalid post-EnsureRunning");
+            return false;
+        }
+        _agentPaneLog("_AutoCreateHiddenAgentPaneShared: wta pid=" + std::to_string(shared.ProcessId()));
+
+        const auto stableId = tab->StableId();
+        if (stableId.empty())
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: tab has no StableId");
+            return false;
+        }
+
+        // Initial sizing — TermControl will Resize() on first layout
+        // anyway; this just avoids wta rendering at 0x0 before
+        // LayoutUpdated fires.
+        constexpr uint32_t kDefaultRows = 24;
+        constexpr uint32_t kDefaultCols = 80;
+
+        const auto& globals = _settings.GlobalSettings();
+        TerminalConnection::AgentPipeConnection agentConn{ kDefaultRows, kDefaultCols };
+
+        // DuplicateHandle the wta-side ends into wta.exe's address space.
+        const auto srcPtyIn = reinterpret_cast<HANDLE>(agentConn.WtaInputHandle());
+        const auto srcPtyOut = reinterpret_cast<HANDLE>(agentConn.WtaOutputHandle());
+
+        HANDLE dupPtyIn{};
+        HANDLE dupPtyOut{};
+        if (!DuplicateHandle(GetCurrentProcess(),
+                             srcPtyIn,
+                             wtaProcess,
+                             &dupPtyIn,
+                             0,
+                             FALSE,
+                             DUPLICATE_SAME_ACCESS))
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: DuplicateHandle pty_in failed gle=" + std::to_string(GetLastError()));
+            return false;
+        }
+        if (!DuplicateHandle(GetCurrentProcess(),
+                             srcPtyOut,
+                             wtaProcess,
+                             &dupPtyOut,
+                             0,
+                             FALSE,
+                             DUPLICATE_SAME_ACCESS))
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: DuplicateHandle pty_out failed gle=" + std::to_string(GetLastError()));
+            HANDLE toClose{};
+            DuplicateHandle(wtaProcess, dupPtyIn, GetCurrentProcess(), &toClose, 0, FALSE, DUPLICATE_CLOSE_SOURCE);
+            if (toClose)
+            {
+                CloseHandle(toClose);
+            }
+            return false;
+        }
+
+        NewTerminalArgs args;
+        args.Profile(globals.AiCoordinatorProfile());
+        winrt::hstring startingDirectory;
+        if (const auto& ctl = _GetActiveControl())
+        {
+            startingDirectory = ctl.WorkingDirectory();
+        }
+        if (!startingDirectory.empty())
+        {
+            args.StartingDirectory(startingDirectory);
+        }
+
+        auto rawPane = _MakeTerminalPane(args, nullptr, agentConn);
+        if (!rawPane)
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: _MakeTerminalPane returned null");
+            return false;
+        }
+        auto newPane = _WrapInAgentPaneContent(rawPane);
+        newPane->IsAgentPane(true);
+        _agentPane = newPane;
+
+        const auto stableIdStr = winrt::to_string(stableId);
+        const auto cwdStr = startingDirectory.empty() ? std::string{} : winrt::to_string(startingDirectory);
+        const auto agentId = winrt::to_string(globals.EffectiveAcpAgent());
+        const uint64_t ptyInForWta = reinterpret_cast<uint64_t>(dupPtyIn);
+        const uint64_t ptyOutForWta = reinterpret_cast<uint64_t>(dupPtyOut);
+
+        {
+            auto weakSelf = get_weak();
+            newPane->Closed([weakSelf, stableIdStr](auto&&, auto&&) {
+                _agentPaneLog("shared agent pane closed — _agentPane cleared");
+                auto self = weakSelf.get();
+                if (!self)
+                {
+                    return;
+                }
+
+                Json::Value evt;
+                evt["type"] = "event";
+                evt["method"] = "_internal.detach_pane";
+                Json::Value params;
+                params["tab_id"] = stableIdStr;
+                evt["params"] = params;
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                self->ProtocolVtSequenceReceived.raise(
+                    *self,
+                    winrt::to_hstring(Json::writeString(wb, evt)));
+
+                self->_agentPane.reset();
+                self->_agentPanePreWarming = false;
+                self->_lastNotifiedAgentTabId.reset();
+                self->_ClearAllAgentPaneFlags();
+                self->_UpdateBottomBarState();
+            });
+        }
+
+        _agentPanePreWarming = true;
+        const auto splitDirection = _AgentPanePositionToSplitDirection(globals.AgentPanePosition());
+        tab->SplitPaneAtRoot(splitDirection, newPane);
+
+        std::weak_ptr<Pane> weakNewPane = newPane;
+        std::weak_ptr<Pane> weakRootPane = tab->GetRootPane();
+        auto weakSelfForAttach = get_weak();
+
+        if (const auto termControl = newPane->GetTerminalControl())
+        {
+            auto tokenHolder = std::make_shared<winrt::event_token>();
+            *tokenHolder = termControl.Initialized([
+                weakNewPane,
+                weakRootPane,
+                weakSelfForAttach,
+                termControlWeak = winrt::make_weak(termControl),
+                tokenHolder,
+                stableIdStr,
+                cwdStr,
+                agentId,
+                ptyInForWta,
+                ptyOutForWta
+            ](auto&& /*sender*/, auto&& /*args*/) {
+                _agentPaneLog("_AutoCreateHiddenAgentPaneShared: TermControl Initialized");
+                if (const auto tc = termControlWeak.get())
+                {
+                    tc.Initialized(*tokenHolder);
+                }
+                auto self = weakSelfForAttach.get();
+                if (!self)
+                {
+                    return;
+                }
+
+                // Sample real dimensions if the layout has produced
+                // them; fall back to 80x24 otherwise. TermControl will
+                // also call Resize() shortly after this hook fires,
+                // which will trigger a `_internal.resize_pane`.
+                uint16_t initialCols = 80;
+                uint16_t initialRows = 24;
+                if (const auto tc = termControlWeak.get())
+                {
+                    const auto dims = tc.CharacterDimensions();
+                    const auto actualW = tc.ActualWidth();
+                    const auto actualH = tc.ActualHeight();
+                    if (dims.Width > 0 && dims.Height > 0 && actualW > 0 && actualH > 0)
+                    {
+                        initialCols = gsl::narrow_cast<uint16_t>(actualW / dims.Width);
+                        initialRows = gsl::narrow_cast<uint16_t>(actualH / dims.Height);
+                    }
+                }
+
+                Json::Value evt;
+                evt["type"] = "event";
+                evt["method"] = "_internal.attach_pane";
+                Json::Value params;
+                params["tab_id"] = stableIdStr;
+                params["pty_in"] = Json::UInt64{ ptyInForWta };
+                params["pty_out"] = Json::UInt64{ ptyOutForWta };
+                params["cols"] = static_cast<Json::UInt>(initialCols);
+                params["rows"] = static_cast<Json::UInt>(initialRows);
+                params["agent_id"] = agentId.empty() ? std::string{ "copilot" } : agentId;
+                params["initial_cwd"] = cwdStr;
+                params["initial_view"] = std::string{ "chat" };
+                evt["params"] = params;
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                self->ProtocolVtSequenceReceived.raise(
+                    *self,
+                    winrt::to_hstring(Json::writeString(wb, evt)));
+
+                self->_agentPanePreWarming = false;
+
+                bool anyTabWantsOpen = false;
+                for (const auto& t : self->_tabs)
+                {
+                    if (auto tabImpl = TerminalPage::_GetTabImpl(t))
+                    {
+                        if (tabImpl->AgentPaneOpen())
+                        {
+                            anyTabWantsOpen = true;
+                            break;
+                        }
+                    }
+                }
+                if (anyTabWantsOpen)
+                {
+                    self->_UpdateBottomBarState();
+                    if (auto pane = weakNewPane.lock())
+                    {
+                        if (const auto& content = pane->GetContent())
+                        {
+                            content.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+                        }
+                    }
+                    return;
+                }
+                if (auto rootPane = weakRootPane.lock())
+                {
+                    if (auto pane = weakNewPane.lock())
+                    {
+                        rootPane->HidePane(pane);
+                        self->_UpdateBottomBarState();
+                    }
+                }
+            });
+        }
+        else
+        {
+            _agentPanePreWarming = false;
+            if (const auto rootPane = tab->GetRootPane())
+            {
+                rootPane->HidePane(newPane);
+            }
+        }
+
+        if (const auto& ctl = tab->GetActiveTerminalControl())
+        {
+            ctl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+        }
+
+        _agentPaneLog("_AutoCreateHiddenAgentPaneShared: done — split done, awaiting Initialized to emit attach_pane");
+        return true;
     }
 
     // Called whenever agent-identity settings may have changed. Diffs the

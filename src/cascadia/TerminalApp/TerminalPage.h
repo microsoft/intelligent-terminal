@@ -385,6 +385,13 @@ namespace winrt::TerminalApp::implementation
         void _RebuildAgentStack();
         void _FlushPendingAgentRebuild();
         void _AutoCreateHiddenAgentPane(winrt::com_ptr<Tab> tab);
+        // Shared-wta variant of _AutoCreateHiddenAgentPane: instead of
+        // spawning wta.exe as the conpty child for this pane, this routes
+        // the pane through the process-singleton wta managed by SharedWta
+        // and connects it via an AgentPipeConnection + COM
+        // `_internal.attach_pane` event. Returns true when the shared
+        // path took over so the caller can skip its legacy logic.
+        bool _AutoCreateHiddenAgentPaneShared(winrt::com_ptr<Tab> tab);
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl. Returns a fresh Pane around the
