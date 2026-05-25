@@ -8,21 +8,21 @@ setup.title.not_available: "Агентът не е наличен"
 setup.title.sign_in: "Изисква се влизане"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Вашият агент \"%{agent}\" не е инсталиран. Следвайте стъпките по-долу, за да го инсталирате. За да смените агента, отидете в Settings."
-setup.subtitle.agent_missing: "Вашият агент \"%{agent}\" не е инсталиран. Преинсталирайте го ръчно и опитайте отново. За да смените агента, отидете в Settings."
-setup.subtitle.copilot_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Следвайте стъпките по-долу, за да влезете. За да смените агента, отидете в Settings."
-setup.subtitle.agent_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Влезте чрез CLI на агента и опитайте отново. За да смените агента, отидете в Settings."
+setup.subtitle.copilot_missing: "Вашият агент \"%{agent}\" не е инсталиран. Следвайте стъпките по-долу, за да го инсталирате. За да смените агента, отидете в Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Вашият агент \"%{agent}\" не е инсталиран. Преинсталирайте го ръчно и опитайте отново. За да смените агента, отидете в Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Следвайте стъпките по-долу, за да влезете. За да смените агента, отидете в Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Влезте чрез агента и изберете \"Влязох\" по-долу. За да смените агента, отидете в Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Изберете CLI на агента по подразбиране, който искате да използвате в Intelligent Terminal. Можете"
+setup.description.fre_line1: "Изберете агента по подразбиране, който искате да използвате в Intelligent Terminal. Можете"
 setup.description.fre_line2: "да отидете в Settings, за да конфигурирате работното си пространство."
 
-setup.option.reinstall: "Преинсталиране на %{agent}"
-setup.option.reinstall_hint: "(Ще бъде инсталиран автоматично)"
+setup.option.install: "Инсталиране на %{agent}"
+setup.option.install_hint: "(Ще бъде инсталиран автоматично)"
 setup.option.signin: "Влизане в %{agent}"
-setup.option.retry_detection: "Повторно откриване"
-setup.option.retry_auth: "Влязох — повторен опит за свързване"
-setup.option.retry_connection: "Повторен опит за свързване"
+setup.option.retry_detection: "Опитай отново"
+setup.option.retry_auth: "Влязох — опитай да се свържеш отново"
+setup.option.retry_connection: "Опитай да се свържеш отново"
 setup.option.switch_to: "Превключване към %{agent}"
 setup.status.installing: "Инсталиране..."
 setup.status.install_failed: "Инсталирането е неуспешно: "
@@ -49,6 +49,8 @@ chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(отменено)"
+chat.turn_executed: "→ изпълнено: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Попитайте каквото и да е, / за команди.."  # {Locked="/"}
@@ -62,10 +64,17 @@ commands.help_title: " Помощ "
 commands.help_header: "Наклонена черта команди — въведете / в полето за въвеждане."
 commands.help_escape_hint: "  //text     Изпращане на буквално '/' (заобикаля анализатора на команди)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Затваряне на тази помощ"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Показване на този списък с команди"
+commands.clear.summary: "Изчистване на хронологията на чата (сесията се запазва)"
+commands.new.summary: "Стартиране на нова сесия ACP (изтрива хронологията)"  # {Locked="ACP"}
+commands.restart.summary: "Повторно свързване: прекратява процеса на агента и го стартира отново"
+commands.stop.summary: "Отмяна на текущата подкана"
+commands.sessions.summary: "Отваряне на избора на предишни сесии (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ за навигация • Enter за избор • Esc за отказ)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ за навигация • ← → за превключване на бутони • Enter за избор • Esc за отказ)"
 recommendations.button_run_command: "[ Изпълни команда ]"
 recommendations.button_insert_in_terminal: "Вмъкване в Terminal"
 recommendations.button_open_in_new_tab: "Отваряне в нов раздел ↵"
@@ -102,7 +111,7 @@ agent.custom.auth_hint: "Уверете се, че %{name} е инсталира
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Зареждане..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ за навигация • Enter за стартиране на сесия в нов раздел • Shift+enter за стартиране на сесия в панела на агента • Esc за изход)"
 agents.status.active: "Активен"
 agents.status.waiting_for_input: "Очаква въвеждане"
@@ -158,3 +167,15 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
+time.just_now: "току-що"
+time.minute_singular: "преди 1 минута"
+time.minutes_other: "преди %{count} минути"
+time.hour_singular: "преди 1 час"
+time.hours_other: "преди %{count} часа"
+time.day_singular: "преди 1 ден"
+time.days_other: "преди %{count} дни"

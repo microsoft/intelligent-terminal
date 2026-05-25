@@ -8,21 +8,21 @@ setup.title.not_available: "Ejen AI tidak tersedia"
 setup.title.sign_in: "Log masuk diperlukan"
 
 # %{agent} digantikan dengan nama paparan ejen AI semasa masa jalan.
-setup.subtitle.copilot_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Ikuti langkah di bawah untuk memasangnya. Untuk menukar ejen AI, pergi ke Settings."
-setup.subtitle.agent_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Sila pasang semula secara manual, kemudian cuba lagi. Untuk menukar ejen AI, pergi ke Settings."
-setup.subtitle.copilot_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Ikuti langkah di bawah untuk log masuk. Untuk menukar ejen AI, pergi ke Settings."
-setup.subtitle.agent_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Sila log masuk melalui CLI ejen AI, kemudian cuba lagi. Untuk menukar ejen AI, pergi ke Settings."
+setup.subtitle.copilot_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Ikuti langkah di bawah untuk memasangnya. Untuk menukar ejen AI, pergi ke Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Sila pasang semula secara manual, kemudian cuba lagi. Untuk menukar ejen AI, pergi ke Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Ikuti langkah di bawah untuk log masuk. Untuk menukar ejen AI, pergi ke Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Sila log masuk melalui ejen AI, kemudian pilih \"Saya telah log masuk\" di bawah. Untuk menukar ejen AI, pergi ke Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
 setup.description.fre_line1: "Pilih CLI ejen AI lalai yang ingin anda gunakan dalam Intelligent Terminal. Anda boleh"
 setup.description.fre_line2: "pergi ke Settings untuk mengkonfigurasi dan menyediakan ruang kerja anda."
 
-setup.option.reinstall: "Pasang semula %{agent}"
-setup.option.reinstall_hint: "(Akan dipasang secara automatik)"
+setup.option.install: "Pasang %{agent}"
+setup.option.install_hint: "(Akan dipasang secara automatik)"
 setup.option.signin: "Log masuk ke %{agent}"
-setup.option.retry_detection: "Cuba kesan semula"
-setup.option.retry_auth: "Saya telah log masuk — cuba sambung semula"
-setup.option.retry_connection: "Cuba sambung semula"
+setup.option.retry_detection: "Cuba lagi"
+setup.option.retry_auth: "Saya telah log masuk — cuba sambung kembali"
+setup.option.retry_connection: "Cuba sambung kembali"
 setup.option.switch_to: "Tukar ke %{agent}"
 setup.status.installing: "Memasang..."
 setup.status.install_failed: "Pemasangan gagal: "
@@ -49,6 +49,8 @@ chat.plan_header: "Pelan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(dibatalkan)"
+chat.turn_executed: "→ dilaksanakan: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Tanya apa sahaja, / untuk arahan.."  # {Locked="/"}
@@ -64,8 +66,8 @@ commands.help_escape_hint: "  //text     Hantar '/' literal (elakkan penghurai a
 commands.help_close_hint: "  Esc        Tutup bantuan ini"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ untuk navigasi • Enter untuk memilih • Esc untuk membatalkan)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ untuk navigasi • ← → untuk menukar tindakan • Enter untuk memilih • Esc untuk membatalkan)"
 recommendations.button_run_command: "[ Jalankan arahan ]"
 recommendations.button_insert_in_terminal: "Sisipkan dalam Terminal"
 recommendations.button_open_in_new_tab: "Buka dalam Tab Baharu ↵"
@@ -102,7 +104,7 @@ agent.custom.auth_hint: "Pastikan %{name} dipasang dan berada dalam PATH anda." 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Memuatkan..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ untuk navigasi • Enter untuk membuka sesi dalam tab baharu • Shift+enter untuk membuka sesi dalam anak tetingkap ejen AI • Esc untuk keluar)"
 agents.status.active: "Aktif"
 agents.status.waiting_for_input: "Menunggu input"
@@ -158,3 +160,12 @@ hooks.installed_but_disabled: "⚠ dipasang tetapi dinyahdayakan"
 hooks.not_installed: "✗ belum dipasang"
 hooks.uninstall_skipped: "dilangkau (CLI tiada dalam PATH)"
 hooks.install_attempted: "Pemasangan wt-agent-hooks dicuba (idempotent). Jalankan `wta hooks status` untuk memeriksa keputusan. Log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting ─────────────────────────────────────
+time.just_now: "baru sahaja"
+time.minute_singular: "%{count} minit yang lalu"
+time.minutes_other: "%{count} minit yang lalu"
+time.hour_singular: "%{count} jam yang lalu"
+time.hours_other: "%{count} jam yang lalu"
+time.day_singular: "%{count} hari yang lalu"
+time.days_other: "%{count} hari yang lalu"

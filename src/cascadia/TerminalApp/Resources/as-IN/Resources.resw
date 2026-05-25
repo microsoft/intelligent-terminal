@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -121,14 +121,14 @@
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Intelligent Terminal লৈ স্বাগতম</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>ভুল ব্যাখ্যা কৰিবলৈ, আদেশ প্ৰস্তুত কৰিবলৈ আৰু কাম আনব্লক কৰিবলৈ সহায়তা কৰিবলৈ আপোনাৰ অন্তৰ্নিৰ্মিত সহায়ক ছেটআপ কৰক, আপুনি কাম কৰা ঠাইতে। </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Intelligent Terminal বিষয়ে অধিক জানক</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>আপোনাৰ অন্তৰ্নিৰ্মিত AI এজেণ্টৰ সৈতে প্ৰবাহত থাকক</value>
@@ -151,7 +151,7 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>Intelligent Terminal লৈ স্বাগতম</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>এতিয়া কি ছেটআপ কৰিব বাছনি কৰক। আপুনি এইবোৰ যিকোনো সময়তে সলনি কৰিব পাৰে </value>
@@ -164,14 +164,12 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>এজেণ্ট পেনত ব্যৱহৃত এজেণ্ট CLI বাছনি কৰক। যিকোনো সুসংগত ACP CLI স্বয়ংক্ৰিয়ভাৱে চিনাক্ত হ'ব।</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>এজেণ্ট পেনত ব্যৱহৃত এজেণ্ট বাছনি কৰক। যিকোনো সুসংগত ACP এজেণ্ট স্বয়ংক্ৰিয়ভাৱে চিনাক্ত হ'ব।</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
     <value>ℹ এই এজেণ্টৰ বাবে Node.js আৰু NPX প্ৰয়োজন, যদি ইতিমধ্যে নাই তেন্তে স্বয়ংক্ৰিয়ভাৱে ইনষ্টল হ'ব।</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>বিফল কমাণ্ডসমূহৰ বাবে স্বয়ংক্ৰিয়ভাৱে সমাধান পৰামৰ্শ দিয়ক</value>
@@ -185,13 +183,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal ক আপোনাৰ চলি থকা বা সক্ৰিয় এজেণ্টসমূহৰ স্থিতি ট্ৰেক কৰিবলৈ অনুমতি দিয়ক।</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ এইটো সক্ষম কৰিলে আপোনাৰ এজেণ্ট CLI সমূহত ছেশ্বন ট্ৰেক কৰিবলৈ ইণ্টিগ্ৰেশ্বন হুক ইনষ্টল হ'ব।</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ℹ এইটো সক্ষম কৰিলে আপোনাৰ এজেণ্টসমূহত ছেশ্বন ট্ৰেক কৰিবলৈ ইণ্টিগ্ৰেশ্বন hooks ইনষ্টল হ'ব।</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>পেন স্থান</value>
@@ -238,5 +235,53 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>বন্ধ</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>ত্ৰুটি বিশ্লেষণ কৰা হৈছে…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>ত্ৰুটি ধৰা পৰিছে: বিশ্লেষণ কৰা হৈছে…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>ত্ৰুটি ধৰা পৰিছে: ঠিক কৰিবলৈ {0}</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>সমাধান সাজু — প্ৰয়োগ কৰিবলৈ {0}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>সমাধান সাজু — প্ৰয়োগ কৰিবলৈ {0}: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>পৰামৰ্শ সাজু — এজেণ্ট পেন খোলক</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Auto-fix এ ইয়াক পোনপটীয়াকৈ ঠিক কৰিবলৈ অস্বীকাৰ কৰিছে। </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>এজেণ্ট পেন খুলি সম্পূৰ্ণ পৰামৰ্শ পঢ়িবলৈ ইয়াত ক্লিক কৰক বা Ctrl+Shift+. টিপক।</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>ডায়াগনষ্টিক্স</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>এজেণ্ট অধিৱেশনসমূহ</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>এজেণ্ট অধিৱেশনসমূহ: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
 </root>

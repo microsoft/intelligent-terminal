@@ -98,13 +98,13 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 };
                 (agent.display_name.clone(), status)
             }
-            SetupOption::Reinstall { display_name, .. } => {
+            SetupOption::Install { display_name, .. } => {
                 let status = if setup.install_in_progress {
                     format!("  {} {}", spinner_char, t!("setup.status.installing"))
                 } else {
-                    format!("  {}", t!("setup.option.reinstall_hint"))
+                    format!("  {}", t!("setup.option.install_hint"))
                 };
-                (t!("setup.option.reinstall", agent = display_name.as_str()).into_owned(), status)
+                (t!("setup.option.install", agent = display_name.as_str()).into_owned(), status)
             }
             SetupOption::SignIn { display_name, .. } => {
                 (t!("setup.option.signin", agent = display_name.as_str()).into_owned(), String::new())
@@ -126,7 +126,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         let is_installing_select = matches!(opt, SetupOption::SelectAgent { ref agent } if
             setup.install_in_progress && agent.can_auto_install() && !agent.cli_found);
         let is_installing_opt = is_installing_select
-            || (matches!(opt, SetupOption::Reinstall { .. }) && setup.install_in_progress);
+            || (matches!(opt, SetupOption::Install { .. }) && setup.install_in_progress);
         let status_style = if is_installing_opt {
             Style::new().fg(Color::Yellow)
         } else if is_selected {
@@ -202,6 +202,8 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    let paragraph = Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false });
+    let paragraph = Paragraph::new(lines)
+        .alignment(crate::rtl::text_alignment())
+        .wrap(ratatui::widgets::Wrap { trim: false });
     frame.render_widget(paragraph, area);
 }

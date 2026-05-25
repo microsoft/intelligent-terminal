@@ -119,6 +119,6 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         )));
     }
 
-    let paragraph = Paragraph::new(lines);
+    let paragraph = Paragraph::new(lines).alignment(crate::rtl::text_alignment());
     frame.render_widget(paragraph, area);
 }

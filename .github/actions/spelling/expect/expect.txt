@@ -2032,3 +2032,9 @@ inbox
 prioritization
 sourced
 IME
+CLDR
+doy
+Hinnant
+LONGDATE
+MRT
+Uninstalls

@@ -8,21 +8,21 @@ setup.title.not_available: "Agent ni na voljo"
 setup.title.sign_in: "Zahtevana je prijava"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Vaš agent \"%{agent}\" ni nameščen. Sledite spodnjim korakom za namestitev. Za zamenjavo agenta pojdite v Settings."
-setup.subtitle.agent_missing: "Vaš agent \"%{agent}\" ni nameščen. Znova ga namestite ročno in nato poskusite znova. Za zamenjavo agenta pojdite v Settings."
-setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Sledite spodnjim korakom za prijavo. Za zamenjavo agenta pojdite v Settings."
-setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Prijavite se prek CLI agenta in nato poskusite znova. Za zamenjavo agenta pojdite v Settings."
+setup.subtitle.copilot_missing: "Vaš agent \"%{agent}\" ni nameščen. Sledite spodnjim korakom za namestitev. Za zamenjavo agenta pojdite v Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Vaš agent \"%{agent}\" ni nameščen. Znova ga namestite ročno in nato poskusite znova. Za zamenjavo agenta pojdite v Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Sledite spodnjim korakom za prijavo. Za zamenjavo agenta pojdite v Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Prijavite se prek agenta in nato spodaj izberite \"Prijavil/a sem se\". Za zamenjavo agenta pojdite v Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Izberite privzeti CLI agenta, ki ga želite uporabljati v Intelligent Terminal. Lahko"
+setup.description.fre_line1: "Izberite privzetega agenta, ki ga želite uporabljati v Intelligent Terminal. Lahko"
 setup.description.fre_line2: "odprete Settings za konfiguracijo delovnega prostora."
 
-setup.option.reinstall: "Ponovna namestitev %{agent}"
-setup.option.reinstall_hint: "(Nameščen bo samodejno)"
+setup.option.install: "Ponovna namestitev %{agent}"
+setup.option.install_hint: "(Nameščen bo samodejno)"
 setup.option.signin: "Prijava v %{agent}"
-setup.option.retry_detection: "Ponovi zaznavanje"
-setup.option.retry_auth: "Prijavil(a) sem se — ponovi povezavo"
-setup.option.retry_connection: "Ponovi povezavo"
+setup.option.retry_detection: "Poskusite znova"
+setup.option.retry_auth: "Prijavil/a sem se — poskusite se znova povezati"
+setup.option.retry_connection: "Poskusite se znova povezati"
 setup.option.switch_to: "Preklopi na %{agent}"
 setup.status.installing: "Nameščanje..."
 setup.status.install_failed: "Namestitev ni uspela: "
@@ -49,6 +49,8 @@ chat.plan_header: "Načrt:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(preklicano)"
+chat.turn_executed: "→ izvedeno: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Vprašajte karkoli, / za ukaze.."  # {Locked="/"}
@@ -62,10 +64,17 @@ commands.help_title: " Pomoč "
 commands.help_header: "Ukazi s poševnico — vnesite / v vnosno polje."
 commands.help_escape_hint: "  //text     Pošlji dobesedni '/' (obide razčlenjevalnik ukazov)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Zapri to pomoč"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Prikaži ta seznam ukazov"
+commands.clear.summary: "Počisti zgodovino klepeta (seja se ohrani)"
+commands.new.summary: "Začni novo sejo ACP (zavrže zgodovino)"  # {Locked="ACP"}
+commands.restart.summary: "Ponovno poveži: končaj proces agenta in ga znova zaženi"
+commands.stop.summary: "Prekliči poziv v teku"
+commands.sessions.summary: "Odpri izbirnik preteklih sej (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ za krmarjenje • Enter za izbiro • Esc za preklic)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ za krmarjenje • ← → za preklapljanje gumbov • Enter za izbiro • Esc za preklic)"
 recommendations.button_run_command: "[ Zaženi ukaz ]"
 recommendations.button_insert_in_terminal: "Vstavi v terminal"
 recommendations.button_open_in_new_tab: "Odpri v novem zavihku ↵"
@@ -102,7 +111,7 @@ agent.custom.auth_hint: "Prepričajte se, da je %{name} nameščen in v PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Nalaganje..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ za krmarjenje • Enter za zagon seje v novem zavihku • Shift+enter za zagon seje v podoknu agenta • Esc za izhod)"
 agents.status.active: "Aktivno"
 agents.status.waiting_for_input: "Čaka na vnos"
@@ -158,3 +167,15 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
+time.just_now: "pravkar"
+time.minute_singular: "pred 1 minuto"
+time.minutes_other: "pred %{count} minutami"
+time.hour_singular: "pred 1 uro"
+time.hours_other: "pred %{count} urami"
+time.day_singular: "pred 1 dnevom"
+time.days_other: "pred %{count} dnevi"

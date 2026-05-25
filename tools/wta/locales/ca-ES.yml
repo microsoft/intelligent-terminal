@@ -8,21 +8,21 @@ setup.title.not_available: "L'agent no està disponible"
 setup.title.sign_in: "Cal iniciar la sessió"
 
 # %{agent} se substitueix pel nom de visualització de l'agent en temps d'execució.
-setup.subtitle.copilot_missing: "El vostre agent \"%{agent}\" no està instal·lat. Seguiu els passos següents per instal·lar-lo. Per canviar d'agent, aneu a Settings."
-setup.subtitle.agent_missing: "El vostre agent \"%{agent}\" no està instal·lat. Reinstal·leu-lo manualment i torneu-ho a provar. Per canviar d'agent, aneu a Settings."
-setup.subtitle.copilot_auth: "El vostre agent \"%{agent}\" requereix autenticació. Seguiu els passos següents per iniciar la sessió. Per canviar d'agent, aneu a Settings."
-setup.subtitle.agent_auth: "El vostre agent \"%{agent}\" requereix autenticació. Inicieu la sessió mitjançant el CLI de l'agent i torneu-ho a provar. Per canviar d'agent, aneu a Settings."
+setup.subtitle.copilot_missing: "El vostre agent \"%{agent}\" no està instal·lat. Seguiu els passos següents per instal·lar-lo. Per canviar d'agent, aneu a Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "El vostre agent \"%{agent}\" no està instal·lat. Reinstal·leu-lo manualment i torneu-ho a provar. Per canviar d'agent, aneu a Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "El vostre agent \"%{agent}\" requereix autenticació. Seguiu els passos següents per iniciar la sessió. Per canviar d'agent, aneu a Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_auth: "El vostre agent \"%{agent}\" requereix autenticació. Inicieu la sessió mitjançant l'agent i seleccioneu \"He iniciat la sessió\" a continuació. Per canviar d'agent, aneu a Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
 setup.description.fre_line1: "Trieu el CLI d'agent predeterminat que voleu utilitzar a l'Intelligent Terminal. Podeu"
 setup.description.fre_line2: "anar a Settings per configurar el vostre espai de treball."
 
-setup.option.reinstall: "Reinstal·la %{agent}"
-setup.option.reinstall_hint: "(S'instal·larà automàticament)"
+setup.option.install: "Instal·la %{agent}"
+setup.option.install_hint: "(S'instal·larà automàticament)"
 setup.option.signin: "Inicia la sessió a %{agent}"
-setup.option.retry_detection: "Torna a provar la detecció"
-setup.option.retry_auth: "He iniciat la sessió — torna a provar la connexió"
-setup.option.retry_connection: "Torna a provar la connexió"
+setup.option.retry_detection: "Torna-ho a provar"
+setup.option.retry_auth: "He iniciat la sessió — prova de connectar de nou"
+setup.option.retry_connection: "Prova de connectar de nou"
 setup.option.switch_to: "Canvia a %{agent}"
 setup.status.installing: "S'està instal·lant..."
 setup.status.install_failed: "Error en la instal·lació: "
@@ -49,6 +49,8 @@ chat.plan_header: "Pla:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(cancel·lat)"
+chat.turn_executed: "→ executat: %{title}"
 
 # ── Marcadors d'entrada (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Pregunteu el que vulgueu, / per a ordres.."  # {Locked="/"}
@@ -64,8 +66,8 @@ commands.help_escape_hint: "  //text     Envia un '/' literal (escapa l'analitza
 commands.help_close_hint: "  Esc        Tanca aquesta ajuda"  # {Locked="Esc"}
 
 # ── Tauler de recomanacions (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - noms de tecles i glif de tecla Retorn, no traduïu
-recommendations.nav_hint: "(↑ ↓ per navegar • Enter per seleccionar • Esc per cancel·lar)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - noms de tecles i glif de tecla Retorn, no traduïu
+recommendations.nav_hint: "(↑ ↓ per navegar • ← → per canviar accions • Enter per seleccionar • Esc per cancel·lar)"
 recommendations.button_run_command: "[ Executa l'ordre ]"
 recommendations.button_insert_in_terminal: "Insereix al Terminal"
 recommendations.button_open_in_new_tab: "Obre en una pestanya nova ↵"
@@ -102,7 +104,7 @@ agent.custom.auth_hint: "Assegureu-vos que %{name} estigui instal·lat i al vost
 
 # ── Vista d'agents (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "S'està carregant..."
-# {Locked="Enter","Shift+enter","Esc"} - combinacions de tecles, no traduïu
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - combinacions de tecles, no traduïu
 agents.footer_hint: "(↑ ↓ per navegar • Enter per iniciar la sessió en una pestanya nova • Shift+enter per iniciar la sessió al tauler d'agent • Esc per sortir)"
 agents.status.active: "Actiu"
 agents.status.waiting_for_input: "Esperant entrada"
@@ -158,3 +160,12 @@ hooks.installed_but_disabled: "⚠ instal·lat però desactivat"
 hooks.not_installed: "✗ no instal·lat"
 hooks.uninstall_skipped: "s'ha omès (CLI no està al PATH)"
 hooks.install_attempted: "S'ha intentat instal·lar wt-agent-hooks (idempotent). Executeu `wta hooks status` per inspeccionar el resultat. Registre de traça: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "ara mateix"
+time.minute_singular: "fa %{count} minut"
+time.minutes_other: "fa %{count} minuts"
+time.hour_singular: "fa %{count} hora"
+time.hours_other: "fa %{count} hores"
+time.day_singular: "fa %{count} dia"
+time.days_other: "fa %{count} dies"

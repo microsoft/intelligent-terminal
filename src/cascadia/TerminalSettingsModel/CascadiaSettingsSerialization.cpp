@@ -1955,4 +1955,69 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
                               TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         }
     }
+
+    // ── Dedicated Intelligent Terminal telemetry ──
+    // Census-style events that report the *value* of AI-related settings.
+    // The generic JsonSettingsChanged / UISettingsChanged events above only
+    // record setting keys; these additional events let the pipeline know
+    // which agent provider / feature value each device has configured.
+    {
+        // Sanitize agent IDs: known product names are logged as-is;
+        // custom agent IDs may contain user file paths or commands,
+        // so we bucket those as "custom".
+        static const auto sanitizeProviderId = [](const winrt::hstring& id) -> std::string {
+            if (id == L"copilot" || id == L"claude" || id == L"codex" || id == L"gemini")
+            {
+                return winrt::to_string(id);
+            }
+            return "custom";
+        };
+
+        const auto emitAgentProviderConfigured = [&](const char* providerType, const winrt::hstring& id) {
+            const auto sanitized = sanitizeProviderId(id);
+            TraceLoggingWrite(g_hSettingsModelProvider,
+                              "AgentProviderConfigured",
+                              TraceLoggingDescription("Event emitted when the user has an agent provider configured"),
+                              TraceLoggingValue(providerType, "ProviderType", "Which provider setting (AcpAgent or DelegateAgent)"),
+                              TraceLoggingValue(sanitized.c_str(), "ProviderId", "The agent provider ID"),
+                              TraceLoggingValue(branding, "Branding"),
+                              TraceLoggingValue(distribution, "Distribution"),
+                              TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                              TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        };
+        // Emit these census-style events based on the *effective* value at JSON
+        // load time, not on whether the setting was explicitly present in JSON.
+        // Since these settings have non-empty defaults, gating on `changes`
+        // would under-report the majority of devices that run with defaults.
+        if (isJsonLoad)
+        {
+            if (const auto acpAgent = _globals->AcpAgent(); !acpAgent.empty())
+            {
+                emitAgentProviderConfigured("AcpAgent", acpAgent);
+            }
+            if (const auto delegateAgent = _globals->DelegateAgent(); !delegateAgent.empty())
+            {
+                emitAgentProviderConfigured("DelegateAgent", delegateAgent);
+            }
+        }
+        const auto emitIntelligentFeatureConfigured = [&](const char* featureName, const wchar_t* featureValue) {
+            TraceLoggingWrite(g_hSettingsModelProvider,
+                              "IntelligentFeatureConfigured",
+                              TraceLoggingDescription("Event emitted when the user has an intelligent terminal feature configured"),
+                              TraceLoggingValue(featureName, "FeatureName", "The name of the feature"),
+                              TraceLoggingWideString(featureValue, "FeatureValue", "The configured value"),
+                              TraceLoggingValue(branding, "Branding"),
+                              TraceLoggingValue(distribution, "Distribution"),
+                              TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                              TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        };
+        if (isJsonLoad)
+        {
+            emitIntelligentFeatureConfigured("AutoFix", _globals->AutoFixEnabled() ? L"true" : L"false");
+            if (const auto agentPanePosition = _globals->AgentPanePosition(); !agentPanePosition.empty())
+            {
+                emitIntelligentFeatureConfigured("AgentPanePosition", agentPanePosition.c_str());
+            }
+        }
+    }
 }

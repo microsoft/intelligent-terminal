@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -120,14 +120,14 @@
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Bem-vindo ao Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Configure o seu assistente integrado para o ajudar a explicar erros, redigir comandos e desbloquear tarefas exatamente onde trabalha. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Saiba mais sobre o Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Mantenha o foco com o seu agente de IA integrado</value>
@@ -147,7 +147,7 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>Bem-vindo ao Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Escolha o que configurar agora. Pode alterar estas opções a qualquer momento em </value>
@@ -159,8 +159,8 @@
     <value>Agente</value>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Escolha a CLI do agente utilizada no painel do agente. Qualquer CLI ACP compatível será detetada.</value>
-    <comment>{Locked="CLI","ACP"}</comment>
+    <value>Escolha o agente utilizado no painel do agente. Qualquer agente ACP compatível será detetado.</value>
+    <comment>{Locked="ACP"}</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
     <value>ℹ Este agente requer Node.js e NPX, que serão instalados automaticamente se ainda não estiverem presentes.</value>
@@ -178,11 +178,11 @@
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>Conceda permissão ao Intelligent Terminal para monitorizar o estado dos seus agentes em execução ou ativos.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Ativar esta opção instalará hooks de integração para monitorizar sessões nas suas CLIs de agente.</value>
-    <comment>{Locked="CLI"}</comment>
+    <value>ℹ Ativar esta opção instalará hooks de integração para monitorizar sessões nos seus agentes.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Posição do painel</value>
@@ -228,5 +228,53 @@
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Desativado</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Analisando erro…</value>
+    <comment>Dica de ferramenta enquanto a análise está em andamento.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Erro detectado: analisando…</value>
+    <comment>Rótulo de status durante a análise.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Erro detectado: {0} para corrigir</value>
+    <comment>{0} = atalho de teclado.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Correção pronta — {0} para aplicar</value>
+    <comment>{0} = atalho de teclado.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Correção pronta — {0} para aplicar: {1}</value>
+    <comment>{0} = atalho; {1} = prévia.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Sugestão pronta — abrir o painel do agente</value>
+    <comment>Rótulo quando uma sugestão está disponível.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>A correção automática recusou-se a corrigir diretamente. </value>
+    <comment>Primeira frase. Mantenha o espaço final.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Clique aqui ou pressione Ctrl+Shift+. para abrir o painel do agente e ler a sugestão completa.</value>
+    <comment>{Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Diagnóstico</value>
+    <comment>Dica do botão em repouso.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Sessões do agente</value>
+    <comment>Título do painel quando o gerenciamento de sessões está ativo.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Sessões do agente: {0}</value>
+    <comment>{0} = nome do agente.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
   </data>
 </root>

@@ -224,9 +224,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void _ApplyStatusReport(const std::optional<::Microsoft::Terminal::AgentHooks::StatusReport>& report);
         winrt::fire_and_forget _RefreshAgentHooksStatusAsync();
         // Args are passed verbatim to wta.exe (e.g. L"hooks install" or
-        // L"hooks uninstall --cli claude"). `inProgressMessage` is shown
-        // beneath the expander while the wta process is running.
-        winrt::fire_and_forget _RunHooksWtaAsync(std::wstring wtaArgs, std::wstring inProgressMessage);
+        // L"hooks uninstall --cli claude"). The in-progress message that
+        // appears beneath the expander while the wta process is running
+        // is set by the caller via `_agentHooksInstallSummary` before
+        // invoking this — keeps the resource lookup at the call site
+        // alongside the matching `_NotifyChanges` so the UI updates
+        // synchronously before this fire-and-forget kicks off.
+        winrt::fire_and_forget _RunHooksWtaAsync(std::wstring wtaArgs);
     };
 };
 

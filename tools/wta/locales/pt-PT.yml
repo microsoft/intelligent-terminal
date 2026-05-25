@@ -8,21 +8,21 @@ setup.title.not_available: "Agente não disponível"
 setup.title.sign_in: "Início de sessão necessário"
 
 # %{agent} é substituído pelo nome de apresentação do agente em tempo de execução.
-setup.subtitle.copilot_missing: "O seu agente \"%{agent}\" não está instalado. Siga os passos abaixo para o instalar. Para mudar de agente, aceda às definições."
-setup.subtitle.agent_missing: "O seu agente \"%{agent}\" não está instalado. Reinstale-o manualmente e tente novamente. Para mudar de agente, aceda às definições."
-setup.subtitle.copilot_auth: "O seu agente \"%{agent}\" requer autenticação. Siga os passos abaixo para iniciar sessão. Para mudar de agente, aceda às definições."
-setup.subtitle.agent_auth: "O seu agente \"%{agent}\" requer autenticação. Inicie sessão através da CLI do agente e tente novamente. Para mudar de agente, aceda às definições."
+setup.subtitle.copilot_missing: "O seu agente \"%{agent}\" não está instalado. Siga os passos abaixo para o instalar. Para mudar de agente, aceda a Definições do Intelligent Terminal > Agente."
+setup.subtitle.agent_missing: "O seu agente \"%{agent}\" não está instalado. Reinstale-o manualmente e tente novamente. Para mudar de agente, aceda a Definições do Intelligent Terminal > Agente."
+setup.subtitle.copilot_auth: "O seu agente \"%{agent}\" requer autenticação. Siga os passos abaixo para iniciar sessão. Para mudar de agente, aceda a Definições do Intelligent Terminal > Agente."
+setup.subtitle.agent_auth: "O seu agente \"%{agent}\" requer autenticação. Inicie sessão através do agente e selecione \"Já iniciei sessão\" abaixo. Para mudar de agente, aceda a Definições do Intelligent Terminal > Agente."
 
 # {Locked="Intelligent Terminal"}
 setup.description.fre_line1: "Escolha a CLI de agente predefinida que pretende utilizar no Intelligent Terminal. Pode"
 setup.description.fre_line2: "aceder às definições para configurar e preparar o seu espaço de trabalho."
 
-setup.option.reinstall: "Reinstalar %{agent}"
-setup.option.reinstall_hint: "(Será instalado automaticamente)"
+setup.option.install: "Instalar %{agent}"
+setup.option.install_hint: "(Será instalado automaticamente)"
 setup.option.signin: "Iniciar sessão em %{agent}"
-setup.option.retry_detection: "Repetir deteção"
-setup.option.retry_auth: "Já iniciei sessão — repetir ligação"
-setup.option.retry_connection: "Repetir ligação"
+setup.option.retry_detection: "Tentar novamente"
+setup.option.retry_auth: "Já iniciei sessão — tentar ligar novamente"
+setup.option.retry_connection: "Tentar ligar novamente"
 setup.option.switch_to: "Mudar para %{agent}"
 setup.status.installing: "A instalar..."
 setup.status.install_failed: "Falha na instalação: "
@@ -49,6 +49,8 @@ chat.plan_header: "Plano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(cancelado)"
+chat.turn_executed: "→ executado: %{title}"
 
 # ── Marcadores de posição de entrada (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Pergunte o que quiser, / para comandos.."  # {Locked="/"}
@@ -64,8 +66,8 @@ commands.help_escape_hint: "  //text     Enviar um '/' literal (escapa o analisa
 commands.help_close_hint: "  Esc        Fechar esta ajuda"  # {Locked="Esc"}
 
 # ── Painel de recomendações (src/ui/recommendations.rs) ───────────────────────────────────
-# {Locked="Enter","Esc","↵"} - nomes de teclas e glifo da tecla Enter, não traduzir
-recommendations.nav_hint: "(↑ ↓ para navegar • Enter para selecionar • Esc para cancelar)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - nomes de teclas e glifo da tecla Enter, não traduzir
+recommendations.nav_hint: "(↑ ↓ para navegar • ← → alternar ações • Enter para selecionar • Esc para cancelar)"
 recommendations.button_run_command: "[ Executar comando ]"
 recommendations.button_insert_in_terminal: "Inserir no terminal"
 recommendations.button_open_in_new_tab: "Abrir em novo separador ↵"
@@ -102,7 +104,7 @@ agent.custom.auth_hint: "Certifique-se de que %{name} está instalado e no PATH.
 
 # ── Vista de agentes (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "A carregar..."
-# {Locked="Enter","Shift+enter","Esc"} - combinações de teclas, não traduzir
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - combinações de teclas, não traduzir
 agents.footer_hint: "(↑ ↓ para navegar • Enter para iniciar sessão em novo separador • Shift+enter para iniciar sessão no painel do agente • Esc para sair)"
 agents.status.active: "Ativo"
 agents.status.waiting_for_input: "A aguardar entrada"
@@ -158,3 +160,22 @@ hooks.installed_but_disabled: "⚠ Instalado mas desativado"
 hooks.not_installed: "✗ Não instalado"
 hooks.uninstall_skipped: "Ignorado (CLI não está no PATH)"
 hooks.install_attempted: "Instalação do wt-agent-hooks tentada (idempotente). Execute `wta hooks status` para inspecionar o resultado. Registo de rastreio: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "agora mesmo"
+time.minute_singular: "há %{count} minuto"
+time.minutes_other: "há %{count} minutos"
+time.hour_singular: "há %{count} hora"
+time.hours_other: "há %{count} horas"
+time.day_singular: "há %{count} dia"
+time.days_other: "há %{count} dias"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Mostrar esta lista de comandos"
+commands.clear.summary: "Limpar o histórico do chat (mantém a sessão)"
+commands.new.summary: "Iniciar uma nova sessão ACP (descarta o histórico)"
+commands.restart.summary: "Reconectar: terminar o processo do agente e reiniciar"
+commands.stop.summary: "Cancelar a indicação em curso"
+commands.sessions.summary: "Abrir o seletor de sessões anteriores (Ctrl+Shift+/)"
