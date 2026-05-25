@@ -100,19 +100,8 @@ pub fn is_current_locale_rtl() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Locales we care about classifying correctly. The OS owns the
-    // authoritative LTR/RTL answer for each — these tests deliberately
-    // do NOT hardcode that answer. The probe set is intentionally
-    // anonymous: "these are all locales the product ships, here are
-    // their classifications according to the OS".
-    const LOCALES_TO_PROBE: &[&str] = &[
-        // RTL locales the fork ships translations for.
-        "ar-SA", "he-IL", "fa-IR", "ur-PK", "ug-CN",
-        // Representative LTR locales.
-        "en-US", "en-GB", "de-DE", "fr-FR", "ja-JP", "zh-CN", "zh-TW", "ko-KR", "es-ES", "hi-IN",
-        "ru-RU", "pt-BR", "it-IT", "pl-PL", "tr-TR",
-    ];
+    use std::ffi::c_void;
+    use windows_sys::Win32::Globalization::{EnumSystemLocalesEx, LOCALE_WINDOWS};
 
     /// Ask the OS for the reading-layout value via a *different* code
     /// path than the helper uses, so a flag / buffer-sizing mistake in
@@ -141,6 +130,34 @@ mod tests {
         digit == '1'
     }
 
+    /// Collect every BCP-47 tag the OS knows about. We don't carry our
+    /// own list — `EnumSystemLocalesEx` is the list, this is the loop.
+    fn enumerate_installed_locales() -> Vec<String> {
+        // Callback writes each name into the `Vec` whose pointer is
+        // passed through `lParam`. `PCWSTR` is the read-only pointer
+        // shape used by Win32 string-out callbacks.
+        unsafe extern "system" fn cb(name: *const u16, _flags: u32, lparam: isize) -> i32 {
+            let len = (0..).take_while(|&i| unsafe { *name.add(i) } != 0).count();
+            let slice = unsafe { std::slice::from_raw_parts(name, len) };
+            let v = unsafe { &mut *(lparam as *mut Vec<String>) };
+            v.push(String::from_utf16_lossy(slice));
+            1 // TRUE — keep enumerating
+        }
+
+        let mut locales: Vec<String> = Vec::new();
+        let lparam = &mut locales as *mut Vec<String> as isize;
+        let ok = unsafe {
+            EnumSystemLocalesEx(
+                Some(cb),
+                LOCALE_WINDOWS,
+                lparam,
+                std::ptr::null::<c_void>(),
+            )
+        };
+        assert!(ok != 0, "EnumSystemLocalesEx failed");
+        locales
+    }
+
     #[test]
     fn empty_string_is_ltr() {
         assert!(!is_rtl_locale(""));
@@ -155,12 +172,29 @@ mod tests {
     }
 
     #[test]
-    fn matches_os_classification_for_shipping_locales() {
-        for &tag in LOCALES_TO_PROBE {
+    fn matches_os_classification_for_every_installed_locale() {
+        // Enumerate every locale the OS knows about (no hardcoded
+        // list) and assert the helper agrees with the OS for each.
+        // If the OS ever ships a new RTL locale we automatically
+        // cover it without touching this test.
+        let locales = enumerate_installed_locales();
+        assert!(
+            locales.len() > 50,
+            "EnumSystemLocalesEx returned only {} locales; expected the system to ship many more",
+            locales.len()
+        );
+        let mut mismatches: Vec<String> = Vec::new();
+        for tag in &locales {
             let expected = os_says_rtl(tag);
             let actual = is_rtl_locale(tag);
-            assert_eq!(expected, actual, "locale={tag}");
+            if expected != actual {
+                mismatches.push(format!("{tag}: helper={actual}, os={expected}"));
+            }
         }
+        assert!(
+            mismatches.is_empty(),
+            "Helper disagrees with OS for: {mismatches:?}"
+        );
     }
 
     #[test]
@@ -183,22 +217,18 @@ mod tests {
     #[test]
     fn matching_is_case_insensitive() {
         // BCP-47 is case-insensitive by spec; the OS normalizes
-        // internally. Confirm we pass that through.
-        assert_eq!(is_rtl_locale("ar-SA"), is_rtl_locale("AR-sa"));
-        assert_eq!(is_rtl_locale("he-IL"), is_rtl_locale("HE-il"));
+        // internally. Confirm we pass that through using one RTL and
+        // one LTR pseudo-locale (avoids hardcoding any real language).
         assert_eq!(is_rtl_locale("qps-plocm"), is_rtl_locale("QPS-PLOCM"));
+        assert_eq!(is_rtl_locale("qps-ploc"), is_rtl_locale("QPS-PLOC"));
     }
 
     #[test]
     fn text_alignment_for_locale_maps_correctly() {
-        // No hardcoded RTL list — the OS supplies the expected answer.
-        for &tag in LOCALES_TO_PROBE {
-            let expected = if os_says_rtl(tag) {
-                Alignment::Right
-            } else {
-                Alignment::Left
-            };
-            assert_eq!(text_alignment_for_locale(tag), expected, "locale={tag}");
-        }
+        // Two known anchors from the OS pseudo-locale set — no
+        // hardcoded "language X is RTL" knowledge.
+        assert_eq!(text_alignment_for_locale("qps-plocm"), Alignment::Right);
+        assert_eq!(text_alignment_for_locale("qps-ploc"), Alignment::Left);
+        assert_eq!(text_alignment_for_locale(""), Alignment::Left);
     }
 }

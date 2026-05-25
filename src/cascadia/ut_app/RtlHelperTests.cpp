@@ -7,21 +7,16 @@
 // src/cascadia/inc/RtlHelper.h. The helper is a thin wrapper around
 // `GetLocaleInfoEx` — the OS owns the authoritative classifier — so
 // these tests deliberately do NOT maintain a parallel list of "what
-// counts as RTL". They only pin that:
-//
-//   * The wrapper correctly calls into the OS (i.e. our well-known
-//     fork-shipping locales classify the way users expect).
-//   * Garbage input is treated as LTR (the safe default) and does not
-//     crash.
-//
-// For every locale the helper needs to classify, we ask the OS itself
-// for the expected answer and assert agreement — there is no
-// hardcoded "Arabic = RTL" knowledge in this file. No WinRT
-// activation required.
+// counts as RTL". For the broad-coverage test we ask the OS itself
+// (via `EnumSystemLocalesEx`) which locales it knows about and assert
+// the helper agrees with the OS on each. No hardcoded language list
+// anywhere in this file.
 
 #include "precomp.h"
 
 #include <winnls.h>
+
+#include <vector>
 
 #include "../inc/RtlHelper.h"
 
@@ -38,23 +33,10 @@ namespace TerminalAppUnitTests
 
         TEST_METHOD(EmptyStringIsLtr);
         TEST_METHOD(MalformedTagsAreLtr);
-        TEST_METHOD(MatchesOsClassificationForShippingLocales);
+        TEST_METHOD(MatchesOsClassificationForEveryInstalledLocale);
         TEST_METHOD(PseudoMirroredIsRtl);
         TEST_METHOD(PseudoLtrPseudoLocalesAreLtr);
         TEST_METHOD(MatchingIsCaseInsensitive);
-    };
-
-    // The set of locales whose layout direction we *care about* in
-    // this product. For each, the OS is the source of truth — we just
-    // assert our helper agrees with what the OS reports. Tests don't
-    // hardcode the LTR/RTL answer.
-    static constexpr std::wstring_view kLocalesToProbe[] = {
-        // RTL locales the fork ships translations for.
-        L"ar-SA", L"he-IL", L"fa-IR", L"ur-PK", L"ug-CN",
-        // A representative sample of LTR locales from the fork's set.
-        L"en-US", L"en-GB", L"de-DE", L"fr-FR", L"ja-JP",
-        L"zh-CN", L"zh-TW", L"ko-KR", L"es-ES", L"hi-IN",
-        L"ru-RU", L"pt-BR", L"it-IT", L"pl-PL", L"tr-TR",
     };
 
     // Ask the OS via a *different* code path than the helper uses,
@@ -76,6 +58,30 @@ namespace TerminalAppUnitTests
         return chars > 1 && buf[0] == L'1';
     }
 
+    // Callback for `EnumSystemLocalesEx`. Each locale name is pushed
+    // into the `std::vector<std::wstring>*` whose pointer is passed
+    // through `LPARAM`.
+    static BOOL CALLBACK CollectLocaleCallback(LPWSTR localeName, DWORD /*flags*/, LPARAM lParam)
+    {
+        auto* vec = reinterpret_cast<std::vector<std::wstring>*>(lParam);
+        vec->emplace_back(localeName);
+        return TRUE;
+    }
+
+    // Collect every BCP-47 tag the OS knows about. We don't carry our
+    // own list — `EnumSystemLocalesEx` is the list, this is the loop.
+    static std::vector<std::wstring> EnumerateInstalledLocales()
+    {
+        std::vector<std::wstring> locales;
+        const BOOL ok = ::EnumSystemLocalesEx(
+            CollectLocaleCallback,
+            LOCALE_WINDOWS,
+            reinterpret_cast<LPARAM>(&locales),
+            nullptr);
+        VERIFY_IS_TRUE(ok != FALSE, L"EnumSystemLocalesEx failed");
+        return locales;
+    }
+
     void RtlHelperTests::EmptyStringIsLtr()
     {
         VERIFY_IS_FALSE(IsRtlLocale(L""));
@@ -91,16 +97,32 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(IsRtlLocale(L"!!!"));
     }
 
-    void RtlHelperTests::MatchesOsClassificationForShippingLocales()
+    void RtlHelperTests::MatchesOsClassificationForEveryInstalledLocale()
     {
-        // For every locale we care about, our wrapper must agree with
-        // the OS. No hardcoded RTL list — the OS *is* the list.
-        for (const auto tag : kLocalesToProbe)
+        // Enumerate every locale the OS knows about (no hardcoded
+        // list) and assert the helper agrees with the OS on each. If
+        // the OS ever ships a new RTL locale we automatically cover
+        // it without touching this test.
+        const auto locales = EnumerateInstalledLocales();
+        VERIFY_IS_GREATER_THAN(locales.size(),
+                               size_t{ 50 },
+                               L"EnumSystemLocalesEx returned too few locales; expected the system to ship many more");
+        size_t mismatches = 0;
+        for (const auto& tag : locales)
         {
             const bool expected = OsSaysRtl(tag);
             const bool actual = IsRtlLocale(tag);
-            VERIFY_ARE_EQUAL(expected, actual, NoThrowString().Format(L"locale=%s", std::wstring{ tag }.c_str()));
+            if (expected != actual)
+            {
+                ++mismatches;
+                Log::Comment(NoThrowString().Format(
+                    L"Disagreement on '%s': helper=%d, os=%d",
+                    tag.c_str(),
+                    actual ? 1 : 0,
+                    expected ? 1 : 0));
+            }
         }
+        VERIFY_ARE_EQUAL(size_t{ 0 }, mismatches, L"Helper must agree with OS on every installed locale");
     }
 
     void RtlHelperTests::PseudoMirroredIsRtl()
@@ -126,11 +148,9 @@ namespace TerminalAppUnitTests
     void RtlHelperTests::MatchingIsCaseInsensitive()
     {
         // BCP-47 tags are case-insensitive by spec; the OS normalizes
-        // them. Confirm we pass that through correctly so a locale
-        // tag from settings.json (potentially typed with mixed case)
-        // still classifies.
-        VERIFY_ARE_EQUAL(IsRtlLocale(L"ar-SA"), IsRtlLocale(L"AR-sa"));
-        VERIFY_ARE_EQUAL(IsRtlLocale(L"he-IL"), IsRtlLocale(L"HE-il"));
+        // them. Confirm we pass that through using one RTL and one
+        // LTR pseudo-locale (avoids hardcoding any real language).
         VERIFY_ARE_EQUAL(IsRtlLocale(L"qps-plocm"), IsRtlLocale(L"QPS-PLOCM"));
+        VERIFY_ARE_EQUAL(IsRtlLocale(L"qps-ploc"), IsRtlLocale(L"QPS-PLOC"));
     }
 }

@@ -56,7 +56,7 @@ namespace winrt::TerminalApp::implementation
         // Honor RTL languages on the FRE root grid. XAML cascades
         // FlowDirection down the tree and auto-mirrors HorizontalAlignment,
         // so this single line is enough to flip the entire two-page wizard
-        // for ar-SA / he-IL / fa-IR / ur-PK / ug-CN (and the qps-plocm
+        // for any RTL language the OS knows about (and the qps-plocm
         // pseudo-locale used for validation). We honor the explicit
         // `Language` override from settings.json first (matches the way
         // AppLogic::_ApplyLanguageSettingChange resolves it), then fall

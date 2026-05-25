@@ -10,17 +10,18 @@ in `src/cascadia/inc/RtlHelper.h` (C++ / FRE) and `tools/wta/src/rtl.rs`
 
 ## Why this exists
 
-The localization pass translated text for Arabic (`ar-SA`), Hebrew
-(`he-IL`), Persian (`fa-IR`), Urdu (`ur-PK`), `ug-CN`, and other
-right-to-left scripts. Translated text is only half of RTL support —
-the *layout* also needs to mirror (right-to-left flow, right-aligned
-columns, primary buttons swap sides, etc.).
+The localization pass translated text for several right-to-left
+scripts. Translated text is only half of RTL support — the *layout*
+also needs to mirror (right-to-left flow, right-aligned columns,
+primary buttons swap sides, etc.).
 
-## RTL locales the product ships
+## RTL coverage
 
-`ar-SA`, `he-IL`, `fa-IR`, `ur-PK`, `ug-CN`. Plus the pseudo-locale
-`qps-plocm`, which exists specifically to validate RTL / mirrored
-layouts.
+Every locale the OS classifies as right-to-left is supported — the
+helpers delegate to the Windows locale database, so the set is the
+OS's, not ours. For end-to-end validation we use the pseudo-mirrored
+pseudo-locale `qps-plocm`, which Microsoft ships specifically so apps
+can verify RTL / mirrored layouts without a real RTL build.
 
 ## Implementation overview
 
