@@ -1,8 +1,8 @@
 aaaaabbb
-ABANDONFONT
 abbcc
 abcc
 abgr
+ABANDONFONT
 ABORTIFHUNG
 ACCESSTOKEN
 acidev
@@ -143,7 +143,6 @@ catid
 cazamor
 CBash
 cbiex
-Ccc
 CCHAR
 CCmd
 ccolor
@@ -166,7 +165,6 @@ CHARSETINFO
 chshdng
 CHT
 CLASSSTRING
-CLDR
 cleartype
 CLICKACTIVE
 clickdown
@@ -260,7 +258,6 @@ CPG
 cpinfo
 CPINFOEX
 CPLINFO
-cplusplus
 CPPCORECHECK
 cppcorecheckrules
 cpprestsdk
@@ -281,7 +278,6 @@ csrutil
 CSTYLE
 CSwitch
 CTerminal
-ctl
 ctlseqs
 CTRLEVENT
 CTRLFREQUENCY
@@ -338,7 +334,6 @@ DComposition
 DDESHARE
 DDevice
 DEADCHAR
-Debian
 debugtype
 DECAC
 DECALN
@@ -463,8 +458,6 @@ DLOOK
 doc'd
 DONTCARE
 doskey
-dotnet
-doy
 DPG
 DPIAPI
 DPICHANGE
@@ -478,7 +471,6 @@ DRAWITEM
 DRAWITEMSTRUCT
 drcs
 DROPFILES
-drv
 DSBCAPS
 DSBLOCK
 DSBPLAY
@@ -518,14 +510,12 @@ ELEMENTNOTAVAILABLE
 EMPTYBOX
 enabledelayedexpansion
 ENDCAP
-endptr
 ENTIREBUFFER
 ENU
 Enum'd
 ENUMLOGFONT
 ENUMLOGFONTEX
 EOB
-EOFs
 EOK
 EPres
 EQU
@@ -538,7 +528,7 @@ ETW
 EUDC
 eventing
 evflags
-evt
+EOFs
 execd
 executionengine
 exemain
@@ -607,7 +597,6 @@ ftcs
 fte
 Ftm
 Fullscreens
-Fullwidth
 FUNCTIONCALL
 fuzzmain
 fuzzmap
@@ -675,7 +664,6 @@ GHIJK
 GHIJKL
 gitcheckin
 gitfilters
-gitlab
 gle
 GLOBALFOCUS
 GLYPHENTRY
@@ -711,7 +699,6 @@ hbr
 hbrush
 HCmd
 hdc
-hdr
 HDROP
 hdrstop
 HEIGHTSCROLL
@@ -724,7 +711,6 @@ hhx
 HIBYTE
 hicon
 HIDEWINDOW
-Hinnant
 hinst
 HISTORYBUFS
 HISTORYNODUP
@@ -777,7 +763,6 @@ ICONWARNING
 IDCANCEL
 IDD
 IDISHWND
-idl
 idllib
 IDOK
 IDR
@@ -791,9 +776,7 @@ IIo
 ILC
 ILCo
 ILD
-IME
 IMPEXP
-inbox
 inclusivity
 INCONTEXT
 INDEXID
@@ -820,7 +803,6 @@ INTERNALNAME
 intsafe
 INVALIDARG
 INVALIDATERECT
-Ioctl
 ipch
 ipsp
 iterm
@@ -863,14 +845,12 @@ KLF
 KLMNO
 KOK
 KPRIORITY
-KVM
 kyouhaishaheiku
 langid
 LANGUAGELIST
 lasterror
 LASTEXITCODE
 LAYOUTRTL
-lbl
 LBN
 LBUTTON
 LBUTTONDBLCLK
@@ -893,7 +873,6 @@ LINKERRCAP
 LINKERROR
 listptr
 listptrsize
-lld
 llx
 LMENU
 lnkd
@@ -910,7 +889,6 @@ LOGFONT
 LOGFONTA
 LOGFONTW
 logissue
-LONGDATE
 losslessly
 loword
 lparam
@@ -951,7 +929,6 @@ LPWINDOWPOS
 lpwpos
 lpwstr
 LRESULT
-lsb
 lsconfig
 lstatus
 lstrcmp
@@ -1028,7 +1005,6 @@ MOUSEACTIVATE
 MOUSEFIRST
 MOUSEHWHEEL
 MOVESTART
-MRT
 msaa
 msb
 msbuildcache
@@ -1112,7 +1088,6 @@ NOMOVE
 NONALERT
 nonbreaking
 nonclient
-NONINFRINGEMENT
 NONPREROTATED
 nonspace
 NOOWNERZORDER
@@ -1196,8 +1171,6 @@ osc
 OSDEPENDSROOT
 OSG
 OSGENG
-oss
-outdir
 OUTOFCONTEXT
 Outptr
 outstr
@@ -1331,8 +1304,6 @@ PREVIEWLABEL
 PREVIEWWINDOW
 PREVLINE
 prg
-pri
-prioritization
 processhost
 PROCESSINFOCLASS
 PRODEXT
@@ -1400,7 +1371,6 @@ RCOCA
 RCOCW
 RCONTROL
 RCOW
-rcv
 readback
 READCONSOLE
 READCONSOLEOUTPUT
@@ -1507,7 +1477,6 @@ SCROLLSCALE
 SCROLLSCREENBUFFER
 sddl
 SDKDDK
-segfault
 SELCHANGE
 SELECTEDFONT
 SELECTSTRING
@@ -1594,7 +1563,6 @@ snapcy
 snk
 SOLIDBOX
 Solutiondir
-sourced
 spec'd
 SRCAND
 SRCCODEPAGE
@@ -1639,7 +1607,6 @@ SUBLANG
 swapchain
 swapchainpanel
 SWMR
-SWP
 SYMED
 sync'd
 SYNCPAINT
@@ -1664,10 +1631,8 @@ targetentrypoint
 TARGETLIBS
 TARGETNAME
 targetver
-taskkill
 tbc
 tbi
-Tbl
 TBM
 TCHAR
 TCHFORMAT
@@ -1677,6 +1642,7 @@ tdbuild
 TDP
 Teb
 Techo
+taskkill
 tellp
 teraflop
 terminalcore
@@ -1690,7 +1656,6 @@ testenvs
 testlab
 testlist
 testmd
-testname
 TESTNULL
 testpass
 testpasses
@@ -1728,7 +1693,6 @@ tracelogging
 traceviewpp
 trackbar
 trackpad
-transitioning
 Trd
 triaged
 triaging
@@ -1779,15 +1743,11 @@ unhighlighting
 unhosted
 UNICODETEXT
 UNICRT
-Uninstalls
 Unintense
 Unittesting
 unittests
-unk
 unknwn
 UNORM
-unparseable
-unregisters
 untextured
 UPDATEDISPLAY
 UPDOWN
@@ -1832,11 +1792,9 @@ vga
 vgaoem
 viewkind
 VIRAMA
-Virt
 VIRTTERM
 vkey
 VKKEYSCAN
-VMs
 VPA
 vpack
 vpackdirectory
@@ -1886,8 +1844,6 @@ wddm
 wddmcon
 WDDMCONSOLECONTEXT
 wdm
-webpage
-websites
 wekyb
 wex
 wextest
@@ -1942,7 +1898,6 @@ winternl
 winuser
 WINVER
 wistd
-wlen
 wmain
 WMSZ
 wnd
@@ -1973,12 +1928,13 @@ wrkstr
 wrl
 wrp
 WSLENV
+wlen
 wstr
 wstrings
 wsz
 wta
-wtai
 WTCLI
+wtai
 wtd
 WTEXT
 WTo
@@ -2009,7 +1965,6 @@ XFG
 XFORM
 XIn
 xorg
-xsi
 xstyler
 XTPOPSGR
 XTPUSHSGR
@@ -2036,3 +1991,49 @@ ZCtrl
 zero'd
 ZWJs
 ZYXWVUTd
+
+Ccc
+cplusplus
+ctl
+Debian
+drv
+endptr
+evt
+Fullwidth
+gitlab
+hdr
+idl
+Ioctl
+KVM
+lbl
+lld
+lsb
+NONINFRINGEMENT
+oss
+outdir
+pri
+rcv
+segfault
+SWP
+Tbl
+testname
+transitioning
+unk
+unparseable
+unregisters
+Virt
+VMs
+webpage
+websites
+xsi
+dotnet
+inbox
+prioritization
+sourced
+IME
+CLDR
+doy
+Hinnant
+LONGDATE
+MRT
+Uninstalls
