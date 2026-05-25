@@ -115,7 +115,7 @@ pub enum SetupOption {
     /// FRE: select this agent to use
     SelectAgent { agent: crate::agent_check::AgentStatus },
     /// Preflight: reinstall via winget (automatic)
-    Reinstall { agent_id: String, display_name: String },
+    Install { agent_id: String, display_name: String },
     /// Preflight: sign in to fix auth
     SignIn { agent_id: String, display_name: String },
     /// Preflight: switch to a different agent
@@ -198,7 +198,7 @@ pub fn build_setup_options(
                 if !status.cli_found {
                     // CLI not found — offer install options
                     if status.can_auto_install() {
-                        opts.push(SetupOption::Reinstall {
+                        opts.push(SetupOption::Install {
                             agent_id: status.id.clone(),
                             display_name: status.display_name.clone(),
                         });
@@ -2409,7 +2409,7 @@ impl App {
                 if let Some(ref setup) = self.setup {
                     if let Some(opt) = setup.options.get(setup.selected_index) {
                         match opt {
-                            SetupOption::Reinstall { .. } => {
+                            SetupOption::Install { .. } => {
                                 let url = setup.preflight.install_url.clone();
                                 if !url.is_empty() {
                                     let _ = open_url_in_browser(&url);
@@ -2524,7 +2524,7 @@ impl App {
                     });
                 }
             }
-            SetupOption::Reinstall { agent_id, .. } => {
+            SetupOption::Install { agent_id, .. } => {
                 if let Some(ref setup) = self.setup {
                     if setup.install_in_progress {
                         return;
@@ -2546,10 +2546,10 @@ impl App {
                         }).await;
                         match result {
                             Ok(()) => {
-                                tracing::info!("Reinstall {} succeeded", id);
+                                tracing::info!("Install {} succeeded", id);
                             }
                             Err(e) => {
-                                tracing::warn!("Reinstall {} failed: {}", id, e);
+                                tracing::warn!("Install {} failed: {}", id, e);
                             }
                         }
                         let _ = tx.send(AppEvent::AgentInstallComplete);

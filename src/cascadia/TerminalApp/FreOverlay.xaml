@@ -21,7 +21,7 @@
     <UserControl.Resources>
         <!--  Matches TerminalSettingsEditor's StandardControlMaxWidth  -->
         <x:Double x:Key="StandardControlMaxWidth">1000</x:Double>
-        <!--  Welcome page has two side-by-side cards, so double the standard width  -->
+        <!--  Welcome page has two side-by-side cards (1.5× the standard width)  -->
         <x:Double x:Key="WelcomeContentMaxWidth">1500</x:Double>
     </UserControl.Resources>
 

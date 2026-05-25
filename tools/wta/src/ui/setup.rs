@@ -98,7 +98,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 };
                 (agent.display_name.clone(), status)
             }
-            SetupOption::Reinstall { display_name, .. } => {
+            SetupOption::Install { display_name, .. } => {
                 let status = if setup.install_in_progress {
                     format!("  {} {}", spinner_char, t!("setup.status.installing"))
                 } else {
@@ -126,7 +126,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         let is_installing_select = matches!(opt, SetupOption::SelectAgent { ref agent } if
             setup.install_in_progress && agent.can_auto_install() && !agent.cli_found);
         let is_installing_opt = is_installing_select
-            || (matches!(opt, SetupOption::Reinstall { .. }) && setup.install_in_progress);
+            || (matches!(opt, SetupOption::Install { .. }) && setup.install_in_progress);
         let status_style = if is_installing_opt {
             Style::new().fg(Color::Yellow)
         } else if is_selected {
