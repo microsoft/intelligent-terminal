@@ -9,12 +9,12 @@ setup.title.sign_in: "Sign in required"
 
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "Your agent \"%{agent}\" is not installed. Follow the steps below to install it. To switch agents, go to Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please reinstall it manually, then retry. To switch agents, go to Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please install it manually, then try again. To switch agents, go to Intelligent Terminal Settings > Agent."
 setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Choose the default agent CLI you would like to use in Intelligent Terminal. You can"
+setup.description.fre_line1: "Choose the default agent you would like to use in Intelligent Terminal. You can"
 setup.description.fre_line2: "navigate to Settings to configure and set up your workspace."
 
 setup.option.install: "Install %{agent}"

@@ -9,7 +9,7 @@ setup.title.sign_in: "[!!_Sign in required_!!]"
 
 # %{agent} is replaced with the agent display name at runtime.
 setup.subtitle.copilot_missing: "[!!_Your agent \"%{agent}\" is not installed. Follow the steps below to install it. To switch agents, go to Intelligent Terminal Settings > Agent._!!]"
-setup.subtitle.agent_missing: "[!!_Your agent \"%{agent}\" is not installed. Please reinstall it manually, then retry. To switch agents, go to Intelligent Terminal Settings > Agent._!!]"
+setup.subtitle.agent_missing: "[!!_Your agent \"%{agent}\" is not installed. Please install it manually, then try again. To switch agents, go to Intelligent Terminal Settings > Agent._!!]"
 setup.subtitle.copilot_auth: "[!!_Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent._!!]"
 setup.subtitle.agent_auth: "[!!_Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent._!!]"
 
@@ -20,10 +20,10 @@ setup.description.fre_line2: "[!!_navigate to Settings to configure and set up y
 setup.option.install: "[!!_Install %{agent}_!!]"
 setup.option.install_hint: "[!!_(Will be installed automatically)_!!]"
 setup.option.signin: "[!!_Sign in to %{agent}_!!]"
-setup.option.retry_detection: "Try again"
-setup.option.retry_auth: "I've signed in — try connecting again"
-setup.option.retry_connection: "Try connecting again"
-setup.option.switch_to: "Switch to %{agent}"
+setup.option.retry_detection: "[!!_Try again_!!]"
+setup.option.retry_auth: "[!!_I've signed in — try connecting again_!!]"
+setup.option.retry_connection: "[!!_Try connecting again_!!]"
+setup.option.switch_to: "[!!_Switch to %{agent}_!!]"
 setup.status.installing: "[!!_Installing..._!!]"
 setup.status.install_failed: "[!!_Install failed: _!!]"
 setup.status.installing_winget: "[!!_ Installing via winget..._!!]"

@@ -10,7 +10,7 @@ setup.title.sign_in: "[Ŝïğñ ïñ ŕéqûïŕéď!!]"
 # %{agent} is replaced with the agent display name at runtime.
 # {Locked="Settings"} - refers to the Settings page, keep as-is in English UI.
 setup.subtitle.copilot_missing: "[Ÿöûŕ åğéñţ \"%{agent}\" ïś ñöţ ïñśţåĺĺéď. Ƒöĺĺöŵ ţĥé śţéṗś ƀéĺöŵ ţö ïñśţåĺĺ ïţ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
-setup.subtitle.agent_missing: "[Ÿöûŕ åğéñţ \"%{agent}\" ïś ñöţ ïñśţåĺĺéď. Ṗĺéåśé ŕéïñśţåĺĺ ïţ ḿåñûåĺĺÿ, ţĥéñ ŕéţŕÿ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
+setup.subtitle.agent_missing: "[Ÿöûŕ åğéñţ \"%{agent}\" ïś ñöţ ïñśţåĺĺéď. Ṗĺéåśé ïñśţåĺĺ ïţ ḿåñûåĺĺÿ, ţĥéñ ţŕÿ åğåïñ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
 setup.subtitle.copilot_auth: "[Ÿöûŕ åğéñţ \"%{agent}\" ŕéqûïŕéś åûţĥéñţïçåţïöñ. Ƒöĺĺöŵ ţĥé śţéṗś ƀéĺöŵ ţö śïğñ ïñ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
 setup.subtitle.agent_auth: "[Ÿöûŕ åğéñţ \"%{agent}\" ŕéqûïŕéś åûţĥéñţïçåţïöñ. Ṗĺéåśé śïğñ ïñ ṽïå ţĥé åğéñţ, ţĥéñ śéĺéçţ \"Ï'ṽé śïğñéð ïñ\" ɓéĺöŵ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
 
@@ -21,10 +21,10 @@ setup.description.fre_line2: "[ñåṽïğåţé ţö Settings ţö çöñƒïğ
 setup.option.install: "[Ïñśţåĺĺ %{agent}!!]"
 setup.option.install_hint: "[(Ŵïĺĺ ƀé ïñśţåĺĺéď åûţöḿåţïçåĺĺÿ)!!!! !!!!]"
 setup.option.signin: "[Ŝïğñ ïñ ţö %{agent}!!]"
-setup.option.retry_detection: "Ţŕÿ åğåïñ"
-setup.option.retry_auth: "Ï'ṽé śïğñéð ïñ — ţŕÿ çöññéçţïñğ åğåïñ"
-setup.option.retry_connection: "Ţŕÿ çöññéçţïñğ åğåïñ"
-setup.option.switch_to: "Switch to %{agent}"
+setup.option.retry_detection: "[Ţŕÿ åğåïñ!!]"
+setup.option.retry_auth: "[Ï'ṽé śïğñéð ïñ — ţŕÿ çöññéçţïñğ åğåïñ!!!! !!!! !!!!]"
+setup.option.retry_connection: "[Ţŕÿ çöññéçţïñğ åğåïñ!!!! !!!!]"
+setup.option.switch_to: "[Ŝŵïţçĥ ţö %{agent}!!]"
 setup.status.installing: "[Îñśţåĺĺïñğ...!!]"
 setup.status.install_failed: "[Îñśţåĺĺ ƒåïĺéď: !!]"
 setup.status.installing_winget: "[ Îñśţåĺĺïñğ ṽïå winget...!!!! !!!!]"
