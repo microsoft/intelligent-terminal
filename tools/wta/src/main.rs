@@ -1576,6 +1576,27 @@ async fn run_acp_app(
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
+
+                        // `_internal.*` events drive the shared-wta
+                        // attach/detach pipeline; they don't fit the
+                        // (pane_id, tab_id, params) shape WtEvent
+                        // uses for autofix / tab / view routing.
+                        // Pass the whole JSON value through and let
+                        // App::handle_internal_control do the
+                        // typed-parse step where it can also log
+                        // each stage end-to-end.
+                        if method.starts_with("_internal.") {
+                            tracing::debug!(
+                                target: "internal_control",
+                                step = "receiver",
+                                method = %method,
+                                "routing to InternalControl variant",
+                            );
+                            let _ = wt_event_tx
+                                .send(app::AppEvent::InternalControl { value: event_json });
+                            continue;
+                        }
+
                         let params = event_json
                             .get("params")
                             .cloned()

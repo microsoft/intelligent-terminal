@@ -818,6 +818,16 @@ pub enum AppEvent {
         tab_id: Option<String>,
         params: serde_json::Value,
     },
+    /// `_internal.*` control event from Terminal: attach/detach/resize
+    /// a per-tab agent pane. Routed separately from WtEvent so the
+    /// dispatcher doesn't have to special-case the prefix and so the
+    /// shape stays close to the wire protocol — we carry the original
+    /// JSON value untouched and parse it via
+    /// `crate::protocol::internal_control::try_parse_internal` at
+    /// dispatch time.
+    InternalControl {
+        value: serde_json::Value,
+    },
     /// Background agent install completed — refresh the detected agents list.
     AgentInstallComplete,
     /// Login progress — device code received, display to user.
@@ -1321,6 +1331,12 @@ pub struct App {
     // None (falling back to `DEFAULT_TAB_ID`) for manual `wta` runs.
     // Lazily extended on each new `tab_changed` event.
     pub(crate) tab_sessions: HashMap<String, TabSession>,
+    /// Per-tab Ratatui render contexts for the shared-wta model. One
+    /// entry per agent pane currently attached, keyed by tab StableId.
+    /// Populated by `_internal.attach_pane`, drained by
+    /// `_internal.detach_pane`. Empty in the default (per-window-wta)
+    /// mode — only the `--headless` shared process uses it.
+    pub(crate) pane_registry: crate::pane_registry::PaneRegistry,
     // Reverse lookup: ACP `SessionId` → tab id. Populated from
     // `AgentConnected` (the startup session, bound to whichever tab the
     // process owns) and `SessionAttached` (lazily-created sessions for
@@ -1491,6 +1507,7 @@ impl App {
             show_notification_banner: false,
             autofix_enabled,
             tab_sessions,
+            pane_registry: crate::pane_registry::PaneRegistry::new(),
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
             history_load_state: HistoryLoadState::NotStarted,
@@ -2672,6 +2689,7 @@ impl App {
             AppEvent::SystemMessage(_) => "system_message",
             AppEvent::DebugPipeMessage(_) => "debug_pipe_message",
             AppEvent::WtEvent { .. } => "wt_event",
+            AppEvent::InternalControl { .. } => "internal_control",
             AppEvent::AgentInstallComplete => "agent_install_complete",
             AppEvent::LoginProgress { .. } => "login_progress",
             AppEvent::LoginComplete { .. } => "login_complete",
@@ -3172,6 +3190,9 @@ impl App {
                 {
                     self.current_tab_mut().agents_list_state.select(Some(0));
                 }
+            }
+            AppEvent::InternalControl { value } => {
+                self.handle_internal_control(value);
             }
             AppEvent::WtEvent {
                 method,
@@ -6215,6 +6236,250 @@ pub fn armed_fix_preview(rec: &crate::coordinator::RecommendationSet) -> String 
 }
 
 impl App {
+    /// Handle a `_internal.*` control event from Terminal. Routes
+    /// each step of the pipeline through tracing so a developer can
+    /// follow the chain end-to-end from a log:
+    ///
+    ///   1. inbound — JSON event arrived from the receiver task
+    ///   2. parse — try_parse_internal succeeded or rejected
+    ///   3. action — attach/detach/resize landed against the registry
+    ///   4. outbound — ack pushed onto the publisher
+    pub(crate) fn handle_internal_control(&mut self, value: serde_json::Value) {
+        let method = value
+            .get("method")
+            .and_then(|m| m.as_str())
+            .unwrap_or("<missing>")
+            .to_string();
+        tracing::info!(
+            target: "internal_control",
+            step = "inbound",
+            method = %method,
+            "received _internal.* event",
+        );
+
+        let event = match crate::protocol::internal_control::try_parse_internal(&value) {
+            Ok(Some(evt)) => evt,
+            Ok(None) => {
+                // Should never happen — wt_event_rx only routes
+                // `_internal.*`-prefixed events to InternalControl. Log
+                // loudly so a future protocol drift surfaces.
+                tracing::error!(
+                    target: "internal_control",
+                    step = "parse",
+                    method = %method,
+                    "non-_internal method reached InternalControl branch — wt_event_rx routing bug",
+                );
+                return;
+            }
+            Err(err) => {
+                tracing::warn!(
+                    target: "internal_control",
+                    step = "parse",
+                    method = %method,
+                    error = %err,
+                    "malformed _internal.* payload — ignoring",
+                );
+                return;
+            }
+        };
+        tracing::debug!(
+            target: "internal_control",
+            step = "parse",
+            event = ?event,
+            "parsed inbound event",
+        );
+
+        match event {
+            crate::protocol::internal_control::InboundEvent::AttachPane { id, params } => {
+                let tab_id = params.tab_id.clone();
+                let cols = params.cols;
+                let rows = params.rows;
+                let agent_id = params.agent_id.clone();
+                tracing::info!(
+                    target: "internal_control",
+                    step = "action",
+                    op = "attach_pane",
+                    tab_id = %tab_id,
+                    cols = cols,
+                    rows = rows,
+                    agent_id = %agent_id,
+                    registry_size_before = self.pane_registry.len(),
+                    "attaching pane",
+                );
+                // SAFETY: the contract documented in
+                // doc/specs/Multi-window-agent-pane.md → "Handle
+                // marshaling" requires Terminal to have just
+                // DuplicateHandle'd the slave HANDLEs into this
+                // process before the OnEvent call. wta cannot
+                // validate these from outside — we trust the wire
+                // protocol.
+                let attach_result = unsafe { self.pane_registry.attach(params) };
+                let ack = match attach_result {
+                    Ok(displaced) => {
+                        if displaced.is_some() {
+                            tracing::info!(
+                                target: "internal_control",
+                                step = "action",
+                                op = "attach_pane",
+                                tab_id = %tab_id,
+                                "replaced existing attachment for tab",
+                            );
+                        }
+                        tracing::info!(
+                            target: "internal_control",
+                            step = "action",
+                            op = "attach_pane",
+                            tab_id = %tab_id,
+                            registry_size_after = self.pane_registry.len(),
+                            "attach succeeded",
+                        );
+                        crate::protocol::internal_control::OutboundAck::AttachPaneAck {
+                            id: id.clone(),
+                            params: crate::protocol::internal_control::AckParams {
+                                tab_id,
+                                status: crate::protocol::internal_control::AckStatus::Ok,
+                                error: None,
+                            },
+                        }
+                    }
+                    Err(err) => {
+                        tracing::error!(
+                            target: "internal_control",
+                            step = "action",
+                            op = "attach_pane",
+                            tab_id = %tab_id,
+                            error = %err,
+                            "attach failed",
+                        );
+                        crate::protocol::internal_control::OutboundAck::AttachPaneAck {
+                            id: id.clone(),
+                            params: crate::protocol::internal_control::AckParams {
+                                tab_id,
+                                status: crate::protocol::internal_control::AckStatus::Error,
+                                error: Some(err.to_string()),
+                            },
+                        }
+                    }
+                };
+                self.emit_internal_ack(&ack);
+            }
+            crate::protocol::internal_control::InboundEvent::DetachPane { id, params } => {
+                let tab_id = params.tab_id.clone();
+                tracing::info!(
+                    target: "internal_control",
+                    step = "action",
+                    op = "detach_pane",
+                    tab_id = %tab_id,
+                    registry_size_before = self.pane_registry.len(),
+                    "detaching pane",
+                );
+                let detached = self.pane_registry.detach(&tab_id);
+                let ack = if detached.is_some() {
+                    tracing::info!(
+                        target: "internal_control",
+                        step = "action",
+                        op = "detach_pane",
+                        tab_id = %tab_id,
+                        registry_size_after = self.pane_registry.len(),
+                        "detach succeeded",
+                    );
+                    crate::protocol::internal_control::OutboundAck::DetachPaneAck {
+                        id,
+                        params: crate::protocol::internal_control::AckParams {
+                            tab_id,
+                            status: crate::protocol::internal_control::AckStatus::Ok,
+                            error: None,
+                        },
+                    }
+                } else {
+                    tracing::warn!(
+                        target: "internal_control",
+                        step = "action",
+                        op = "detach_pane",
+                        tab_id = %tab_id,
+                        "detach requested for tab with no attached pane",
+                    );
+                    crate::protocol::internal_control::OutboundAck::DetachPaneAck {
+                        id,
+                        params: crate::protocol::internal_control::AckParams {
+                            tab_id,
+                            status: crate::protocol::internal_control::AckStatus::Error,
+                            error: Some("tab not attached".to_string()),
+                        },
+                    }
+                };
+                self.emit_internal_ack(&ack);
+            }
+            crate::protocol::internal_control::InboundEvent::ResizePane { id: _, params } => {
+                let tab_id = params.tab_id.clone();
+                let cols = params.cols as u16;
+                let rows = params.rows as u16;
+                tracing::info!(
+                    target: "internal_control",
+                    step = "action",
+                    op = "resize_pane",
+                    tab_id = %tab_id,
+                    cols = cols,
+                    rows = rows,
+                    "resizing pane viewport",
+                );
+                match self.pane_registry.get_mut(&tab_id) {
+                    Some(ctx) => {
+                        if let Err(err) = ctx.resize(cols, rows) {
+                            tracing::warn!(
+                                target: "internal_control",
+                                step = "action",
+                                op = "resize_pane",
+                                tab_id = %tab_id,
+                                error = %err,
+                                "resize failed",
+                            );
+                        }
+                    }
+                    None => {
+                        // Resize for an unknown tab is benign — the
+                        // conpty's own SIGWINCH-equivalent already
+                        // propagates dimensions to whatever consumer
+                        // owns the slave HANDLE. Log at debug only.
+                        tracing::debug!(
+                            target: "internal_control",
+                            step = "action",
+                            op = "resize_pane",
+                            tab_id = %tab_id,
+                            "resize for unknown tab — no ctx in registry",
+                        );
+                    }
+                }
+                // Resize has no ack in the wire protocol — it's
+                // informational, see spec R7.
+            }
+        }
+    }
+
+    /// Serialize an outbound ack and push it onto the publisher.
+    /// Splitting out the emit step makes it easy to mock in tests.
+    fn emit_internal_ack(&self, ack: &crate::protocol::internal_control::OutboundAck) {
+        let payload = match serde_json::to_string(ack) {
+            Ok(s) => s,
+            Err(err) => {
+                tracing::error!(
+                    target: "internal_control",
+                    step = "outbound",
+                    error = %err,
+                    "failed to serialize ack",
+                );
+                return;
+            }
+        };
+        tracing::info!(
+            target: "internal_control",
+            step = "outbound",
+            payload = %payload,
+            "publishing _internal.*_ack",
+        );
+        send_wt_protocol_event(payload);
+    }
+
     /// Push the current agent status (name / version / model / connection state)
     /// to the host so a XAML-rendered agent bar can update itself. The COM
     /// server special-cases `method == "agent_status"` and dispatches it
@@ -6640,6 +6905,158 @@ mod tests {
         let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
         let debug_capture = Arc::new(AtomicBool::new(false));
         App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, restart_tx, debug_capture, true, false)
+    }
+
+    // ─── _internal.* control chain (Stage A end-to-end) ──────────────────────
+
+    /// Allocate the wta-side handles of two anonymous pipes and an
+    /// observer reader on the output side. Mirrors what the spec calls
+    /// "conpty slave handles" — at the test layer they are anonymous
+    /// pipes because we only need byte plumbing, not the conpty
+    /// kernel object's terminal-emulation semantics.
+    fn fresh_attach_handles_for_test() -> (
+        u64, // pty_in (wta reads from this)
+        u64, // pty_out (wta writes to this)
+        crate::conpty_handle::ConptyReader, // observer of wta's output
+    ) {
+        use std::ptr::null_mut;
+        use windows_sys::Win32::System::Pipes::CreatePipe;
+        let mut input_read: *mut std::ffi::c_void = null_mut();
+        let mut input_write: *mut std::ffi::c_void = null_mut();
+        let mut output_read: *mut std::ffi::c_void = null_mut();
+        let mut output_write: *mut std::ffi::c_void = null_mut();
+        unsafe {
+            assert_ne!(
+                CreatePipe(&mut input_read, &mut input_write, null_mut(), 0),
+                0
+            );
+            assert_ne!(
+                CreatePipe(&mut output_read, &mut output_write, null_mut(), 0),
+                0
+            );
+            let observer = crate::conpty_handle::ConptyReader::from_raw_handle(
+                output_read as std::os::windows::io::RawHandle,
+            );
+            let _ = input_write; // leak — closing it would EOF wta's reader
+            (input_read as u64, output_write as u64, observer)
+        }
+    }
+
+    #[test]
+    fn handle_internal_control_attach_pane_populates_registry() {
+        let mut app = test_app();
+        assert_eq!(app.pane_registry.len(), 0);
+
+        let (pin, pout, _obs) = fresh_attach_handles_for_test();
+        let value = json!({
+            "method": "_internal.attach_pane",
+            "id": "test-corr-1",
+            "params": {
+                "tab_id": "TAB_TEST",
+                "pty_in": pin,
+                "pty_out": pout,
+                "cols": 80,
+                "rows": 24,
+                "agent_id": "copilot",
+                "initial_cwd": "C:\\",
+                "initial_view": "chat",
+            }
+        });
+        app.handle_internal_control(value);
+
+        assert_eq!(app.pane_registry.len(), 1);
+        assert!(app.pane_registry.get_mut("TAB_TEST").is_some());
+    }
+
+    #[test]
+    fn handle_internal_control_detach_pane_clears_registry_entry() {
+        let mut app = test_app();
+        let (pin, pout, _obs) = fresh_attach_handles_for_test();
+        let attach = json!({
+            "method": "_internal.attach_pane",
+            "params": {
+                "tab_id": "TAB_X",
+                "pty_in": pin, "pty_out": pout,
+                "cols": 80, "rows": 24,
+                "agent_id": "copilot",
+                "initial_cwd": "/",
+                "initial_view": "chat",
+            }
+        });
+        app.handle_internal_control(attach);
+        assert_eq!(app.pane_registry.len(), 1);
+
+        let detach = json!({
+            "method": "_internal.detach_pane",
+            "params": { "tab_id": "TAB_X" }
+        });
+        app.handle_internal_control(detach);
+        assert_eq!(app.pane_registry.len(), 0);
+    }
+
+    #[test]
+    fn handle_internal_control_malformed_payload_is_silently_dropped() {
+        // A malformed _internal.* event must not crash or pollute
+        // state. Missing required `tab_id` here. Expected behaviour:
+        // log a warn (we can't observe that from a unit test
+        // without a tracing subscriber), do not change state.
+        let mut app = test_app();
+        let value = json!({
+            "method": "_internal.attach_pane",
+            "params": {
+                "pty_in": 1, "pty_out": 2,
+                "cols": 80, "rows": 24,
+                "agent_id": "copilot",
+                "initial_cwd": "/",
+                "initial_view": "chat",
+            }
+        });
+        app.handle_internal_control(value);
+        assert_eq!(app.pane_registry.len(), 0);
+    }
+
+    #[test]
+    fn handle_internal_control_attach_then_render_bytes_reach_observer() {
+        // The whole chain end-to-end: feed an attach_pane JSON in,
+        // pull the resulting RenderCtx out of the registry, draw a
+        // marker, confirm the marker surfaces on the matching pipe
+        // end. This is what Stage A claims to enable; if this test
+        // breaks the design assumption is wrong, not just the code.
+        use std::io::Read;
+
+        let mut app = test_app();
+        let (pin, pout, mut observer) = fresh_attach_handles_for_test();
+        let attach = json!({
+            "method": "_internal.attach_pane",
+            "params": {
+                "tab_id": "TAB_E2E",
+                "pty_in": pin, "pty_out": pout,
+                "cols": 40, "rows": 6,
+                "agent_id": "copilot",
+                "initial_cwd": "/",
+                "initial_view": "chat",
+            }
+        });
+        app.handle_internal_control(attach);
+
+        let ctx = app
+            .pane_registry
+            .get_mut("TAB_E2E")
+            .expect("attach should have inserted a RenderCtx");
+        ctx.terminal_mut()
+            .draw(|frame| {
+                use ratatui::widgets::Paragraph;
+                frame.render_widget(Paragraph::new("E2E_OK"), frame.area());
+            })
+            .unwrap();
+
+        let mut buf = vec![0u8; 4096];
+        let n = observer.read(&mut buf).unwrap();
+        let rendered = String::from_utf8_lossy(&buf[..n]);
+        assert!(
+            rendered.contains("E2E_OK"),
+            "rendered bytes from registry-stored ctx didn't surface; got: {rendered:?}"
+        );
     }
 
     // ─── word boundary helpers ──────────────────────────────────────────────
