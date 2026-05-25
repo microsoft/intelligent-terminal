@@ -66,6 +66,12 @@ pub struct AttachPaneParams {
     /// wta wraps this with `ConptyWriter::from_raw_handle` and gives
     /// the result to Ratatui's CrosstermBackend.
     pub pty_out: u64,
+    /// Initial pty dimensions, as passed to `CreatePseudoConsole` on
+    /// the Terminal side. The wta process can't query these from
+    /// Crossterm because the conpty's slave is not wta's controlling
+    /// tty — they have to come over the wire.
+    pub cols: u16,
+    pub rows: u16,
     /// Agent CLI to spawn for this pane ("copilot" | "claude" |
     /// "gemini" | ...). wta uses its existing agent_registry to
     /// resolve the actual command line.
@@ -163,6 +169,8 @@ mod tests {
                 "tab_id": "T7",
                 "pty_in": 968,
                 "pty_out": 976,
+                "cols": 120,
+                "rows": 40,
                 "agent_id": "copilot",
                 "initial_cwd": "C:\\Users\\test",
                 "initial_view": "chat",
@@ -175,6 +183,8 @@ mod tests {
                 assert_eq!(params.tab_id, "T7");
                 assert_eq!(params.pty_in, 968);
                 assert_eq!(params.pty_out, 976);
+                assert_eq!(params.cols, 120);
+                assert_eq!(params.rows, 40);
                 assert_eq!(params.agent_id, "copilot");
                 assert_eq!(params.initial_cwd, "C:\\Users\\test");
                 assert_eq!(params.initial_view, "chat");
@@ -193,6 +203,8 @@ mod tests {
                 "tab_id": "T7",
                 "pty_in": 1,
                 "pty_out": 2,
+                "cols": 80,
+                "rows": 24,
                 "agent_id": "claude",
                 "initial_cwd": "/tmp",
                 "initial_view": "chat",

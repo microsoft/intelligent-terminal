@@ -422,6 +422,8 @@ Terminal → wta, sent via `callback.OnEvent(json)`:
                                         // (already DuplicateHandle'd
                                         // into wta's process)
     "pty_out": 976,                     // conpty slave write HANDLE
+    "cols": 120,                        // initial pty dimensions
+    "rows": 40,                         // (as passed to CreatePseudoConsole)
     "agent_id": "copilot",              // wta knows which CLI to spawn
     "initial_cwd": "C:\\...",
     "initial_view": "chat"
