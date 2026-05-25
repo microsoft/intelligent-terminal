@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "GlobalAppSettings.h"
+#include "../inc/AgentPolicy.h"
 #include "../../types/inc/Utils.hpp"
 #include "JsonUtils.h"
 #include "KeyChordSerialization.h"
@@ -11,7 +12,7 @@
 
 #include "MediaResourceSupport.h"
 
-using namespace Microsoft::Terminal::Settings::Model;
+namespace AgentPolicy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
 using namespace winrt::Microsoft::Terminal::Settings::Model::implementation;
 using namespace winrt::Windows::UI::Xaml;
 using namespace ::Microsoft::Console;
@@ -539,4 +540,93 @@ void GlobalAppSettings::LogSettingChanges(std::set<std::string>& changes, const 
     {
         changes.emplace(fmt::format(FMT_COMPILE("{}.{}"), context, setting));
     }
+}
+
+// ── Policy-aware effective getters ──────────────────────────────────
+//
+// These apply GPO overrides on top of the user/inherited setting value.
+// If the user's chosen agent is blocked by policy, returns empty string
+// (meaning "nothing selected"). If a feature is policy-blocked, returns
+// false regardless of what settings.json says.
+
+winrt::hstring GlobalAppSettings::EffectiveAcpAgent() const
+{
+    const auto agent = AcpAgent();
+    if (agent.empty())
+    {
+        return agent;
+    }
+
+    // Custom agents: only check AllowCustomAgents policy (AllowedAgents
+    // controls built-in agent IDs, not the custom: scheme).
+    const auto agentStr = winrt::to_string(agent);
+    if (agentStr.starts_with("custom:"))
+    {
+        if (!AgentPolicy::IsCustomAgentAllowed())
+        {
+            return winrt::hstring{};
+        }
+        return agent;
+    }
+
+    // Built-in agents: check AllowedAgents allowlist.
+    if (!AgentPolicy::IsAgentAllowed(std::wstring_view{ agent }))
+    {
+        return winrt::hstring{};
+    }
+    return agent;
+}
+
+winrt::hstring GlobalAppSettings::EffectiveDelegateAgent() const
+{
+    const auto agent = DelegateAgent();
+    if (agent.empty())
+    {
+        return agent;
+    }
+
+    const auto agentStr = winrt::to_string(agent);
+    if (agentStr.starts_with("custom:"))
+    {
+        if (!AgentPolicy::IsCustomAgentAllowed())
+        {
+            return winrt::hstring{};
+        }
+        return agent;
+    }
+
+    if (!AgentPolicy::IsAgentAllowed(std::wstring_view{ agent }))
+    {
+        return winrt::hstring{};
+    }
+    return agent;
+}
+
+bool GlobalAppSettings::EffectiveAutoFixEnabled() const
+{
+    if (!AgentPolicy::IsAutoFixAllowed())
+    {
+        return false;
+    }
+    return AutoFixEnabled();
+}
+
+bool GlobalAppSettings::IsAgentPolicyLocked() const
+{
+    return AgentPolicy::IsAllowedAgentsPolicyConfigured();
+}
+
+bool GlobalAppSettings::IsCustomAgentPolicyLocked() const
+{
+    return AgentPolicy::GetCustomAgentPolicy() == AgentPolicy::PolicyState::Blocked;
+}
+
+bool GlobalAppSettings::IsAutoFixPolicyLocked() const
+{
+    return AgentPolicy::GetAutoFixPolicy() == AgentPolicy::PolicyState::Blocked;
+}
+
+bool GlobalAppSettings::IsAgentSessionHooksPolicyLocked() const
+{
+    return AgentPolicy::GetAgentSessionHooksPolicy() == AgentPolicy::PolicyState::Blocked;
 }

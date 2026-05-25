@@ -95,13 +95,24 @@ namespace wtcli
     }
 
 
-    // Build the JSON envelope for a send-event command.
-    // Returns true on success (outEvt is populated), false if paramsJson
-    // is non-empty but not a valid JSON object.
+    // Build the standard JSON envelope the COM server expects for an
+    // `agent_event`. The caller provides the event name, an optional JSON
+    // object string containing extra params, and the source pane Guid; this
+    // function folds in `pane_id` and emits the wrapped
+    // `{ type, method, params }` object in `outEvt`.
+    //
+    // Returns true on success and populates `outEvt`.
+    // Returns false and leaves `outEvt` untouched if `paramsJson` is
+    // non-empty but not a valid JSON object.
     //
     // |eventType|  — required event name (e.g. "agent.task.started")
     // |paramsJson| — optional JSON object string with extra params
-    // |sessionId|  — source session ID as a string (already resolved by caller)
+    // |sessionId|  — source pane Guid as a string (already resolved by caller).
+    //                Named `sessionId` for backwards compatibility with the
+    //                old per-pane "session_id" terminology; the value is
+    //                the WT pane GUID, which goes into `params["pane_id"]`
+    //                — matching the rename in TerminalPage.cpp for
+    //                connection_state / vt_sequence events.
     inline bool BuildSendEventJson(
         const std::string& eventType,
         const std::string& paramsJson,
@@ -121,7 +132,7 @@ namespace wtcli
         }
 
         params["event"] = eventType;
-        params["session_id"] = sessionId;
+        params["pane_id"] = sessionId;
 
         outEvt["type"] = "event";
         outEvt["method"] = "agent_event";
@@ -167,8 +178,16 @@ namespace wtcli
 
         if (!sessionIdFilter.empty())
         {
-            auto sessionId = ev["params"].get("session_id", "").asString();
-            if (sessionId != sessionIdFilter)
+            // Look for pane_id (current name) first, then fall back to
+            // session_id (old name) so older listen consumers / events
+            // produced before the rename keep matching during a
+            // partial upgrade.
+            auto paneId = ev["params"].get("pane_id", "").asString();
+            if (paneId.empty())
+            {
+                paneId = ev["params"].get("session_id", "").asString();
+            }
+            if (paneId != sessionIdFilter)
             {
                 return false;
             }

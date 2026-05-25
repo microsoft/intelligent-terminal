@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -708,8 +708,8 @@
     <value>Агент</value>
     <comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment>
   </data><data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
-    <value>Изаберите CLI агента који се користи у панелу агента. Биће откривен сваки компатибилан ACP CLI.</value>
-    <comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment>
+    <value>Изаберите агента који се користи у панелу агента. Сваки компатибилан ACP агент биће аутоматски откривен.</value>
+    <comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment>
   </data><data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>Модел</value>
     <comment>Header for the setting that specifies the model used by the agent pane agent.</comment>
@@ -723,10 +723,10 @@
     <value>Изаберите агента који се користи за брзе радње у палети команди.</value>
     <comment>Supplementary description for the command palette agent setting.</comment>
   </data><data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>Аутоматско откривање грешака</value>
+    <value>Аутоматски предложи исправке за неуспеле команде</value>
     <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
   </data><data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>Аутоматски открива грешке у командама и предлаже исправке.</value>
+    <value>Када је омогућено, ВИ агент аутоматски анализира неуспеле команде и предлаже исправку. Када је онемогућено, неуспеле команде приказују наговештај на који је могуће кликнути у статусној траци — притисните Ctrl+Alt+. или кликните на наговештај да бисте затражили исправку.</value>
     <comment>Supplementary description for the auto-error-detection setting.</comment>
   </data><data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Позиција панела</value>
@@ -741,8 +741,8 @@
     <value>Инсталирај Hook скрипте агента</value>
     <comment>Header for the Agent Hooks install section.</comment>
   </data><data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>Неопходно за управљање сесијама агента. Инсталира Hooks у сваки откривени CLI (Copilot, Claude, Gemini) како би панелу агента пријављивали сесије и статус. Након инсталације поново покрените све отворене CLI-је агената.</value>
-    <comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment>
+    <value>Пратите сесије међу агентима. Неопходно за управљање сесијама агената.</value>
+    <comment>Help text shown under the expandable section header.</comment>
   </data><data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Инсталирај Hooks</value>
     <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment>
@@ -2854,6 +2854,44 @@
     <value>Овај текст ће бити уметнут између путања више датотека превучених у терминал.</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
-
-
+  <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
+    <value>Овом поставком управља ваша организација.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
+    <value>Инсталирање hooks...</value>
+    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
+    <value>Уклањање Copilot hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
+    <value>Уклањање Claude hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
+    <value>Уклањање Gemini hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
+    <value>Неуспех: није могуће пронаћи wta.exe</value>
+    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
+    <value>Hooks су уклоњени. Поново покрените све отворене агенте да бисте одбацили претходне hooks.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
+    <value>Hooks су инсталирани. Поново покрените све отворене агенте да бисте преузели нове hooks.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
+    <value>Уклањање Hook није успело. Детаље потражите у %LOCALAPPDATA%\IntelligentTerminal\logs\.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
+    <value>Инсталација Hooks није успела. Детаље потражите у %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
+  </data>
 </root>

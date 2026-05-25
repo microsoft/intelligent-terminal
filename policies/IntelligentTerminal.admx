@@ -2,31 +2,32 @@
 <!--  (c) 2024 Microsoft Corporation  -->
 <policyDefinitions xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
   <policyNamespaces>
-    <target prefix="terminal" namespace="Microsoft.Policies.WindowsTerminal" />
+    <target prefix="terminal" namespace="Microsoft.Policies.IntelligentTerminal" />
     <using prefix="windows" namespace="Microsoft.Policies.Windows" />
   </policyNamespaces>
   <resources minRequiredRevision="1.0" />
   <supportedOn>
     <definitions>
-      <definition name="SUPPORTED_WindowsTerminal_1_21" displayName="$(string.SUPPORTED_WindowsTerminal_1_21)" />
+      <definition name="SUPPORTED_IntelligentTerminal_1_21" displayName="$(string.SUPPORTED_IntelligentTerminal_1_21)" />
       <definition name="SUPPORTED_DefaultTerminalApplication" displayName="$(string.SUPPORTED_DefaultTerminalApplication)" />
+      <definition name="SUPPORTED_IntelligentTerminal_AgentPolicy" displayName="$(string.SUPPORTED_IntelligentTerminal_AgentPolicy)" />
     </definitions>
   </supportedOn>
   <categories>
-    <category name="WindowsTerminal" displayName="$(string.WindowsTerminal)">
+    <category name="IntelligentTerminal" displayName="$(string.IntelligentTerminal)">
       <parentCategory ref="windows:WindowsComponents" />
     </category>
   </categories>
   <policies>
-    <policy name="DisabledProfileSources" class="Both" displayName="$(string.DisabledProfileSources)" explainText="$(string.DisabledProfileSourcesText)" presentation="$(presentation.DisabledProfileSources)" key="Software\Policies\Microsoft\Windows Terminal">
-      <parentCategory ref="WindowsTerminal" />
-      <supportedOn ref="SUPPORTED_WindowsTerminal_1_21" />
+    <policy name="DisabledProfileSources" class="Both" displayName="$(string.DisabledProfileSources)" explainText="$(string.DisabledProfileSourcesText)" presentation="$(presentation.DisabledProfileSources)" key="Software\Policies\Microsoft\IntelligentTerminal">
+      <parentCategory ref="IntelligentTerminal" />
+      <supportedOn ref="SUPPORTED_IntelligentTerminal_1_21" />
       <elements>
         <multiText id="DisabledProfileSources" valueName="DisabledProfileSources" required="true" />
       </elements>
     </policy>
     <policy name="DefaultTerminalApplication" class="User" displayName="$(string.DefaultTerminalApplication)" explainText="$(string.DefaultTerminalApplicationText)" presentation="$(presentation.TermAppSelection)" key="Console\%%Startup">
-      <parentCategory ref="WindowsTerminal" />
+      <parentCategory ref="IntelligentTerminal" />
       <supportedOn ref="SUPPORTED_DefaultTerminalApplication" />
       <elements>
         <enum id="TermAppSelect" required="true" valueName="DelegationTerminal">
@@ -80,6 +81,44 @@
           </item>
         </enum>
       </elements>
+    </policy>
+    <!-- Agent GPO policies -->
+    <policy name="AllowedAgents" class="Both" displayName="$(string.AllowedAgents)" explainText="$(string.AllowedAgentsText)" presentation="$(presentation.AllowedAgents)" key="Software\Policies\Microsoft\IntelligentTerminal">
+      <parentCategory ref="IntelligentTerminal" />
+      <supportedOn ref="SUPPORTED_IntelligentTerminal_AgentPolicy" />
+      <elements>
+        <multiText id="AllowedAgents" valueName="AllowedAgents" required="true" />
+      </elements>
+    </policy>
+    <policy name="AllowCustomAgents" class="Both" displayName="$(string.AllowCustomAgents)" explainText="$(string.AllowCustomAgentsText)" key="Software\Policies\Microsoft\IntelligentTerminal" valueName="AllowCustomAgents">
+      <parentCategory ref="IntelligentTerminal" />
+      <supportedOn ref="SUPPORTED_IntelligentTerminal_AgentPolicy" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
+    <policy name="AllowAutoFix" class="Both" displayName="$(string.AllowAutoFix)" explainText="$(string.AllowAutoFixText)" key="Software\Policies\Microsoft\IntelligentTerminal" valueName="AllowAutoFix">
+      <parentCategory ref="IntelligentTerminal" />
+      <supportedOn ref="SUPPORTED_IntelligentTerminal_AgentPolicy" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
+    <policy name="AllowAgentSessionHooks" class="Both" displayName="$(string.AllowAgentSessionHooks)" explainText="$(string.AllowAgentSessionHooksText)" key="Software\Policies\Microsoft\IntelligentTerminal" valueName="AllowAgentSessionHooks">
+      <parentCategory ref="IntelligentTerminal" />
+      <supportedOn ref="SUPPORTED_IntelligentTerminal_AgentPolicy" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
     </policy>
   </policies>
 </policyDefinitions>

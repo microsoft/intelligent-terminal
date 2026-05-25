@@ -4,6 +4,7 @@ extern crate rust_i18n;
 mod agent_check;
 mod agent_registry;
 mod agent_sessions;
+mod agent_pane_origin;
 mod agent_hooks_installer;
 mod app;
 mod commands;
@@ -1572,19 +1573,45 @@ async fn run_acp_app(
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
-                        let pane_id = event_json
-                            .get("params")
-                            .and_then(|p| p.get("session_id"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
                         let params = event_json
                             .get("params")
                             .cloned()
                             .unwrap_or(serde_json::Value::Null);
+                        // Read `pane_id` (current name) with a fallback
+                        // to `session_id` (the old name before the
+                        // per-tab autofix routing PR renamed it). The
+                        // C++ TerminalPage side now emits `pane_id` for
+                        // `connection_state` / `vt_sequence`, but the
+                        // wtcli `send-event` builder
+                        // (`BuildSendEventJson`) was missed in that
+                        // rename pass — `agent_event` envelopes from
+                        // hook bridge still carried `session_id`.
+                        // Without this fallback every hook event
+                        // arrived with `pane_id = ""`, and downstream
+                        // `route_agent_event_to_registry` collided all
+                        // sessions on the empty-string key in
+                        // `active_by_pane`, triggering spurious
+                        // orphan-handover demotions whenever a second
+                        // session started in the same window (e.g.
+                        // session A → Ended the moment session B's
+                        // first hook fires). Keep the fallback even
+                        // after wtcli is fixed so an old wtcli build
+                        // can talk to a new wta without surprises.
+                        let pane_id = params
+                            .get("pane_id")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                            .or_else(|| params.get("session_id").and_then(|v| v.as_str()))
+                            .unwrap_or("")
+                            .to_string();
+                        let tab_id = params
+                            .get("tab_id")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string);
                         let _ = wt_event_tx.send(app::AppEvent::WtEvent {
                             method,
                             pane_id,
+                            tab_id,
                             params,
                         });
                     }
@@ -1771,6 +1798,23 @@ async fn run_acp_app(
                 app_state.ensure_history_loaded();
             }
 
+            // Project the initial active-tab state to C++ once, after the
+            // --initial-view block has had its say. Without this push,
+            // C++'s `_agentSessionsViewActive` and `Tab.AgentPaneOpen`
+            // mirrors (single writer lives in `OnAgentStateChanged`)
+            // would stay on their defaults until the user's first
+            // interaction, leaving the bar mislabelled in the
+            // `--initial-view sessions` case and the pane-open flag
+            // out of sync with the seeded `pane_open=true` on the
+            // owner tab. Cheap and idempotent.
+            //
+            // Safe before the `Setup` mode block below: that block runs
+            // its own UI and doesn't read the view flag; if we end up in
+            // setup mode the initial "chat" emission is harmless.
+            if wt_connected {
+                app_state.project_active_tab_state();
+            }
+
             // NOTE: historical agent sessions used to be loaded here via
             // `history_loader::load_all()` (later as a `spawn_blocking`).
             // That work is now deferred — the registry is scanned lazily
@@ -1880,10 +1924,17 @@ async fn run_acp_app(
                         tab_id = %owner_tab_id,
                         "seeded app_state.tab_id from --owner-tab-id"
                     );
-                    app_state
+                    let tab = app_state
                         .tab_sessions
                         .entry(owner_tab_id.clone())
                         .or_default();
+                    // wta is the source of truth for "does this tab want
+                    // the pane visible". The pane is being spawned right
+                    // now for this owner tab, so the user clearly wants
+                    // it visible here. C++ will pick this up in the
+                    // initial `agent_state_changed` emit below and mirror
+                    // it onto Tab.AgentPaneOpen.
+                    tab.pane_open = true;
                     app_state.tab_id = Some(owner_tab_id);
                 }
             }

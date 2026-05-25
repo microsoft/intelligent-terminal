@@ -516,15 +516,17 @@ namespace winrt::TerminalApp::implementation
                     const auto splitDir = _AgentPanePositionToSplitDirection(
                         _settings.GlobalSettings().AgentPanePosition());
                     rescueTab->SplitPaneAtRoot(splitDir, existingPane);
-                    // Keep it hidden in the rescue tab.
-                    if (const auto rescueRoot = rescueTab->GetRootPane())
-                    {
-                        if (!existingPane->IsHidden())
-                        {
-                            rescueRoot->HidePane(existingPane);
-                        }
-                    }
-                    // agent pane rescued from closing tab
+                    // Visibility is decided by `_ReconcileAgentPaneForActiveTab`
+                    // after the rescue tab becomes active: if the rescue tab
+                    // happens to be the new active tab AND wants the pane
+                    // (`Tab.AgentPaneOpen()` mirror == true, set by wta's
+                    // last projection for that tab), reconcile restores the
+                    // pane to visible. If it doesn't want the pane, reconcile
+                    // hides it. Pre-hiding here was wrong: when the rescue
+                    // tab was the user's "originally pane-open" tab, the
+                    // hide stuck because the subsequent reconcile path was
+                    // missing (closed-active-tab flow doesn't go through
+                    // `_OnTabSelectionChanged`).
                 }
             }
         }
@@ -602,9 +604,10 @@ namespace winrt::TerminalApp::implementation
             // 3. When rearranging tabs (GH#7916) _OnTabItemsChanged is suppressed
             const auto tabSwitchMode = _settings.GlobalSettings().TabSwitcherMode();
 
+            winrt::TerminalApp::Tab newSelectedTab{ nullptr };
             if (tabSwitchMode == TabSwitcherMode::MostRecentlyUsed)
             {
-                const auto newSelectedTab = _mruTabs.GetAt(0);
+                newSelectedTab = _mruTabs.GetAt(0);
                 _UpdatedSelectedTab(newSelectedTab);
                 _tabView.SelectedItem(newSelectedTab.TabViewItem());
             }
@@ -625,7 +628,7 @@ namespace winrt::TerminalApp::implementation
                 const auto newSelectedIndex = std::clamp<int32_t>(tabIndex, 0, _tabs.Size() - 1);
                 // _UpdatedSelectedTab will do the work of setting up the new tab as
                 // the focused one, and unfocusing all the others.
-                auto newSelectedTab{ _tabs.GetAt(newSelectedIndex) };
+                newSelectedTab = _tabs.GetAt(newSelectedIndex);
                 _UpdatedSelectedTab(newSelectedTab);
 
                 // Also, we need to _manually_ set the SelectedItem of the tabView
@@ -634,6 +637,40 @@ namespace winrt::TerminalApp::implementation
                 // work correctly.
                 _tabView.SelectedItem(newSelectedTab.TabViewItem());
             }
+
+            // `_OnTabSelectionChanged` is suppressed while `_removing`
+            // is true, so the agent-pane reconcile + `tab_changed`
+            // notification that normally runs through that path
+            // never fires for the auto-selected new active tab.
+            // Run the reconcile chain explicitly here so:
+            //
+            //   * wta learns about the new active tab. Without this,
+            //     wta's `tab_id` stays at the None state set by
+            //     `tab_closed`, and `current_tab()` silently falls
+            //     back to the empty `DEFAULT_TAB_ID` slot — the
+            //     user sees per-tab UI state (e.g. an open
+            //     session-list view) vanish after closing some
+            //     other tab. The previous tab's `TabSession` is
+            //     still in wta's `tab_sessions` map but
+            //     inaccessible until a manual re-click on the tab
+            //     provokes a fresh SelectionChanged.
+            //
+            //   * The rescued (hidden) agent pane gets restored to
+            //     visible on the new active tab when that tab wants
+            //     it. `_ReconcileAgentPaneForActiveTab` internally
+            //     calls `_NotifyAgentTabChanged(activeTab)` (deduped
+            //     via `_lastNotifiedAgentTabId`), which makes wta
+            //     switch its active TabSession and emit an
+            //     `agent_state_changed` snapshot for the new tab.
+            //     `OnAgentStateChanged` then mirrors the new
+            //     `pane_open` onto `Tab.AgentPaneOpen` and reconciles
+            //     again. Without this chain, closing the active tab
+            //     left wta routed at DEFAULT_TAB_ID and the rescued
+            //     pane hidden on the new active tab, with no event
+            //     sequence to wake the C++ side up until the user's
+            //     next manual tab switch.
+            _FlushPendingAgentRebuild();
+            _ReconcileAgentPaneForActiveTab();
         }
 
         // GH#5559 - If we were in the middle of a drag/drop, end it by clearing

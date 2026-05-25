@@ -216,6 +216,11 @@
                                                FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap" Visibility="Collapsed"
                                                Margin="0,4,0,0" />
+                                    <TextBlock x:Name="AgentPolicyNotice"
+                                               FontSize="12" FontStyle="Italic"
+                                               Foreground="#CCFFA500" TextWrapping="Wrap"
+                                               Visibility="Collapsed"
+                                               AutomationProperties.LiveSetting="Polite" />
                                 </StackPanel>
                                 <ComboBox x:Name="AgentComboBox" Grid.Column="1"
                                           MinWidth="220"
@@ -232,50 +237,64 @@
 
                         <!--  Auto-error detection  -->
                         <Border Background="#19FFFFFF" CornerRadius="4" Padding="16,12">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Spacing="2">
-                                    <TextBlock x:Uid="FreOverlay_AutoErrorLabel"
-                                               FontSize="14" FontWeight="SemiBold"
-                                               Foreground="White" />
-                                    <TextBlock x:Uid="FreOverlay_AutoErrorDescription"
-                                               FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ToggleSwitch x:Name="AutoErrorToggle" Grid.Column="1"
-                                              IsOn="True" VerticalAlignment="Center"
-                                              HorizontalAlignment="Right" MinWidth="0" />
-                            </Grid>
+                            <StackPanel Spacing="4">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock x:Uid="FreOverlay_AutoErrorLabel"
+                                                   FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="White" />
+                                        <TextBlock x:Uid="FreOverlay_AutoErrorDescription"
+                                                   FontSize="12" Foreground="#99FFFFFF"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="AutoErrorToggle" Grid.Column="1"
+                                                  IsOn="False" VerticalAlignment="Center"
+                                                  HorizontalAlignment="Right" MinWidth="0" />
+                                </Grid>
+                                <TextBlock x:Name="AutoErrorPolicyNotice"
+                                           FontSize="12" FontStyle="Italic"
+                                           Foreground="#CCFFA500" TextWrapping="Wrap"
+                                           Visibility="Collapsed"
+                                           AutomationProperties.LiveSetting="Polite" />
+                            </StackPanel>
                         </Border>
 
                         <!--  Session management  -->
                         <Border Background="#19FFFFFF" CornerRadius="4" Padding="16,12">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Spacing="2">
-                                    <TextBlock x:Uid="FreOverlay_SessionLabel"
-                                               FontSize="14" FontWeight="SemiBold"
-                                               Foreground="White" />
-                                    <TextBlock x:Uid="FreOverlay_SessionDescription"
-                                               FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap" />
-                                    <TextBlock x:Uid="FreOverlay_SessionHint"
-                                               x:Name="SessionManagementHint"
-                                               FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap" Margin="0,4,0,0" />
-                                </StackPanel>
-                                <ToggleSwitch x:Name="SessionManagementToggle"
-                                              Grid.Column="1"
-                                              IsOn="True" VerticalAlignment="Center"
-                                              HorizontalAlignment="Right" MinWidth="0"
-                                              Toggled="_OnSessionManagementToggled" />
-                            </Grid>
+                            <StackPanel Spacing="4">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock x:Uid="FreOverlay_SessionLabel"
+                                                   FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="White" />
+                                        <TextBlock x:Uid="FreOverlay_SessionDescription"
+                                                   FontSize="12" Foreground="#99FFFFFF"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock x:Uid="FreOverlay_SessionHint"
+                                                   x:Name="SessionManagementHint"
+                                                   FontSize="12" Foreground="#99FFFFFF"
+                                                   TextWrapping="Wrap" Margin="0,4,0,0" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="SessionManagementToggle"
+                                                  Grid.Column="1"
+                                                  IsOn="True" VerticalAlignment="Center"
+                                                  HorizontalAlignment="Right" MinWidth="0"
+                                                  Toggled="_OnSessionManagementToggled" />
+                                </Grid>
+                                <TextBlock x:Name="SessionHooksPolicyNotice"
+                                           FontSize="12" FontStyle="Italic"
+                                           Foreground="#CCFFA500" TextWrapping="Wrap"
+                                           Visibility="Collapsed"
+                                           AutomationProperties.LiveSetting="Polite" />
+                            </StackPanel>
                         </Border>
 
                         <!--  Pane position  -->

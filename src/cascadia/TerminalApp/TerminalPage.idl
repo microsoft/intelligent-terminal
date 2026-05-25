@@ -137,11 +137,14 @@ namespace TerminalApp
         // The page tears down the shared agent pane; wta dies with its ConPty.
         void OnCloseAgentPaneRequested(String eventJson);
 
-        // Inbound event from WTA carrying {method:"view_changed",params:{view}}.
-        // Emitted when the wta TUI flips its internal view (Esc out of Agents,
-        // `/sessions` slash command). Mirrors the new view onto C++ state so
-        // the agent bar title + bottom bar highlight stay in sync.
-        void OnAgentViewChanged(String eventJson);
+        // Inbound event from WTA carrying
+        // {method:"agent_state_changed",params:{view,pane_open}}.
+        // Unified active-tab snapshot of every piece of per-tab agent-pane
+        // UI state that C++ stores as global per-pane state. The single
+        // writer of `_agentSessionsViewActive` and `Tab.AgentPaneOpen` for
+        // the active tab; any future per-tab UI state plugs in as another
+        // field in the same payload, no new IDL route needed.
+        void OnAgentStateChanged(String eventJson);
 
         // Inbound event from WTA carrying
         // {method:"resume_in_new_agent_tab",params:{session_id,cwd}}.

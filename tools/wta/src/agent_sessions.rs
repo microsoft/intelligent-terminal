@@ -75,6 +75,27 @@ pub enum AgentStatus {
     Historical,
 }
 
+/// Where this session was first created from, used purely as UX metadata
+/// (e.g. a small badge on Historical rows so the user can tell which
+/// sessions were started by Intelligent Terminal's agent pane).
+///
+/// Populated authoritatively by `agent_pane_origin`: WTA appends a record
+/// to the on-disk index whenever it creates an ACP session for an agent
+/// pane (i.e. `--owner-tab-id` was supplied), and `history_loader` joins
+/// that index when reconstructing historical rows. Live rows default to
+/// `Unknown` because the UI only surfaces this badge for ended/historical
+/// sessions, where it is most useful.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum SessionOrigin {
+    /// Origin not recorded — either the session pre-dates the index, was
+    /// started outside of WTA (user ran `copilot` by hand), or the index
+    /// file was unavailable when we tried to look it up.
+    #[default]
+    Unknown,
+    /// Created by WTA on behalf of an Intelligent Terminal agent pane.
+    AgentPane,
+}
+
 #[derive(Clone, Debug)]
 pub struct AgentSession {
     pub key:               AgentKey,
@@ -91,6 +112,9 @@ pub struct AgentSession {
     pub current_tool:      Option<String>,
     pub attention_reason:  Option<String>,
     pub log_path:          Option<PathBuf>,
+    /// Provenance for this session — populated for historical rows from
+    /// the agent-pane origin index. See [`SessionOrigin`].
+    pub origin:            SessionOrigin,
 }
 
 #[derive(Clone, Debug)]
@@ -182,6 +206,54 @@ impl AgentSessionRegistry {
         };
         match ev {
             SessionEvent::SessionStarted { key, cli_source, pane_session_id, cwd, title } => {
+                // Orphan handover: if some other key was bound to this pane,
+                // that previous session has been replaced (e.g. the agent CLI
+                // ended one session and immediately started another in the
+                // same pane). Demote it to Ended so the registry doesn't
+                // carry two rows both claiming ownership of the same pane.
+                // Defensive: only clear the previous entry's binding if it
+                // still points at this pane — guards against rare cases
+                // where `active_by_pane` is out of sync with the entry.
+                //
+                // Skip the handover entirely when `pane_session_id` is
+                // empty. An empty pane GUID is not a real pane — it
+                // means the event source didn't know which pane the
+                // session belonged to (e.g. hook bridge that lost the
+                // `pane_id` field, or a future event source we haven't
+                // taught about pane attribution). Treating empty as a
+                // real pane causes every session-start with no pane to
+                // collide on the empty-string key in `active_by_pane`,
+                // demoting the previous session to Ended whenever a
+                // new one arrives — the exact shape of the
+                // "second session arrives, first loses its status"
+                // bug after the merge that renamed `session_id` to
+                // `pane_id` for connection_state/vt_sequence but
+                // missed wtcli's BuildSendEventJson.
+                let pane_known = !pane_session_id.is_empty();
+                if pane_known {
+                    if let Some(prev_key) = self.active_by_pane.get(&pane_session_id).cloned() {
+                        if prev_key != key {
+                            if let Some(prev) = self.sessions.get_mut(&prev_key) {
+                                if prev.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
+                                    prev.status            = AgentStatus::Ended;
+                                    prev.pane_session_id   = None;
+                                    prev.current_tool      = None;
+                                    prev.attention_reason  = None;
+                                    prev.last_activity_at  = now;
+                                    tracing::info!(
+                                        target: "agent_session_registry",
+                                        prev_key = %prev_key,
+                                        new_key = %key,
+                                        pane = %pane_session_id,
+                                        "SessionStarted demoting previous owner of reused pane",
+                                    );
+                                    // active_by_pane[pane] is overwritten below.
+                                }
+                            }
+                        }
+                    }
+                }
+
                 let entry = self.sessions.entry(key.clone()).or_insert_with(|| AgentSession {
                     key:               key.clone(),
                     cli_source:        cli_source.clone(),
@@ -197,6 +269,7 @@ impl AgentSessionRegistry {
                     current_tool:      None,
                     attention_reason:  None,
                     log_path:          None,
+                    origin:            SessionOrigin::default(),
                 });
                 // If we're rebinding to a different pane, drop the old pane's mapping first.
                 if let Some(old_pane) = entry.pane_session_id.take() {
@@ -228,13 +301,25 @@ impl AgentSessionRegistry {
                     entry.title        = title;
                 }
                 entry.cwd              = cwd;
-                entry.pane_session_id  = Some(pane_session_id.clone());
+                // Only record a pane binding for non-empty pane GUIDs.
+                // Symmetric with the skip above — an empty pane id
+                // would never be valid for `active_by_pane` lookups
+                // (PaneClosed, focus-pane, ConnectionFailed all key by
+                // real GUID), so leave the entry's `pane_session_id`
+                // as `None` and skip the map insert.
+                if pane_known {
+                    entry.pane_session_id  = Some(pane_session_id.clone());
+                } else {
+                    entry.pane_session_id  = None;
+                }
                 entry.status           = AgentStatus::Idle;
                 entry.last_error       = None;
                 entry.attention_reason = None;
                 entry.current_tool     = None;
                 entry.last_activity_at = now;
-                self.active_by_pane.insert(pane_session_id, key);
+                if pane_known {
+                    self.active_by_pane.insert(pane_session_id, key);
+                }
                 self.dirty = true;
             }
 
@@ -281,11 +366,66 @@ impl AgentSessionRegistry {
                 }
             }
 
-            SessionEvent::SessionStopped { key, reason: _ } => {
+            SessionEvent::SessionStopped { key, reason } => {
+                // `reason` distinguishes two very different end-of-session
+                // events from the same CLI hook:
+                //
+                //   * `complete`   — the agent CLI finished the current
+                //                    conversation but the CLI process is
+                //                    still running (e.g. Copilot's "new
+                //                    chat" / `/new`). The pane stays alive
+                //                    and the user can continue using it,
+                //                    so for an agent-pane row we keep it
+                //                    Idle with its pane binding intact.
+                //
+                //   * `user_exit`  — the user typed `/exit` (or equivalent)
+                //                    and the agent CLI is exiting. The
+                //                    pane will close imminently. Going to
+                //                    Ended right now avoids leaving the
+                //                    row stuck at Idle in the (observed)
+                //                    case where WT never emits a
+                //                    `connection_state:closed` for the
+                //                    pane — which would otherwise cause
+                //                    Enter on the row to try to focus a
+                //                    dead pane GUID and fail with
+                //                    FocusPane 0x80004005.
+                //
+                //   * anything else — treat conservatively as a real
+                //                     end-of-session (Ended). The
+                //                     "keep Idle" branch is opt-in via
+                //                     an explicit whitelist below so
+                //                     unknown reasons don't accidentally
+                //                     leave rows stuck Idle.
+                //
+                // Non-agent-pane sessions (origin defaulting to Unknown)
+                // always take the original Ended path regardless of
+                // reason, matching the legacy hook-bridge behavior.
+                let reason_keeps_session_alive = matches!(
+                    reason.as_str(),
+                    "complete"
+                );
+                let pane_still_live = self
+                    .sessions
+                    .get(&key)
+                    .and_then(|s| s.pane_session_id.as_deref())
+                    .map(|p| self.active_by_pane.get(p) == Some(&key))
+                    .unwrap_or(false);
+                let is_agent_pane_session = self
+                    .sessions
+                    .get(&key)
+                    .map(|s| s.origin == SessionOrigin::AgentPane)
+                    .unwrap_or(false);
+                let keep_idle = is_agent_pane_session
+                    && pane_still_live
+                    && reason_keeps_session_alive;
                 if let Some(entry) = self.sessions.get_mut(&key) {
-                    entry.status        = AgentStatus::Ended;
-                    if let Some(pane) = entry.pane_session_id.take() {
-                        self.active_by_pane.remove(&pane);
+                    if keep_idle {
+                        entry.status = AgentStatus::Idle;
+                    } else {
+                        entry.status = AgentStatus::Ended;
+                        if let Some(pane) = entry.pane_session_id.take() {
+                            self.active_by_pane.remove(&pane);
+                        }
                     }
                     entry.current_tool      = None;
                     entry.attention_reason  = None;
@@ -334,6 +474,25 @@ impl AgentSessionRegistry {
             }
 
             SessionEvent::ResumePaneAssigned { key, pane_session_id } => {
+                // Same orphan-handover as SessionStarted: if another session
+                // currently holds this pane, demote it first. In practice
+                // ResumePaneAssigned binds a freshly-created pane, so this
+                // is defensive, but it preserves the invariant that
+                // `active_by_pane[p]` and `sessions[k].pane_session_id`
+                // agree for every k that thinks it owns p.
+                if let Some(prev_key) = self.active_by_pane.get(&pane_session_id).cloned() {
+                    if prev_key != key {
+                        if let Some(prev) = self.sessions.get_mut(&prev_key) {
+                            if prev.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
+                                prev.status            = AgentStatus::Ended;
+                                prev.pane_session_id   = None;
+                                prev.current_tool      = None;
+                                prev.attention_reason  = None;
+                                prev.last_activity_at  = now;
+                            }
+                        }
+                    }
+                }
                 if let Some(entry) = self.sessions.get_mut(&key) {
                     // No-op fast path: pane already correctly bound (e.g. a
                     // SessionStarted hook beat the split-pane callback).
@@ -419,6 +578,32 @@ impl AgentSessionRegistry {
         self.sessions.contains_key(key)
     }
 
+    /// Read-only borrow of the [`AgentSession`] for `key`, or `None` if
+    /// the key isn't tracked. Used by post-apply hooks in the routing
+    /// layer that need to inspect the session's `cli_source` / `status`
+    /// to decide whether to prune (e.g. dropping a "phantom" row whose
+    /// on-disk artefact has no resumable content).
+    pub fn get(&self, key: &AgentKey) -> Option<&AgentSession> {
+        self.sessions.get(key)
+    }
+
+    /// Update the `origin` field on an existing session entry. No-op if
+    /// `key` is not in the registry. Used by the routing layer to stamp
+    /// `AgentPane` on live rows once the agent-pane origin index has
+    /// confirmed the session was started by WTA on behalf of an agent
+    /// pane. Kept as a focused setter (rather than a parameter on
+    /// `SessionEvent::SessionStarted`) so we don't have to thread the
+    /// flag through every test fixture and demo path that constructs
+    /// SessionStarted events.
+    pub fn set_origin(&mut self, key: &str, origin: SessionOrigin) {
+        if let Some(entry) = self.sessions.get_mut(key) {
+            if entry.origin != origin {
+                entry.origin = origin;
+                self.dirty = true;
+            }
+        }
+    }
+
     /// Returns true if the given pane GUID is currently bound to an agent
     /// CLI session (Copilot/Claude/Gemini/...). Used by the autofix path to
     /// suppress "command failed" classification when the failing process is
@@ -429,6 +614,17 @@ impl AgentSessionRegistry {
         // WT-native vt_sequence/connection_state events emit uppercase.
         // active_by_pane is keyed by lowercase via apply()'s normaliser.
         self.active_by_pane.contains_key(&pane_session_id.to_ascii_lowercase())
+    }
+
+    /// Look up the [`AgentKey`] currently bound to `pane_session_id`, if
+    /// any. Returns `None` for panes that aren't tracked or that have
+    /// already had their binding cleared (e.g. after `PaneClosed`).
+    /// Callers that want to act on a key *just before* `PaneClosed`
+    /// unbinds it must take this lookup before applying the event.
+    pub fn key_for_pane(&self, pane_session_id: &str) -> Option<AgentKey> {
+        self.active_by_pane
+            .get(&pane_session_id.to_ascii_lowercase())
+            .cloned()
     }
 
     pub fn remove(&mut self, key: &AgentKey) {
@@ -576,6 +772,9 @@ impl AgentSessionRegistry {
             cwd:             cwd.clone(),
             title:           "claude — review PR diff".to_string(),
         });
+        // 5. Ended — claude finished cleanly a moment ago. Origin is the
+        // default (Unknown), so SessionStopped takes the original
+        // immediate-Ended path — no PaneClosed needed.
         self.apply(SessionEvent::SessionStopped {
             key:    "demo-claude-ended".to_string(),
             reason: "end_turn".to_string(),
@@ -599,6 +798,7 @@ impl AgentSessionRegistry {
             current_tool:      None,
             attention_reason:  None,
             log_path:          Some(PathBuf::from("~/.gemini/logs/2026-05-03-1530.log")),
+            origin:            SessionOrigin::default(),
         });
 
         // Stagger last_activity_at so the order in the UI matches the
@@ -726,14 +926,255 @@ mod tests {
     }
 
     #[test]
-    fn session_stopped_marks_ended_and_unbinds_pane() {
+    fn session_stopped_while_pane_alive_keeps_idle_and_binding() {
+        // Under the agent-pane-friendly semantics, an `agent.session.end`
+        // with reason="complete" (Copilot's signal for "user opened a
+        // new chat in the same pane") leaves the pane alive. The row
+        // must stay Idle with its pane binding intact so pressing Enter
+        // focuses the still-live pane (instead of triggering a "resume
+        // in new tab" path that would spawn a duplicate pane).
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.set_origin("s", SessionOrigin::AgentPane);
+        reg.apply(SessionEvent::SessionStopped { key: k("s"), reason: "complete".into() });
+        let s = reg.sessions.get("s").unwrap();
+        assert_eq!(s.status, AgentStatus::Idle,
+            "agent-pane session.end (reason=complete) on still-live pane must keep Idle");
+        assert_eq!(s.pane_session_id.as_deref(), Some(pane("p").as_str()),
+            "pane binding must be preserved so Enter focuses the live pane");
+        assert!(reg.active_by_pane.contains_key(&pane("p")),
+            "active_by_pane must still map the pane to this key");
+    }
+
+    #[test]
+    fn session_stopped_with_user_exit_reason_goes_to_ended_even_for_agent_pane() {
+        // When the user typed `/exit`, the CLI process is exiting and
+        // the pane will close — possibly without `connection_state:closed`
+        // ever being broadcast. Going to Ended immediately here avoids
+        // a "stuck Idle" row whose pane binding points at a dead pane
+        // GUID (`focus-pane` would later fail with 0x80004005).
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.set_origin("s", SessionOrigin::AgentPane);
+        reg.apply(SessionEvent::SessionStopped { key: k("s"), reason: "user_exit".into() });
+        let s = reg.sessions.get("s").unwrap();
+        assert_eq!(s.status, AgentStatus::Ended,
+            "agent-pane session.end (reason=user_exit) must go to Ended, not stay Idle");
+        assert!(s.pane_session_id.is_none(),
+            "pane binding must be released so Enter doesn't try to focus a dead pane GUID");
+        assert!(reg.active_by_pane.is_empty());
+    }
+
+    #[test]
+    fn session_stopped_with_unknown_reason_goes_to_ended_for_agent_pane() {
+        // Defensive default: anything we don't recognise as a known
+        // "session-only end" reason demotes the row to Ended. Keeps
+        // future agent-CLI behaviour from accidentally producing stuck
+        // Idle rows when they emit a new `reason` value we haven't
+        // whitelisted.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.set_origin("s", SessionOrigin::AgentPane);
+        reg.apply(SessionEvent::SessionStopped { key: k("s"), reason: "some_new_reason".into() });
+        assert_eq!(reg.sessions.get("s").unwrap().status, AgentStatus::Ended);
+    }
+
+    #[test]
+    fn session_stopped_for_non_agent_pane_session_goes_to_ended_immediately() {
+        // Sessions that did not originate from an agent pane (e.g. the
+        // user typed `copilot` themselves in a shell) keep the original
+        // hook-bridge semantics: `agent.session.end` flips them straight
+        // to Ended and releases the binding regardless of the reason.
         let mut reg = AgentSessionRegistry::new();
         reg.apply(SessionEvent::SessionStarted {
             key: k("s"), cli_source: CliSource::Claude,
             pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
             title: "t".into(),
         });
-        reg.apply(SessionEvent::SessionStopped { key: k("s"), reason: "user_exit".into() });
+        // origin stays Unknown (default). Even with the "complete"
+        // reason that would otherwise keep an agent-pane row Idle, a
+        // non-agent-pane row must still go straight to Ended.
+        reg.apply(SessionEvent::SessionStopped { key: k("s"), reason: "complete".into() });
+        let s = reg.sessions.get("s").unwrap();
+        assert_eq!(s.status, AgentStatus::Ended);
+        assert!(s.pane_session_id.is_none());
+        assert!(reg.active_by_pane.is_empty());
+    }
+
+    #[test]
+    fn session_stopped_after_pane_closed_still_goes_to_ended() {
+        // Order: PaneClosed first (binding cleared) → SessionStopped
+        // arriving late finds no live pane and must fall through to
+        // Ended without touching `active_by_pane`. Defensive against
+        // hook events landing after the WT-native close. The keep-Idle
+        // branch requires both agent-pane origin AND a live binding AND
+        // a session-only reason; missing any one falls through to Ended.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.set_origin("s", SessionOrigin::AgentPane);
+        reg.apply(SessionEvent::PaneClosed { pane_session_id: pane("p") });
+        reg.apply(SessionEvent::SessionStopped { key: k("s"), reason: "complete".into() });
+        let s = reg.sessions.get("s").unwrap();
+        assert_eq!(s.status, AgentStatus::Ended);
+        assert!(s.pane_session_id.is_none());
+        assert!(reg.active_by_pane.is_empty());
+    }
+
+    #[test]
+    fn session_stopped_then_pane_closed_demotes_to_ended() {
+        // Forward order on an agent-pane session: SessionStopped with
+        // a session-only reason keeps Idle (pane still alive), then
+        // PaneClosed transitions to Ended.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.set_origin("s", SessionOrigin::AgentPane);
+        reg.apply(SessionEvent::SessionStopped { key: k("s"), reason: "complete".into() });
+        assert_eq!(reg.sessions.get("s").unwrap().status, AgentStatus::Idle);
+        reg.apply(SessionEvent::PaneClosed { pane_session_id: pane("p") });
+        let s = reg.sessions.get("s").unwrap();
+        assert_eq!(s.status, AgentStatus::Ended);
+        assert!(s.pane_session_id.is_none());
+        assert!(reg.active_by_pane.is_empty());
+    }
+
+    #[test]
+    fn session_started_on_pane_held_by_another_session_demotes_previous() {
+        // Copilot scenario: agent.session.end (reason=complete) +
+        // agent.session.started fire back-to-back for the same pane
+        // (user opened a new chat in the same agent pane). The old
+        // session row stays Idle through the SessionStopped (because
+        // it's agent-pane + reason="complete" + pane is live), and then
+        // the new SessionStarted on the same pane must demote it to
+        // Ended and take over the binding.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("old"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "old".into(),
+        });
+        reg.set_origin("old", SessionOrigin::AgentPane);
+        reg.apply(SessionEvent::SessionStopped { key: k("old"), reason: "complete".into() });
+        assert_eq!(reg.sessions.get("old").unwrap().status, AgentStatus::Idle,
+            "agent-pane old row must stay Idle pending pane reuse");
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("new"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "new".into(),
+        });
+
+        let old = reg.sessions.get("old").unwrap();
+        assert_eq!(old.status, AgentStatus::Ended,
+            "previous owner of a reused pane must be demoted to Ended");
+        assert!(old.pane_session_id.is_none(),
+            "previous owner must release its pane binding");
+
+        let new = reg.sessions.get("new").unwrap();
+        assert_eq!(new.status, AgentStatus::Idle);
+        assert_eq!(new.pane_session_id.as_deref(), Some(pane("p").as_str()));
+        assert_eq!(reg.active_by_pane.get(&pane("p")), Some(&k("new")));
+    }
+
+    #[test]
+    fn session_started_with_empty_pane_does_not_demote_previous_empty_pane_session() {
+        // Reproduces the user-reported bug introduced by the merge that
+        // renamed `params["session_id"] → params["pane_id"]` in
+        // `TerminalPage.cpp` but missed `wtcli/BuildSendEventJson` (which
+        // still emits `session_id`). WTA's main.rs reads `params["pane_id"]`
+        // and finds nothing for hook-bridge `agent_event` envelopes, so
+        // every routed `SessionStarted` arrives with `pane_session_id = ""`.
+        //
+        // Pre-fix, the registry would index the empty-string key in
+        // `active_by_pane`, so a second `SessionStarted` (different key,
+        // also empty pane) triggered orphan handover and demoted the
+        // first session to Ended. User-visible symptom: row 1's status
+        // badge silently vanishes the moment row 2's first hook arrives.
+        //
+        // Post-fix, the registry must:
+        //   1. Skip the orphan-handover demotion when `pane_session_id`
+        //      is empty (no real pane to collide on).
+        //   2. NOT insert an empty key into `active_by_pane`.
+        //   3. Leave the entry's `pane_session_id` field as `None`
+        //      (no fake binding).
+        //
+        // wtcli is also fixed in the same PR to emit `pane_id`, and
+        // WTA's main.rs falls back to `session_id` for backward
+        // compatibility — but this test guards the registry-level
+        // invariant independent of those upstream sources.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("session-a"), cli_source: CliSource::Copilot,
+            pane_session_id: String::new(),  // empty (the bug shape)
+            cwd: PathBuf::from("/x"),
+            title: "Implement Day Query Feature".into(),
+        });
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("session-b"), cli_source: CliSource::Copilot,
+            pane_session_id: String::new(),  // empty again
+            cwd: PathBuf::from("/x"),
+            title: "ask me a question".into(),
+        });
+
+        let a = reg.sessions.get("session-a").expect("session-a row exists");
+        assert_eq!(
+            a.status, AgentStatus::Idle,
+            "first session must NOT be demoted when a second empty-pane \
+             SessionStarted arrives; got status {:?}",
+            a.status
+        );
+        assert!(
+            a.pane_session_id.is_none(),
+            "no real pane was bound, so pane_session_id stays None",
+        );
+
+        let b = reg.sessions.get("session-b").expect("session-b row exists");
+        assert_eq!(b.status, AgentStatus::Idle);
+        assert!(b.pane_session_id.is_none());
+
+        // The empty string must never have been inserted into the
+        // pane→key map (it would collide for every empty-pane event).
+        assert!(
+            !reg.active_by_pane.contains_key(""),
+            "empty pane GUID must not be indexed in active_by_pane",
+        );
+    }
+
+    #[test]
+    fn session_stopped_marks_ended_and_unbinds_pane_when_pane_already_dead() {
+        // Same shape as the legacy `session_stopped_marks_ended_and_unbinds_pane`
+        // test, but using the new "pane already closed" path. Note that
+        // the legacy test's premise (SessionStopped alone implies Ended)
+        // still holds for non-agent-pane sessions or for any reason
+        // other than `complete`; this case exercises the agent-pane
+        // path after PaneClosed already cleared the binding.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.set_origin("s", SessionOrigin::AgentPane);
+        reg.apply(SessionEvent::PaneClosed { pane_session_id: pane("p") });
+        reg.apply(SessionEvent::SessionStopped { key: k("s"), reason: "complete".into() });
         let s = reg.sessions.get("s").unwrap();
         assert_eq!(s.status, AgentStatus::Ended);
         assert!(s.pane_session_id.is_none());
@@ -889,6 +1330,7 @@ mod tests {
             current_tool:      None,
             attention_reason:  None,
             log_path:          None,
+            origin:            SessionOrigin::default(),
         }]);
         reg.apply(SessionEvent::ResumeDispatched { key: k("g") });
         assert_eq!(reg.sessions.get(&k("g")).unwrap().status, AgentStatus::Idle,
@@ -1097,6 +1539,7 @@ mod tests {
             current_tool:      None,
             attention_reason:  None,
             log_path:          None,
+            origin:            SessionOrigin::default(),
         };
 
         // Loaded set tries to overwrite live-1 + add hist-1.

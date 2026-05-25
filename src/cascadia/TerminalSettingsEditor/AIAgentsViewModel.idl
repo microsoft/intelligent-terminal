@@ -75,6 +75,17 @@ namespace Microsoft.Terminal.Settings.Editor
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, DelegateModel);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, AutoFixEnabled);
 
+        // GPO policy lock indicators.
+        // IsAgentPolicyLocked: AllowedAgents policy is active — agent
+        //   dropdown options are filtered, but the control stays enabled.
+        // IsCustomAgentPolicyLocked: AllowCustomAgents is disabled.
+        // IsAutoFixPolicyLocked / IsAgentSessionHooksPolicyLocked:
+        //   the control is disabled and forced off.
+        Boolean IsAgentPolicyLocked { get; };
+        Boolean IsCustomAgentPolicyLocked { get; };
+        Boolean IsAutoFixPolicyLocked { get; };
+        Boolean IsAgentSessionHooksPolicyLocked { get; };
+
         event Windows.Foundation.TypedEventHandler<AIAgentsViewModel, Microsoft.Terminal.Settings.Model.ShellIntegrationTarget> InitShellIntegrationRequested;
 
         IInspectable CurrentAgentPanePosition;
@@ -108,6 +119,7 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean ShowCopilotHooksSubtitle { get; };
         Boolean ShowClaudeHooksSubtitle { get; };
         Boolean ShowGeminiHooksSubtitle { get; };
+        Boolean CanInstallAgentHooks { get; };
         Boolean IsInstallingAgentHooks { get; };
         String AgentHooksInstallSummary { get; };
         // True iff AgentHooksInstallSummary is non-empty — gates the

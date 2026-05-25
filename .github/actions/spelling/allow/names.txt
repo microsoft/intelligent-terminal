@@ -66,3 +66,4 @@ Zamora
 zljubisic
 Zoey
 zorio
+Figma

@@ -60,6 +60,11 @@
                               ItemsSource="{x:Bind ViewModel.AcpAgentList, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.CurrentAcpAgent, Mode=TwoWay}"
                               Style="{StaticResource ComboBoxSettingStyle}" />
+                    <TextBlock x:Uid="AIAgents_PolicyLocked"
+                               Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
+                               Opacity="0.6"
+                               FontStyle="Italic"
+                               Margin="0,4,0,0" />
                     <!--  Read-only preview when custom agent is selected on page load  -->
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsCustomAcpAgentSelected, Mode=OneWay}"
@@ -125,8 +130,16 @@
             <!--  Auto-error detection  -->
             <local:SettingContainer x:Name="AutoFixEnabled"
                                     x:Uid="AIAgents_AutoFix">
-                <ToggleSwitch IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
-                              Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+                <StackPanel>
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind local:AIAgents.NotBool(ViewModel.IsAutoFixPolicyLocked), Mode=OneWay}"
+                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+                    <TextBlock x:Uid="AIAgents_PolicyLocked"
+                               Visibility="{x:Bind ViewModel.IsAutoFixPolicyLocked, Mode=OneWay}"
+                               Opacity="0.6"
+                               FontStyle="Italic"
+                               Margin="0,4,0,0" />
+                </StackPanel>
             </local:SettingContainer>
 
             <!--  Agent session tracking (hooks) — last entry in the Agent pane group.
@@ -151,27 +164,34 @@
                     <Border BorderThickness="0,1,0,0"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             Padding="0,16,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock x:Uid="AIAgents_HooksInstallRowLabel"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Text="{x:Bind ViewModel.AgentHooksInstallSummary, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.HasAgentHooksInstallSummary, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_HooksInstallButton"
-                                    Click="{x:Bind ViewModel.InstallAllAgentHooks}"
-                                    IsEnabled="{x:Bind ViewModel.IsAnyAgentCliDetected, Mode=OneWay}"
-                                    Style="{StaticResource AccentButtonStyle}"
-                                    MinWidth="120" />
-                        </Grid>
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock x:Uid="AIAgents_HooksInstallRowLabel"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{x:Bind ViewModel.AgentHooksInstallSummary, Mode=OneWay}"
+                                               Visibility="{x:Bind ViewModel.HasAgentHooksInstallSummary, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Opacity="0.6"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        x:Uid="AIAgents_HooksInstallButton"
+                                        Click="{x:Bind ViewModel.InstallAllAgentHooks}"
+                                        IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        MinWidth="120" />
+                            </Grid>
+                            <TextBlock x:Uid="AIAgents_PolicyLocked"
+                                       Visibility="{x:Bind ViewModel.IsAgentSessionHooksPolicyLocked, Mode=OneWay}"
+                                       Opacity="0.6"
+                                       FontStyle="Italic"
+                                       Margin="0,4,0,0" />
+                        </StackPanel>
                     </Border>
                     <!--  Per-CLI Remove rows. Each is visible whenever the CLI
                           has any hook state, so users can also clean up partial
@@ -200,6 +220,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveCopilotHooks}"
+                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                         </Grid>
                     </Border>
@@ -223,6 +244,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveClaudeHooks}"
+                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                         </Grid>
                     </Border>
@@ -246,6 +268,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveGeminiHooks}"
+                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                         </Grid>
                     </Border>
@@ -266,6 +289,11 @@
                               ItemsSource="{x:Bind ViewModel.DelegateAgentList, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.CurrentDelegateAgent, Mode=TwoWay}"
                               Style="{StaticResource ComboBoxSettingStyle}" />
+                    <TextBlock x:Uid="AIAgents_PolicyLocked"
+                               Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
+                               Opacity="0.6"
+                               FontStyle="Italic"
+                               Margin="0,4,0,0" />
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsCustomDelegateAgentSelected, Mode=OneWay}"
                                 Margin="0,8,0,0"

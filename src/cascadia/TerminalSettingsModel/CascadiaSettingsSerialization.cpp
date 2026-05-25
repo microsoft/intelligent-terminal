@@ -18,6 +18,7 @@
 #include "SshHostGenerator.h"
 
 #include "ApplicationState.h"
+#include "../inc/AgentPolicy.h"
 #include "DefaultTerminal.h"
 #include "FileUtils.h"
 
@@ -170,7 +171,7 @@ SettingsLoader::SettingsLoader(const std::string_view& userJSON, const std::stri
     {
         wchar_t buffer[512]; // "640K ought to be enough for anyone"
         DWORD bufferSize = sizeof(buffer);
-        if (RegGetValueW(key, LR"(Software\Policies\Microsoft\Windows Terminal)", L"DisabledProfileSources", RRF_RT_REG_MULTI_SZ, nullptr, buffer, &bufferSize) == 0)
+        if (RegGetValueW(key, LR"(Software\Policies\Microsoft\IntelligentTerminal)", L"DisabledProfileSources", RRF_RT_REG_MULTI_SZ, nullptr, buffer, &bufferSize) == 0)
         {
             for (auto p = buffer; *p;)
             {
@@ -181,6 +182,11 @@ SettingsLoader::SettingsLoader(const std::string_view& userJSON, const std::stri
             break;
         }
     }
+
+    // Load agent-related GPO policies (AllowedAgents, AllowCustomAgents, etc.)
+    // from the same registry path. Consumers use AgentPolicy::IsAgentAllowed()
+    // and friends instead of reading the registry directly.
+    ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
 
     // See member description of _userProfileCount.
     _userProfileCount = userSettings.profiles.size();

@@ -24,6 +24,7 @@ textwrap = "0.16"
 serde = { version = "1", features = ["derive"] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    "Win32_Globalization",
     "Win32_System_Environment",
     "Win32_System_Registry",
     "Win32_System_Threading",

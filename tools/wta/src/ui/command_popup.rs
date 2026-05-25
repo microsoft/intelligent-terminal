@@ -53,7 +53,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         .map(|spec| {
             let line = Line::from(vec![
                 Span::styled(format!(" /{:<8} ", spec.name), theme::INPUT_TEXT),
-                Span::styled(spec.summary.to_string(), theme::DIM),
+                Span::styled(spec.summary(), theme::DIM),
             ]);
             ListItem::new(line)
         })
@@ -91,7 +91,7 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
     .chain(REGISTRY.iter().map(|spec| {
         Line::from(vec![
             Span::styled(format!("  /{:<8}  ", spec.name), theme::INPUT_TEXT),
-            Span::styled(spec.summary.to_string(), theme::DIM),
+            Span::styled(spec.summary(), theme::DIM),
         ])
     }))
     .chain(std::iter::once(Line::default()))

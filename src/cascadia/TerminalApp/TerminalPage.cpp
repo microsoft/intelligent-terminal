@@ -17,6 +17,7 @@
 #include "../../types/inc/ColorFix.hpp"
 #include "../../types/inc/utils.hpp"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentPolicy.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "App.h"
 #include "DebugTapConnection.h"
@@ -50,6 +51,7 @@ using namespace winrt::Windows::UI::Text;
 using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Media;
+namespace AgentPolicy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
 using namespace ::TerminalApp;
 using namespace ::Microsoft::Console;
 using namespace ::Microsoft::Terminal::Core;
@@ -305,6 +307,37 @@ namespace winrt::TerminalApp::implementation
         {
             _lastAgentSettings = _CaptureAgentSettingsSnapshot();
             _agentSettingsSnapshotInitialized = true;
+        }
+
+        // Auto-suggest toggle hot-reload: when the effective auto-fix
+        // value changes between settings reloads, push the new value
+        // to WTA over the protocol. Tracks `EffectiveAutoFixEnabled`
+        // (not the raw user pref) so GPO Forced/Blocked transitions
+        // also propagate. WTA's `autofix_enabled` flag would
+        // otherwise stay pinned to whatever `--no-autofix` value it
+        // was launched with.
+        {
+            const bool currentAutoFix = _settings.GlobalSettings().EffectiveAutoFixEnabled();
+            if (!_autoFixEnabledSnapshotInitialized)
+            {
+                _lastAutoFixEnabled = currentAutoFix;
+                _autoFixEnabledSnapshotInitialized = true;
+            }
+            else if (_lastAutoFixEnabled != currentAutoFix)
+            {
+                _lastAutoFixEnabled = currentAutoFix;
+                Json::Value evt;
+                evt["type"] = "event";
+                evt["method"] = "autofix_enabled_changed";
+                Json::Value params;
+                params["enabled"] = currentAutoFix;
+                evt["params"] = params;
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                ProtocolVtSequenceReceived.raise(
+                    *this,
+                    winrt::to_hstring(Json::writeString(wb, evt)));
+            }
         }
 
         // Make sure to call SetCommands before _RefreshUIForSettingsReload.
@@ -711,31 +744,29 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Method Description:
-    // - Auto-detects an installed agent CLI by searching the system PATH.
-    //   Checks for known CLIs in priority order: copilot, claude.
+    // - Auto-detects an installed agent CLI by iterating the GPO-filtered
+    //   built-in agent list and searching the system PATH for each.
     // Arguments:
     // - <none>
     // Return Value:
-    // - The name of the first found CLI, or empty string if none found.
+    // - The bare agent id (e.g. "copilot", "claude") of the first found
+    //   CLI, or empty string if none found.  Callers must pass the result
+    //   through _BuildAgentCommandLine to get a launchable command.
     winrt::hstring TerminalPage::_DetectAgentCli() const
     {
         wchar_t buffer[MAX_PATH];
 
-        // Prefer GitHub Copilot CLI in ACP mode (JSON-RPC over stdio).
-        // The --acp flag starts the agent as an ACP server; stdio is the
-        // default transport.
-        if (SearchPathW(nullptr, L"copilot", L".exe", MAX_PATH, buffer, nullptr) > 0)
+        // Walk the policy-filtered agent list so we never auto-detect an
+        // agent that is blocked by GPO.  FilteredAcpAgents() returns only
+        // agents whose id passes AgentPolicy::IsAgentAllowed(); when no
+        // AllowedAgents policy is configured it returns all built-in agents.
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        for (const auto& agent : Reg::FilteredAcpAgents())
         {
-            return winrt::hstring{ L"copilot --acp --stdio" };
-        }
-
-        // Fall back to other known agent CLIs
-        static constexpr std::wstring_view fallbackClis[] = { L"claude" };
-        for (const auto& cli : fallbackClis)
-        {
-            if (SearchPathW(nullptr, cli.data(), L".exe", MAX_PATH, buffer, nullptr) > 0)
+            if (SearchPathW(nullptr, agent.id.data(), L".exe", MAX_PATH, buffer, nullptr) > 0 ||
+                SearchPathW(nullptr, agent.id.data(), L".cmd", MAX_PATH, buffer, nullptr) > 0)
             {
-                return winrt::hstring{ cli };
+                return winrt::hstring{ agent.id };
             }
         }
         return winrt::hstring{};
@@ -950,38 +981,23 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Resolve the effective ACP agent commandline from structured settings.
-    // Build: "<agent> <acp_flags> [--model <model>]".
-    // The Rust agent_registry knows the ACP flags for each known agent, but the
-    // C++ side doesn't import Rust code — so we duplicate just the flag knowledge
-    // for the two ACP-capable agents.  WTA's registry is still the authority at
-    // runtime; this is only used to build the --agent value.
     // Check if this is a custom agent ID (starts with "custom:").
     static bool _IsCustomAgentId(const winrt::hstring& id)
     {
         return winrt::to_string(id).starts_with("custom:");
     }
 
-    static winrt::hstring _ResolveEffectiveAgentCliPath(
-        const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals,
-        const std::function<winrt::hstring()>& detectFallback)
+    // Build a launchable command line from a bare agent id (e.g. "copilot"
+    // → "copilot --acp --stdio").  This is the single source of truth for
+    // id-to-commandline mapping; both the settings path and the auto-detect
+    // fallback route through here.
+    static winrt::hstring _BuildAgentCommandLine(
+        const winrt::hstring& agentId,
+        const winrt::hstring& model)
     {
-        const auto acpAgent = globals.AcpAgent();
-
-        // Custom agents: use the stored custom command directly.
-        if (_IsCustomAgentId(acpAgent))
-        {
-            const auto customCmd = globals.AcpCustomCommand();
-            if (!customCmd.empty()) return customCmd;
-        }
-
-        // Built-in agents: append known ACP flags + model.
-        const auto lower = winrt::to_string(acpAgent);
+        const auto lower = winrt::to_string(agentId);
 
         // Adapter-style launches: claude/codex CLIs don't speak ACP themselves.
-        // We invoke the npm adapter via npx; the npm-installed claude/codex
-        // shim implies node/npx are present. Model is sent via ACP
-        // setSessionModel after handshake, not on the command line.
         if (lower == "claude")
         {
             return winrt::hstring{ L"npx -y @zed-industries/claude-code-acp" };
@@ -991,7 +1007,7 @@ namespace winrt::TerminalApp::implementation
             return winrt::hstring{ L"npx -y @zed-industries/codex-acp" };
         }
 
-        std::wstring cmd{ acpAgent };
+        std::wstring cmd{ agentId };
         if (lower == "copilot")
         {
             cmd += L" --acp --stdio";
@@ -1003,28 +1019,61 @@ namespace winrt::TerminalApp::implementation
 
         if (lower == "copilot" || lower == "gemini")
         {
-            const auto acpModel = globals.AcpModel();
-            if (!acpModel.empty())
+            if (!model.empty())
             {
                 cmd += L" --model ";
-                cmd += std::wstring_view{ acpModel };
+                cmd += std::wstring_view{ model };
             }
             return winrt::hstring{ cmd };
         }
 
-        // Unknown agent — try auto-detection as last resort.
-        if (detectFallback)
+        // Unknown agent — return the bare id as-is.
+        return agentId;
+    }
+
+    static winrt::hstring _ResolveEffectiveAgentCliPath(
+        const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals,
+        const std::function<winrt::hstring()>& detectFallback)
+    {
+        // Use the policy-aware getter — returns empty if the selected agent
+        // is blocked by GPO, ensuring we never launch a disallowed agent.
+        const auto acpAgent = globals.EffectiveAcpAgent();
+        if (acpAgent.empty())
         {
-            return detectFallback();
+            // The user's selection is blocked or absent. Try auto-detection
+            // which will itself only pick a policy-allowed agent.
+            if (detectFallback)
+            {
+                const auto detected = detectFallback();
+                if (!detected.empty())
+                {
+                    return _BuildAgentCommandLine(detected, globals.AcpModel());
+                }
+            }
+            return winrt::hstring{};
         }
-        return acpAgent;
+
+        // Custom agents: use the stored custom command directly.
+        if (_IsCustomAgentId(acpAgent))
+        {
+            const auto customCmd = globals.AcpCustomCommand();
+            if (!customCmd.empty()) return customCmd;
+        }
+
+        return _BuildAgentCommandLine(acpAgent, globals.AcpModel());
     }
 
     // Resolve the effective delegate agent name from structured settings.
     static winrt::hstring _ResolveEffectiveDelegateAgent(
         const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals)
     {
-        const auto delegateAgent = globals.DelegateAgent();
+        // Use the policy-aware getter — returns empty if the selected agent
+        // is blocked by GPO.
+        const auto delegateAgent = globals.EffectiveDelegateAgent();
+        if (delegateAgent.empty())
+        {
+            return winrt::hstring{};
+        }
         // For custom agents, pass the full command so WTA can launch it.
         if (_IsCustomAgentId(delegateAgent))
         {
@@ -1032,6 +1081,40 @@ namespace winrt::TerminalApp::implementation
             if (!customCmd.empty()) return customCmd;
         }
         return delegateAgent;
+    }
+
+    // Resolve the effective UI language for wta.
+    // Priority: explicit settings.json "language" override → MRT's resolved
+    // language qualifier (matches what XAML actually renders) → empty (let
+    // wta fall back to sys_locale).
+    //
+    // Without this, wta uses sys_locale::get_locale() (Windows
+    // GetUserDefaultUILanguage), which returns just the UI culture (e.g.
+    // "en-US"). The C++ XAML side uses MRT, which walks the preferred UI
+    // languages list and may resolve to a different locale (e.g.
+    // "zh-Hans-CN" / "zh-CN"). Passing the MRT-resolved language to wta
+    // keeps both sides in sync.
+    static winrt::hstring _ResolveEffectiveLanguage(
+        const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals)
+    {
+        if (const auto lang = globals.Language(); !lang.empty())
+        {
+            return lang;
+        }
+        try
+        {
+            const auto context{ winrt::Windows::ApplicationModel::Resources::Core::ResourceContext::GetForViewIndependentUse() };
+            const auto qualifiers{ context.QualifierValues() };
+            if (const auto language{ qualifiers.TryLookup(L"language") })
+            {
+                return winrt::hstring{ *language };
+            }
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
+        return winrt::hstring{};
     }
 
     void TerminalPage::_DelegatePromptToAgent(const winrt::hstring& prompt)
@@ -1049,6 +1132,24 @@ namespace winrt::TerminalApp::implementation
         // Resolve agent CLI from structured settings (acpAgent/acpModel).
         const auto& globals = _settings.GlobalSettings();
         const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
+
+        // If no agent resolved and an AllowedAgents policy is active, bail out.
+        // This covers both "policy blocks ALL agents" and "policy allows some
+        // agents but none are installed" — in either case we must not launch
+        // WTA without --agent, because WTA's own fallback detection would
+        // bypass GPO and pick an unauthorized agent (e.g. copilot).
+        if (agentCliPath.empty() && AgentPolicy::IsAllowedAgentsPolicyConfigured())
+        {
+            _agentPaneLog("ABORT: delegation blocked by GPO — no agents allowed");
+            if (auto tip{ FindName(L"WindowIdToast").try_as<MUX::Controls::TeachingTip>() })
+            {
+                _UpdateTeachingTipTheme(tip.try_as<winrt::Windows::UI::Xaml::FrameworkElement>());
+                tip.Title(RS_(L"AgentBlockedByPolicyTitle"));
+                tip.Subtitle(RS_(L"AgentBlockedByPolicySubtitle"));
+                tip.IsOpen(true);
+            }
+            return;
+        }
 
         // Helper: escape and quote an argument for the command line.
         auto quoteArg = [](std::wstring_view arg) -> std::wstring {
@@ -1079,7 +1180,7 @@ namespace winrt::TerminalApp::implementation
             cmdline += L" --delegate-model " + quoteArg(std::wstring_view{ delegateModel });
         }
 
-        if (const auto lang = globals.Language(); !lang.empty())
+        if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
             cmdline += L" --language " + quoteArg(std::wstring_view{ lang });
         }
@@ -1623,44 +1724,64 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Broadcast a `set_view` event to wta so it switches its TUI view
-    // (Chat / Agents). Used by Ctrl+Shift+/ to drive the wta into the
-    // Agents (session list) view when the agent pane is already alive.
-    // For a fresh pane the same effect is achieved via the
-    // `--initial-view` CLI flag passed to wta on spawn.
-    void TerminalPage::_BroadcastAgentSetView(std::string_view view)
+    // Single C++ → wta request for changing per-tab agent-pane UI state on
+    // the active tab. Half of a request/ack pair: wta applies the requested
+    // fields, then echoes the full snapshot back via `agent_state_changed`,
+    // which `OnAgentStateChanged` mirrors onto `_agentSessionsViewActive`
+    // and `Tab.AgentPaneOpen`. We never write those mirrors locally — wta
+    // is the sole owner of per-tab UI state, which is what makes desync
+    // architecturally impossible.
+    //
+    // Both arguments are optional. Pass only the fields you actually want
+    // to change; the rest are left as-is on wta's side. `std::nullopt` for
+    // both is a no-op (don't call us). For a fresh pane the spawn flow
+    // bakes the initial state into wta's cmdline (`--initial-view`, plus
+    // the owner tab is seeded with `pane_open=true` at startup) — wta
+    // emits the first `agent_state_changed` from its main loop.
+    void TerminalPage::_RequestAgentState(std::optional<std::string_view> view,
+                                          std::optional<bool> paneOpen)
     {
         Json::Value evt;
         evt["type"] = "event";
-        evt["method"] = "set_view";
+        evt["method"] = "set_agent_state";
         Json::Value params;
-        params["view"] = std::string{ view };
         // Scope to this WT window so multi-window users with multiple
         // wta processes don't cross-talk. wta ignores the event when its
         // own window_id is known and doesn't match.
         params["window_id"] = std::to_string(_WindowProperties.WindowId());
+
+        // Always carry the active tab's StableId so wta routes the
+        // mutation to the right TabSession. Without `tab_id`, wta would
+        // fall back to its own active-tab pointer, which can lag behind
+        // a `tab_changed` we just sent (e.g. resume-in-new-tab fires
+        // tab_changed then set_agent_state back-to-back).
+        if (const auto activeTab = _GetFocusedTabImpl())
+        {
+            const auto stableId = activeTab->StableId();
+            if (!stableId.empty())
+            {
+                params["tab_id"] = winrt::to_string(stableId);
+            }
+        }
+
+        std::string logSuffix;
+        if (view.has_value())
+        {
+            params["view"] = std::string{ *view };
+            logSuffix += " view=" + std::string{ *view };
+        }
+        if (paneOpen.has_value())
+        {
+            params["pane_open"] = *paneOpen;
+            logSuffix += " pane_open=" + std::string{ *paneOpen ? "true" : "false" };
+        }
         evt["params"] = params;
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
-        _agentPaneLog(std::string{ "broadcasting set_view event: view=" } + std::string{ view });
+        _agentPaneLog(std::string{ "requesting set_agent_state:" } + logSuffix);
         ProtocolVtSequenceReceived.raise(
             *this,
             winrt::to_hstring(Json::writeString(wb, evt)));
-
-        // Mirror the wta-side view switch on the C++ agent bar: in sessions
-        // view, the bar replaces "<agent> <version>" with "Agent sessions"
-        // and hides the agent logo. Tied to _BroadcastAgentSetView (and not
-        // _agentSessionsViewActive directly) because every keyboard- or
-        // icon-driven switch we care about flows through here; the few
-        // remaining `_agentSessionsViewActive = false` sites are pane-closed
-        // paths where the bar is going away anyway.
-        if (const auto pane = _FindAgentPane())
-        {
-            if (const auto agent = pane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
-            {
-                agent.SetSessionsView(view == "sessions");
-            }
-        }
     }
 
     // Reset every tab's AgentPaneOpen() flag. Called when the shared pane is
@@ -1777,6 +1898,11 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
+        if (agentCliPath.empty() && AgentPolicy::IsAllowedAgentsPolicyConfigured())
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPane: ABORT — all agents blocked by GPO policy");
+            return;
+        }
         if (!agentCliPath.empty())
         {
             std::wstring s{ agentCliPath };
@@ -1788,7 +1914,9 @@ namespace winrt::TerminalApp::implementation
         // See `_OpenOrReuseAgentPane` for the rationale: wta needs the
         // canonical `acpAgent` setting value (not the expanded command
         // line) to drive the session-management view's CLI filter.
-        if (const auto acpAgent = globals.AcpAgent(); !acpAgent.empty())
+        // Use EffectiveAcpAgent so the id matches the actual agent launched
+        // (a fallback agent when the configured one is policy-blocked).
+        if (const auto acpAgent = globals.EffectiveAcpAgent(); !acpAgent.empty())
         {
             std::wstring s{ acpAgent };
             for (size_t pos = 0; (pos = s.find(L'"', pos)) != std::wstring::npos; pos += 2)
@@ -1828,12 +1956,11 @@ namespace winrt::TerminalApp::implementation
             cmdline += fmt::format(FMT_COMPILE(L" --acp-model \"{}\""), s);
         }
 
-        if (!globals.AutoFixEnabled())
+        if (!globals.EffectiveAutoFixEnabled())
         {
             cmdline += L" --no-autofix";
         }
-
-        if (const auto lang = globals.Language(); !lang.empty())
+        if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
             std::wstring langStr{ lang };
             for (size_t pos = 0; (pos = langStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
@@ -2175,7 +2302,24 @@ namespace winrt::TerminalApp::implementation
             cmdline = std::wstring{ wtaPath };
 
             const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
-            if (!agentCliPath.empty())
+            if (agentCliPath.empty())
+            {
+                // No agent resolved and an AllowedAgents policy is active — bail.
+                // See the delegation abort comment for full rationale.
+                if (AgentPolicy::IsAllowedAgentsPolicyConfigured())
+                {
+                    _agentPaneLog("EARLY RETURN: all agents blocked by GPO policy");
+                    if (auto tip{ FindName(L"WindowIdToast").try_as<MUX::Controls::TeachingTip>() })
+                    {
+                        _UpdateTeachingTipTheme(tip.try_as<winrt::Windows::UI::Xaml::FrameworkElement>());
+                        tip.Title(RS_(L"AgentBlockedByPolicyTitle"));
+                        tip.Subtitle(RS_(L"AgentBlockedByPolicySubtitle"));
+                        tip.IsOpen(true);
+                    }
+                    return;
+                }
+            }
+            else
             {
                 std::wstring agentStr{ agentCliPath };
                 for (size_t pos = 0; (pos = agentStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
@@ -2190,7 +2334,8 @@ namespace winrt::TerminalApp::implementation
             // `--agent` command line is fragile (adapter launches expand
             // to "npx -y …" and lose the agent's name). Passing it through
             // here keeps a single source of truth.
-            if (const auto acpAgent = globals.AcpAgent(); !acpAgent.empty())
+            // Use EffectiveAcpAgent so the id matches the actual agent launched.
+            if (const auto acpAgent = globals.EffectiveAcpAgent(); !acpAgent.empty())
             {
                 std::wstring idStr{ acpAgent };
                 for (size_t pos = 0; (pos = idStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
@@ -2216,15 +2361,18 @@ namespace winrt::TerminalApp::implementation
                 cmdline += fmt::format(FMT_COMPILE(L" --delegate-model \"{}\""), modelStr);
             }
 
-            if (!globals.AutoFixEnabled())
+            if (!globals.EffectiveAutoFixEnabled())
             {
                 cmdline += L" --no-autofix";
             }
 
             // Pass the user's Language override so the agent pane displays
             // the same language as the Terminal chrome (aligns with the
-            // PrimaryLanguageOverride set by AppLogic).
-            if (const auto lang = globals.Language(); !lang.empty())
+            // PrimaryLanguageOverride set by AppLogic). When settings.json
+            // has no "language" override, fall back to the MRT-resolved
+            // language so wta matches XAML's choice rather than
+            // sys_locale's narrower UI culture.
+            if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
             {
                 std::wstring langStr{ lang };
                 for (size_t pos = 0; (pos = langStr.find(L'"', pos)) != std::wstring::npos; pos += 2)
@@ -2247,6 +2395,7 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("EARLY RETURN: cmdline is empty — no AI assistant configured");
             if (auto tip{ FindName(L"WindowIdToast").try_as<MUX::Controls::TeachingTip>() })
             {
+                _UpdateTeachingTipTheme(tip.try_as<winrt::Windows::UI::Xaml::FrameworkElement>());
                 tip.Title(RS_(L"AgentNotConfiguredTitle"));
                 tip.Subtitle(RS_(L"AgentNotConfiguredSubtitle"));
                 tip.IsOpen(true);
@@ -2281,18 +2430,17 @@ namespace winrt::TerminalApp::implementation
             if (intoSessionsView)
             {
                 // Open-into-sessions semantics (Ctrl+Shift+/): never toggle
-                // closed. Force the active tab's flag on, reconcile (which
-                // moves the pane to the active tab and emits tab_changed),
-                // focus it, then broadcast set_view so wta switches the
-                // *new* active tab's TabSession into the Agents view.
+                // closed. Ask wta to flip both `view=sessions` and
+                // `pane_open=true` on the active tab. The echoing
+                // `agent_state_changed` lands in `OnAgentStateChanged`,
+                // which sets `Tab.AgentPaneOpen=true` and reconciles
+                // (relocates the shared pane to the active tab + makes
+                // it visible).
                 const auto activeTab = _GetFocusedTabImpl();
                 if (!activeTab)
                 {
                     return;
                 }
-                activeTab->AgentPaneOpen(true);
-                _agentPaneLog("intoSessionsView: forcing active tab AgentPaneOpen=true");
-                _ReconcileAgentPaneForActiveTab();
 
                 if (const auto pane = _FindAgentPane())
                 {
@@ -2302,42 +2450,28 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
 
-                // Order matters: tab_changed (raised inside reconcile via
-                // _NotifyAgentTabChanged) must reach wta before set_view so
-                // the view switch lands on the right TabSession.
-                _BroadcastAgentSetView("sessions");
-                _agentSessionsViewActive = true;
-                _UpdateBottomBarState();
+                _RequestAgentState("sessions", /*pane_open*/ true);
                 return;
             }
 
-            // Empty prompt: per-tab toggle. Flip the active tab's flag, then
-            // reconcile the shared pane against it. The pane follows the
-            // active tab — switching tabs preserves each tab's open/closed
-            // state independently.
+            // Empty prompt: per-tab toggle. We read the local mirror
+            // (last reported by wta) to decide direction; the actual flip
+            // and visible reconcile happen via the `agent_state_changed`
+            // echo. Pane relocation/show/hide flows out of
+            // `OnAgentStateChanged → _ReconcileAgentPaneForActiveTab`.
             const auto activeTab = _GetFocusedTabImpl();
             if (!activeTab)
             {
                 return;
             }
             const bool wantOpen = !activeTab->AgentPaneOpen();
-            activeTab->AgentPaneOpen(wantOpen);
-            _agentPaneLog(std::string{ "toggle: active tab AgentPaneOpen=" } + (wantOpen ? "true" : "false"));
-            _ReconcileAgentPaneForActiveTab();
-            if (wantOpen)
-            {
-                // Transitioning hidden → visible via the chat keybinding
-                // (Ctrl+Shift+.). Force wta into chat view in case it was
-                // last left in the Agents view (the pane stays alive when
-                // hidden, so wta retains its previous view). Without this
-                // the user would press the chat key and still see the
-                // session list.
-                _BroadcastAgentSetView("chat");
-            }
-            // Toggle path opens to chat (default) or hides the pane —
-            // either way the sessions view is no longer active.
-            _agentSessionsViewActive = false;
-            _UpdateBottomBarState();
+            _agentPaneLog(std::string{ "toggle: requesting pane_open=" } + (wantOpen ? "true" : "false"));
+            // When opening via Ctrl+Shift+., also force the view to chat
+            // (pane may have been left in Agents view from a previous
+            // `/sessions` / Ctrl+Shift+/). When closing, leave view as-is
+            // so reopening preserves the user's last view.
+            _RequestAgentState(wantOpen ? std::optional<std::string_view>{ "chat" } : std::nullopt,
+                               wantOpen);
             return;
         }
 
@@ -2492,31 +2626,32 @@ namespace winrt::TerminalApp::implementation
             content.Focus(FocusState::Programmatic);
         }
 
-        // The user explicitly asked to open it on this tab.
+        // Spawn boundary write: wta isn't running yet, so there is no one
+        // to send `agent_state_changed` back. Seed the mirror locally
+        // (`Tab.AgentPaneOpen=true`) so reconcile doesn't immediately
+        // hide the freshly-created pane. wta is being launched with
+        // `--owner-tab-id <this tab>` and seeds its TabSession's
+        // `pane_open=true` for that tab at startup, so when its initial
+        // `agent_state_changed` arrives it confirms (not contradicts)
+        // the value we wrote here. This is the only runtime path where
+        // C++ writes `Tab.AgentPaneOpen` directly; the symmetric pane
+        // teardown boundary is in the pane-Closed handler.
         activeTab->AgentPaneOpen(true);
 
         // No tab_changed needed here — wta was already told its owner tab
         // via --owner-tab-id in the cmdline. Tab switches from here on
         // flow through _ReconcileAgentPaneForActiveTab.
 
-        // New pane: wta starts in whichever view --initial-view requested
-        // (chat by default; sessions when Ctrl+Shift+/ triggered the open).
-        _agentSessionsViewActive = intoSessionsView;
-
-        // Mirror that view on the new agent bar's label so the title reads
-        // "Agent sessions" from the very first frame. Without this the bar
-        // would briefly show "<agent> <version>" before any user input,
-        // which is misleading when the wta TUI below is the session list.
-        if (intoSessionsView)
-        {
-            if (const auto& content{ newPane->GetContent() })
-            {
-                if (const auto agent = content.try_as<winrt::TerminalApp::AgentPaneContent>())
-                {
-                    agent.SetSessionsView(true);
-                }
-            }
-        }
+        // `_agentSessionsViewActive` is NOT seeded here. wta is starting
+        // up with the `--initial-view` we baked into its cmdline and
+        // emits the initial `agent_state_changed` from its main loop
+        // (see main.rs's post-`--initial-view` projection call). That
+        // event lands in `OnAgentStateChanged` and flips the flag. There
+        // is a brief visual lag while wta starts up — the bar shows the
+        // default "<agent> <version>" until wta's first
+        // `agent_state_changed` — which is an accepted tradeoff for
+        // keeping the C++ flag's writer set to one (`OnAgentStateChanged`)
+        // and making view-state desync architecturally impossible.
 
         _UpdateBottomBarState();
     }
@@ -3795,10 +3930,11 @@ namespace winrt::TerminalApp::implementation
 
         if (visibleOnActiveTab && _agentSessionsViewActive)
         {
-            activeTab->AgentPaneOpen(false);
-            _ReconcileAgentPaneForActiveTab();
-            _agentSessionsViewActive = false;
-            _UpdateBottomBarState();
+            // Hide path: ask wta to flip pane_open=false on this tab.
+            // wta echoes `agent_state_changed{pane_open:false}` which
+            // lands in `OnAgentStateChanged`, sets the mirror, and
+            // reconciles (hides the pane on this tab).
+            _RequestAgentState(std::nullopt, /*pane_open*/ false);
             return;
         }
 
@@ -3815,15 +3951,47 @@ namespace winrt::TerminalApp::implementation
             // Fix ready — execute it.
             _TriggerAutofix();
             break;
+        case AutofixState::Detected:
+        {
+            // Suggest-mode pill: user opts in to call the LLM. Send the
+            // event to WTA; WTA replays the trigger as if auto-suggest
+            // were on (transitioning the bar to Pending → Armed) without
+            // mutating local state here.
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "autofix_execute_from_detected";
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
+            evt["params"] = params;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            ProtocolVtSequenceReceived.raise(
+                *this,
+                winrt::to_hstring(Json::writeString(wb, evt)));
+            break;
+        }
         case AutofixState::Suggested:
+        {
             // No executable fix — auto-fix produced an explanation that lives
             // in the agent pane chat history. Open the pane so the user can
-            // read it, then drop back to Idle (the suggestion has been "seen").
+            // read it, then ask WTA to clear the suggestion for the active
+            // tab. WTA is the authoritative state owner, so we don't mutate
+            // _diagnostics locally — we wait for the inbound
+            // autofix_state:cleared event to roll us back to Idle.
             _OpenOrReuseAgentPane(L"");
-            _diagnostics.autofixState = AutofixState::Idle;
-            _diagnostics.suggestionTitle.clear();
-            _UpdateBottomBarState();
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "autofix_dismiss_suggestion";
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
+            evt["params"] = params;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            ProtocolVtSequenceReceived.raise(
+                *this,
+                winrt::to_hstring(Json::writeString(wb, evt)));
             break;
+        }
         case AutofixState::Pending:
             // Analysis in flight — show the agent pane so the user can watch
             // progress. Keep Pending state until WTA confirms armed/cleared.
@@ -3841,10 +4009,30 @@ namespace winrt::TerminalApp::implementation
     // The bottom bar is hidden entirely on non-terminal tabs (e.g. Settings).
     void TerminalPage::_UpdateBottomBarState()
     {
-        // Keep the bottom bar (agent pane / session toggle buttons) visible on
-        // every tab type, including non-terminal tabs like Settings — the
-        // buttons are still functional there (they target the shared agent
-        // pane, not the focused tab's content).
+        // Hide the bottom bar on non-terminal tabs (Settings, etc.) — collapsing
+        // it lets TabContent (Grid.Row=2, Height="*") expand to fill the recovered
+        // space automatically. The bar contains terminal-pane-oriented controls
+        // (agent toggle, diagnostics, sessions) that have no meaningful target
+        // when a non-terminal pane is focused.
+        const auto focusedTabImpl = _GetFocusedTabImpl();
+        bool isTerminalTab = true;
+        if (focusedTabImpl)
+        {
+            if (const auto content = focusedTabImpl->GetActiveContent())
+            {
+                const bool isTerm = content.try_as<TerminalApp::TerminalPaneContent>() != nullptr;
+                const bool isAgent = content.try_as<TerminalApp::AgentPaneContent>() != nullptr;
+                isTerminalTab = isTerm || isAgent;
+            }
+        }
+        if (auto barRoot = BottomBarRoot())
+        {
+            barRoot.Visibility(isTerminalTab ? Visibility::Visible : Visibility::Collapsed);
+        }
+        if (!isTerminalTab)
+        {
+            return;
+        }
 
         // Per-tab flag drives the toggle button's lit state — it tracks
         // whether the user wants the agent pane open on the *active* tab,
@@ -3911,7 +4099,7 @@ namespace winrt::TerminalApp::implementation
                 diagBtn.IsEnabled(false);
                 ToolTipService::SetToolTip(
                     diagBtn,
-                    box_value(winrt::hstring{ L"Analyzing error…" }));
+                    box_value(RS_(L"Diagnostics_AnalyzingTooltip")));
                 if (icon)
                 {
                     icon.Foreground(
@@ -3919,7 +4107,7 @@ namespace winrt::TerminalApp::implementation
                 }
                 if (label)
                 {
-                    label.Text(L"Error detected: analyzing…");
+                    label.Text(RS_(L"Diagnostics_ErrorPendingLabel"));
                     label.Foreground(
                         SolidColorBrush{ ColorHelper::FromArgb(255, 0xD6, 0xB7, 0x00) });
                     label.Visibility(Visibility::Visible);
@@ -3934,8 +4122,7 @@ namespace winrt::TerminalApp::implementation
                 const auto hotkey = _diagnostics.hotkeyHint.empty()
                                         ? std::wstring{ L"Ctrl+Alt+." }
                                         : _diagnostics.hotkeyHint;
-                std::wstring labelText = L"Error detected: " + hotkey + L" to fix";
-                label.Text(winrt::hstring{ labelText });
+                label.Text(winrt::hstring{ RS_fmt(L"Diagnostics_ErrorArmedLabelFormat", hotkey) });
 
                 // Yellow warning color.
                 const auto accent = SolidColorBrush{
@@ -3951,19 +4138,24 @@ namespace winrt::TerminalApp::implementation
                     label.Visibility(Visibility::Visible);
                 }
 
-                std::wstring tooltip = L"Fix ready — " + hotkey + L" to apply";
+                std::wstring tooltip;
                 if (!_diagnostics.fixPreview.empty())
                 {
-                    tooltip += L": ";
+                    std::wstring preview;
                     if (_diagnostics.fixPreview.size() > 120)
                     {
-                        tooltip.append(_diagnostics.fixPreview, 0, 120);
-                        tooltip += L"…";
+                        preview.append(_diagnostics.fixPreview, 0, 120);
+                        preview += L"…";
                     }
                     else
                     {
-                        tooltip += _diagnostics.fixPreview;
+                        preview = _diagnostics.fixPreview;
                     }
+                    tooltip = RS_fmt(L"Diagnostics_FixReadyTooltipWithPreviewFormat", hotkey, preview);
+                }
+                else
+                {
+                    tooltip = RS_fmt(L"Diagnostics_FixReadyTooltipFormat", hotkey);
                 }
                 ToolTipService::SetToolTip(
                     diagBtn,
@@ -3987,19 +4179,56 @@ namespace winrt::TerminalApp::implementation
                 }
                 if (label)
                 {
-                    label.Text(L"Suggestion ready — open agent pane");
+                    label.Text(RS_(L"Diagnostics_SuggestionReadyLabel"));
                     label.Foreground(accent);
                     label.Visibility(Visibility::Visible);
                 }
 
-                std::wstring tooltip = L"Auto-fix declined to fix this directly. ";
+                std::wstring tooltip{ RS_(L"Diagnostics_SuggestionTooltipIntro") };
                 if (!_diagnostics.suggestionTitle.empty())
                 {
                     tooltip += L"\n";
                     tooltip += _diagnostics.suggestionTitle;
                     tooltip += L"\n";
                 }
-                tooltip += L"Click here or press Ctrl+Shift+. to open the agent pane and read the full suggestion.";
+                tooltip += RS_(L"Diagnostics_SuggestionTooltipInstruction");
+                ToolTipService::SetToolTip(
+                    diagBtn,
+                    box_value(winrt::hstring{ tooltip }));
+                break;
+            }
+            case AutofixState::Detected:
+            {
+                // Suggest-mode default: error happened, LLM not invoked.
+                // Clickable pill asking the user to opt in. Same warning
+                // hue as Armed since both demand attention.
+                diagBtn.Opacity(1.0);
+                diagBtn.IsEnabled(true);
+
+                const auto hotkey = _diagnostics.hotkeyHint.empty()
+                                        ? std::wstring{ L"Ctrl+Alt+." }
+                                        : _diagnostics.hotkeyHint;
+                std::wstring labelText = L"Click " + hotkey + L" to fix error";
+                const auto accent = SolidColorBrush{
+                    ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
+                };
+                if (icon)
+                {
+                    icon.Foreground(accent);
+                }
+                if (label)
+                {
+                    label.Text(winrt::hstring{ labelText });
+                    label.Foreground(accent);
+                    label.Visibility(Visibility::Visible);
+                }
+                std::wstring tooltip = L"Error detected. Click or press " + hotkey +
+                                       L" to ask the AI agent to diagnose and suggest a fix.";
+                if (!_diagnostics.detectedSummary.empty())
+                {
+                    tooltip += L"\n\n";
+                    tooltip += _diagnostics.detectedSummary;
+                }
                 ToolTipService::SetToolTip(
                     diagBtn,
                     box_value(winrt::hstring{ tooltip }));
@@ -4012,7 +4241,7 @@ namespace winrt::TerminalApp::implementation
                 diagBtn.IsEnabled(false);
                 ToolTipService::SetToolTip(
                     diagBtn,
-                    box_value(winrt::hstring{ L"Diagnostics" }));
+                    box_value(RS_(L"Diagnostics_Tooltip")));
                 if (icon)
                 {
                     // Neutral gray — Opacity=0.5 already makes it barely
@@ -4032,12 +4261,17 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Inbound event from WTA carrying an autofix_state update. Called by the
-    // COM server on the UI thread. Payload shape:
-    //   {"type":"event","method":"autofix_state",
-    //    "params":{"state":"pending|armed|cleared",
-    //              "session_id":"...", "summary":"...",
-    //              "fix_preview":"...", "hotkey_hint":"Ctrl+."}}
+    // Inbound event from WTA carrying an autofix_state update. Called by
+    // the COM server on the UI thread. Per-state payload shape:
+    //   detected  : { state, pane_id, summary,           hotkey_hint }
+    //   pending   : { state, pane_id, summary }
+    //   armed     : { state, pane_id, fix_preview,       hotkey_hint }
+    //   suggested : { state, pane_id, suggestion_title }
+    //   cleared   : { state }   ← no pane_id; clears lastErrorPaneId
+    // All non-`state` fields are optional from this consumer's
+    // perspective — missing fields just leave the previous value in
+    // place (except on `cleared`, which resets pane_id / previews /
+    // titles explicitly).
     void TerminalPage::OnAutofixStateChanged(hstring eventJson)
     {
         Json::Value evt;
@@ -4066,16 +4300,27 @@ namespace winrt::TerminalApp::implementation
         {
             _diagnostics.autofixState = AutofixState::Suggested;
         }
+        else if (state == "detected")
+        {
+            _diagnostics.autofixState = AutofixState::Detected;
+        }
         else if (state == "cleared")
         {
             _diagnostics.autofixState = AutofixState::Idle;
             _diagnostics.fixPreview.clear();
             _diagnostics.suggestionTitle.clear();
+            _diagnostics.detectedSummary.clear();
+            _diagnostics.lastErrorPaneId.clear();
         }
-        if (params.isMember("session_id") && params["session_id"].isString())
+        if (params.isMember("summary") && params["summary"].isString())
         {
-            const auto s = params["session_id"].asString();
-            _diagnostics.lastErrorSessionId.assign(s.begin(), s.end());
+            const auto s = params["summary"].asString();
+            _diagnostics.detectedSummary.assign(s.begin(), s.end());
+        }
+        if (params.isMember("pane_id") && params["pane_id"].isString())
+        {
+            const auto s = params["pane_id"].asString();
+            _diagnostics.lastErrorPaneId.assign(s.begin(), s.end());
         }
         if (params.isMember("fix_preview") && params["fix_preview"].isString())
         {
@@ -4221,20 +4466,33 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Inbound event from WTA: {method:"view_changed", params:{view}}.
+    // Inbound event from WTA:
+    //   {method:"agent_state_changed", params:{view, pane_open}}
     //
-    // wta is the sole driver for two view transitions C++ can't observe by
-    // itself: Esc out of the Agents picker and the `/sessions` slash command.
-    // Both flip wta's internal `current_view` without going through
-    // `_BroadcastAgentSetView`, so without this echo the agent bar title
-    // would stay on "Agent sessions" after Esc, or fail to switch to it
-    // after `/sessions`, and the bottom bar's sessions/chat highlight (which
-    // reads `_agentSessionsViewActive`) would drift out of sync.
+    // **Single-writer handler** for all per-tab agent-pane UI state that
+    // C++ caches as global per-pane state. wta is the sole owner of every
+    // field carried here; we never write the mirrors from any other code
+    // path (the lone exception is the pane-Closed handler, where wta is
+    // dead and there is no one left to send projections). This is what
+    // makes view-state / pane-visibility desync architecturally
+    // impossible — a single writer means the mirrors can only ever
+    // reflect wta's last reported snapshot.
     //
-    // Critically we do NOT call `_BroadcastAgentSetView` here — that would
-    // emit `set_view` back to wta and create a feedback loop. We only mirror
-    // the new view onto C++ state.
-    void TerminalPage::OnAgentViewChanged(hstring eventJson)
+    // wta pushes this event whenever active-tab state changes:
+    //   - `tab_changed` (active tab swap; via `project_active_tab_state`
+    //     in `switch_tab_session`).
+    //   - `set_agent_state` (C++-originated request; wta echoes back).
+    //   - Esc out of Agents view, `/sessions` slash command,
+    //     `load_session`, Ctrl+C×2 reset, and once at startup after
+    //     `--initial-view`.
+    //
+    // Don't send anything back here. The mirror updates below are the
+    // terminal state of the round-trip; emitting `set_agent_state` would
+    // just bounce the same snapshot back.
+    //
+    // Future per-tab UI state plugs in as another field on `params` —
+    // parse it here, update its mirror, no new IDL route or handler needed.
+    void TerminalPage::OnAgentStateChanged(hstring eventJson)
     {
         Json::Value evt;
         Json::CharReaderBuilder rb;
@@ -4245,26 +4503,55 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto& params = evt["params"];
-        if (!params.isObject() || !params.isMember("view") || !params["view"].isString())
+        if (!params.isObject())
         {
             return;
         }
-        const auto view = params["view"].asString();
-        const bool sessions = (view == "sessions");
 
-        _agentPaneLog(std::string{ "OnAgentViewChanged: view=" } + view);
+        std::string logSuffix;
 
-        _agentSessionsViewActive = sessions;
-
-        if (const auto pane = _FindAgentPane())
+        // view: drives `_agentSessionsViewActive` and the agent bar
+        // (`AgentPaneContent::SetSessionsView`).
+        if (params.isMember("view") && params["view"].isString())
         {
-            if (const auto agent = pane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
+            const auto view = params["view"].asString();
+            const bool sessions = (view == "sessions");
+            _agentSessionsViewActive = sessions;
+            if (const auto pane = _FindAgentPane())
             {
-                agent.SetSessionsView(sessions);
+                if (const auto agent = pane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
+                {
+                    agent.SetSessionsView(sessions);
+                }
             }
+            logSuffix += " view=" + view;
         }
 
-        _UpdateBottomBarState();
+        // pane_open: drives `Tab.AgentPaneOpen` on the active tab. Then
+        // reconcile so the actual XAML pane visibility / placement
+        // matches the new intent (relocate from another tab, restore
+        // from hidden, or hide on this tab). Reconcile internally calls
+        // `_UpdateBottomBarState`, so skip the redundant call below
+        // when we took the reconcile branch.
+        bool didReconcile = false;
+        if (params.isMember("pane_open") && params["pane_open"].isBool())
+        {
+            const bool open = params["pane_open"].asBool();
+            if (const auto activeTab = _GetFocusedTabImpl())
+            {
+                activeTab->AgentPaneOpen(open);
+            }
+            _ReconcileAgentPaneForActiveTab();
+            didReconcile = true;
+            logSuffix += std::string{ " pane_open=" } + (open ? "true" : "false");
+        }
+
+        _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
+
+        if (!didReconcile)
+        {
+            _UpdateBottomBarState();
+        }
     }
 
     // Inbound event from WTA: {method:"close_agent_pane", params:{...}}.
@@ -4333,30 +4620,19 @@ namespace winrt::TerminalApp::implementation
         _agentPaneLog("OnCloseAgentPaneRequested: other tabs still want the pane — hide + reset this tab");
 
         // Tell wta to drop this tab's ACP session + conversation. Fire this
-        // BEFORE flipping AgentPaneOpen so wta sees the reset request while
-        // its tab_to_session for ownerTab is still populated. (Order isn't
-        // strict — the events are queued — but it's the natural sequence.)
+        // BEFORE the pane-open flip so wta sees the reset request while
+        // its tab_to_session for ownerTab is still populated.
         _NotifyAgentTabReset(ownerTab->StableId());
 
-        ownerTab->AgentPaneOpen(false);
-
-        // Only hide if the pane is currently visible on the owner tab. If
-        // it's already hidden (e.g. user switched tabs between Ctrl+C and
-        // this event), the flag-flip above is enough; reconcile will keep
-        // it hidden the next time this tab becomes active.
-        if (!agentPane->IsHidden())
-        {
-            if (const auto rootPane = ownerTab->GetRootPane())
-            {
-                rootPane->HidePane(agentPane);
-                if (const auto target = _FindSourceOfAgentPaneId(rootPane))
-                {
-                    ownerTab->FocusPane(target.value());
-                }
-            }
-        }
-
-        _UpdateBottomBarState();
+        // ownerTab is the tab whose pane TUI raised Ctrl+C×2 — it's the
+        // currently active tab from wta's perspective (the pane is what
+        // had focus to receive the keypress). Ask wta to flip its
+        // pane_open to false; the echoing `agent_state_changed` lands
+        // in `OnAgentStateChanged`, which flips the mirror and reconciles
+        // (hiding the pane on this tab). Don't HidePane locally — that
+        // would race the round-trip and could leave the C++ mirror and
+        // XAML state out of sync if a tab switch happens in between.
+        _RequestAgentState(std::nullopt, /*pane_open*/ false);
     }
 
     // Send {method:"autofix_execute",params:{pane_id}} over the outbound
@@ -4372,7 +4648,7 @@ namespace winrt::TerminalApp::implementation
         evt["type"] = "event";
         evt["method"] = "autofix_execute";
         Json::Value params;
-        params["session_id"] = winrt::to_string(_diagnostics.lastErrorSessionId);
+        params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
         evt["params"] = params;
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
@@ -4454,8 +4730,14 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Step 2: the new tab is now focused. Flip its AgentPaneOpen=true
-        // and reconcile to move the shared agent pane onto it.
+        // Step 2: the new tab is now focused. `_OpenNewTab` triggers a
+        // tab_changed flowing to wta (via reconcile inside
+        // _OnTabSelectionChanged), so wta's active TabSession is now this
+        // new tab — by the time the `set_agent_state` below arrives, wta
+        // routes it to the right TabSession. wta will echo back
+        // `agent_state_changed{pane_open:true}` which lands in
+        // `OnAgentStateChanged`, sets the mirror, and reconciles (moving
+        // the shared agent pane onto the new tab).
         const auto newTab = _GetFocusedTabImpl();
         if (!newTab)
         {
@@ -4468,8 +4750,7 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("OnResumeInNewAgentTabRequested: new tab has empty StableId");
             return;
         }
-        newTab->AgentPaneOpen(true);
-        _ReconcileAgentPaneForActiveTab();
+        _RequestAgentState(std::nullopt, /*pane_open*/ true);
 
         // Step 3: publish load_session back to wta with the new tab's
         // StableId. ProtocolVtSequenceReceived fans this out to subscribed
@@ -4751,6 +5032,40 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    // Walk every tab's pane tree and return the StableId of the tab that
+    // owns the given control. Used to tag protocol events with both pane
+    // GUID and tab id so wta can route per-tab regardless of which tab is
+    // currently active.
+    std::string TerminalPage::_FindTabIdForControl(const TermControl& control)
+    {
+        if (!control)
+        {
+            return {};
+        }
+        for (const auto& tab : _tabs)
+        {
+            const auto tabImpl = _GetTabImpl(tab);
+            if (!tabImpl)
+            {
+                continue;
+            }
+            const auto rootPane = tabImpl->GetRootPane();
+            if (!rootPane)
+            {
+                continue;
+            }
+            const auto match = rootPane->WalkTree([&](const auto& p) -> std::shared_ptr<Pane> {
+                const auto ctl = p->GetTerminalControl();
+                return (ctl && ctl == control) ? p : nullptr;
+            });
+            if (match)
+            {
+                return winrt::to_string(tabImpl->StableId());
+            }
+        }
+        return {};
+    }
+
     void TerminalPage::_RegisterTerminalEvents(TermControl term)
     {
         term.RaiseNotice({ this, &TerminalPage::_ControlNoticeRaisedHandler });
@@ -4788,8 +5103,12 @@ namespace winrt::TerminalApp::implementation
         // been created yet (TermControl is set up before the Pane wraps it).
         //
         // VtSequenceReceived fires on the connection reader thread (background).
-        // _FindSessionIdForControl accesses _tabs which has UI thread affinity,
-        // so we dispatch the session ID lookup + event raise to the UI thread.
+        // The dispatched continuation calls `_FindTabIdForControl`, which walks
+        // `_tabs` and has UI thread affinity, so the event raise has to run on
+        // the UI thread. `_FindSessionIdForControl` itself is thread-safe
+        // (only reads `Connection().SessionId()`) and could be called inline,
+        // but the rest of the work in this handler is gated on `_FindTabIdForControl`
+        // and the protocol event raise, so we just defer the whole body.
         {
             winrt::weak_ref<TermControl> weakTerm{ term };
 
@@ -4799,9 +5118,9 @@ namespace winrt::TerminalApp::implementation
                     if (!strongThis)
                         return;
 
-                    // Dispatch to UI thread: _FindSessionIdForControl accesses _tabs
-                    // which has UI thread affinity.  Fire-and-forget — don't block
-                    // the connection reader thread.
+                    // Dispatch to UI thread for the `_FindTabIdForControl` walk
+                    // of `_tabs` and the protocol event raise. Fire-and-forget —
+                    // don't block the connection reader thread.
                     strongThis->Dispatcher().RunAsync(
                         winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
                         [weakThis, weakTerm, seq]() {
@@ -4810,19 +5129,50 @@ namespace winrt::TerminalApp::implementation
                             if (!page || !term2)
                                 return;
 
-                            // Autofix pipeline: skip forwarding if disabled at runtime.
-                            if (!page->_settings.GlobalSettings().AutoFixEnabled())
+                            // GPO-blocked gate: when administrator policy
+                            // explicitly disables auto-fix, the feature
+                            // is off across the board — no Pending, no
+                            // Detected pill, no background analysis.
+                            // `IsAutoFixPolicyLocked()` returns true only
+                            // for the Blocked policy state; Forced-on
+                            // states the user can change fall through.
+                            if (page->_settings.GlobalSettings().IsAutoFixPolicyLocked())
                                 return;
 
-                            const auto sessionIdStr = page->_FindSessionIdForControl(term2);
-                            if (sessionIdStr.empty())
-                                return;
-
+                            // Early filter: WTA only acts on osc:133;*
+                            // and AgentEvent payloads. Every other VT
+                            // sequence (cursor moves, OSC 0/1 titles,
+                            // color resets, …) gets classified as
+                            // Informational and dropped on the other
+                            // side, so skip the pane/tab lookup, JSON
+                            // encode, and IPC for those entirely. This
+                            // matters because VtSequenceReceived can
+                            // fire hundreds of times a second on a
+                            // busy terminal.
+                            //
+                            // (The `autoFixEnabled` user setting only
+                            // controls whether WTA *automatically*
+                            // invokes the LLM; the Detected pill needs
+                            // these events too. Toggle changes
+                            // hot-reload into WTA via
+                            // `autofix_enabled_changed`, so no
+                            // user-pref gate is needed here.)
                             auto seqStr = winrt::to_string(seq);
-
-                            // Check for AgentEvent sub-action: "AgentEvent;{json}"
                             static constexpr std::string_view agentPrefix = "AgentEvent;";
-                            if (seqStr.starts_with(agentPrefix))
+                            static constexpr std::string_view osc133Prefix = "osc:133;";
+                            const bool isAgentEvent = seqStr.starts_with(agentPrefix);
+                            const bool isOsc133 = seqStr.starts_with(osc133Prefix);
+                            if (!isAgentEvent && !isOsc133)
+                            {
+                                return;
+                            }
+
+                            const auto paneIdStr = page->_FindSessionIdForControl(term2);
+                            if (paneIdStr.empty())
+                                return;
+                            const auto tabIdStr = page->_FindTabIdForControl(term2);
+
+                            if (isAgentEvent)
                             {
                                 auto jsonPayload = seqStr.substr(agentPrefix.size());
                                 Json::Value agentParams;
@@ -4834,7 +5184,11 @@ namespace winrt::TerminalApp::implementation
                                     agentParams.isMember("event") &&
                                     agentParams["event"].isString())
                                 {
-                                    agentParams["session_id"] = sessionIdStr;
+                                    agentParams["pane_id"] = paneIdStr;
+                                    if (!tabIdStr.empty())
+                                    {
+                                        agentParams["tab_id"] = tabIdStr;
+                                    }
 
                                     Json::Value evt;
                                     evt["type"] = "event";
@@ -4846,32 +5200,20 @@ namespace winrt::TerminalApp::implementation
                                     page->ProtocolVtSequenceReceived.raise(
                                         *page,
                                         winrt::to_hstring(Json::writeString(wb, evt)));
-                                    return; // Don't also emit as raw vt_sequence
                                 }
+                                return; // AgentEvent never falls through to vt_sequence
                             }
 
-                            // Track command failures for the bottom bar diagnostics button.
-                            // OSC 133;D;N with N>0 means the last command failed.
-                            // seqStr format: "osc:133;D;1"
-                            static constexpr std::string_view osc133Prefix = "osc:133;";
-                            if (seqStr.starts_with(osc133Prefix))
-                            {
-                                auto rest = seqStr.substr(osc133Prefix.size());
-                                // rest is e.g. "D;1" or "D;0"
-                                if (rest.starts_with("D;"))
-                                {
-                                    auto codeStr = rest.substr(2);
-                                    int exitCode = 0;
-                                    try { exitCode = std::stoi(codeStr); } catch (...) {}
-                                    // All bar state transitions come from WTA via autofix_state events.
-                                }
-                            }
-
+                            // isOsc133 path — forward as vt_sequence.
                             Json::Value evt;
                             evt["type"] = "event";
                             evt["method"] = "vt_sequence";
                             Json::Value params;
-                            params["session_id"] = sessionIdStr;
+                            params["pane_id"] = paneIdStr;
+                            if (!tabIdStr.empty())
+                            {
+                                params["tab_id"] = tabIdStr;
+                            }
                             params["sequence"] = seqStr;
                             evt["params"] = params;
                             Json::StreamWriterBuilder wb;
@@ -4915,12 +5257,33 @@ namespace winrt::TerminalApp::implementation
                         return;
                     }
 
-                    // Dispatch to UI thread: _FindSessionIdForControl accesses _tabs.
+                    // Resolve the pane id SYNCHRONOUSLY here, while the
+                    // control is still alive. If we deferred it into the
+                    // dispatched lambda below, a `Closed` event raised as
+                    // part of tab teardown would race with the
+                    // TermControl/Connection destructors: by the time the
+                    // UI thread runs the dispatched continuation,
+                    // `weakTerm.get()` returns null and the event is
+                    // dropped silently — leaving wta's session-list row
+                    // stuck at Idle after the user closed the tab.
+                    // `_FindSessionIdForControl` only reads
+                    // `control.Connection().SessionId()`, no `_tabs`
+                    // access, so it is safe off the UI thread.
+                    const auto paneIdStr = strongThis->_FindSessionIdForControl(control);
+                    if (paneIdStr.empty())
+                        return;
+
+                    // Dispatch only the actual event raise (and the
+                    // `tab_id` lookup, which DOES touch `_tabs`) to the
+                    // UI thread. The captured `paneIdStr` is a plain
+                    // std::string and survives the term's destruction;
+                    // `tab_id` falls back to empty when the term is
+                    // already gone, but the event still fires with the
+                    // pane_id so wta's PaneClosed prune can run.
                     strongThis->Dispatcher().RunAsync(
                         winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-                        [weakThis, weakTerm, stateStr]() {
+                        [weakThis, weakTerm, paneIdStr, stateStr]() {
                             auto page = weakThis.get();
-                            auto term2 = weakTerm.get();
                             if (!page)
                                 return;
 
@@ -4930,17 +5293,28 @@ namespace winrt::TerminalApp::implementation
                             // when an agent CLI exits and the pane is closed.
                             // Volume is low (a handful of events per pane
                             // lifecycle), so always forward.
-                            const auto sessionIdStr = term2
-                                ? page->_FindSessionIdForControl(term2)
+                            // `_FindTabIdForControl` walks `_tabs`, so it
+                            // must run on the UI thread AND have a live
+                            // term to compare panes against. If the term
+                            // already died (close-time race), fall back
+                            // to no tab_id — autofix routing may be
+                            // imperfect for this one event, but the
+                            // pane_id alone is sufficient for the
+                            // session-list / PaneClosed prune path.
+                            auto term2 = weakTerm.get();
+                            const auto tabIdStr = term2
+                                ? page->_FindTabIdForControl(term2)
                                 : std::string{};
-                            if (sessionIdStr.empty())
-                                return;
 
                             Json::Value evt;
                             evt["type"] = "event";
                             evt["method"] = "connection_state";
                             Json::Value params;
-                            params["session_id"] = sessionIdStr;
+                            params["pane_id"] = paneIdStr;
+                            if (!tabIdStr.empty())
+                            {
+                                params["tab_id"] = tabIdStr;
+                            }
                             params["state"] = stateStr;
                             evt["params"] = params;
                             Json::StreamWriterBuilder wb;
