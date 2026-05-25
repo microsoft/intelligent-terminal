@@ -2479,6 +2479,33 @@ impl App {
             .expect("active tab session always materialized")
     }
 
+    /// Shared-wta singleton mode (`wta --headless`). Drives the App
+    /// event loop without binding Ratatui to the process's own
+    /// stdout — each attached pane brings its own conpty handle pair
+    /// via `_internal.attach_pane`, and the per-pane RenderCtxs in
+    /// `pane_registry` are what actually emit bytes to the user.
+    ///
+    /// No crossterm input task either: keyboard input for each pane
+    /// comes from that pane's ConptyReader (handled by per-pane
+    /// tokio tasks spawned at attach time, see PaneRegistry callers).
+    pub async fn run_headless(
+        &mut self,
+        mut event_rx: mpsc::UnboundedReceiver<AppEvent>,
+    ) -> Result<()> {
+        tracing::info!(target: "headless", "App::run_headless entering main loop");
+        while let Some(event) = event_rx.recv().await {
+            let kind = Self::event_name(&event);
+            tracing::debug!(target: "headless", kind = %kind, "received event");
+            self.handle_event(event);
+            if self.should_quit {
+                tracing::info!(target: "headless", "should_quit set — exiting headless loop");
+                break;
+            }
+        }
+        tracing::info!(target: "headless", "App::run_headless loop exited (channel closed)");
+        Ok(())
+    }
+
     pub async fn run(
         &mut self,
         terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,

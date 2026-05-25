@@ -197,6 +197,17 @@ struct Cli {
     /// Output raw JSON instead of human-readable format
     #[arg(long, global = true)]
     json: bool,
+
+    /// Run as the shared-wta singleton service: no Ratatui binding to
+    /// the process's own stdout (the agent panes themselves are each
+    /// driven by their own conpty handle pair, sent via
+    /// `_internal.attach_pane`). Used by WindowEmperor when spawning
+    /// the single per-Terminal-process wta instance under the new
+    /// architecture. Hidden because nothing outside WT should run it.
+    ///
+    /// See doc/specs/Multi-window-agent-pane.md for the design.
+    #[arg(long, hide = true)]
+    headless: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -688,8 +699,15 @@ async fn main() -> Result<()> {
         // ── ACP model list probe ──
         Some(Command::ProbeModels { agent }) => run_probe_models(&agent).await,
 
-        // ── No subcommand = ACP TUI mode (default) ──
-        None => run_default_tui(cli).await,
+        // ── No subcommand = ACP TUI mode (default), or shared-wta
+        //    singleton service when --headless is set ──
+        None => {
+            if cli.headless {
+                run_headless_mode(cli).await
+            } else {
+                run_default_tui(cli).await
+            }
+        }
     }
 }
 
@@ -1287,6 +1305,163 @@ async fn run_default_tui(cli: Cli) -> Result<()> {
     };
 
     run_acp_tui_mode(cli, shell_mgr, wt_connected, debug_rx, pane_identity, wt_event_rx, wt_protocol_channel).await
+}
+
+// ─── Shared-wta singleton (--headless) ──────────────────────────────────────
+
+/// Headless mode entry point. Connects to the WT ComServer, subscribes
+/// to the event stream, constructs an App, and runs App::run_headless.
+///
+/// Unlike `run_default_tui`, this path:
+///   * Does NOT bind Ratatui to the process's own stdout (no
+///     EnterAlternateScreen / raw mode).
+///   * Does NOT spawn the crossterm input task (each attached pane
+///     brings its own ConptyReader).
+///   * Does NOT run pane-identity discovery — there is no process-level
+///     "pane" for the shared wta; each tab's pane is registered via
+///     `_internal.attach_pane`.
+///
+/// WT COM connection is mandatory in this mode: without it, no
+/// attach_pane events can flow in and wta has nothing to do. Returns
+/// an error early if the connection fails.
+async fn run_headless_mode(cli: Cli) -> Result<()> {
+    let _guard = logging::init("main_headless");
+    tracing::info!("=== run_headless_mode started ===");
+
+    let (debug_tx, _debug_rx) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
+
+    let mut shell_mgr = ShellManager::new();
+    let mut wt_event_rx = None;
+    let mut wt_protocol_channel: Option<Arc<CliChannel>> = None;
+    let wt_connected = match connect_to_wt_protocol(debug_tx).await {
+        Ok(channel) => {
+            tracing::info!(target: "headless", "connected to WT COM protocol");
+            wt_event_rx = Some(channel.subscribe_events());
+            let cli_arc = Arc::new(channel);
+            wt_protocol_channel = Some(Arc::clone(&cli_arc));
+            shell_mgr = shell_mgr
+                .with_wt_channel(cli_arc.clone() as Arc<dyn shell::wt_channel::WtChannel>);
+            true
+        }
+        Err(e) => {
+            tracing::error!(target: "headless", error = %e, "WT COM connection failed");
+            bail!("headless mode requires a WT COM protocol connection");
+        }
+    };
+    let _shell_mgr = Arc::new(shell_mgr);
+    let autofix_enabled = !cli.no_autofix;
+
+    let local_set = tokio::task::LocalSet::new();
+    local_set
+        .run_until(async move {
+            let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+
+            // App constructor expects a bag of mpsc senders. In the
+            // current headless cut, only the InternalControl path is
+            // exercised; prompt / cancel / new-session / load-session
+            // / restart are unused. They become live once per-pane
+            // ACP wiring lands (Task #17). Keeping the senders here
+            // means App::new doesn't need a headless-specific overload.
+            let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+            let (recommendation_tx, _) = tokio::sync::mpsc::unbounded_channel();
+            let (permission_tx, _) = tokio::sync::mpsc::unbounded_channel();
+            let (cancel_tx, _) = tokio::sync::mpsc::unbounded_channel();
+            let (new_session_tx, _) = tokio::sync::mpsc::unbounded_channel();
+            let (load_session_tx, _) = tokio::sync::mpsc::unbounded_channel();
+            let (drop_session_tx, _) = tokio::sync::mpsc::unbounded_channel();
+            let (restart_tx, _) = tokio::sync::mpsc::unbounded_channel();
+            let debug_capture = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+            let mut app = app::App::new(
+                prompt_tx,
+                recommendation_tx,
+                permission_tx,
+                cancel_tx,
+                new_session_tx,
+                load_session_tx,
+                drop_session_tx,
+                restart_tx,
+                debug_capture,
+                wt_connected,
+                autofix_enabled,
+            );
+
+            // Drive the COM event subscription. The handshake call to
+            // get_capabilities is what kicks WT's
+            // _ensurePageEventsRegistered() so events flow.
+            if let Some(ref protocol_ch) = wt_protocol_channel {
+                tracing::info!(target: "headless", "start_reader: starting...");
+                protocol_ch.start_reader().await;
+                match protocol_ch
+                    .request("get_capabilities", serde_json::json!({}))
+                    .await
+                {
+                    Ok(v) => {
+                        tracing::info!(target: "headless", result = %v, "get_capabilities OK")
+                    }
+                    Err(e) => {
+                        tracing::warn!(target: "headless", error = %e, "get_capabilities FAILED")
+                    }
+                }
+            }
+
+            // Bridge wt_event_rx → AppEvent channel. Same routing
+            // logic as run_acp_app uses (kept in sync intentionally):
+            // `_internal.*` to AppEvent::InternalControl, everything
+            // else to AppEvent::WtEvent.
+            if let Some(mut wt_rx) = wt_event_rx {
+                tracing::info!(target: "headless", "starting wt_event_rx forwarder task");
+                let wt_event_tx = event_tx.clone();
+                tokio::task::spawn_local(async move {
+                    while let Some(event_json) = wt_rx.recv().await {
+                        let method = event_json
+                            .get("method")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        if method.starts_with("_internal.") {
+                            tracing::debug!(
+                                target: "internal_control",
+                                step = "receiver",
+                                method = %method,
+                                "routing to InternalControl (headless)",
+                            );
+                            let _ = wt_event_tx
+                                .send(app::AppEvent::InternalControl { value: event_json });
+                            continue;
+                        }
+                        let params = event_json
+                            .get("params")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null);
+                        let pane_id = params
+                            .get("pane_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let tab_id = params
+                            .get("tab_id")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string);
+                        let _ = wt_event_tx.send(app::AppEvent::WtEvent {
+                            method,
+                            pane_id,
+                            tab_id,
+                            params,
+                        });
+                    }
+                });
+            }
+
+            // Keep event_tx alive in scope for any future task to
+            // emit AppEvents into the loop. Dropping it would close
+            // the channel and end the run_headless loop.
+            let _hold_event_tx = event_tx;
+
+            tracing::info!(target: "headless", "entering App::run_headless");
+            app.run_headless(event_rx).await
+        })
+        .await
 }
 
 // ─── Existing functions (preserved) ─────────────────────────────────────────
