@@ -1783,9 +1783,9 @@ async fn run_acp_app(
             // the user's first interaction, leaving the bar mislabelled in
             // the `--initial-view sessions` case. Cheap and idempotent.
             //
-            // Safe before `Setup` mode setup below: setup runs its own UI
-            // and doesn't read the view flag; if we end up in setup the
-            // initial "chat" emission is harmless.
+            // Safe before the `Setup` mode block below: that block runs
+            // its own UI and doesn't read the view flag; if we end up in
+            // setup mode the initial "chat" emission is harmless.
             if wt_connected {
                 app_state.project_active_tab_state();
             }

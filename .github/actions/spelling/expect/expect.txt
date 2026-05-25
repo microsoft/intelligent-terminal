@@ -438,6 +438,7 @@ DELAYLOAD
 DELETEONRELEASE
 depersist
 deprioritized
+desync
 devicecode
 Dext
 DFF
