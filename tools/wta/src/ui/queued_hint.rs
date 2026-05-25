@@ -18,8 +18,11 @@ pub(crate) fn queue_hint_height(app: &App) -> u16 {
     }
 }
 
-/// Width budget for the preview text inside the hint row. Mirrors the
-/// layout's left/right horizontal padding (1 cell each).
+/// Two-cell left indent that the hint row prepends, matching the visual
+/// alignment of other transient-hint rows (welcome hint, queue-removed
+/// toast). The truncation budget for the preview text subtracts this many
+/// cells from `area.width` so the indented line never overflows the
+/// available row width.
 const HORIZONTAL_PADDING: u16 = 2;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {

@@ -1326,7 +1326,14 @@ impl QueuedPrompt {
     /// with an ellipsis. Char-based (not cell-based) because the transient
     /// hint row is rendered with simple `Paragraph` clipping and doesn't
     /// need the precise width math `ui/queued_hint` performs.
+    ///
+    /// `max_chars == 0` short-circuits to `String::new()` so callers
+    /// passing a zero budget don't get a 1-char `"…"` violating the
+    /// "at most N chars" contract.
     pub fn preview(&self, max_chars: usize) -> String {
+        if max_chars == 0 {
+            return String::new();
+        }
         if self.collapsed.chars().count() <= max_chars {
             self.collapsed.clone()
         } else {
@@ -8177,5 +8184,13 @@ mod tests {
         let preview = long.preview(10);
         assert!(preview.ends_with('…'));
         assert!(preview.chars().count() <= 10);
+    }
+
+    #[test]
+    fn queued_prompt_preview_zero_budget_is_empty() {
+        // Regression for Copilot review: `preview(0)` previously returned
+        // "…" (1 char), violating the "at most max_chars" contract.
+        let q = QueuedPrompt::new("anything".into());
+        assert_eq!(q.preview(0), "", "zero budget must yield an empty string");
     }
 }
