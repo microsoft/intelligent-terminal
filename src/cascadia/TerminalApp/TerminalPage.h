@@ -678,7 +678,7 @@ namespace winrt::TerminalApp::implementation
         static void NTAPI _OnAgentPaneWtaExit(PVOID context, BOOLEAN timedOut) noexcept;
         void _OpenOrReuseAgentPane(const winrt::hstring& prompt, bool intoSessionsView = false);
         void _FocusAgentPane();
-        void _BroadcastAgentSetView(std::string_view view);
+        void _RequestAgentView(std::string_view view);
         void _RepositionAgentPanes();
         static winrt::Microsoft::Terminal::Settings::Model::SplitDirection _AgentPanePositionToSplitDirection(const winrt::hstring& position);
 

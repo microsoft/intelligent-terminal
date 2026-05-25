@@ -1677,9 +1677,10 @@ namespace winrt::TerminalApp::implementation
         if (visibleOnActiveTab && _agentSessionsViewActive)
         {
             OutputDebugStringW(L"[AgentPane] OpenAgentPane: switch to chat — pane visible and in sessions view\n");
-            _BroadcastAgentSetView("chat");
-            _agentSessionsViewActive = false;
-            _UpdateBottomBarState();
+            // Request only. wta applies the view change and echoes back a
+            // `view_changed` event; `OnAgentViewChanged` is the sole writer
+            // of `_agentSessionsViewActive` for runtime view transitions.
+            _RequestAgentView("chat");
             args.Handled(true);
             return;
         }
@@ -1720,10 +1721,16 @@ namespace winrt::TerminalApp::implementation
         {
             // Toggle off: close the pane on the active tab. Mirrors the
             // closing half of the Ctrl+Shift+. toggle path.
+            //
+            // We don't reset `_agentSessionsViewActive` here — the pane is
+            // about to be hidden, so the bottom-bar gate (`_agentPaneVisible`)
+            // already turns off both chat/session highlights regardless of
+            // the flag. The flag stays at wta's last reported view; when the
+            // pane is re-opened on this tab, the next `view_changed` from
+            // wta corrects it.
             OutputDebugStringW(L"[AgentPane] OpenAgentSessions: toggle close — pane visible and already in sessions view\n");
             activeTab->AgentPaneOpen(false);
             _ReconcileAgentPaneForActiveTab();
-            _agentSessionsViewActive = false;
             _UpdateBottomBarState();
             args.Handled(true);
             return;
@@ -1731,8 +1738,8 @@ namespace winrt::TerminalApp::implementation
 
         // Either the pane needs opening/relocating, or it's open in chat
         // view and we want to switch it. Both go through the existing
-        // intoSessionsView=true code path, which sets _agentSessionsViewActive
-        // = true on success.
+        // intoSessionsView=true code path; wta emits `view_changed("sessions")`
+        // back which lands in `OnAgentViewChanged` and flips the flag there.
         _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true);
         _UpdateBottomBarState();
         args.Handled(true);

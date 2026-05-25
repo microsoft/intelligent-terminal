@@ -602,9 +602,10 @@ namespace winrt::TerminalApp::implementation
             // 3. When rearranging tabs (GH#7916) _OnTabItemsChanged is suppressed
             const auto tabSwitchMode = _settings.GlobalSettings().TabSwitcherMode();
 
+            winrt::TerminalApp::Tab newSelectedTab{ nullptr };
             if (tabSwitchMode == TabSwitcherMode::MostRecentlyUsed)
             {
-                const auto newSelectedTab = _mruTabs.GetAt(0);
+                newSelectedTab = _mruTabs.GetAt(0);
                 _UpdatedSelectedTab(newSelectedTab);
                 _tabView.SelectedItem(newSelectedTab.TabViewItem());
             }
@@ -625,7 +626,7 @@ namespace winrt::TerminalApp::implementation
                 const auto newSelectedIndex = std::clamp<int32_t>(tabIndex, 0, _tabs.Size() - 1);
                 // _UpdatedSelectedTab will do the work of setting up the new tab as
                 // the focused one, and unfocusing all the others.
-                auto newSelectedTab{ _tabs.GetAt(newSelectedIndex) };
+                newSelectedTab = _tabs.GetAt(newSelectedIndex);
                 _UpdatedSelectedTab(newSelectedTab);
 
                 // Also, we need to _manually_ set the SelectedItem of the tabView
@@ -634,6 +635,16 @@ namespace winrt::TerminalApp::implementation
                 // work correctly.
                 _tabView.SelectedItem(newSelectedTab.TabViewItem());
             }
+
+            // Notify wta of the new active tab. `_OnTabSelectionChanged` is
+            // suppressed by `_removing=true` for the rest of this scope, so
+            // without this explicit call the `tab_changed` event would never
+            // fire — wta would stay routed at the just-dropped tab id until
+            // the user's next manual tab switch. That left wta materialising
+            // DEFAULT_TAB_ID and the agent bar / view stuck on the closed
+            // tab's last state. Cheap and idempotent (deduped by
+            // `_lastNotifiedAgentTabId`).
+            _NotifyAgentTabChanged(_GetTabImpl(newSelectedTab));
         }
 
         // GH#5559 - If we were in the middle of a drag/drop, end it by clearing

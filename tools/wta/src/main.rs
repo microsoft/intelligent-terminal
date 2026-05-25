@@ -1776,6 +1776,20 @@ async fn run_acp_app(
                 app_state.ensure_history_loaded();
             }
 
+            // Project the initial active-tab state to C++ once, after the
+            // --initial-view block has had its say. Without this push,
+            // C++'s `_agentSessionsViewActive` flag (single writer, lives in
+            // `OnAgentViewChanged`) would stay on its default `false` until
+            // the user's first interaction, leaving the bar mislabelled in
+            // the `--initial-view sessions` case. Cheap and idempotent.
+            //
+            // Safe before `Setup` mode setup below: setup runs its own UI
+            // and doesn't read the view flag; if we end up in setup the
+            // initial "chat" emission is harmless.
+            if wt_connected {
+                app_state.project_active_tab_state();
+            }
+
             // NOTE: historical agent sessions used to be loaded here via
             // `history_loader::load_all()` (later as a `spawn_blocking`).
             // That work is now deferred — the registry is scanned lazily

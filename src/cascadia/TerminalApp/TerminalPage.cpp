@@ -1690,12 +1690,19 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Broadcast a `set_view` event to wta so it switches its TUI view
-    // (Chat / Agents). Used by Ctrl+Shift+/ to drive the wta into the
-    // Agents (session list) view when the agent pane is already alive.
-    // For a fresh pane the same effect is achieved via the
-    // `--initial-view` CLI flag passed to wta on spawn.
-    void TerminalPage::_BroadcastAgentSetView(std::string_view view)
+    // Ask wta to switch its TUI view (chat / sessions). One half of a
+    // request/ack pair — wta applies the change and echoes it back via a
+    // `view_changed` event handled by `OnAgentViewChanged`, which is the
+    // sole writer of `_agentSessionsViewActive` and the agent bar's
+    // session/chat label. We do NOT update local view state here; doing so
+    // would defeat the single-owner invariant (wta owns per-tab view; this
+    // is what made `_agentSessionsViewActive` go out of sync with the
+    // active tab's actual view in the multi-tab desync bug).
+    //
+    // For a fresh pane the same effect is achieved via the `--initial-view`
+    // CLI flag passed to wta on spawn — wta then emits the initial
+    // `view_changed` itself once its main loop is up.
+    void TerminalPage::_RequestAgentView(std::string_view view)
     {
         Json::Value evt;
         evt["type"] = "event";
@@ -1709,25 +1716,10 @@ namespace winrt::TerminalApp::implementation
         evt["params"] = params;
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
-        _agentPaneLog(std::string{ "broadcasting set_view event: view=" } + std::string{ view });
+        _agentPaneLog(std::string{ "requesting set_view: view=" } + std::string{ view });
         ProtocolVtSequenceReceived.raise(
             *this,
             winrt::to_hstring(Json::writeString(wb, evt)));
-
-        // Mirror the wta-side view switch on the C++ agent bar: in sessions
-        // view, the bar replaces "<agent> <version>" with "Agent sessions"
-        // and hides the agent logo. Tied to _BroadcastAgentSetView (and not
-        // _agentSessionsViewActive directly) because every keyboard- or
-        // icon-driven switch we care about flows through here; the few
-        // remaining `_agentSessionsViewActive = false` sites are pane-closed
-        // paths where the bar is going away anyway.
-        if (const auto pane = _FindAgentPane())
-        {
-            if (const auto agent = pane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
-            {
-                agent.SetSessionsView(view == "sessions");
-            }
-        }
     }
 
     // Reset every tab's AgentPaneOpen() flag. Called when the shared pane is
@@ -2396,9 +2388,10 @@ namespace winrt::TerminalApp::implementation
 
                 // Order matters: tab_changed (raised inside reconcile via
                 // _NotifyAgentTabChanged) must reach wta before set_view so
-                // the view switch lands on the right TabSession.
-                _BroadcastAgentSetView("sessions");
-                _agentSessionsViewActive = true;
+                // the view switch lands on the right TabSession. Request
+                // only — the resulting `view_changed` from wta will land in
+                // `OnAgentViewChanged` and flip `_agentSessionsViewActive`.
+                _RequestAgentView("sessions");
                 _UpdateBottomBarState();
                 return;
             }
@@ -2424,11 +2417,12 @@ namespace winrt::TerminalApp::implementation
                 // hidden, so wta retains its previous view). Without this
                 // the user would press the chat key and still see the
                 // session list.
-                _BroadcastAgentSetView("chat");
+                _RequestAgentView("chat");
             }
-            // Toggle path opens to chat (default) or hides the pane —
-            // either way the sessions view is no longer active.
-            _agentSessionsViewActive = false;
+            // No direct flag write here: `_agentSessionsViewActive` is
+            // managed by `OnAgentViewChanged` (for the open path, wta will
+            // echo `view_changed("chat")`; for the hide path, the flag is
+            // gated out of the bottom bar by `_agentPaneVisible == false`).
             _UpdateBottomBarState();
             return;
         }
@@ -2591,24 +2585,17 @@ namespace winrt::TerminalApp::implementation
         // via --owner-tab-id in the cmdline. Tab switches from here on
         // flow through _ReconcileAgentPaneForActiveTab.
 
-        // New pane: wta starts in whichever view --initial-view requested
-        // (chat by default; sessions when Ctrl+Shift+/ triggered the open).
-        _agentSessionsViewActive = intoSessionsView;
-
-        // Mirror that view on the new agent bar's label so the title reads
-        // "Agent sessions" from the very first frame. Without this the bar
-        // would briefly show "<agent> <version>" before any user input,
-        // which is misleading when the wta TUI below is the session list.
-        if (intoSessionsView)
-        {
-            if (const auto& content{ newPane->GetContent() })
-            {
-                if (const auto agent = content.try_as<winrt::TerminalApp::AgentPaneContent>())
-                {
-                    agent.SetSessionsView(true);
-                }
-            }
-        }
+        // No optimistic write of `_agentSessionsViewActive` here: wta is
+        // the sole owner of view state. wta is starting up with the
+        // `--initial-view` we baked into its cmdline, and it emits the
+        // initial `view_changed` from its main loop (see main.rs's
+        // post-`--initial-view` projection call). That event lands in
+        // `OnAgentViewChanged`, which flips the flag and updates the bar
+        // label. There is a brief visual lag while wta starts up — the
+        // bar shows the default "<agent> <version>" until wta's first
+        // `view_changed` — which is an accepted tradeoff for keeping
+        // the C++ flag's writer set to one (`OnAgentViewChanged`) and
+        // making view-state desync architecturally impossible.
 
         _UpdateBottomBarState();
     }
@@ -3887,9 +3874,13 @@ namespace winrt::TerminalApp::implementation
 
         if (visibleOnActiveTab && _agentSessionsViewActive)
         {
+            // Hide path: pane goes invisible on this tab. The
+            // `_agentPaneVisible` gate in `_UpdateBottomBarState` makes
+            // both chat/sessions highlights drop, so we don't need to
+            // clear `_agentSessionsViewActive` ourselves — wta still
+            // owns the view; on reopen the next `view_changed` corrects it.
             activeTab->AgentPaneOpen(false);
             _ReconcileAgentPaneForActiveTab();
-            _agentSessionsViewActive = false;
             _UpdateBottomBarState();
             return;
         }
@@ -4420,17 +4411,25 @@ namespace winrt::TerminalApp::implementation
 
     // Inbound event from WTA: {method:"view_changed", params:{view}}.
     //
-    // wta is the sole driver for two view transitions C++ can't observe by
-    // itself: Esc out of the Agents picker and the `/sessions` slash command.
-    // Both flip wta's internal `current_view` without going through
-    // `_BroadcastAgentSetView`, so without this echo the agent bar title
-    // would stay on "Agent sessions" after Esc, or fail to switch to it
-    // after `/sessions`, and the bottom bar's sessions/chat highlight (which
-    // reads `_agentSessionsViewActive`) would drift out of sync.
+    // **Single-writer handler** for `_agentSessionsViewActive` and the
+    // agent bar's session/chat title. wta is the sole owner of per-tab
+    // `current_view`, and it pushes this event whenever active-tab view
+    // state changes:
+    //   - On `tab_changed` (active tab swap; via `project_active_tab_state`
+    //     in `switch_tab_session`).
+    //   - On `set_view` (C++-originated request; wta echoes back).
+    //   - On Esc out of Agents view, `/sessions` slash command,
+    //     `load_session`, and once at startup after `--initial-view`.
     //
-    // Critically we do NOT call `_BroadcastAgentSetView` here — that would
-    // emit `set_view` back to wta and create a feedback loop. We only mirror
-    // the new view onto C++ state.
+    // C++ never writes `_agentSessionsViewActive` from its own code paths
+    // (the lone exception is the pane-Closed handler, where wta is dead
+    // and there is no one to send `view_changed`). This is what makes
+    // view-state desync architecturally impossible — a single writer means
+    // the flag can only ever reflect wta's last reported view.
+    //
+    // Don't request anything back here. The flag/bar mutation below is the
+    // terminal state of the round-trip; emitting `set_view` would just
+    // bounce the same view back and waste a hop.
     void TerminalPage::OnAgentViewChanged(hstring eventJson)
     {
         Json::Value evt;
