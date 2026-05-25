@@ -51,29 +51,27 @@ if (-not $env:WT_COM_CLSID) { exit 0 }
 $tracePath = $null
 try {
     # ── diagnostic trace + 5 MB rotation ────────────────────────────────
-    # Every successful invocation appends one ENTER line so we can
-    # diagnose missing SessionEnd events on Ctrl+C without relying on
-    # wta seeing the message. Rotates at 5 MB to hook-trace.log.1
-    # (one backup kept, ~10 MB ceiling).
+    # Appends one ENTER line per invocation so we can diagnose missing
+    # SessionEnd events on Ctrl+C. Soft 5 MB rotation: the check fires
+    # at the start of the NEXT hook after the threshold, so both the
+    # active log and the `.1` backup can briefly exceed 5 MB.
     #
-    # No external logging library here on purpose — every hook event
-    # spawns a fresh PowerShell process, so importing PSFramework /
-    # Microsoft.Extensions.Logging would add module-load latency to
-    # every tool call. Rolling ~10 lines is the right tradeoff.
+    # `-ErrorAction SilentlyContinue` on every filesystem cmdlet: the
+    # hook CONTRACT forbids writing anything to stdout/stderr, and
+    # New-Item / Get-Item / Move-Item emit non-terminating errors
+    # (AV-locked file, ACL denied, hooks racing) that bypass the outer
+    # try/catch and would otherwise leak into the parent CLI transcript.
+    # A persistent failure (read-only / no disk) surfaces via unbounded
+    # log growth, which is a visible signal.
     $traceDir = Join-Path $env:LOCALAPPDATA 'IntelligentTerminal\logs'
     if (-not (Test-Path -LiteralPath $traceDir)) {
-        New-Item -ItemType Directory -Path $traceDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $traceDir -Force -ErrorAction SilentlyContinue | Out-Null
     }
     $tracePath = Join-Path $traceDir 'hook-trace.log'
 
-    # 5 MB rotation. Move-Item -Force atomically overwrites the .1.
-    # Recoverable failures (file locked by AV / another hook racing us)
-    # are absorbed by the outer catch; next invocation retries. A
-    # persistent failure (ACL / read-only) surfaces via unbounded
-    # growth, which is a visible signal.
-    if ((Test-Path -LiteralPath $tracePath) -and
-        (Get-Item -LiteralPath $tracePath).Length -ge 5MB) {
-        Move-Item -LiteralPath $tracePath -Destination "$tracePath.1" -Force
+    $traceItem = Get-Item -LiteralPath $tracePath -ErrorAction SilentlyContinue
+    if ($traceItem -and $traceItem.Length -ge 5MB) {
+        Move-Item -LiteralPath $tracePath -Destination "$tracePath.1" -Force -ErrorAction SilentlyContinue
     }
 
     $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
@@ -206,13 +204,22 @@ try {
     $proc = [System.Diagnostics.Process]::Start($psi)
     $exited = $proc.WaitForExit(5000)
 
-    # OK breadcrumb. If StandardError.ReadToEnd throws (rare; process
-    # exited abnormally) the outer catch absorbs it and we get the ERROR
-    # breadcrumb instead — either way we record something.
+    # OK breadcrumb. `StandardError.ReadToEnd()` is synchronous and
+    # blocks until the child's pipe closes, so reading it after a
+    # `WaitForExit` timeout would hang the hook indefinitely and
+    # violate the "exit 0 quickly" contract. On timeout, kill the
+    # child and skip the stderr read. Kill exception is swallowed
+    # (process may have exited between WaitForExit and Kill).
     $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
-    $exitInfo = if ($exited) { "exit=$($proc.ExitCode)" } else { 'TIMEOUT_5s' }
-    $stderrSnippet = ($proc.StandardError.ReadToEnd() -replace "[\r\n]+", ' ').Trim()
-    if ($stderrSnippet.Length -gt 200) { $stderrSnippet = $stderrSnippet.Substring(0, 200) + '...' }
+    if (-not $exited) {
+        try { $proc.Kill() } catch { }
+        $exitInfo = 'TIMEOUT_5s'
+        $stderrSnippet = ''
+    } else {
+        $exitInfo = "exit=$($proc.ExitCode)"
+        $stderrSnippet = ($proc.StandardError.ReadToEnd() -replace "[\r\n]+", ' ').Trim()
+        if ($stderrSnippet.Length -gt 200) { $stderrSnippet = $stderrSnippet.Substring(0, 200) + '...' }
+    }
     $sessIdShort = if ($agentSessionId) { $agentSessionId.Substring(0, [Math]::Min(8, $agentSessionId.Length)) } else { '<none>' }
     Add-Content -LiteralPath $tracePath -Value "$stamp | OK cli=$cliSource event=$EventType $exitInfo sessId=$sessIdShort wtcli=$wtcliPath stderr=`"$stderrSnippet`"" -ErrorAction SilentlyContinue
 } catch {

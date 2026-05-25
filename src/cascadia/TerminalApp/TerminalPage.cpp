@@ -4999,8 +4999,12 @@ namespace winrt::TerminalApp::implementation
         // been created yet (TermControl is set up before the Pane wraps it).
         //
         // VtSequenceReceived fires on the connection reader thread (background).
-        // _FindSessionIdForControl accesses _tabs which has UI thread affinity,
-        // so we dispatch the session ID lookup + event raise to the UI thread.
+        // The dispatched continuation calls `_FindTabIdForControl`, which walks
+        // `_tabs` and has UI thread affinity, so the event raise has to run on
+        // the UI thread. `_FindSessionIdForControl` itself is thread-safe
+        // (only reads `Connection().SessionId()`) and could be called inline,
+        // but the rest of the work in this handler is gated on `_FindTabIdForControl`
+        // and the protocol event raise, so we just defer the whole body.
         {
             winrt::weak_ref<TermControl> weakTerm{ term };
 
@@ -5010,9 +5014,9 @@ namespace winrt::TerminalApp::implementation
                     if (!strongThis)
                         return;
 
-                    // Dispatch to UI thread: _FindSessionIdForControl accesses _tabs
-                    // which has UI thread affinity.  Fire-and-forget — don't block
-                    // the connection reader thread.
+                    // Dispatch to UI thread for the `_FindTabIdForControl` walk
+                    // of `_tabs` and the protocol event raise. Fire-and-forget —
+                    // don't block the connection reader thread.
                     strongThis->Dispatcher().RunAsync(
                         winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
                         [weakThis, weakTerm, seq]() {

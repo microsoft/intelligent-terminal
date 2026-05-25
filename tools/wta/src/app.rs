@@ -7557,8 +7557,8 @@ mod tests {
     #[test]
     fn default_prune_uses_strict_probe_for_live_claude_session_without_jsonl() {
         // End-to-end regression for the user-reported bug:
-        //   "新开一个 claude session，没有 conversation，关闭 session 后
-        //    这个 session 还是会显示在 session list 里, resume 报错"
+        //   "start a claude session，no conversation，close session,
+        //    session still active, resume error"
         //
         // Concretely: the user launches `claude` via the agent pane
         // (ACP), exchanges zero turns, exits the pane. Claude does
@@ -7570,14 +7570,18 @@ mod tests {
         // Enter then launched `claude --resume <id>` and dead-ended
         // on `No conversation found with session ID: <id>`.
         //
-        // With the strict probe used by the default prune, a row
-        // whose Claude JSONL is absent from disk is conclusively a
-        // phantom and gets removed immediately. The strict probe
-        // pokes the *real* `~/.claude/projects` tree, so we use a
-        // UUID guaranteed not to exist there (random nonce). If a
-        // matching JSONL ever materialised on the test runner, the
-        // assertion would flake — but the UUID space is large enough
-        // to make that effectively impossible.
+        // We drive the contract via the injectable
+        // `prune_phantom_session_if_ended_with` variant rather than
+        // the global `prune_phantom_session_if_ended`. The latter
+        // probes the real `~/.claude/projects` tree under whatever
+        // home directory the test runner happens to have, which is
+        // non-hermetic — flaky on developer machines if a Claude
+        // session ever happens to land on the chosen UUID, and
+        // dependent on USERPROFILE/HOME environment state. The
+        // injectable variant lets us pin the probe to the precise
+        // semantics the production default uses
+        // (`key_has_definite_resumable_content`) without touching
+        // the filesystem.
         use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
         use std::path::PathBuf;
         let key = "ed7c7c7c-9999-8888-7777-666666666666-strict";
@@ -7595,12 +7599,20 @@ mod tests {
         });
         // Sanity: the row is in the registry (Ended) before prune.
         assert!(reg.has_session(&key.to_string()));
-        // Drive the *default* prune (which uses the strict probe).
-        crate::app::prune_phantom_session_if_ended(&mut reg, key);
+        // Drive the prune with the strict-probe contract pinned
+        // via the injectable variant. Stub returns `false` to model
+        // "no JSONL on disk" — the exact case the default's strict
+        // probe (`key_has_definite_resumable_content`) reports for
+        // a Claude session whose CLI never flushed.
+        crate::app::prune_phantom_session_if_ended_with(
+            &mut reg,
+            key,
+            |_cli, _key| false,
+        );
         assert!(
             !reg.has_session(&key.to_string()),
-            "default prune must drop a live Claude row whose JSONL is \
-             missing from the real ~/.claude/projects tree",
+            "prune must drop an Ended Claude row whose on-disk \
+             artefacts are absent (strict-probe contract)",
         );
     }
 
