@@ -110,7 +110,7 @@ pub fn render(
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
         let loading_label = t!("agents.loading").into_owned();
         spans.extend(shimmer::shimmer_spans(&loading_label, activity_frame));
-        let loading = Paragraph::new(Line::from(spans));
+        let loading = Paragraph::new(Line::from(spans)).alignment(crate::rtl::text_alignment());
         f.render_widget(loading, list_area);
         if let Some(hint_area) = hint_area {
             render_footer_hint(f, hint_area);
@@ -191,7 +191,10 @@ fn render_footer_hint(f: &mut Frame, area: Rect) {
     let line = Line::from(vec![
         Span::styled(text, Style::default().fg(MUTED_WHITE)),
     ]);
-    f.render_widget(Paragraph::new(line), area);
+    f.render_widget(
+        Paragraph::new(line).alignment(crate::rtl::text_alignment()),
+        area,
+    );
 }
 
 fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'static> {

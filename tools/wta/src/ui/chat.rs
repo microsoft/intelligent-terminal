@@ -160,6 +160,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let paragraph = Paragraph::new(lines)
         .block(inner)
+        .alignment(crate::rtl::text_alignment())
         .wrap(Wrap { trim: false })
         .scroll((scroll as u16, 0));
 

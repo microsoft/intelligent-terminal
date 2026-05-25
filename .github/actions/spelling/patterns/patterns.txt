@@ -236,6 +236,9 @@ ROY\sG\.\sBIV
 # ARM NEON intrinsics like "vsubq_u16"
 \bv\w+_[fsu](?:8|16|32|64)\b
 
+# Win32 SDK LOCALE_* constants (locale-info field identifiers from winnls.h)
+\bLOCALE_[A-Z][A-Z0-9_]+\b
+
 # AppX package
 _\d[0-9a-z]{12}['\.]
 

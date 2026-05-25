@@ -72,7 +72,8 @@ pub fn render_hint(frame: &mut Frame, area: Rect) {
     let hint = Paragraph::new(Line::from(Span::styled(
         t!("recommendations.nav_hint").into_owned(),
         theme::DIM,
-    )));
+    )))
+    .alignment(crate::rtl::text_alignment());
     frame.render_widget(hint, area);
 }
 
