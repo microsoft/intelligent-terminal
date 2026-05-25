@@ -65,7 +65,7 @@ commands.help_close_hint: "  Esc        Fechar esta ajuda"  # {Locked="Esc"}
 
 # ── Painel de recomendações (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - nomes de teclas e glifo da tecla Enter, não traduzir
-recommendations.nav_hint: "(↑ ↓ para navegar • Enter para selecionar • Esc para cancelar)"
+recommendations.nav_hint: "(↑ ↓ para navegar • ← → alternar ações • Enter para selecionar • Esc para cancelar)"
 recommendations.button_run_command: "[ Executar comando ]"
 recommendations.button_insert_in_terminal: "Inserir no terminal"
 recommendations.button_open_in_new_tab: "Abrir em novo separador ↵"

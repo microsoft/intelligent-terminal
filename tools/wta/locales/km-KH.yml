@@ -72,7 +72,7 @@ commands.help_close_hint: "  Esc        បិទជំនួយនេះ"  # {L
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ ដើម្បីរុករក • Enter ដើម្បីជ្រើសរើស • Esc ដើម្បីបោះបង់)"
+recommendations.nav_hint: "(↑ ↓ ដើម្បីរុករក • ← → ដើម្បីប្ដូរសកម្មភាព • Enter ដើម្បីជ្រើសរើស • Esc ដើម្បីបោះបង់)"
 recommendations.button_run_command: "[ ដំណើរការពាក្យបញ្ជា ]"
 recommendations.button_insert_in_terminal: "បញ្ចូលក្នុង Terminal"
 recommendations.button_open_in_new_tab: "បើកក្នុងផ្ទាំងថ្មី ↵"

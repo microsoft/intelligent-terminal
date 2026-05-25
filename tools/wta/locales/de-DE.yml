@@ -65,7 +65,7 @@ commands.help_close_hint: "  Esc        Diese Hilfe schließen"  # {Locked="Esc"
 
 # ── Empfehlungsbereich (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - Tastennamen und Eingabetaste-Symbol, nicht übersetzen
-recommendations.nav_hint: "(↑ ↓ navigieren • Enter auswählen • Esc abbrechen)"
+recommendations.nav_hint: "(↑ ↓ navigieren • ← → Aktion wechseln • Enter auswählen • Esc abbrechen)"
 recommendations.button_run_command: "[ Befehl ausführen ]"
 recommendations.button_insert_in_terminal: "In Terminal einfügen"
 recommendations.button_open_in_new_tab: "In neuer Registerkarte öffnen ↵"

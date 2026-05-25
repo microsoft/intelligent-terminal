@@ -65,7 +65,7 @@ commands.help_close_hint: "  Esc        Tanca esta ajuda"  # {Locked="Esc"}
 
 # ── Panell de recomanacions (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - noms de tecles i glif de tecla Retorn, no traduïu
-recommendations.nav_hint: "(↑ ↓ per a navegar • Enter per a seleccionar • Esc per a cancel·lar)"
+recommendations.nav_hint: "(↑ ↓ per a navegar • ← → per a canviar accions • Enter per a seleccionar • Esc per a cancel·lar)"
 recommendations.button_run_command: "[ Executa l'orde ]"
 recommendations.button_insert_in_terminal: "Inserix al Terminal"
 recommendations.button_open_in_new_tab: "Obri en una pestanya nova ↵"

@@ -65,7 +65,7 @@ commands.help_close_hint: "  Esc        Deze help sluiten"  # {Locked="Esc"}
 
 # ── Aanbevelingenpaneel (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - toetsnamen en Enter-toetssymbool, niet vertalen
-recommendations.nav_hint: "(↑ ↓ navigeren • Enter selecteren • Esc annuleren)"
+recommendations.nav_hint: "(↑ ↓ navigeren • ← → om acties te wisselen • Enter selecteren • Esc annuleren)"
 recommendations.button_run_command: "[ Opdracht uitvoeren ]"
 recommendations.button_insert_in_terminal: "Invoegen in terminal"
 recommendations.button_open_in_new_tab: "Openen in nieuw tabblad ↵"

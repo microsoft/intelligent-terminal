@@ -65,7 +65,7 @@ commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ to navigate • Enter to select • Esc to cancel)"
+recommendations.nav_hint: "(↑ ↓ to navigate • ← → ສະຫຼັບການກະທຳ • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"

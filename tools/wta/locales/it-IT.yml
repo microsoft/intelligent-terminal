@@ -65,7 +65,7 @@ commands.help_close_hint: "  Esc        Chiudi questa guida"  # {Locked="Esc"}
 
 # ── Pannello dei suggerimenti (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - nomi dei tasti e glifo del tasto Invio, non tradurre
-recommendations.nav_hint: "(↑ ↓ per navigare • Enter per selezionare • Esc per annullare)"
+recommendations.nav_hint: "(↑ ↓ per navigare • ← → per cambiare azione • Enter per selezionare • Esc per annullare)"
 recommendations.button_run_command: "[ Esegui comando ]"
 recommendations.button_insert_in_terminal: "Inserisci nel terminale"
 recommendations.button_open_in_new_tab: "Apri in nuova scheda ↵"

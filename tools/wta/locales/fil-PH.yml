@@ -65,7 +65,7 @@ commands.help_close_hint: "  Esc        Isara ang tulong na ito"  # {Locked="Esc
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ para mag-navigate • Enter para pumili • Esc para mag-cancel)"
+recommendations.nav_hint: "(↑ ↓ para mag-navigate • ← → para magpalit ng aksyon • Enter para pumili • Esc para mag-cancel)"
 recommendations.button_run_command: "[ Patakbuhin ang command ]"
 recommendations.button_insert_in_terminal: "Ilagay sa Terminal"
 recommendations.button_open_in_new_tab: "Buksan sa Bagong Tab ↵"

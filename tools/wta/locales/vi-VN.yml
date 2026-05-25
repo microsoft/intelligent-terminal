@@ -65,7 +65,7 @@ commands.help_close_hint: "  Esc        Đóng trợ giúp này"  # {Locked="Esc
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ để di chuyển • Enter để chọn • Esc để hủy)"
+recommendations.nav_hint: "(↑ ↓ để di chuyển • ← → để chuyển hành động • Enter để chọn • Esc để hủy)"
 recommendations.button_run_command: "[ Chạy lệnh ]"
 recommendations.button_insert_in_terminal: "Chèn vào Terminal"
 recommendations.button_open_in_new_tab: "Mở trong Tab mới ↵"
