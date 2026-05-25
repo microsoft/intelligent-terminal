@@ -6360,6 +6360,18 @@ impl App {
                             registry_size_after = self.pane_registry.len(),
                             "attach succeeded",
                         );
+
+                        // Side-effects on a successful attach:
+                        //   (a) draw a placeholder frame so the user
+                        //       sees something rather than a blank
+                        //       pane until per-tab ACP chat state
+                        //       lands in a later commit;
+                        //   (b) spawn the input pump that reads
+                        //       user keystrokes off the conpty's
+                        //       slave-in handle.
+                        self.draw_attach_placeholder(&tab_id, &agent_id);
+                        self.spawn_pane_input_task(&tab_id);
+
                         crate::protocol::internal_control::OutboundAck::AttachPaneAck {
                             id: id.clone(),
                             params: crate::protocol::internal_control::AckParams {
@@ -6481,6 +6493,134 @@ impl App {
                 // informational, see spec R7.
             }
         }
+    }
+
+    /// Render a one-shot placeholder frame on the freshly-attached
+    /// pane. Real chat UI will overwrite this once per-tab ACP wiring
+    /// lands. Until then it serves as the "yes, the conpty handle
+    /// marshaling worked, you can see this pane" smoke signal.
+    fn draw_attach_placeholder(&mut self, tab_id: &str, agent_id: &str) {
+        let Some(ctx) = self.pane_registry.get_mut(tab_id) else {
+            tracing::error!(
+                target: "internal_control",
+                step = "render",
+                tab_id = %tab_id,
+                "draw_attach_placeholder: pane not in registry — race?",
+            );
+            return;
+        };
+        let agent_owned = agent_id.to_string();
+        let tab_owned = tab_id.to_string();
+        let draw_result = ctx.terminal_mut().draw(|frame| {
+            use ratatui::widgets::{Block, Borders, Paragraph};
+            let body = format!(
+                "agent pane attached\n\
+                 \n\
+                 tab_id   {tab_owned}\n\
+                 agent    {agent_owned}\n\
+                 \n\
+                 (chat UI lands when per-tab ACP wiring is hooked up)"
+            );
+            let p = Paragraph::new(body).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" wta — shared agent pane "),
+            );
+            frame.render_widget(p, frame.area());
+        });
+        match draw_result {
+            Ok(_) => tracing::debug!(
+                target: "internal_control",
+                step = "render",
+                tab_id = %tab_id,
+                "placeholder frame drawn",
+            ),
+            Err(err) => tracing::warn!(
+                target: "internal_control",
+                step = "render",
+                tab_id = %tab_id,
+                error = %err,
+                "placeholder draw failed",
+            ),
+        }
+    }
+
+    /// Take the ConptyReader off this tab's RenderCtx and spawn a
+    /// blocking task that pumps user keystrokes. Until per-tab ACP
+    /// is wired, the bytes are logged but otherwise dropped.
+    ///
+    /// Uses spawn_blocking because the underlying `ReadFile` syscall
+    /// is blocking by nature; running it on the tokio runtime's
+    /// regular task pool would stall the LocalSet. Spawning is
+    /// conditional on a runtime being present so unit tests that
+    /// call `handle_internal_control` directly do not panic with
+    /// "no current reactor."
+    fn spawn_pane_input_task(&mut self, tab_id: &str) {
+        let Some(ctx) = self.pane_registry.get_mut(tab_id) else {
+            return;
+        };
+        let Some(mut reader) = ctx.take_reader() else {
+            tracing::warn!(
+                target: "internal_control",
+                step = "spawn_input",
+                tab_id = %tab_id,
+                "reader already taken — duplicate attach?",
+            );
+            return;
+        };
+        let handle = match tokio::runtime::Handle::try_current() {
+            Ok(h) => h,
+            Err(_) => {
+                tracing::debug!(
+                    target: "internal_control",
+                    step = "spawn_input",
+                    tab_id = %tab_id,
+                    "no tokio runtime — skipping input task spawn (likely a unit test)",
+                );
+                return;
+            }
+        };
+        let tab_id_owned = tab_id.to_string();
+        handle.spawn_blocking(move || {
+            use std::io::Read;
+            tracing::info!(
+                target: "pane_input",
+                tab_id = %tab_id_owned,
+                "input reader task spawned",
+            );
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => {
+                        tracing::info!(
+                            target: "pane_input",
+                            tab_id = %tab_id_owned,
+                            "EOF — pane detached, input task exiting",
+                        );
+                        break;
+                    }
+                    Ok(n) => {
+                        tracing::debug!(
+                            target: "pane_input",
+                            tab_id = %tab_id_owned,
+                            bytes = n,
+                            "received input bytes",
+                        );
+                        // Real routing into the per-tab ACP session lands
+                        // when Task #17 wires per-pane CLI children.
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            target: "pane_input",
+                            tab_id = %tab_id_owned,
+                            error = %err,
+                            "read error — input task exiting",
+                        );
+                        break;
+                    }
+                }
+            }
+        });
     }
 
     /// Serialize an outbound ack and push it onto the publisher.
@@ -7040,6 +7180,52 @@ mod tests {
         });
         app.handle_internal_control(value);
         assert_eq!(app.pane_registry.len(), 0);
+    }
+
+    #[test]
+    fn handle_internal_control_attach_draws_placeholder_immediately() {
+        // The user shouldn't see a blank pane after attach. The
+        // placeholder render is the early signal that conpty handle
+        // marshaling actually worked end-to-end — long before
+        // per-pane ACP wiring fills in a real chat UI.
+        use std::io::Read;
+
+        let mut app = test_app();
+        let (pin, pout, mut observer) = fresh_attach_handles_for_test();
+        let attach = json!({
+            "method": "_internal.attach_pane",
+            "params": {
+                "tab_id": "TAB_PLACEHOLDER",
+                "pty_in": pin, "pty_out": pout,
+                "cols": 60, "rows": 8,
+                "agent_id": "claude",
+                "initial_cwd": "/",
+                "initial_view": "chat",
+            }
+        });
+        app.handle_internal_control(attach);
+
+        let mut buf = vec![0u8; 8192];
+        let n = observer.read(&mut buf).unwrap();
+        let rendered = String::from_utf8_lossy(&buf[..n]);
+        // Ratatui's diff render emits per-cell cursor moves so the
+        // phrase "agent pane attached" is split across ANSI cursor
+        // sequences. Each individual token still appears contiguously
+        // in the byte stream, so assert on the distinctive markers
+        // (`TAB_PLACEHOLDER`, the agent id, the title) rather than
+        // the long phrase.
+        assert!(
+            rendered.contains("TAB_PLACEHOLDER"),
+            "placeholder did not echo tab_id; got: {rendered:?}",
+        );
+        assert!(
+            rendered.contains("claude"),
+            "placeholder did not echo agent_id; got: {rendered:?}",
+        );
+        assert!(
+            rendered.contains("wta"),
+            "placeholder title missing; got: {rendered:?}",
+        );
     }
 
     #[test]
