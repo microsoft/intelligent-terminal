@@ -11,10 +11,10 @@ setup.title.sign_in: "Sínigh isteach riachtanach"
 setup.subtitle.copilot_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Lean na céimeanna thíos chun é a shuiteáil. Chun gníomhairí a athrú, téigh go Settings."
 setup.subtitle.agent_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Athshuiteáil de láimh é, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Settings."
 setup.subtitle.copilot_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Lean na céimeanna thíos chun síniú isteach. Chun gníomhairí a athrú, téigh go Settings."
-setup.subtitle.agent_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Sínigh isteach tríd an CLI gníomhaire, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Settings."
+setup.subtitle.agent_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Sínigh isteach tríd an ngníomhaire, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Roghnaigh an CLI gníomhaire réamhshocraithe ba mhaith leat a úsáid in Intelligent Terminal. Is féidir leat"
+setup.description.fre_line1: "Roghnaigh an gníomhaire réamhshocraithe ba mhaith leat a úsáid in Intelligent Terminal. Is féidir leat"
 setup.description.fre_line2: "dul go Settings chun do spás oibre a chumrú agus a shocrú."
 
 setup.option.reinstall: "Athshuiteáil %{agent}"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Seol '/' litriúil (éalú ón bparsál
 commands.help_close_hint: "  Esc        Dún an chabhair seo"  # {Locked="Esc"}
 
 # ── Painéal moltaí (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - ainmneacha eochracha agus gliof eochair Fillte, ná haistrigh
-recommendations.nav_hint: "(↑ ↓ chun nascleanúint • Enter chun roghnú • Esc chun cealú)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - ainmneacha eochracha agus gliof eochair Fillte, ná haistrigh
+recommendations.nav_hint: "(↑ ↓ chun nascleanúint a dhéanamh • ← → chun cnaipí a athrú • Enter chun roghnú • Esc chun cealú)"
 recommendations.button_run_command: "[ Rith ordú ]"
 recommendations.button_insert_in_terminal: "Ionsáigh i dTeirminéal"
 recommendations.button_open_in_new_tab: "Oscail i gCluaisín Nua ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Cinntigh go bhfuil %{name} suiteáilte agus ar do PATH.
 
 # ── Amharc gníomhairí (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Á luchtú..."
-# {Locked="Enter","Shift+enter","Esc"} - teaglamaí eochracha, ná haistrigh
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - teaglamaí eochracha, ná haistrigh
 agents.footer_hint: "(↑ ↓ chun nascleanúint • Enter chun seisiún a sheoladh i gcluaisín nua • Shift+enter chun seisiún a sheoladh i bpána gníomhaire • Esc chun scor)"
 agents.status.active: "Gníomhach"
 agents.status.waiting_for_input: "Ag fanacht le hionchur"
@@ -158,3 +158,11 @@ hooks.installed_but_disabled: "⚠ suiteáilte ach díchumasaithe"
 hooks.not_installed: "✗ níl suiteáilte"
 hooks.uninstall_skipped: "léimthe (CLI níl ar PATH)"
 hooks.install_attempted: "Rinneadh iarracht wt-agent-hooks a shuiteáil (iompóiteach). Rith `wta hooks status` chun an toradh a iniúchadh. Loga rianaithe: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "anois díreach"
+time.minute_singular: "%{count} nóiméad ó shin"
+time.minutes_other: "%{count} nóiméad ó shin"
+time.hour_singular: "%{count} uair an chloig ó shin"
+time.hours_other: "%{count} uair an chloig ó shin"
+time.day_singular: "%{count} lá ó shin"
+time.days_other: "%{count} lá ó shin"

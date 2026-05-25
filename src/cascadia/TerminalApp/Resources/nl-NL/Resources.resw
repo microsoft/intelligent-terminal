@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -120,14 +120,14 @@
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Welkom bij Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Stel uw ingebouwde assistent in om u te helpen fouten uit te leggen, opdrachten op te stellen en taken te deblokkeren, precies waar u werkt. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Meer informatie over Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Blijf in uw flow met uw ingebouwde AI-agent</value>
@@ -147,7 +147,7 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>Welkom bij Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Kies wat u nu wilt instellen. U kunt deze instellingen op elk moment wijzigen in </value>
@@ -159,8 +159,8 @@
     <value>Agent</value>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Kies de agent-CLI die in het agentvenster wordt gebruikt. Elke compatibele ACP-CLI wordt gedetecteerd.</value>
-    <comment>{Locked="CLI","ACP"}</comment>
+    <value>Kies de agent die in het agentvenster wordt gebruikt. Elke compatibele ACP-agent wordt gedetecteerd.</value>
+    <comment>{Locked="ACP"}</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
     <value>ℹ Deze agent vereist Node.js en NPX, die automatisch worden geïnstalleerd als ze nog niet aanwezig zijn.</value>
@@ -178,11 +178,11 @@
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>Geef Intelligent Terminal toestemming om de status van uw actieve of lopende agents bij te houden.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Als u dit inschakelt, worden integratiehooks geïnstalleerd om sessies bij te houden voor al uw agent-CLIs.</value>
-    <comment>{Locked="CLI"}</comment>
+    <value>ℹ Als u dit inschakelt, worden integratiehooks geïnstalleerd om sessies bij te houden voor al uw agents.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Vensterpositie</value>
@@ -228,5 +228,53 @@
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Uit</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Fout wordt geanalyseerd…</value>
+    <comment>Knopinfo van de diagnoseknop tijdens de analyse.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Fout gevonden: analyseren…</value>
+    <comment>Statuslabel tijdens analyse.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Fout gevonden: {0} om op te lossen</value>
+    <comment>{0} = sneltoets.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Oplossing gereed — {0} om toe te passen</value>
+    <comment>{0} = sneltoets.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Oplossing gereed — {0} om toe te passen: {1}</value>
+    <comment>{0} = sneltoets; {1} = voorbeeld.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Suggestie gereed — open agentvenster</value>
+    <comment>Statuslabel wanneer een suggestie beschikbaar is.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Auto-fix weigerde dit direct te corrigeren. </value>
+    <comment>Eerste zin. Behoud de afsluitende spatie.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Klik hier of druk op Ctrl+Shift+. om het agentvenster te openen en de volledige suggestie te lezen.</value>
+    <comment>{Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Diagnostiek</value>
+    <comment>Knopinfo in rust.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Agentsessies</value>
+    <comment>Venstertitel wanneer sessiebeheer actief is.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Agentsessies: {0}</value>
+    <comment>{0} = naam van de agent.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
   </data>
 </root>

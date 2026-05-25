@@ -11,10 +11,10 @@ setup.title.sign_in: "Feumaidh tu clàradh a-steach"
 setup.subtitle.copilot_missing: "Chan eil an àidseant agad \"%{agent}\" air a stàladh. Lean na ceumannan gu h-ìosal gus a stàladh. Airson àidseant atharrachadh, rach gu Settings."
 setup.subtitle.agent_missing: "Chan eil an àidseant agad \"%{agent}\" air a stàladh. Ath-stàlaich e le làimh, an uair sin feuch a-rithist. Airson àidseant atharrachadh, rach gu Settings."
 setup.subtitle.copilot_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Lean na ceumannan gu h-ìosal gus clàradh a-steach. Airson àidseant atharrachadh, rach gu Settings."
-setup.subtitle.agent_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Clàraich a-steach tron CLI àidseant, an uair sin feuch a-rithist. Airson àidseant atharrachadh, rach gu Settings."
+setup.subtitle.agent_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Clàraich a-steach tron àidseant, an uair sin feuch a-rithist. Airson àidseant atharrachadh, rach gu Settings."
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Tagh an CLI àidseant bunaiteach a bu mhath leat a chleachdadh ann an Intelligent Terminal. 'S urrainn dhut"
+setup.description.fre_line1: "Tagh an àidseant bunaiteach a bu mhath leat a chleachdadh ann an Intelligent Terminal. 'S urrainn dhut"
 setup.description.fre_line2: "a dhol gu Settings gus an raon-obrach agad a rèiteachadh."
 
 setup.option.reinstall: "Ath-stàlaich %{agent}"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Cuir '/' litireil (teich bhon pharsair 
 commands.help_close_hint: "  Esc        Dùin an cuideachadh seo"  # {Locked="Esc"}
 
 # ── Panail mholaidhean (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - ainmean iuchraichean agus samhla iuchair Tilleadh, na eadar-theangaich
-recommendations.nav_hint: "(↑ ↓ gus seòladh • Enter gus taghadh • Esc gus sgur dheth)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - ainmean iuchraichean agus samhla iuchair Tilleadh, na eadar-theangaich
+recommendations.nav_hint: "(↑ ↓ gus seòladh • ← → gus putanan atharrachadh • Enter gus taghadh • Esc gus sgur dheth)"
 recommendations.button_run_command: "[ Ruith òrdugh ]"
 recommendations.button_insert_in_terminal: "Cuir a-steach san Teirmineal"
 recommendations.button_open_in_new_tab: "Fosgail ann an Taba Ùr ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Dèan cinnteach gu bheil %{name} air a stàladh agus ai
 
 # ── Sealladh àidseant (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Ga luchdadh..."
-# {Locked="Enter","Shift+enter","Esc"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
 agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog ann an taba ùr • Shift+enter gus seisean a chur air bhog ann am panail àidseant • Esc gus fàgail)"
 agents.status.active: "Gnìomhach"
 agents.status.waiting_for_input: "A' feitheamh ri ion-chur"
@@ -158,3 +158,11 @@ hooks.installed_but_disabled: "⚠ air a stàladh ach air a chur à comas"
 hooks.not_installed: "✗ gun stàladh"
 hooks.uninstall_skipped: "air a leum seachad (CLI chan eil air PATH)"
 hooks.install_attempted: "Chaidh feuchainn ri wt-agent-hooks a stàladh (idempotent). Ruith `wta hooks status` gus an toradh a sgrùdadh. Loga lorg: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "an-dràsta fhèin"
+time.minute_singular: "%{count} mhionaid air ais"
+time.minutes_other: "%{count} mionaidean air ais"
+time.hour_singular: "%{count} uair a thìde air ais"
+time.hours_other: "%{count} uairean a thìde air ais"
+time.day_singular: "%{count} latha air ais"
+time.days_other: "%{count} làithean air ais"

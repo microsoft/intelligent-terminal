@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Bidali '/' literala (ihes komando-anali
 commands.help_close_hint: "  Esc        Itxi laguntza hau"  # {Locked="Esc"}
 
 # ── Gomendio-panela (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - tekla-izenak eta Itzuli-tekla glifoa, ez itzuli
-recommendations.nav_hint: "(↑ ↓ nabigatzeko • Enter hautatzeko • Esc bertan behera uzteko)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - tekla-izenak eta Itzuli-tekla glifoa, ez itzuli
+recommendations.nav_hint: "(↑ ↓ nabigatzeko • ← → ekintzak aldatzeko • Enter hautatzeko • Esc bertan behera uzteko)"
 recommendations.button_run_command: "[ Exekutatu komandoa ]"
 recommendations.button_insert_in_terminal: "Txertatu Terminalean"
 recommendations.button_open_in_new_tab: "Ireki Fitxa Berrian ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Ziurtatu %{name} instalatuta dagoela eta zure PATH-ean 
 
 # ── Agenteen ikuspegia (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Kargatzen..."
-# {Locked="Enter","Shift+enter","Esc"} - tekla-konbinazioak, ez itzuli
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - tekla-konbinazioak, ez itzuli
 agents.footer_hint: "(↑ ↓ nabigatzeko • Enter saioa fitxa berrian abiarazteko • Shift+enter saioa agente-panelean abiarazteko • Esc irteteko)"
 agents.status.active: "Aktiboa"
 agents.status.waiting_for_input: "Sarreraren zain"
@@ -158,3 +158,12 @@ hooks.installed_but_disabled: "⚠ instalatuta baina desgaituta"
 hooks.not_installed: "✗ instalatu gabe"
 hooks.uninstall_skipped: "saltatu da (CLI ez dago PATH-ean)"
 hooks.install_attempted: "wt-agent-hooks instalatzea saiatu da (idempotentea). Exekutatu `wta hooks status` emaitza ikusteko. Aztarna-loga: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "oraintxe"
+time.minute_singular: "duela %{count} minutu"
+time.minutes_other: "duela %{count} minutu"
+time.hour_singular: "duela %{count} ordu"
+time.hours_other: "duela %{count} ordu"
+time.day_singular: "duela %{count} egun"
+time.days_other: "duela %{count} egun"

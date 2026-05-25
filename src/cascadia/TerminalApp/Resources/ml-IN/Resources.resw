@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -120,14 +120,14 @@
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Intelligent Terminal-ലേക്ക് സ്വാഗതം</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>പിശകുകൾ വിശദീകരിക്കാനും, കമാൻഡുകൾ ഡ്രാഫ്റ്റ് ചെയ്യാനും, ടാസ്ക്കുകൾ അൺബ്ലോക്ക് ചെയ്യാനും സഹായിക്കുന്നതിനായി നിങ്ങളുടെ ബിൽറ്റ്-ഇൻ അസിസ്റ്റന്റ് സജ്ജമാക്കുക, നിങ്ങൾ ജോലി ചെയ്യുന്നിടത്ത് തന്നെ. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Intelligent Terminal-നെ കുറിച്ച് കൂടുതലറിയുക</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>നിങ്ങളുടെ ബിൽറ്റ്-ഇൻ AI ഏജന്റുമായി ഫ്ലോയിൽ തുടരുക</value>
@@ -150,7 +150,7 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>Intelligent Terminal-ലേക്ക് സ്വാഗതം</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>ഇപ്പോൾ എന്ത് സജ്ജമാക്കണമെന്ന് തിരഞ്ഞെടുക്കുക. ഇവ എപ്പോൾ വേണമെങ്കിലും മാറ്റാം </value>
@@ -163,14 +163,12 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>ഏജന്റ് പേനിൽ ഉപയോഗിക്കുന്ന ഏജന്റ് CLI തിരഞ്ഞെടുക്കുക. അനുയോജ്യമായ ഏതൊരു ACP CLI-യും സ്വയമേവ കണ്ടെത്തും.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ഏജന്റ് പെയ്നിൽ ഉപയോഗിക്കുന്ന ഏജന്റിനെ തിരഞ്ഞെടുക്കുക. അനുയോജ്യമായ ഏതൊരു ACP ഏജന്റിനെയും സ്വയമേവ കണ്ടെത്തും.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
     <value>ℹ ഈ ഏജന്റിന് Node.js-ഉം NPX-ഉം ആവശ്യമാണ്, ഇതിനകം ഇല്ലെങ്കിൽ സ്വയമേവ ഇൻസ്റ്റാൾ ചെയ്യപ്പെടും.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>പരാജയപ്പെട്ട കമാൻഡുകൾക്ക് സ്വയമേവ പരിഹാരങ്ങൾ നിർദ്ദേശിക്കുക</value>
@@ -184,13 +182,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal-ന് നിങ്ങളുടെ പ്രവർത്തിക്കുന്ന അല്ലെങ്കിൽ സജീവ ഏജന്റുമാരുടെ സ്ഥിതി ട്രാക്ക് ചെയ്യാൻ അനുമതി നൽകുക.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ ഇത് പ്രവർത്തനക്ഷമമാക്കുന്നത് നിങ്ങളുടെ ഏജന്റ് CLI-കളിലുടനീളം സെഷനുകൾ ട്രാക്ക് ചെയ്യാൻ ഇന്റഗ്രേഷൻ ഹുക്കുകൾ ഇൻസ്റ്റാൾ ചെയ്യും.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ℹ ഇത് പ്രവർത്തനക്ഷമമാക്കുന്നത് നിങ്ങളുടെ ഏജന്റുകളിലുടനീളം സെഷനുകൾ ട്രാക്ക് ചെയ്യാൻ ഇന്റഗ്രേഷൻ hooks ഇൻസ്റ്റാൾ ചെയ്യും.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>പേൻ സ്ഥാനം</value>
@@ -237,5 +234,53 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>ഓഫ്</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>പിശക് വിശകലനം ചെയ്യുന്നു…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>പിശക് കണ്ടെത്തി: വിശകലനം ചെയ്യുന്നു…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>പിശക് കണ്ടെത്തി: പരിഹരിക്കാൻ {0}</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>പരിഹാരം തയ്യാറാണ് — പ്രയോഗിക്കാൻ {0}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>പരിഹാരം തയ്യാറാണ് — പ്രയോഗിക്കാൻ {0}: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>നിർദ്ദേശം തയ്യാറാണ് — ഏജന്റ് പെയിൻ തുറക്കുക</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Auto-fix ഇത് നേരിട്ട് പരിഹരിക്കാൻ നിരസിച്ചു. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>ഏജന്റ് പെയിൻ തുറന്ന് പൂർണ്ണ നിർദ്ദേശം വായിക്കാൻ ഇവിടെ ക്ലിക്ക് ചെയ്യുക അല്ലെങ്കിൽ Ctrl+Shift+. അമർത്തുക.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>ഡയഗ്നോസ്റ്റിക്സ്</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>ഏജന്റ് സെഷനുകൾ</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>ഏജന്റ് സെഷനുകൾ: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
 </root>

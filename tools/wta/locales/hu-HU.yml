@@ -11,10 +11,10 @@ setup.title.sign_in: "Bejelentkezés szükséges"
 setup.subtitle.copilot_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Kövesse az alábbi lépéseket a telepítéshez. Az ügynök váltásához lépjen a Settings oldalra."
 setup.subtitle.agent_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Telepítse újra manuálisan, majd próbálja újra. Az ügynök váltásához lépjen a Settings oldalra."
 setup.subtitle.copilot_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Kövesse az alábbi lépéseket a bejelentkezéshez. Az ügynök váltásához lépjen a Settings oldalra."
-setup.subtitle.agent_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Jelentkezzen be az ügynök CLI-n keresztül, majd próbálja újra. Az ügynök váltásához lépjen a Settings oldalra."
+setup.subtitle.agent_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Jelentkezzen be az ügynökön keresztül, majd próbálja újra. Az ügynök váltásához lépjen a Settings oldalra."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Válassza ki az Intelligent Terminal alkalmazásban használni kívánt alapértelmezett ügynök CLI-t. A"
+setup.description.fre_line1: "Válassza ki az Intelligent Terminal alkalmazásban használni kívánt alapértelmezett ügynököt. A"
 setup.description.fre_line2: "Settings oldalon konfigurálhatja és beállíthatja a munkaterületét."
 
 setup.option.reinstall: "%{agent} újratelepítése"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Szó szerinti '/' küldése (megkerüli
 commands.help_close_hint: "  Esc        Súgó bezárása"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ navigáláshoz • Enter kiválasztáshoz • Esc megszakításhoz)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ navigáláshoz • ← → gombok közötti váltáshoz • Enter kiválasztáshoz • Esc megszakításhoz)"
 recommendations.button_run_command: "[ Parancs futtatása ]"
 recommendations.button_insert_in_terminal: "Beszúrás a terminálba"
 recommendations.button_open_in_new_tab: "Megnyitás új lapon ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Győződjön meg róla, hogy a(z) %{name} telepítve va
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Betöltés..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ navigáláshoz • Enter munkamenet indításához új lapon • Shift+enter munkamenet indításához az ügynök panelen • Esc kilépéshez)"
 agents.status.active: "Aktív"
 agents.status.waiting_for_input: "Bemenetre vár"
@@ -158,3 +158,11 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "épp most"
+time.minute_singular: "%{count} perce"
+time.minutes_other: "%{count} perce"
+time.hour_singular: "%{count} órája"
+time.hours_other: "%{count} órája"
+time.day_singular: "%{count} napja"
+time.days_other: "%{count} napja"

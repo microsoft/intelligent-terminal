@@ -11,10 +11,10 @@ setup.title.sign_in: "[!! Sig_n in required !!]"
 setup.subtitle.copilot_missing: "[!! You_r agent \"%{agent}\" is not installed. Follow the steps below to install it. To switch agents, go to Settings. !!]"
 setup.subtitle.agent_missing: "[!! You_r agent \"%{agent}\" is not installed. Please reinstall it manually, then retry. To switch agents, go to Settings. !!]"
 setup.subtitle.copilot_auth: "[!! You_r agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Settings. !!]"
-setup.subtitle.agent_auth: "[!! You_r agent \"%{agent}\" requires authentication. Please sign in via the agent CLI, then retry. To switch agents, go to Settings. !!]"
+setup.subtitle.agent_auth: "[!! You_r agent \"%{agent}\" requires authentication. Please sign in via the agent, then retry. To switch agents, go to Settings. !!]"
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "[!! Cho_ose the default agent CLI you would like to use in Intelligent Terminal. You can !!]"
+setup.description.fre_line1: "[!! Cho_ose the default agent you would like to use in Intelligent Terminal. You can !!]"
 setup.description.fre_line2: "[!! nav_igate to Settings to configure and set up your workspace. !!]"
 
 setup.option.reinstall: "[!! Rei_nstall %{agent} !!]"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "[!!   //text     Se_nd a literal '/' (escapes the co
 commands.help_close_hint: "[!!   Esc        Cl_ose this help !!]"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "[!! (↑_ ↓ to navigate • Enter to select • Esc to cancel) !!]"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "[!! (↑_ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel) !!]"
 recommendations.button_run_command: "[!! [ R_un command ] !!]"
 recommendations.button_insert_in_terminal: "[!! Ins_ert in Terminal !!]"
 recommendations.button_open_in_new_tab: "[!! Ope_n in New Tab ↵ !!]"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "[!! Mak_e sure %{name} is installed and on your PATH. !
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "[!! Loa_ding... !!]"
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "[!! (↑_ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit) !!]"
 agents.status.active: "[!! Act_ive !!]"
 agents.status.waiting_for_input: "[!! Wai_ting for input !!]"
@@ -158,3 +158,20 @@ hooks.installed_but_disabled: "[!! ⚠ i_nstalled but disabled !!]"
 hooks.not_installed: "[!! ✗ n_ot installed !!]"
 hooks.uninstall_skipped: "[!! ski_pped (CLI not on PATH) !!]"
 hooks.install_attempted: "[!! wt-_agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log !!]"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "[!! just now !!]"
+time.minute_singular: "[!! %{count} minute ago !!]"
+time.minutes_other: "[!! %{count} minutes ago !!]"
+time.hour_singular: "[!! %{count} hour ago !!]"
+time.hours_other: "[!! %{count} hours ago !!]"
+time.day_singular: "[!! %{count} day ago !!]"
+time.days_other: "[!! %{count} days ago !!]"
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "[!! Show this command list !!]"
+commands.clear.summary: "[!! Clear the chat scrollback (keeps session) !!]"
+commands.new.summary: "[!! Start a fresh ACP session (drops history) !!]"
+commands.restart.summary: "[!! Reconnect: kill agent process and respawn !!]"
+commands.stop.summary: "[!! Cancel the in-flight prompt !!]"
+commands.sessions.summary: "[!! Open the historical sessions picker (Ctrl+Shift+/) !!]"

@@ -11,10 +11,10 @@ setup.title.sign_in: "Me takiuru"
 setup.subtitle.copilot_missing: "Kaore to agent \"%{agent}\" i tautahia. Whaia nga hipanga i raro nei ki te tauta. Ki te huri agent, haere ki Settings."
 setup.subtitle.agent_missing: "Kaore to agent \"%{agent}\" i tautahia. Tautahia ano a ringa, katahi ka ngana ano. Ki te huri agent, haere ki Settings."
 setup.subtitle.copilot_auth: "Me whakamanatu to agent \"%{agent}\". Whaia nga hipanga i raro nei ki te takiuru. Ki te huri agent, haere ki Settings."
-setup.subtitle.agent_auth: "Me whakamanatu to agent \"%{agent}\". Takiuru ma te agent CLI, katahi ka ngana ano. Ki te huri agent, haere ki Settings."
+setup.subtitle.agent_auth: "Me whakamanatu to agent \"%{agent}\". Takiuru mā te agent, kātahi ka ngana anō. Ki te huri agent, haere ki Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Kowhiria te agent CLI taunoa hei whakamahi i roto i Intelligent Terminal. Ka taea e koe te"
+setup.description.fre_line1: "Kōwhiria te agent taunoa hei whakamahi i roto i Intelligent Terminal. Ka taea e koe te"
 setup.description.fre_line2: "haere ki Settings hei whirihiri me te whakarite i to wahi mahi."
 
 setup.option.reinstall: "Tauta ano i a %{agent}"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Tukua he '/' tuturu (whakaorangia te ka
 commands.help_close_hint: "  Esc        Katia tenei awhina"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ ki te whakatere • Enter ki te whiriwhiri • Esc ki te whakakore)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ ki te whakatere • ← → ki te whakawhiti pātene • Enter ki te whiriwhiri • Esc ki te whakakore)"
 recommendations.button_run_command: "[ Whakahautia te whakahau ]"
 recommendations.button_insert_in_terminal: "Whakauruhia ki te Teirminara"
 recommendations.button_open_in_new_tab: "Whakatuwherahia i te Ripa Hou ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Kia mohio kua tautahia a %{name} a kei runga i to PATH.
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "E uta ana..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ ki te whakatere • Enter ki te whakarewa wahanga i te ripa hou • Shift+enter ki te whakarewa wahanga i te papa agent • Esc ki te puta)"
 agents.status.active: "Hohe"
 agents.status.waiting_for_input: "E tatari ana mo te tauuru"
@@ -158,3 +158,11 @@ hooks.installed_but_disabled: "⚠ kua tautahia engari kua monokia"
 hooks.not_installed: "✗ kaore i tautahia"
 hooks.uninstall_skipped: "kua pekehia (CLI kaore i runga i te PATH)"
 hooks.install_attempted: "Kua ngana ki te tauta i a wt-agent-hooks (idempotent). Whakahautia `wta hooks status` ki te tirotiro i te hua. Raarangi aroturuki: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "inaianei tonu"
+time.minute_singular: "%{count} meneti ki muri"
+time.minutes_other: "%{count} meneti ki muri"
+time.hour_singular: "%{count} hāora ki muri"
+time.hours_other: "%{count} hāora ki muri"
+time.day_singular: "%{count} rā ki muri"
+time.days_other: "%{count} rā ki muri"

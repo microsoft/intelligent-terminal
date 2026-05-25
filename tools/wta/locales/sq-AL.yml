@@ -11,10 +11,10 @@ setup.title.sign_in: "Kërkohet identifikimi"
 setup.subtitle.copilot_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Ndiqni hapat më poshtë për ta instaluar. Për të ndryshuar agjentin, shkoni te Settings."
 setup.subtitle.agent_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Riinstalojeni manualisht dhe provoni përsëri. Për të ndryshuar agjentin, shkoni te Settings."
 setup.subtitle.copilot_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Ndiqni hapat më poshtë për t'u identifikuar. Për të ndryshuar agjentin, shkoni te Settings."
-setup.subtitle.agent_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Identifikohuni përmes CLI të agjentit dhe provoni përsëri. Për të ndryshuar agjentin, shkoni te Settings."
+setup.subtitle.agent_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Identifikohuni përmes agjentit dhe provoni përsëri. Për të ndryshuar agjentin, shkoni te Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Zgjidhni CLI-në e paracaktuar të agjentit që dëshironi të përdorni në Intelligent Terminal. Mund të"
+setup.description.fre_line1: "Zgjidhni agjentin e paracaktuar që dëshironi të përdorni në Intelligent Terminal. Mund të"
 setup.description.fre_line2: "shkoni te Settings për të konfiguruar hapësirën tuaj të punës."
 
 setup.option.reinstall: "Riinstalo %{agent}"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Dërgo një '/' fjalëpërfjalshëm (an
 commands.help_close_hint: "  Esc        Mbyll këtë ndihmë"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ për të naviguar • Enter për të zgjedhur • Esc për të anuluar)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ për të naviguar • ← → për të ndërruar butonat • Enter për të zgjedhur • Esc për të anuluar)"
 recommendations.button_run_command: "[ Ekzekuto komandën ]"
 recommendations.button_insert_in_terminal: "Fut në Terminal"
 recommendations.button_open_in_new_tab: "Hap në skedën e re ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Sigurohuni që %{name} është i instaluar dhe në PATH
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Po ngarkohet..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ për të naviguar • Enter për të nisur seancën në skedë të re • Shift+enter për të nisur seancën në panelin e agjentit • Esc për të dalë)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Po pret hyrjen"
@@ -158,3 +158,11 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "pikërisht tani"
+time.minute_singular: "%{count} minut më parë"
+time.minutes_other: "%{count} minuta më parë"
+time.hour_singular: "%{count} orë më parë"
+time.hours_other: "%{count} orë më parë"
+time.day_singular: "%{count} ditë më parë"
+time.days_other: "%{count} ditë më parë"

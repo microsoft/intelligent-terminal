@@ -11,10 +11,10 @@ setup.title.sign_in: "ورود به سیستم لازم است"
 setup.subtitle.copilot_missing: "عامل هوش مصنوعی \"%{agent}\" نصب نشده است. مراحل زیر را برای نصب آن دنبال کنید. برای تغییر عامل‌های هوش مصنوعی، به Settings بروید."
 setup.subtitle.agent_missing: "عامل هوش مصنوعی \"%{agent}\" نصب نشده است. لطفاً آن را به صورت دستی دوباره نصب کنید، سپس دوباره تلاش کنید. برای تغییر عامل‌های هوش مصنوعی، به Settings بروید."
 setup.subtitle.copilot_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. مراحل زیر را برای ورود دنبال کنید. برای تغییر عامل‌های هوش مصنوعی، به Settings بروید."
-setup.subtitle.agent_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. لطفاً از طریق CLI عامل هوش مصنوعی وارد شوید، سپس دوباره تلاش کنید. برای تغییر عامل‌های هوش مصنوعی، به Settings بروید."
+setup.subtitle.agent_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. لطفاً از طریق عامل هوش مصنوعی وارد شوید، سپس دوباره تلاش کنید. برای تغییر عامل‌های هوش مصنوعی، به Settings بروید."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "CLI عامل هوش مصنوعی پیش‌فرضی را که می‌خواهید در Intelligent Terminal استفاده کنید انتخاب نمایید. می‌توانید"
+setup.description.fre_line1: "عامل هوش مصنوعی پیش‌فرضی را که می‌خواهید در Intelligent Terminal استفاده کنید انتخاب نمایید. می‌توانید"
 setup.description.fre_line2: "به Settings بروید تا فضای کاری خود را پیکربندی و راه‌اندازی کنید."
 
 setup.option.reinstall: "نصب مجدد %{agent}"
@@ -63,9 +63,20 @@ commands.help_header: "دستورات اسلش — / را در کادر ورود
 commands.help_escape_hint: "  //text     ارسال '/' تحت‌اللفظی (تجزیه‌کننده دستور را رد می‌کند)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        بستن این راهنما"  # {Locked="Esc"}
 
+# Slash-command summaries shown in the popup and /help overlay.
+# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
+# English. Only the descriptions are localized.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "نمایش این فهرست دستورات"
+commands.clear.summary: "پاک کردن تاریخچه پیمایش گفتگو (نشست حفظ می‌شود)"
+commands.new.summary: "شروع یک نشست ACP تازه (حذف تاریخچه)"  # {Locked="ACP"}
+commands.restart.summary: "اتصال مجدد: پایان دادن به فرایند عامل و راه‌اندازی دوباره"
+commands.stop.summary: "لغو درخواست در حال اجرا"
+commands.sessions.summary: "باز کردن انتخابگر نشست‌های تاریخی (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
 # ── پنل پیشنهادات (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - نام کلیدها و نماد کلید بازگشت، ترجمه نکنید
-recommendations.nav_hint: "(↑ ↓ ناوبری • Enter انتخاب • Esc لغو)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - نام کلیدها و نماد کلید بازگشت، ترجمه نکنید
+recommendations.nav_hint: "(↑ ↓ برای پیمایش • ← → برای جابه‌جایی بین دکمه‌ها • Enter برای انتخاب • Esc برای لغو)"
 recommendations.button_run_command: "[ اجرای دستور ]"
 recommendations.button_insert_in_terminal: "درج در ترمینال"
 recommendations.button_open_in_new_tab: "باز کردن در زبانه جدید ↵"
@@ -102,7 +113,7 @@ agent.custom.auth_hint: "مطمئن شوید که %{name} نصب شده و در 
 
 # ── نمای عامل‌های هوش مصنوعی (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "در حال بارگذاری..."
-# {Locked="Enter","Shift+enter","Esc"} - ترکیب کلیدها، ترجمه نکنید
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - ترکیب کلیدها، ترجمه نکنید
 agents.footer_hint: "(↑ ↓ ناوبری • Enter شروع نشست در زبانه جدید • Shift+enter شروع نشست در پنل عامل هوش مصنوعی • Esc خروج)"
 agents.status.active: "فعال"
 agents.status.waiting_for_input: "در انتظار ورودی"
@@ -158,3 +169,11 @@ hooks.installed_but_disabled: "⚠ نصب شده اما غیرفعال"
 hooks.not_installed: "✗ نصب نشده"
 hooks.uninstall_skipped: "رد شد (CLI در PATH نیست)"
 hooks.install_attempted: "تلاش نصب wt-agent-hooks انجام شد (بی‌توان). برای بررسی نتیجه `wta hooks status` را اجرا کنید. گزارش ردیابی: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time and date formatting ───────────────────────────────────────
+time.just_now: "همین حالا"
+time.minute_singular: "1 دقیقه پیش"
+time.minutes_other: "%{count} دقیقه پیش"
+time.hour_singular: "1 ساعت پیش"
+time.hours_other: "%{count} ساعت پیش"
+time.day_singular: "1 روز پیش"
+time.days_other: "%{count} روز پیش"

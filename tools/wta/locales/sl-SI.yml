@@ -11,10 +11,10 @@ setup.title.sign_in: "Zahtevana je prijava"
 setup.subtitle.copilot_missing: "Vaš agent \"%{agent}\" ni nameščen. Sledite spodnjim korakom za namestitev. Za zamenjavo agenta pojdite v Settings."
 setup.subtitle.agent_missing: "Vaš agent \"%{agent}\" ni nameščen. Znova ga namestite ročno in nato poskusite znova. Za zamenjavo agenta pojdite v Settings."
 setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Sledite spodnjim korakom za prijavo. Za zamenjavo agenta pojdite v Settings."
-setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Prijavite se prek CLI agenta in nato poskusite znova. Za zamenjavo agenta pojdite v Settings."
+setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Prijavite se prek agenta in nato poskusite znova. Za zamenjavo agenta pojdite v Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Izberite privzeti CLI agenta, ki ga želite uporabljati v Intelligent Terminal. Lahko"
+setup.description.fre_line1: "Izberite privzetega agenta, ki ga želite uporabljati v Intelligent Terminal. Lahko"
 setup.description.fre_line2: "odprete Settings za konfiguracijo delovnega prostora."
 
 setup.option.reinstall: "Ponovna namestitev %{agent}"
@@ -62,10 +62,17 @@ commands.help_title: " Pomoč "
 commands.help_header: "Ukazi s poševnico — vnesite / v vnosno polje."
 commands.help_escape_hint: "  //text     Pošlji dobesedni '/' (obide razčlenjevalnik ukazov)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Zapri to pomoč"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Prikaži ta seznam ukazov"
+commands.clear.summary: "Počisti zgodovino klepeta (seja se ohrani)"
+commands.new.summary: "Začni novo sejo ACP (zavrže zgodovino)"  # {Locked="ACP"}
+commands.restart.summary: "Ponovno poveži: končaj proces agenta in ga znova zaženi"
+commands.stop.summary: "Prekliči poziv v teku"
+commands.sessions.summary: "Odpri izbirnik preteklih sej (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ za krmarjenje • Enter za izbiro • Esc za preklic)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ za krmarjenje • ← → za preklapljanje gumbov • Enter za izbiro • Esc za preklic)"
 recommendations.button_run_command: "[ Zaženi ukaz ]"
 recommendations.button_insert_in_terminal: "Vstavi v terminal"
 recommendations.button_open_in_new_tab: "Odpri v novem zavihku ↵"
@@ -102,7 +109,7 @@ agent.custom.auth_hint: "Prepričajte se, da je %{name} nameščen in v PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Nalaganje..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ za krmarjenje • Enter za zagon seje v novem zavihku • Shift+enter za zagon seje v podoknu agenta • Esc za izhod)"
 agents.status.active: "Aktivno"
 agents.status.waiting_for_input: "Čaka na vnos"
@@ -158,3 +165,15 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
+time.just_now: "pravkar"
+time.minute_singular: "pred 1 minuto"
+time.minutes_other: "pred %{count} minutami"
+time.hour_singular: "pred 1 uro"
+time.hours_other: "pred %{count} urami"
+time.day_singular: "pred 1 dnevom"
+time.days_other: "pred %{count} dnevi"

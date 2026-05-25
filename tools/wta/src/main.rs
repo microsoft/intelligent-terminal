@@ -1798,6 +1798,23 @@ async fn run_acp_app(
                 app_state.ensure_history_loaded();
             }
 
+            // Project the initial active-tab state to C++ once, after the
+            // --initial-view block has had its say. Without this push,
+            // C++'s `_agentSessionsViewActive` and `Tab.AgentPaneOpen`
+            // mirrors (single writer lives in `OnAgentStateChanged`)
+            // would stay on their defaults until the user's first
+            // interaction, leaving the bar mislabelled in the
+            // `--initial-view sessions` case and the pane-open flag
+            // out of sync with the seeded `pane_open=true` on the
+            // owner tab. Cheap and idempotent.
+            //
+            // Safe before the `Setup` mode block below: that block runs
+            // its own UI and doesn't read the view flag; if we end up in
+            // setup mode the initial "chat" emission is harmless.
+            if wt_connected {
+                app_state.project_active_tab_state();
+            }
+
             // NOTE: historical agent sessions used to be loaded here via
             // `history_loader::load_all()` (later as a `spawn_blocking`).
             // That work is now deferred — the registry is scanned lazily
@@ -1907,10 +1924,17 @@ async fn run_acp_app(
                         tab_id = %owner_tab_id,
                         "seeded app_state.tab_id from --owner-tab-id"
                     );
-                    app_state
+                    let tab = app_state
                         .tab_sessions
                         .entry(owner_tab_id.clone())
                         .or_default();
+                    // wta is the source of truth for "does this tab want
+                    // the pane visible". The pane is being spawned right
+                    // now for this owner tab, so the user clearly wants
+                    // it visible here. C++ will pick this up in the
+                    // initial `agent_state_changed` emit below and mirror
+                    // it onto Tab.AgentPaneOpen.
+                    tab.pane_open = true;
                     app_state.tab_id = Some(owner_tab_id);
                 }
             }

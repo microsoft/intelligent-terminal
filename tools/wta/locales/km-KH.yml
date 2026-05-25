@@ -71,8 +71,8 @@ commands.help_escape_hint: "  //text     ផ្ញើ '/' ជាអក្សរ 
 commands.help_close_hint: "  Esc        បិទជំនួយនេះ"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────────────────────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ ដើម្បីរុករក • Enter ដើម្បីជ្រើសរើស • Esc ដើម្បីបោះបង់)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ ដើម្បីរុករក • ← → ដើម្បីប្ដូរសកម្មភាព • Enter ដើម្បីជ្រើសរើស • Esc ដើម្បីបោះបង់)"
 recommendations.button_run_command: "[ ដំណើរការពាក្យបញ្ជា ]"
 recommendations.button_insert_in_terminal: "បញ្ចូលក្នុង Terminal"
 recommendations.button_open_in_new_tab: "បើកក្នុងផ្ទាំងថ្មី ↵"
@@ -113,7 +113,7 @@ agent.custom.auth_hint: "សូមប្រាកដថា %{name} ត្រូ�
 
 # ── Agents view (src/ui/agents_view.rs) ───────────────────────────────────────────────────────────────
 agents.loading: "កំពុងផ្ទុក..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ ដើម្បីរុករក • Enter ដើម្បីចាប់ផ្តើមវគ្គនៅក្នុងផ្ទាំងថ្មី • Shift+enter ដើម្បីចាប់ផ្តើមវគ្គនៅក្នុងផ្តាំង AI អេជេន្ត់ • Esc ដើម្បីចាកចេញ)"
 # Status badge when agent session is actively processing
 agents.status.active: "សកម្ម"
@@ -178,3 +178,12 @@ hooks.installed_but_disabled: "⚠ បានតំឡើងប៉ុន្តែ
 hooks.not_installed: "✗ មិនត្រូវបានតំឡើង"
 hooks.uninstall_skipped: "រំលង (CLI មិននៅលើ PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting ─────────────────────────────────────
+time.just_now: "ទើបតែឥឡូវនេះ"
+time.minute_singular: "%{count} នាទីមុន"
+time.minutes_other: "%{count} នាទីមុន"
+time.hour_singular: "%{count} ម៉ោងមុន"
+time.hours_other: "%{count} ម៉ោងមុន"
+time.day_singular: "%{count} ថ្ងៃមុន"
+time.days_other: "%{count} ថ្ងៃមុន"

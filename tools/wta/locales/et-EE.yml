@@ -11,10 +11,10 @@ setup.title.sign_in: "Sisselogimine nõutav"
 setup.subtitle.copilot_missing: "Teie agent \"%{agent}\" pole installitud. Järgige allolevaid juhiseid selle installimiseks. Agendi vahetamiseks avage Settings."
 setup.subtitle.agent_missing: "Teie agent \"%{agent}\" pole installitud. Installige see käsitsi uuesti ja proovige seejärel uuesti. Agendi vahetamiseks avage Settings."
 setup.subtitle.copilot_auth: "Teie agent \"%{agent}\" nõuab autentimist. Järgige allolevaid juhiseid sisselogimiseks. Agendi vahetamiseks avage Settings."
-setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi CLI kaudu ja proovige seejärel uuesti. Agendi vahetamiseks avage Settings."
+setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi kaudu ja proovige seejärel uuesti. Agendi vahetamiseks avage Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Valige vaikimisi agendi CLI, mida soovite kasutada Intelligent Terminalis. Saate"
+setup.description.fre_line1: "Valige vaikeagent, mida soovite kasutada Intelligent Terminalis. Saate"
 setup.description.fre_line2: "avada Settings, et oma tööruumi seadistada ja konfigureerida."
 
 setup.option.reinstall: "Installi %{agent} uuesti"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Saada sõnasõnaline '/' (väldib käsu
 commands.help_close_hint: "  Esc        Sulge see abi"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ navigeerimiseks • Enter valimiseks • Esc tühistamiseks)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ navigeerimiseks • ← → nuppude vahetamiseks • Enter valimiseks • Esc tühistamiseks)"
 recommendations.button_run_command: "[ Käivita käsk ]"
 recommendations.button_insert_in_terminal: "Lisa terminali"
 recommendations.button_open_in_new_tab: "Ava uuel vahekaardil ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Veenduge, et %{name} on installitud ja teie PATH-is."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laadimine..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ navigeerimiseks • Enter seansi käivitamiseks uuel vahekaardil • Shift+enter seansi käivitamiseks agendipaneelil • Esc väljumiseks)"
 agents.status.active: "Aktiivne"
 agents.status.waiting_for_input: "Ootab sisendit"
@@ -158,3 +158,12 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
+time.just_now: "just praegu"
+time.minute_singular: "%{count} minut tagasi"
+time.minutes_other: "%{count} minutit tagasi"
+time.hour_singular: "%{count} tund tagasi"
+time.hours_other: "%{count} tundi tagasi"
+time.day_singular: "%{count} päev tagasi"
+time.days_other: "%{count} päeva tagasi"

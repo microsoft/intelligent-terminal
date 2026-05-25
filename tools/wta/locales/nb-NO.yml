@@ -11,10 +11,10 @@ setup.title.sign_in: "Pålogging kreves"
 setup.subtitle.copilot_missing: "Agenten din \"%{agent}\" er ikke installert. Følg trinnene nedenfor for å installere den. For å bytte agent, gå til Settings."
 setup.subtitle.agent_missing: "Agenten din \"%{agent}\" er ikke installert. Installer den på nytt manuelt, og prøv deretter igjen. For å bytte agent, gå til Settings."
 setup.subtitle.copilot_auth: "Agenten din \"%{agent}\" krever autentisering. Følg trinnene nedenfor for å logge inn. For å bytte agent, gå til Settings."
-setup.subtitle.agent_auth: "Agenten din \"%{agent}\" krever autentisering. Logg inn via agentens CLI, og prøv deretter igjen. For å bytte agent, gå til Settings."
+setup.subtitle.agent_auth: "Agenten din \"%{agent}\" krever autentisering. Logg inn via agenten, og prøv deretter igjen. For å bytte agent, gå til Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Velg standard agent-CLI du vil bruke i Intelligent Terminal. Du kan"
+setup.description.fre_line1: "Velg standardagenten du vil bruke i Intelligent Terminal. Du kan"
 setup.description.fre_line2: "gå til Settings for å konfigurere og sette opp arbeidsområdet ditt."
 
 setup.option.reinstall: "Installer %{agent} på nytt"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Send en bokstavelig '/' (unngår komman
 commands.help_close_hint: "  Esc        Lukk denne hjelpen"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ for å navigere • Enter for å velge • Esc for å avbryte)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ for å navigere • ← → for å bytte knapper • Enter for å velge • Esc for å avbryte)"
 recommendations.button_run_command: "[ Kjør kommando ]"
 recommendations.button_insert_in_terminal: "Sett inn i Terminal"
 recommendations.button_open_in_new_tab: "Åpne i ny fane ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Kontroller at %{name} er installert og på din PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laster..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt i ny fane • Shift+enter for å starte økt i agentpanelet • Esc for å avslutte)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Venter på inndata"
@@ -158,3 +158,12 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
+time.just_now: "akkurat nå"
+time.minute_singular: "%{count} minutt siden"
+time.minutes_other: "%{count} minutter siden"
+time.hour_singular: "%{count} time siden"
+time.hours_other: "%{count} timer siden"
+time.day_singular: "%{count} dag siden"
+time.days_other: "%{count} dager siden"

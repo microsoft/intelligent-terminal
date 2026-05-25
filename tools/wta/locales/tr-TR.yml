@@ -11,10 +11,10 @@ setup.title.sign_in: "Oturum açma gerekli"
 setup.subtitle.copilot_missing: "Aracınız \"%{agent}\" yüklü değil. Yüklemek için aşağıdaki adımları izleyin. Aracı değiştirmek için Settings'e gidin."
 setup.subtitle.agent_missing: "Aracınız \"%{agent}\" yüklü değil. Lütfen elle yeniden yükleyin, ardından tekrar deneyin. Aracı değiştirmek için Settings'e gidin."
 setup.subtitle.copilot_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Oturum açmak için aşağıdaki adımları izleyin. Aracı değiştirmek için Settings'e gidin."
-setup.subtitle.agent_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Lütfen aracı CLI üzerinden oturum açın, ardından tekrar deneyin. Aracı değiştirmek için Settings'e gidin."
+setup.subtitle.agent_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Lütfen aracı üzerinden oturum açın, ardından tekrar deneyin. Aracı değiştirmek için Settings'e gidin."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Intelligent Terminal'de kullanmak istediğiniz varsayılan aracı CLI'yi seçin. Çalışma alanınızı"
+setup.description.fre_line1: "Intelligent Terminal'de kullanmak istediğiniz varsayılan aracı seçin. Çalışma alanınızı"
 setup.description.fre_line2: "yapılandırmak ve ayarlamak için Settings'e gidebilirsiniz."
 
 setup.option.reinstall: "%{agent} yeniden yükle"
@@ -63,9 +63,20 @@ commands.help_header: "Eğik çizgi komutları — giriş kutusuna / yazın."
 commands.help_escape_hint: "  //text     Düz '/' gönder (komut ayrıştırıcısını atla)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Bu yardımı kapat"  # {Locked="Esc"}
 
+# Slash-command summaries shown in the popup and /help overlay.
+# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
+# English. Only the descriptions are localized.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Bu komut listesini göster"
+commands.clear.summary: "Sohbet kaydırma geçmişini temizle (oturumu korur)"
+commands.new.summary: "Yeni bir ACP oturumu başlat (geçmişi bırakır)"  # {Locked="ACP"}
+commands.restart.summary: "Yeniden bağlan: aracı sürecini sonlandır ve yeniden başlat"
+commands.stop.summary: "Devam eden istemi iptal et"
+commands.sessions.summary: "Geçmiş oturum seçicisini aç (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ gezinmek için • Enter seçmek için • Esc iptal etmek için)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ gezinmek için • ← → düğmeler arasında geçiş yapmak için • Enter seçmek için • Esc iptal etmek için)"
 recommendations.button_run_command: "[ Komutu çalıştır ]"
 recommendations.button_insert_in_terminal: "Terminal'e ekle"
 recommendations.button_open_in_new_tab: "Yeni Sekmede Aç ↵"
@@ -102,7 +113,7 @@ agent.custom.auth_hint: "%{name} yüklü olduğundan ve PATH'te bulunduğundan e
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Yükleniyor..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ gezinmek için • Enter yeni sekmede oturum açmak için • Shift+enter aracı panelinde oturum açmak için • Esc çıkmak için)"
 agents.status.active: "Aktif"
 agents.status.waiting_for_input: "Giriş bekleniyor"
@@ -158,3 +169,11 @@ hooks.installed_but_disabled: "⚠ yüklü ancak devre dışı"
 hooks.not_installed: "✗ yüklü değil"
 hooks.uninstall_skipped: "atlandı (CLI PATH'te değil)"
 hooks.install_attempted: "wt-agent-hooks yüklemesi denendi (idempotent). Sonucu incelemek için `wta hooks status` çalıştırın. İzleme günlüğü: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time and date formatting ───────────────────────────────────────
+time.just_now: "az önce"
+time.minute_singular: "%{count} dakika önce"
+time.minutes_other: "%{count} dakika önce"
+time.hour_singular: "%{count} saat önce"
+time.hours_other: "%{count} saat önce"
+time.day_singular: "%{count} gün önce"
+time.days_other: "%{count} gün önce"

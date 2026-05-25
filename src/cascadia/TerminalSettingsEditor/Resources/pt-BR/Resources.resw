@@ -2768,8 +2768,8 @@
     <value>Agente</value>
   </data>
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
-    <value>Escolha o CLI de agente usado no painel do agente. Qualquer CLI compatível com ACP será detectado.</value>
-    <comment>{Locked="ACP","CLI"}</comment>
+    <value>Escolha o agente usado no painel do agente. Qualquer agente compatível com ACP será detectado.</value>
+    <comment>Supplementary description for the agent pane agent setting. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>Modelo</value>
@@ -2802,8 +2802,8 @@
     <value>Instalar scripts de hook do agente</value>
   </data>
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>Necessário para o gerenciamento de sessões do agente. Instala hooks em cada CLI detectado (Copilot, Claude, Gemini) para que relatem sessões e status ao painel do agente. Reinicie todos os CLIs de agente abertos após a instalação.</value>
-    <comment>{Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment>
+    <value>Acompanhe sessões entre agentes. Necessário para o gerenciamento de sessões do agente.</value>
+    <comment>Description for the Agent Hooks install section.</comment>
   </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Instalar hooks</value>
@@ -2836,5 +2836,41 @@
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>Esta configuração é gerenciada pela sua organização.</value>
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
+    <value>Instalando hooks...</value>
+    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
+    <value>Removendo hooks do Copilot...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
+    <value>Removendo hooks do Claude...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
+    <value>Removendo hooks do Gemini...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
+    <value>Falha: não foi possível localizar wta.exe</value>
+    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
+    <value>Hooks removidos. Reinicie todos os agentes abertos para descartar os hooks anteriores.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
+    <value>Hooks instalados. Reinicie todos os agentes abertos para usar os novos hooks.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
+    <value>Falha na remoção de Hook. Confira %LOCALAPPDATA%\IntelligentTerminal\logs\ para obter detalhes.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
+    <value>Falha na instalação de Hooks. Confira %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log para obter detalhes.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
 </root>

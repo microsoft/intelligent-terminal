@@ -14,6 +14,7 @@ consvc
 copyable
 dcs
 deselection
+desync
 diffing
 Dimidium
 downsides
@@ -68,6 +69,8 @@ Retargets
 rlig
 rubyw
 runtimes
+rustflags
+rustup
 servicebus
 sidechain
 slnt

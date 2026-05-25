@@ -11,10 +11,10 @@ setup.title.sign_in: "Wymagane logowanie"
 setup.subtitle.copilot_missing: "Agent \"%{agent}\" nie jest zainstalowany. Wykonaj poniższe kroki, aby go zainstalować. Aby zmienić agenta, przejdź do Settings."
 setup.subtitle.agent_missing: "Agent \"%{agent}\" nie jest zainstalowany. Zainstaluj go ponownie ręcznie, a następnie spróbuj ponownie. Aby zmienić agenta, przejdź do Settings."
 setup.subtitle.copilot_auth: "Agent \"%{agent}\" wymaga uwierzytelnienia. Wykonaj poniższe kroki, aby się zalogować. Aby zmienić agenta, przejdź do Settings."
-setup.subtitle.agent_auth: "Agent \"%{agent}\" wymaga uwierzytelnienia. Zaloguj się za pomocą agenta CLI, a następnie spróbuj ponownie. Aby zmienić agenta, przejdź do Settings."
+setup.subtitle.agent_auth: "Agent \"%{agent}\" wymaga uwierzytelnienia. Zaloguj się za pomocą agenta, a następnie spróbuj ponownie. Aby zmienić agenta, przejdź do Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Wybierz domyślny agent CLI, którego chcesz używać w Intelligent Terminal. Możesz"
+setup.description.fre_line1: "Wybierz domyślnego agenta, którego chcesz używać w Intelligent Terminal. Możesz"
 setup.description.fre_line2: "przejść do Settings, aby skonfigurować obszar roboczy."
 
 setup.option.reinstall: "Zainstaluj ponownie %{agent}"
@@ -62,10 +62,17 @@ commands.help_title: " Pomoc "
 commands.help_header: "Polecenia ukośnika — wpisz / w polu wprowadzania."
 commands.help_escape_hint: "  //text     Wyślij dosłowne '/' (pomija parser poleceń)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Zamknij tę pomoc"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Pokaż tę listę poleceń"
+commands.clear.summary: "Wyczyść historię czatu (zachowuje sesję)"
+commands.new.summary: "Rozpocznij nową sesję ACP (usuwa historię)"  # {Locked="ACP"}
+commands.restart.summary: "Połącz ponownie: zakończ proces agenta i uruchom go ponownie"
+commands.stop.summary: "Anuluj trwający monit"
+commands.sessions.summary: "Otwórz wybór historycznych sesji (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ do nawigacji • Enter aby wybrać • Esc aby anulować)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ do nawigacji • ← → do przełączania przycisków • Enter aby wybrać • Esc aby anulować)"
 recommendations.button_run_command: "[ Uruchom polecenie ]"
 recommendations.button_insert_in_terminal: "Wstaw w terminalu"
 recommendations.button_open_in_new_tab: "Otwórz w nowej karcie ↵"
@@ -102,7 +109,7 @@ agent.custom.auth_hint: "Upewnij się, że %{name} jest zainstalowany i znajduje
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Ładowanie..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ do nawigacji • Enter aby uruchomić sesję w nowej karcie • Shift+enter aby uruchomić sesję w panelu agenta • Esc aby wyjść)"
 agents.status.active: "Aktywny"
 agents.status.waiting_for_input: "Oczekiwanie na dane"
@@ -158,3 +165,15 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
+time.just_now: "przed chwilą"
+time.minute_singular: "1 minutę temu"
+time.minutes_other: "%{count} minut temu"
+time.hour_singular: "1 godzinę temu"
+time.hours_other: "%{count} godzin temu"
+time.day_singular: "1 dzień temu"
+time.days_other: "%{count} dni temu"

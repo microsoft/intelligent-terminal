@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Magpadala ng literal na '/' (iniiwasan 
 commands.help_close_hint: "  Esc        Isara ang tulong na ito"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ para mag-navigate • Enter para pumili • Esc para mag-cancel)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ para mag-navigate • ← → para magpalit ng aksyon • Enter para pumili • Esc para mag-cancel)"
 recommendations.button_run_command: "[ Patakbuhin ang command ]"
 recommendations.button_insert_in_terminal: "Ilagay sa Terminal"
 recommendations.button_open_in_new_tab: "Buksan sa Bagong Tab ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Tiyaking naka-install ang %{name} at nasa iyong PATH." 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Naglo-load..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ para mag-navigate • Enter para magbukas ng session sa bagong tab • Shift+enter para magbukas ng session sa agent pane • Esc para lumabas)"
 agents.status.active: "Aktibo"
 agents.status.waiting_for_input: "Naghihintay ng input"
@@ -158,3 +158,12 @@ hooks.installed_but_disabled: "⚠ naka-install pero naka-disable"
 hooks.not_installed: "✗ hindi naka-install"
 hooks.uninstall_skipped: "nilaktawan (wala ang CLI sa PATH)"
 hooks.install_attempted: "Sinubukang i-install ang wt-agent-hooks (idempotent). Patakbuhin ang `wta hooks status` para suriin ang resulta. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting ─────────────────────────────────────
+time.just_now: "ngayon lang"
+time.minute_singular: "%{count} minuto ang nakalipas"
+time.minutes_other: "%{count} minuto ang nakalipas"
+time.hour_singular: "%{count} oras ang nakalipas"
+time.hours_other: "%{count} oras ang nakalipas"
+time.day_singular: "%{count} araw ang nakalipas"
+time.days_other: "%{count} araw ang nakalipas"

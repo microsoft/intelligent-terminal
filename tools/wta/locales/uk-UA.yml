@@ -11,10 +11,10 @@ setup.title.sign_in: "Потрібен вхід"
 setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" не встановлено. Виконайте наведені нижче кроки, щоб його встановити. Щоб змінити агента, перейдіть до налаштувань."
 setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" не встановлено. Перевстановіть його вручну та повторіть спробу. Щоб змінити агента, перейдіть до налаштувань."
 setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Виконайте наведені нижче кроки для входу. Щоб змінити агента, перейдіть до налаштувань."
-setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Увійдіть через CLI агента та повторіть спробу. Щоб змінити агента, перейдіть до налаштувань."
+setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Увійдіть через агента та повторіть спробу. Щоб змінити агента, перейдіть до налаштувань."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Оберіть CLI агента за замовчуванням для використання в Intelligent Terminal. Ви можете"
+setup.description.fre_line1: "Оберіть агента за замовчуванням для використання в Intelligent Terminal. Ви можете"
 setup.description.fre_line2: "перейти до налаштувань для налаштування робочої області."
 
 setup.option.reinstall: "Перевстановити %{agent}"
@@ -62,10 +62,17 @@ commands.help_title: " Довідка "
 commands.help_header: "Слеш-команди — введіть / у полі введення."
 commands.help_escape_hint: "  //text     Надіслати літерал '/' (екранує аналізатор команд)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Закрити цю довідку"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Показати цей список команд"
+commands.clear.summary: "Очистити історію чату (сеанс зберігається)"
+commands.new.summary: "Розпочати новий сеанс ACP (історію буде скинуто)"  # {Locked="ACP"}
+commands.restart.summary: "Повторно підключитися: завершити процес агента й запустити його знову"
+commands.stop.summary: "Скасувати поточний запит"
+commands.sessions.summary: "Відкрити вибір історичних сеансів (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Панель рекомендацій (src/ui/recommendations.rs) ───────────────────────────────────
-# {Locked="Enter","Esc","↵"} - назви клавіш і символ клавіші Enter, не перекладати
-recommendations.nav_hint: "(↑ ↓ навігація • Enter вибрати • Esc скасувати)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - назви клавіш і символ клавіші Enter, не перекладати
+recommendations.nav_hint: "(↑ ↓ навігація • ← → перемикання кнопок • Enter вибрати • Esc скасувати)"
 recommendations.button_run_command: "[ Виконати команду ]"
 recommendations.button_insert_in_terminal: "Вставити в термінал"
 recommendations.button_open_in_new_tab: "Відкрити в новій вкладці ↵"
@@ -102,7 +109,7 @@ agent.custom.auth_hint: "Переконайтеся, що %{name} встанов
 
 # ── Перегляд агентів (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Завантаження..."
-# {Locked="Enter","Shift+enter","Esc"} - комбінації клавіш, не перекладати
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - комбінації клавіш, не перекладати
 agents.footer_hint: "(↑ ↓ навігація • Enter запустити сеанс у новій вкладці • Shift+enter запустити сеанс у панелі агента • Esc вихід)"
 agents.status.active: "Активний"
 agents.status.waiting_for_input: "Очікування введення"
@@ -158,3 +165,15 @@ hooks.installed_but_disabled: "⚠ Встановлено, але вимкнен
 hooks.not_installed: "✗ Не встановлено"
 hooks.uninstall_skipped: "Пропущено (CLI не в PATH)"
 hooks.install_attempted: "Спроба встановлення wt-agent-hooks (ідемпотентно). Виконайте `wta hooks status` для перевірки результату. Журнал трасування: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
+time.just_now: "щойно"
+time.minute_singular: "1 хвилину тому"
+time.minutes_other: "%{count} хвилин тому"
+time.hour_singular: "1 годину тому"
+time.hours_other: "%{count} годин тому"
+time.day_singular: "1 день тому"
+time.days_other: "%{count} днів тому"

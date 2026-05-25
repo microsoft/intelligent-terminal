@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Letterlijke '/' verzenden (omzeilt de o
 commands.help_close_hint: "  Esc        Deze help sluiten"  # {Locked="Esc"}
 
 # ── Aanbevelingenpaneel (src/ui/recommendations.rs) ───────────────────────────────────
-# {Locked="Enter","Esc","↵"} - toetsnamen en Enter-toetssymbool, niet vertalen
-recommendations.nav_hint: "(↑ ↓ navigeren • Enter selecteren • Esc annuleren)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - toetsnamen en Enter-toetssymbool, niet vertalen
+recommendations.nav_hint: "(↑ ↓ navigeren • ← → om acties te wisselen • Enter selecteren • Esc annuleren)"
 recommendations.button_run_command: "[ Opdracht uitvoeren ]"
 recommendations.button_insert_in_terminal: "Invoegen in terminal"
 recommendations.button_open_in_new_tab: "Openen in nieuw tabblad ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Zorg dat %{name} is geïnstalleerd en in het PATH staat
 
 # ── Agentweergave (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laden..."
-# {Locked="Enter","Shift+enter","Esc"} - toetscombinaties, niet vertalen
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - toetscombinaties, niet vertalen
 agents.footer_hint: "(↑ ↓ navigeren • Enter sessie starten in nieuw tabblad • Shift+enter sessie starten in agentdeelvenster • Esc afsluiten)"
 agents.status.active: "Actief"
 agents.status.waiting_for_input: "Wachten op invoer"
@@ -158,3 +158,22 @@ hooks.installed_but_disabled: "⚠ Geïnstalleerd maar uitgeschakeld"
 hooks.not_installed: "✗ Niet geïnstalleerd"
 hooks.uninstall_skipped: "Overgeslagen (CLI niet in PATH)"
 hooks.install_attempted: "wt-agent-hooks-installatie geprobeerd (idempotent). Voer `wta hooks status` uit om het resultaat te bekijken. Traceerlogboek: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "zojuist"
+time.minute_singular: "%{count} minuut geleden"
+time.minutes_other: "%{count} minuten geleden"
+time.hour_singular: "%{count} uur geleden"
+time.hours_other: "%{count} uur geleden"
+time.day_singular: "%{count} dag geleden"
+time.days_other: "%{count} dagen geleden"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Deze opdrachtlijst weergeven"
+commands.clear.summary: "Chatgeschiedenis wissen (sessie blijft behouden)"
+commands.new.summary: "Een nieuwe ACP-sessie starten (geschiedenis verwijderen)"
+commands.restart.summary: "Opnieuw verbinden: agentproces afsluiten en opnieuw starten"
+commands.stop.summary: "De actieve prompt annuleren"
+commands.sessions.summary: "De selector voor eerdere sessies openen (Ctrl+Shift+/)"

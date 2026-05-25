@@ -299,3 +299,6 @@ equals_insensitive_ascii\("\w+", "\w+"
 
 # ignore long runs of a single character:
 \b([A-Za-z])\g{-1}{3,}\b
+
+# tools/wta/src/protocol/acp/spawn.rs - external env var name passed as string literal
+env_remove\("[A-Z_]+"\)

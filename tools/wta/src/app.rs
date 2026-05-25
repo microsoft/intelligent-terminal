@@ -692,12 +692,12 @@ pub fn classify_wt_event(
                 age_ticks: 0,
             }
         }
-        "set_view" => {
-            // handle_event consumes set_view at the top of WtEvent before
-            // classification runs, so classify normally never sees it.
-            // Add an explicit arm anyway so a future refactor that drops
-            // the early return doesn't surface a stray "Pane: set_view"
-            // banner via the default catch-all.
+        "set_agent_state" => {
+            // handle_event consumes set_agent_state at the top of WtEvent
+            // before classification runs, so classify normally never sees
+            // it. Add an explicit arm anyway so a future refactor that
+            // drops the early return doesn't surface a stray
+            // "Pane: set_agent_state" banner via the default catch-all.
             WtNotification {
                 severity: WtEventSeverity::Informational,
                 pane_id: pane_id.to_string(),
@@ -1105,6 +1105,20 @@ pub struct TabSession {
     // its own open/closed state and selected row across tab switches.
     pub current_view: View,
     pub agents_list_state: ratatui::widgets::ListState,
+
+    // "Does this tab want the agent pane visible?" — per-tab user intent.
+    // Independent of where the (single, shared) XAML pane physically lives:
+    // C++ relocates the pane to whichever active tab has `pane_open == true`
+    // and hides it on tabs where it's `false`. wta owns this state so the
+    // C++ side has one writer (`OnAgentStateChanged`) and the desync that
+    // came from tracking it as a per-Tab.AgentPaneOpen flag on a moving
+    // XAML pane is gone.
+    //
+    // Default false. Seeded to true at startup for the spawn owner tab
+    // (the user just asked to open the pane on that tab). Flipped by
+    // C++-originated `set_agent_state` requests (hotkey/button toggles)
+    // and by wta-internal events like Ctrl+C×2 reset.
+    pub pane_open: bool,
 }
 
 impl TabSession {
@@ -3463,12 +3477,10 @@ impl App {
                         "tab_changed event received"
                     );
                     if let Some(new_tab_id) = params.get("tab_id").and_then(|v| v.as_str()) {
+                        // switch_tab_session calls project_active_tab_state
+                        // at its end — that pushes the new tab's view AND
+                        // autofix bar snapshot to C++ in one shot.
                         self.switch_tab_session(new_tab_id.to_string());
-                        // Re-emit the now-active tab's autofix bar
-                        // snapshot so the C++ bottom bar matches the new
-                        // tab (Idle if it has no in-flight autofix, the
-                        // cached state otherwise).
-                        self.project_bar_for_active_tab();
                     } else {
                         tracing::warn!(target: "tab_session", "tab_changed: missing tab_id in params");
                     }
@@ -3556,6 +3568,16 @@ impl App {
                         )));
                         tab.scroll_to_bottom();
                     }
+                    // If the load_session target IS the active tab, push the
+                    // (now Chat) view to C++ so the bar drops the "Agent
+                    // sessions" label that the user was looking at when they
+                    // hit Shift+Enter on a session row. When the target is a
+                    // not-yet-active tab (e.g. WT just created a fresh tab
+                    // and the `tab_changed` race still hasn't landed), the
+                    // imminent `tab_changed` to that tab will project then.
+                    if tab_id == self.active_tab_key() {
+                        self.project_active_tab_state();
+                    }
                     let _ = self.load_session_tx.send(LoadSessionForTab {
                         tab_id: tab_id.to_string(),
                         session_id: session_id.to_string(),
@@ -3564,9 +3586,41 @@ impl App {
                     return;
                 }
 
-                // set_view: WT broadcasts this from Ctrl+Shift+/ (or any
-                // future "open agent pane in <view>" action) to switch the
-                // active TabSession's TUI view. Absolute (not toggle).
+                // set_agent_state: unified inbound request from C++ to
+                // change one or more pieces of per-tab agent-pane UI state
+                // for a specific tab. Every field under `params` is
+                // optional — only specified ones are applied, the rest
+                // are left untouched.
+                //
+                // Supported fields:
+                //   * `tab_id`: optional WT StableId of the tab to mutate.
+                //               Falls back to the active tab when absent.
+                //               C++ should always include it: defends
+                //               against `tab_changed`/`set_agent_state`
+                //               ordering ambiguity (e.g. resume-in-new-tab
+                //               creates a new tab and immediately requests
+                //               pane_open=true; with `tab_id` we don't
+                //               depend on `tab_changed` arriving first to
+                //               route to the right TabSession).
+                //   * `view`: "chat" | "sessions"
+                //   * `pane_open`: bool
+                //
+                // **Projection rule**: if the target tab is the currently-
+                // active one, immediately project the new snapshot back to
+                // C++ (`agent_state_changed`). If the target is NOT active,
+                // skip projection — the next `tab_changed` to that tab will
+                // project the now-up-to-date state. C++ mirrors are global
+                // per-pane so they only need refreshing when the active tab
+                // changes (or when a mutation lands on the active tab).
+                //
+                // **Round-trip contract**: under the "wta is the sole owner
+                // of agent-pane UI state" architecture, C++ does NOT update
+                // its mirrors (`_agentSessionsViewActive`, `Tab.AgentPaneOpen`)
+                // when it sends `set_agent_state`. It waits for the resulting
+                // `agent_state_changed` emitted by `project_active_tab_state`
+                // below. One IPC round-trip latency, in exchange for the
+                // C++ flags having a single writer (`OnAgentStateChanged`),
+                // which makes desync architecturally impossible.
                 //
                 // Window-scoped: WT includes its own window_id; we ignore
                 // the event when our window_id is known and doesn't match,
@@ -3575,7 +3629,7 @@ impl App {
                 //
                 // Processed BEFORE the own-pane skip below: this is a
                 // global UI command, not a per-pane signal.
-                if method == "set_view" {
+                if method == "set_agent_state" {
                     let target_window = params
                         .get("window_id")
                         .and_then(|v| v.as_str())
@@ -3586,48 +3640,100 @@ impl App {
                         && target_window != our_window
                     {
                         tracing::debug!(
-                            target: "set_view",
+                            target: "set_agent_state",
                             target_window,
                             our_window,
-                            "ignoring set_view for different window"
+                            "ignoring set_agent_state for different window"
                         );
                         return;
                     }
-                    let view_str = params.get("view").and_then(|v| v.as_str()).unwrap_or("");
-                    tracing::info!(target: "set_view", view = view_str, "applying set_view");
-                    match view_str {
-                        "sessions" | "agents" => {
-                            // User entered session management (via shortcut or UI) —
-                            // permanently dismiss the welcome hint.
-                            if self.show_welcome_hint {
-                                self.show_welcome_hint = false;
-                                set_welcome_shown_in_state();
-                            }
-                            let entering_agents =
-                                self.current_tab().current_view != View::Agents;
-                            let has_sessions = !self
-                                .agent_sessions
-                                .iter_sorted_filtered(self.current_cli_filter().as_ref())
-                                .is_empty();
-                            {
-                                let tab = self.current_tab_mut();
-                                tab.current_view = View::Agents;
-                                if tab.agents_list_state.selected().is_none()
-                                    && has_sessions
+
+                    // Resolve target tab: explicit `tab_id` wins;
+                    // otherwise fall back to the active tab. The explicit
+                    // path is robust against `tab_changed` ordering races
+                    // (e.g. resume-in-new-tab where C++ creates a tab and
+                    // immediately fires `set_agent_state` for it).
+                    let target_tab = params
+                        .get("tab_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| self.active_tab_key().to_string());
+
+                    // Apply `view` if present.
+                    if let Some(view_str) = params.get("view").and_then(|v| v.as_str()) {
+                        tracing::info!(
+                            target: "set_agent_state",
+                            tab = %target_tab,
+                            view = view_str,
+                            "applying view"
+                        );
+                        match view_str {
+                            "sessions" | "agents" => {
+                                // User entered session management (via shortcut or UI) —
+                                // permanently dismiss the welcome hint.
+                                if self.show_welcome_hint {
+                                    self.show_welcome_hint = false;
+                                    set_welcome_shown_in_state();
+                                }
+                                let entering_agents = self
+                                    .tab_sessions
+                                    .get(&target_tab)
+                                    .map(|t| t.current_view != View::Agents)
+                                    .unwrap_or(true);
+                                let has_sessions = !self
+                                    .agent_sessions
+                                    .iter_sorted_filtered(self.current_cli_filter().as_ref())
+                                    .is_empty();
                                 {
-                                    tab.agents_list_state.select(Some(0));
+                                    let tab = self.tab_mut(&target_tab);
+                                    tab.current_view = View::Agents;
+                                    if tab.agents_list_state.selected().is_none()
+                                        && has_sessions
+                                    {
+                                        tab.agents_list_state.select(Some(0));
+                                    }
+                                }
+                                if entering_agents {
+                                    self.ensure_history_loaded();
                                 }
                             }
-                            if entering_agents {
-                                self.ensure_history_loaded();
+                            "chat" => {
+                                self.tab_mut(&target_tab).current_view = View::Chat;
+                            }
+                            other => {
+                                tracing::warn!(
+                                    target: "set_agent_state",
+                                    view = other,
+                                    "unknown view value — ignoring"
+                                );
                             }
                         }
-                        "chat" => {
-                            self.current_tab_mut().current_view = View::Chat;
-                        }
-                        other => {
-                            tracing::warn!(target: "set_view", view = other, "unknown view");
-                        }
+                    }
+
+                    // Apply `pane_open` if present.
+                    if let Some(open) = params.get("pane_open").and_then(|v| v.as_bool()) {
+                        tracing::info!(
+                            target: "set_agent_state",
+                            tab = %target_tab,
+                            pane_open = open,
+                            "applying pane_open"
+                        );
+                        self.tab_mut(&target_tab).pane_open = open;
+                    }
+
+                    // Only project when the mutation landed on the active
+                    // tab — C++'s mirrors are global per-pane, so a
+                    // non-active mutation has no effect there until the
+                    // next `tab_changed` projects the (now-updated) tab.
+                    if target_tab == self.active_tab_key() {
+                        self.project_active_tab_state();
+                    } else {
+                        tracing::debug!(
+                            target: "set_agent_state",
+                            target = %target_tab,
+                            active = %self.active_tab_key(),
+                            "applied to non-active tab; deferring projection to next tab_changed"
+                        );
                     }
                     return;
                 }
@@ -4234,7 +4340,7 @@ impl App {
                 }
                 KeyCode::Esc => {
                     self.current_tab_mut().current_view = View::Chat;
-                    self.emit_view_changed("chat");
+                    self.project_active_tab_state();
                 }
                 _ => {}
             }
@@ -4836,7 +4942,7 @@ impl App {
                 // /sessions left the registry empty and rendered a blank view
                 // forever (state stuck at NotStarted, no Loading row, no rows).
                 self.ensure_history_loaded();
-                self.emit_view_changed("sessions");
+                self.project_active_tab_state();
             }
             CommandKind::Restart => {
                 // Full reconnect. Reset every tab: drop session_id (the
@@ -4960,6 +5066,14 @@ impl App {
             "switch_tab_session"
         );
         self.tab_id = Some(new_tab_id);
+
+        // The new active tab's `current_view` (and autofix bar) is now
+        // authoritative for the shared C++ agent pane. Re-emit so the bar
+        // title and bottom-bar highlight match the tab we just switched to;
+        // without this, C++'s global flag stays on the previous tab's view
+        // and the agent bar shows "Agent sessions" while the TUI below
+        // actually renders chat (or vice versa).
+        self.project_active_tab_state();
     }
 
     /// Drop the per-tab state for a tab that WT has just destroyed. Removes
@@ -5295,7 +5409,7 @@ impl App {
     // Per-tab projection: the bar shows the ACTIVE tab's autofix state. Each
     // emit_autofix_state_* stores the new snapshot on the target tab AND
     // only forwards to WT when the target tab is currently active. On
-    // tab_changed, `project_bar_for_active_tab` re-emits the new active
+    // tab_changed, `project_active_tab_state` re-emits the new active
     // tab's snapshot so the bar matches.
 
     fn emit_autofix_state_pending(&mut self, target_tab_id: &str, pane_id: &str, summary: &str) {
@@ -5494,12 +5608,6 @@ impl App {
         if target_tab_id == self.active_tab_key() {
             send_bar_event(&snapshot);
         }
-    }
-
-    /// Re-emit the active tab's bar snapshot to WT. Called after a
-    /// `tab_changed` event so the bar reflects the now-focused tab.
-    fn project_bar_for_active_tab(&self) {
-        send_bar_event(&self.current_tab().autofix.bar_snapshot);
     }
 
     fn armed_fix_preview(rec: &crate::coordinator::RecommendationSet) -> String {
@@ -6381,21 +6489,67 @@ impl App {
         send_wt_protocol_event(evt.to_string());
     }
 
-    /// Notify the host that the wta-internal view changed. C++ owns the
-    /// agent bar's title + the `_agentSessionsViewActive` flag that drives
-    /// the bottom bar; without this push the bar would stay on
-    /// "Agent sessions" after Esc / out of sync after `/sessions`.
+    /// Single outbound projection of the active tab's agent-pane UI state.
     ///
-    /// Only emit from paths where wta is the sole source of truth (Esc,
-    /// `/sessions`). The C++-originated `set_view` path already knows
-    /// what it asked for and updates its own state directly.
-    fn emit_view_changed(&self, view: &str) {
+    /// **Architecture contract**: per-tab agent-pane UI state lives in wta.
+    /// C++ has one shared agent pane and one set of XAML flags per window,
+    /// so anything that varies across WT tabs must be re-asserted on every
+    /// tab switch or local mutation. Emits one unified `agent_state_changed`
+    /// snapshot — adding a new piece of per-tab UI state in the future is
+    /// a matter of putting another field in the payload, no new IDL route
+    /// or new C++ handler.
+    ///
+    /// Payload shape (mirror of the inbound `set_agent_state` request):
+    /// ```json
+    /// {
+    ///   "type": "event",
+    ///   "method": "agent_state_changed",
+    ///   "params": {
+    ///     "view":      "chat" | "sessions",
+    ///     "pane_open": true | false
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// On the C++ side this lands in `TerminalPage::OnAgentStateChanged`,
+    /// which is the single writer of `_agentSessionsViewActive` and
+    /// `Tab.AgentPaneOpen` for the active tab.
+    ///
+    /// Also re-emits the autofix bar snapshot (orthogonal domain — bottom
+    /// bar autofix indicator — kept on its own `autofix_state` route).
+    ///
+    /// Call sites:
+    ///   - `switch_tab_session` end — covers WT `tab_changed`.
+    ///   - `set_agent_state` handler end — echoes C++'s request back so C++
+    ///     mirrors it (the round-trip the new architecture is built on).
+    ///   - `load_session` after the per-tab mutation.
+    ///   - Esc out of Agents view, `/sessions` slash command, Ctrl+C×2
+    ///     multi-tab reset.
+    ///   - Once at startup (after `--initial-view` has been applied) so
+    ///     the bar and the agent-pane-open flag both pick up the spawn
+    ///     intent.
+    ///
+    /// Idempotent — safe to call multiple times in a row.
+    pub fn project_active_tab_state(&self) {
+        let tab = self.current_tab();
+        let view = match tab.current_view {
+            View::Agents => "sessions",
+            View::Chat => "chat",
+        };
         let evt = serde_json::json!({
             "type": "event",
-            "method": "view_changed",
-            "params": { "view": view }
+            "method": "agent_state_changed",
+            "params": {
+                "view":      view,
+                "pane_open": tab.pane_open,
+            }
         });
         send_wt_protocol_event(evt.to_string());
+
+        // Autofix bar — different domain (bottom bar), kept on its own
+        // route. Re-emitted here so a `tab_changed` projects both halves
+        // of the per-tab → C++ surface in one call.
+        send_bar_event(&tab.autofix.bar_snapshot);
     }
 }
 

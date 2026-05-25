@@ -11,10 +11,10 @@ setup.title.sign_in: "Qallariy yaykuna"
 setup.subtitle.copilot_missing: "Agentiyki \"%{agent}\" mana churasqachu. Churanaykipaq uraypi llamk'ankunata ruway. Agente t'ikranapaq Settings nisqaman riy."
 setup.subtitle.agent_missing: "Agentiyki \"%{agent}\" mana churasqachu. Ama hina kaspa makiykiwan churay, chaymanta watiqmanta qallariy. Agente t'ikranapaq Settings nisqaman riy."
 setup.subtitle.copilot_auth: "Agentiyki \"%{agent}\" yaykunata munan. Yaykunaykipaq uraypi llamk'ankunata ruway. Agente t'ikranapaq Settings nisqaman riy."
-setup.subtitle.agent_auth: "Agentiyki \"%{agent}\" yaykunata munan. Agente CLI nisqawan yaykuy, chaymanta watiqmanta qallariy. Agente t'ikranapaq Settings nisqaman riy."
+setup.subtitle.agent_auth: "Agentiyki \"%{agent}\" yaykunata munan. Agentewan yaykuy, chaymanta watiqmanta qallariy. Agente t'ikranapaq Settings nisqaman riy."
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Intelligent Terminal nisqapi llamk'achinaykipaq qallariy agente CLI nisqata akllay. Qamqa"
+setup.description.fre_line1: "Intelligent Terminal nisqapi llamk'achinaykipaq qallariy agente nisqata akllay. Qamqa"
 setup.description.fre_line2: "Settings nisqaman riy llamk'ana k'itiykita wakichinapaq."
 
 setup.option.reinstall: "%{agent} watiqmanta churay"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Kikin '/' kachay (kamachiy t'aqwiqmanta
 commands.help_close_hint: "  Esc        Kay yanapata wichq'ay"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ purinapaq • Enter akllanapaq • Esc chinkarichinapaq)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ purinapaq • ← → ñit'ina t'ikranapaq • Enter akllanapaq • Esc chinkarichinapaq)"
 recommendations.button_run_command: "[ Kamachiyta purichiy ]"
 recommendations.button_insert_in_terminal: "Terminal nisqaman churay"
 recommendations.button_open_in_new_tab: "Musuq Ripa nisqapi kichay ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "%{name} churasqa kasqanta PATH nisqapiña kasqanta qhaw
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Chaqachkan..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ purinapaq • Enter musuq ripapi hunt'ata qallarichiy • Shift+enter agente k'itipi hunt'ata qallarichiy • Esc lluqsinapaq)"
 agents.status.active: "Llamk'achkan"
 agents.status.waiting_for_input: "Yaykuyta suyachkan"
@@ -158,3 +158,11 @@ hooks.installed_but_disabled: "⚠ churasqa ichaqa ñit'isqa"
 hooks.not_installed: "✗ mana churasqachu"
 hooks.uninstall_skipped: "pasasqa (CLI mana PATH nisqapichu)"
 hooks.install_attempted: "wt-agent-hooks churay llamk'achisqa (idempotente). `wta hooks status` purichiy ruwasqata qhawanaykipaq. Qatiy willana: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "kunanlla"
+time.minute_singular: "%{count} minutu ñawpaq"
+time.minutes_other: "%{count} minutu ñawpaq"
+time.hour_singular: "%{count} hora ñawpaq"
+time.hours_other: "%{count} hora ñawpaq"
+time.day_singular: "%{count} p'unchaw ñawpaq"
+time.days_other: "%{count} p'unchaw ñawpaq"

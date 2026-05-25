@@ -11,10 +11,10 @@ setup.title.sign_in: "Nepieciešama pierakstīšanās"
 setup.subtitle.copilot_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Izpildiet tālāk norādītās darbības, lai to instalētu. Lai mainītu aģentu, dodieties uz Settings."
 setup.subtitle.agent_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Pārinstalējiet to manuāli un mēģiniet vēlreiz. Lai mainītu aģentu, dodieties uz Settings."
 setup.subtitle.copilot_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Izpildiet tālāk norādītās darbības, lai pierakstītos. Lai mainītu aģentu, dodieties uz Settings."
-setup.subtitle.agent_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Pierakstieties, izmantojot aģenta CLI, un mēģiniet vēlreiz. Lai mainītu aģentu, dodieties uz Settings."
+setup.subtitle.agent_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Pierakstieties, izmantojot aģentu, un mēģiniet vēlreiz. Lai mainītu aģentu, dodieties uz Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Izvēlieties noklusējuma aģenta CLI, ko vēlaties izmantot Intelligent Terminal. Varat"
+setup.description.fre_line1: "Izvēlieties noklusējuma aģentu, ko vēlaties izmantot Intelligent Terminal. Varat"
 setup.description.fre_line2: "doties uz Settings, lai konfigurētu un iestatītu savu darbvietu."
 
 setup.option.reinstall: "Pārinstalēt %{agent}"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Nosūtīt burtisku '/' (apiet komandu p
 commands.help_close_hint: "  Esc        Aizvērt šo palīdzību"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ lai pārvietotos • Enter lai izvēlētos • Esc lai atceltu)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ lai pārvietotos • ← → lai pārslēgtu pogas • Enter lai izvēlētos • Esc lai atceltu)"
 recommendations.button_run_command: "[ Izpildīt komandu ]"
 recommendations.button_insert_in_terminal: "Ievietot terminālī"
 recommendations.button_open_in_new_tab: "Atvērt jaunā cilnē ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Pārliecinieties, ka %{name} ir instalēts un atrodas j
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Ielādē..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ lai pārvietotos • Enter lai sāktu sesiju jaunā cilnē • Shift+enter lai sāktu sesiju aģenta panelī • Esc lai izietu)"
 agents.status.active: "Aktīvs"
 agents.status.waiting_for_input: "Gaida ievadi"
@@ -158,3 +158,12 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
+time.just_now: "tikko"
+time.minute_singular: "pirms %{count} minūtes"
+time.minutes_other: "pirms %{count} minūtēm"
+time.hour_singular: "pirms %{count} stundas"
+time.hours_other: "pirms %{count} stundām"
+time.day_singular: "pirms %{count} dienas"
+time.days_other: "pirms %{count} dienām"

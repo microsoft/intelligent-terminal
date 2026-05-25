@@ -11,10 +11,10 @@ setup.title.sign_in: "Tizimga kirish talab qilinadi"
 setup.subtitle.copilot_missing: "Agentingiz \"%{agent}\" oʻrnatilmagan. Oʻrnatish uchun quyidagi qadamlarni bajaring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
 setup.subtitle.agent_missing: "Agentingiz \"%{agent}\" oʻrnatilmagan. Iltimos, qoʻlda qayta oʻrnating, keyin qayta urinib koʻring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
 setup.subtitle.copilot_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Tizimga kirish uchun quyidagi qadamlarni bajaring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
-setup.subtitle.agent_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Iltimos, agent CLI orqali tizimga kiring, keyin qayta urinib koʻring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
+setup.subtitle.agent_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Iltimos, agent orqali tizimga kiring, keyin qayta urinib koʻring. Agentni almashtirish uchun Settings boʻlimiga oʻting."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Intelligent Terminal-da foydalanmoqchi boʻlgan standart agent CLI tanlang. Ish"
+setup.description.fre_line1: "Intelligent Terminal-da foydalanmoqchi boʻlgan standart agentni tanlang. Ish"
 setup.description.fre_line2: "muhitingizni sozlash va oʻrnatish uchun Settings boʻlimiga oʻtishingiz mumkin."
 
 setup.option.reinstall: "%{agent} qayta oʻrnatish"
@@ -63,9 +63,20 @@ commands.help_header: "Slash buyruqlari — kiritish maydoniga / yozing."
 commands.help_escape_hint: "  //text     Toʻgʻridan-toʻgʻri '/' yuborish (buyruq tahlilchisini chetlab oʻtish)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Bu yordamni yopish"  # {Locked="Esc"}
 
+# Slash-command summaries shown in the popup and /help overlay.
+# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
+# English. Only the descriptions are localized.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Bu buyruqlar roʻyxatini koʻrsat"
+commands.clear.summary: "Chat aylantirish tarixini tozalash (seansni saqlaydi)"
+commands.new.summary: "Yangi ACP seansini boshlash (tarixni oʻchiradi)"  # {Locked="ACP"}
+commands.restart.summary: "Qayta ulanish: agent jarayonini tugatib, qayta ishga tushirish"
+commands.stop.summary: "Bajarilayotgan soʻrovni bekor qilish"
+commands.sessions.summary: "Tarixiy seanslar tanlagichini ochish (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ navigatsiya uchun • Enter tanlash uchun • Esc bekor qilish uchun)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ navigatsiya uchun • ← → tugmalarni almashtirish uchun • Enter tanlash uchun • Esc bekor qilish uchun)"
 recommendations.button_run_command: "[ Buyruqni bajarish ]"
 recommendations.button_insert_in_terminal: "Terminal-ga kiritish"
 recommendations.button_open_in_new_tab: "Yangi varaqda ochish ↵"
@@ -102,7 +113,7 @@ agent.custom.auth_hint: "%{name} oʻrnatilganligiga va PATH-da ekanligiga ishonc
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Yuklanmoqda..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ navigatsiya uchun • Enter yangi varaqda seansni ochish uchun • Shift+enter agent panelida seansni ochish uchun • Esc chiqish uchun)"
 agents.status.active: "Faol"
 agents.status.waiting_for_input: "Kiritish kutilmoqda"
@@ -158,3 +169,11 @@ hooks.installed_but_disabled: "⚠ oʻrnatilgan lekin oʻchirilgan"
 hooks.not_installed: "✗ oʻrnatilmagan"
 hooks.uninstall_skipped: "oʻtkazib yuborildi (CLI PATH-da emas)"
 hooks.install_attempted: "wt-agent-hooks oʻrnatish urinildi (idempotent). Natijani tekshirish uchun `wta hooks status` bajaring. Iz jurnali: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time and date formatting ───────────────────────────────────────
+time.just_now: "hozirgina"
+time.minute_singular: "%{count} daqiqa oldin"
+time.minutes_other: "%{count} daqiqa oldin"
+time.hour_singular: "%{count} soat oldin"
+time.hours_other: "%{count} soat oldin"
+time.day_singular: "%{count} kun oldin"
+time.days_other: "%{count} kun oldin"

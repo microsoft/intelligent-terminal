@@ -11,10 +11,10 @@ setup.title.sign_in: "Aanmelding vereis"
 setup.subtitle.copilot_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Volg die stappe hieronder om dit te installeer. Om van agent te wissel, gaan na Settings."
 setup.subtitle.agent_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Herinstalleer dit handmatig en probeer weer. Om van agent te wissel, gaan na Settings."
 setup.subtitle.copilot_auth: "Jou agent \"%{agent}\" vereis stawing. Volg die stappe hieronder om aan te meld. Om van agent te wissel, gaan na Settings."
-setup.subtitle.agent_auth: "Jou agent \"%{agent}\" vereis stawing. Meld aan via die agent CLI en probeer weer. Om van agent te wissel, gaan na Settings."
+setup.subtitle.agent_auth: "Jou agent \"%{agent}\" vereis stawing. Meld aan via die agent en probeer weer. Om van agent te wissel, gaan na Settings."
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Kies die verstek agent CLI wat jy in Intelligent Terminal wil gebruik. Jy kan"
+setup.description.fre_line1: "Kies die verstek agent wat jy in Intelligent Terminal wil gebruik. Jy kan"
 setup.description.fre_line2: "na Settings navigeer om jou werkspasie op te stel en te konfigureer."
 
 setup.option.reinstall: "Herinstalleer %{agent}"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Stuur 'n letterlike '/' (ontsnap die op
 commands.help_close_hint: "  Esc        Maak hierdie hulp toe"  # {Locked="Esc"}
 
 # ── Aanbevelingspaneel (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - sleutelname en Enter-sleutel-glief, moenie vertaal nie
-recommendations.nav_hint: "(↑ ↓ om te navigeer • Enter om te kies • Esc om te kanselleer)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - sleutelname en Enter-sleutel-glief, moenie vertaal nie
+recommendations.nav_hint: "(↑ ↓ om te navigeer • ← → om knoppies te wissel • Enter om te kies • Esc om te kanselleer)"
 recommendations.button_run_command: "[ Voer opdrag uit ]"
 recommendations.button_insert_in_terminal: "Voeg in Terminaal in"
 recommendations.button_open_in_new_tab: "Maak oop in Nuwe Oortjie ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Maak seker %{name} is geïnstalleer en op jou PATH."  #
 
 # ── Agenteaansig (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Laai tans..."
-# {Locked="Enter","Shift+enter","Esc"} - sleutelkombinasies, moenie vertaal nie
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - sleutelkombinasies, moenie vertaal nie
 agents.footer_hint: "(↑ ↓ om te navigeer • Enter om sessie in nuwe oortjie te begin • Shift+enter om sessie in agentpaneel te begin • Esc om te verlaat)"
 agents.status.active: "Aktief"
 agents.status.waiting_for_input: "Wag vir invoer"
@@ -158,3 +158,11 @@ hooks.installed_but_disabled: "⚠ geïnstalleer maar gedeaktiveer"
 hooks.not_installed: "✗ nie geïnstalleer nie"
 hooks.uninstall_skipped: "oorgeslaan (CLI nie op PATH nie)"
 hooks.install_attempted: "wt-agent-hooks-installasie probeer (idempotent). Voer `wta hooks status` uit om die resultaat te ondersoek. Spoerlog: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "nou net"
+time.minute_singular: "%{count} minuut gelede"
+time.minutes_other: "%{count} minute gelede"
+time.hour_singular: "%{count} uur gelede"
+time.hours_other: "%{count} uur gelede"
+time.day_singular: "%{count} dag gelede"
+time.days_other: "%{count} dae gelede"

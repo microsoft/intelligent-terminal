@@ -84,7 +84,8 @@
              alpha-blend against the transparent window underneath instead
              of the bar's black. Stacking a 1px Border on top of the
              solid-black outer Border makes the alpha blend correctly. -->
-        <Border Grid.Row="3"
+        <Border x:Name="BottomBarRoot"
+                Grid.Row="3"
                 Background="#000000"
                 VerticalAlignment="Top">
         <Grid>

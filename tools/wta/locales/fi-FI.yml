@@ -11,10 +11,10 @@ setup.title.sign_in: "Kirjautuminen vaaditaan"
 setup.subtitle.copilot_missing: "Agenttiasi \"%{agent}\" ei ole asennettu. Asenna se seuraamalla alla olevia ohjeita. Vaihtaaksesi agenttia siirry kohtaan Settings."
 setup.subtitle.agent_missing: "Agenttiasi \"%{agent}\" ei ole asennettu. Asenna se uudelleen manuaalisesti ja yritä sitten uudelleen. Vaihtaaksesi agenttia siirry kohtaan Settings."
 setup.subtitle.copilot_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Kirjaudu sisään seuraamalla alla olevia ohjeita. Vaihtaaksesi agenttia siirry kohtaan Settings."
-setup.subtitle.agent_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Kirjaudu sisään agentin CLI:n kautta ja yritä sitten uudelleen. Vaihtaaksesi agenttia siirry kohtaan Settings."
+setup.subtitle.agent_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Kirjaudu sisään agentin kautta ja yritä sitten uudelleen. Vaihtaaksesi agenttia siirry kohtaan Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Valitse oletusagentin CLI, jota haluat käyttää Intelligent Terminalissa. Voit"
+setup.description.fre_line1: "Valitse oletusagentti, jota haluat käyttää Intelligent Terminalissa. Voit"
 setup.description.fre_line2: "siirtyä kohtaan Settings määrittääksesi ja ottaaksesi käyttöön työtilasi."
 
 setup.option.reinstall: "Asenna %{agent} uudelleen"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Lähetä kirjaimellinen '/' (ohittaa ko
 commands.help_close_hint: "  Esc        Sulje tämä ohje"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ navigoidaksesi • Enter valitaksesi • Esc peruuttaaksesi)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ navigoidaksesi • ← → vaihtaaksesi painikkeita • Enter valitaksesi • Esc peruuttaaksesi)"
 recommendations.button_run_command: "[ Suorita komento ]"
 recommendations.button_insert_in_terminal: "Lisää Terminaliin"
 recommendations.button_open_in_new_tab: "Avaa uudessa välilehdessä ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Varmista, että %{name} on asennettu ja PATH-muuttujass
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Ladataan..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ navigoidaksesi • Enter käynnistääksesi istunnon uudessa välilehdessä • Shift+enter käynnistääksesi istunnon agenttipaneelissa • Esc poistuaksesi)"
 agents.status.active: "Aktiivinen"
 agents.status.waiting_for_input: "Odottaa syötettä"
@@ -158,3 +158,12 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
+time.just_now: "juuri nyt"
+time.minute_singular: "%{count} minuutti sitten"
+time.minutes_other: "%{count} minuuttia sitten"
+time.hour_singular: "%{count} tunti sitten"
+time.hours_other: "%{count} tuntia sitten"
+time.day_singular: "%{count} päivä sitten"
+time.days_other: "%{count} päivää sitten"

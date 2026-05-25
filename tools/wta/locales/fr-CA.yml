@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Envoyer un '/' littéral (échappe l'an
 commands.help_close_hint: "  Esc        Fermer cette aide"  # {Locked="Esc"}
 
 # ── Panneau de recommandations (src/ui/recommendations.rs) ───────────────────────────────────
-# {Locked="Enter","Esc","↵"} - noms de touches et symbole de touche Entrée, ne pas traduire
-recommendations.nav_hint: "(↑ ↓ naviguer • Enter sélectionner • Esc annuler)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - noms de touches et symbole de touche Entrée, ne pas traduire
+recommendations.nav_hint: "(↑ ↓ naviguer • ← → changer d’action • Enter sélectionner • Esc annuler)"
 recommendations.button_run_command: "[ Exécuter la commande ]"
 recommendations.button_insert_in_terminal: "Insérer dans le terminal"
 recommendations.button_open_in_new_tab: "Ouvrir dans un nouvel onglet ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Assurez-vous que %{name} est installé et se trouve dan
 
 # ── Vue des agents (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Chargement..."
-# {Locked="Enter","Shift+enter","Esc"} - combinaisons de touches, ne pas traduire
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - combinaisons de touches, ne pas traduire
 agents.footer_hint: "(↑ ↓ naviguer • Enter lancer la session dans un nouvel onglet • Shift+enter lancer la session dans le volet de l'agent • Esc quitter)"
 agents.status.active: "Actif"
 agents.status.waiting_for_input: "En attente de saisie"
@@ -158,3 +158,22 @@ hooks.installed_but_disabled: "⚠ Installé mais désactivé"
 hooks.not_installed: "✗ Non installé"
 hooks.uninstall_skipped: "Ignoré (CLI non trouvé dans le PATH)"
 hooks.install_attempted: "Installation de wt-agent-hooks tentée (idempotent). Exécutez `wta hooks status` pour inspecter le résultat. Journal de trace : %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "à l’instant"
+time.minute_singular: "il y a %{count} minute"
+time.minutes_other: "il y a %{count} minutes"
+time.hour_singular: "il y a %{count} heure"
+time.hours_other: "il y a %{count} heures"
+time.day_singular: "il y a %{count} jour"
+time.days_other: "il y a %{count} jours"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Afficher cette liste de commandes"
+commands.clear.summary: "Effacer le contenu du clavardage (conserve la session)"
+commands.new.summary: "Démarrer une nouvelle session ACP (efface l’historique)"
+commands.restart.summary: "Reconnecter : arrêter le processus de l’agent et le relancer"
+commands.stop.summary: "Annuler la requête en cours"
+commands.sessions.summary: "Ouvrir le sélecteur de sessions précédentes (Ctrl+Shift+/)"

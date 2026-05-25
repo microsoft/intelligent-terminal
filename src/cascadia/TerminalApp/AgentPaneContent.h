@@ -58,7 +58,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentState{};
 
         // When true, the bar replaces "<agent> <version>" with "Agent sessions"
-        // and hides the agent logo. Driven by TerminalPage::_BroadcastAgentSetView.
+        // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
+        // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };
 
         // Inner content event tokens — forwarded to our own BasicPaneEvents.

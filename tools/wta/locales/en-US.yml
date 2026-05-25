@@ -17,9 +17,9 @@ setup.title.sign_in: "Sign in required"
 setup.subtitle.copilot_missing: "Your agent \"%{agent}\" is not installed. Follow the steps below to install it. To switch agents, go to Settings."
 setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please reinstall it manually, then retry. To switch agents, go to Settings."
 setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Settings."
-setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent CLI, then retry. To switch agents, go to Settings."
+setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then retry. To switch agents, go to Settings."
 
-setup.description.fre_line1: "Choose the default agent CLI you would like to use in Intelligent Terminal. You can"
+setup.description.fre_line1: "Choose the default agent you would like to use in Intelligent Terminal. You can"
 setup.description.fre_line2: "navigate to Settings to configure and set up your workspace."
 
 setup.option.reinstall: "Reinstall %{agent}"
@@ -70,10 +70,21 @@ commands.help_title: " Help "
 commands.help_header: "Slash commands — type / in the input box."
 commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command parser)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
+# Slash-command summaries shown in the popup and /help overlay.
+# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
+# English. Only the descriptions are localized.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.restart.summary: "Reconnect: kill agent process and respawn"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ to navigate • Enter to select • Esc to cancel)"
+# {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key
+# glyphs, do not translate
+recommendations.nav_hint: "(↑ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
@@ -119,7 +130,7 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit)"
 # Status badge when agent session is actively processing
 agents.status.active: "Active"
@@ -185,3 +196,26 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+# rust-i18n 3.x has no CLDR plural support — only string interpolation. So we
+# use two flat keys per duration (singular for n=1, "other" for n≠1) and let
+# Rust pick which to use. Languages without grammatical singular/plural
+# distinction (CJK, Vietnamese, Thai, …) can map both keys to the same
+# template. Languages with 3+ plural forms (Slavic, Arabic) compromise by
+# mapping "other" to whichever form reads acceptably for the typical 2-59 /
+# 2-23 / 2-6 counts in our UI; use the "many" form (5+) which sounds more
+# natural for higher numbers.
+# %{count} = numeric count (interpolated).
+time.just_now: "just now"
+time.minute_singular: "1 minute ago"
+time.minutes_other: "%{count} minutes ago"
+time.hour_singular: "1 hour ago"
+time.hours_other: "%{count} hours ago"
+time.day_singular: "1 day ago"
+time.days_other: "%{count} days ago"
+# Locale-aware date format for rows older than a week is handled via
+# Windows GetDateFormatEx (DATE_LONGDATE) — no yml entries needed for
+# month names or day/month/year ordering. Microsoft's CLDR data covers
+# every locale Windows supports with higher fidelity than we could
+# maintain by hand.

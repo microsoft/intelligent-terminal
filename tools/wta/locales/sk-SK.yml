@@ -11,10 +11,10 @@ setup.title.sign_in: "Vyžaduje sa prihlásenie"
 setup.subtitle.copilot_missing: "Váš agent \"%{agent}\" nie je nainštalovaný. Postupujte podľa krokov nižšie a nainštalujte ho. Ak chcete zmeniť agenta, prejdite do Settings."
 setup.subtitle.agent_missing: "Váš agent \"%{agent}\" nie je nainštalovaný. Preinštalujte ho manuálne a skúste to znova. Ak chcete zmeniť agenta, prejdite do Settings."
 setup.subtitle.copilot_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Postupujte podľa krokov nižšie a prihláste sa. Ak chcete zmeniť agenta, prejdite do Settings."
-setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Prihláste sa cez CLI agenta a skúste to znova. Ak chcete zmeniť agenta, prejdite do Settings."
+setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Prihláste sa cez agenta a skúste to znova. Ak chcete zmeniť agenta, prejdite do Settings."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Vyberte predvolený CLI agenta, ktorý chcete používať v Intelligent Terminal. Môžete"
+setup.description.fre_line1: "Vyberte predvoleného agenta, ktorý chcete používať v Intelligent Terminal. Môžete"
 setup.description.fre_line2: "prejsť do Settings a nakonfigurovať svoj pracovný priestor."
 
 setup.option.reinstall: "Preinštalovať %{agent}"
@@ -62,10 +62,17 @@ commands.help_title: " Pomoc "
 commands.help_header: "Príkazy lomítka — zadajte / do vstupného poľa."
 commands.help_escape_hint: "  //text     Odoslanie doslovného '/' (obíde analyzátor príkazov)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Zatvoriť túto pomoc"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Zobraziť tento zoznam príkazov"
+commands.clear.summary: "Vymazať históriu chatu (relácia zostane zachovaná)"
+commands.new.summary: "Spustiť novú reláciu ACP (zahodí históriu)"  # {Locked="ACP"}
+commands.restart.summary: "Znova sa pripojiť: ukončiť proces agenta a znova ho spustiť"
+commands.stop.summary: "Zrušiť prebiehajúcu výzvu"
+commands.sessions.summary: "Otvoriť výber historických relácií (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ na navigáciu • Enter na výber • Esc na zrušenie)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ na navigáciu • ← → na prepínanie tlačidiel • Enter na výber • Esc na zrušenie)"
 recommendations.button_run_command: "[ Spustiť príkaz ]"
 recommendations.button_insert_in_terminal: "Vložiť do terminálu"
 recommendations.button_open_in_new_tab: "Otvoriť v novej karte ↵"
@@ -102,7 +109,7 @@ agent.custom.auth_hint: "Uistite sa, že %{name} je nainštalovaný a je v PATH.
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Načítava sa..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ na navigáciu • Enter na spustenie relácie v novej karte • Shift+enter na spustenie relácie v paneli agenta • Esc na ukončenie)"
 agents.status.active: "Aktívny"
 agents.status.waiting_for_input: "Čaká na vstup"
@@ -158,3 +165,15 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
+time.just_now: "práve teraz"
+time.minute_singular: "pred 1 minútou"
+time.minutes_other: "pred %{count} minútami"
+time.hour_singular: "pred 1 hodinou"
+time.hours_other: "pred %{count} hodinami"
+time.day_singular: "pred 1 dňom"
+time.days_other: "pred %{count} dňami"

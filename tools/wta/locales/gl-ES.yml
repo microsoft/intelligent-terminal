@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Enviar un '/' literal (escapa o analiza
 commands.help_close_hint: "  Esc        Pechar esta axuda"  # {Locked="Esc"}
 
 # ── Panel de recomendacións (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - nomes de teclas e glifo de tecla Intro, non traducir
-recommendations.nav_hint: "(↑ ↓ para navegar • Enter para seleccionar • Esc para cancelar)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - nomes de teclas e glifo de tecla Intro, non traducir
+recommendations.nav_hint: "(↑ ↓ para navegar • ← → para cambiar accións • Enter para seleccionar • Esc para cancelar)"
 recommendations.button_run_command: "[ Executar comando ]"
 recommendations.button_insert_in_terminal: "Inserir no Terminal"
 recommendations.button_open_in_new_tab: "Abrir nunha pestana nova ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Asegúrese de que %{name} estea instalado e no seu PATH
 
 # ── Vista de axentes (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Cargando..."
-# {Locked="Enter","Shift+enter","Esc"} - combinacións de teclas, non traducir
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - combinacións de teclas, non traducir
 agents.footer_hint: "(↑ ↓ para navegar • Enter para iniciar sesión nunha pestana nova • Shift+enter para iniciar sesión no panel de axente • Esc para saír)"
 agents.status.active: "Activo"
 agents.status.waiting_for_input: "Agardando entrada"
@@ -158,3 +158,12 @@ hooks.installed_but_disabled: "⚠ instalado pero desactivado"
 hooks.not_installed: "✗ non instalado"
 hooks.uninstall_skipped: "omitido (CLI non está no PATH)"
 hooks.install_attempted: "Intentouse instalar wt-agent-hooks (idempotente). Execute `wta hooks status` para inspeccionar o resultado. Rexistro de rastrexo: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "agora mesmo"
+time.minute_singular: "hai %{count} minuto"
+time.minutes_other: "hai %{count} minutos"
+time.hour_singular: "hai %{count} hora"
+time.hours_other: "hai %{count} horas"
+time.day_singular: "hai %{count} día"
+time.days_other: "hai %{count} días"

@@ -11,10 +11,10 @@ setup.title.sign_in: "መግባት ያስፈልጋል"
 setup.subtitle.copilot_missing: "ኤጅንትዎ \"%{agent}\" አልተጠቀመም። ለመጠቀም ከታች ያሉትን ደረጃዎች ይተግበሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
 setup.subtitle.agent_missing: "ኤጅንትዎ \"%{agent}\" አልተጠቀመም። እባክዎን በእጥ ይጠቅሙት እና እንደገና ይሞክሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
 setup.subtitle.copilot_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገወል። ለመግባት ከታች ያሉትን ደረጃዎች ይተግበሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
-setup.subtitle.agent_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገወል። እባክዎን በኤጅንት CLI በኩል ይግቡ እና እንደገና ይሞክሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
+setup.subtitle.agent_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገዋል። እባክዎን በኤጅንቱ በኩል ይግቡ እና እንደገና ይሞክሩ። ኤጅንትን ለመቀየር Settings ይሂዱ።"
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "በ Intelligent Terminal ውስጥ ላይጠቀሙት የሚፈልጉትን ነባሪ CLI ኤጅንት ይምረጡ። ወደ"
+setup.description.fre_line1: "በ Intelligent Terminal ውስጥ ሊጠቀሙት የሚፈልጉትን ነባሪ ኤጅንት ይምረጡ። ወደ"
 setup.description.fre_line2: "Settings ሂደው የስራ ቀጠርዎን ላያያዙ ይችላሉ።"
 
 setup.option.reinstall: "%{agent} እንደገና ጠቅም"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command
 commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ to navigate • Enter to select • Esc to cancel)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ ለማሰስ • ← → አዝራሮችን ለመቀየር • Enter ለመምረጥ • Esc ለመሰረዝ)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit)"
 agents.status.active: "Active"
 agents.status.waiting_for_input: "Waiting for input"
@@ -158,3 +158,11 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "አሁን"
+time.minute_singular: "%{count} ደቂቃ በፊት"
+time.minutes_other: "%{count} ደቂቃዎች በፊት"
+time.hour_singular: "%{count} ሰዓት በፊት"
+time.hours_other: "%{count} ሰዓታት በፊት"
+time.day_singular: "%{count} ቀን በፊት"
+time.days_other: "%{count} ቀናት በፊት"

@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Kirim '/' literal (melewati parser peri
 commands.help_close_hint: "  Esc        Tutup bantuan ini"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ untuk navigasi • Enter untuk memilih • Esc untuk membatalkan)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ untuk navigasi • ← → untuk mengganti tindakan • Enter untuk memilih • Esc untuk membatalkan)"
 recommendations.button_run_command: "[ Jalankan perintah ]"
 recommendations.button_insert_in_terminal: "Sisipkan di Terminal"
 recommendations.button_open_in_new_tab: "Buka di Tab Baru ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Pastikan %{name} sudah diinstal dan ada di PATH Anda." 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Memuat..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ untuk navigasi • Enter untuk membuka sesi di tab baru • Shift+enter untuk membuka sesi di panel agen AI • Esc untuk keluar)"
 agents.status.active: "Aktif"
 agents.status.waiting_for_input: "Menunggu input"
@@ -158,3 +158,12 @@ hooks.installed_but_disabled: "⚠ terinstal tetapi dinonaktifkan"
 hooks.not_installed: "✗ belum terinstal"
 hooks.uninstall_skipped: "dilewati (CLI tidak ada di PATH)"
 hooks.install_attempted: "Instalasi wt-agent-hooks dicoba (idempotent). Jalankan `wta hooks status` untuk memeriksa hasil. Log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting ─────────────────────────────────────
+time.just_now: "baru saja"
+time.minute_singular: "%{count} menit yang lalu"
+time.minutes_other: "%{count} menit yang lalu"
+time.hour_singular: "%{count} jam yang lalu"
+time.hours_other: "%{count} jam yang lalu"
+time.day_singular: "%{count} hari yang lalu"
+time.days_other: "%{count} hari yang lalu"

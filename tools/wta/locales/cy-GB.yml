@@ -11,10 +11,10 @@ setup.title.sign_in: "Mae angen mewngofnodi"
 setup.subtitle.copilot_missing: "Nid yw eich asiant \"%{agent}\" wedi'i osod. Dilynwch y camau isod i'w osod. I newid asiantau, ewch i Settings."
 setup.subtitle.agent_missing: "Nid yw eich asiant \"%{agent}\" wedi'i osod. Ailosodwch ef â llaw, yna ceisiwch eto. I newid asiantau, ewch i Settings."
 setup.subtitle.copilot_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Dilynwch y camau isod i fewngofnodi. I newid asiantau, ewch i Settings."
-setup.subtitle.agent_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Mewngofnodwch drwy'r CLI asiant, yna ceisiwch eto. I newid asiantau, ewch i Settings."
+setup.subtitle.agent_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Mewngofnodwch drwy'r asiant, yna ceisiwch eto. I newid asiantau, ewch i Settings."
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Dewiswch y CLI asiant rhagosodedig yr hoffech ei ddefnyddio yn Intelligent Terminal. Gallwch"
+setup.description.fre_line1: "Dewiswch yr asiant rhagosodedig yr hoffech ei ddefnyddio yn Intelligent Terminal. Gallwch"
 setup.description.fre_line2: "lywio i Settings i ffurfweddu a gosod eich gweithle."
 
 setup.option.reinstall: "Ailosod %{agent}"
@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Anfon '/' llythrennol (dianc y parsiwr 
 commands.help_close_hint: "  Esc        Cau'r cymorth hwn"  # {Locked="Esc"}
 
 # ── Panel argymhellion (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - enwau bysellau a glyff bysell Dychwelyd, peidiwch â chyfieithu
-recommendations.nav_hint: "(↑ ↓ i lywio • Enter i ddewis • Esc i ganslo)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - enwau bysellau a glyff bysell Dychwelyd, peidiwch â chyfieithu
+recommendations.nav_hint: "(↑ ↓ i lywio • ← → i newid botymau • Enter i ddewis • Esc i ganslo)"
 recommendations.button_run_command: "[ Rhedeg gorchymyn ]"
 recommendations.button_insert_in_terminal: "Mewnosod yn y Terfynell"
 recommendations.button_open_in_new_tab: "Agor mewn Tab Newydd ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Gwnewch yn siŵr fod %{name} wedi'i osod ac ar eich PAT
 
 # ── Golwg asiantau (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Yn llwytho..."
-# {Locked="Enter","Shift+enter","Esc"} - cyfuniadau bysellau, peidiwch â chyfieithu
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - cyfuniadau bysellau, peidiwch â chyfieithu
 agents.footer_hint: "(↑ ↓ i lywio • Enter i lansio sesiwn mewn tab newydd • Shift+enter i lansio sesiwn yn y paen asiant • Esc i adael)"
 agents.status.active: "Gweithredol"
 agents.status.waiting_for_input: "Yn aros am fewnbwn"
@@ -158,3 +158,11 @@ hooks.installed_but_disabled: "⚠ wedi'i osod ond wedi'i analluogi"
 hooks.not_installed: "✗ heb ei osod"
 hooks.uninstall_skipped: "wedi'i hepgor (CLI ddim ar PATH)"
 hooks.install_attempted: "Ceisiwyd gosod wt-agent-hooks (idempotent). Rhedwch `wta hooks status` i archwilio'r canlyniad. Log olrhain: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "newydd ddigwydd"
+time.minute_singular: "%{count} munud yn ôl"
+time.minutes_other: "%{count} munud yn ôl"
+time.hour_singular: "%{count} awr yn ôl"
+time.hours_other: "%{count} awr yn ôl"
+time.day_singular: "%{count} diwrnod yn ôl"
+time.days_other: "%{count} diwrnod yn ôl"

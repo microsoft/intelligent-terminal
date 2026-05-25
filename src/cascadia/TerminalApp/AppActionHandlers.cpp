@@ -1677,9 +1677,10 @@ namespace winrt::TerminalApp::implementation
         if (visibleOnActiveTab && _agentSessionsViewActive)
         {
             OutputDebugStringW(L"[AgentPane] OpenAgentPane: switch to chat — pane visible and in sessions view\n");
-            _BroadcastAgentSetView("chat");
-            _agentSessionsViewActive = false;
-            _UpdateBottomBarState();
+            // Request only. wta flips its per-tab `current_view` to chat
+            // and echoes back the snapshot via `agent_state_changed`;
+            // `OnAgentStateChanged` is the sole writer of the mirrors.
+            _RequestAgentState("chat", std::nullopt);
             args.Handled(true);
             return;
         }
@@ -1718,21 +1719,23 @@ namespace winrt::TerminalApp::implementation
 
         if (visibleOnActiveTab && _agentSessionsViewActive)
         {
-            // Toggle off: close the pane on the active tab. Mirrors the
-            // closing half of the Ctrl+Shift+. toggle path.
+            // Toggle off: ask wta to mark this tab as not wanting the
+            // pane. The resulting `agent_state_changed` snapshot will
+            // flip `Tab.AgentPaneOpen` mirror to false and reconcile
+            // (which hides the pane on this tab). View stays put — when
+            // the user reopens the pane on this tab the previous view
+            // is preserved.
             OutputDebugStringW(L"[AgentPane] OpenAgentSessions: toggle close — pane visible and already in sessions view\n");
-            activeTab->AgentPaneOpen(false);
-            _ReconcileAgentPaneForActiveTab();
-            _agentSessionsViewActive = false;
-            _UpdateBottomBarState();
+            _RequestAgentState(std::nullopt, /*pane_open*/ false);
             args.Handled(true);
             return;
         }
 
         // Either the pane needs opening/relocating, or it's open in chat
         // view and we want to switch it. Both go through the existing
-        // intoSessionsView=true code path, which sets _agentSessionsViewActive
-        // = true on success.
+        // intoSessionsView=true code path; wta emits `agent_state_changed`
+        // back with `view=sessions, pane_open=true` which lands in
+        // `OnAgentStateChanged`.
         _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true);
         _UpdateBottomBarState();
         args.Handled(true);
@@ -1900,7 +1903,7 @@ namespace winrt::TerminalApp::implementation
 
         if (_windowIdToast != nullptr)
         {
-            WindowIdToast().Title(L"Terminal Protocol");
+            WindowIdToast().Title(RS_(L"TerminalProtocolTeachingTipTitle"));
             WindowIdToast().Subtitle(pipeName);
             _windowIdToast->Open();
         }

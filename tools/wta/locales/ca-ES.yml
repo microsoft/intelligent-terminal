@@ -64,8 +64,8 @@ commands.help_escape_hint: "  //text     Envia un '/' literal (escapa l'analitza
 commands.help_close_hint: "  Esc        Tanca aquesta ajuda"  # {Locked="Esc"}
 
 # ── Tauler de recomanacions (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - noms de tecles i glif de tecla Retorn, no traduïu
-recommendations.nav_hint: "(↑ ↓ per navegar • Enter per seleccionar • Esc per cancel·lar)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - noms de tecles i glif de tecla Retorn, no traduïu
+recommendations.nav_hint: "(↑ ↓ per navegar • ← → per canviar accions • Enter per seleccionar • Esc per cancel·lar)"
 recommendations.button_run_command: "[ Executa l'ordre ]"
 recommendations.button_insert_in_terminal: "Insereix al Terminal"
 recommendations.button_open_in_new_tab: "Obre en una pestanya nova ↵"
@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Assegureu-vos que %{name} estigui instal·lat i al vost
 
 # ── Vista d'agents (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "S'està carregant..."
-# {Locked="Enter","Shift+enter","Esc"} - combinacions de tecles, no traduïu
+# {Locked="Enter","Shift+enter","Esc","↑","↓"} - combinacions de tecles, no traduïu
 agents.footer_hint: "(↑ ↓ per navegar • Enter per iniciar la sessió en una pestanya nova • Shift+enter per iniciar la sessió al tauler d'agent • Esc per sortir)"
 agents.status.active: "Actiu"
 agents.status.waiting_for_input: "Esperant entrada"
@@ -158,3 +158,12 @@ hooks.installed_but_disabled: "⚠ instal·lat però desactivat"
 hooks.not_installed: "✗ no instal·lat"
 hooks.uninstall_skipped: "s'ha omès (CLI no està al PATH)"
 hooks.install_attempted: "S'ha intentat instal·lar wt-agent-hooks (idempotent). Executeu `wta hooks status` per inspeccionar el resultat. Registre de traça: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "ara mateix"
+time.minute_singular: "fa %{count} minut"
+time.minutes_other: "fa %{count} minuts"
+time.hour_singular: "fa %{count} hora"
+time.hours_other: "fa %{count} hores"
+time.day_singular: "fa %{count} dia"
+time.days_other: "fa %{count} dies"

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
   <resheader name="version"><value>2.0</value></resheader>
@@ -7,14 +7,14 @@
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>ຍິນດີຕ້ອນຮັບສູ່ Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name. Keep it in English.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>ຕັ້ງຄ່າຜູ້ຊ່ວຍທີ່ມີຢູ່ໃນຕົວເພື່ອຊ່ວຍທ່ານອຘິບາຍຂໍ້ຜິດພາດ, ບົດຄຳສັ່ງ, ແລະແກ້ໄຂວຽກງານໃນບ່ອນທີ່ທ່ານເຮັດວຽກຢູ່ແລ້ວແຫລະແຫ່່ນີ້ເລີຍ. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>ເຮີນຮູ້ເພີ່ມເຕີມກ່ຽວກັບ Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name. Keep it in English.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>ຊ່ວຍໃຫ້ທ່ານຢູ່ໃນກະແສດ້ວຍ agent AI ທີ່ມີຢູ່ໃນຕົວ</value>
@@ -37,7 +37,7 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>ຍິນດີຕ້ອນຮັບສູ່ Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name. Keep it in English.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>ເລືອກສິ່ງທີ່ຈະຕັ້ງຄ່າຕອນນີ້. ທ່ານສາມາດປ່ຽນແປງໄດ້ທຸກເວລາໃນ </value>
@@ -50,14 +50,12 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>ເລືອກ agent CLI ທີ່ໃຊ້ໃນແຜງ agent. ACP CLI ທີ່ເຂົ້າກັນໄດ້ຈະຖືກກວດພົບໂດຍອັດຕະໂນມັດ.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ເລືອກ agent ທີ່ໃຊ້ໃນແຜງ agent. ACP agent ທີ່ເຂົ້າກັນໄດ້ຈະຖືກກວດພົບໂດຍອັດຕະໂນມັດ.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
     <value>ℹ Agent ນີ້ຕ້ອງການ Node.js ແລະ NPX ຊຶ່ງຈະຖືກຕິດຕັ້ງໂດຍອັດຕະໂນມັດຫາກຍັງບໍ່ມີ.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>ແນະນຳການແກ້ໄຂໂດຍອັດຕະໂນມັດສຳລັບຄຳສັ່ງທີ່ລົ້ມເຫລວ</value>
@@ -71,13 +69,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>ໃຫ້ສິດ Intelligent Terminal ຕິດຕາມສະຖານະຂອງ agent ທີ່ກຳລັງເຮັດວຽກຢູ່ຫລືໃຊ້ງານຢູ່.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name. Keep it in English.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ ການເປີດໃຊ້ນີ້ຈະຕິດຕັ້ງ hook ເຊື່ອມຕໍ່ເພື່ອຕິດຕາມພາກສ່ວນຂອງ agent CLI ຂອງທ່ານ.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ℹ ການເປີດໃຊ້ນີ້ຈະຕິດຕັ້ງ hooks ເຊື່ອມຕໍ່ເພື່ອຕິດຕາມພາກສ່ວນຂອງ agent ຂອງທ່ານ.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>ຕຳແຫນ່ງແຜງ</value>
