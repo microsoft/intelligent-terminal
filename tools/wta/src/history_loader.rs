@@ -1336,7 +1336,7 @@ mod tests {
         // had already landed) is still resumable by Claude — keep it.
         let home = tmp_root("claude-assistant-only");
         let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-myproj");
+        let proj = projects.join("C--Users-me-proj");
         fs::create_dir_all(&proj).unwrap();
         let sid = "dddddddd-1111-2222-3333-444444444444";
         write_file(&proj.join(format!("{}.jsonl", sid)),
@@ -1375,7 +1375,7 @@ mod tests {
         use crate::agent_sessions::CliSource;
         let home = tmp_root("claude-resumable-phantom");
         let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-myproj");
+        let proj = projects.join("C--Users-me-proj");
         fs::create_dir_all(&proj).unwrap();
         let key = "ffffffff-2222-3333-4444-555555555555";
         write_file(&proj.join(format!("{}.jsonl", key)),
@@ -1393,7 +1393,7 @@ mod tests {
         use crate::agent_sessions::CliSource;
         let home = tmp_root("claude-resumable-real");
         let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-myproj");
+        let proj = projects.join("C--Users-me-proj");
         fs::create_dir_all(&proj).unwrap();
         let key = "eeeeeeee-1111-2222-3333-444444444444";
         write_file(&proj.join(format!("{}.jsonl", key)),
@@ -1462,9 +1462,9 @@ mod tests {
         let home = tmp_root("gemini-resumable-phantom");
         let chats = home.join(".gemini").join("tmp").join("p").join("chats");
         fs::create_dir_all(&chats).unwrap();
-        let key = "aabbccdd-24c2-4d75-9f4b-57017e7e6cc0";
-        write_file(&chats.join("session-2026-05-24T09-01-aabbccdd.jsonl"),
-            "{\"sessionId\":\"aabbccdd-24c2-4d75-9f4b-57017e7e6cc0\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:40.254Z\",\"kind\":\"main\"}\n");
+        let key = "aaaaaaaa-24c2-4d75-9f4b-57017e7e6cc0";
+        write_file(&chats.join("session-2026-05-24T09-01-phantom.jsonl"),
+            "{\"sessionId\":\"aaaaaaaa-24c2-4d75-9f4b-57017e7e6cc0\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:40.254Z\",\"kind\":\"main\"}\n");
         assert!(!key_is_resumable_on_disk_in(&home, &CliSource::Gemini, key));
         let _ = fs::remove_dir_all(&home);
     }
@@ -1523,7 +1523,7 @@ mod tests {
         use crate::agent_sessions::CliSource;
         let home = tmp_root("strict-probe-real-claude");
         let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-myproj");
+        let proj = projects.join("C--Users-me-proj");
         fs::create_dir_all(&proj).unwrap();
         let key = "real-claude-1111-2222-3333-444444444444";
         write_file(&proj.join(format!("{}.jsonl", key)),
@@ -1540,7 +1540,7 @@ mod tests {
         use crate::agent_sessions::CliSource;
         let home = tmp_root("strict-probe-phantom-claude");
         let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-myproj");
+        let proj = projects.join("C--Users-me-proj");
         fs::create_dir_all(&proj).unwrap();
         let key = "phantom-1111-2222-3333-444444444444";
         write_file(&proj.join(format!("{}.jsonl", key)),
@@ -1654,8 +1654,8 @@ mod tests {
         fs::create_dir_all(&chats).unwrap();
 
         // Phantom: single header line, no `type` field anywhere.
-        write_file(&chats.join("session-2026-05-24T09-01-aabbccdd.jsonl"),
-            "{\"sessionId\":\"aabbccdd-24c2-4d75-9f4b-57017e7e6cc0\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:40.254Z\",\"kind\":\"main\"}\n");
+        write_file(&chats.join("session-2026-05-24T09-01-phantom.jsonl"),
+            "{\"sessionId\":\"aaaaaaaa-24c2-4d75-9f4b-57017e7e6cc0\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:40.254Z\",\"kind\":\"main\"}\n");
 
         // Phantom: two duplicate header lines (the 456-byte shape).
         write_file(&chats.join("session-2026-05-24T09-01-a5e06b8a.jsonl"),
@@ -1663,15 +1663,15 @@ mod tests {
              {\"sessionId\":\"a5e06b8a-28a1-4e64-9802-f8b4572e832d\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:43.039Z\",\"kind\":\"main\"}\n");
 
         // Real: header + at least one record carrying a `type` field.
-        write_file(&chats.join("session-2026-05-24T10-00-eeeeffff.jsonl"),
-            "{\"sessionId\":\"eeeeffff-2222-3333-4444-555555555555\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n\
+        write_file(&chats.join("session-2026-05-24T10-00-real.jsonl"),
+            "{\"sessionId\":\"eeeeeeee-2222-3333-4444-555555555555\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n\
              {\"type\":\"user\",\"content\":[{\"text\":\"hello\"}]}\n");
 
         let v = load_gemini(&home);
         assert_eq!(v.len(), 1,
             "only the real session should survive; got {:?}",
             v.iter().map(|s| s.key.clone()).collect::<Vec<_>>());
-        assert_eq!(v[0].key, "eeeeffff-2222-3333-4444-555555555555");
+        assert_eq!(v[0].key, "eeeeeeee-2222-3333-4444-555555555555");
         let _ = fs::remove_dir_all(&home);
     }
 
@@ -1688,12 +1688,12 @@ mod tests {
             r#"{"projects":{"C:\\proj":"p"}}"#);
         let chats = home.join(".gemini").join("tmp").join("p").join("chats");
         fs::create_dir_all(&chats).unwrap();
-        write_file(&chats.join("session-2026-05-24T10-00-ccccdddd.jsonl"),
-            "{\"sessionId\":\"ccccdddd-1111-2222-3333-444444444444\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n\
+        write_file(&chats.join("session-2026-05-24T10-00-info.jsonl"),
+            "{\"sessionId\":\"cccccccc-1111-2222-3333-444444444444\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n\
              {\"type\":\"info\",\"content\":\"Update successful!\"}\n");
         let v = load_gemini(&home);
         assert_eq!(v.len(), 1);
-        assert_eq!(v[0].key, "ccccdddd-1111-2222-3333-444444444444");
+        assert_eq!(v[0].key, "cccccccc-1111-2222-3333-444444444444");
         let _ = fs::remove_dir_all(&home);
     }
 
