@@ -166,7 +166,6 @@ CHARSETINFO
 chshdng
 CHT
 CLASSSTRING
-claude
 cleartype
 CLICKACTIVE
 clickdown
@@ -689,7 +688,6 @@ gwsz
 HABCDEF
 Hackathon
 HALTCOND
-handover
 HANGEUL
 hardlinks
 hashalg
@@ -1539,7 +1537,6 @@ SHOWNOACTIVATE
 SHOWNORMAL
 SHOWWINDOW
 sidebyside
-sidechain
 SIF
 SIGDN
 Signtool

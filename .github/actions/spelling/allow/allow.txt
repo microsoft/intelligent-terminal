@@ -4,6 +4,7 @@ breadcrumb
 breadcrumbs
 ccmp
 ccon
+claude
 clickable
 cmark
 CMMI
@@ -25,6 +26,7 @@ gfm
 ghe
 github
 godbolt
+handover
 hstrings
 https
 hyperlinking
@@ -67,6 +69,7 @@ rlig
 rubyw
 runtimes
 servicebus
+sidechain
 slnt
 ssh
 stakeholders
