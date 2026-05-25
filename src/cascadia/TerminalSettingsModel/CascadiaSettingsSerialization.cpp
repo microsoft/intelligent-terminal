@@ -1985,32 +1985,39 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
                               TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                               TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         };
-        if (changes.contains("global.acpAgent"))
+        // Emit these census-style events based on the *effective* value at JSON
+        // load time, not on whether the setting was explicitly present in JSON.
+        // Since these settings have non-empty defaults, gating on `changes`
+        // would under-report the majority of devices that run with defaults.
+        if (isJsonLoad)
         {
-            emitAgentProviderConfigured("AcpAgent", _globals->AcpAgent());
+            if (const auto acpAgent = _globals->AcpAgent(); !acpAgent.empty())
+            {
+                emitAgentProviderConfigured("AcpAgent", acpAgent);
+            }
+            if (const auto delegateAgent = _globals->DelegateAgent(); !delegateAgent.empty())
+            {
+                emitAgentProviderConfigured("DelegateAgent", delegateAgent);
+            }
         }
-        if (changes.contains("global.delegateAgent"))
-        {
-            emitAgentProviderConfigured("DelegateAgent", _globals->DelegateAgent());
-        }
-        const auto emitIntelligentFeatureConfigured = [&](const char* featureName, const winrt::hstring& featureValue) {
+        const auto emitIntelligentFeatureConfigured = [&](const char* featureName, const wchar_t* featureValue) {
             TraceLoggingWrite(g_hSettingsModelProvider,
                               "IntelligentFeatureConfigured",
                               TraceLoggingDescription("Event emitted when the user has an intelligent terminal feature configured"),
                               TraceLoggingValue(featureName, "FeatureName", "The name of the feature"),
-                              TraceLoggingValue(featureValue.c_str(), "FeatureValue", "The configured value"),
+                              TraceLoggingWideString(featureValue, "FeatureValue", "The configured value"),
                               TraceLoggingValue(branding, "Branding"),
                               TraceLoggingValue(distribution, "Distribution"),
                               TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                               TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         };
-        if (changes.contains("global.autoFixEnabled"))
+        if (isJsonLoad)
         {
             emitIntelligentFeatureConfigured("AutoFix", _globals->AutoFixEnabled() ? L"true" : L"false");
-        }
-        if (changes.contains("global.agentPanePosition"))
-        {
-            emitIntelligentFeatureConfigured("AgentPanePosition", _globals->AgentPanePosition());
+            if (const auto agentPanePosition = _globals->AgentPanePosition(); !agentPanePosition.empty())
+            {
+                emitIntelligentFeatureConfigured("AgentPanePosition", agentPanePosition.c_str());
+            }
         }
     }
 }
