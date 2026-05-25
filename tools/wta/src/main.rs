@@ -1899,10 +1899,17 @@ async fn run_acp_app(
                         tab_id = %owner_tab_id,
                         "seeded app_state.tab_id from --owner-tab-id"
                     );
-                    app_state
+                    let tab = app_state
                         .tab_sessions
                         .entry(owner_tab_id.clone())
                         .or_default();
+                    // wta is the source of truth for "does this tab want
+                    // the pane visible". The pane is being spawned right
+                    // now for this owner tab, so the user clearly wants
+                    // it visible here. C++ will pick this up in the
+                    // initial `agent_state_changed` emit below and mirror
+                    // it onto Tab.AgentPaneOpen.
+                    tab.pane_open = true;
                     app_state.tab_id = Some(owner_tab_id);
                 }
             }

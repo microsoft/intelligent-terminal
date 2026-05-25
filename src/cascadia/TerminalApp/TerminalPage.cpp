@@ -1690,33 +1690,46 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Ask wta to switch its TUI view (chat / sessions). One half of a
-    // request/ack pair — wta applies the change and echoes it back via a
-    // `view_changed` event handled by `OnAgentViewChanged`, which is the
-    // sole writer of `_agentSessionsViewActive` and the agent bar's
-    // session/chat label. We do NOT update local view state here; doing so
-    // would defeat the single-owner invariant (wta owns per-tab view; this
-    // is what made `_agentSessionsViewActive` go out of sync with the
-    // active tab's actual view in the multi-tab desync bug).
+    // Single C++ → wta request for changing per-tab agent-pane UI state on
+    // the active tab. Half of a request/ack pair: wta applies the requested
+    // fields, then echoes the full snapshot back via `agent_state_changed`,
+    // which `OnAgentStateChanged` mirrors onto `_agentSessionsViewActive`
+    // and `Tab.AgentPaneOpen`. We never write those mirrors locally — wta
+    // is the sole owner of per-tab UI state, which is what makes desync
+    // architecturally impossible.
     //
-    // For a fresh pane the same effect is achieved via the `--initial-view`
-    // CLI flag passed to wta on spawn — wta then emits the initial
-    // `view_changed` itself once its main loop is up.
-    void TerminalPage::_RequestAgentView(std::string_view view)
+    // Both arguments are optional. Pass only the fields you actually want
+    // to change; the rest are left as-is on wta's side. `std::nullopt` for
+    // both is a no-op (don't call us). For a fresh pane the spawn flow
+    // bakes the initial state into wta's cmdline (`--initial-view`, plus
+    // the owner tab is seeded with `pane_open=true` at startup) — wta
+    // emits the first `agent_state_changed` from its main loop.
+    void TerminalPage::_RequestAgentState(std::optional<std::string_view> view,
+                                          std::optional<bool> paneOpen)
     {
         Json::Value evt;
         evt["type"] = "event";
-        evt["method"] = "set_view";
+        evt["method"] = "set_agent_state";
         Json::Value params;
-        params["view"] = std::string{ view };
         // Scope to this WT window so multi-window users with multiple
         // wta processes don't cross-talk. wta ignores the event when its
         // own window_id is known and doesn't match.
         params["window_id"] = std::to_string(_WindowProperties.WindowId());
+        std::string logSuffix;
+        if (view.has_value())
+        {
+            params["view"] = std::string{ *view };
+            logSuffix += " view=" + std::string{ *view };
+        }
+        if (paneOpen.has_value())
+        {
+            params["pane_open"] = *paneOpen;
+            logSuffix += " pane_open=" + std::string{ *paneOpen ? "true" : "false" };
+        }
         evt["params"] = params;
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
-        _agentPaneLog(std::string{ "requesting set_view: view=" } + std::string{ view });
+        _agentPaneLog(std::string{ "requesting set_agent_state:" } + logSuffix);
         ProtocolVtSequenceReceived.raise(
             *this,
             winrt::to_hstring(Json::writeString(wb, evt)));
@@ -2365,18 +2378,17 @@ namespace winrt::TerminalApp::implementation
             if (intoSessionsView)
             {
                 // Open-into-sessions semantics (Ctrl+Shift+/): never toggle
-                // closed. Force the active tab's flag on, reconcile (which
-                // moves the pane to the active tab and emits tab_changed),
-                // focus it, then broadcast set_view so wta switches the
-                // *new* active tab's TabSession into the Agents view.
+                // closed. Ask wta to flip both `view=sessions` and
+                // `pane_open=true` on the active tab. The echoing
+                // `agent_state_changed` lands in `OnAgentStateChanged`,
+                // which sets `Tab.AgentPaneOpen=true` and reconciles
+                // (relocates the shared pane to the active tab + makes
+                // it visible).
                 const auto activeTab = _GetFocusedTabImpl();
                 if (!activeTab)
                 {
                     return;
                 }
-                activeTab->AgentPaneOpen(true);
-                _agentPaneLog("intoSessionsView: forcing active tab AgentPaneOpen=true");
-                _ReconcileAgentPaneForActiveTab();
 
                 if (const auto pane = _FindAgentPane())
                 {
@@ -2386,44 +2398,28 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
 
-                // Order matters: tab_changed (raised inside reconcile via
-                // _NotifyAgentTabChanged) must reach wta before set_view so
-                // the view switch lands on the right TabSession. Request
-                // only — the resulting `view_changed` from wta will land in
-                // `OnAgentViewChanged` and flip `_agentSessionsViewActive`.
-                _RequestAgentView("sessions");
-                _UpdateBottomBarState();
+                _RequestAgentState("sessions", /*pane_open*/ true);
                 return;
             }
 
-            // Empty prompt: per-tab toggle. Flip the active tab's flag, then
-            // reconcile the shared pane against it. The pane follows the
-            // active tab — switching tabs preserves each tab's open/closed
-            // state independently.
+            // Empty prompt: per-tab toggle. We read the local mirror
+            // (last reported by wta) to decide direction; the actual flip
+            // and visible reconcile happen via the `agent_state_changed`
+            // echo. Pane relocation/show/hide flows out of
+            // `OnAgentStateChanged → _ReconcileAgentPaneForActiveTab`.
             const auto activeTab = _GetFocusedTabImpl();
             if (!activeTab)
             {
                 return;
             }
             const bool wantOpen = !activeTab->AgentPaneOpen();
-            activeTab->AgentPaneOpen(wantOpen);
-            _agentPaneLog(std::string{ "toggle: active tab AgentPaneOpen=" } + (wantOpen ? "true" : "false"));
-            _ReconcileAgentPaneForActiveTab();
-            if (wantOpen)
-            {
-                // Transitioning hidden → visible via the chat keybinding
-                // (Ctrl+Shift+.). Force wta into chat view in case it was
-                // last left in the Agents view (the pane stays alive when
-                // hidden, so wta retains its previous view). Without this
-                // the user would press the chat key and still see the
-                // session list.
-                _RequestAgentView("chat");
-            }
-            // No direct flag write here: `_agentSessionsViewActive` is
-            // managed by `OnAgentViewChanged` (for the open path, wta will
-            // echo `view_changed("chat")`; for the hide path, the flag is
-            // gated out of the bottom bar by `_agentPaneVisible == false`).
-            _UpdateBottomBarState();
+            _agentPaneLog(std::string{ "toggle: requesting pane_open=" } + (wantOpen ? "true" : "false"));
+            // When opening via Ctrl+Shift+., also force the view to chat
+            // (pane may have been left in Agents view from a previous
+            // `/sessions` / Ctrl+Shift+/). When closing, leave view as-is
+            // so reopening preserves the user's last view.
+            _RequestAgentState(wantOpen ? std::optional<std::string_view>{ "chat" } : std::nullopt,
+                               wantOpen);
             return;
         }
 
@@ -2578,24 +2574,32 @@ namespace winrt::TerminalApp::implementation
             content.Focus(FocusState::Programmatic);
         }
 
-        // The user explicitly asked to open it on this tab.
+        // Spawn boundary write: wta isn't running yet, so there is no one
+        // to send `agent_state_changed` back. Seed the mirror locally
+        // (`Tab.AgentPaneOpen=true`) so reconcile doesn't immediately
+        // hide the freshly-created pane. wta is being launched with
+        // `--owner-tab-id <this tab>` and seeds its TabSession's
+        // `pane_open=true` for that tab at startup, so when its initial
+        // `agent_state_changed` arrives it confirms (not contradicts)
+        // the value we wrote here. This is the only runtime path where
+        // C++ writes `Tab.AgentPaneOpen` directly; the symmetric pane
+        // teardown boundary is in the pane-Closed handler.
         activeTab->AgentPaneOpen(true);
 
         // No tab_changed needed here — wta was already told its owner tab
         // via --owner-tab-id in the cmdline. Tab switches from here on
         // flow through _ReconcileAgentPaneForActiveTab.
 
-        // No optimistic write of `_agentSessionsViewActive` here: wta is
-        // the sole owner of view state. wta is starting up with the
-        // `--initial-view` we baked into its cmdline, and it emits the
-        // initial `view_changed` from its main loop (see main.rs's
-        // post-`--initial-view` projection call). That event lands in
-        // `OnAgentViewChanged`, which flips the flag and updates the bar
-        // label. There is a brief visual lag while wta starts up — the
-        // bar shows the default "<agent> <version>" until wta's first
-        // `view_changed` — which is an accepted tradeoff for keeping
-        // the C++ flag's writer set to one (`OnAgentViewChanged`) and
-        // making view-state desync architecturally impossible.
+        // `_agentSessionsViewActive` is NOT seeded here. wta is starting
+        // up with the `--initial-view` we baked into its cmdline and
+        // emits the initial `agent_state_changed` from its main loop
+        // (see main.rs's post-`--initial-view` projection call). That
+        // event lands in `OnAgentStateChanged` and flips the flag. There
+        // is a brief visual lag while wta starts up — the bar shows the
+        // default "<agent> <version>" until wta's first
+        // `agent_state_changed` — which is an accepted tradeoff for
+        // keeping the C++ flag's writer set to one (`OnAgentStateChanged`)
+        // and making view-state desync architecturally impossible.
 
         _UpdateBottomBarState();
     }
@@ -3874,14 +3878,11 @@ namespace winrt::TerminalApp::implementation
 
         if (visibleOnActiveTab && _agentSessionsViewActive)
         {
-            // Hide path: pane goes invisible on this tab. The
-            // `_agentPaneVisible` gate in `_UpdateBottomBarState` makes
-            // both chat/sessions highlights drop, so we don't need to
-            // clear `_agentSessionsViewActive` ourselves — wta still
-            // owns the view; on reopen the next `view_changed` corrects it.
-            activeTab->AgentPaneOpen(false);
-            _ReconcileAgentPaneForActiveTab();
-            _UpdateBottomBarState();
+            // Hide path: ask wta to flip pane_open=false on this tab.
+            // wta echoes `agent_state_changed{pane_open:false}` which
+            // lands in `OnAgentStateChanged`, sets the mirror, and
+            // reconciles (hides the pane on this tab).
+            _RequestAgentState(std::nullopt, /*pane_open*/ false);
             return;
         }
 
@@ -4409,28 +4410,33 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Inbound event from WTA: {method:"view_changed", params:{view}}.
+    // Inbound event from WTA:
+    //   {method:"agent_state_changed", params:{view, pane_open}}
     //
-    // **Single-writer handler** for `_agentSessionsViewActive` and the
-    // agent bar's session/chat title. wta is the sole owner of per-tab
-    // `current_view`, and it pushes this event whenever active-tab view
-    // state changes:
-    //   - On `tab_changed` (active tab swap; via `project_active_tab_state`
+    // **Single-writer handler** for all per-tab agent-pane UI state that
+    // C++ caches as global per-pane state. wta is the sole owner of every
+    // field carried here; we never write the mirrors from any other code
+    // path (the lone exception is the pane-Closed handler, where wta is
+    // dead and there is no one left to send projections). This is what
+    // makes view-state / pane-visibility desync architecturally
+    // impossible — a single writer means the mirrors can only ever
+    // reflect wta's last reported snapshot.
+    //
+    // wta pushes this event whenever active-tab state changes:
+    //   - `tab_changed` (active tab swap; via `project_active_tab_state`
     //     in `switch_tab_session`).
-    //   - On `set_view` (C++-originated request; wta echoes back).
-    //   - On Esc out of Agents view, `/sessions` slash command,
-    //     `load_session`, and once at startup after `--initial-view`.
+    //   - `set_agent_state` (C++-originated request; wta echoes back).
+    //   - Esc out of Agents view, `/sessions` slash command,
+    //     `load_session`, Ctrl+C×2 reset, and once at startup after
+    //     `--initial-view`.
     //
-    // C++ never writes `_agentSessionsViewActive` from its own code paths
-    // (the lone exception is the pane-Closed handler, where wta is dead
-    // and there is no one to send `view_changed`). This is what makes
-    // view-state desync architecturally impossible — a single writer means
-    // the flag can only ever reflect wta's last reported view.
+    // Don't send anything back here. The mirror updates below are the
+    // terminal state of the round-trip; emitting `set_agent_state` would
+    // just bounce the same snapshot back.
     //
-    // Don't request anything back here. The flag/bar mutation below is the
-    // terminal state of the round-trip; emitting `set_view` would just
-    // bounce the same view back and waste a hop.
-    void TerminalPage::OnAgentViewChanged(hstring eventJson)
+    // Future per-tab UI state plugs in as another field on `params` —
+    // parse it here, update its mirror, no new IDL route or handler needed.
+    void TerminalPage::OnAgentStateChanged(hstring eventJson)
     {
         Json::Value evt;
         Json::CharReaderBuilder rb;
@@ -4441,26 +4447,51 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto& params = evt["params"];
-        if (!params.isObject() || !params.isMember("view") || !params["view"].isString())
+        if (!params.isObject())
         {
             return;
         }
-        const auto view = params["view"].asString();
-        const bool sessions = (view == "sessions");
 
-        _agentPaneLog(std::string{ "OnAgentViewChanged: view=" } + view);
+        std::string logSuffix;
 
-        _agentSessionsViewActive = sessions;
-
-        if (const auto pane = _FindAgentPane())
+        // view: drives `_agentSessionsViewActive` and the agent bar
+        // (`AgentPaneContent::SetSessionsView`).
+        if (params.isMember("view") && params["view"].isString())
         {
-            if (const auto agent = pane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
+            const auto view = params["view"].asString();
+            const bool sessions = (view == "sessions");
+            _agentSessionsViewActive = sessions;
+            if (const auto pane = _FindAgentPane())
             {
-                agent.SetSessionsView(sessions);
+                if (const auto agent = pane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
+                {
+                    agent.SetSessionsView(sessions);
+                }
             }
+            logSuffix += " view=" + view;
         }
 
+        // pane_open: drives `Tab.AgentPaneOpen` on the active tab. Then
+        // reconcile so the actual XAML pane visibility / placement
+        // matches the new intent (relocate from another tab, restore
+        // from hidden, or hide on this tab).
+        bool didReconcile = false;
+        if (params.isMember("pane_open") && params["pane_open"].isBool())
+        {
+            const bool open = params["pane_open"].asBool();
+            if (const auto activeTab = _GetFocusedTabImpl())
+            {
+                activeTab->AgentPaneOpen(open);
+            }
+            _ReconcileAgentPaneForActiveTab();
+            didReconcile = true;
+            logSuffix += std::string{ " pane_open=" } + (open ? "true" : "false");
+        }
+
+        _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
+
         _UpdateBottomBarState();
+        (void)didReconcile; // reserved for future "only reconcile when needed" heuristics
     }
 
     // Inbound event from WTA: {method:"close_agent_pane", params:{...}}.
@@ -4529,30 +4560,19 @@ namespace winrt::TerminalApp::implementation
         _agentPaneLog("OnCloseAgentPaneRequested: other tabs still want the pane — hide + reset this tab");
 
         // Tell wta to drop this tab's ACP session + conversation. Fire this
-        // BEFORE flipping AgentPaneOpen so wta sees the reset request while
-        // its tab_to_session for ownerTab is still populated. (Order isn't
-        // strict — the events are queued — but it's the natural sequence.)
+        // BEFORE the pane-open flip so wta sees the reset request while
+        // its tab_to_session for ownerTab is still populated.
         _NotifyAgentTabReset(ownerTab->StableId());
 
-        ownerTab->AgentPaneOpen(false);
-
-        // Only hide if the pane is currently visible on the owner tab. If
-        // it's already hidden (e.g. user switched tabs between Ctrl+C and
-        // this event), the flag-flip above is enough; reconcile will keep
-        // it hidden the next time this tab becomes active.
-        if (!agentPane->IsHidden())
-        {
-            if (const auto rootPane = ownerTab->GetRootPane())
-            {
-                rootPane->HidePane(agentPane);
-                if (const auto target = _FindSourceOfAgentPaneId(rootPane))
-                {
-                    ownerTab->FocusPane(target.value());
-                }
-            }
-        }
-
-        _UpdateBottomBarState();
+        // ownerTab is the tab whose pane TUI raised Ctrl+C×2 — it's the
+        // currently active tab from wta's perspective (the pane is what
+        // had focus to receive the keypress). Ask wta to flip its
+        // pane_open to false; the echoing `agent_state_changed` lands
+        // in `OnAgentStateChanged`, which flips the mirror and reconciles
+        // (hiding the pane on this tab). Don't HidePane locally — that
+        // would race the round-trip and could leave the C++ mirror and
+        // XAML state out of sync if a tab switch happens in between.
+        _RequestAgentState(std::nullopt, /*pane_open*/ false);
     }
 
     // Send {method:"autofix_execute",params:{pane_id}} over the outbound
@@ -4650,8 +4670,14 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Step 2: the new tab is now focused. Flip its AgentPaneOpen=true
-        // and reconcile to move the shared agent pane onto it.
+        // Step 2: the new tab is now focused. `_OpenNewTab` triggers a
+        // tab_changed flowing to wta (via reconcile inside
+        // _OnTabSelectionChanged), so wta's active TabSession is now this
+        // new tab — by the time the `set_agent_state` below arrives, wta
+        // routes it to the right TabSession. wta will echo back
+        // `agent_state_changed{pane_open:true}` which lands in
+        // `OnAgentStateChanged`, sets the mirror, and reconciles (moving
+        // the shared agent pane onto the new tab).
         const auto newTab = _GetFocusedTabImpl();
         if (!newTab)
         {
@@ -4664,8 +4690,7 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("OnResumeInNewAgentTabRequested: new tab has empty StableId");
             return;
         }
-        newTab->AgentPaneOpen(true);
-        _ReconcileAgentPaneForActiveTab();
+        _RequestAgentState(std::nullopt, /*pane_open*/ true);
 
         // Step 3: publish load_session back to wta with the new tab's
         // StableId. ProtocolVtSequenceReceived fans this out to subscribed
