@@ -2112,11 +2112,21 @@ namespace winrt::TerminalApp::implementation
         _agentPaneLog("_OpenOrReuseAgentPane called, prompt='" + winrt::to_string(prompt) + "', intoSessionsView=" + (intoSessionsView ? "true" : "false"));
 
         const auto emitAgentPaneOpened = [&]() {
+#if defined(WT_BRANDING_RELEASE)
+            constexpr uint8_t branding = 3;
+#elif defined(WT_BRANDING_PREVIEW)
+            constexpr uint8_t branding = 2;
+#elif defined(WT_BRANDING_CANARY)
+            constexpr uint8_t branding = 1;
+#else
+            constexpr uint8_t branding = 0;
+#endif
             TraceLoggingWrite(
                 g_hTerminalAppProvider,
                 "AgentPaneOpened",
                 TraceLoggingDescription("Event emitted when the agent pane is opened"),
                 TraceLoggingWideString(triggerSource, "TriggerSource", "How the agent pane was triggered"),
+                TraceLoggingValue(branding, "Branding"),
                 TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                 TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         };
@@ -4019,10 +4029,20 @@ namespace winrt::TerminalApp::implementation
         {
             if (_diagnostics.autofixState != AutofixState::Pending)
             {
+#if defined(WT_BRANDING_RELEASE)
+                constexpr uint8_t branding = 3;
+#elif defined(WT_BRANDING_PREVIEW)
+                constexpr uint8_t branding = 2;
+#elif defined(WT_BRANDING_CANARY)
+                constexpr uint8_t branding = 1;
+#else
+                constexpr uint8_t branding = 0;
+#endif
                 TraceLoggingWrite(
                     g_hTerminalAppProvider,
                     "ErrorDetected",
                     TraceLoggingDescription("Event emitted when an error is auto-detected in a terminal pane"),
+                    TraceLoggingValue(branding, "Branding"),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
             }
@@ -4339,11 +4359,21 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+#if defined(WT_BRANDING_RELEASE)
+        constexpr uint8_t branding = 3;
+#elif defined(WT_BRANDING_PREVIEW)
+        constexpr uint8_t branding = 2;
+#elif defined(WT_BRANDING_CANARY)
+        constexpr uint8_t branding = 1;
+#else
+        constexpr uint8_t branding = 0;
+#endif
         TraceLoggingWrite(
             g_hTerminalAppProvider,
             "ErrorFixAttempted",
             TraceLoggingDescription("Event emitted when the user attempts an agent-suggested fix"),
             TraceLoggingWideString(triggerSource, "TriggerSource", "How the fix was triggered"),
+            TraceLoggingValue(branding, "Branding"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 
@@ -4469,10 +4499,20 @@ namespace winrt::TerminalApp::implementation
             *this,
             winrt::to_hstring(Json::writeString(wb, outEvt)));
 
+#if defined(WT_BRANDING_RELEASE)
+        constexpr uint8_t branding = 3;
+#elif defined(WT_BRANDING_PREVIEW)
+        constexpr uint8_t branding = 2;
+#elif defined(WT_BRANDING_CANARY)
+        constexpr uint8_t branding = 1;
+#else
+        constexpr uint8_t branding = 0;
+#endif
         TraceLoggingWrite(
             g_hTerminalAppProvider,
             "SessionResumed",
             TraceLoggingDescription("Event emitted when a prior agent session resume is dispatched"),
+            TraceLoggingValue(branding, "Branding"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 

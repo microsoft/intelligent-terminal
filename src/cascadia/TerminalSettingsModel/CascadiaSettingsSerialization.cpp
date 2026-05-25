@@ -1974,6 +1974,7 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
                               TraceLoggingDescription("Event emitted when the user has an agent provider configured"),
                               TraceLoggingValue(providerType, "ProviderType", "Which provider setting (AcpAgent or DelegateAgent)"),
                               TraceLoggingValue(sanitized.c_str(), "ProviderId", "The agent provider ID"),
+                              TraceLoggingValue(branding, "Branding"),
                               TraceLoggingValue(distribution, "Distribution"),
                               TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                               TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
@@ -1992,6 +1993,7 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
                               TraceLoggingDescription("Event emitted when the user has an intelligent terminal feature configured"),
                               TraceLoggingValue(featureName, "FeatureName", "The name of the feature"),
                               TraceLoggingValue(featureValue.c_str(), "FeatureValue", "The configured value"),
+                              TraceLoggingValue(branding, "Branding"),
                               TraceLoggingValue(distribution, "Distribution"),
                               TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                               TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
