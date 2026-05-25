@@ -49,6 +49,8 @@ chat.plan_header: "プラン:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(キャンセル済み)"
+chat.turn_executed: "→ 実行済み: %{title}"
 
 # ── 入力プレースホルダー (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "何でも聞いてください。/ でコマンド.."  # {Locked="/"}

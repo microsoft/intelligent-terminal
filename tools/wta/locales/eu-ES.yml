@@ -49,6 +49,8 @@ chat.plan_header: "Plana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(bertan behera utzita)"
+chat.turn_executed: "→ exekutatuta: %{title}"
 
 # ── Sarrera-leku-markak (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Galdetu edozer, / komandoetarako.."  # {Locked="/"}

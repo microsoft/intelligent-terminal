@@ -49,6 +49,8 @@ chat.plan_header: "Plano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(cancelado)"
+chat.turn_executed: "→ executado: %{title}"
 
 # ── Espaços reservados de entrada (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Pergunte qualquer coisa, / para comandos.."  # {Locked="/"}

@@ -49,6 +49,8 @@ chat.plan_header: "Mahere:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(whakakorea)"
+chat.turn_executed: "→ kua mahia: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Patai i tetahi mea, / mo nga whakahau.."  # {Locked="/"}

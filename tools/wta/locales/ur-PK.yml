@@ -49,6 +49,8 @@ chat.plan_header: "منصوبہ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(منسوخ)"
+chat.turn_executed: "→ پر عمل کر دیا گیا: %{title}"
 
 # ── ان پٹ پلیس ہولڈرز (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "کچھ بھی پوچھیں، / کمانڈز کے لیے.."  # {Locked="/"}

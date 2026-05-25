@@ -49,6 +49,8 @@ chat.plan_header: "Piano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(annullato)"
+chat.turn_executed: "→ eseguito: %{title}"
 
 # ── Segnaposto di input (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Chiedi qualsiasi cosa, / per i comandi.."  # {Locked="/"}

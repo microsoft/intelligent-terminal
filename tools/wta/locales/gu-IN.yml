@@ -49,6 +49,8 @@ chat.plan_header: "યોજના:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(રદ કરેલ)"
+chat.turn_executed: "→ ચલાવાયું: %{title}"
 
 # ── ઇનપુટ પ્લેસહોલ્ડર (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "કંઈ પણ પૂછો, / કમાન્ડ માટે.."  # {Locked="/"}

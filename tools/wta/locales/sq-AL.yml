@@ -49,6 +49,8 @@ chat.plan_header: "Plani:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(anuluar)"
+chat.turn_executed: "→ ekzekutuar: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Pyetni çfarëdo, / për komandat.."  # {Locked="/"}

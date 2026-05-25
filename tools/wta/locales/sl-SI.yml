@@ -49,6 +49,8 @@ chat.plan_header: "Načrt:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(preklicano)"
+chat.turn_executed: "→ izvedeno: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Vprašajte karkoli, / za ukaze.."  # {Locked="/"}

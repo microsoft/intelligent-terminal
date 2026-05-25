@@ -49,6 +49,8 @@ chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(отменено)"
+chat.turn_executed: "→ выполнено: %{title}"
 
 # ── Заполнители ввода (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Спросите что угодно, / для команд.."  # {Locked="/"}

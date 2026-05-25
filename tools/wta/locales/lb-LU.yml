@@ -49,6 +49,8 @@ chat.plan_header: "Plang:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(ofgebrach)"
+chat.turn_executed: "→ ausgeféiert: %{title}"
 
 # ── Input-Plazhalter (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Froen eppes, / fir Kommandoen.."  # {Locked="/"}

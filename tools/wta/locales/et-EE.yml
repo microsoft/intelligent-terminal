@@ -49,6 +49,8 @@ chat.plan_header: "Plaan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(tühistatud)"
+chat.turn_executed: "→ käivitatud: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Küsi mida iganes, / käskude jaoks.."  # {Locked="/"}

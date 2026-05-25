@@ -49,6 +49,8 @@ chat.plan_header: "ਯੋਜਨਾ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(ਰੱਦ ਕੀਤਾ ਗਿਆ)"
+chat.turn_executed: "→ ਚਲਾਇਆ ਗਿਆ: %{title}"
 
 # ── ਇਨਪੁਟ ਪਲੇਸਹੋਲਡਰ (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "ਕੁਝ ਵੀ ਪੁੱਛੋ, / ਕਮਾਂਡਾਂ ਲਈ.."  # {Locked="/"}

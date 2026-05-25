@@ -49,6 +49,8 @@ chat.plan_header: "Planas:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(atšaukta)"
+chat.turn_executed: "→ įvykdyta: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Klauskite bet ko, / komandoms.."  # {Locked="/"}

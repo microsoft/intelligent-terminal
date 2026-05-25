@@ -49,6 +49,8 @@ chat.plan_header: "ప్లాన్:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(రద్దు చేయబడింది)"
+chat.turn_executed: "→ అమలు చేయబడింది: %{title}"
 
 # ── ఇన్‌పుట్ ప్లేస్‌హోల్డర్‌లు (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "ఏదైనా అడగండి, / కమాండ్‌ల కోసం.."  # {Locked="/"}
