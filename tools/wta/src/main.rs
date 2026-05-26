@@ -216,7 +216,12 @@ struct Cli {
     /// in the helper+master architecture (see
     /// doc/specs/Multi-window-agent-pane.md). Hidden — only the C++
     /// side should pass it.
-    #[arg(long, hide = true, value_name = "PIPE_NAME")]
+    ///
+    /// Logically mutually exclusive with `--master`: a process can be
+    /// either the master or a helper, never both. Enforced by clap so
+    /// a misconfigured invocation fails fast instead of silently
+    /// preferring `--master` (the previous behavior).
+    #[arg(long, hide = true, value_name = "PIPE_NAME", conflicts_with = "master")]
     connect_master: Option<String>,
 }
 

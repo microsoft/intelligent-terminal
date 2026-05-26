@@ -37,6 +37,14 @@
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, Weak};
 
+/// Per-helper notification channel capacity. Sized for bursty chunk
+/// streaming during a single agent turn; well above what a healthy
+/// helper pipe needs to drain. If it fills up, the helper's pipe is
+/// genuinely stuck and we'd rather drop chunks (with a warning) than
+/// back-pressure the agent CLI's I/O loop and freeze every other
+/// helper sharing this master.
+const NOTIF_CHANNEL_CAPACITY: usize = 1024;
+
 use acp::Agent as _;
 use acp::Client as _;
 use agent_client_protocol as acp;
@@ -74,7 +82,7 @@ pub(crate) struct HelperId(u64);
 #[derive(Clone)]
 struct HelperRoute {
     helper_id: HelperId,
-    notif_tx: mpsc::UnboundedSender<acp::SessionNotification>,
+    notif_tx: mpsc::Sender<acp::SessionNotification>,
     forwarder: Option<Arc<acp::AgentSideConnection>>,
 }
 
@@ -94,6 +102,16 @@ struct MasterStateInner {
     /// leaves a dead `SessionId` behind, and every future
     /// notification for it lights up a "helper notification channel
     /// closed" warning.
+    ///
+    /// `HelperRoute.notif_tx` is a **bounded** mpsc with capacity
+    /// `NOTIF_CHANNEL_CAPACITY`. Chunk-streaming notifications are
+    /// high-rate, so an unbounded channel would let memory grow without
+    /// bound if a helper's pipe write stalls. On a full channel we
+    /// drop the notification + log a warning (see
+    /// `MasterClient::session_notification`) rather than
+    /// `await`-blocking the agent CLI's I/O loop — head-of-line
+    /// blocking would freeze notification delivery for every other
+    /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::SessionId, HelperRoute>>,
     /// The agent CLI's response to the master's startup initialize.
     /// Replayed verbatim to every helper that calls `initialize` over
@@ -225,33 +243,55 @@ impl acp::Client for MasterClient {
         };
         match tx {
             Some(tx) => {
-                let send_ok = tx.send(args).is_ok();
-                tracing::debug!(
-                    target: "master",
-                    step = "agent→helper",
-                    op = "session_notification",
-                    session_id = ?sid,
-                    kind = %kind,
-                    delivered = send_ok,
-                    "routed agent CLI notification to helper"
-                );
-                if !send_ok {
-                    // Helper went away between our lookup and our
-                    // send. Drop the routing entry so subsequent
-                    // notifications don't repeat the same warning
-                    // (and the map doesn't grow forever). The
-                    // `serve_helper` cleanup path also retains-out
-                    // these entries on graceful disconnect; this
-                    // path catches the race where send fails before
-                    // that runs.
-                    let mut map = self.state.session_to_helper.lock().await;
-                    map.remove(&sid);
-                    tracing::warn!(
-                        target: "master",
-                        session_id = ?sid,
-                        kind = %kind,
-                        "helper notification channel closed — helper likely disconnected; dropping update and routing entry"
-                    );
+                // `try_send` rather than `send().await`: a slow helper
+                // pipe must not back-pressure this trait method, which
+                // is driven by the agent CLI's I/O loop and is shared
+                // across every helper. Blocking here would freeze
+                // notification delivery for everyone.
+                match tx.try_send(args) {
+                    Ok(()) => {
+                        tracing::debug!(
+                            target: "master",
+                            step = "agent→helper",
+                            op = "session_notification",
+                            session_id = ?sid,
+                            kind = %kind,
+                            delivered = true,
+                            "routed agent CLI notification to helper"
+                        );
+                    }
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        // The helper isn't draining fast enough. Drop
+                        // this update rather than queue forever — the
+                        // user will see a chunk gap, which is the
+                        // least-bad option vs. unbounded memory growth
+                        // or master-wide stall.
+                        tracing::warn!(
+                            target: "master",
+                            session_id = ?sid,
+                            kind = %kind,
+                            capacity = NOTIF_CHANNEL_CAPACITY,
+                            "helper notification channel full — dropping update (helper is not draining)"
+                        );
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                        // Helper went away between our lookup and our
+                        // send. Drop the routing entry so subsequent
+                        // notifications don't repeat the same warning
+                        // (and the map doesn't grow forever). The
+                        // `serve_helper` cleanup path also retains-out
+                        // these entries on graceful disconnect; this
+                        // path catches the race where send fails before
+                        // that runs.
+                        let mut map = self.state.session_to_helper.lock().await;
+                        map.remove(&sid);
+                        tracing::warn!(
+                            target: "master",
+                            session_id = ?sid,
+                            kind = %kind,
+                            "helper notification channel closed — helper likely disconnected; dropping update and routing entry"
+                        );
+                    }
                 }
             }
             None => {
@@ -425,7 +465,7 @@ struct HelperHandler {
     /// land here. The helper's serve loop drains the matching
     /// receiver and writes notifications back over the
     /// `AgentSideConnection`.
-    notif_tx: mpsc::UnboundedSender<acp::SessionNotification>,
+    notif_tx: mpsc::Sender<acp::SessionNotification>,
     /// The same helper's outbound connection back to its pipe, held
     /// as a `Weak` to break a reference cycle.
     ///
@@ -720,13 +760,30 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         });
     }
 
-    // Reap the child so it doesn't zombie if it dies.
+    // Reap the child so it doesn't zombie if it dies, and treat its
+    // exit as fatal for the master. Without this, helpers would stay
+    // connected to a master whose backing agent CLI is gone — every
+    // prompt would hang waiting on a dead ACP peer, and SharedWta on
+    // the C++ side wouldn't respawn the master (its process handle is
+    // still alive). Exiting here lets the next AcquirePane spawn a
+    // fresh master + agent CLI pair.
     let mut child = spawn_result.child;
     tokio::task::spawn_local(async move {
         match child.wait().await {
-            Ok(status) => tracing::error!(target: "master", "agent CLI exited: {status:?}"),
-            Err(err) => tracing::error!(target: "master", "agent CLI wait failed: {err}"),
+            Ok(status) => tracing::error!(
+                target: "master",
+                ?status,
+                "agent CLI exited — master cannot multiplex without it, exiting"
+            ),
+            Err(err) => tracing::error!(
+                target: "master",
+                error = %err,
+                "agent CLI wait failed — master state unreliable, exiting"
+            ),
         }
+        // Flush logs before exit; tracing-appender is non-blocking and
+        // may otherwise drop the final lines.
+        std::process::exit(1);
     });
 
     let outgoing = stdin.compat_write();
@@ -748,13 +805,23 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     });
     let agent_conn = Arc::new(conn);
 
+    // The ACP I/O loop ending (clean or error) means the master can no
+    // longer talk to the agent CLI — same liveness problem as a child
+    // exit. Exit so helpers fail loudly and SharedWta can rebuild a
+    // fresh master on the next AcquirePane.
     tokio::task::spawn_local(async move {
         match handle_io.await {
-            Ok(()) => tracing::info!(target: "master", "agent CLI I/O loop ended cleanly"),
-            Err(err) => {
-                tracing::error!(target: "master", error = %err, "agent CLI I/O loop ended with error")
-            }
+            Ok(()) => tracing::error!(
+                target: "master",
+                "agent CLI I/O loop ended cleanly — no agent to multiplex onto, exiting"
+            ),
+            Err(err) => tracing::error!(
+                target: "master",
+                error = %err,
+                "agent CLI I/O loop ended with error — exiting"
+            ),
         }
+        std::process::exit(1);
     });
 
     // 3. Initialize the agent CLI once at master startup.
@@ -871,7 +938,7 @@ async fn serve_helper(
     tracing::info!(target: "master", helper_id = ?helper_id, "helper connected");
 
     let (notif_tx, mut notif_rx) =
-        mpsc::unbounded_channel::<acp::SessionNotification>();
+        mpsc::channel::<acp::SessionNotification>(NOTIF_CHANNEL_CAPACITY);
 
     // Shared with `HelperHandler` so it can stash the helper's
     // outbound `AgentSideConnection` into `HelperRoute.forwarder` at
@@ -1005,8 +1072,8 @@ mod tests {
     #[tokio::test]
     async fn session_notification_routes_to_owning_helper() {
         let state = make_state();
-        let (tx1, mut rx1) = mpsc::unbounded_channel();
-        let (tx2, mut rx2) = mpsc::unbounded_channel();
+        let (tx1, mut rx1) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+        let (tx2, mut rx2) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
         let sid1 = SessionId::new("sess-1");
         let sid2 = SessionId::new("sess-2");
 
@@ -1044,7 +1111,7 @@ mod tests {
     #[tokio::test]
     async fn session_notification_drops_entry_on_send_failure() {
         let state = make_state();
-        let (tx, rx) = mpsc::unbounded_channel::<SessionNotification>();
+        let (tx, rx) = mpsc::channel::<SessionNotification>(NOTIF_CHANNEL_CAPACITY);
         let sid = SessionId::new("dead-session");
         {
             let mut map = state.session_to_helper.lock().await;
@@ -1068,6 +1135,41 @@ mod tests {
         );
     }
 
+    /// A full bounded channel drops the new notification (and logs)
+    /// instead of `await`-blocking — protects the agent CLI I/O loop
+    /// from head-of-line blocking when one helper's pipe stalls.
+    /// Verified by filling a capacity-1 channel without draining, then
+    /// routing — the second notification must be silently dropped and
+    /// the routing entry must remain (channel is Full, not Closed).
+    #[tokio::test]
+    async fn session_notification_drops_on_full_channel() {
+        let state = make_state();
+        let (tx, _rx) = mpsc::channel::<SessionNotification>(1);
+        let sid = SessionId::new("slow-helper");
+        {
+            let mut map = state.session_to_helper.lock().await;
+            map.insert(
+                sid.clone(),
+                HelperRoute {
+                    helper_id: HelperId(9),
+                    notif_tx: tx.clone(),
+                    forwarder: None,
+                },
+            );
+        }
+        // Fill capacity. _rx is held so the channel stays open.
+        tx.try_send(make_notif(&sid)).unwrap();
+        // Second send via the routing path must be a no-op-with-warn,
+        // not a panic or an error.
+        route(&state, make_notif(&sid)).await;
+        // Routing entry survives Full (only Closed removes it).
+        let map = state.session_to_helper.lock().await;
+        assert!(
+            map.contains_key(&sid),
+            "Full (not Closed) must NOT remove the routing entry"
+        );
+    }
+
     /// Unknown SessionId is a no-op (warned but not errored) — the
     /// `Client` trait return value must stay `Ok` so the master's
     /// I/O loop doesn't tear down on a stale notification.
@@ -1087,9 +1189,9 @@ mod tests {
     #[tokio::test]
     async fn drop_sessions_for_helper_retains_only_other_helpers() {
         let state = make_state();
-        let (tx_a, _rx_a) = mpsc::unbounded_channel();
-        let (tx_b, _rx_b) = mpsc::unbounded_channel();
-        let (tx_c, _rx_c) = mpsc::unbounded_channel();
+        let (tx_a, _rx_a) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+        let (tx_b, _rx_b) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+        let (tx_c, _rx_c) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
         {
             let mut map = state.session_to_helper.lock().await;
             map.insert(
@@ -1163,7 +1265,7 @@ mod tests {
     #[tokio::test]
     async fn route_for_none_forwarder_returns_internal_error() {
         let state = make_state();
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, _rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
         {
             let mut map = state.session_to_helper.lock().await;
             map.insert(

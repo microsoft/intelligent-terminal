@@ -868,7 +868,11 @@ When two helpers both trigger `AcquirePane` simultaneously
 (unlikely but possible), `SharedWta`'s mutex serializes the spawn.
 Helpers may briefly find the pipe nonexistent if they spawn before
 master finishes startup. Mitigation: helper retries pipe connection
-for ~2-3 seconds with exponential backoff.
+with an exponential backoff schedule summing to ~75 seconds total
+(50ms → 15s steps; see `backoff_ms` in `run_acp_client_over_pipe`).
+Most masters come up in 1-2s; the long tail covers npx adapter cold
+starts where the agent CLI itself takes 30+ seconds before its ACP
+loop is ready.
 
 ### Z-R7. Tab drag verification (carried from old R8)
 
