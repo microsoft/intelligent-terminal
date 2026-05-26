@@ -2013,8 +2013,8 @@ mod tests {
         use std::path::PathBuf;
 
         let state = make_state();
-        let (tx_a, _rx_a) = mpsc::unbounded_channel();
-        let (tx_b, _rx_b) = mpsc::unbounded_channel();
+        let (tx_a, _rx_a) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+        let (tx_b, _rx_b) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
 
         // Two helpers, one session each.
         let sid_a = SessionId::new("alive-a");
@@ -2027,6 +2027,7 @@ mod tests {
                     helper_id: HelperId(1),
                     notif_tx: tx_a,
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
             map.insert(
@@ -2035,6 +2036,7 @@ mod tests {
                     helper_id: HelperId(2),
                     notif_tx: tx_b,
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
         }
@@ -2140,7 +2142,7 @@ mod tests {
         let state = make_state();
         // Helper 1 owns two sessions, helper 2 owns none but is
         // subscribed (it's a peer that should learn of the removals).
-        let (notif_tx1, _notif_rx1) = mpsc::unbounded_channel();
+        let (notif_tx1, _notif_rx1) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
         let (ext_tx2, mut ext_rx2) = mpsc::unbounded_channel::<acp::ExtNotification>();
         let sid_a = SessionId::new("removed-a");
         let sid_b = SessionId::new("removed-b");
@@ -2152,6 +2154,7 @@ mod tests {
                     helper_id: HelperId(1),
                     notif_tx: notif_tx1.clone(),
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
             map.insert(
@@ -2160,6 +2163,7 @@ mod tests {
                     helper_id: HelperId(1),
                     notif_tx: notif_tx1,
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
         }
