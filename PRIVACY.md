@@ -6,4 +6,4 @@ The software may collect information about you and your use of the software and 
 
 ## How to Disable Telemetry
 
-Intelligent Terminal respects the same telemetry settings as Windows Terminal. You can disable telemetry by setting the `TERMINAL_DIAGNOSTICS_LEVEL` environment variable to `0`, or by adjusting your Windows diagnostic data settings.
+Intelligent Terminal uses the same telemetry infrastructure as Windows Terminal. Telemetry is controlled by your Windows diagnostic data settings. To adjust these, go to Settings > Privacy & security > Diagnostics & feedback.
