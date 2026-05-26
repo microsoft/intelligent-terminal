@@ -651,6 +651,57 @@ impl acp::Agent for HelperHandler {
         self.agent_conn.set_session_mode(args).await
     }
 
+    // Forward model selection to the agent CLI. Without this override
+    // the trait's default impl returns `method_not_found`, which is
+    // what the helper sees when the user picks a model from the
+    // Settings UI (e.g. Claude → haiku). Symptom in
+    // `wta-main_helper.log`:
+    //
+    //   ERROR helper: run_acp_client_over_pipe failed
+    //     error=set_session_model failed for requested model haiku:
+    //     Method not found
+    //
+    // PR #54 missed this when slicing the per-pane Agent impl into
+    // the helper+master split — set_session_model is gated behind the
+    // `unstable_session_model` Cargo feature (already enabled in
+    // `tools/wta/Cargo.toml`) and is distinct from set_session_mode
+    // (Mode = Agent/Plan/Autopilot vs Model = haiku/sonnet/opus).
+    async fn set_session_model(
+        &self,
+        args: acp::SetSessionModelRequest,
+    ) -> acp::Result<acp::SetSessionModelResponse> {
+        tracing::info!(
+            target: "master",
+            step = "helper→agent",
+            op = "set_session_model",
+            helper_id = ?self.helper_id,
+            session_id = ?args.session_id,
+            model_id = ?args.model_id,
+            "forwarding set_session_model"
+        );
+        self.agent_conn.set_session_model(args).await
+    }
+
+    // Same story as set_session_model — the agent CLI advertises a
+    // `set_session_config_option` capability (driven by the ACP
+    // `ConfigOptionUpdate` notifications the helper already handles)
+    // and the trait default returns method_not_found, so anything
+    // that flows through this path would also silently fail.
+    async fn set_session_config_option(
+        &self,
+        args: acp::SetSessionConfigOptionRequest,
+    ) -> acp::Result<acp::SetSessionConfigOptionResponse> {
+        tracing::info!(
+            target: "master",
+            step = "helper→agent",
+            op = "set_session_config_option",
+            helper_id = ?self.helper_id,
+            session_id = ?args.session_id,
+            "forwarding set_session_config_option"
+        );
+        self.agent_conn.set_session_config_option(args).await
+    }
+
     async fn prompt(
         &self,
         args: acp::PromptRequest,
