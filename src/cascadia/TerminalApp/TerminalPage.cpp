@@ -20,10 +20,11 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentPolicy.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
-#include "App.h"
-#include "DebugTapConnection.h"
 #include "AgentPaneContent.h"
 #include "AgentPaneDragStash.h"
+#include "AgentPaneLog.h"
+#include "App.h"
+#include "DebugTapConnection.h"
 #include "FreOverlay.h"
 #include "MarkdownPaneContent.h"
 #include "Remoting.h"
@@ -702,8 +703,6 @@ namespace winrt::TerminalApp::implementation
         _actionDispatch->DoAction(actionAndArgs);
     }
 
-    static void _agentPaneLog(const std::string& msg);
-
     // Method Description:
     // - This method is called when the user submits a foreground agent prompt
     //   from the command palette (? prefix). Opens or reuses an agent pane
@@ -964,31 +963,6 @@ namespace winrt::TerminalApp::implementation
                     agentContent.SetAgentPanePosition(position);
                 }
             }
-        }
-    }
-
-    static void _agentPaneLog(const std::string& msg)
-    {
-        wchar_t localAppData[MAX_PATH];
-        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0)
-            return;
-        const auto logDir = std::wstring(localAppData) + L"\\IntelligentTerminal\\logs";
-        std::filesystem::create_directories(logDir);
-        const auto logPath = logDir + L"\\wta-agent-pane.log";
-        if (auto f = std::ofstream(logPath, std::ios::app))
-        {
-            // Use ISO8601 UTC with millisecond precision so log timestamps can
-            // be correlated with wta-main.log down to the millisecond.
-            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::system_clock::now().time_since_epoch())
-                                   .count();
-            const auto secs = static_cast<std::time_t>(nowMs / 1000);
-            const int ms = static_cast<int>(nowMs % 1000);
-            std::tm tmUtc{};
-            ::gmtime_s(&tmUtc, &secs);
-            char ts[32];
-            std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", &tmUtc);
-            f << "[" << ts << "." << std::setw(3) << std::setfill('0') << ms << "Z] " << msg << "\n";
         }
     }
 

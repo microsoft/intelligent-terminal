@@ -6,6 +6,7 @@
 
 #include "TerminalPage.h"
 #include "AgentPaneContent.h"
+#include "AgentPaneLog.h"
 #include "ScratchpadContent.h"
 #include "../inc/ShellIntegration.h"
 #include "../WinRTUtils/inc/WtExeUtils.h"
@@ -13,10 +14,6 @@
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "Utils.h"
 #include <json/json.h>
-
-#include <chrono>
-#include <ctime>
-#include <iomanip>
 
 using namespace winrt::Windows::ApplicationModel::DataTransfer;
 using namespace winrt::Windows::UI::Xaml;
@@ -29,35 +26,6 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Microsoft::Terminal::TerminalConnection;
 using namespace ::TerminalApp;
-
-namespace
-{
-    // Local copy of the agent-pane diagnostic logger (twins of the ones in
-    // TerminalPage.cpp / TabManagement.cpp). Writes to wta-agent-pane.log.
-    void _agentPaneLog(const std::string& msg)
-    {
-        wchar_t localAppData[MAX_PATH];
-        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0)
-            return;
-        const auto logDir = std::wstring(localAppData) + L"\\IntelligentTerminal\\logs";
-        std::filesystem::create_directories(logDir);
-        const auto logPath = logDir + L"\\wta-agent-pane.log";
-        if (auto f = std::ofstream(logPath, std::ios::app))
-        {
-            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::system_clock::now().time_since_epoch())
-                                   .count();
-            const auto secs = static_cast<std::time_t>(nowMs / 1000);
-            const int ms = static_cast<int>(nowMs % 1000);
-            std::tm tmUtc{};
-            ::gmtime_s(&tmUtc, &secs);
-            char ts[32];
-            std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", &tmUtc);
-            f << '[' << ts << '.' << std::setw(3) << std::setfill('0') << ms
-              << "Z] " << msg << '\n';
-        }
-    }
-}
 
 namespace winrt
 {

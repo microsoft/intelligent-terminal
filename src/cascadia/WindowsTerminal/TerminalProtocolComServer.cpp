@@ -11,8 +11,9 @@
 #include <til/io.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
 
+#include <algorithm>
 #include <thread>
-#include <unordered_set>
+#include <vector>
 
 namespace ProtocolParsing = Microsoft::Terminal::Protocol::Parsing;
 
@@ -146,51 +147,52 @@ void TerminalProtocolComServer::_ensurePageEventsRegistered()
     if (!s_emperor)
         return;
 
-    // Per-AppHost registration tracking. Each window gets its
+    // Per-TerminalPage registration tracking. Each window gets its
     // ProtocolVtSequenceReceived wired exactly once, so events from any
     // window — not just the lexically-first one — reach the COM fan-out.
     //
-    // Stale entries (window closed → AppHost destructed) are pruned at
-    // the top of this function. The set never dereferences the pointer
-    // itself, so a UAF after destruction would never trigger.
+    // Key on `winrt::weak_ref<TerminalPage>` rather than `AppHost*`:
+    // - A closed window's AppHost is destructed and the same memory
+    //   address may later be reused by a freshly-created AppHost. With a
+    //   raw-pointer key the new window would be misidentified as
+    //   "already registered" and silently skipped (ABA bug).
+    // - `weak_ref` tracks the WinRT object's actual identity; dead
+    //   entries surface as `weak_ref::get()` returning null, and new
+    //   pages are recognized as distinct even if they share an address
+    //   with a defunct one.
+    //
+    // Membership is O(n) over a small N (window count), so a vector is
+    // simpler than a hash structure and avoids the hashing/equality
+    // contortions weak_ref would otherwise need.
     static std::mutex s_regMutex;
-    static std::unordered_set<AppHost*> s_registered;
+    static std::vector<winrt::weak_ref<winrt::TerminalApp::TerminalPage>> s_registered;
 
     std::lock_guard lock{ s_regMutex };
 
-    // Prune entries whose AppHost no longer appears in the emperor's
-    // window list. Use a set of currently-alive raw pointers for O(1)
-    // membership; this is cheap (small window counts).
-    std::unordered_set<AppHost*> alive;
-    for (const auto& host : s_emperor->GetWindows())
-    {
-        alive.insert(host.get());
-    }
-    for (auto it = s_registered.begin(); it != s_registered.end();)
-    {
-        if (!alive.contains(*it))
-        {
-            it = s_registered.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
-    }
+    // Prune dead entries (page destructed → weak_ref returns null).
+    std::erase_if(s_registered, [](const auto& w) { return !w.get(); });
 
-    // Register any window we haven't seen before. If the page isn't
-    // ready yet (early startup race), skip silently — the next
+    // Register any TerminalPage we haven't seen before. If the page
+    // isn't ready yet (early startup race), skip silently — the next
     // Subscribe() or s_OnWindowAdded() call will retry.
     for (const auto& host : s_emperor->GetWindows())
     {
-        auto* raw = host.get();
-        if (s_registered.contains(raw))
+        const auto page = _getPage(host.get());
+        if (!page)
         {
             continue;
         }
 
-        const auto page = _getPage(raw);
-        if (!page)
+        // Compare strong refs by WinRT identity (`operator==` on a
+        // projected type checks IUnknown ABI equality).
+        const bool alreadyRegistered = std::any_of(
+            s_registered.begin(),
+            s_registered.end(),
+            [&page](const auto& w) {
+                const auto p = w.get();
+                return p && p == page;
+            });
+        if (alreadyRegistered)
         {
             continue;
         }
@@ -199,7 +201,7 @@ void TerminalProtocolComServer::_ensurePageEventsRegistered()
             [](auto&&, const winrt::hstring& eventJson) {
                 s_NotifyEventToComClients(winrt::to_string(eventJson));
             });
-        s_registered.insert(raw);
+        s_registered.push_back(winrt::make_weak(page));
     }
 }
 

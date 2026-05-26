@@ -16,11 +16,8 @@
 #include <til/io.h>
 #include <json/json.h>
 
-#include <chrono>
-#include <ctime>
-#include <iomanip>
-
 #include "AgentPaneContent.h"
+#include "AgentPaneLog.h"
 #include "TabRowControl.h"
 #include "DebugTapConnection.h"
 #include "DesktopNotification.h"
@@ -52,36 +49,6 @@ namespace winrt
     namespace MUX = Microsoft::UI::Xaml;
     namespace WUX = Windows::UI::Xaml;
     using IInspectable = Windows::Foundation::IInspectable;
-}
-
-namespace
-{
-    // Local copy of the agent-pane diagnostic logger (twin of the one in
-    // TerminalPage.cpp). Both write to the same wta-agent-pane.log so a
-    // single tail captures the full flow.
-    void _agentPaneLog(const std::string& msg)
-    {
-        wchar_t localAppData[MAX_PATH];
-        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0)
-            return;
-        const auto logDir = std::wstring(localAppData) + L"\\IntelligentTerminal\\logs";
-        std::filesystem::create_directories(logDir);
-        const auto logPath = logDir + L"\\wta-agent-pane.log";
-        if (auto f = std::ofstream(logPath, std::ios::app))
-        {
-            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::system_clock::now().time_since_epoch())
-                                   .count();
-            const auto secs = static_cast<std::time_t>(nowMs / 1000);
-            const int ms = static_cast<int>(nowMs % 1000);
-            std::tm tmUtc{};
-            ::gmtime_s(&tmUtc, &secs);
-            char ts[32];
-            std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", &tmUtc);
-            f << '[' << ts << '.' << std::setw(3) << std::setfill('0') << ms
-              << "Z] " << msg << '\n';
-        }
-    }
 }
 
 namespace winrt::TerminalApp::implementation

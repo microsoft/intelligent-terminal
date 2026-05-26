@@ -142,9 +142,12 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
     // Agent panes participate in cross-window move; their conpty + helper
     // child survive via the ContentId reattach mechanism (see _MakePane), and
     // the helper process is unchanged across the drag. Persistence (the
-    // BuildStartupKind::Persist path) similarly relies on ContentId reattach
-    // and there is no longer a per-window agent singleton to special-case,
-    // so we let the agent pane serialize through the normal split-pane path.
+    // BuildStartupKind::Persist path) is the SessionId rehydration mechanism
+    // — `TerminalPaneContent::GetNewTerminalArgs(BuildStartupKind::Persist)`
+    // emits the pane's persisted SessionId, and the terminal layer rebinds
+    // the saved session on restore. There is no longer a per-window agent
+    // singleton to special-case, so we let the agent pane serialize through
+    // the normal split-pane path.
 
     auto buildSplitPane = [&](auto newPane) {
         ActionAndArgs actionAndArgs;

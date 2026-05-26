@@ -23,7 +23,7 @@
 // a `session_to_helper`-style table keyed on AgentRequest.session_id.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use acp::Agent as _;
 use acp::Client as _;
@@ -61,6 +61,22 @@ struct MasterStateInner {
     session_to_helper: Mutex<
         HashMap<acp::SessionId, (HelperId, mpsc::UnboundedSender<acp::SessionNotification>)>,
     >,
+    /// The agent CLI's response to the master's startup initialize.
+    /// Replayed verbatim to every helper that calls `initialize` over
+    /// its pipe — re-forwarding to the agent CLI returns a stale or
+    /// empty `agent_info`, which clears the XAML agent bar
+    /// (`AgentLabelText` goes blank, logo hides) because the helper
+    /// publishes the empty name out via `agent_status`. Caching here
+    /// is also a small perf win — initialize is otherwise a no-op
+    /// round trip on every pane open.
+    ///
+    /// `OnceLock` so we can construct the shared state *before* the
+    /// initialize round trip (the `MasterClient` inside
+    /// `ClientSideConnection` needs an `Arc<MasterStateInner>` first),
+    /// and fill the slot once initialize returns. Every helper
+    /// connection happens strictly after that, so the `get()` in
+    /// `HelperHandler::initialize` always sees `Some(_)`.
+    cached_init_resp: OnceLock<acp::InitializeResponse>,
 }
 
 /// Master's `acp::Client` impl: handles inbound from the agent CLI.
@@ -188,25 +204,29 @@ impl acp::Agent for HelperHandler {
             op = "initialize",
             helper_id = ?self.helper_id,
             protocol_version = ?args.protocol_version,
-            "forwarding helper initialize to agent CLI"
+            "replaying cached agent initialize to helper"
         );
-        // Phase 1: forward each helper's initialize to the agent CLI.
-        // Phase 2 optimisation: cache the master-startup initialize
-        // response and replay it. (The agent CLI tolerates repeat
-        // initialize calls in practice, so this isn't a correctness
-        // issue — just wasted network.)
-        let resp = self.agent_conn.initialize(args).await;
-        if let Err(ref err) = resp {
-            tracing::warn!(
-                target: "master",
-                step = "helper→agent",
-                op = "initialize",
-                helper_id = ?self.helper_id,
-                error = %err,
-                "agent CLI rejected helper initialize"
-            );
+        // Replay the master-startup initialize response. Re-forwarding
+        // to the agent CLI produced empty `agent_info` on most agent
+        // backends (they only fill name/version on the FIRST initialize),
+        // which propagated as an empty `agent_status` to C++ and blanked
+        // the XAML agent label/logo. The cached response is the one
+        // ground truth — every helper sees the same agent_info the
+        // master saw at boot.
+        match self.state.cached_init_resp.get() {
+            Some(resp) => Ok(resp.clone()),
+            None => {
+                // Shouldn't happen — `run_master_loop` always sets the
+                // cache before opening the pipe — but degrade gracefully
+                // rather than blanking the bar again.
+                tracing::error!(
+                    target: "master",
+                    helper_id = ?self.helper_id,
+                    "cached_init_resp missing; falling back to live agent initialize"
+                );
+                self.agent_conn.initialize(args).await
+            }
         }
-        resp
     }
 
     async fn authenticate(
@@ -406,9 +426,13 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     let outgoing = stdin.compat_write();
     let incoming = stdout.compat();
 
-    // 2. Build the shared state + ClientSideConnection.
+    // 2. Build the shared state + ClientSideConnection. `cached_init_resp`
+    //    starts empty and is filled below once the initialize round
+    //    trip with the agent CLI completes; helpers can only connect
+    //    after that, so they always see the populated cache.
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        cached_init_resp: OnceLock::new(),
     });
     let client = MasterClient {
         state: Arc::clone(&inner),
@@ -453,6 +477,13 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         ?init_resp,
         "agent CLI initialize OK"
     );
+
+    // Lock in the cached response BEFORE opening the pipe so the
+    // first helper's `initialize` request always sees a populated
+    // cache. (Subsequent helpers can race the OnceLock, but `set`
+    // is idempotent on already-populated cells — we ignore the
+    // returned Err.)
+    let _ = inner.cached_init_resp.set(init_resp.clone());
 
     // 4. Open the named pipe and accept helper connections.
     let mut server = ServerOptions::new()
@@ -622,6 +653,7 @@ mod tests {
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
             session_to_helper: Mutex::new(HashMap::new()),
+            cached_init_resp: OnceLock::new(),
         })
     }
 
