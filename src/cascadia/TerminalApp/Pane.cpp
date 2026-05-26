@@ -1252,6 +1252,52 @@ void Pane::UpdateVisuals()
     const auto& brush{ _ComputeBorderColor() };
     _borderFirst.BorderBrush(brush);
     _borderSecond.BorderBrush(brush);
+
+    // Source-of-agent corner badge: only meaningful on leaves (the source
+    // is always a specific terminal pane). Shown whenever this pane is the
+    // most recent non-agent pane the agent pane will read context from.
+    if (_IsLeaf() && _isSourceOfAgentPane)
+    {
+        _EnsureSourceBadge();
+        if (_sourceBadge)
+        {
+            _sourceBadge.Visibility(Visibility::Visible);
+        }
+    }
+    else if (_sourceBadge)
+    {
+        _sourceBadge.Visibility(Visibility::Collapsed);
+    }
+}
+
+// Lazily create the small "→ AI" chip in the bottom-right of the pane.
+// Driven by _isSourceOfAgentPane via UpdateVisuals().
+void Pane::_EnsureSourceBadge()
+{
+    if (_sourceBadge)
+    {
+        return;
+    }
+
+    Controls::TextBlock text{};
+    text.Text(L"→ AI"); // "→ AI"
+    text.FontSize(9.0);
+    text.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    text.Foreground(Media::SolidColorBrush{ winrt::Windows::UI::Colors::White() });
+
+    _sourceBadge = Controls::Border{};
+    _sourceBadge.Child(text);
+    _sourceBadge.HorizontalAlignment(HorizontalAlignment::Right);
+    _sourceBadge.VerticalAlignment(VerticalAlignment::Bottom);
+    _sourceBadge.Margin({ 0, 0, 8, 6 });
+    _sourceBadge.Padding({ 4, 0, 4, 0 });
+    _sourceBadge.CornerRadius({ 2, 2, 2, 2 });
+    _sourceBadge.IsHitTestVisible(false);
+    _sourceBadge.Opacity(0.85);
+    _sourceBadge.Visibility(Visibility::Collapsed);
+    _sourceBadge.Background(Media::SolidColorBrush{ winrt::Windows::UI::ColorHelper::FromArgb(0xFF, 0x60, 0x60, 0x60) });
+
+    _root.Children().Append(_sourceBadge);
 }
 
 // Method Description:

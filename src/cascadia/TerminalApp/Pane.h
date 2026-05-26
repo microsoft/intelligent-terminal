@@ -265,6 +265,10 @@ private:
     // drag-to-resize. Lazily created the first time we need it.
     winrt::Windows::UI::Xaml::Controls::Border _splitter{ nullptr };
 
+    // Small corner chip shown on the pane the agent pane will read context
+    // from. Lazily created the first time we need it.
+    winrt::Windows::UI::Xaml::Controls::Border _sourceBadge{ nullptr };
+
     PaneResources _themeResources;
 
 #pragma region Properties that need to be transferred between child / parent panes upon splitting / closing
@@ -322,6 +326,7 @@ private:
     void _ApplySplitDefinitions();
     void _SetupEntranceAnimation();
     void _UpdateBorders();
+    void _EnsureSourceBadge();
     Borders _GetCommonBorders();
     winrt::Windows::UI::Xaml::Media::SolidColorBrush _ComputeBorderColor();
 
