@@ -1271,6 +1271,26 @@ namespace winrt::TerminalApp::implementation
                 _UpdateBackground(profile);
             }
 
+            // Refresh the bottom bar synchronously here so its
+            // *visibility* tracks the tab type immediately. Tab kind
+            // alone (terminal/agent vs Settings/etc.) determines whether
+            // the bar is shown at all — that decision lives in
+            // `_UpdateBottomBarState` and doesn't depend on any agent
+            // helper state. Without this call, switching from a
+            // terminal tab to the Settings tab leaves the bar visible
+            // forever: PR #54 moved bottom-bar refresh entirely onto
+            // the wta `agent_state_changed` callback path, but Settings
+            // tabs have no helper and never fire that callback, so the
+            // bar would otherwise stay in its previous-tab state.
+            //
+            // The agent-state-dependent parts of the bar (lit/dark
+            // toggles, sessions-view highlight) are refreshed again by
+            // `OnAgentStateChanged` when wta projects the new tab's
+            // authoritative state below — that path remains the source
+            // of truth for the per-tab agent view, and the redundant
+            // call here only touches visibility.
+            _UpdateBottomBarState();
+
             // Bottom-bar refresh is now driven by wta — fire `tab_changed`
             // so wta re-projects this tab's authoritative agent-pane state
             // (`project_active_tab_state` → `agent_state_changed`).
