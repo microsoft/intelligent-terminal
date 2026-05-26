@@ -2204,7 +2204,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Re-entrancy guard.
+        // Reentrancy guard.
         if (_agentRebuilding)
         {
             _agentPaneLog("_RebuildAgentStack: already rebuilding, skipping nested trigger");

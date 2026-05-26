@@ -1742,7 +1742,7 @@ pub async fn run_acp_client_over_pipe(
     // Whether this WTA process is hosting an Intelligent Terminal agent
     // pane. Same semantics as in `run_inner`: `--owner-tab-id` is the
     // load-bearing signal. Helper mode is always spawned by WT with an
-    // owner-tab-id, but we keep the same fallback to be defensive.
+    // owner-tab-id, but we keep the same defensive default.
     let is_agent_pane = owner_tab_id
         .as_ref()
         .map(|s| !s.trim().is_empty())

@@ -578,7 +578,7 @@ is slow enough that multiple rapid hotkey presses would all read the
 same stale pre-toggle state and cancel each other out.
 
 Unstash **always specifies the requested view** (`chat` or `sessions`)
-on the outbound `set_agent_state` (B14). Otherwise wta would echo back
+on the outbound `set_agent_state` (B14). Otherwise, wta would echo back
 its stored view — which is whatever the pane was in when it got stashed
 — and a `Ctrl+Shift+.` (chat) unstash on a pane that was hidden in
 sessions view would re-open in sessions view.
@@ -866,7 +866,7 @@ on reconnect; on incompatible version, surfaces a clear error.
 
 When two helpers both trigger `AcquirePane` simultaneously
 (unlikely but possible), `SharedWta`'s mutex serializes the spawn.
-Helpers may briefly find the pipe non-existent if they spawn before
+Helpers may briefly find the pipe nonexistent if they spawn before
 master finishes startup. Mitigation: helper retries pipe connection
 for ~2-3 seconds with exponential backoff.
 
