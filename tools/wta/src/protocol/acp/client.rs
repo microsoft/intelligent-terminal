@@ -1998,7 +1998,19 @@ async fn run_inner(
     let session_id = session.session_id.clone();
     startup_probe.log(&format!("Session created: {}", session_id));
     if is_agent_pane {
-        crate::agent_pane_origin::append_default(session_id.0.as_ref());
+        let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
+        let pane_for_index = if pane_session_id.is_empty() {
+            None
+        } else {
+            Some(pane_session_id.as_str())
+        };
+        tracing::info!(
+            target: "agent_pane_origin",
+            session_id = %session_id,
+            pane_session_id = %pane_session_id,
+            "recording agent-pane session origin (startup)",
+        );
+        crate::agent_pane_origin::append_default(session_id.0.as_ref(), pane_for_index);
     }
 
     // Capture the agent's advertised model list. Settings UI rebuilds its
@@ -2228,7 +2240,19 @@ async fn run_inner(
 
                     let new_sid = new_session.session_id.clone();
                     if is_agent_pane_for_new {
-                        crate::agent_pane_origin::append_default(new_sid.0.as_ref());
+                        let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
+                        let pane_for_index = if pane_session_id.is_empty() {
+                            None
+                        } else {
+                            Some(pane_session_id.as_str())
+                        };
+                        tracing::info!(
+                            target: "agent_pane_origin",
+                            session_id = %new_sid,
+                            pane_session_id = %pane_session_id,
+                            "recording agent-pane session origin (new_session_for_tab)",
+                        );
+                        crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
                     }
                     let (per_tab_models, per_tab_current) = match &new_session.models {
                         Some(state) => {
@@ -2572,7 +2596,19 @@ async fn dispatch_prompt_body(
                     };
                     let new_sid = new_session.session_id.clone();
                     if is_agent_pane {
-                        crate::agent_pane_origin::append_default(new_sid.0.as_ref());
+                        let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
+                        let pane_for_index = if pane_session_id.is_empty() {
+                            None
+                        } else {
+                            Some(pane_session_id.as_str())
+                        };
+                        tracing::info!(
+                            target: "agent_pane_origin",
+                            session_id = %new_sid,
+                            pane_session_id = %pane_session_id,
+                            "recording agent-pane session origin (lazy_create_on_first_prompt)",
+                        );
+                        crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
                     }
                     let (per_tab_models, per_tab_current) = match &new_session.models {
                         Some(state) => {
