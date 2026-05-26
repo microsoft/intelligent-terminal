@@ -14,6 +14,7 @@
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
+namespace Automation = winrt::Windows::UI::Xaml::Automation;
 
 namespace winrt::TerminalApp::implementation
 {
@@ -187,6 +188,22 @@ namespace winrt::TerminalApp::implementation
             // Accessibility: explain why the toggle is disabled
             Automation::AutomationProperties::SetHelpText(SessionManagementToggle(), policyText);
         }
+
+        // ── Accessibility: set AutomationProperties.Name so screen readers
+        //    announce controls and pages correctly. Re-uses existing x:Uid
+        //    .Text values from Resources.resw — no extra keys needed.
+        Automation::AutomationProperties::SetName(
+            WelcomePage(), RS_(L"FreOverlay_WelcomeTitle/Text"));
+        Automation::AutomationProperties::SetName(
+            SettingsPage(), RS_(L"FreOverlay_SettingsTitle/Text"));
+        Automation::AutomationProperties::SetName(
+            AutoErrorToggle(), RS_(L"FreOverlay_AutoErrorLabel/Text"));
+        Automation::AutomationProperties::SetName(
+            SessionManagementToggle(), RS_(L"FreOverlay_SessionLabel/Text"));
+        Automation::AutomationProperties::SetName(
+            AgentComboBox(), RS_(L"FreOverlay_AgentLabel/Text"));
+        Automation::AutomationProperties::SetName(
+            PanePositionComboBox(), RS_(L"FreOverlay_PanePositionLabel/Text"));
     }
 
     // ── Agent selection changed ─────────────────────────────────────────
@@ -225,6 +242,15 @@ namespace winrt::TerminalApp::implementation
     {
         WelcomePage().Visibility(Visibility::Collapsed);
         SettingsPage().Visibility(Visibility::Visible);
+
+        // Focus the Save button so Enter triggers it on the Settings page.
+        Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Low,
+            [weak = get_weak()]() {
+                if (auto self = weak.get())
+                {
+                    self->SaveButton().Focus(FocusState::Programmatic);
+                }
+            });
     }
 
     // ── Winget install helper ───────────────────────────────────────────
