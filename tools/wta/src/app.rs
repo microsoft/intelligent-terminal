@@ -4429,11 +4429,13 @@ impl App {
             // MouseScroll handler. Convention here mirrors PgUp/PgDn below:
             // positive delta = scroll up (toward older content).
             KeyCode::Up if self.current_tab().input.is_empty()
-                        && self.current_tab().turn.recommendations().is_none() => {
+                        && self.current_tab().turn.recommendations().is_none()
+                        && !self.command_popup_visible() => {
                 self.current_tab_mut().chat_scroll.by(1);
             }
             KeyCode::Down if self.current_tab().input.is_empty()
-                          && self.current_tab().turn.recommendations().is_none() => {
+                          && self.current_tab().turn.recommendations().is_none()
+                          && !self.command_popup_visible() => {
                 self.current_tab_mut().chat_scroll.by(-1);
             }
             KeyCode::Right | KeyCode::Tab
