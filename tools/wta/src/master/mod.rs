@@ -15,12 +15,23 @@
 //      the agent CLI; route inbound `session_notification`s from
 //      the agent CLI back to the helper that owns the session.
 //
-// Phase 1 (this commit): wires the full forward path (helper →
-// master → agent CLI) and the session_notification reverse path
-// (agent CLI → master → helper). Client-trait methods that need
-// per-session helper routing (request_permission, terminal/*,
-// fs/*) return `method_not_found` for now; Phase 2 wires them via
-// a `session_to_helper`-style table keyed on AgentRequest.session_id.
+// Forwarding paths:
+//   * `helper → master → agent CLI`: every helper request runs
+//     through `HelperHandler`'s `acp::Agent` impl, which is just a
+//     thin pass-through to the agent CLI's `ClientSideConnection`.
+//   * `agent CLI → master → helper` (notifications): inbound
+//     `session_notification`s land in `MasterClient::session_notification`
+//     and are fanned out to the owning helper's notification channel
+//     via the `session_to_helper` map (populated in `new_session` /
+//     `load_session`).
+//   * `agent CLI → master → helper` (requests — request_permission,
+//     terminal/*, fs/*): same map carries an `Arc<AgentSideConnection>`
+//     to each helper. `MasterClient` looks up the helper by
+//     `args.session_id` and calls the matching `Client`-trait method
+//     on that connection (`AgentSideConnection` itself implements
+//     `acp::Client`, RPC'ing back over the helper's pipe). The
+//     helper-side `WtaClient` then runs the same code path it ran
+//     pre-helper-split (TUI permission UI, `ShellManager`, etc.).
 
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
@@ -42,25 +53,47 @@ use crate::Cli;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct HelperId(u64);
 
+/// Per-session routing entry. Owned by `session_to_helper` and
+/// keyed by `acp::SessionId`.
+///
+/// Two reverse paths share this entry:
+///   * `notif_tx`: master's `Client::session_notification` posts here;
+///     the helper's `serve_helper` loop drains it and writes back
+///     across the pipe.
+///   * `forwarder`: master's `Client::request_permission` / `create_terminal`
+///     / `terminal_*` / `read_text_file` / `write_text_file` calls
+///     directly on this connection. `AgentSideConnection` itself
+///     implements `acp::Client` and re-issues each call as an RPC
+///     request to the helper.
+///
+/// `forwarder` is `Option<_>` for one reason only: unit tests below
+/// construct routing entries without a real connection. The
+/// production path (`new_session` / `load_session`) always sets it
+/// to `Some(_)`, and `MasterClient` treats `None` as a routing bug.
+#[derive(Clone)]
+struct HelperRoute {
+    helper_id: HelperId,
+    notif_tx: mpsc::UnboundedSender<acp::SessionNotification>,
+    forwarder: Option<Arc<acp::AgentSideConnection>>,
+}
+
 /// State shared between the master's `acp::Client` impl (receives
 /// notifications from the agent CLI) and each helper's `acp::Agent`
 /// impl (receives requests from one helper).
 struct MasterStateInner {
-    /// Routes inbound `session_notification`s from the agent CLI
-    /// back to the helper that owns the session. Inserted by the
-    /// helper's `new_session` / `load_session` handlers atomically
-    /// (before responding to the helper), so no race window.
+    /// Routes inbound traffic from the agent CLI back to the helper
+    /// that owns the session. Inserted by the helper's `new_session`
+    /// / `load_session` handlers atomically (before responding to
+    /// the helper), so no race window.
     ///
-    /// Value is `(HelperId, sender)` so that on helper disconnect we
-    /// can `retain` out every session belonging to that helper
-    /// without keeping a separate index. Without that cleanup the
-    /// map would grow unboundedly across the master's lifetime —
-    /// each closed pane leaves a dead `SessionId` behind, and every
-    /// future notification for it lights up a "helper notification
-    /// channel closed" warning.
-    session_to_helper: Mutex<
-        HashMap<acp::SessionId, (HelperId, mpsc::UnboundedSender<acp::SessionNotification>)>,
-    >,
+    /// `HelperRoute.helper_id` lets `drop_sessions_for_helper` reap
+    /// every session belonging to a disconnecting helper without a
+    /// secondary index. Without that cleanup the map would grow
+    /// unboundedly across the master's lifetime — each closed pane
+    /// leaves a dead `SessionId` behind, and every future
+    /// notification for it lights up a "helper notification channel
+    /// closed" warning.
+    session_to_helper: Mutex<HashMap<acp::SessionId, HelperRoute>>,
     /// The agent CLI's response to the master's startup initialize.
     /// Replayed verbatim to every helper that calls `initialize` over
     /// its pipe — re-forwarding to the agent CLI returns a stale or
@@ -81,25 +114,99 @@ struct MasterStateInner {
 
 /// Master's `acp::Client` impl: handles inbound from the agent CLI.
 ///
-/// `session_notification` fans out to the owning helper. The other
-/// Client-trait methods that come from the agent CLI (permission
-/// requests, terminal/* calls, fs/* calls) target a specific session
-/// — Phase 2 will route them via `session_to_helper` too. For now
-/// we let them fall through to the trait's default `method_not_found`
-/// (the agent CLI's behaviour is "advertise capability=false, never
-/// call these").
+/// `session_notification` fans out to the owning helper via its
+/// notification channel. The request-shaped Client methods
+/// (`request_permission`, `create_terminal`, `terminal_*`,
+/// `read_text_file`, `write_text_file`) look up the owning helper by
+/// `args.session_id` in `session_to_helper` and forward the call on
+/// that helper's `AgentSideConnection` — the helper's `WtaClient`
+/// then runs the same handler it ran pre-helper-split (TUI permission
+/// UI, `ShellManager`, etc.). The agent CLI sees the helper's
+/// response as if master had answered directly.
 struct MasterClient {
     state: Arc<MasterStateInner>,
+}
+
+impl MasterClient {
+    /// Look up the helper owning `sid` and clone the forwarder + id.
+    ///
+    /// Returns `Err(internal_error)` if either (a) no helper is bound
+    /// to this session — typically means the agent CLI emitted a
+    /// stale request after the owning helper disconnected — or
+    /// (b) the routing entry has no forwarder (production code never
+    /// reaches this branch; see `HelperRoute::forwarder`).
+    async fn route_for(
+        &self,
+        sid: &acp::SessionId,
+        op: &'static str,
+    ) -> acp::Result<(HelperId, Arc<acp::AgentSideConnection>)> {
+        let entry = {
+            let map = self.state.session_to_helper.lock().await;
+            map.get(sid).cloned()
+        };
+        match entry {
+            Some(HelperRoute {
+                helper_id,
+                forwarder: Some(forwarder),
+                ..
+            }) => Ok((helper_id, forwarder)),
+            Some(HelperRoute {
+                forwarder: None,
+                helper_id,
+                ..
+            }) => {
+                tracing::error!(
+                    target: "master",
+                    op = op,
+                    session_id = ?sid,
+                    helper_id = ?helper_id,
+                    "routing entry has no forwarder — bug; routing entry should always carry the helper's AgentSideConnection",
+                );
+                Err(acp::Error::internal_error()
+                    .data(serde_json::json!("master routing entry missing forwarder")))
+            }
+            None => {
+                tracing::warn!(
+                    target: "master",
+                    op = op,
+                    session_id = ?sid,
+                    "agent CLI sent request for unknown SessionId — no helper to route to",
+                );
+                Err(acp::Error::internal_error()
+                    .data(serde_json::json!("no helper bound to session_id")))
+            }
+        }
+    }
 }
 
 #[async_trait::async_trait(?Send)]
 impl acp::Client for MasterClient {
     async fn request_permission(
         &self,
-        _args: acp::RequestPermissionRequest,
+        args: acp::RequestPermissionRequest,
     ) -> acp::Result<acp::RequestPermissionResponse> {
-        // TODO Phase 2: route to the helper owning args.session_id
-        Err(acp::Error::method_not_found())
+        let sid = args.session_id.clone();
+        let (helper_id, forwarder) = self.route_for(&sid, "request_permission").await?;
+        tracing::info!(
+            target: "master",
+            step = "agent→helper",
+            op = "request_permission",
+            helper_id = ?helper_id,
+            session_id = ?sid,
+            "forwarding permission request to helper"
+        );
+        let resp = forwarder.request_permission(args).await;
+        if let Err(ref e) = resp {
+            tracing::warn!(
+                target: "master",
+                op = "request_permission",
+                helper_id = ?helper_id,
+                session_id = ?sid,
+                error = %e,
+                "helper returned error for permission request"
+            );
+        }
+        resp
     }
 
     async fn session_notification(
@@ -113,7 +220,7 @@ impl acp::Client for MasterClient {
         let kind = notification_kind(&args);
         let tx = {
             let map = self.state.session_to_helper.lock().await;
-            map.get(&sid).map(|(_hid, tx)| tx.clone())
+            map.get(&sid).map(|r| r.notif_tx.clone())
         };
         match tx {
             Some(tx) => {
@@ -157,6 +264,134 @@ impl acp::Client for MasterClient {
         }
         Ok(())
     }
+
+    async fn write_text_file(
+        &self,
+        args: acp::WriteTextFileRequest,
+    ) -> acp::Result<acp::WriteTextFileResponse> {
+        let sid = args.session_id.clone();
+        let (helper_id, forwarder) = self.route_for(&sid, "write_text_file").await?;
+        tracing::info!(
+            target: "master",
+            step = "agent→helper",
+            op = "write_text_file",
+            helper_id = ?helper_id,
+            session_id = ?sid,
+            path = ?args.path,
+            "forwarding fs/write_text_file to helper"
+        );
+        forwarder.write_text_file(args).await
+    }
+
+    async fn read_text_file(
+        &self,
+        args: acp::ReadTextFileRequest,
+    ) -> acp::Result<acp::ReadTextFileResponse> {
+        let sid = args.session_id.clone();
+        let (helper_id, forwarder) = self.route_for(&sid, "read_text_file").await?;
+        tracing::info!(
+            target: "master",
+            step = "agent→helper",
+            op = "read_text_file",
+            helper_id = ?helper_id,
+            session_id = ?sid,
+            path = ?args.path,
+            "forwarding fs/read_text_file to helper"
+        );
+        forwarder.read_text_file(args).await
+    }
+
+    async fn create_terminal(
+        &self,
+        args: acp::CreateTerminalRequest,
+    ) -> acp::Result<acp::CreateTerminalResponse> {
+        let sid = args.session_id.clone();
+        let (helper_id, forwarder) = self.route_for(&sid, "create_terminal").await?;
+        tracing::info!(
+            target: "master",
+            step = "agent→helper",
+            op = "create_terminal",
+            helper_id = ?helper_id,
+            session_id = ?sid,
+            command = %args.command,
+            args_len = args.args.len(),
+            "forwarding terminal/create to helper"
+        );
+        forwarder.create_terminal(args).await
+    }
+
+    async fn terminal_output(
+        &self,
+        args: acp::TerminalOutputRequest,
+    ) -> acp::Result<acp::TerminalOutputResponse> {
+        let sid = args.session_id.clone();
+        let (helper_id, forwarder) = self.route_for(&sid, "terminal_output").await?;
+        tracing::debug!(
+            target: "master",
+            step = "agent→helper",
+            op = "terminal_output",
+            helper_id = ?helper_id,
+            session_id = ?sid,
+            terminal_id = ?args.terminal_id,
+            "forwarding terminal/output to helper"
+        );
+        forwarder.terminal_output(args).await
+    }
+
+    async fn release_terminal(
+        &self,
+        args: acp::ReleaseTerminalRequest,
+    ) -> acp::Result<acp::ReleaseTerminalResponse> {
+        let sid = args.session_id.clone();
+        let (helper_id, forwarder) = self.route_for(&sid, "release_terminal").await?;
+        tracing::info!(
+            target: "master",
+            step = "agent→helper",
+            op = "release_terminal",
+            helper_id = ?helper_id,
+            session_id = ?sid,
+            terminal_id = ?args.terminal_id,
+            "forwarding terminal/release to helper"
+        );
+        forwarder.release_terminal(args).await
+    }
+
+    async fn wait_for_terminal_exit(
+        &self,
+        args: acp::WaitForTerminalExitRequest,
+    ) -> acp::Result<acp::WaitForTerminalExitResponse> {
+        let sid = args.session_id.clone();
+        let (helper_id, forwarder) =
+            self.route_for(&sid, "wait_for_terminal_exit").await?;
+        tracing::info!(
+            target: "master",
+            step = "agent→helper",
+            op = "wait_for_terminal_exit",
+            helper_id = ?helper_id,
+            session_id = ?sid,
+            terminal_id = ?args.terminal_id,
+            "forwarding terminal/wait_for_exit to helper"
+        );
+        forwarder.wait_for_terminal_exit(args).await
+    }
+
+    async fn kill_terminal(
+        &self,
+        args: acp::KillTerminalRequest,
+    ) -> acp::Result<acp::KillTerminalResponse> {
+        let sid = args.session_id.clone();
+        let (helper_id, forwarder) = self.route_for(&sid, "kill_terminal").await?;
+        tracing::info!(
+            target: "master",
+            step = "agent→helper",
+            op = "kill_terminal",
+            helper_id = ?helper_id,
+            session_id = ?sid,
+            terminal_id = ?args.terminal_id,
+            "forwarding terminal/kill to helper"
+        );
+        forwarder.kill_terminal(args).await
+    }
 }
 
 /// Short, log-friendly tag for a `SessionNotification`'s update
@@ -190,6 +425,43 @@ struct HelperHandler {
     /// receiver and writes notifications back over the
     /// `AgentSideConnection`.
     notif_tx: mpsc::UnboundedSender<acp::SessionNotification>,
+    /// The same helper's outbound connection back to its pipe.
+    /// `HelperHandler` is moved INTO `AgentSideConnection::new`, so
+    /// we can't hold the `AgentSideConnection` by value — we share a
+    /// `OnceLock` with `serve_helper` instead, which populates it
+    /// immediately after `new()` returns and before `handle_io`
+    /// starts polling (i.e. before any inbound request can hit a
+    /// handler that would observe the slot).
+    ///
+    /// `new_session` / `load_session` read it (must be `Some` by
+    /// then, since they're driven by `handle_io`) and stash the
+    /// resulting `Arc` into `HelperRoute.forwarder`, where
+    /// `MasterClient` finds it for inbound agent-CLI requests.
+    agent_side_slot: Arc<OnceLock<Arc<acp::AgentSideConnection>>>,
+}
+
+impl HelperHandler {
+    /// Snapshot the populated `AgentSideConnection` for this helper.
+    /// Must only be called from request handlers driven by
+    /// `handle_io` (which `serve_helper` polls strictly after the
+    /// slot is set). Returns an `internal_error` if the invariant
+    /// is ever violated — failing closed beats producing a half-
+    /// initialised routing entry.
+    fn forwarder_for_route(&self, op: &'static str) -> acp::Result<Arc<acp::AgentSideConnection>> {
+        match self.agent_side_slot.get() {
+            Some(asc) => Ok(Arc::clone(asc)),
+            None => {
+                tracing::error!(
+                    target: "master",
+                    op = op,
+                    helper_id = ?self.helper_id,
+                    "agent_side_slot empty inside helper request handler — bug; serve_helper must populate it before handle_io polls"
+                );
+                Err(acp::Error::internal_error()
+                    .data(serde_json::json!("agent_side_slot not yet set")))
+            }
+        }
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -257,13 +529,18 @@ impl acp::Agent for HelperHandler {
             "forwarding new_session"
         );
         let resp = self.agent_conn.new_session(args).await?;
+        let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
         let registry_size = {
             let mut map = self.state.session_to_helper.lock().await;
             map.insert(
                 resp.session_id.clone(),
-                (self.helper_id, self.notif_tx.clone()),
+                HelperRoute {
+                    helper_id: self.helper_id,
+                    notif_tx: self.notif_tx.clone(),
+                    forwarder: Some(forwarder),
+                },
             );
             map.len()
         };
@@ -285,9 +562,17 @@ impl acp::Agent for HelperHandler {
     ) -> acp::Result<acp::LoadSessionResponse> {
         let session_id = args.session_id.clone();
         let resp = self.agent_conn.load_session(args).await?;
+        let forwarder = self.forwarder_for_route("load_session")?;
         {
             let mut map = self.state.session_to_helper.lock().await;
-            map.insert(session_id.clone(), (self.helper_id, self.notif_tx.clone()));
+            map.insert(
+                session_id.clone(),
+                HelperRoute {
+                    helper_id: self.helper_id,
+                    notif_tx: self.notif_tx.clone(),
+                    forwarder: Some(forwarder),
+                },
+            );
         }
         tracing::info!(
             target: "master",
@@ -567,11 +852,20 @@ async fn serve_helper(
     let (notif_tx, mut notif_rx) =
         mpsc::unbounded_channel::<acp::SessionNotification>();
 
+    // Shared with `HelperHandler` so it can stash the helper's
+    // outbound `AgentSideConnection` into `HelperRoute.forwarder` at
+    // `new_session` / `load_session` time. `OnceLock` because the
+    // conn doesn't exist until `AgentSideConnection::new` returns,
+    // but we populate it strictly before `handle_io` is polled below.
+    let agent_side_slot: Arc<OnceLock<Arc<acp::AgentSideConnection>>> =
+        Arc::new(OnceLock::new());
+
     let handler = HelperHandler {
         helper_id,
         agent_conn,
         state: Arc::clone(&state),
         notif_tx,
+        agent_side_slot: Arc::clone(&agent_side_slot),
     };
 
     let (read_half, write_half) = tokio::io::split(pipe);
@@ -582,6 +876,12 @@ async fn serve_helper(
         acp::AgentSideConnection::new(handler, outgoing, incoming, |fut| {
             tokio::task::spawn_local(fut);
         });
+    let agent_side_conn = Arc::new(agent_side_conn);
+    // Populate BEFORE `handle_io.await` (below) so any inbound
+    // request the agent CLI sends is guaranteed to see a populated
+    // slot. `set` returns `Err` only if already-set, which can't
+    // happen here.
+    let _ = agent_side_slot.set(Arc::clone(&agent_side_conn));
 
     tokio::pin!(handle_io);
     let result = loop {
@@ -641,7 +941,7 @@ async fn serve_helper(
 async fn drop_sessions_for_helper(state: &MasterStateInner, helper_id: HelperId) -> usize {
     let mut map = state.session_to_helper.lock().await;
     let before = map.len();
-    map.retain(|_, (hid, _)| *hid != helper_id);
+    map.retain(|_, route| route.helper_id != helper_id);
     before - map.len()
 }
 
@@ -684,8 +984,22 @@ mod tests {
 
         {
             let mut map = state.session_to_helper.lock().await;
-            map.insert(sid1.clone(), (HelperId(1), tx1));
-            map.insert(sid2.clone(), (HelperId(2), tx2));
+            map.insert(
+                sid1.clone(),
+                HelperRoute {
+                    helper_id: HelperId(1),
+                    notif_tx: tx1,
+                    forwarder: None,
+                },
+            );
+            map.insert(
+                sid2.clone(),
+                HelperRoute {
+                    helper_id: HelperId(2),
+                    notif_tx: tx2,
+                    forwarder: None,
+                },
+            );
         }
 
         route(&state, make_notif(&sid1)).await;
@@ -706,7 +1020,14 @@ mod tests {
         let sid = SessionId::new("dead-session");
         {
             let mut map = state.session_to_helper.lock().await;
-            map.insert(sid.clone(), (HelperId(7), tx));
+            map.insert(
+                sid.clone(),
+                HelperRoute {
+                    helper_id: HelperId(7),
+                    notif_tx: tx,
+                    forwarder: None,
+                },
+            );
         }
         drop(rx); // simulate helper going away
 
@@ -743,10 +1064,38 @@ mod tests {
         let (tx_c, _rx_c) = mpsc::unbounded_channel();
         {
             let mut map = state.session_to_helper.lock().await;
-            map.insert(SessionId::new("a1"), (HelperId(1), tx_a.clone()));
-            map.insert(SessionId::new("a2"), (HelperId(1), tx_a));
-            map.insert(SessionId::new("b1"), (HelperId(2), tx_b));
-            map.insert(SessionId::new("c1"), (HelperId(3), tx_c));
+            map.insert(
+                SessionId::new("a1"),
+                HelperRoute {
+                    helper_id: HelperId(1),
+                    notif_tx: tx_a.clone(),
+                    forwarder: None,
+                },
+            );
+            map.insert(
+                SessionId::new("a2"),
+                HelperRoute {
+                    helper_id: HelperId(1),
+                    notif_tx: tx_a,
+                    forwarder: None,
+                },
+            );
+            map.insert(
+                SessionId::new("b1"),
+                HelperRoute {
+                    helper_id: HelperId(2),
+                    notif_tx: tx_b,
+                    forwarder: None,
+                },
+            );
+            map.insert(
+                SessionId::new("c1"),
+                HelperRoute {
+                    helper_id: HelperId(3),
+                    notif_tx: tx_c,
+                    forwarder: None,
+                },
+            );
         }
 
         let dropped = drop_sessions_for_helper(&state, HelperId(1)).await;
