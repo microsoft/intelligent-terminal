@@ -6823,10 +6823,16 @@ impl App {
             View::Agents => "sessions",
             View::Chat => "chat",
         };
+        // tab_id is mandatory — C++ `OnAgentStateChanged` routes by it and
+        // drops the event if missing. Without this field every tab-switch
+        // echo would land in the void and the bottom bar / agent-pane
+        // header would never sync.
+        let tab_id = self.active_tab_key().to_string();
         let evt = serde_json::json!({
             "type": "event",
             "method": "agent_state_changed",
             "params": {
+                "tab_id":    tab_id,
                 "view":      view,
                 "pane_open": tab.pane_open,
             }

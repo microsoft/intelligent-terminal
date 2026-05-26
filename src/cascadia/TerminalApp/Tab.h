@@ -110,6 +110,18 @@ namespace winrt::TerminalApp::implementation
         // Returns the Pane node hosting the AgentPaneContent, or nullptr.
         std::shared_ptr<Pane> FindAgentPane() const;
 
+        // Hide the agent pane without detaching it from the tree. The pane
+        // stays alive (so TermControl + conpty + wta-helper survive), but
+        // its parent split is rewritten so the terminal sibling occupies the
+        // full area. Reverse via `RestoreStashedAgentPane`.
+        void StashAgentPane();
+        // Re-attach a previously stashed agent pane (un-hide). Returns true
+        // when a stashed pane was restored. `direction` accepted for API
+        // symmetry but currently unused — the parent split keeps its
+        // original orientation.
+        bool RestoreStashedAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection direction);
+        bool HasStashedAgentPane() const;
+
         // Stable per-tab identifier (GUID string). Survives tab reordering
         // and is unique across the window's lifetime, unlike the index in
         // _tabs which is reused when tabs close. Used as the tab_id for

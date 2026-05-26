@@ -2432,6 +2432,144 @@ namespace winrt::TerminalApp::implementation
         return nullptr;
     }
 
+    // Hide the agent pane without destroying it. The pane stays in the tab
+    // tree (so its TermControl + conpty + wta-helper child remain alive),
+    // but its parent split is rewritten so the sibling occupies the full
+    // area. Re-show via `RestoreStashedAgentPane`. Preserves the conversation
+    // history and ACP session across toggle close/open — matches the
+    // "hidden background pane" semantic the toggle is supposed to have.
+    void Tab::StashAgentPane()
+    {
+        ASSERT_UI_THREAD();
+        const auto agentPane = FindAgentPane();
+        if (!agentPane || agentPane->IsHidden())
+        {
+            return;
+        }
+        const auto parent = _rootPane->_FindParentOfPane(agentPane);
+        if (!parent)
+        {
+            // Agent pane IS the root pane — nothing to fold into. The
+            // tree has no sibling for the terminal to expand into. Skip
+            // the stash; the toggle just no-ops here.
+            return;
+        }
+        parent->HidePane(agentPane);
+        // After HidePane, XAML focus is in limbo (the previously-focused
+        // element — typically the agent pane's TermControl — was just
+        // removed from the visual tree). Hotkeys go through
+        // `TermControl::_TryHandleKeyBinding`, so without a focused
+        // TermControl every subsequent chord is silently swallowed.
+        //
+        // Fallback: `GetActivePane()` returns nullptr when the sibling has
+        // no `_lastActive` descendant — common case is "user clicked the
+        // agent pane, which cleared `_lastActive` on the terminal sibling".
+        // Walk down to the first leaf in that case.
+        const auto sibling = (parent->_firstChild == agentPane) ? parent->_secondChild : parent->_firstChild;
+        std::shared_ptr<Pane> focusTarget = sibling ? sibling->GetActivePane() : nullptr;
+        if (!focusTarget && sibling)
+        {
+            focusTarget = sibling->_FindPane([](const auto& p) { return p->_IsLeaf(); });
+        }
+        if (focusTarget)
+        {
+            // FocusPane first (focusTarget's `_lastActive` is still false
+            // since agent pane was the active one). Then _UpdateActivePane
+            // for the bookkeeping.
+            _rootPane->FocusPane(focusTarget);
+            _UpdateActivePane(focusTarget);
+            // Defer the actual XAML Focus to a low-priority dispatcher tick
+            // (see RestoreStashedAgentPane for the explanation — synchronous
+            // Programmatic focus drops silently on a just-re-parented
+            // element; deferring lets XAML's layout pass complete first).
+            if (const auto termPane = focusTarget->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+            {
+                if (const auto termControl = termPane.GetTermControl())
+                {
+                    auto dispatcher = DispatcherQueue::GetForCurrentThread();
+                    if (dispatcher)
+                    {
+                        auto weakControl = winrt::make_weak(termControl);
+                        dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakControl]() {
+                            if (const auto ctrl = weakControl.get())
+                            {
+                                ctrl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Re-attach a previously-stashed agent pane. `direction` is accepted
+    // for API symmetry with the spawn path but is currently unused — the
+    // pane retains its original parent split (and its `_desiredSplitPosition`),
+    // so restoring is just a XAML re-add via `Pane::RestorePane`.
+    //
+    // CRITICAL: after RestorePane clears + re-adds the parent grid's
+    // children, XAML focus is left in limbo (no focused element). All
+    // subsequent key chords would be swallowed because WT's chord dispatch
+    // is rooted on TermControl — no focused TermControl means no chord
+    // dispatch. We MUST explicitly re-focus the agent pane's TermControl
+    // here, otherwise the next Ctrl+Shift+. (and every hotkey) is eaten.
+    bool Tab::RestoreStashedAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection /*direction*/)
+    {
+        ASSERT_UI_THREAD();
+        const auto agentPane = FindAgentPane();
+        if (!agentPane || !agentPane->IsHidden())
+        {
+            return false;
+        }
+        const auto parent = _rootPane->_FindParentOfPane(agentPane);
+        if (!parent)
+        {
+            return false;
+        }
+        parent->RestorePane(agentPane);
+        // Order matters: Pane::_Focus has a `WasLastFocused()` early-return
+        // guard, so do FocusPane (which calls _Focus) FIRST (agent's flag
+        // is still false from the stash). _UpdateActivePane sets the flag.
+        _rootPane->FocusPane(agentPane);
+        _UpdateActivePane(agentPane);
+
+        // CRITICAL: synchronous Focus(Programmatic) is unreliable on
+        // freshly-re-parented or freshly-spawned TermControls. The element
+        // is in the visual tree but XAML hasn't completed its layout pass,
+        // so the Focus call silently drops. This is the same failure that
+        // makes spawn-time hotkey not work until the user clicks once —
+        // click goes via XAML's Pointer focus path which works on
+        // not-fully-laid-out elements; Programmatic focus does not.
+        //
+        // Defer the Focus to a low-priority dispatcher tick so XAML's
+        // layout pass + the TermControl's internal init (incl. connection
+        // setup) have time to settle. By then Programmatic focus sticks.
+        if (const auto agentContent = agentPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
+        {
+            if (const auto termControl = agentContent.GetTermControl())
+            {
+                auto dispatcher = DispatcherQueue::GetForCurrentThread();
+                if (dispatcher)
+                {
+                    auto weakControl = winrt::make_weak(termControl);
+                    dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakControl]() {
+                        if (const auto ctrl = weakControl.get())
+                        {
+                            ctrl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+                        }
+                    });
+                }
+            }
+        }
+        return true;
+    }
+
+    bool Tab::HasStashedAgentPane() const
+    {
+        const auto agentPane = FindAgentPane();
+        return agentPane && agentPane->IsHidden();
+    }
+
     // Method Description:
     // - Creates a text for the title run in the tool tip by returning tab title
     // or <profile name>: <tab title> if the profile name differs from the title

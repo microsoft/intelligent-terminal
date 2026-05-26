@@ -1386,6 +1386,33 @@ namespace winrt::TerminalApp::implementation
             winrt::to_hstring(Json::writeString(wb, tabEvt)));
     }
 
+    // Tells wta that the focused tab changed so it can re-project per-tab
+    // agent-pane state (view, pane_open, autofix snapshot). wta echoes the
+    // authoritative state via `agent_state_changed`, which `OnAgentStateChanged`
+    // applies to the local AgentPaneContent mirror and refreshes the bottom bar.
+    // wta is the single source of truth for these fields, so the C++ side
+    // never reads its own cached mirror on tab switch — it just asks wta.
+    void TerminalPage::_NotifyAgentTabChanged(const winrt::hstring& tabId)
+    {
+        if (tabId.empty())
+        {
+            return;
+        }
+
+        Json::Value tabEvt;
+        tabEvt["type"] = "event";
+        tabEvt["method"] = "tab_changed";
+        Json::Value tabParams;
+        tabParams["tab_id"] = winrt::to_string(tabId);
+        tabParams["window_id"] = std::to_string(_WindowProperties.WindowId());
+        tabEvt["params"] = tabParams;
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        ProtocolVtSequenceReceived.raise(
+            *this,
+            winrt::to_hstring(Json::writeString(wb, tabEvt)));
+    }
+
     // C++ → wta request for changing per-tab agent-pane UI state. The target
     // tab carries its own StableId. wta echoes back via `agent_state_changed`
     // which lands in `OnAgentStateChanged`, which routes by `tab_id` to the
@@ -1642,13 +1669,32 @@ namespace winrt::TerminalApp::implementation
         tab->SplitPaneAtRoot(splitDirection, newPane);
 
         // Focus the new agent pane so the helper receives keyboard input.
+        // The bookkeeping path (FocusPane) is synchronous; the actual
+        // XAML Focus(Programmatic) is deferred to a low-priority dispatcher
+        // tick because synchronous Focus on a just-spawned TermControl
+        // silently drops (the element is in the tree but layout hasn't
+        // completed, and Programmatic focus — unlike Pointer focus from a
+        // mouse click — does not survive that race). Without this defer,
+        // the hotkey is unresponsive during "connecting" and only works
+        // after the user clicks the pane manually once.
         if (const auto paneId = newPane->Id())
         {
             tab->FocusPane(paneId.value());
         }
         if (const auto ctrl = newPane->GetTerminalControl())
         {
-            ctrl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+            if (auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread())
+            {
+                auto weakCtrl = winrt::make_weak(ctrl);
+                dispatcher.TryEnqueue(
+                    winrt::Windows::System::DispatcherQueuePriority::Low,
+                    [weakCtrl]() {
+                        if (const auto c = weakCtrl.get())
+                        {
+                            c.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+                        }
+                    });
+            }
         }
 
         // The pane was just rooted into the active tab; refresh the
@@ -1714,20 +1760,27 @@ namespace winrt::TerminalApp::implementation
         }
         if (const auto agentContent = activeTab->FindAgentPaneContent())
         {
-            if (agentContent.IsSessionsView())
+            const auto agentPane = activeTab->FindAgentPane();
+            const bool isStashed = agentPane && agentPane->IsHidden();
+            if (isStashed)
             {
-                // Already in sessions view — close the pane.
+                // Stashed — unstash in sessions view.
+                _RequestAgentStateForTab(activeTab, "sessions", /*pane_open*/ true);
+            }
+            else if (agentContent.IsSessionsView())
+            {
+                // Visible in sessions view — hide (stash).
                 _RequestAgentStateForTab(activeTab, std::nullopt, /*pane_open*/ false);
             }
             else
             {
-                // Pane open in chat view — switch into sessions view.
+                // Visible in chat view — switch into sessions view.
                 _RequestAgentStateForTab(activeTab, "sessions", /*pane_open*/ true);
             }
             _UpdateBottomBarState();
             return;
         }
-        // No agent pane yet — open one in sessions view.
+        // No agent pane on this tab — spawn one in sessions view.
         _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true, L"BottomBarSessions");
         _UpdateBottomBarState();
     }
@@ -1860,7 +1913,21 @@ namespace winrt::TerminalApp::implementation
         const auto kTransparent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
             winrt::Windows::UI::Colors::Transparent()
         };
-        const bool paneOpen = activeAgent != nullptr;
+        // "Pane open" for the bar means visible-and-in-tree. A stashed
+        // (hidden) pane still exists in the tab tree (so its helper +
+        // ACP session stay alive) but the bar should show "closed" so
+        // the next toggle press unstashes it.
+        bool paneOpen = activeAgent != nullptr;
+        if (paneOpen && focusedTabImpl)
+        {
+            if (const auto agentPane = focusedTabImpl->FindAgentPane())
+            {
+                if (agentPane->IsHidden())
+                {
+                    paneOpen = false;
+                }
+            }
+        }
         const bool sessionsView = paneOpen && activeAgent.IsSessionsView();
         const bool sessionsLit = paneOpen && sessionsView;
         const bool chatLit = paneOpen && !sessionsView;
@@ -2250,6 +2317,34 @@ namespace winrt::TerminalApp::implementation
         // Per-tab model: check whether *this* tab already has an agent pane.
         if (const auto existingPane = focusedTab->FindAgentPane())
         {
+            // Stashed (hidden) — user wants to show it again. Apply locally
+            // FIRST so successive fast hotkey presses see the updated
+            // `IsHidden()` immediately (the wta round-trip is too slow
+            // otherwise — multiple rapid presses would all read the stale
+            // pre-toggle state and "eat" each other). wta is still informed
+            // so its tab.pane_open state stays in sync; the echo back into
+            // `OnAgentStateChanged` is idempotent on the already-applied
+            // local state.
+            if (existingPane->IsHidden())
+            {
+                _agentPaneLog("found stashed agent pane on focused tab — unstashing locally + notifying wta");
+                const auto splitDir = _AgentPanePositionToSplitDirection(_settings.GlobalSettings().AgentPanePosition());
+                focusedTab->RestoreStashedAgentPane(splitDir);
+                const std::optional<std::string_view> viewReq =
+                    intoSessionsView ? std::optional<std::string_view>{ "sessions" } : std::nullopt;
+                _RequestAgentStateForTab(focusedTab, viewReq, /*pane_open*/ true);
+                if (intoSessionsView)
+                {
+                    if (const auto agentContent = focusedTab->FindAgentPaneContent())
+                    {
+                        agentContent.SetSessionsView(true);
+                    }
+                }
+                _UpdateBottomBarState();
+                emitAgentPaneOpened();
+                return;
+            }
+
             _agentPaneLog("found agent pane on focused tab");
 
             if (!prompt.empty())
@@ -2285,12 +2380,14 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
-            // Empty prompt: toggle. With the per-tab model "the pane exists"
-            // == "the user wanted it open". Clicking the toggle when the pane
-            // is here means "close" — ask wta to flip pane_open=false; wta
-            // echoes back, OnAgentStateChanged tears the pane down.
-            _agentPaneLog("toggle: requesting pane_open=false on existing pane");
+            // Empty prompt: toggle close. Apply locally FIRST (see comment
+            // on the unstash branch above for why we don't wait for wta's
+            // echo). wta echo lands in OnAgentStateChanged and is
+            // idempotent against the already-stashed pane.
+            _agentPaneLog("toggle: stashing existing agent pane locally + notifying wta");
+            focusedTab->StashAgentPane();
             _RequestAgentStateForTab(focusedTab, std::nullopt, /*pane_open*/ false);
+            _UpdateBottomBarState();
             return;
         }
 
@@ -3850,23 +3947,51 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Apply pane_open: create the pane on this tab if true and absent;
-        // tear it down if false and present.
+        // Apply pane_open as detach/reattach (NOT destroy/recreate). On
+        // pane_open=false we detach the agent pane out of the tab's tree
+        // and stash it on the Tab — the sibling terminal pane expands to
+        // fill the recovered space, but the agent pane's TermControl +
+        // conpty + wta-helper process stay alive in the stash. On
+        // pane_open=true we re-attach the stash via SplitPane so the helper
+        // keeps its ACP session and TUI history across toggles. The pane
+        // is only truly destroyed when the tab itself closes (the Tab
+        // destructor releases the stash) or by an explicit
+        // `OnCloseAgentPaneRequested` (Ctrl+C×2 in TUI).
         if (wantOpen.has_value())
         {
             if (*wantOpen)
             {
-                if (!targetTab->FindAgentPane())
+                if (targetTab->HasStashedAgentPane())
                 {
-                    // Open a new agent pane on this tab. View defaults to
-                    // chat; if `view=sessions`, propagate.
+                    const auto splitDir = _AgentPanePositionToSplitDirection(_settings.GlobalSettings().AgentPanePosition());
+                    targetTab->RestoreStashedAgentPane(splitDir);
+                }
+                else if (!targetTab->FindAgentPane())
+                {
+                    // No pane on this tab yet — first toggle-open is the
+                    // spawn path. View defaults to chat unless `view=sessions`.
                     const bool intoSessions = view.has_value() && *view == "sessions";
                     _AutoCreateHiddenAgentPaneShared(targetTab, intoSessions);
                 }
             }
             else
             {
-                _TeardownAgentPane(targetTab);
+                if (targetTab->FindAgentPane())
+                {
+                    targetTab->StashAgentPane();
+                }
+            }
+        }
+
+        // Bottom-bar catch-all. AgentPaneContent::SetSessionsView is idempotent
+        // and skips `StateChanged` when the view didn't change — so a pure
+        // `tab_changed` echo (same state, just routed to the now-focused tab)
+        // would never re-render the bar without this. Cheap and idempotent.
+        if (const auto activeTab = _GetFocusedTabImpl())
+        {
+            if (activeTab->StableId() == tabId)
+            {
+                _UpdateBottomBarState();
             }
         }
     }

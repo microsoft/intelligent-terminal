@@ -1275,10 +1275,17 @@ namespace winrt::TerminalApp::implementation
                 _UpdateBackground(profile);
             }
 
-            // Refresh the window-level bottom bar to reflect the newly
-            // active tab's agent-pane state (open vs closed, sessions view
-            // vs chat view, autofix indicators).
-            _UpdateBottomBarState();
+            // Bottom-bar refresh is now driven by wta — fire `tab_changed`
+            // so wta re-projects this tab's authoritative agent-pane state
+            // (`project_active_tab_state` → `agent_state_changed`).
+            // `OnAgentStateChanged` applies the snapshot to the local
+            // AgentPaneContent mirror and refreshes the bottom bar. Avoids
+            // the stale-mirror race that bit after cross-window drag
+            // (helper state diverged from local cache).
+            if (auto tabImplForNotify = _GetTabImpl(tab))
+            {
+                _NotifyAgentTabChanged(tabImplForNotify->StableId());
+            }
 
             _adjustProcessPriorityThrottled->Run();
         }

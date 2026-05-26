@@ -398,6 +398,7 @@ namespace winrt::TerminalApp::implementation
         // TabSession and any session_to_tab entries pointing at it.
         void _NotifyAgentTabClosed(const winrt::hstring& tabId);
         void _NotifyAgentTabReset(const winrt::hstring& tabId);
+        void _NotifyAgentTabChanged(const winrt::hstring& tabId);
         // Look up a tab by its StableId; returns nullptr if unknown.
         winrt::com_ptr<Tab> _FindTabByStableId(const winrt::hstring& stableId) const;
         // Look up a tab by the AgentPaneContent instance hosted in it.

@@ -26,6 +26,35 @@ using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Microsoft::Terminal::TerminalConnection;
 using namespace ::TerminalApp;
 
+namespace
+{
+    // Local copy of the agent-pane diagnostic logger (twins of the ones in
+    // TerminalPage.cpp / TabManagement.cpp). Writes to wta-agent-pane.log.
+    void _agentPaneLog(const std::string& msg)
+    {
+        wchar_t localAppData[MAX_PATH];
+        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0)
+            return;
+        const auto logDir = std::wstring(localAppData) + L"\\IntelligentTerminal\\logs";
+        std::filesystem::create_directories(logDir);
+        const auto logPath = logDir + L"\\wta-agent-pane.log";
+        if (auto f = std::ofstream(logPath, std::ios::app))
+        {
+            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::system_clock::now().time_since_epoch())
+                                   .count();
+            const auto secs = static_cast<std::time_t>(nowMs / 1000);
+            const int ms = static_cast<int>(nowMs % 1000);
+            std::tm tmUtc{};
+            ::gmtime_s(&tmUtc, &secs);
+            char ts[32];
+            std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", &tmUtc);
+            f << '[' << ts << '.' << std::setw(3) << std::setfill('0') << ms
+              << "Z] " << msg << '\n';
+        }
+    }
+}
+
 namespace winrt
 {
     namespace MUX = Microsoft::UI::Xaml;
@@ -1664,19 +1693,32 @@ namespace winrt::TerminalApp::implementation
                                             const ActionEventArgs& args)
     {
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentPane called\n");
+        const auto activeTabPre = _GetFocusedTabImpl();
+        const auto agentPanePre = activeTabPre ? activeTabPre->FindAgentPane() : nullptr;
+        const bool stashedPre = agentPanePre && agentPanePre->IsHidden();
+        _agentPaneLog(std::string{ "_HandleOpenAgentPane fired hasPane=" } + (agentPanePre ? "yes" : "no") + " stashed=" + (stashedPre ? "yes" : "no"));
 
-        // Per-tab: switch this tab's agent pane to chat view if it's
-        // currently in sessions view. Otherwise toggle open/close.
+        // Per-tab. Three cases (in priority order):
+        //   * Pane stashed (hidden) → fall through to _OpenOrReuseAgentPane
+        //     which unstashes via wta. Don't switch view here — restore in
+        //     whatever view it had when hidden.
+        //   * Pane visible, sessions view → switch to chat view.
+        //   * Pane visible, chat view OR no pane → fall through.
         const auto activeTab = _GetFocusedTabImpl();
         if (activeTab)
         {
-            if (const auto agentContent = activeTab->FindAgentPaneContent())
+            const auto agentPane = activeTab->FindAgentPane();
+            const bool isStashed = agentPane && agentPane->IsHidden();
+            if (!isStashed)
             {
-                if (agentContent.IsSessionsView())
+                if (const auto agentContent = activeTab->FindAgentPaneContent())
                 {
-                    _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
-                    args.Handled(true);
-                    return;
+                    if (agentContent.IsSessionsView())
+                    {
+                        _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
+                        args.Handled(true);
+                        return;
+                    }
                 }
             }
         }
@@ -1697,21 +1739,32 @@ namespace winrt::TerminalApp::implementation
                                                 const ActionEventArgs& args)
     {
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentSessions called\n");
+        const auto activeTabPre = _GetFocusedTabImpl();
+        const auto agentPanePre = activeTabPre ? activeTabPre->FindAgentPane() : nullptr;
+        const bool stashedPre = agentPanePre && agentPanePre->IsHidden();
+        _agentPaneLog(std::string{ "_HandleOpenAgentSessions fired hasPane=" } + (agentPanePre ? "yes" : "no") + " stashed=" + (stashedPre ? "yes" : "no"));
 
-        // Per-tab sessions toggle:
-        //   - No agent pane on focused tab  → open + sessions view
-        //   - Pane exists, in sessions view → close the pane
-        //   - Pane exists, in chat view     → switch to sessions
+        // Per-tab sessions toggle. Cases (priority order):
+        //   * Pane stashed → fall through (_OpenOrReuseAgentPane unstashes
+        //     in sessions view via wta echo).
+        //   * Pane visible, sessions view → hide (stash).
+        //   * Pane visible, chat view → switch to sessions.
+        //   * No pane → spawn in sessions view.
         const auto activeTab = _GetFocusedTabImpl();
         if (activeTab)
         {
-            if (const auto agentContent = activeTab->FindAgentPaneContent())
+            const auto agentPane = activeTab->FindAgentPane();
+            const bool isStashed = agentPane && agentPane->IsHidden();
+            if (!isStashed)
             {
-                if (agentContent.IsSessionsView())
+                if (const auto agentContent = activeTab->FindAgentPaneContent())
                 {
-                    _RequestAgentStateForTab(activeTab, std::nullopt, /*pane_open*/ false);
-                    args.Handled(true);
-                    return;
+                    if (agentContent.IsSessionsView())
+                    {
+                        _RequestAgentStateForTab(activeTab, std::nullopt, /*pane_open*/ false);
+                        args.Handled(true);
+                        return;
+                    }
                 }
             }
         }
