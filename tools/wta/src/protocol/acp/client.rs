@@ -1820,11 +1820,19 @@ fn register_agent_pane_session(
     if !is_agent_pane {
         return;
     }
-    crate::agent_pane_origin::append_default(session_id.0.as_ref());
+    // Read WT_SESSION once; reused for both the on-disk index (so post-
+    // restart reconcile knows which pane hosted this session) and the
+    // synthetic SessionStarted's pane binding.
+    let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
+    let pane_for_index = if pane_session_id.is_empty() {
+        None
+    } else {
+        Some(pane_session_id.as_str())
+    };
+    crate::agent_pane_origin::append_default(session_id.0.as_ref(), pane_for_index);
 
     let is_adapter = crate::agent_registry::is_adapter_based(canonical_agent_id);
     let cli_source = crate::agent_sessions::CliSource::from_agent_id(canonical_agent_id);
-    let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
 
     match (is_adapter, cli_source, pane_session_id.is_empty()) {
         (true, Some(cli), false) => {

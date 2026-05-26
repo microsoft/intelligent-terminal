@@ -72,14 +72,27 @@ pub fn load_all() -> Vec<AgentSession> {
     out.extend(take_n(load_claude(&home),  MAX_PER_CLI));
     out.extend(take_n(load_gemini(&home),  MAX_PER_CLI));
     // Stamp `origin: AgentPane` on rows whose session id was recorded in
-    // the local agent-pane index. Loaded once and applied as a join so the
-    // per-CLI scanners stay agnostic of how the index is shaped or where
-    // it lives.
-    let agent_pane_keys = crate::agent_pane_origin::load_default_set();
-    if !agent_pane_keys.is_empty() {
+    // the local agent-pane index, AND restore `pane_session_id` so the
+    // session knows which WT pane originally hosted it (v2 index records).
+    // Loaded once and applied as a join so the per-CLI scanners stay
+    // agnostic of how the index is shaped or where it lives.
+    //
+    // `pane_session_id` is recorded for future use — see GitHub issue
+    // #58 for the planned ENTER-routing matrix that will consume it
+    // (alongside a future tab_id field) to decide between "switch to
+    // hosting tab and focus", "open new tab and load_session", and the
+    // existing focus/resume branches. v1 records (pre-pane_session_id)
+    // leave `pane_session_id = None`.
+    let agent_pane_records = crate::agent_pane_origin::load_default_records();
+    if !agent_pane_records.is_empty() {
         for s in out.iter_mut() {
-            if agent_pane_keys.contains(&s.key) {
+            if let Some(rec) = agent_pane_records.get(&s.key) {
                 s.origin = SessionOrigin::AgentPane;
+                if let Some(pane) = rec.pane_session_id.as_deref() {
+                    if !pane.is_empty() {
+                        s.pane_session_id = Some(pane.to_ascii_lowercase());
+                    }
+                }
             }
         }
     }

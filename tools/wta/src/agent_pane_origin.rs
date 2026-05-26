@@ -18,13 +18,26 @@
 // the OS (`OpenOptions::append`). Records are intentionally small so the
 // file stays compact under heavy use:
 //
+//   v1 (legacy, still readable):
 //     {"v":1,"session_id":"<uuid>","origin":"agent_pane","started_at":"<RFC3339-ish>"}
 //
-// Duplicates are tolerated. `load_set()` collects session ids into a
-// `HashSet` so a session that appears multiple times still resolves to a
-// single membership check. Lines that fail to parse are skipped and the
-// next line is processed — corruption in one record does not invalidate
-// the rest of the file.
+//   v2 (current, adds `pane_session_id` so future reconcile logic can
+//   tell whether a Historical-looking session was actually hosted in a
+//   pane that is still alive — see GitHub issue #58 for the planned
+//   ENTER-routing work that will consume this field):
+//     {"v":2,"session_id":"<uuid>","origin":"agent_pane","pane_session_id":"<WT pane GUID>","started_at":"<RFC3339-ish>"}
+//
+// We deliberately do NOT record `cli_source` — `history_loader` already
+// derives it from which per-CLI on-disk artefact directory the session was
+// found in, so duplicating it here would create a second source of truth
+// that could drift. Same rationale for `owner_tab_id`: no caller needs it
+// yet, and we can always recover it via WT itself.
+//
+// Duplicates are tolerated. Loaders collapse on `session_id`; if a session
+// appears twice (e.g. v1 line plus v2 line for the same id after a wta
+// upgrade), last-write wins for the `pane_session_id` field. Lines that
+// fail to parse are skipped and the next line is processed — corruption in
+// one record does not invalidate the rest of the file.
 //
 // Lifetime
 // --------
@@ -34,14 +47,23 @@
 // in the index are harmless because `history_loader` only consults the
 // index when constructing rows for sessions that *still exist on disk*.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
 const INDEX_FILENAME: &str = "agent-pane-sessions.jsonl";
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
+
+/// Joined view of one `session_id`'s on-disk index entry. `pane_session_id`
+/// is the WT pane GUID that hosted this session; `None` for legacy v1
+/// entries written before that field existed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OriginRecord {
+    pub session_id: String,
+    pub pane_session_id: Option<String>,
+}
 
 /// Resolve the canonical on-disk location for the index. Returns `None`
 /// only if neither `%LOCALAPPDATA%` nor `%APPDATA%` is set, which is
@@ -52,12 +74,15 @@ pub fn default_index_path() -> Option<PathBuf> {
 }
 
 /// Append an `agent_pane` record for `session_id` to the default index.
+/// `pane_session_id` should be the WT pane GUID hosting the session
+/// (typically `std::env::var("WT_SESSION")`) — pass `None` only when it
+/// is genuinely unavailable.
 ///
 /// Best-effort: any IO error is logged and discarded. The caller must
 /// not depend on the write succeeding — a failed append simply means the
 /// next history scan won't badge this session, which is graceful
 /// degradation rather than breakage.
-pub fn append_default(session_id: &str) {
+pub fn append_default(session_id: &str, pane_session_id: Option<&str>) {
     let Some(path) = default_index_path() else {
         tracing::warn!(
             target: "agent_pane_origin",
@@ -66,7 +91,7 @@ pub fn append_default(session_id: &str) {
         );
         return;
     };
-    if let Err(err) = append_to(&path, session_id) {
+    if let Err(err) = append_to(&path, session_id, pane_session_id) {
         tracing::warn!(
             target: "agent_pane_origin",
             session_id = %session_id,
@@ -79,17 +104,30 @@ pub fn append_default(session_id: &str) {
 
 /// Append an `agent_pane` record to a caller-supplied path. Public to
 /// support unit tests that exercise round-tripping against a tempdir.
-pub fn append_to(path: &std::path::Path, session_id: &str) -> std::io::Result<()> {
+pub fn append_to(
+    path: &std::path::Path,
+    session_id: &str,
+    pane_session_id: Option<&str>,
+) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-    let record = serde_json::json!({
-        "v": SCHEMA_VERSION,
-        "session_id": session_id,
-        "origin": "agent_pane",
-        "started_at": rfc3339_now(),
-    });
+    let record = match pane_session_id {
+        Some(pane) if !pane.is_empty() => serde_json::json!({
+            "v": SCHEMA_VERSION,
+            "session_id": session_id,
+            "origin": "agent_pane",
+            "pane_session_id": pane,
+            "started_at": rfc3339_now(),
+        }),
+        _ => serde_json::json!({
+            "v": SCHEMA_VERSION,
+            "session_id": session_id,
+            "origin": "agent_pane",
+            "started_at": rfc3339_now(),
+        }),
+    };
     writeln!(file, "{}", record)?;
     Ok(())
 }
@@ -98,15 +136,31 @@ pub fn append_to(path: &std::path::Path, session_id: &str) -> std::io::Result<()
 /// set if the file does not exist, cannot be opened, or is empty — never
 /// errors out to the caller, which lets `history_loader` proceed even on
 /// a fresh install or after a manual delete.
+///
+/// Use this when the caller only needs membership-check. For callers that
+/// need the per-record `pane_session_id` (e.g. post-restart reconcile),
+/// see [`load_default_records`].
 pub fn load_default_set() -> HashSet<String> {
-    let Some(path) = default_index_path() else { return HashSet::new() };
-    load_set_from(&path)
+    load_default_records().into_keys().collect()
 }
 
-/// Load an index file from `path`. Tolerates missing files and corrupt
-/// lines. Public for unit tests.
+/// Load an index file from `path` into a HashSet. Public for unit tests.
 pub fn load_set_from(path: &std::path::Path) -> HashSet<String> {
-    let mut out = HashSet::new();
+    load_records_from(path).into_keys().collect()
+}
+
+/// Load the default index, retaining each record's per-session metadata
+/// (notably `pane_session_id` for v2 entries). Duplicate `session_id`s
+/// collapse to the last-written record. Empty map on any IO error.
+pub fn load_default_records() -> HashMap<String, OriginRecord> {
+    let Some(path) = default_index_path() else { return HashMap::new() };
+    load_records_from(&path)
+}
+
+/// Same as [`load_default_records`] but against a caller-supplied path.
+/// Public for unit tests.
+pub fn load_records_from(path: &std::path::Path) -> HashMap<String, OriginRecord> {
+    let mut out: HashMap<String, OriginRecord> = HashMap::new();
     let file = match File::open(path) {
         Ok(f) => f,
         Err(_) => return out, // most commonly: file does not exist yet
@@ -116,11 +170,22 @@ pub fn load_set_from(path: &std::path::Path) -> HashSet<String> {
         if trimmed.is_empty() { continue; }
         let parsed: Result<serde_json::Value, _> = serde_json::from_str(trimmed);
         let Ok(value) = parsed else { continue }; // skip corrupt line
-        if let Some(id) = value.get("session_id").and_then(|v| v.as_str()) {
-            if !id.is_empty() {
-                out.insert(id.to_string());
-            }
-        }
+        let Some(id) = value.get("session_id").and_then(|v| v.as_str()) else { continue };
+        if id.is_empty() { continue; }
+        let pane_session_id = value
+            .get("pane_session_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        // Last-write wins on duplicate session_ids — preserves the latest
+        // pane binding if a session was somehow re-appended.
+        out.insert(
+            id.to_string(),
+            OriginRecord {
+                session_id: id.to_string(),
+                pane_session_id,
+            },
+        );
     }
     out
 }
@@ -190,23 +255,58 @@ mod tests {
     #[test]
     fn append_then_load_roundtrip() {
         let path = tmp_index_path("roundtrip");
-        append_to(&path, "abc-123").unwrap();
-        append_to(&path, "def-456").unwrap();
+        append_to(&path, "abc-123", None).unwrap();
+        append_to(&path, "def-456", Some("pane-xyz")).unwrap();
         let set = load_set_from(&path);
         assert!(set.contains("abc-123"));
         assert!(set.contains("def-456"));
         assert_eq!(set.len(), 2);
+
+        let records = load_records_from(&path);
+        assert_eq!(records.get("abc-123").and_then(|r| r.pane_session_id.as_deref()), None);
+        assert_eq!(records.get("def-456").and_then(|r| r.pane_session_id.as_deref()), Some("pane-xyz"));
     }
 
     #[test]
     fn duplicate_appends_collapse_in_set() {
         let path = tmp_index_path("dup");
-        append_to(&path, "same-id").unwrap();
-        append_to(&path, "same-id").unwrap();
-        append_to(&path, "same-id").unwrap();
+        append_to(&path, "same-id", None).unwrap();
+        append_to(&path, "same-id", None).unwrap();
+        append_to(&path, "same-id", None).unwrap();
         let set = load_set_from(&path);
         assert_eq!(set.len(), 1);
         assert!(set.contains("same-id"));
+    }
+
+    #[test]
+    fn duplicate_appends_last_pane_wins_in_records() {
+        // If the same session_id is written twice with different
+        // pane_session_id, the latest pane wins. Defensive: not expected
+        // in practice but keeps the contract simple.
+        let path = tmp_index_path("dup-pane");
+        append_to(&path, "same-id", Some("pane-old")).unwrap();
+        append_to(&path, "same-id", Some("pane-new")).unwrap();
+        let records = load_records_from(&path);
+        assert_eq!(records.len(), 1);
+        assert_eq!(
+            records.get("same-id").and_then(|r| r.pane_session_id.as_deref()),
+            Some("pane-new")
+        );
+    }
+
+    #[test]
+    fn v1_entries_still_load_with_no_pane() {
+        // Backward-compat: a pre-v2 record (no pane_session_id field)
+        // must still appear in load_records_from with pane_session_id = None.
+        let path = tmp_index_path("v1-compat");
+        std::fs::write(
+            &path,
+            "{\"v\":1,\"session_id\":\"legacy-001\",\"origin\":\"agent_pane\",\"started_at\":\"2024-01-01T00:00:00Z\"}\n",
+        )
+        .unwrap();
+        let records = load_records_from(&path);
+        let rec = records.get("legacy-001").expect("v1 entry must still load");
+        assert_eq!(rec.pane_session_id, None);
     }
 
     #[test]
@@ -227,13 +327,16 @@ mod tests {
              {\"v\":1,\"session_id\":\"good-1\",\"origin\":\"agent_pane\"}\n\
              {malformed\n\
              \n\
-             {\"v\":1,\"session_id\":\"good-2\"}\n",
+             {\"v\":2,\"session_id\":\"good-2\",\"pane_session_id\":\"pane-2\"}\n",
         )
         .unwrap();
         let set = load_set_from(&path);
         assert!(set.contains("good-1"));
         assert!(set.contains("good-2"));
         assert_eq!(set.len(), 2);
+        let records = load_records_from(&path);
+        assert_eq!(records.get("good-1").and_then(|r| r.pane_session_id.as_deref()), None);
+        assert_eq!(records.get("good-2").and_then(|r| r.pane_session_id.as_deref()), Some("pane-2"));
     }
 
     #[test]
@@ -247,6 +350,18 @@ mod tests {
         .unwrap();
         let set = load_set_from(&path);
         assert!(set.is_empty());
+    }
+
+    #[test]
+    fn empty_pane_session_id_is_treated_as_none() {
+        let path = tmp_index_path("empty-pane");
+        std::fs::write(
+            &path,
+            "{\"v\":2,\"session_id\":\"abc\",\"pane_session_id\":\"\",\"origin\":\"agent_pane\"}\n",
+        )
+        .unwrap();
+        let records = load_records_from(&path);
+        assert_eq!(records.get("abc").and_then(|r| r.pane_session_id.as_deref()), None);
     }
 
     #[test]
