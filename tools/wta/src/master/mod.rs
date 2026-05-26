@@ -29,12 +29,13 @@
 //     to each helper. `MasterClient` looks up the helper by
 //     `args.session_id` and calls the matching `Client`-trait method
 //     on that connection (`AgentSideConnection` itself implements
-//     `acp::Client`, RPC'ing back over the helper's pipe). The
-//     helper-side `WtaClient` then runs the same code path it ran
-//     pre-helper-split (TUI permission UI, `ShellManager`, etc.).
+//     `acp::Client` and re-issues each call as an RPC request over the
+//     helper's pipe). The helper-side `WtaClient` then runs the same
+//     code path it ran pre-helper-split (TUI permission UI,
+//     `ShellManager`, etc.).
 
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, Weak};
 
 use acp::Agent as _;
 use acp::Client as _;
@@ -425,42 +426,62 @@ struct HelperHandler {
     /// receiver and writes notifications back over the
     /// `AgentSideConnection`.
     notif_tx: mpsc::UnboundedSender<acp::SessionNotification>,
-    /// The same helper's outbound connection back to its pipe.
-    /// `HelperHandler` is moved INTO `AgentSideConnection::new`, so
-    /// we can't hold the `AgentSideConnection` by value — we share a
-    /// `OnceLock` with `serve_helper` instead, which populates it
-    /// immediately after `new()` returns and before `handle_io`
-    /// starts polling (i.e. before any inbound request can hit a
-    /// handler that would observe the slot).
+    /// The same helper's outbound connection back to its pipe, held
+    /// as a `Weak` to break a reference cycle.
     ///
-    /// `new_session` / `load_session` read it (must be `Some` by
-    /// then, since they're driven by `handle_io`) and stash the
-    /// resulting `Arc` into `HelperRoute.forwarder`, where
-    /// `MasterClient` finds it for inbound agent-CLI requests.
-    agent_side_slot: Arc<OnceLock<Arc<acp::AgentSideConnection>>>,
+    /// `HelperHandler` is moved INTO `AgentSideConnection::new`, so
+    /// the conn owns the handler. If we then stored a strong `Arc`
+    /// back to that same conn here, the conn would never drop after
+    /// helper disconnect (its own internally-held handler keeps a
+    /// strong ref to itself), leaking one conn + helper state per
+    /// disconnect across the master's lifetime. `Weak` lets the
+    /// conn die when all its external strong refs go away
+    /// (`serve_helper`'s local + every `HelperRoute.forwarder`),
+    /// after which `upgrade()` returns `None` and the handler can't
+    /// fire any more outbound requests — which is the right behaviour
+    /// since the conn is being torn down.
+    ///
+    /// Shared with `serve_helper` via `OnceLock`: the conn doesn't
+    /// exist until `AgentSideConnection::new()` returns, but
+    /// `serve_helper` populates this slot strictly before `handle_io`
+    /// starts polling, so any inbound request observed by a handler
+    /// sees a populated slot.
+    agent_side_slot: Arc<OnceLock<Weak<acp::AgentSideConnection>>>,
 }
 
 impl HelperHandler {
     /// Snapshot the populated `AgentSideConnection` for this helper.
     /// Must only be called from request handlers driven by
     /// `handle_io` (which `serve_helper` polls strictly after the
-    /// slot is set). Returns an `internal_error` if the invariant
-    /// is ever violated — failing closed beats producing a half-
-    /// initialised routing entry.
+    /// slot is set).
+    ///
+    /// Two failure modes, both returning `internal_error`:
+    ///   * Slot not yet set — a real bug (shouldn't happen given the
+    ///     ordering above).
+    ///   * `Weak::upgrade` returns `None` — the conn has already been
+    ///     dropped (helper disconnect path); we have no way to route
+    ///     a fresh request anyway.
     fn forwarder_for_route(&self, op: &'static str) -> acp::Result<Arc<acp::AgentSideConnection>> {
-        match self.agent_side_slot.get() {
-            Some(asc) => Ok(Arc::clone(asc)),
-            None => {
-                tracing::error!(
-                    target: "master",
-                    op = op,
-                    helper_id = ?self.helper_id,
-                    "agent_side_slot empty inside helper request handler — bug; serve_helper must populate it before handle_io polls"
-                );
-                Err(acp::Error::internal_error()
-                    .data(serde_json::json!("agent_side_slot not yet set")))
-            }
-        }
+        let weak = self.agent_side_slot.get().ok_or_else(|| {
+            tracing::error!(
+                target: "master",
+                op = op,
+                helper_id = ?self.helper_id,
+                "agent_side_slot empty inside helper request handler — bug; serve_helper must populate it before handle_io polls"
+            );
+            acp::Error::internal_error()
+                .data(serde_json::json!("agent_side_slot not yet set"))
+        })?;
+        weak.upgrade().ok_or_else(|| {
+            tracing::warn!(
+                target: "master",
+                op = op,
+                helper_id = ?self.helper_id,
+                "helper AgentSideConnection already dropped — cannot route new request"
+            );
+            acp::Error::internal_error()
+                .data(serde_json::json!("helper connection dropped"))
+        })
     }
 }
 
@@ -857,7 +878,12 @@ async fn serve_helper(
     // `new_session` / `load_session` time. `OnceLock` because the
     // conn doesn't exist until `AgentSideConnection::new` returns,
     // but we populate it strictly before `handle_io` is polled below.
-    let agent_side_slot: Arc<OnceLock<Arc<acp::AgentSideConnection>>> =
+    //
+    // Stored as `Weak` (not `Arc`) to avoid a reference cycle: the
+    // conn owns the handler, the handler owns this slot — if the
+    // slot held a strong `Arc` back to the conn, the conn could
+    // never drop after helper disconnect.
+    let agent_side_slot: Arc<OnceLock<Weak<acp::AgentSideConnection>>> =
         Arc::new(OnceLock::new());
 
     let handler = HelperHandler {
@@ -880,8 +906,10 @@ async fn serve_helper(
     // Populate BEFORE `handle_io.await` (below) so any inbound
     // request the agent CLI sends is guaranteed to see a populated
     // slot. `set` returns `Err` only if already-set, which can't
-    // happen here.
-    let _ = agent_side_slot.set(Arc::clone(&agent_side_conn));
+    // happen here. `Arc::downgrade` so the slot holds a `Weak` —
+    // see the field comment on `HelperHandler::agent_side_slot` for
+    // why a strong `Arc` here would leak the conn.
+    let _ = agent_side_slot.set(Arc::downgrade(&agent_side_conn));
 
     tokio::pin!(handle_io);
     let result = loop {
@@ -1106,5 +1134,77 @@ mod tests {
         assert!(!map.contains_key(&SessionId::new("a2")));
         assert!(map.contains_key(&SessionId::new("b1")));
         assert!(map.contains_key(&SessionId::new("c1")));
+    }
+
+    /// `route_for` (used by every `MasterClient::<client-method>`
+    /// forwarder) must return `internal_error` when the agent CLI
+    /// sends a request for a session that no helper has registered
+    /// — typically a stale call after the owning helper disconnected.
+    /// Returning `Ok(...)` here would dereference an invalid route.
+    #[tokio::test]
+    async fn route_for_unknown_session_id_returns_internal_error() {
+        let state = make_state();
+        let client = MasterClient {
+            state: Arc::clone(&state),
+        };
+        let err = client
+            .route_for(&SessionId::new("ghost"), "request_permission")
+            .await
+            .expect_err("unknown session_id must not resolve");
+        assert_eq!(err.code, acp::ErrorCode::InternalError);
+    }
+
+    /// `route_for` must also fail when the routing entry exists but
+    /// its `forwarder` slot is `None`. Production code never inserts
+    /// a `None` forwarder (every `new_session` / `load_session` path
+    /// upgrades the helper's `Weak<AgentSideConnection>`), so reaching
+    /// this branch means the slot was inserted before the conn was
+    /// alive — that's a bug we want to surface, not paper over.
+    #[tokio::test]
+    async fn route_for_none_forwarder_returns_internal_error() {
+        let state = make_state();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        {
+            let mut map = state.session_to_helper.lock().await;
+            map.insert(
+                SessionId::new("orphan"),
+                HelperRoute {
+                    helper_id: HelperId(42),
+                    notif_tx: tx,
+                    forwarder: None,
+                },
+            );
+        }
+        let client = MasterClient {
+            state: Arc::clone(&state),
+        };
+        let err = client
+            .route_for(&SessionId::new("orphan"), "create_terminal")
+            .await
+            .expect_err("None forwarder must not resolve");
+        assert_eq!(err.code, acp::ErrorCode::InternalError);
+    }
+
+    /// End-to-end through one of the forwarder methods: a Client-trait
+    /// request on `MasterClient` for an unknown session_id propagates
+    /// the same `internal_error` (rather than the trait default
+    /// `method_not_found`, which would mislead the agent CLI into
+    /// thinking the master doesn't support terminals at all).
+    #[tokio::test]
+    async fn master_client_create_terminal_unknown_session_returns_internal_error() {
+        use acp::Client as _;
+        let state = make_state();
+        let client = MasterClient {
+            state: Arc::clone(&state),
+        };
+        let req = acp::CreateTerminalRequest::new(
+            SessionId::new("nobody-home"),
+            "echo".to_string(),
+        );
+        let err = client
+            .create_terminal(req)
+            .await
+            .expect_err("create_terminal on unknown session must fail");
+        assert_eq!(err.code, acp::ErrorCode::InternalError);
     }
 }
