@@ -112,7 +112,7 @@ agents.status.error: "Fout"
 agents.status.idle: "Inactief"
 
 # ── Welkomsthint voor indeling (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. om het agentdeelvenster te tonen/verbergen • Ctrl+Alt+/ om de agentsessie te tonen/verbergen)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. om het agentdeelvenster te tonen/verbergen • Ctrl+Shift+/ om de agentsessie te tonen/verbergen)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Verbindingsstatus ────────────────────────────────────────────────────────────
 connection.starting: "Agent starten..."

@@ -113,7 +113,7 @@ agents.status.error: "[Éŕŕöŕ!!]"
 agents.status.idle: "[Îďĺé!!]"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "[(Ctrl+Shift+. ţö śĥöŵ/ĥïďé åğéñţ ṗåñé • Ctrl+Alt+/ ţö śĥöŵ/ĥïďé åğéñţ śéśśïöñ)!!!! !!!! !!!! !!!!]"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "[(Ctrl+Shift+. ţö śĥöŵ/ĥïďé åğéñţ ṗåñé • Ctrl+Shift+/ ţö śĥöŵ/ĥïďé åğéñţ śéśśïöñ)!!!! !!!! !!!! !!!!]"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "[Ŝţåŕţïñğ åğéñţ...!!]"

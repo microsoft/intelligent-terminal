@@ -112,7 +112,7 @@ agents.status.error: "Mearachd"
 agents.status.idle: "Na thàmh"
 
 # ── Sanas fàilte cruth (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. gus panail àidseant a shealltainn/fhalach • Ctrl+Alt+/ gus seisean àidseant a shealltainn/fhalach)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. gus panail àidseant a shealltainn/fhalach • Ctrl+Shift+/ gus seisean àidseant a shealltainn/fhalach)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Staid ceangail ────────────────────────────────────────────────────────
 connection.starting: "A' tòiseachadh an àidseant..."

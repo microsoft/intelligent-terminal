@@ -112,7 +112,7 @@ agents.status.error: "May error"
 agents.status.idle: "Walang ginagawa"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. para ipakita/itago ang agent pane • Ctrl+Alt+/ para ipakita/itago ang agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. para ipakita/itago ang agent pane • Ctrl+Shift+/ para ipakita/itago ang agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Sinisimulan ang agent..."

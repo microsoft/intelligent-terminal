@@ -119,7 +119,7 @@ agents.status.error: "Chyba"
 agents.status.idle: "Nečinný"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. zobrazit/skrýt panel agenta • Ctrl+Alt+/ zobrazit/skrýt relaci agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. zobrazit/skrýt panel agenta • Ctrl+Shift+/ zobrazit/skrýt relaci agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Spouštění agenta..."

@@ -112,7 +112,7 @@ agents.status.error: "Erreur"
 agents.status.idle: "Inactif"
 
 # ── Indication de bienvenue de disposition (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. pour afficher/masquer le volet de l'agent • Ctrl+Alt+/ pour afficher/masquer la session de l'agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. pour afficher/masquer le volet de l'agent • Ctrl+Shift+/ pour afficher/masquer la session de l'agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── État de la connexion ────────────────────────────────────────────────────────────
 connection.starting: "Démarrage de l'agent..."

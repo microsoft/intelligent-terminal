@@ -112,7 +112,7 @@ agents.status.error: "Errore"
 agents.status.idle: "Inattivo"
 
 # ── Suggerimento di benvenuto del layout (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. per mostrare/nascondere il riquadro agente • Ctrl+Alt+/ per mostrare/nascondere la sessione dell'agente)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. per mostrare/nascondere il riquadro agente • Ctrl+Shift+/ per mostrare/nascondere la sessione dell'agente)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Stato della connessione ────────────────────────────────────────────────────────────
 connection.starting: "Avvio dell'agente..."

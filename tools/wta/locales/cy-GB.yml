@@ -112,7 +112,7 @@ agents.status.error: "Gwall"
 agents.status.idle: "Segur"
 
 # ── Awgrym croeso cynllun (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. i ddangos/cuddio'r paen asiant • Ctrl+Alt+/ i ddangos/cuddio'r sesiwn asiant)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. i ddangos/cuddio'r paen asiant • Ctrl+Shift+/ i ddangos/cuddio'r sesiwn asiant)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Cyflwr cysylltiad ────────────────────────────────────────────────────────
 connection.starting: "Yn cychwyn yr asiant..."

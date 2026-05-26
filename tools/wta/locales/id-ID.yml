@@ -112,7 +112,7 @@ agents.status.error: "Kesalahan"
 agents.status.idle: "Menganggur"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. untuk menampilkan/menyembunyikan panel agen AI • Ctrl+Alt+/ untuk menampilkan/menyembunyikan sesi agen AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. untuk menampilkan/menyembunyikan panel agen AI • Ctrl+Shift+/ untuk menampilkan/menyembunyikan sesi agen AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Memulai agen AI..."

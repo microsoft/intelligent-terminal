@@ -112,7 +112,7 @@ agents.status.error: "Lỗi"
 agents.status.idle: "Rảnh"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. để hiện/ẩn bảng tác nhân AI • Ctrl+Alt+/ để hiện/ẩn phiên tác nhân AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. để hiện/ẩn bảng tác nhân AI • Ctrl+Shift+/ để hiện/ẩn phiên tác nhân AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Đang khởi động tác nhân AI..."

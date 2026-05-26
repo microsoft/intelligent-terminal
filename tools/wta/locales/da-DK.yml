@@ -112,7 +112,7 @@ agents.status.error: "Fejl"
 agents.status.idle: "Inaktiv"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. for at vise/skjule agentpanelet • Ctrl+Alt+/ for at vise/skjule agentsessionen)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. for at vise/skjule agentpanelet • Ctrl+Shift+/ for at vise/skjule agentsessionen)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Starter agenten..."

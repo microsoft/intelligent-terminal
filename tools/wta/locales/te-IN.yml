@@ -123,7 +123,7 @@ agents.status.error: "ఎర్రర్"
 agents.status.idle: "నిష్క్రియం"
 
 # ── లేఔట్ స్వాగత సూచన (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ఏజెంట్ పేన్ చూపించు/దాచు • Ctrl+Alt+/ ఏజెంట్ సెషన్ చూపించు/దాచు)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ఏజెంట్ పేన్ చూపించు/దాచు • Ctrl+Shift+/ ఏజెంట్ సెషన్ చూపించు/దాచు)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── కనెక్షన్ స్థితి ────────────────────────────────────────────────────────
 connection.starting: "ఏజెంట్ ప్రారంభమవుతోంది..."

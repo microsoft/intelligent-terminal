@@ -123,7 +123,7 @@ agents.status.error: "चूक"
 agents.status.idle: "निश्क्रिय"
 
 # ── लेआउट स्वागत संकेत (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. एजेंट पेन दाखयात/लिपयात • Ctrl+Alt+/ एजेंट सत्र दाखयात/लिपयात)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. एजेंट पेन दाखयात/लिपयात • Ctrl+Shift+/ एजेंट सत्र दाखयात/लिपयात)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── कनेक्शन स्थिती ────────────────────────────────────────────────────────
 connection.starting: "एजेंट सुरू जाता..."

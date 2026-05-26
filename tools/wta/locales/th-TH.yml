@@ -112,7 +112,7 @@ agents.status.error: "ข้อผิดพลาด"
 agents.status.idle: "ว่าง"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. แสดง/ซ่อนแผงเอเจนต์ • Ctrl+Alt+/ แสดง/ซ่อนเซสชันเอเจนต์)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. แสดง/ซ่อนแผงเอเจนต์ • Ctrl+Shift+/ แสดง/ซ่อนเซสชันเอเจนต์)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "กำลังเริ่มเอเจนต์..."

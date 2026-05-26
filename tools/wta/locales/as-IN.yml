@@ -123,7 +123,7 @@ agents.status.error: "ত্ৰুটি"
 agents.status.idle: "নিষ্ক্ৰিয়"
 
 # ── লেআউট স্বাগতম সংকেত (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. এজেণ্ট পেন দেখুৱাওক/লুকুৱাওক • Ctrl+Alt+/ এজেণ্ট ছেশ্বন দেখুৱাওক/লুকুৱাওক)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. এজেণ্ট পেন দেখুৱাওক/লুকুৱাওক • Ctrl+Shift+/ এজেণ্ট ছেশ্বন দেখুৱাওক/লুকুৱাওক)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── সংযোগ স্থিতি ────────────────────────────────────────────────────────
 connection.starting: "এজেণ্ট আৰম্ভ হৈ আছে..."

@@ -112,7 +112,7 @@ agents.status.error: "Virhe"
 agents.status.idle: "Vapaa"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. näyttää/piilottaa agenttipaneelin • Ctrl+Alt+/ näyttää/piilottaa agenttiistunnon)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. näyttää/piilottaa agenttipaneelin • Ctrl+Shift+/ näyttää/piilottaa agenttiistunnon)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Käynnistetään agenttia..."

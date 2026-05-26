@@ -112,7 +112,7 @@ agents.status.error: "Error"
 agents.status.idle: "Idle"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Alt+/ to show/hide agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Shift+/ to show/hide agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Starting agent..."

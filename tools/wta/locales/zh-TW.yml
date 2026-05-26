@@ -108,7 +108,7 @@ agents.status.error: "錯誤"
 agents.status.idle: "閒置"
 
 # ── 版面配置歡迎提示 (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. 顯示/隱藏智慧代理窗格 • Ctrl+Alt+/ 顯示/隱藏智慧代理工作階段)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. 顯示/隱藏智慧代理窗格 • Ctrl+Shift+/ 顯示/隱藏智慧代理工作階段)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── 連線狀態 ────────────────────────────────────────────────────────────
 connection.starting: "正在啟動智慧代理..."

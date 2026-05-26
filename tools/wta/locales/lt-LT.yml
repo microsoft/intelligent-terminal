@@ -112,7 +112,7 @@ agents.status.error: "Klaida"
 agents.status.idle: "Laukimo būsena"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. rodyti / slėpti agento skydelį • Ctrl+Alt+/ rodyti / slėpti agento seansą)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. rodyti / slėpti agento skydelį • Ctrl+Shift+/ rodyti / slėpti agento seansą)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Paleidžiamas agentas..."

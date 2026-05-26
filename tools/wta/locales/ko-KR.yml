@@ -108,7 +108,7 @@ agents.status.error: "오류"
 agents.status.idle: "유휴"
 
 # ── 레이아웃 환영 힌트 (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. 에이전트 창 표시/숨기기 • Ctrl+Alt+/ 에이전트 세션 표시/숨기기)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. 에이전트 창 표시/숨기기 • Ctrl+Shift+/ 에이전트 세션 표시/숨기기)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── 연결 상태 ────────────────────────────────────────────────────────────
 connection.starting: "에이전트 시작 중..."
