@@ -169,14 +169,16 @@ if (-not $Global:__ShellInteg_Installed) {
     // script — current (shell-integration_vN.ps1) AND legacy (shell-integration.ps1)
     // — so upgrades can rewrite the line in place.
     //
-    // Pattern: leading whitespace, '.', whitespace, then a quoted path whose
-    // contents include "shell-integration" and end with `.ps1"`, then anything
-    // up to end-of-line. Uses std::regex with the multiline flag so `^`/`$`
-    // anchor at line boundaries.
+    // Pattern (multiline): line begins with `.` + whitespace + a quoted path
+    // whose FINAL filename component is `shell-integration*.ps1`. The path
+    // component check (preceded by `/`, `\`, or the opening quote; followed
+    // only by non-separator chars before `.ps1`) avoids false matches on
+    // directories that happen to contain "shell-integration" or on trailing
+    // comments after an unrelated dot-source line.
     inline std::pair<size_t, size_t> FindShellIntegrationDotSourceLine(std::string_view contents)
     {
         static const std::regex pattern{
-            R"(^[ \t]*\.[ \t]+"[^"]*shell-integration[^"]*\.ps1".*)",
+            R"(^[ \t]*\.[ \t]+"(?:[^"]*[\\/])?shell-integration[^"\\/]*\.ps1".*)",
             std::regex_constants::ECMAScript | std::regex_constants::multiline
         };
         std::cmatch m;
@@ -238,9 +240,23 @@ if (-not $Global:__ShellInteg_Installed) {
         std::string contents;
         {
             std::ifstream in{ profilePath, std::ios::binary };
+            if (!in)
+            {
+                return { false, false, L"Failed to open PowerShell profile for reading" };
+            }
             contents.assign(std::istreambuf_iterator<char>(in),
                             std::istreambuf_iterator<char>());
+            if (in.bad())
+            {
+                return { false, false, L"Failed to read PowerShell profile" };
+            }
         }
+
+        // Detect existing line-ending style so the appended line matches.
+        // If the profile contains any CRLF, treat it as a CRLF file.
+        const std::string_view eol = contents.find("\r\n") != std::string::npos
+            ? std::string_view{ "\r\n" }
+            : std::string_view{ "\n" };
 
         // 3. Find any existing dot-source line (current or legacy version).
         const auto desiredLine = til::u16u8(
@@ -294,10 +310,10 @@ if (-not $Global:__ShellInteg_Installed) {
         {
             if (!contents.empty() && contents.back() != '\n')
             {
-                contents += '\n';
+                contents += eol;
             }
             contents += desiredLine;
-            contents += '\n';
+            contents += eol;
         }
 
         // 7. Write the profile back.
