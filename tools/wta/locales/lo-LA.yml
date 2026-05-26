@@ -112,7 +112,7 @@ agents.status.error: "Error"
 agents.status.idle: "Idle"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "(Ctrl+Shift+. ສະແດງ/ເຊື່ອງແຜງ agent • Ctrl+Shift+/ ສະແດງ/ເຊື່ອງພາກສ່ວນ agent)"
+layout.welcome_hint: "(Ctrl+Shift+. ສະແດງ/ເຊື່ອງແຜງ agent • Ctrl+Shift+/ ສະແດງ/ເຊື່ອງພາກສ່ວນ agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "ກຳລັງເລີ່ມ agent..."
