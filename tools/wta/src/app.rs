@@ -9037,17 +9037,26 @@ mod tests {
             app.command_popup_visible(),
             "test prerequisite: command popup must be visible after typing '/'",
         );
-        // Clear input back to empty so the input-empty guard would pass —
-        // this isolates the popup-visibility guard as the reason the
-        // fallback should NOT fire. (In practice the popup is only
-        // visible when input starts with '/', but the guard is defensive
-        // and we test it here.)
-        let popup_was_visible = app.command_popup_visible();
+        // Force-clear input WITHOUT calling refresh_command_popup so the
+        // candidates list stays populated while input becomes empty. This
+        // isolates the !command_popup_visible() guard as the one being
+        // tested — without this step, the input-empty guard would
+        // independently suppress the fallback and the assertion below
+        // could not tell which guard fired.
+        app.current_tab_mut().input.clear();
+        app.current_tab_mut().cursor_pos = 0;
+        assert!(
+            app.current_tab().input.is_empty(),
+            "test prerequisite: input must be empty so only the popup guard is exercised",
+        );
+        assert!(
+            app.command_popup_visible(),
+            "test prerequisite: popup must remain visible after clearing input",
+        );
         app.current_tab_mut().chat_scroll.offset = 7;
 
         app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
         app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-        assert!(popup_was_visible);
         assert_eq!(
             app.current_tab().chat_scroll.offset, 7,
             "command popup visibility must suppress the chat-scroll fallback",
