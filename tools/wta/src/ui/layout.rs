@@ -152,7 +152,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     chat::render(frame, app, h_chat[1]);
     app.sync_rec_scroll_max(main_area.width);
     recommendations::render(frame, app, h_rec[1]);
-    if app.current_tab().permission.is_some() {
+    if !app.current_tab().permission.is_empty() {
         permission::render(frame, app, h_perm[1]);
     }
 

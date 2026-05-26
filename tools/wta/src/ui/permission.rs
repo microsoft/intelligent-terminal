@@ -10,9 +10,8 @@ use crate::ui::card::{self, CARD_MIN_SIZE};
 /// either ≥ `CARD_MIN_SIZE` (full card) or exactly 1 (compact fallback —
 /// the agent flow is blocked on this prompt, so we must remain visible).
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
-    let perm = match &app.current_tab().permission {
-        Some(p) => p,
-        None => return,
+    let Some(perm) = app.current_tab().permission.front() else {
+        return;
     };
 
     if area.height < CARD_MIN_SIZE {

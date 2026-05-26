@@ -1102,7 +1102,18 @@ pub struct TabSession {
 
     // Tool calls / permission
     pub tool_calls: HashMap<String, (String, String)>,
-    pub permission: Option<PermissionState>,
+    /// FIFO of pending permission requests for this session. The front
+    /// entry is the one currently rendered and accepting keys; the rest
+    /// queue up. Agents (Copilot in particular) sometimes fire multiple
+    /// concurrent `request_permission` calls for one tool invocation
+    /// — e.g. one per path that needs to be unlocked outside the trusted
+    /// directory set — and each carries its own oneshot responder. The
+    /// previous single-slot `Option` overwrote the prior entry on every
+    /// new request, dropping its responder, which `WtaClient::request_permission`
+    /// observed as `Cancelled` and the agent interpreted as "user rejected"
+    /// — producing the silent tool-call failure tracked alongside the
+    /// helper+master split.
+    pub permission: VecDeque<PermissionState>,
     // Recommendation card UI focus (the set itself lives on
     // `turn.recommendations()`).
     pub selected_recommendation: usize,
@@ -1160,7 +1171,9 @@ impl TabSession {
     pub fn clear_chat_history(&mut self) {
         self.messages.clear();
         self.tool_calls.clear();
-        self.permission = None;
+        // Dropping pending responders signals `Cancelled` back to the
+        // agent — appropriate when the user wipes chat history mid-turn.
+        self.permission.clear();
         self.progress_status = None;
         self.activity_frame = 0;
         self.pending_agent_response.clear();
@@ -2949,7 +2962,7 @@ impl App {
             tab.chat_scroll.offset,
             tab.activity_frame,
             tab.turn.recommendations().map(|r| r.choices.len()).unwrap_or(0),
-            tab.permission.is_some(),
+            !tab.permission.is_empty(),
             tab.timing_note.is_some()
         )
     }
@@ -3346,7 +3359,11 @@ impl App {
                     // a Cancelled outcome on the agent side.
                     return;
                 }
-                tab.permission = Some(PermissionState {
+                // FIFO push — never overwrite an in-flight request. The
+                // user sees them one at a time (front of the queue is the
+                // one rendered + key-handled); resolving the front pops
+                // it and exposes the next.
+                tab.permission.push_back(PermissionState {
                     description,
                     options,
                     selected: 0,
@@ -4490,7 +4507,7 @@ impl App {
         // rendered horizontally inside the embedded card (same chrome as
         // recommendations), so Left/Right move the focus; Up/Down kept as
         // aliases for muscle memory from the prior modal.
-        if let Some(ref mut perm) = self.current_tab_mut().permission {
+        if let Some(perm) = self.current_tab_mut().permission.front_mut() {
             match key.code {
                 KeyCode::Left | KeyCode::Up => {
                     if perm.selected > 0 {
@@ -4504,8 +4521,10 @@ impl App {
                 }
                 KeyCode::Enter => {
                     let option_id = perm.options[perm.selected].id.clone();
-                    // Take ownership to send
-                    if let Some(perm) = self.current_tab_mut().permission.take() {
+                    // Pop the resolved entry; the next queued request (if
+                    // any) automatically becomes the new front and is
+                    // rendered on the next frame.
+                    if let Some(perm) = self.current_tab_mut().permission.pop_front() {
                         if let Some(responder) = perm.responder {
                             let _ = responder.send(option_id);
                         } else {
@@ -4517,7 +4536,7 @@ impl App {
                     // Quick allow: find first allow option
                     if let Some(idx) = perm.options.iter().position(|o| o.kind.contains("allow")) {
                         let option_id = perm.options[idx].id.clone();
-                        if let Some(perm) = self.current_tab_mut().permission.take() {
+                        if let Some(perm) = self.current_tab_mut().permission.pop_front() {
                             if let Some(responder) = perm.responder {
                                 let _ = responder.send(option_id);
                             } else {
@@ -4530,7 +4549,7 @@ impl App {
                     // Quick deny: find first reject option
                     if let Some(idx) = perm.options.iter().position(|o| o.kind.contains("reject")) {
                         let option_id = perm.options[idx].id.clone();
-                        if let Some(perm) = self.current_tab_mut().permission.take() {
+                        if let Some(perm) = self.current_tab_mut().permission.pop_front() {
                             if let Some(responder) = perm.responder {
                                 let _ = responder.send(option_id);
                             } else {
@@ -5148,7 +5167,7 @@ impl App {
     /// `panel_width` is the actual render width (`main_area.width` after the
     /// debug-panel split), not `terminal_cols`.
     pub fn permission_panel_height(&self, panel_width: u16) -> u16 {
-        let Some(perm) = self.current_tab().permission.as_ref() else { return 0 };
+        let Some(perm) = self.current_tab().permission.front() else { return 0 };
         let card_h = permission_card_height(perm, panel_width) as u16;
         // Permission is modal — only hard-reserve input(3).
         let ceiling = self.terminal_rows.saturating_sub(3);
@@ -6038,7 +6057,9 @@ impl App {
         // grab-bag helper.
         tab.messages.clear();
         tab.tool_calls.clear();
-        tab.permission = None;
+        // Dropping any in-flight responders signals Cancelled back to
+        // the agent — appropriate when the user starts a new turn.
+        tab.permission.clear();
         tab.chat_scroll.reset();
         tab.selection_visible_pending = false;
         // Any leftover card from the previous turn's
@@ -9401,7 +9422,7 @@ mod tests {
     fn permission_panel_height_falls_back_to_compact_below_card_min() {
         let mut app = test_app();
         app.terminal_rows = 7; // ceiling = 7-3 = 4 < CARD_MIN_SIZE
-        app.current_tab_mut().permission = Some(perm_with("ok"));
+        app.current_tab_mut().permission.push_back(perm_with("ok"));
         // Must stay visible — agent flow blocks on this prompt. 1-row strip
         // is the compact fallback rendered by `ui::permission::render`.
         assert_eq!(app.permission_panel_height(80), 1);
@@ -9411,7 +9432,7 @@ mod tests {
     fn permission_panel_height_admits_at_card_min_ceiling() {
         let mut app = test_app();
         app.terminal_rows = 8; // ceiling = 5 == CARD_MIN_SIZE
-        app.current_tab_mut().permission = Some(perm_with("ok"));
+        app.current_tab_mut().permission.push_back(perm_with("ok"));
         assert_eq!(app.permission_panel_height(80), CARD_MIN_SIZE);
     }
 
