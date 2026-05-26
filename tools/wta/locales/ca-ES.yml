@@ -49,6 +49,8 @@ chat.plan_header: "Pla:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(cancel·lat)"
+chat.turn_executed: "→ executat: %{title}"
 
 # ── Marcadors d'entrada (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Pregunteu el que vulgueu, / per a ordres.."  # {Locked="/"}

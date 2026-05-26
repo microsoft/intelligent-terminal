@@ -49,6 +49,8 @@ chat.plan_header: "Reja:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(bekor qilindi)"
+chat.turn_executed: "→ bajarildi: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Istalgan narsa soʻrang, / buyruqlar uchun.."  # {Locked="/"}

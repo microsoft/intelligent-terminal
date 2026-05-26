@@ -1685,7 +1685,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        _OpenOrReuseAgentPane(L"");
+        _OpenOrReuseAgentPane(L"", false, L"Action");
         _UpdateBottomBarState();
         args.Handled(true);
     }
@@ -1736,7 +1736,7 @@ namespace winrt::TerminalApp::implementation
         // intoSessionsView=true code path; wta emits `agent_state_changed`
         // back with `view=sessions, pane_open=true` which lands in
         // `OnAgentStateChanged`.
-        _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true);
+        _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true, L"SessionsAction");
         _UpdateBottomBarState();
         args.Handled(true);
     }
@@ -1750,7 +1750,7 @@ namespace winrt::TerminalApp::implementation
         // Pending/Suggested/Idle let the chord fall through to other consumers.
         if (_diagnostics.autofixState == AutofixState::Armed)
         {
-            _TriggerAutofix();
+            _TriggerAutofix(L"Hotkey");
             args.Handled(true);
         }
         else if (_diagnostics.autofixState == AutofixState::Detected)

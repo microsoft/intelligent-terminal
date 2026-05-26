@@ -49,6 +49,8 @@ chat.plan_header: "Terv:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(megszakítva)"
+chat.turn_executed: "→ végrehajtva: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Kérdezzen bármit, / a parancsokhoz.."  # {Locked="/"}

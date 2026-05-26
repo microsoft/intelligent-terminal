@@ -49,6 +49,8 @@ chat.plan_header: "Plana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(air a sgur)"
+chat.turn_executed: "→ air a chur an gnìomh: %{title}"
 
 # ── Àiteachan-suidhe ion-chuir (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Faighnich rud sam bith, / airson òrdughan.."  # {Locked="/"}

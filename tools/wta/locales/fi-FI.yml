@@ -49,6 +49,8 @@ chat.plan_header: "Suunnitelma:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(peruutettu)"
+chat.turn_executed: "→ suoritettu: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Kysy mitä tahansa, / komennoille.."  # {Locked="/"}

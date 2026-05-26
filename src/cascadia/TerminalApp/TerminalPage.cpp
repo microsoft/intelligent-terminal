@@ -962,7 +962,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto tab = _GetFocusedTabImpl())
         {
             _AutoCreateHiddenAgentPane(tab);
-            _OpenOrReuseAgentPane(L"");
+            _OpenOrReuseAgentPane(L"", false, L"FirstRunExperience");
             // Focus is set in the Initialized callback once the pane is ready.
         }
     }
@@ -2316,9 +2316,29 @@ namespace winrt::TerminalApp::implementation
         _RebuildAgentStack();
     }
 
-    void TerminalPage::_OpenOrReuseAgentPane(const winrt::hstring& prompt, bool intoSessionsView)
+    void TerminalPage::_OpenOrReuseAgentPane(const winrt::hstring& prompt, bool intoSessionsView, const wchar_t* triggerSource)
     {
         _agentPaneLog("_OpenOrReuseAgentPane called, prompt='" + winrt::to_string(prompt) + "', intoSessionsView=" + (intoSessionsView ? "true" : "false"));
+
+        const auto emitAgentPaneOpened = [&]() {
+#if defined(WT_BRANDING_RELEASE)
+            constexpr uint8_t branding = 3;
+#elif defined(WT_BRANDING_PREVIEW)
+            constexpr uint8_t branding = 2;
+#elif defined(WT_BRANDING_CANARY)
+            constexpr uint8_t branding = 1;
+#else
+            constexpr uint8_t branding = 0;
+#endif
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "AgentPaneOpened",
+                TraceLoggingDescription("Event emitted when the agent pane is opened"),
+                TraceLoggingWideString(triggerSource, "TriggerSource", "How the agent pane was triggered"),
+                TraceLoggingValue(branding, "Branding"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+        };
 
         const auto& globals = _settings.GlobalSettings();
         std::wstring cmdline;
@@ -2478,6 +2498,7 @@ namespace winrt::TerminalApp::implementation
                 }
 
                 _RequestAgentState("sessions", /*pane_open*/ true);
+                emitAgentPaneOpened();
                 return;
             }
 
@@ -2499,6 +2520,10 @@ namespace winrt::TerminalApp::implementation
             // so reopening preserves the user's last view.
             _RequestAgentState(wantOpen ? std::optional<std::string_view>{ "chat" } : std::nullopt,
                                wantOpen);
+            if (wantOpen)
+            {
+                emitAgentPaneOpened();
+            }
             return;
         }
 
@@ -2665,6 +2690,8 @@ namespace winrt::TerminalApp::implementation
         // teardown boundary is in the pane-Closed handler.
         activeTab->AgentPaneOpen(true);
 
+        emitAgentPaneOpened();
+
         // No tab_changed needed here — wta was already told its owner tab
         // via --owner-tab-id in the cmdline. Tab switches from here on
         // flow through _ReconcileAgentPaneForActiveTab.
@@ -2697,7 +2724,7 @@ namespace winrt::TerminalApp::implementation
         // path, which already focuses the agent pane after showing it.
         if (!existingPane || existingPane->IsHidden())
         {
-            _OpenOrReuseAgentPane(L"");
+            _OpenOrReuseAgentPane(L"", false, L"FocusAction");
             return;
         }
 
@@ -2713,7 +2740,7 @@ namespace winrt::TerminalApp::implementation
         // tab (which also focuses it).
         if (agentTab != activeTab)
         {
-            _OpenOrReuseAgentPane(L"");
+            _OpenOrReuseAgentPane(L"", false, L"FocusAction");
             return;
         }
 
@@ -3938,7 +3965,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_AgentToggleButtonOnClick(const IInspectable& /*sender*/,
                                                   const RoutedEventArgs& /*eventArgs*/)
     {
-        _OpenOrReuseAgentPane(L"");
+        _OpenOrReuseAgentPane(L"", false, L"ToolbarButton");
         _UpdateBottomBarState();
     }
 
@@ -3965,7 +3992,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true);
+        _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true, L"SessionsButton");
         _UpdateBottomBarState();
     }
 
@@ -3976,7 +4003,7 @@ namespace winrt::TerminalApp::implementation
         {
         case AutofixState::Armed:
             // Fix ready — execute it.
-            _TriggerAutofix();
+            _TriggerAutofix(L"DiagnosticsButton");
             break;
         case AutofixState::Detected:
         {
@@ -4005,7 +4032,7 @@ namespace winrt::TerminalApp::implementation
             // tab. WTA is the authoritative state owner, so we don't mutate
             // _diagnostics locally — we wait for the inbound
             // autofix_state:cleared event to roll us back to Idle.
-            _OpenOrReuseAgentPane(L"");
+            _OpenOrReuseAgentPane(L"", false, L"DiagnosticsButton");
             Json::Value evt;
             evt["type"] = "event";
             evt["method"] = "autofix_dismiss_suggestion";
@@ -4022,7 +4049,7 @@ namespace winrt::TerminalApp::implementation
         case AutofixState::Pending:
             // Analysis in flight — show the agent pane so the user can watch
             // progress. Keep Pending state until WTA confirms armed/cleared.
-            _OpenOrReuseAgentPane(L"");
+            _OpenOrReuseAgentPane(L"", false, L"DiagnosticsButton");
             break;
         case AutofixState::Idle:
         default:
@@ -4317,6 +4344,25 @@ namespace winrt::TerminalApp::implementation
         const auto state = params["state"].asString();
         if (state == "pending")
         {
+            if (_diagnostics.autofixState != AutofixState::Pending)
+            {
+#if defined(WT_BRANDING_RELEASE)
+                constexpr uint8_t branding = 3;
+#elif defined(WT_BRANDING_PREVIEW)
+                constexpr uint8_t branding = 2;
+#elif defined(WT_BRANDING_CANARY)
+                constexpr uint8_t branding = 1;
+#else
+                constexpr uint8_t branding = 0;
+#endif
+                TraceLoggingWrite(
+                    g_hTerminalAppProvider,
+                    "ErrorDetected",
+                    TraceLoggingDescription("Event emitted when an error is auto-detected in a terminal pane"),
+                    TraceLoggingValue(branding, "Branding"),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            }
             _diagnostics.autofixState = AutofixState::Pending;
         }
         else if (state == "armed")
@@ -4665,12 +4711,31 @@ namespace winrt::TerminalApp::implementation
     // Send {method:"autofix_execute",params:{pane_id}} over the outbound
     // protocol bus. WTA (as a wtcli subscriber) receives this via its
     // listen --json event stream and executes the cached fix.
-    void TerminalPage::_TriggerAutofix()
+    void TerminalPage::_TriggerAutofix(const wchar_t* triggerSource)
     {
         if (_diagnostics.autofixState != AutofixState::Armed)
         {
             return;
         }
+
+#if defined(WT_BRANDING_RELEASE)
+        constexpr uint8_t branding = 3;
+#elif defined(WT_BRANDING_PREVIEW)
+        constexpr uint8_t branding = 2;
+#elif defined(WT_BRANDING_CANARY)
+        constexpr uint8_t branding = 1;
+#else
+        constexpr uint8_t branding = 0;
+#endif
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "ErrorFixAttempted",
+            TraceLoggingDescription("Event emitted when the user attempts an agent-suggested fix"),
+            TraceLoggingWideString(triggerSource, "TriggerSource", "How the fix was triggered"),
+            TraceLoggingValue(branding, "Branding"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+
         Json::Value evt;
         evt["type"] = "event";
         evt["method"] = "autofix_execute";

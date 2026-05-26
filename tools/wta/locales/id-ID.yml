@@ -49,6 +49,8 @@ chat.plan_header: "Rencana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(dibatalkan)"
+chat.turn_executed: "→ dijalankan: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Tanyakan apa saja, / untuk perintah.."  # {Locked="/"}

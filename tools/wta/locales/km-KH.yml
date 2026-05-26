@@ -53,6 +53,8 @@ chat.plan_header: "ផែនការ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(បានបោះបង់)"
+chat.turn_executed: "→ បានដំណើរការ: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────────────────────────────────────
 input.placeholder.connected: "សួរអ្វីក៏បាន, / សម្រាប់ពាក្យបញ្ជា.."  # {Locked="/"}

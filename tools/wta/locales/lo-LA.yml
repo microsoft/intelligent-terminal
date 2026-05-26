@@ -49,6 +49,8 @@ chat.plan_header: "ແຜນການ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(ຍົກເລີກແລ້ວ)"
+chat.turn_executed: "→ ດໍາເນີນການແລ້ວ: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}

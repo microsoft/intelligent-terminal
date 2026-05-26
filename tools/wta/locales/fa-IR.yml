@@ -49,6 +49,8 @@ chat.plan_header: "طرح:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(لغو شد)"
+chat.turn_executed: "→ اجرا شد: %{title}"
 
 # ── جای‌نگهدارهای ورودی (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "هرچیزی بپرسید، / برای دستورات.."  # {Locked="/"}

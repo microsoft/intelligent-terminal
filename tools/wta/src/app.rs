@@ -265,6 +265,12 @@ pub struct CompletedTurn {
     /// Enter to toggle. Default false (collapsed) so history stays compact.
     #[serde(default)]
     pub expanded: bool,
+    /// Trailing inline status marker rendered in DIM next to the turn's
+    /// first content line (e.g. "(canceled)" / "→ executed: Run Get-Date").
+    /// Set when the user dismisses or executes a recommendation card, or
+    /// cancels a mid-stream turn — `None` for normal chat turns.
+    #[serde(default)]
+    pub trailing_marker: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -5951,6 +5957,35 @@ impl App {
                 self.session_tab_mut(session_id).autofix.pane_id = None;
                 let tab = self.session_tab_mut(session_id);
                 let prompt = tab.turn.prompt().cloned().expect("prompt set");
+                // Preserve only what the user actually saw streaming (prose
+                // or extracted `explanation`) — not the raw JSON wrapper.
+                // Any tool calls / plans that streamed during the turn are
+                // included regardless; an empty-buf+prose ignore still
+                // records them so they don't get stranded on screen.
+                let visible = ui::chat::user_visible_stream_text(buf).map(|c| c.into_owned());
+                let mut details = tab.current_turn_details();
+                if let Some(visible) = visible {
+                    details.push(ChatMessage::Agent(visible));
+                }
+                if !details.is_empty() {
+                    let pane_label = prompt
+                        .autofix
+                        .as_ref()
+                        .map(|a| a.target_pane_id.clone())
+                        .expect("autofix finalize requires autofix prompt");
+                    tab.completed_turns.push(CompletedTurn {
+                        prompt: format!("Auto-diagnosed error in pane {pane_label}"),
+                        details,
+                        expanded: true,
+                        trailing_marker: None,
+                    });
+                }
+                // Always clear in-flight UI state on Ignore — even if there
+                // was nothing to commit, lingering tool-call rows would look
+                // like an active turn.
+                tab.messages.clear();
+                tab.tool_calls.clear();
+                tab.scroll_to_bottom();
                 tab.turn = TurnState::Surfaced {
                     prompt,
                     outcome: TurnOutcome::Empty,
@@ -5987,6 +6022,7 @@ impl App {
                     prompt: prompt.text.clone(),
                     details,
                     expanded: true,
+                    trailing_marker: None,
                 });
                 tab.messages.clear();
                 tab.tool_calls.clear();
@@ -6048,6 +6084,10 @@ impl App {
         else {
             return;
         };
+        // Snapshot the title before `choice` is moved into ChoiceExecution,
+        // so we can stamp the chat history with an "executed" marker after
+        // dispatch.
+        let executed_title = choice.title.clone();
         let insert_only =
             self.session_tab(session_id).selected_button == 1 && self.is_send_choice(&choice);
         // Autofill parent for Send actions when this is an autofix turn.
@@ -6089,6 +6129,12 @@ impl App {
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
         tab.rec_scroll.reset();
+        // Stamp the matching completed_turn (pushed during surface) with an
+        // "executed" marker so chat history reflects the user's choice.
+        if let Some(last) = tab.completed_turns.last_mut() {
+            let marker = t!("chat.turn_executed", title = &executed_title).into_owned();
+            last.trailing_marker = Some(marker);
+        }
         // commit pending turn (in case eager surface staged one).
         tab.turn = TurnState::Surfaced {
             prompt,
@@ -6115,6 +6161,58 @@ impl App {
             self.emit_autofix_state_cleared(&target_tab);
         }
         let tab = self.session_tab_mut(session_id);
+        let canceled_marker = t!("chat.turn_canceled").into_owned();
+        // Three paths into cancel:
+        //   - Submitted / Streaming → commit a fresh completed_turn (prompt +
+        //     whatever streamed + canceled marker) so the user always sees
+        //     that this turn happened and that they cancelled it.
+        //   - Surfaced{Recommendation}: turn_surface_* already pushed a
+        //     completed_turn; just append the canceled marker to its details.
+        //   - Other states (Idle / Surfaced{Empty / ChatTurn}) → no-op.
+        let new_turn_data: Option<(String, Option<String>)> = match &tab.turn {
+            TurnState::Submitted(prompt) => {
+                let label = match prompt.autofix.as_ref() {
+                    Some(a) => format!("Auto-diagnosed error in pane {}", a.target_pane_id),
+                    None => prompt.text.clone(),
+                };
+                Some((label, None))
+            }
+            TurnState::Streaming { prompt, buf } => {
+                let label = match prompt.autofix.as_ref() {
+                    Some(a) => format!("Auto-diagnosed error in pane {}", a.target_pane_id),
+                    None => prompt.text.clone(),
+                };
+                let visible = ui::chat::user_visible_stream_text(buf).map(|c| c.into_owned());
+                Some((label, visible))
+            }
+            _ => None,
+        };
+        let annotate_card = matches!(
+            &tab.turn,
+            TurnState::Surfaced {
+                outcome: TurnOutcome::Recommendation(_),
+                ..
+            }
+        );
+        if let Some((prompt_label, visible)) = new_turn_data {
+            let mut details = tab.current_turn_details();
+            if let Some(v) = visible {
+                details.push(ChatMessage::Agent(v));
+            }
+            tab.completed_turns.push(CompletedTurn {
+                prompt: prompt_label,
+                details,
+                expanded: true,
+                trailing_marker: Some(canceled_marker),
+            });
+            tab.messages.clear();
+            tab.tool_calls.clear();
+            tab.scroll_to_bottom();
+        } else if annotate_card {
+            if let Some(last) = tab.completed_turns.last_mut() {
+                last.trailing_marker = Some(canceled_marker);
+            }
+        }
         tab.autofix.pane_id = None;
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
@@ -6152,7 +6250,8 @@ impl App {
         tab.completed_turns.push(CompletedTurn {
             prompt: prompt.text.clone(),
             details,
-            expanded: false,
+            expanded: true,
+            trailing_marker: None,
         });
         tab.messages.clear();
         tab.tool_calls.clear();
@@ -6199,8 +6298,21 @@ impl App {
         let target_tab = self.tab_for_session(session_id);
         self.emit_autofix_state_armed(&target_tab, &pane_id, &preview);
         let rec_idx = recommended_choice_index(&recommendations);
+        let summary = format_recommendations_for_chat(&recommendations);
+        let turn_prompt_label = format!("Auto-diagnosed error in pane {pane_id}");
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
+        let mut details = tab.current_turn_details();
+        details.push(ChatMessage::Agent(summary));
+        tab.completed_turns.push(CompletedTurn {
+            prompt: turn_prompt_label,
+            details,
+            expanded: true,
+            trailing_marker: None,
+        });
+        tab.messages.clear();
+        tab.tool_calls.clear();
+        tab.scroll_to_bottom();
         tab.selected_recommendation = rec_idx;
         tab.selection_visible_pending = true;
         tab.progress_status = None;
@@ -6252,6 +6364,7 @@ impl App {
                 prompt: turn_prompt_label,
                 details,
                 expanded: true,
+                trailing_marker: None,
             });
             tab.messages.clear();
             tab.tool_calls.clear();
@@ -8505,6 +8618,80 @@ mod tests {
         );
         assert!(app.current_tab().turn.is_idle());
         assert!(app.tab_mut(DEFAULT_TAB_ID).autofix.pane_id.is_none());
+    }
+
+    #[test]
+    fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
+        // Esc while prose is streaming → commit partial prose as a
+        // CompletedTurn (default-expanded) with the trailing_marker set
+        // so the user sees what arrived and that they cancelled it.
+        let mut app = test_app();
+        submit_test_prompt(&mut app, "tell me a story");
+        app.turn_observe_chunk(
+            DEFAULT_TAB_ID,
+            ChunkKind::Message,
+            "\n\nOnce upon a time",
+        );
+        app.turn_cancel(DEFAULT_TAB_ID);
+        let tab = app.current_tab();
+        assert!(tab.turn.is_idle(), "got {:?}", tab.turn);
+        assert_eq!(tab.completed_turns.len(), 1);
+        let committed = &tab.completed_turns[0];
+        assert_eq!(committed.prompt, "tell me a story");
+        assert!(committed.expanded, "cancel-committed turns default expanded");
+        assert!(committed
+            .details
+            .iter()
+            .any(|m| matches!(m, ChatMessage::Agent(t) if t.contains("Once upon a time"))));
+        assert!(
+            committed
+                .trailing_marker
+                .as_deref()
+                .map_or(false, |m| m.contains("canceled")),
+            "trailing_marker should hold (canceled), got {:?}",
+            committed.trailing_marker
+        );
+        assert!(tab.messages.is_empty(), "messages cleared on cancel");
+        assert!(tab.tool_calls.is_empty(), "tool_calls cleared on cancel");
+    }
+
+    #[test]
+    fn cancel_mid_stream_records_canceled_marker_even_without_visible_prose() {
+        // A buffer that's pure JSON (no `explanation` field, no prose
+        // prefix) renders as nothing during streaming. We must NOT commit
+        // raw JSON as agent prose, but we still record a completed_turn
+        // with the canceled marker so the user knows the prompt was sent
+        // and cancelled.
+        let mut app = test_app();
+        submit_test_prompt(&mut app, "kill pid 1234");
+        app.turn_observe_chunk(
+            DEFAULT_TAB_ID,
+            ChunkKind::Message,
+            r#"{"recommended_choice":1,"choices":[{"choice":1,"#,
+        );
+        app.turn_cancel(DEFAULT_TAB_ID);
+        let tab = app.current_tab();
+        assert!(tab.turn.is_idle());
+        assert_eq!(tab.completed_turns.len(), 1);
+        let committed = &tab.completed_turns[0];
+        assert_eq!(committed.prompt, "kill pid 1234");
+        assert!(
+            !committed
+                .details
+                .iter()
+                .any(|m| matches!(m, ChatMessage::Agent(_))),
+            "JSON-only buffer must not be committed as agent prose"
+        );
+        assert!(
+            committed
+                .trailing_marker
+                .as_deref()
+                .map_or(false, |m| m.contains("canceled")),
+            "trailing_marker should hold (canceled), got {:?}",
+            committed.trailing_marker
+        );
+        assert!(tab.messages.is_empty());
+        assert!(tab.tool_calls.is_empty());
     }
 
     #[test]

@@ -49,6 +49,8 @@ chat.plan_header: "Жоспар:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(бас тартылды)"
+chat.turn_executed: "→ орындалды: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Кез келген сұрақ қойыңыз, / командалар үшін.."  # {Locked="/"}

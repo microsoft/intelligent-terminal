@@ -45,6 +45,8 @@ chat.plan_header: "计划："
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(已取消)"
+chat.turn_executed: "→ 已执行: %{title}"
 
 # ── 输入占位符 (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "随意提问，/ 查看命令.."  # {Locked="/"}

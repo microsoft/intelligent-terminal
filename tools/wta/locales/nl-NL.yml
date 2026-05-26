@@ -49,6 +49,8 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(geannuleerd)"
+chat.turn_executed: "→ uitgevoerd: %{title}"
 
 # ── Invoertijdelijke aanduidingen (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Stel een vraag, / voor opdrachten.."  # {Locked="/"}

@@ -45,6 +45,8 @@ chat.plan_header: "계획:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(취소됨)"
+chat.turn_executed: "→ 실행됨: %{title}"
 
 # ── 입력 자리 표시자 (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "무엇이든 물어보세요, / 명령어.."  # {Locked="/"}

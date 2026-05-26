@@ -187,16 +187,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // Pane position list
         _agentPanePositionMap = winrt::single_threaded_map<winrt::hstring, Editor::EnumEntry>();
         std::vector<Editor::EnumEntry> posEntries;
-        static constexpr std::pair<std::wstring_view, std::wstring_view> positions[] = {
-            { L"Bottom", L"bottom" },
-            { L"Right", L"right" },
-            { L"Top", L"top" },
-            { L"Left", L"left" },
+        const std::pair<winrt::hstring, std::wstring_view> positions[] = {
+            { RS_(L"AIAgents_PanePosition_Bottom"), L"bottom" },
+            { RS_(L"AIAgents_PanePosition_Right"), L"right" },
+            { RS_(L"AIAgents_PanePosition_Top"), L"top" },
+            { RS_(L"AIAgents_PanePosition_Left"), L"left" },
         };
         for (const auto& [displayName, value] : positions)
         {
             auto entry = winrt::make<implementation::EnumEntry>(
-                winrt::hstring{ displayName },
+                displayName,
                 winrt::box_value(winrt::hstring{ value }));
             posEntries.emplace_back(entry);
             _agentPanePositionMap.Insert(winrt::hstring{ value }, entry);

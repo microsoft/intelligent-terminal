@@ -49,6 +49,8 @@ chat.plan_header: "திட்டம்:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(ரத்து செய்யப்பட்டது)"
+chat.turn_executed: "→ செயல்படுத்தப்பட்டது: %{title}"
 
 # ── உள்ளீடு இடப்பிடி (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "எதையும் கேளுங்கள், / கட்டளைகளுக்கு.."  # {Locked="/"}

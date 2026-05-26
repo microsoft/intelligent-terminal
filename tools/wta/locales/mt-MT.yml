@@ -49,6 +49,8 @@ chat.plan_header: "Pjan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(ikkanċellat)"
+chat.turn_executed: "→ ġie eżegwit: %{title}"
 
 # ── Placeholders tal-input (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Staqsi kull ħaġa, / għall-kmandat.."  # {Locked="/"}

@@ -49,6 +49,8 @@ chat.plan_header: "Plean:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(cealaithe)"
+chat.turn_executed: "→ rinneadh: %{title}"
 
 # ── Ionadóirí ionchuir (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Cuir ceist ar bith, / le haghaidh orduithe.."  # {Locked="/"}

@@ -49,6 +49,8 @@ chat.plan_header: "Plano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.turn_canceled: "(kinansela)"
+chat.turn_executed: "→ naisagawa: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Magtanong ng kahit ano, / para sa mga command.."  # {Locked="/"}
