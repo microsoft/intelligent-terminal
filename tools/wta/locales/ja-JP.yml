@@ -108,7 +108,7 @@ agents.status.error: "エラー"
 agents.status.idle: "アイドル"
 
 # ── レイアウト ウェルカム ヒント (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. エージェント ペインの表示/非表示 • Ctrl+Alt+/ エージェント セッションの表示/非表示)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. エージェント ペインの表示/非表示 • Ctrl+Shift+/ エージェント セッションの表示/非表示)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── 接続状態 ────────────────────────────────────────────────────────────
 connection.starting: "エージェントを起動中..."

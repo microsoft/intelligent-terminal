@@ -112,7 +112,7 @@ agents.status.error: "Error"
 agents.status.idle: "Inactiu"
 
 # ── Consell de benvinguda del disseny (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. per mostrar/amagar el tauler d'agent • Ctrl+Alt+/ per mostrar/amagar la sessió d'agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. per mostrar/amagar el tauler d'agent • Ctrl+Shift+/ per mostrar/amagar la sessió d'agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Estat de la connexió ────────────────────────────────────────────────────────
 connection.starting: "S'està iniciant l'agent..."

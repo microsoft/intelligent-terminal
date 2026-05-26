@@ -119,7 +119,7 @@ agents.status.error: "Ошибка"
 agents.status.idle: "Простаивает"
 
 # ── Подсказка приветствия макета (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. — показать/скрыть панель агента • Ctrl+Alt+/ — показать/скрыть сеанс агента)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. — показать/скрыть панель агента • Ctrl+Shift+/ — показать/скрыть сеанс агента)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Состояние подключения ────────────────────────────────────────────────────────────
 connection.starting: "Запуск агента..."

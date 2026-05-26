@@ -20,6 +20,8 @@ mod runtime_paths;
 mod rtl;
 mod pane_context;
 mod shell;
+#[cfg(test)]
+mod test_support;
 mod theme;
 mod ui;
 mod ui_trace;

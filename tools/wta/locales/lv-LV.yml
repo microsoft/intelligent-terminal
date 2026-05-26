@@ -112,7 +112,7 @@ agents.status.error: "Kļūda"
 agents.status.idle: "Dīkstāvē"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. lai rādītu/paslēptu aģenta paneli • Ctrl+Alt+/ lai rādītu/paslēptu aģenta sesiju)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. lai rādītu/paslēptu aģenta paneli • Ctrl+Shift+/ lai rādītu/paslēptu aģenta sesiju)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Startē aģentu..."

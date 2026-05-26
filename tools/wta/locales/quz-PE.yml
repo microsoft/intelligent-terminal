@@ -112,7 +112,7 @@ agents.status.error: "Pantay"
 agents.status.idle: "Samachkan"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. agente k'itita rikuchiy/pakay • Ctrl+Alt+/ agente hunt'ata rikuchiy/pakay)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. agente k'itita rikuchiy/pakay • Ctrl+Shift+/ agente hunt'ata rikuchiy/pakay)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agente qallarichkan..."

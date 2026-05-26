@@ -112,7 +112,7 @@ agents.status.error: "Hiba"
 agents.status.idle: "Tétlen"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ügynökpanel megjelenítése/elrejtése • Ctrl+Alt+/ ügynökmunkamenet megjelenítése/elrejtése)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ügynökpanel megjelenítése/elrejtése • Ctrl+Shift+/ ügynökmunkamenet megjelenítése/elrejtése)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Ügynök indítása..."

@@ -123,7 +123,7 @@ agents.status.error: "Xatolik"
 agents.status.idle: "Boʻsh"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. agent panelini koʻrsatish/yashirish • Ctrl+Alt+/ agent seansini koʻrsatish/yashirish)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. agent panelini koʻrsatish/yashirish • Ctrl+Shift+/ agent seansini koʻrsatish/yashirish)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agent ishga tushirilmoqda..."

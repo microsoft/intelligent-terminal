@@ -108,7 +108,7 @@ agents.status.error: "错误"
 agents.status.idle: "空闲"
 
 # ── 布局欢迎提示 (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. 显示/隐藏智能体窗格 • Ctrl+Alt+/ 显示/隐藏智能体会话)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. 显示/隐藏智能体窗格 • Ctrl+Shift+/ 显示/隐藏智能体会话)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── 连接状态 ────────────────────────────────────────────────────────────
 connection.starting: "正在启动智能体..."

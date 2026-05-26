@@ -205,25 +205,40 @@ jobs:
       # config-file resolution picks it up.
       additionalTargets: 'x86_64-pc-windows-msvc i686-pc-windows-msvc aarch64-pc-windows-msvc'
 
-  # Create .cargo/config.toml for Azure Artifacts source replacement.
-  # This is NOT checked into the repo because it would break local dev
-  # (the feed requires CI-only auth tokens). It only exists during CI.
+  # Append the Azure Artifacts source replacement to the repo's
+  # checked-in .cargo/config.toml. We append rather than overwrite
+  # because the repo's version carries the `+crt-static` rustflags
+  # that wta.exe needs to start without VCRUNTIME140.dll on customer
+  # machines (the package ships no VC runtime and strips the
+  # Microsoft.VCLibs dependency). The previous version of this step
+  # used `Set-Content`, which silently clobbered those rustflags and
+  # produced CI-built wta.exe binaries that failed to launch in clean
+  # environments (e.g. Windows Sandbox).
+  #
+  # 1ES build agents do a fresh checkout per run, so the file always
+  # starts from its git-pristine state — Add-Content's lack of
+  # idempotency on a hypothetical re-used workspace is not a real
+  # concern in this pipeline.
+  #
   # Cargo discovers .cargo/config.toml by walking from the current
   # working directory (repo root) up — NOT from the manifest directory.
   # The config must live at the repo root, not inside tools/wta/.
   - pwsh: |-
       $configDir = '.cargo'
+      $configPath = Join-Path $configDir 'config.toml'
       New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-      @"
+      $registry = @"
+
       [registries]
       WindowsTerminalCargo = { index = "sparse+https://pkgs.dev.azure.com/microsoft/Dart/_packaging/IntelligentTerminal_Cargo/Cargo/index/" }
 
       [source.crates-io]
       replace-with = "WindowsTerminalCargo"
-      "@ | Set-Content "$configDir/config.toml" -Encoding utf8NoBOM
-      Write-Host "Wrote $configDir/config.toml"
-      Get-Content "$configDir/config.toml"
-    displayName: Create Cargo registry config (CI only)
+      "@
+      Add-Content -Path $configPath -Value $registry -Encoding utf8NoBOM
+      Write-Host "Updated ${configPath}:"
+      Get-Content $configPath
+    displayName: Append Cargo registry config (CI only)
 
   # CargoAuthenticate issues a Bearer token (using System.AccessToken) for
   # every Azure Artifacts Cargo feed referenced in the config file.

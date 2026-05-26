@@ -112,7 +112,7 @@ agents.status.error: "Erro"
 agents.status.idle: "Inativo"
 
 # ── Sugestão de boas-vindas da disposição (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. para mostrar/ocultar o painel do agente • Ctrl+Alt+/ para mostrar/ocultar a sessão do agente)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. para mostrar/ocultar o painel do agente • Ctrl+Shift+/ para mostrar/ocultar a sessão do agente)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Estado da ligação ────────────────────────────────────────────────────────────
 connection.starting: "A iniciar o agente..."

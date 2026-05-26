@@ -123,7 +123,7 @@ agents.status.error: "შეცდომა"
 agents.status.idle: "უმოქმედო"
 
 # ── განლაგების მისასალმი მინიშნება (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. აგენტის პანელის ჩვენება/დამალვა • Ctrl+Alt+/ აგენტის სესიის ჩვენება/დამალვა)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. აგენტის პანელის ჩვენება/დამალვა • Ctrl+Shift+/ აგენტის სესიის ჩვენება/დამალვა)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── კავშირის მდგომარეობა ────────────────────────────────────────────────────────
 connection.starting: "აგენტის გაშვება..."

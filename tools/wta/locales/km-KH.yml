@@ -126,7 +126,7 @@ agents.status.error: "កំហុស"
 agents.status.idle: "ទំនេរ"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. បង្ហាញ/លាក់ផ្តាំង AI អេជេន្ត់ • Ctrl+Alt+/ បង្ហាញ/លាក់វគ្គ AI អេជេន្ត់)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. បង្ហាញ/លាក់ផ្តាំង AI អេជេន្ត់ • Ctrl+Shift+/ បង្ហាញ/លាក់វគ្គ AI អេជេន្ត់)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────────────────────
 # Status text shown while launching the agent process

@@ -119,7 +119,7 @@ agents.status.error: "Помилка"
 agents.status.idle: "Бездіяльний"
 
 # ── Підказка привітання макету (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. — показати/сховати панель агента • Ctrl+Alt+/ — показати/сховати сеанс агента)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. — показати/сховати панель агента • Ctrl+Shift+/ — показати/сховати сеанс агента)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Стан підключення ────────────────────────────────────────────────────────────
 connection.starting: "Запуск агента..."

@@ -119,7 +119,7 @@ agents.status.error: "Pogreška"
 agents.status.idle: "Neaktivno"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. prikaži/sakrij okno agenta • Ctrl+Alt+/ prikaži/sakrij sesiju agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. prikaži/sakrij okno agenta • Ctrl+Shift+/ prikaži/sakrij sesiju agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Pokretanje agenta..."

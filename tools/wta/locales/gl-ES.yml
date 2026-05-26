@@ -112,7 +112,7 @@ agents.status.error: "Erro"
 agents.status.idle: "Inactivo"
 
 # ── Suxestión de benvida do deseño (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. para mostrar/ocultar o panel de axente • Ctrl+Alt+/ para mostrar/ocultar a sesión de axente)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. para mostrar/ocultar o panel de axente • Ctrl+Shift+/ para mostrar/ocultar a sesión de axente)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Estado da conexión ────────────────────────────────────────────────────────
 connection.starting: "Iniciando o axente..."

@@ -123,7 +123,7 @@ agents.status.error: "പിശക്"
 agents.status.idle: "നിഷ്ക്രിയം"
 
 # ── ലേഔട്ട് സ്വാഗത സൂചന (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ഏജന്റ് പേന്‍ കാണിക്കുക/മറയ്ക്കുക • Ctrl+Alt+/ ഏജന്റ് സെഷന്‍ കാണിക്കുക/മറയ്ക്കുക)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ഏജന്റ് പേന്‍ കാണിക്കുക/മറയ്ക്കുക • Ctrl+Shift+/ ഏജന്റ് സെഷന്‍ കാണിക്കുക/മറയ്ക്കുക)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── കണക്ഷന്‍ നില ────────────────────────────────────────────────────────
 connection.starting: "ഏജന്റ് ആരംഭിക്കുന്നു..."

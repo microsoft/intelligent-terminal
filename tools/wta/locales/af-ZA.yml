@@ -112,7 +112,7 @@ agents.status.error: "Fout"
 agents.status.idle: "Ledig"
 
 # ── Uitleg-welkomwenk (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. om agentpaneel te wys/verberg • Ctrl+Alt+/ om agentsessie te wys/verberg)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. om agentpaneel te wys/verberg • Ctrl+Shift+/ om agentsessie te wys/verberg)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Verbindingstoestand ────────────────────────────────────────────────────────
 connection.starting: "Agent word begin..."

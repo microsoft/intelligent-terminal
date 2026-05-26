@@ -237,13 +237,45 @@ fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'stat
     // marker is rendered as a prefix (between caret and title) rather than
     // a suffix so it stays visible even when a long title pushes the
     // trailing columns off the right edge.
+    //
+    // When the pane is narrower than the row's natural width, the title
+    // is adaptively truncated so the timestamp (right edge) stays
+    // visible. If the title would have to shrink below TITLE_FLOOR
+    // characters to make room, the optional trailing pieces are dropped
+    // in priority order — cli suffix first, then status badge — before
+    // squeezing the title any further. The age column is never dropped.
+    const TITLE_FLOOR: usize = 8;
+    const MIN_PAD: usize = 1;
+
     let caret_w    = 2_usize;
-    let title_w    = title_text.width();
     let badge_w    = if badge.is_empty() { 0 } else { badge.width() + 2 }; // "  badge"
     let cli_w      = if cli_suffix.is_empty() { 0 } else { cli_suffix.width() + 1 };
     let age_w      = age.width();
-    let used       = caret_w + prefix_w + title_w + badge_w + cli_w + age_w;
-    let pad        = row_width.saturating_sub(used).max(1);
+
+    let leading       = caret_w + prefix_w;
+    let reserved_tail = MIN_PAD + age_w;
+
+    let mut keep_badge = badge_w > 0;
+    let mut keep_cli   = cli_w > 0;
+    let mut title_cap  = row_width
+        .saturating_sub(leading + reserved_tail + badge_w + cli_w);
+
+    if title_cap < TITLE_FLOOR && keep_cli {
+        keep_cli  = false;
+        title_cap = row_width.saturating_sub(leading + reserved_tail + badge_w);
+    }
+    if title_cap < TITLE_FLOOR && keep_badge {
+        keep_badge = false;
+        title_cap  = row_width.saturating_sub(leading + reserved_tail);
+    }
+
+    let title_text = trunc(&title_text, title_cap.max(1));
+
+    let title_w       = title_text.width();
+    let final_badge_w = if keep_badge { badge_w } else { 0 };
+    let final_cli_w   = if keep_cli   { cli_w   } else { 0 };
+    let used          = caret_w + prefix_w + title_w + final_badge_w + final_cli_w + age_w;
+    let pad           = row_width.saturating_sub(used).max(1);
 
     let mut spans = vec![caret];
     if let Some(prefix) = origin_prefix {
@@ -253,11 +285,11 @@ fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'stat
         spans.push(Span::styled(prefix, title_style));
     }
     spans.push(Span::styled(title_text, title_style));
-    if !badge.is_empty() {
+    if keep_badge && !badge.is_empty() {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(badge, badge_style));
     }
-    if !cli_suffix.is_empty() {
+    if keep_cli && !cli_suffix.is_empty() {
         spans.push(Span::raw(" "));
         spans.push(Span::styled(
             cli_suffix,
@@ -485,26 +517,23 @@ fn trunc(s: &str, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
     use std::time::Duration;
 
-    /// All tests that read rust_i18n strings share the global locale.
-    /// Cargo runs tests in parallel by default, so without this mutex
-    /// one test's `set_locale("zh-CN")` is observed by another test
-    /// inside its en-US assertions. Every locale-sensitive test must
-    /// acquire this lock first.
-    static LOCALE_LOCK: Mutex<()> = Mutex::new(());
+    /// All locale-sensitive tests must hold the crate-wide locale guard
+    /// from [`crate::test_support::lock_locale`]. It serializes parallel
+    /// tests on the global `rust_i18n` locale AND restores the previous
+    /// locale on drop, so the suite stays order-independent.
 
     /// Ensure tests use en-US locale so the hardcoded English assertions match
     /// (regardless of what the running shell's locale is). Must be called
-    /// while holding `LOCALE_LOCK`.
+    /// while holding the locale guard.
     fn set_test_locale() {
         rust_i18n::set_locale("en-US");
     }
 
     #[test]
     fn relative_age_just_now_under_a_minute() {
-        let _g = LOCALE_LOCK.lock().unwrap();
+        let _g = crate::test_support::lock_locale();
         set_test_locale();
         let t = SystemTime::now() - Duration::from_secs(5);
         assert_eq!(relative_age(t), "just now");
@@ -512,7 +541,7 @@ mod tests {
 
     #[test]
     fn relative_age_singular_and_plural_minutes() {
-        let _g = LOCALE_LOCK.lock().unwrap();
+        let _g = crate::test_support::lock_locale();
         set_test_locale();
         let t1 = SystemTime::now() - Duration::from_secs(60);
         assert_eq!(relative_age(t1), "1 minute ago");
@@ -522,7 +551,7 @@ mod tests {
 
     #[test]
     fn relative_age_days() {
-        let _g = LOCALE_LOCK.lock().unwrap();
+        let _g = crate::test_support::lock_locale();
         set_test_locale();
         let t = SystemTime::now() - Duration::from_secs(3 * 86_400);
         assert_eq!(relative_age(t), "3 days ago");
@@ -531,7 +560,7 @@ mod tests {
     #[test]
     fn relative_age_falls_back_to_calendar_date_after_a_week() {
         // 8 days ago — must produce a calendar date string, not "8 days ago".
-        let _g = LOCALE_LOCK.lock().unwrap();
+        let _g = crate::test_support::lock_locale();
         set_test_locale();
         let t = SystemTime::now() - Duration::from_secs(8 * 86_400);
         let s = relative_age(t);
@@ -556,7 +585,7 @@ mod tests {
     ///      one digit, and doesn't end with the English literal "ago".
     #[test]
     fn relative_age_covers_representative_locales() {
-        let _g = LOCALE_LOCK.lock().unwrap();
+        let _g = crate::test_support::lock_locale();
         let one_minute = SystemTime::now() - Duration::from_secs(60);
         let many_minutes = SystemTime::now() - Duration::from_secs(180);
         let many_hours = SystemTime::now() - Duration::from_secs(5 * 3600);
@@ -633,7 +662,7 @@ mod tests {
     /// contains digits, and is distinct across locales.
     #[test]
     fn format_calendar_date_locale_smoke() {
-        let _g = LOCALE_LOCK.lock().unwrap();
+        let _g = crate::test_support::lock_locale();
         // 2026-05-22 in UTC.
         let target = UNIX_EPOCH + Duration::from_secs(20_595 * 86_400);
 
@@ -681,7 +710,7 @@ mod tests {
 
     #[test]
     fn format_calendar_date_renders_month_name() {
-        let _g = LOCALE_LOCK.lock().unwrap();
+        let _g = crate::test_support::lock_locale();
         rust_i18n::set_locale("en-US");
         let t = UNIX_EPOCH + Duration::from_secs(20_563 * 86_400);
         let s = format_calendar_date(t);

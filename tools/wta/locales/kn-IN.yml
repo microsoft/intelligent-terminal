@@ -123,7 +123,7 @@ agents.status.error: "ದೋಷ"
 agents.status.idle: "ನಿಷ್ಕ್ರಿಯ"
 
 # ── ಲೇಔಟ್ ಸ್ವಾಗತ ಸೂಚನೆ (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ಏಜೆಂಟ್ ಪೇನ್ ತೋರಿಸು/ಮರೆಮಾಡು • Ctrl+Alt+/ ಏಜೆಂಟ್ ಸೆಶನ್ ತೋರಿಸು/ಮರೆಮಾಡು)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ಏಜೆಂಟ್ ಪೇನ್ ತೋರಿಸು/ಮರೆಮಾಡು • Ctrl+Shift+/ ಏಜೆಂಟ್ ಸೆಶನ್ ತೋರಿಸು/ಮರೆಮಾಡು)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── ಸಂಪರ್ಕ ಸ್ಥಿತಿ ────────────────────────────────────────────────────────
 connection.starting: "ಏಜೆಂಟ್ ಪ್ರಾರಂಭವಾಗುತ್ತಿದೆ..."

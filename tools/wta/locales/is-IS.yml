@@ -112,7 +112,7 @@ agents.status.error: "Villa"
 agents.status.idle: "Aðgerðarlaus"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. til að sýna/fela agentspjald • Ctrl+Alt+/ til að sýna/fela agentlotu)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. til að sýna/fela agentspjald • Ctrl+Shift+/ til að sýna/fela agentlotu)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Ræsi agent..."

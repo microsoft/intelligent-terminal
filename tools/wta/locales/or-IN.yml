@@ -123,7 +123,7 @@ agents.status.error: "ତ୍ରୁଟି"
 agents.status.idle: "ନିଷ୍କ୍ରିୟ"
 
 # ── ଲେଆଉଟ୍ ସ୍ୱାଗତ ସଂକେତ (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ଏଜେଣ୍ଟ ପେନ୍ ଦେଖାନ୍ତୁ/ଲୁଚାନ୍ତୁ • Ctrl+Alt+/ ଏଜେଣ୍ଟ ସେସନ୍ ଦେଖାନ୍ତୁ/ଲୁଚାନ୍ତୁ)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ଏଜେଣ୍ଟ ପେନ୍ ଦେଖାନ୍ତୁ/ଲୁଚାନ୍ତୁ • Ctrl+Shift+/ ଏଜେଣ୍ଟ ସେସନ୍ ଦେଖାନ୍ତୁ/ଲୁଚାନ୍ତୁ)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── ସଂଯୋଗ ସ୍ଥିତି ────────────────────────────────────────────────────────
 connection.starting: "ଏଜେଣ୍ଟ ଆରମ୍ଭ ହେଉଛି..."

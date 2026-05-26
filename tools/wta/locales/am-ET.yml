@@ -112,7 +112,7 @@ agents.status.error: "Error"
 agents.status.idle: "Idle"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "(Ctrl+Shift+. የኤጅንት ገጽታ ማሳየት/መደበቅ • Ctrl+Alt+/ የኤጅንት ክፍለጥ ማሳየት/መደበቅ)"
+layout.welcome_hint: "(Ctrl+Shift+. የኤጅንት ገጽታ ማሳየት/መደበቅ • Ctrl+Shift+/ የኤጅንት ክፍለጥ ማሳየት/መደበቅ)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "ኤጅንት በመጀመር..."
