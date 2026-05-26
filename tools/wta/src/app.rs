@@ -19,6 +19,8 @@ struct DeferredAcpParams {
     new_session_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::NewSessionForTab>>,
     load_session_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::LoadSessionForTab>>,
     drop_session_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::DropSessionRequest>>,
+    rename_session_rx:
+        Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::RenameSessionRequest>>,
     restart_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::RestartRequest>>,
     shell_mgr: Arc<crate::shell::ShellManager>,
     wt_connected: bool,
@@ -38,7 +40,7 @@ use crate::pane_context::PaneContext;
 
 use crate::protocol::acp::client::{
     prompt_timing_log, CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab,
-    PromptSubmission, RestartRequest,
+    PromptSubmission, RenameSessionRequest, RestartRequest,
 };
 use crate::ui;
 use crate::ui_trace;
@@ -844,6 +846,17 @@ pub enum AppEvent {
     AgentBusy {
         tab_id: String,
     },
+    /// WT-side `tab_renamed` event: the user dragged a tab out into a new
+    /// window (or otherwise caused the tab's StableId to change). The
+    /// underlying helper process survives the drag (conpty + TermControl
+    /// are reattached via WT's ContentId mechanism), but the tab key WT
+    /// uses to address us has changed. Without rekeying, autofix /
+    /// per-tab state events targeting the new id wouldn't match any
+    /// entry in `tab_sessions`.
+    TabRenamed {
+        old_tab_id: String,
+        new_tab_id: String,
+    },
     ExecutionInfo(String),
     AgentThoughtChunk {
         session_id: String,
@@ -905,16 +918,6 @@ pub enum AppEvent {
         pane_id: String,
         tab_id: Option<String>,
         params: serde_json::Value,
-    },
-    /// `_internal.*` control event from Terminal: attach/detach/resize
-    /// a per-tab agent pane. Routed separately from WtEvent so the
-    /// dispatcher doesn't have to special-case the prefix and so the
-    /// shape stays close to the wire protocol — we carry the original
-    /// JSON value untouched and parse it via
-    /// `crate::protocol::internal_control::try_parse_internal` at
-    /// dispatch time.
-    InternalControl {
-        value: serde_json::Value,
     },
     /// Background agent install completed — refresh the detected agents list.
     AgentInstallComplete,
@@ -1392,6 +1395,7 @@ pub struct App {
     new_session_tx: mpsc::UnboundedSender<NewSessionForTab>,
     load_session_tx: mpsc::UnboundedSender<LoadSessionForTab>,
     drop_session_tx: mpsc::UnboundedSender<DropSessionRequest>,
+    rename_session_tx: mpsc::UnboundedSender<RenameSessionRequest>,
     restart_tx: mpsc::UnboundedSender<RestartRequest>,
     debug_capture_enabled: Arc<AtomicBool>,
     // Slash-command UI state. The /help overlay is global — it covers
@@ -1419,12 +1423,6 @@ pub struct App {
     // None (falling back to `DEFAULT_TAB_ID`) for manual `wta` runs.
     // Lazily extended on each new `tab_changed` event.
     pub(crate) tab_sessions: HashMap<String, TabSession>,
-    /// Per-tab Ratatui render contexts for the shared-wta model. One
-    /// entry per agent pane currently attached, keyed by tab StableId.
-    /// Populated by `_internal.attach_pane`, drained by
-    /// `_internal.detach_pane`. Empty in the default (per-window-wta)
-    /// mode — only the `--headless` shared process uses it.
-    pub(crate) pane_registry: crate::pane_registry::PaneRegistry,
     // Reverse lookup: ACP `SessionId` → tab id. Populated from
     // `AgentConnected` (the startup session, bound to whichever tab the
     // process owns) and `SessionAttached` (lazily-created sessions for
@@ -1545,6 +1543,7 @@ impl App {
         new_session_tx: mpsc::UnboundedSender<NewSessionForTab>,
         load_session_tx: mpsc::UnboundedSender<LoadSessionForTab>,
         drop_session_tx: mpsc::UnboundedSender<DropSessionRequest>,
+        rename_session_tx: mpsc::UnboundedSender<RenameSessionRequest>,
         restart_tx: mpsc::UnboundedSender<RestartRequest>,
         debug_capture_enabled: Arc<AtomicBool>,
         wt_connected: bool,
@@ -1582,6 +1581,7 @@ impl App {
             new_session_tx,
             load_session_tx,
             drop_session_tx,
+            rename_session_tx,
             restart_tx,
             debug_capture_enabled,
             help_overlay_visible: false,
@@ -1595,7 +1595,6 @@ impl App {
             show_notification_banner: false,
             autofix_enabled,
             tab_sessions,
-            pane_registry: crate::pane_registry::PaneRegistry::new(),
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
             history_load_state: HistoryLoadState::NotStarted,
@@ -1623,6 +1622,9 @@ impl App {
         new_session_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::NewSessionForTab>,
         load_session_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::LoadSessionForTab>,
         drop_session_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::DropSessionRequest>,
+        rename_session_rx: mpsc::UnboundedReceiver<
+            crate::protocol::acp::client::RenameSessionRequest,
+        >,
         restart_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::RestartRequest>,
         shell_mgr: Arc<crate::shell::ShellManager>,
         wt_connected: bool,
@@ -1635,6 +1637,7 @@ impl App {
             new_session_rx: Some(new_session_rx),
             load_session_rx: Some(load_session_rx),
             drop_session_rx: Some(drop_session_rx),
+            rename_session_rx: Some(rename_session_rx),
             restart_rx: Some(restart_rx),
             shell_mgr,
             wt_connected,
@@ -1659,6 +1662,7 @@ impl App {
                 let (_ntx, nrx) = mpsc::unbounded_channel();
                 let (_ltx, lrx) = mpsc::unbounded_channel();
                 let (_dtx, drx) = mpsc::unbounded_channel();
+                let (_rntx, rnrx) = mpsc::unbounded_channel();
                 let (_rtx, rrx) = mpsc::unbounded_channel();
                 self.prompt_tx = ptx;
                 params.prompt_rx = Some(prx);
@@ -1666,6 +1670,7 @@ impl App {
                 params.new_session_rx = Some(nrx);
                 params.load_session_rx = Some(lrx);
                 params.drop_session_rx = Some(drx);
+                params.rename_session_rx = Some(rnrx);
                 params.restart_rx = Some(rrx);
             }
 
@@ -1675,6 +1680,7 @@ impl App {
                 Some(new_session_rx),
                 Some(load_session_rx),
                 Some(drop_session_rx),
+                Some(rename_session_rx),
                 Some(restart_rx),
             ) = (
                 params.prompt_rx.take(),
@@ -1682,6 +1688,7 @@ impl App {
                 params.new_session_rx.take(),
                 params.load_session_rx.take(),
                 params.drop_session_rx.take(),
+                params.rename_session_rx.take(),
                 params.restart_rx.take(),
             ) {
                 // Resolve the agent executable path (bare "copilot" may not
@@ -1703,6 +1710,7 @@ impl App {
                     new_session_rx,
                     load_session_rx,
                     drop_session_rx,
+                    rename_session_rx,
                     restart_rx,
                     shell_mgr,
                     wt_connected,
@@ -2682,33 +2690,6 @@ impl App {
             .expect("active tab session always materialized")
     }
 
-    /// Shared-wta singleton mode (`wta --headless`). Drives the App
-    /// event loop without binding Ratatui to the process's own
-    /// stdout — each attached pane brings its own conpty handle pair
-    /// via `_internal.attach_pane`, and the per-pane RenderCtxs in
-    /// `pane_registry` are what actually emit bytes to the user.
-    ///
-    /// No crossterm input task either: keyboard input for each pane
-    /// comes from that pane's ConptyReader (handled by per-pane
-    /// tokio tasks spawned at attach time, see PaneRegistry callers).
-    pub async fn run_headless(
-        &mut self,
-        mut event_rx: mpsc::UnboundedReceiver<AppEvent>,
-    ) -> Result<()> {
-        tracing::info!(target: "headless", "App::run_headless entering main loop");
-        while let Some(event) = event_rx.recv().await {
-            let kind = Self::event_name(&event);
-            tracing::debug!(target: "headless", kind = %kind, "received event");
-            self.handle_event(event);
-            if self.should_quit {
-                tracing::info!(target: "headless", "should_quit set — exiting headless loop");
-                break;
-            }
-        }
-        tracing::info!(target: "headless", "App::run_headless loop exited (channel closed)");
-        Ok(())
-    }
-
     pub async fn run(
         &mut self,
         terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
@@ -2906,6 +2887,7 @@ impl App {
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
             AppEvent::AgentError { .. } => "agent_error",
             AppEvent::AgentBusy { .. } => "agent_busy",
+            AppEvent::TabRenamed { .. } => "tab_renamed",
             AppEvent::ExecutionInfo(_) => "execution_info",
             AppEvent::AgentThoughtChunk { .. } => "agent_thought_chunk",
             AppEvent::AgentMessageChunk { .. } => "agent_message_chunk",
@@ -2919,7 +2901,6 @@ impl App {
             AppEvent::SystemMessage(_) => "system_message",
             AppEvent::DebugPipeMessage(_) => "debug_pipe_message",
             AppEvent::WtEvent { .. } => "wt_event",
-            AppEvent::InternalControl { .. } => "internal_control",
             AppEvent::AgentInstallComplete => "agent_install_complete",
             AppEvent::LoginProgress { .. } => "login_progress",
             AppEvent::LoginComplete { .. } => "login_complete",
@@ -3121,6 +3102,9 @@ impl App {
                         .to_string(),
                 ));
                 tab.scroll_to_bottom();
+            }
+            AppEvent::TabRenamed { old_tab_id, new_tab_id } => {
+                self.rename_tab_session(&old_tab_id, &new_tab_id);
             }
             AppEvent::AgentError { session_id, message } => {
                 // Optimistic-connect fallback: if we have stashed auth info
@@ -3436,9 +3420,6 @@ impl App {
                     self.current_tab_mut().agents_list_state.select(Some(0));
                 }
             }
-            AppEvent::InternalControl { value } => {
-                self.handle_internal_control(value);
-            }
             AppEvent::WtEvent {
                 method,
                 pane_id,
@@ -3549,6 +3530,39 @@ impl App {
                     } else {
                         tracing::warn!(target: "tab_session", "tab_closed: missing tab_id in params");
                     }
+                    return;
+                }
+
+                if method == "tab_renamed" {
+                    // Tab-drag rename: the user dragged this tab into
+                    // another window so WT minted a fresh StableId. The
+                    // helper process survives the drag; we just need to
+                    // rekey our per-tab maps so events with the new id
+                    // route to this tab's existing state. Route through
+                    // the AppEvent::TabRenamed handler so the WtEvent
+                    // inline path and any direct AppEvent posts share
+                    // one implementation.
+                    let old_tab_id = params
+                        .get("old_tab_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let new_tab_id = params
+                        .get("new_tab_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if old_tab_id.is_empty() || new_tab_id.is_empty() {
+                        tracing::warn!(
+                            target: "tab_session",
+                            old_tab_id,
+                            new_tab_id,
+                            "tab_renamed: missing old_tab_id or new_tab_id in params"
+                        );
+                        return;
+                    }
+                    self.handle_event(AppEvent::TabRenamed {
+                        old_tab_id: old_tab_id.to_string(),
+                        new_tab_id: new_tab_id.to_string(),
+                    });
                     return;
                 }
 
@@ -4166,14 +4180,6 @@ impl App {
             }
         }
 
-        // Shared-wta render hook. Cheap no-op when no panes are
-        // attached (default per-window-wta mode never populates
-        // pane_registry). When panes ARE attached (headless mode
-        // post-attach), this keeps each pane in sync with whatever
-        // mutation the event handler above just performed against
-        // tab_sessions. Ratatui's diff backend makes the redraw
-        // virtually free when nothing changed.
-        self.render_attached_panes();
     }
 
     fn event_requires_redraw(&self, event: &AppEvent) -> bool {
@@ -5184,6 +5190,116 @@ impl App {
             remaining_tabs = self.tab_sessions.len(),
             "drop_tab_session"
         );
+    }
+
+    /// Rekey per-tab state after a tab-drag rename. WT mints a fresh
+    /// StableId when the user drags a tab into another window; the
+    /// underlying helper process survives the drag (conpty + TermControl
+    /// reattach via WT's ContentId mechanism) but the tab key WT uses to
+    /// address us has changed. Without this, autofix / set_agent_state /
+    /// any other event WT broadcasts with the new id would miss every
+    /// entry keyed under the old id.
+    ///
+    /// Concretely re-keys: `self.tab_id`, `self.tab_sessions` (HashMap key),
+    /// `self.session_to_tab` (values), and any cached
+    /// `wt_notifications.tab_id` matching the old id. Triggers a
+    /// re-projection so the bottom-bar autofix snapshot, agent-pane view,
+    /// and pane_open flag are republished under the new identity.
+    ///
+    /// No-op when `new_tab_id == old_tab_id`. If the old tab id is unknown,
+    /// still updates `self.tab_id` when it pointed there — this defends
+    /// against a missed `tab_changed` race where WTA's view of the active
+    /// tab and tab_sessions disagree.
+    fn rename_tab_session(&mut self, old_tab_id: &str, new_tab_id: &str) {
+        if old_tab_id == new_tab_id {
+            tracing::debug!(
+                target: "helper",
+                old_tab_id,
+                new_tab_id,
+                "tab_renamed no-op: ids identical"
+            );
+            return;
+        }
+        let had_session = if let Some(mut entry) = self.tab_sessions.remove(old_tab_id) {
+            // Preserve target slot's TabSession if one was lazily
+            // created under the new id before this event arrived — but
+            // in normal flow that shouldn't happen (WT mints the new
+            // id atomically with the drag). Defensive only: prefer the
+            // entry that already has conversation state.
+            if let Some(existing) = self.tab_sessions.remove(new_tab_id) {
+                if !existing.messages.is_empty() && entry.messages.is_empty() {
+                    entry = existing;
+                }
+            }
+            self.tab_sessions.insert(new_tab_id.to_string(), entry);
+            true
+        } else {
+            false
+        };
+
+        if self.tab_id.as_deref() == Some(old_tab_id) {
+            self.tab_id = Some(new_tab_id.to_string());
+        }
+
+        // session_to_tab values point at tab ids — rewrite any that
+        // matched. Iterating + collecting keys to avoid holding the
+        // borrow while we mutate.
+        let mut rebound_sessions = 0usize;
+        for tab in self.session_to_tab.values_mut() {
+            if tab == old_tab_id {
+                *tab = new_tab_id.to_string();
+                rebound_sessions += 1;
+            }
+        }
+
+        // wt_notifications carry the originating tab id so a later
+        // dismiss / re-emit targets the right tab. Rewrite cached ones.
+        let mut rebound_notifications = 0usize;
+        for n in self.wt_notifications.iter_mut() {
+            if n.tab_id.as_deref() == Some(old_tab_id) {
+                n.tab_id = Some(new_tab_id.to_string());
+                rebound_notifications += 1;
+            }
+        }
+
+        tracing::info!(
+            target: "helper",
+            old_tab_id,
+            new_tab_id,
+            had_session,
+            rebound_sessions,
+            rebound_notifications,
+            "tab renamed via drag"
+        );
+
+        // Re-publish the (now-renamed) active tab so the bottom-bar
+        // autofix snapshot, agent-pane view, and pane_open flag are
+        // republished under the new identity. Without this, C++'s
+        // mirrored state would still be tagged with the old id on the
+        // next event round-trip.
+        if self.tab_id.as_deref() == Some(new_tab_id) {
+            self.project_active_tab_state();
+        }
+
+        // Tell the ACP client task to rekey its tab→SessionId map so the
+        // next prompt on this tab finds the existing ACP session instead
+        // of falling through to the lazy-create branch. The map lives
+        // behind `Arc<Mutex<…>>` in the ACP task and can't be touched
+        // from `&mut App` directly — mirror the DropSessionRequest plumb.
+        // Send-failure means the ACP task is gone; logged for traces but
+        // not actionable.
+        if let Err(e) = self.rename_session_tx.send(RenameSessionRequest {
+            old_tab_id: old_tab_id.to_string(),
+            new_tab_id: new_tab_id.to_string(),
+        }) {
+            tracing::warn!(
+                target: "helper",
+                old_tab_id,
+                new_tab_id,
+                error = ?e,
+                "rename_session_tx send failed (ACP client task closed?)"
+            );
+        }
     }
 
     /// Wipe per-tab state in place while keeping the `TabSession` slot
@@ -6619,424 +6735,6 @@ pub fn armed_fix_preview(rec: &crate::coordinator::RecommendationSet) -> String 
 }
 
 impl App {
-    /// Handle a `_internal.*` control event from Terminal. Routes
-    /// each step of the pipeline through tracing so a developer can
-    /// follow the chain end-to-end from a log:
-    ///
-    ///   1. inbound — JSON event arrived from the receiver task
-    ///   2. parse — try_parse_internal succeeded or rejected
-    ///   3. action — attach/detach/resize landed against the registry
-    ///   4. outbound — ack pushed onto the publisher
-    pub(crate) fn handle_internal_control(&mut self, value: serde_json::Value) {
-        let method = value
-            .get("method")
-            .and_then(|m| m.as_str())
-            .unwrap_or("<missing>")
-            .to_string();
-        tracing::info!(
-            target: "internal_control",
-            step = "inbound",
-            method = %method,
-            "received _internal.* event",
-        );
-
-        let event = match crate::protocol::internal_control::try_parse_internal(&value) {
-            Ok(Some(evt)) => evt,
-            Ok(None) => {
-                // Should never happen — wt_event_rx only routes
-                // `_internal.*`-prefixed events to InternalControl. Log
-                // loudly so a future protocol drift surfaces.
-                tracing::error!(
-                    target: "internal_control",
-                    step = "parse",
-                    method = %method,
-                    "non-_internal method reached InternalControl branch — wt_event_rx routing bug",
-                );
-                return;
-            }
-            Err(err) => {
-                tracing::warn!(
-                    target: "internal_control",
-                    step = "parse",
-                    method = %method,
-                    error = %err,
-                    "malformed _internal.* payload — ignoring",
-                );
-                return;
-            }
-        };
-        tracing::debug!(
-            target: "internal_control",
-            step = "parse",
-            event = ?event,
-            "parsed inbound event",
-        );
-
-        match event {
-            crate::protocol::internal_control::InboundEvent::AttachPane { id, params } => {
-                let tab_id = params.tab_id.clone();
-                let cols = params.cols;
-                let rows = params.rows;
-                let agent_id = params.agent_id.clone();
-                tracing::info!(
-                    target: "internal_control",
-                    step = "action",
-                    op = "attach_pane",
-                    tab_id = %tab_id,
-                    cols = cols,
-                    rows = rows,
-                    agent_id = %agent_id,
-                    registry_size_before = self.pane_registry.len(),
-                    "attaching pane",
-                );
-                // SAFETY: the contract documented in
-                // doc/specs/Multi-window-agent-pane.md → "Handle
-                // marshaling" requires Terminal to have just
-                // DuplicateHandle'd the slave HANDLEs into this
-                // process before the OnEvent call. wta cannot
-                // validate these from outside — we trust the wire
-                // protocol.
-                let attach_result = unsafe { self.pane_registry.attach(params) };
-                let ack = match attach_result {
-                    Ok(displaced) => {
-                        if displaced.is_some() {
-                            tracing::info!(
-                                target: "internal_control",
-                                step = "action",
-                                op = "attach_pane",
-                                tab_id = %tab_id,
-                                "replaced existing attachment for tab",
-                            );
-                        }
-                        tracing::info!(
-                            target: "internal_control",
-                            step = "action",
-                            op = "attach_pane",
-                            tab_id = %tab_id,
-                            registry_size_after = self.pane_registry.len(),
-                            "attach succeeded",
-                        );
-
-                        // Side-effects on a successful attach:
-                        //   (a) materialise a TabSession entry so
-                        //       the pane has chat state to render
-                        //       against. Push a single System
-                        //       welcome line carrying the agent_id
-                        //       so the user can see the pane was
-                        //       successfully wired up before any
-                        //       real ACP traffic arrives. Full
-                        //       per-tab ACP session spawn is a
-                        //       follow-up — once that lands, this
-                        //       welcome line is just a sticky first
-                        //       row, no functional change.
-                        //   (b) spawn the input pump that reads user
-                        //       keystrokes off the conpty's slave-in
-                        //       handle.
-                        //   (c) the post-event render hook
-                        //       `render_attached_panes` runs at the
-                        //       end of `handle_event` and will draw
-                        //       the new pane automatically.
-                        let tab_entry = self
-                            .tab_sessions
-                            .entry(tab_id.clone())
-                            .or_insert_with(TabSession::default);
-                        let welcome = format!(
-                            "agent pane attached (agent={agent_id}, tab={tab_id})"
-                        );
-                        tab_entry.messages.push(ChatMessage::System(welcome));
-                        self.spawn_pane_input_task(&tab_id);
-
-                        crate::protocol::internal_control::OutboundAck::AttachPaneAck {
-                            id: id.clone(),
-                            params: crate::protocol::internal_control::AckParams {
-                                tab_id,
-                                status: crate::protocol::internal_control::AckStatus::Ok,
-                                error: None,
-                            },
-                        }
-                    }
-                    Err(err) => {
-                        tracing::error!(
-                            target: "internal_control",
-                            step = "action",
-                            op = "attach_pane",
-                            tab_id = %tab_id,
-                            error = %err,
-                            "attach failed",
-                        );
-                        crate::protocol::internal_control::OutboundAck::AttachPaneAck {
-                            id: id.clone(),
-                            params: crate::protocol::internal_control::AckParams {
-                                tab_id,
-                                status: crate::protocol::internal_control::AckStatus::Error,
-                                error: Some(err.to_string()),
-                            },
-                        }
-                    }
-                };
-                self.emit_internal_ack(&ack);
-            }
-            crate::protocol::internal_control::InboundEvent::DetachPane { id, params } => {
-                let tab_id = params.tab_id.clone();
-                tracing::info!(
-                    target: "internal_control",
-                    step = "action",
-                    op = "detach_pane",
-                    tab_id = %tab_id,
-                    registry_size_before = self.pane_registry.len(),
-                    "detaching pane",
-                );
-                let detached = self.pane_registry.detach(&tab_id);
-                let ack = if detached.is_some() {
-                    tracing::info!(
-                        target: "internal_control",
-                        step = "action",
-                        op = "detach_pane",
-                        tab_id = %tab_id,
-                        registry_size_after = self.pane_registry.len(),
-                        "detach succeeded",
-                    );
-                    crate::protocol::internal_control::OutboundAck::DetachPaneAck {
-                        id,
-                        params: crate::protocol::internal_control::AckParams {
-                            tab_id,
-                            status: crate::protocol::internal_control::AckStatus::Ok,
-                            error: None,
-                        },
-                    }
-                } else {
-                    tracing::warn!(
-                        target: "internal_control",
-                        step = "action",
-                        op = "detach_pane",
-                        tab_id = %tab_id,
-                        "detach requested for tab with no attached pane",
-                    );
-                    crate::protocol::internal_control::OutboundAck::DetachPaneAck {
-                        id,
-                        params: crate::protocol::internal_control::AckParams {
-                            tab_id,
-                            status: crate::protocol::internal_control::AckStatus::Error,
-                            error: Some("tab not attached".to_string()),
-                        },
-                    }
-                };
-                self.emit_internal_ack(&ack);
-            }
-            crate::protocol::internal_control::InboundEvent::ResizePane { id: _, params } => {
-                let tab_id = params.tab_id.clone();
-                let cols = params.cols as u16;
-                let rows = params.rows as u16;
-                tracing::info!(
-                    target: "internal_control",
-                    step = "action",
-                    op = "resize_pane",
-                    tab_id = %tab_id,
-                    cols = cols,
-                    rows = rows,
-                    "resizing pane viewport",
-                );
-                match self.pane_registry.get_mut(&tab_id) {
-                    Some(ctx) => {
-                        if let Err(err) = ctx.resize(cols, rows) {
-                            tracing::warn!(
-                                target: "internal_control",
-                                step = "action",
-                                op = "resize_pane",
-                                tab_id = %tab_id,
-                                error = %err,
-                                "resize failed",
-                            );
-                        }
-                    }
-                    None => {
-                        // Resize for an unknown tab is benign — the
-                        // conpty's own SIGWINCH-equivalent already
-                        // propagates dimensions to whatever consumer
-                        // owns the slave HANDLE. Log at debug only.
-                        tracing::debug!(
-                            target: "internal_control",
-                            step = "action",
-                            op = "resize_pane",
-                            tab_id = %tab_id,
-                            "resize for unknown tab — no ctx in registry",
-                        );
-                    }
-                }
-                // Resize has no ack in the wire protocol — it's
-                // informational, see spec R7.
-            }
-        }
-    }
-
-    /// Re-render every attached agent pane against its tab's chat
-    /// state. Cheap because Ratatui's diff backend only flushes the
-    /// cells that changed since the previous frame, so calling this
-    /// from the end of `handle_event` (regardless of which event
-    /// fired) does not blow up output volume.
-    ///
-    /// This is what makes the shared wta look "live": any state
-    /// mutation that lands in `tab_sessions[tab_id]` (an agent reply,
-    /// a tool call, a system message) shows up on the corresponding
-    /// pane the moment the event handler returns.
-    ///
-    /// The default-mode TUI's `draw_frame` targets the process's own
-    /// stdout Terminal, which is *not* a member of `pane_registry`,
-    /// so this method is a strict addition — it never touches the
-    /// default-mode render path.
-    fn render_attached_panes(&mut self) {
-        if self.pane_registry.is_empty() {
-            return;
-        }
-        for tab_id in self.pane_registry.tab_ids() {
-            self.render_pane_for_tab(&tab_id);
-        }
-    }
-
-    /// Render this tab's view into its attached pane. Snapshots the
-    /// chat lines under an immutable borrow first so the subsequent
-    /// `get_mut` on `pane_registry` doesn't fight the borrow checker.
-    fn render_pane_for_tab(&mut self, tab_id: &str) {
-        let lines = self
-            .tab_sessions
-            .get(tab_id)
-            .map(|t| format_messages_for_pane(&t.messages))
-            .unwrap_or_else(|| vec!["(no chat session attached)".into()]);
-        let header_label = if self.agent_name.is_empty() {
-            format!("wta · tab {tab_id}")
-        } else {
-            format!("wta · {} · tab {tab_id}", self.agent_name)
-        };
-        let Some(ctx) = self.pane_registry.get_mut(tab_id) else {
-            return;
-        };
-        let draw_result = ctx.terminal_mut().draw(|frame| {
-            use ratatui::layout::{Constraint, Direction, Layout};
-            use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
-
-            let area = frame.area();
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(1), Constraint::Min(1)])
-                .split(area);
-
-            frame.render_widget(Paragraph::new(header_label.clone()), chunks[0]);
-            let items: Vec<ListItem> = lines.iter().map(|l| ListItem::new(l.clone())).collect();
-            let list = List::new(items).block(Block::default().borders(Borders::TOP));
-            frame.render_widget(list, chunks[1]);
-        });
-        if let Err(err) = draw_result {
-            tracing::warn!(
-                target: "internal_control",
-                step = "render",
-                tab_id = %tab_id,
-                error = %err,
-                "render_pane_for_tab draw failed",
-            );
-        }
-    }
-
-    /// Take the ConptyReader off this tab's RenderCtx and spawn a
-    /// blocking task that pumps user keystrokes. Until per-tab ACP
-    /// is wired, the bytes are logged but otherwise dropped.
-    ///
-    /// Uses spawn_blocking because the underlying `ReadFile` syscall
-    /// is blocking by nature; running it on the tokio runtime's
-    /// regular task pool would stall the LocalSet. Spawning is
-    /// conditional on a runtime being present so unit tests that
-    /// call `handle_internal_control` directly do not panic with
-    /// "no current reactor."
-    fn spawn_pane_input_task(&mut self, tab_id: &str) {
-        let Some(ctx) = self.pane_registry.get_mut(tab_id) else {
-            return;
-        };
-        let Some(mut reader) = ctx.take_reader() else {
-            tracing::warn!(
-                target: "internal_control",
-                step = "spawn_input",
-                tab_id = %tab_id,
-                "reader already taken — duplicate attach?",
-            );
-            return;
-        };
-        let handle = match tokio::runtime::Handle::try_current() {
-            Ok(h) => h,
-            Err(_) => {
-                tracing::debug!(
-                    target: "internal_control",
-                    step = "spawn_input",
-                    tab_id = %tab_id,
-                    "no tokio runtime — skipping input task spawn (likely a unit test)",
-                );
-                return;
-            }
-        };
-        let tab_id_owned = tab_id.to_string();
-        handle.spawn_blocking(move || {
-            use std::io::Read;
-            tracing::info!(
-                target: "pane_input",
-                tab_id = %tab_id_owned,
-                "input reader task spawned",
-            );
-            let mut buf = [0u8; 4096];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => {
-                        tracing::info!(
-                            target: "pane_input",
-                            tab_id = %tab_id_owned,
-                            "EOF — pane detached, input task exiting",
-                        );
-                        break;
-                    }
-                    Ok(n) => {
-                        tracing::debug!(
-                            target: "pane_input",
-                            tab_id = %tab_id_owned,
-                            bytes = n,
-                            "received input bytes",
-                        );
-                        // Real routing into the per-tab ACP session lands
-                        // when Task #17 wires per-pane CLI children.
-                    }
-                    Err(err) => {
-                        tracing::warn!(
-                            target: "pane_input",
-                            tab_id = %tab_id_owned,
-                            error = %err,
-                            "read error — input task exiting",
-                        );
-                        break;
-                    }
-                }
-            }
-        });
-    }
-
-    /// Serialize an outbound ack and push it onto the publisher.
-    /// Splitting out the emit step makes it easy to mock in tests.
-    fn emit_internal_ack(&self, ack: &crate::protocol::internal_control::OutboundAck) {
-        let payload = match serde_json::to_string(ack) {
-            Ok(s) => s,
-            Err(err) => {
-                tracing::error!(
-                    target: "internal_control",
-                    step = "outbound",
-                    error = %err,
-                    "failed to serialize ack",
-                );
-                return;
-            }
-        };
-        tracing::info!(
-            target: "internal_control",
-            step = "outbound",
-            payload = %payload,
-            "publishing _internal.*_ack",
-        );
-        send_wt_protocol_event(payload);
-    }
 
     /// Push the current agent status (name / version / model / connection state)
     /// to the host so a XAML-rendered agent bar can update itself. The COM
@@ -7350,33 +7048,6 @@ fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max { s.to_string() } else { format!("{}…", &s[..max]) }
 }
 
-/// Render a tab's chat history into the plain-text line list a
-/// shared-wta pane displays. Deliberately simple: no styling, no
-/// truncation, no scrollback — Ratatui's List widget handles
-/// clipping to the viewport. The richer `chat::render` used in the
-/// default-mode TUI will replace this once we factor it into a
-/// reusable per-(tab, terminal) renderer; for now this is the
-/// smallest visible difference between "pane attached" and
-/// "pane attached + conversation going."
-fn format_messages_for_pane(messages: &[ChatMessage]) -> Vec<String> {
-    if messages.is_empty() {
-        return vec!["(no messages yet)".into()];
-    }
-    messages
-        .iter()
-        .map(|m| match m {
-            ChatMessage::User(s) => format!("user > {s}"),
-            ChatMessage::Agent(s) => format!("agent > {s}"),
-            ChatMessage::System(s) => format!("system > {s}"),
-            ChatMessage::ToolCall { title, status, .. } => format!("tool [{status}] > {title}"),
-            ChatMessage::Plan(_) => "plan > …".into(),
-            ChatMessage::Error(s) => format!("error > {s}"),
-            ChatMessage::AgentEvent(s) => format!("event > {s}"),
-        })
-        .collect()
-}
-
-
 fn now_unix_s() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -7486,262 +7157,12 @@ mod tests {
         let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
         let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
         let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (rename_session_tx, _rename_session_rx) = tokio::sync::mpsc::unbounded_channel();
         let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
         let debug_capture = Arc::new(AtomicBool::new(false));
-        App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, restart_tx, debug_capture, true, false)
+        App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, debug_capture, true, false)
     }
 
-    // ─── _internal.* control chain (Stage A end-to-end) ──────────────────────
-
-    /// Allocate the wta-side handles of two anonymous pipes and an
-    /// observer reader on the output side. Mirrors what the spec calls
-    /// "conpty slave handles" — at the test layer they are anonymous
-    /// pipes because we only need byte plumbing, not the conpty
-    /// kernel object's terminal-emulation semantics.
-    fn fresh_attach_handles_for_test() -> (
-        u64, // pty_in (wta reads from this)
-        u64, // pty_out (wta writes to this)
-        crate::conpty_handle::ConptyReader, // observer of wta's output
-    ) {
-        use std::ptr::null_mut;
-        use windows_sys::Win32::System::Pipes::CreatePipe;
-        let mut input_read: *mut std::ffi::c_void = null_mut();
-        let mut input_write: *mut std::ffi::c_void = null_mut();
-        let mut output_read: *mut std::ffi::c_void = null_mut();
-        let mut output_write: *mut std::ffi::c_void = null_mut();
-        unsafe {
-            assert_ne!(
-                CreatePipe(&mut input_read, &mut input_write, null_mut(), 0),
-                0
-            );
-            assert_ne!(
-                CreatePipe(&mut output_read, &mut output_write, null_mut(), 0),
-                0
-            );
-            let observer = crate::conpty_handle::ConptyReader::from_raw_handle(
-                output_read as std::os::windows::io::RawHandle,
-            );
-            let _ = input_write; // leak — closing it would EOF wta's reader
-            (input_read as u64, output_write as u64, observer)
-        }
-    }
-
-    #[test]
-    fn handle_internal_control_attach_pane_populates_registry() {
-        let mut app = test_app();
-        assert_eq!(app.pane_registry.len(), 0);
-
-        let (pin, pout, _obs) = fresh_attach_handles_for_test();
-        let value = json!({
-            "method": "_internal.attach_pane",
-            "id": "test-corr-1",
-            "params": {
-                "tab_id": "TAB_TEST",
-                "pty_in": pin,
-                "pty_out": pout,
-                "cols": 80,
-                "rows": 24,
-                "agent_id": "copilot",
-                "initial_cwd": "C:\\",
-                "initial_view": "chat",
-            }
-        });
-        app.handle_internal_control(value);
-
-        assert_eq!(app.pane_registry.len(), 1);
-        assert!(app.pane_registry.get_mut("TAB_TEST").is_some());
-    }
-
-    #[test]
-    fn handle_internal_control_detach_pane_clears_registry_entry() {
-        let mut app = test_app();
-        let (pin, pout, _obs) = fresh_attach_handles_for_test();
-        let attach = json!({
-            "method": "_internal.attach_pane",
-            "params": {
-                "tab_id": "TAB_X",
-                "pty_in": pin, "pty_out": pout,
-                "cols": 80, "rows": 24,
-                "agent_id": "copilot",
-                "initial_cwd": "/",
-                "initial_view": "chat",
-            }
-        });
-        app.handle_internal_control(attach);
-        assert_eq!(app.pane_registry.len(), 1);
-
-        let detach = json!({
-            "method": "_internal.detach_pane",
-            "params": { "tab_id": "TAB_X" }
-        });
-        app.handle_internal_control(detach);
-        assert_eq!(app.pane_registry.len(), 0);
-    }
-
-    #[test]
-    fn handle_internal_control_malformed_payload_is_silently_dropped() {
-        // A malformed _internal.* event must not crash or pollute
-        // state. Missing required `tab_id` here. Expected behaviour:
-        // log a warn (we can't observe that from a unit test
-        // without a tracing subscriber), do not change state.
-        let mut app = test_app();
-        let value = json!({
-            "method": "_internal.attach_pane",
-            "params": {
-                "pty_in": 1, "pty_out": 2,
-                "cols": 80, "rows": 24,
-                "agent_id": "copilot",
-                "initial_cwd": "/",
-                "initial_view": "chat",
-            }
-        });
-        app.handle_internal_control(value);
-        assert_eq!(app.pane_registry.len(), 0);
-    }
-
-    #[test]
-    fn handle_event_attach_pane_renders_initial_frame_to_observer() {
-        // Going through `handle_event` (rather than calling
-        // `handle_internal_control` directly) exercises the
-        // render_attached_panes hook at the tail of the dispatcher,
-        // which is what draws each attached pane after every event.
-        // For a fresh attach the chat is empty, so the visible
-        // result is the per-tab header plus "(no messages yet)".
-        use std::io::Read;
-
-        let mut app = test_app();
-        let (pin, pout, mut observer) = fresh_attach_handles_for_test();
-        let value = json!({
-            "method": "_internal.attach_pane",
-            "params": {
-                "tab_id": "TAB_INITIAL",
-                "pty_in": pin, "pty_out": pout,
-                "cols": 60, "rows": 8,
-                "agent_id": "claude",
-                "initial_cwd": "/",
-                "initial_view": "chat",
-            }
-        });
-        app.handle_event(AppEvent::InternalControl { value });
-
-        let mut buf = vec![0u8; 8192];
-        let n = observer.read(&mut buf).unwrap();
-        let rendered = String::from_utf8_lossy(&buf[..n]);
-        // Ratatui's diff render emits per-cell cursor moves so
-        // multi-word strings are split across ANSI sequences in the
-        // byte stream. Individual tokens like "TAB_INITIAL" still
-        // appear contiguously (cell-runs aren't broken mid-word
-        // unless the line wraps), so we assert on distinctive
-        // markers rather than full phrases.
-        assert!(
-            rendered.contains("TAB_INITIAL"),
-            "header did not echo tab_id; got: {rendered:?}",
-        );
-        assert!(
-            rendered.contains("wta"),
-            "header label missing; got: {rendered:?}",
-        );
-        assert!(
-            rendered.contains("attached"),
-            "expected attach welcome line; got: {rendered:?}",
-        );
-        assert!(
-            rendered.contains("claude"),
-            "welcome should echo agent_id; got: {rendered:?}",
-        );
-    }
-
-    #[test]
-    fn handle_event_post_attach_redraws_when_chat_state_mutates() {
-        // After a pane is attached, any event that mutates the
-        // tab's chat history should trigger a re-render on that
-        // pane via render_attached_panes. Inject a User message
-        // directly into tab_sessions then dispatch a benign event
-        // (Tick, which goes through handle_event) and check the
-        // observer sees the new message text.
-        use std::io::Read;
-
-        let mut app = test_app();
-        let (pin, pout, mut observer) = fresh_attach_handles_for_test();
-        let attach = json!({
-            "method": "_internal.attach_pane",
-            "params": {
-                "tab_id": "TAB_LIVE",
-                "pty_in": pin, "pty_out": pout,
-                "cols": 60, "rows": 8,
-                "agent_id": "claude",
-                "initial_cwd": "/",
-                "initial_view": "chat",
-            }
-        });
-        app.handle_event(AppEvent::InternalControl { value: attach });
-
-        // Drain the initial render so the next read sees only the
-        // post-mutation diff.
-        let mut throwaway = vec![0u8; 8192];
-        let _ = observer.read(&mut throwaway).unwrap();
-
-        // Mutate chat state, then send any AppEvent so handle_event
-        // runs render_attached_panes.
-        app.tab_sessions
-            .get_mut("TAB_LIVE")
-            .unwrap()
-            .messages
-            .push(ChatMessage::Agent("LIVE_MARKER".into()));
-        app.handle_event(AppEvent::Tick);
-
-        let mut buf = vec![0u8; 8192];
-        let n = observer.read(&mut buf).unwrap();
-        let rendered = String::from_utf8_lossy(&buf[..n]);
-        assert!(
-            rendered.contains("LIVE_MARKER"),
-            "post-mutation redraw did not include new message text; got: {rendered:?}",
-        );
-    }
-
-    #[test]
-    fn handle_internal_control_attach_then_render_bytes_reach_observer() {
-        // The whole chain end-to-end: feed an attach_pane JSON in,
-        // pull the resulting RenderCtx out of the registry, draw a
-        // marker, confirm the marker surfaces on the matching pipe
-        // end. This is what Stage A claims to enable; if this test
-        // breaks the design assumption is wrong, not just the code.
-        use std::io::Read;
-
-        let mut app = test_app();
-        let (pin, pout, mut observer) = fresh_attach_handles_for_test();
-        let attach = json!({
-            "method": "_internal.attach_pane",
-            "params": {
-                "tab_id": "TAB_E2E",
-                "pty_in": pin, "pty_out": pout,
-                "cols": 40, "rows": 6,
-                "agent_id": "copilot",
-                "initial_cwd": "/",
-                "initial_view": "chat",
-            }
-        });
-        app.handle_internal_control(attach);
-
-        let ctx = app
-            .pane_registry
-            .get_mut("TAB_E2E")
-            .expect("attach should have inserted a RenderCtx");
-        ctx.terminal_mut()
-            .draw(|frame| {
-                use ratatui::widgets::Paragraph;
-                frame.render_widget(Paragraph::new("E2E_OK"), frame.area());
-            })
-            .unwrap();
-
-        let mut buf = vec![0u8; 4096];
-        let n = observer.read(&mut buf).unwrap();
-        let rendered = String::from_utf8_lossy(&buf[..n]);
-        assert!(
-            rendered.contains("E2E_OK"),
-            "rendered bytes from registry-stored ctx didn't surface; got: {rendered:?}"
-        );
-    }
 
     // ─── word boundary helpers ──────────────────────────────────────────────
 
@@ -7875,6 +7296,185 @@ mod tests {
         let params = json!({"session_id": "1"});
         let n = classify_wt_event("something_new", "1", None, &params);
         assert_eq!(n.severity, WtEventSeverity::Informational);
+    }
+
+    // ─── tab_renamed (tab-drag rekeying) ────────────────────────────────────
+
+    #[test]
+    fn tab_renamed_rekeys_active_tab_and_session_map() {
+        let mut app = test_app();
+        // Seed: active tab is AAAA with a bound ACP session.
+        app.tab_id = Some("AAAA".to_string());
+        app.tab_sessions
+            .insert("AAAA".to_string(), TabSession::default());
+        app.session_to_tab
+            .insert("sess-1".to_string(), "AAAA".to_string());
+
+        // Drive the rename via the WtEvent dispatch path — same code path
+        // a real broadcast from the COM server takes.
+        app.handle_event(AppEvent::WtEvent {
+            method: "tab_renamed".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({"old_tab_id": "AAAA", "new_tab_id": "BBBB"}),
+        });
+
+        assert_eq!(app.tab_id.as_deref(), Some("BBBB"),
+            "active tab id must follow the rename");
+        assert!(app.tab_sessions.contains_key("BBBB"),
+            "tab_sessions must contain the new key after rename");
+        assert!(!app.tab_sessions.contains_key("AAAA"),
+            "tab_sessions must no longer contain the old key");
+        assert_eq!(app.session_to_tab.get("sess-1").map(String::as_str),
+            Some("BBBB"),
+            "session_to_tab values pointing at the old id must be rewritten");
+    }
+
+    #[test]
+    fn tab_renamed_appevent_variant_drives_same_handler() {
+        // Direct AppEvent::TabRenamed dispatch — used by callers that
+        // already deserialized the params (mirrors the WtEvent inline
+        // path).
+        let mut app = test_app();
+        app.tab_id = Some("AAAA".to_string());
+        app.tab_sessions
+            .insert("AAAA".to_string(), TabSession::default());
+
+        app.handle_event(AppEvent::TabRenamed {
+            old_tab_id: "AAAA".to_string(),
+            new_tab_id: "CCCC".to_string(),
+        });
+
+        assert_eq!(app.tab_id.as_deref(), Some("CCCC"));
+        assert!(app.tab_sessions.contains_key("CCCC"));
+        assert!(!app.tab_sessions.contains_key("AAAA"));
+    }
+
+    #[test]
+    fn tab_renamed_sends_rename_session_request_to_acp_client() {
+        // The chat-history side rekeys in-process, but tab_to_session
+        // lives in the ACP client task — it has to be told to rekey via
+        // the rename_session_tx channel. Without this signal, the next
+        // prompt on the dragged tab can't find the old SessionId.
+        let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (rename_session_tx, mut rename_session_rx) =
+            tokio::sync::mpsc::unbounded_channel();
+        let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
+        let debug_capture = Arc::new(AtomicBool::new(false));
+        let mut app = App::new(
+            prompt_tx,
+            recommendation_tx,
+            permission_tx,
+            cancel_tx,
+            new_session_tx,
+            load_session_tx,
+            drop_session_tx,
+            rename_session_tx,
+            restart_tx,
+            debug_capture,
+            true,
+            false,
+        );
+
+        app.tab_id = Some("AAAA".to_string());
+        app.tab_sessions
+            .insert("AAAA".to_string(), TabSession::default());
+
+        app.handle_event(AppEvent::TabRenamed {
+            old_tab_id: "AAAA".to_string(),
+            new_tab_id: "BBBB".to_string(),
+        });
+
+        // The ACP client task should have received exactly one
+        // RenameSessionRequest with the old/new ids — that's what makes
+        // the dragged tab's chat history line up with the agent's turn
+        // context after the drag.
+        let req = rename_session_rx
+            .try_recv()
+            .expect("rename_session_tx must have received a request");
+        assert_eq!(req.old_tab_id, "AAAA");
+        assert_eq!(req.new_tab_id, "BBBB");
+        assert!(rename_session_rx.try_recv().is_err(),
+            "exactly one request should have been sent");
+    }
+
+    #[test]
+    fn tab_renamed_noop_does_not_send_rename_session_request() {
+        // A no-op rename (old == new) must not bother the ACP client —
+        // there's nothing to rekey, and a spurious request would
+        // needlessly grab the tab_to_session lock.
+        let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (rename_session_tx, mut rename_session_rx) =
+            tokio::sync::mpsc::unbounded_channel();
+        let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
+        let debug_capture = Arc::new(AtomicBool::new(false));
+        let mut app = App::new(
+            prompt_tx,
+            recommendation_tx,
+            permission_tx,
+            cancel_tx,
+            new_session_tx,
+            load_session_tx,
+            drop_session_tx,
+            rename_session_tx,
+            restart_tx,
+            debug_capture,
+            true,
+            false,
+        );
+
+        app.tab_id = Some("AAAA".to_string());
+        app.tab_sessions
+            .insert("AAAA".to_string(), TabSession::default());
+
+        app.handle_event(AppEvent::TabRenamed {
+            old_tab_id: "AAAA".to_string(),
+            new_tab_id: "AAAA".to_string(),
+        });
+
+        assert!(rename_session_rx.try_recv().is_err(),
+            "no-op rename must not send a RenameSessionRequest");
+    }
+
+    #[test]
+    fn tab_renamed_with_missing_fields_is_dropped() {
+        let mut app = test_app();
+        app.tab_id = Some("AAAA".to_string());
+        app.tab_sessions
+            .insert("AAAA".to_string(), TabSession::default());
+
+        // Empty new_tab_id — must not corrupt state.
+        app.handle_event(AppEvent::WtEvent {
+            method: "tab_renamed".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({"old_tab_id": "AAAA", "new_tab_id": ""}),
+        });
+        assert_eq!(app.tab_id.as_deref(), Some("AAAA"),
+            "rename with empty new_tab_id must be dropped, leaving state untouched");
+        assert!(app.tab_sessions.contains_key("AAAA"));
+
+        // Missing field entirely — must not corrupt state.
+        app.handle_event(AppEvent::WtEvent {
+            method: "tab_renamed".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({"old_tab_id": "AAAA"}),
+        });
+        assert_eq!(app.tab_id.as_deref(), Some("AAAA"));
+        assert!(app.tab_sessions.contains_key("AAAA"));
     }
 
     // ─── WtNotification auto-dismiss ────────────────────────────────────────

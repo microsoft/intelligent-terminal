@@ -12,6 +12,7 @@
 #include "../TerminalProtocol/ProtocolParsing.h"
 
 #include <thread>
+#include <unordered_set>
 
 namespace ProtocolParsing = Microsoft::Terminal::Protocol::Parsing;
 
@@ -145,33 +146,70 @@ void TerminalProtocolComServer::_ensurePageEventsRegistered()
     if (!s_emperor)
         return;
 
-    // Use a retryable pattern instead of call_once: if no page is found on
-    // the first Subscribe() call (e.g. during early startup), we allow retry
-    // on subsequent calls rather than permanently giving up.
-    static std::atomic<bool> s_registered{ false };
+    // Per-AppHost registration tracking. Each window gets its
+    // ProtocolVtSequenceReceived wired exactly once, so events from any
+    // window — not just the lexically-first one — reach the COM fan-out.
+    //
+    // Stale entries (window closed → AppHost destructed) are pruned at
+    // the top of this function. The set never dereferences the pointer
+    // itself, so a UAF after destruction would never trigger.
     static std::mutex s_regMutex;
-
-    if (s_registered.load(std::memory_order_acquire))
-        return;
+    static std::unordered_set<AppHost*> s_registered;
 
     std::lock_guard lock{ s_regMutex };
-    if (s_registered.load(std::memory_order_relaxed))
-        return;
 
+    // Prune entries whose AppHost no longer appears in the emperor's
+    // window list. Use a set of currently-alive raw pointers for O(1)
+    // membership; this is cheap (small window counts).
+    std::unordered_set<AppHost*> alive;
     for (const auto& host : s_emperor->GetWindows())
     {
-        const auto page = _getPage(host.get());
-        if (!page)
+        alive.insert(host.get());
+    }
+    for (auto it = s_registered.begin(); it != s_registered.end();)
+    {
+        if (!alive.contains(*it))
+        {
+            it = s_registered.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    // Register any window we haven't seen before. If the page isn't
+    // ready yet (early startup race), skip silently — the next
+    // Subscribe() or s_OnWindowAdded() call will retry.
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto* raw = host.get();
+        if (s_registered.contains(raw))
+        {
             continue;
+        }
+
+        const auto page = _getPage(raw);
+        if (!page)
+        {
+            continue;
+        }
 
         page.ProtocolVtSequenceReceived(
             [](auto&&, const winrt::hstring& eventJson) {
                 s_NotifyEventToComClients(winrt::to_string(eventJson));
             });
-        s_registered.store(true, std::memory_order_release);
-        return;
+        s_registered.insert(raw);
     }
-    // No page found — don't mark registered, allow retry on next Subscribe().
+}
+
+void TerminalProtocolComServer::s_OnWindowAdded(AppHost* /*host*/)
+{
+    // We could use the AppHost* parameter to wire only the new window,
+    // but `_ensurePageEventsRegistered` is already cheap (small window
+    // counts, O(n) prune + O(n) register, deduped per AppHost). Re-using
+    // it keeps the registration logic in exactly one place.
+    _ensurePageEventsRegistered();
 }
 
 void TerminalProtocolComServer::s_NotifyEventToComClients(const std::string& eventJson)
@@ -683,24 +721,19 @@ void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
         return;
     case ProtocolParsing::SendEventRoute::CloseAgentPane:
         // User pressed Ctrl+C twice in the wta TUI. Marshal to the UI
-        // thread and tell TerminalPage to tear down the shared agent pane.
+        // thread; the page-side handler resolves the tab via `tab_id`
+        // and tears down that tab's agent pane.
         _dispatchCloseAgentPaneToPage(eventJson);
         return;
     case ProtocolParsing::SendEventRoute::AgentState:
-        // Unified per-tab agent-pane UI snapshot from wta. Drives
-        // `_agentSessionsViewActive` (bar title + bottom-bar highlight)
-        // and `Tab.AgentPaneOpen` (which tab wants the shared pane
-        // visible). One handler, one event, future per-tab state plugs
-        // in as another field on the same payload.
+        // Per-tab agent-pane UI snapshot from wta. Page-side handler
+        // routes by `tab_id` to the matching AgentPaneContent (creating
+        // or tearing down the pane on that tab as needed).
         _dispatchAgentStateChangedToPage(eventJson);
         return;
     case ProtocolParsing::SendEventRoute::ResumeInNewAgentTab:
-        // Session view's Shift+Enter handler in the wta TUI. Carries
-        // {session_id, cwd} for a historical session. WT creates a new
-        // tab, reconciles the shared agent pane onto it, then publishes
-        // a `load_session` event back to wta with the new tab's StableId
-        // so the existing ACP connection calls `session/load` for that
-        // tab. See TerminalPage::OnResumeInNewAgentTabRequested.
+        // Session view's Shift+Enter handler in the wta TUI. WT creates
+        // a new tab and asks wta to open an agent pane in it.
         _dispatchResumeInNewAgentTabToPage(eventJson);
         return;
     case ProtocolParsing::SendEventRoute::Broadcast:
@@ -794,9 +827,9 @@ void TerminalProtocolComServer::_dispatchCloseAgentPaneToPage(const winrt::hstri
     {
         return;
     }
-    // Fan out to every window; the wta that emitted this event lives in one of
-    // them and only that window's TerminalPage has the matching _agentPane.
-    // Pages with no agent pane no-op the call (see OnCloseAgentPaneRequested).
+    // Fan out to every window; the wta-master process is shared across all
+    // windows, and the page-side handler resolves the right tab via tab_id.
+    // Pages without a matching tab no-op the call (see OnCloseAgentPaneRequested).
     for (const auto& host : s_emperor->GetWindows())
     {
         auto page = _getPage(host.get());

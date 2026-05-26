@@ -102,12 +102,13 @@ namespace winrt::TerminalApp::implementation
         std::shared_ptr<Pane> GetRootPane() const { return _rootPane; }
         std::vector<uint32_t> GetMruPanes() const { return _mruPanes; }
 
-        // Per-tab "user wants the agent pane open here" flag. The agent pane
-        // itself is a single shared resource that follows the active tab; this
-        // flag is the source of truth for whether reconciliation should make
-        // it visible when this tab is active.
-        bool AgentPaneOpen() const noexcept { return _agentPaneOpen; }
-        void AgentPaneOpen(bool value) noexcept { _agentPaneOpen = value; }
+        // Returns the AgentPaneContent (if any) hosted in this tab's pane
+        // tree. The presence of an AgentPaneContent IS the truth — a tab has
+        // an agent pane iff its pane tree contains an AgentPaneContent leaf.
+        // No separate flag is tracked: tabs are independently agent-aware.
+        winrt::TerminalApp::AgentPaneContent FindAgentPaneContent() const;
+        // Returns the Pane node hosting the AgentPaneContent, or nullptr.
+        std::shared_ptr<Pane> FindAgentPane() const;
 
         // Stable per-tab identifier (GUID string). Survives tab reordering
         // and is unique across the window's lifetime, unlike the index in
@@ -227,7 +228,6 @@ namespace winrt::TerminalApp::implementation
         bool _receivedKeyDown{ false };
         bool _iconHidden{ false };
         bool _changingActivePane{ false };
-        bool _agentPaneOpen{ false };
 
         winrt::hstring _stableId{};
 

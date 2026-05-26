@@ -130,11 +130,6 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(String, AiConfirmationReadOps);
         INHERITABLE_SETTING(String, AiConfirmationCreateOps);
         INHERITABLE_SETTING(String, AiConfirmationInputOps);
-        // Behind-flag rollout of the shared-wta architecture
-        // (one wta singleton per Terminal process, each agent
-        // pane = one conpty handle pair held by wta). See
-        // doc/specs/Multi-window-agent-pane.md.
-        INHERITABLE_SETTING(Boolean, SharedWtaProcess);
 
         // Policy-aware effective getters — return the setting value after
         // applying GPO overrides. Consumers should prefer these over the

@@ -5,6 +5,7 @@
 #include "App.h"
 
 #include "TerminalPage.h"
+#include "AgentPaneContent.h"
 #include "ScratchpadContent.h"
 #include "../inc/ShellIntegration.h"
 #include "../WinRTUtils/inc/WtExeUtils.h"
@@ -1664,29 +1665,23 @@ namespace winrt::TerminalApp::implementation
     {
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentPane called\n");
 
-        // Symmetric counterpart of _HandleOpenAgentSessions: when the pane
-        // is visible on the active tab and currently showing the sessions
-        // view, switch to chat (the "autofix agent pane") rather than
-        // closing. All other cases fall through to the legacy
-        // _OpenOrReuseAgentPane toggle (open/close/relocate).
-        const auto pane = _FindAgentPane();
+        // Per-tab: switch this tab's agent pane to chat view if it's
+        // currently in sessions view. Otherwise toggle open/close.
         const auto activeTab = _GetFocusedTabImpl();
-        const bool visibleOnActiveTab =
-            pane && activeTab && (_FindTabContainingAgentPane() == activeTab) && !pane->IsHidden();
-
-        if (visibleOnActiveTab && _agentSessionsViewActive)
+        if (activeTab)
         {
-            OutputDebugStringW(L"[AgentPane] OpenAgentPane: switch to chat — pane visible and in sessions view\n");
-            // Request only. wta flips its per-tab `current_view` to chat
-            // and echoes back the snapshot via `agent_state_changed`;
-            // `OnAgentStateChanged` is the sole writer of the mirrors.
-            _RequestAgentState("chat", std::nullopt);
-            args.Handled(true);
-            return;
+            if (const auto agentContent = activeTab->FindAgentPaneContent())
+            {
+                if (agentContent.IsSessionsView())
+                {
+                    _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
+                    args.Handled(true);
+                    return;
+                }
+            }
         }
 
         _OpenOrReuseAgentPane(L"", false, L"Action");
-        _UpdateBottomBarState();
         args.Handled(true);
     }
 
@@ -1703,66 +1698,62 @@ namespace winrt::TerminalApp::implementation
     {
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentSessions called\n");
 
-        // Toggle semantics for the session-management view:
-        //   - Pane not visible on the active tab  → open + sessions view
-        //   - Pane visible AND already in sessions → close the pane
-        //   - Pane visible but in chat view       → switch to sessions
-        //
-        // "Visible on the active tab" requires the pane to exist, to live
-        // in the focused tab, and to not be hidden. The reuse path inside
-        // _OpenOrReuseAgentPane handles the "exists but on another tab /
-        // hidden" cases by relocating + showing the pane.
-        const auto pane = _FindAgentPane();
+        // Per-tab sessions toggle:
+        //   - No agent pane on focused tab  → open + sessions view
+        //   - Pane exists, in sessions view → close the pane
+        //   - Pane exists, in chat view     → switch to sessions
         const auto activeTab = _GetFocusedTabImpl();
-        const bool visibleOnActiveTab =
-            pane && activeTab && (_FindTabContainingAgentPane() == activeTab) && !pane->IsHidden();
-
-        if (visibleOnActiveTab && _agentSessionsViewActive)
+        if (activeTab)
         {
-            // Toggle off: ask wta to mark this tab as not wanting the
-            // pane. The resulting `agent_state_changed` snapshot will
-            // flip `Tab.AgentPaneOpen` mirror to false and reconcile
-            // (which hides the pane on this tab). View stays put — when
-            // the user reopens the pane on this tab the previous view
-            // is preserved.
-            OutputDebugStringW(L"[AgentPane] OpenAgentSessions: toggle close — pane visible and already in sessions view\n");
-            _RequestAgentState(std::nullopt, /*pane_open*/ false);
-            args.Handled(true);
-            return;
+            if (const auto agentContent = activeTab->FindAgentPaneContent())
+            {
+                if (agentContent.IsSessionsView())
+                {
+                    _RequestAgentStateForTab(activeTab, std::nullopt, /*pane_open*/ false);
+                    args.Handled(true);
+                    return;
+                }
+            }
         }
 
-        // Either the pane needs opening/relocating, or it's open in chat
-        // view and we want to switch it. Both go through the existing
-        // intoSessionsView=true code path; wta emits `agent_state_changed`
-        // back with `view=sessions, pane_open=true` which lands in
-        // `OnAgentStateChanged`.
         _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true, L"SessionsAction");
-        _UpdateBottomBarState();
         args.Handled(true);
     }
 
     void TerminalPage::_HandleTriggerAutofix(const IInspectable& /*sender*/,
                                               const ActionEventArgs& args)
     {
-        // Two activation states:
-        //   * Armed    — fix is cached, execute it (existing path)
-        //   * Detected — suggest-mode pill, ask WTA to invoke the LLM now
-        // Pending/Suggested/Idle let the chord fall through to other consumers.
-        if (_diagnostics.autofixState == AutofixState::Armed)
+        // Per-tab: read autofix state from the active tab's AgentPaneContent.
+        const auto activeTab = _GetFocusedTabImpl();
+        if (!activeTab)
         {
-            _TriggerAutofix(L"Hotkey");
+            return;
+        }
+        const auto agentContent = activeTab->FindAgentPaneContent();
+        if (!agentContent)
+        {
+            return;
+        }
+        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+        if (!impl)
+        {
+            return;
+        }
+        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
+        const auto state = impl->GetAutofixState();
+        if (state == AS::Armed)
+        {
+            _TriggerAutofix(activeTab, L"Hotkey");
             args.Handled(true);
         }
-        else if (_diagnostics.autofixState == AutofixState::Detected)
+        else if (state == AS::Detected)
         {
-            // Mirror the Detected branch of `_DiagnosticsButtonOnClick`:
-            // send autofix_execute_from_detected; WTA replays the trigger
-            // with the auto-suggest gate bypassed.
             Json::Value evt;
             evt["type"] = "event";
             evt["method"] = "autofix_execute_from_detected";
             Json::Value params;
-            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
+            params["pane_id"] = winrt::to_string(impl->GetLastErrorPaneId());
+            params["tab_id"] = winrt::to_string(activeTab->StableId());
             evt["params"] = params;
             Json::StreamWriterBuilder wb;
             wb["indentation"] = "";

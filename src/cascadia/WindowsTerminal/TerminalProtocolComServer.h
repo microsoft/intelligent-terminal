@@ -102,6 +102,14 @@ TerminalProtocolComServer : winrt::implements<TerminalProtocolComServer, Protoco
     static HRESULT s_StartListening();
     static HRESULT s_StopListening();
 
+    // Called from WindowEmperor after a new AppHost is appended to its
+    // _windows vector. Re-runs the per-window page event registration so
+    // that the new window's TerminalPage::ProtocolVtSequenceReceived is
+    // wired into the COM fan-out path. Without this, agent panes opened
+    // in any window other than the first would silently fail to forward
+    // their `_internal.attach_pane` and other VT events to wta.
+    static void s_OnWindowAdded(class AppHost* host);
+
     // Deliver an event to all connected COM clients.
     static void s_NotifyEventToComClients(const std::string& eventJson);
 
@@ -133,10 +141,10 @@ private:
     // the user presses Ctrl+C twice. TerminalPage tears down the agent pane.
     static void _dispatchCloseAgentPaneToPage(const winrt::hstring& eventJson);
 
-    // Same shape, for {method:"agent_state_changed"} — the unified per-tab
-    // agent-pane UI snapshot from wta. TerminalPage::OnAgentStateChanged
-    // is the single writer of `_agentSessionsViewActive` (view) and
-    // `Tab.AgentPaneOpen` (pane visibility intent) for the active tab.
+    // Same shape, for {method:"agent_state_changed"} — per-tab agent-pane
+    // UI snapshot from wta. The page-side handler routes by `tab_id` to
+    // the matching AgentPaneContent (or to nothing if the tab has no
+    // agent pane / belongs to a different window).
     static void _dispatchAgentStateChangedToPage(const winrt::hstring& eventJson);
 
     // Same shape, for {method:"resume_in_new_agent_tab"} emitted by the wta

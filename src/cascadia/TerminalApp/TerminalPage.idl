@@ -138,12 +138,10 @@ namespace TerminalApp
         void OnCloseAgentPaneRequested(String eventJson);
 
         // Inbound event from WTA carrying
-        // {method:"agent_state_changed",params:{view,pane_open}}.
-        // Unified active-tab snapshot of every piece of per-tab agent-pane
-        // UI state that C++ stores as global per-pane state. The single
-        // writer of `_agentSessionsViewActive` and `Tab.AgentPaneOpen` for
-        // the active tab; any future per-tab UI state plugs in as another
-        // field in the same payload, no new IDL route needed.
+        // {method:"agent_state_changed",params:{tab_id,view,pane_open}}.
+        // Per-tab agent-pane UI snapshot — the page-side handler routes by
+        // `tab_id` to the matching AgentPaneContent (creating or tearing
+        // down the pane on that tab as needed).
         void OnAgentStateChanged(String eventJson);
 
         // Inbound event from WTA carrying

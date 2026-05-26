@@ -157,6 +157,22 @@ pub struct DropSessionRequest {
     pub tab_id: String,
 }
 
+/// Rekey the `tab_to_session` binding when WT mints a new stable tab id
+/// for an existing tab (cross-window tab drag — see
+/// `App::rename_tab_session`). The chat-history side rekeys in `app.rs`,
+/// but `tab_to_session` lives in the ACP client task and can't be
+/// rekeyed from `&mut App` directly. Without this, the next prompt on
+/// the dragged tab can't find the old SessionId and falls through to
+/// the lazy-create branch — the agent CLI sees a fresh `session/new`
+/// and loses turn context even though the visible chat is intact.
+///
+/// No-op when `old_tab_id` is absent from the map.
+#[derive(Debug, Clone)]
+pub struct RenameSessionRequest {
+    pub old_tab_id: String,
+    pub new_tab_id: String,
+}
+
 /// How [`run_inner`] terminated. The outer driver in [`run_acp_client`]
 /// uses this to decide whether to respawn the agent.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1675,6 +1691,619 @@ impl acp::Client for WtaClient {
     }
 }
 
+/// Helper-mode variant of [`run_acp_client`]. Instead of spawning the
+/// agent CLI as a child process and talking ACP over its stdio, this
+/// connects to a wta-master singleton over the named pipe whose path
+/// is passed in `pipe_name` and speaks ACP over that pipe. The master
+/// (from this helper's perspective) plays the role of the agent.
+///
+/// Wires the same App-facing select-loop as `run_inner`, minus the
+/// restart-loop wrapper: helper mode doesn't own the agent CLI lifetime
+/// (master does), so `restart_rx` is drained but logged as unsupported.
+///
+/// See doc/specs/Multi-window-agent-pane.md for the helper+master
+/// architecture, and `tools/wta/src/master/mod.rs` for the peer.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_acp_client_over_pipe(
+    pipe_name: String,
+    acp_model_override: Option<String>,
+    owner_tab_id: Option<String>,
+    event_tx: mpsc::UnboundedSender<AppEvent>,
+    mut prompt_rx: mpsc::UnboundedReceiver<PromptSubmission>,
+    mut cancel_rx: mpsc::UnboundedReceiver<CancelRequest>,
+    mut new_session_rx: mpsc::UnboundedReceiver<NewSessionForTab>,
+    mut load_session_rx: mpsc::UnboundedReceiver<LoadSessionForTab>,
+    mut drop_session_rx: mpsc::UnboundedReceiver<DropSessionRequest>,
+    mut rename_session_rx: mpsc::UnboundedReceiver<RenameSessionRequest>,
+    mut restart_rx: mpsc::UnboundedReceiver<RestartRequest>,
+    shell_mgr: Arc<ShellManager>,
+    wt_connected: bool,
+) -> Result<()> {
+    let startup_probe = StartupProbe::new();
+    startup_probe.log(&format!(
+        "run_acp_client_over_pipe task start pipe={} acp_model={:?} wt_connected={}",
+        pipe_name, acp_model_override, wt_connected
+    ));
+
+    // Whether this WTA process is hosting an Intelligent Terminal agent
+    // pane. Same semantics as in `run_inner`: `--owner-tab-id` is the
+    // load-bearing signal. Helper mode is always spawned by WT with an
+    // owner-tab-id, but we keep the same fallback to be defensive.
+    let is_agent_pane = owner_tab_id
+        .as_ref()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+
+    // Connect to the master singleton over the named pipe. The C++
+    // SharedWta side spawns the master and the helper basically back
+    // to back, so the helper races against master's startup — master
+    // has to spawn its agent CLI subprocess and call `initialize`
+    // (up to 60s for `npx` adapter cold-starts) BEFORE it opens the
+    // pipe. Retry-with-backoff until master is ready or we give up
+    // (spec Z-R6).
+    let _ = event_tx.send(AppEvent::ConnectionStage(
+        "Connecting to wta-master...".to_string(),
+    ));
+    startup_probe.log(&format!("opening master pipe: {}", pipe_name));
+    const ERROR_FILE_NOT_FOUND: i32 = 2;
+    const ERROR_PIPE_BUSY: i32 = 231;
+    let pipe = {
+        let mut attempt: u32 = 0;
+        // Backoff schedule, summing to ~75s total. Most masters come
+        // up in 1-2s; the long tail is npx adapter cold starts.
+        let backoff_ms: &[u64] = &[
+            50, 100, 100, 200, 200, 500, 500, 1000, 1000, 2000, 2000, 2000, 5000, 5000, 5000,
+            5000, 10000, 10000, 10000, 15000,
+        ];
+        loop {
+            match tokio::net::windows::named_pipe::ClientOptions::new().open(&pipe_name) {
+                Ok(pipe) => {
+                    if attempt > 0 {
+                        tracing::info!(
+                            target: "helper",
+                            step = "pipe_connect",
+                            pipe = %pipe_name,
+                            attempts = attempt + 1,
+                            "master pipe connected after retry"
+                        );
+                    }
+                    startup_probe.log(&format!(
+                        "master pipe connected (attempt {})",
+                        attempt + 1
+                    ));
+                    break pipe;
+                }
+                Err(e) => {
+                    let raw = e.raw_os_error().unwrap_or(0);
+                    let retryable = raw == ERROR_FILE_NOT_FOUND || raw == ERROR_PIPE_BUSY;
+                    if !retryable || attempt as usize >= backoff_ms.len() {
+                        tracing::warn!(
+                            target: "helper",
+                            step = "pipe_connect",
+                            pipe = %pipe_name,
+                            attempts = attempt + 1,
+                            error = %e,
+                            "master pipe connect giving up"
+                        );
+                        return Err(anyhow::anyhow!(
+                            "connect to master pipe '{}' after {} attempt(s): {}",
+                            pipe_name,
+                            attempt + 1,
+                            e
+                        ));
+                    }
+                    let wait = backoff_ms[attempt as usize];
+                    tracing::debug!(
+                        target: "helper",
+                        step = "pipe_connect",
+                        pipe = %pipe_name,
+                        attempt = attempt + 1,
+                        wait_ms = wait,
+                        error = %e,
+                        "master pipe not ready, retrying"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(wait)).await;
+                    attempt += 1;
+                }
+            }
+        }
+    };
+
+    let (read_half, write_half) = tokio::io::split(pipe);
+    let prompt_timing = Arc::new(PromptTimingState::default());
+    let outgoing = write_half.compat_write();
+    let incoming = read_half.compat();
+
+    let state = Arc::new(ClientState {
+        event_tx: event_tx.clone(),
+        shell_mgr: shell_mgr.clone(),
+        prompt_timing: prompt_timing.clone(),
+    });
+
+    let client = WtaClient {
+        state: state.clone(),
+    };
+
+    let (conn, handle_io) =
+        acp::ClientSideConnection::new(client, outgoing, incoming, |fut| {
+            tokio::task::spawn_local(fut);
+        });
+    startup_probe.log("ACP client connection created (over pipe)");
+
+    let io_probe = startup_probe.clone();
+    tokio::task::spawn_local(async move {
+        io_probe.log("ACP handle_io task started (over pipe)");
+        if let Err(e) = handle_io.await {
+            io_probe.log(&format!("ACP handle_io failed: {:#}", e));
+            eprintln!("helper ACP I/O failed: {:#}", e);
+        } else {
+            io_probe.log("ACP handle_io completed (over pipe)");
+        }
+    });
+
+    // Initialize — same as the child-process path. We use a 30s timeout
+    // here because the first helper to connect to a fresh master may
+    // ride along with the master's own agent CLI spawn (especially the
+    // npx adapter cold start). After the first init, subsequent inits
+    // are fast because master just re-forwards.
+    let _ = event_tx.send(AppEvent::ConnectionStage(
+        "Initializing ACP...".to_string(),
+    ));
+    startup_probe.log("Initializing ACP (over pipe)");
+    let init_future = conn.initialize(
+        acp::InitializeRequest::new(acp::ProtocolVersion::V1)
+            .client_capabilities(acp::ClientCapabilities::new().terminal(true))
+            .client_info(
+                acp::Implementation::new("wta-helper", env!("CARGO_PKG_VERSION"))
+                    .title("Windows Terminal Agent (helper)"),
+            ),
+    );
+    let init_resp = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        init_future,
+    )
+    .await
+    .map_err(|_| {
+        anyhow::anyhow!(
+            "ACP initialize over master pipe timed out after 60s — \
+             wta-master did not respond"
+        )
+    })?
+    .map_err(|e| anyhow::anyhow!("initialize over master pipe failed: {}", e))?;
+    startup_probe.log(&format!(
+        "Agent init response received (over pipe): {:?}",
+        init_resp
+    ));
+
+    // Create the initial session bound to the owner tab.
+    let _ = event_tx.send(AppEvent::ConnectionStage(
+        "Creating session...".to_string(),
+    ));
+    startup_probe.log("Creating session (over pipe)");
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let session_future = conn.new_session(acp::NewSessionRequest::new(cwd));
+    let session = tokio::time::timeout(std::time::Duration::from_secs(30), session_future)
+        .await
+        .map_err(|_| anyhow::anyhow!("new_session over master pipe timed out after 30s"))?
+        .map_err(|e| anyhow::anyhow!("new_session over master pipe failed: {}", e))?;
+
+    let session_id = session.session_id.clone();
+    startup_probe.log(&format!("Session created (over pipe): {}", session_id));
+    if is_agent_pane {
+        crate::agent_pane_origin::append_default(session_id.0.as_ref());
+    }
+
+    let (available_models, current_model_id) = match &session.models {
+        Some(state) => {
+            let models: Vec<crate::app::AcpModelInfo> = state
+                .available_models
+                .iter()
+                .map(|m| crate::app::AcpModelInfo {
+                    id: m.model_id.0.to_string(),
+                    name: m.name.clone(),
+                    description: m.description.clone(),
+                })
+                .collect();
+            (models, Some(state.current_model_id.0.to_string()))
+        }
+        None => (Vec::new(), None),
+    };
+
+    // Apply --acp-model if requested. No `--agent` cmdline to parse in
+    // helper mode (master owns the agent CLI), so this is the only
+    // model-selection input.
+    if let Some(requested_model) =
+        acp_model_override.filter(|s| !s.trim().is_empty())
+    {
+        let _ = event_tx.send(AppEvent::ConnectionStage(format!(
+            "Selecting model {}...",
+            requested_model
+        )));
+        startup_probe.log(&format!(
+            "Setting ACP session model to {} (over pipe)",
+            requested_model
+        ));
+        conn.set_session_model(acp::SetSessionModelRequest::new(
+            session_id.clone(),
+            requested_model.clone(),
+        ))
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "set_session_model failed for requested model {}: {}",
+                requested_model,
+                e
+            )
+        })?;
+        startup_probe.log(&format!(
+            "ACP session model set to {} (over pipe)",
+            requested_model
+        ));
+    }
+
+    // Notify app of connection. No raw `program/args` to summarise in
+    // helper mode — pull what the master/agent advertised via `init_resp`.
+    let agent_version = init_resp
+        .agent_info
+        .as_ref()
+        .map(|info| format!("v{}", info.version));
+    let agent_name = init_resp
+        .agent_info
+        .as_ref()
+        .and_then(|info| info.title.clone().or_else(|| Some(info.name.clone())))
+        .unwrap_or_else(|| "wta-master".to_string());
+    let load_session_supported = init_resp.agent_capabilities.load_session;
+    startup_probe.log(&format!(
+        "Agent capabilities (over pipe): loadSession={}",
+        load_session_supported
+    ));
+    let _ = event_tx.send(AppEvent::AgentConnected {
+        name: agent_name,
+        // We have no `--agent` cmdline to mine a model identifier
+        // from; the per-session `current_model_id` covers the UI.
+        model: None,
+        version: agent_version,
+        session_id: session_id.to_string(),
+        available_models,
+        current_model_id,
+        load_session_supported,
+    });
+
+    // Per-tab session cache. Same semantics as in `run_inner`.
+    let tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::SessionId>>> =
+        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    {
+        let mut g = tab_to_session.lock().await;
+        let initial_tab_key = owner_tab_id
+            .clone()
+            .unwrap_or_else(|| "0".to_string());
+        g.insert(initial_tab_key, session_id.clone());
+    }
+
+    let template_memo = TemplateMemo::default();
+    let in_flight_tabs: Arc<std::sync::Mutex<HashSet<String>>> =
+        Arc::new(std::sync::Mutex::new(HashSet::new()));
+    let cancel_signals: Arc<
+        std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>,
+    > = Arc::new(std::sync::Mutex::new(HashMap::new()));
+
+    let conn = Arc::new(conn);
+
+    // Main event loop. Mirrors `run_inner`'s select arms, minus the
+    // restart-loop wrapper (helper mode can't restart — master owns
+    // the agent CLI). A `/restart` signal is logged and reported back
+    // to the user as a no-op; deeper restart support is a Phase 3+
+    // concern (the master itself would need a "respawn" path).
+    loop {
+        tokio::select! {
+            biased;
+            Some(req) = restart_rx.recv() => {
+                tracing::warn!(
+                    target: "helper",
+                    new_agent = ?req.agent_cmd,
+                    "restart requested in helper mode — not supported \
+                     (master owns the agent CLI lifetime); reporting to user"
+                );
+                let _ = event_tx.send(AppEvent::AgentError {
+                    session_id: None,
+                    message: "/restart is not available in this agent pane \
+                              — restart is owned by the shared wta-master \
+                              process. Close and reopen the pane to recover."
+                        .to_string(),
+                });
+            }
+            Some(req) = cancel_rx.recv() => {
+                let session_id_str = req.session_id.clone();
+                tracing::info!(target: "acp_cancel", session_id = %session_id_str, "cancel requested (helper)");
+                if let Some(sig) = cancel_signals.lock().unwrap().remove(&session_id_str) {
+                    let _ = sig.send(());
+                }
+                let conn_for_cancel = Arc::clone(&conn);
+                tokio::task::spawn_local(async move {
+                    let session_id = acp::SessionId::new(session_id_str.clone());
+                    if let Err(e) = conn_for_cancel
+                        .cancel(acp::CancelNotification::new(session_id))
+                        .await
+                    {
+                        tracing::warn!(target: "acp_cancel", session_id = %session_id_str, error = ?e, "session/cancel rpc failed");
+                    }
+                });
+            }
+            Some(req) = new_session_rx.recv() => {
+                tracing::info!(
+                    target: "acp_new_session",
+                    tab = %req.tab_id,
+                    "new_session requested (helper)"
+                );
+                let conn_for_new = Arc::clone(&conn);
+                let tab_to_session_for_new = Arc::clone(&tab_to_session);
+                let template_memo_for_new = template_memo.clone();
+                let cancel_signals_for_new = Arc::clone(&cancel_signals);
+                let event_tx_for_new = event_tx.clone();
+                let is_agent_pane_for_new = is_agent_pane;
+                tokio::task::spawn_local(async move {
+                    let cwd = req
+                        .cwd
+                        .clone()
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+                    let old_sid: Option<acp::SessionId> = {
+                        let mut g = tab_to_session_for_new.lock().await;
+                        g.remove(&req.tab_id)
+                    };
+
+                    if let Some(ref old) = old_sid {
+                        let old_str = old.to_string();
+                        template_memo_for_new.forget(&old_str).await;
+                        if let Some(sig) = cancel_signals_for_new
+                            .lock()
+                            .unwrap()
+                            .remove(&old_str)
+                        {
+                            let _ = sig.send(());
+                        }
+                        let _ = conn_for_new
+                            .cancel(acp::CancelNotification::new(old.clone()))
+                            .await;
+                    }
+
+                    let new_session = match conn_for_new
+                        .new_session(acp::NewSessionRequest::new(cwd))
+                        .await
+                    {
+                        Ok(s) => s,
+                        Err(e) => {
+                            let _ = event_tx_for_new.send(AppEvent::AgentError {
+                                session_id: None,
+                                message: format!("/new failed for tab {}: {}", req.tab_id, e),
+                            });
+                            return;
+                        }
+                    };
+
+                    let new_sid = new_session.session_id.clone();
+                    if is_agent_pane_for_new {
+                        crate::agent_pane_origin::append_default(new_sid.0.as_ref());
+                    }
+                    let (per_tab_models, per_tab_current) = match &new_session.models {
+                        Some(state) => {
+                            let models: Vec<crate::app::AcpModelInfo> = state
+                                .available_models
+                                .iter()
+                                .map(|m| crate::app::AcpModelInfo {
+                                    id: m.model_id.0.to_string(),
+                                    name: m.name.clone(),
+                                    description: m.description.clone(),
+                                })
+                                .collect();
+                            (models, Some(state.current_model_id.0.to_string()))
+                        }
+                        None => (Vec::new(), None),
+                    };
+
+                    {
+                        let mut g = tab_to_session_for_new.lock().await;
+                        g.insert(req.tab_id.clone(), new_sid.clone());
+                    }
+
+                    let _ = event_tx_for_new.send(AppEvent::SessionAttached {
+                        tab_id: req.tab_id.clone(),
+                        session_id: new_sid.to_string(),
+                        available_models: per_tab_models,
+                        current_model_id: per_tab_current,
+                    });
+                });
+            }
+            Some(req) = load_session_rx.recv() => {
+                tracing::info!(
+                    target: "acp_load_session",
+                    tab = %req.tab_id,
+                    session_id = %req.session_id,
+                    "load_session requested (helper)"
+                );
+                let conn_for_load = Arc::clone(&conn);
+                let tab_to_session_for_load = Arc::clone(&tab_to_session);
+                let cancel_signals_for_load = Arc::clone(&cancel_signals);
+                let event_tx_for_load = event_tx.clone();
+                tokio::task::spawn_local(async move {
+                    let cwd = req
+                        .cwd
+                        .clone()
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+                    let old_sid: Option<acp::SessionId> = {
+                        let mut g = tab_to_session_for_load.lock().await;
+                        g.remove(&req.tab_id)
+                    };
+
+                    if let Some(ref old) = old_sid {
+                        let old_str = old.to_string();
+                        if let Some(sig) = cancel_signals_for_load
+                            .lock()
+                            .unwrap()
+                            .remove(&old_str)
+                        {
+                            let _ = sig.send(());
+                        }
+                        let _ = conn_for_load
+                            .cancel(acp::CancelNotification::new(old.clone()))
+                            .await;
+                    }
+
+                    let session_id = acp::SessionId::new(req.session_id.clone());
+                    let load_req = acp::LoadSessionRequest::new(session_id.clone(), cwd);
+                    let load_future = conn_for_load.load_session(load_req);
+                    let load_result = tokio::time::timeout(
+                        std::time::Duration::from_secs(60),
+                        load_future,
+                    )
+                    .await;
+
+                    match load_result {
+                        Ok(Ok(_resp)) => {
+                            tracing::info!(
+                                target: "acp_load_session",
+                                tab = %req.tab_id,
+                                session_id = %req.session_id,
+                                "load_session succeeded (helper)"
+                            );
+                            {
+                                let mut g = tab_to_session_for_load.lock().await;
+                                g.insert(req.tab_id.clone(), session_id.clone());
+                            }
+                            let _ = event_tx_for_load.send(AppEvent::SessionAttached {
+                                tab_id: req.tab_id.clone(),
+                                session_id: session_id.to_string(),
+                                available_models: Vec::new(),
+                                current_model_id: None,
+                            });
+                            let _ = event_tx_for_load.send(AppEvent::TabSystemMessage {
+                                tab_id: req.tab_id.clone(),
+                                message: "Session loaded. Past content from \
+                                          the agent (if any) will appear above."
+                                    .to_string(),
+                            });
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!(
+                                target: "acp_load_session",
+                                tab = %req.tab_id,
+                                session_id = %req.session_id,
+                                error = ?e,
+                                "load_session failed (helper)"
+                            );
+                            let _ = event_tx_for_load.send(AppEvent::TabError {
+                                tab_id: req.tab_id.clone(),
+                                message: format!(
+                                    "Failed to resume session in agent pane: {}. \
+                                     The connected agent may not recognize this \
+                                     session id (CLI mismatch), or `session/load` \
+                                     is unsupported.",
+                                    e
+                                ),
+                            });
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                target: "acp_load_session",
+                                tab = %req.tab_id,
+                                session_id = %req.session_id,
+                                "load_session timed out after 60s (helper)"
+                            );
+                            let _ = event_tx_for_load.send(AppEvent::TabError {
+                                tab_id: req.tab_id.clone(),
+                                message:
+                                    "Resume timed out after 60s — the agent \
+                                     did not respond to `session/load`."
+                                        .to_string(),
+                            });
+                        }
+                    }
+                });
+            }
+            Some(req) = drop_session_rx.recv() => {
+                tracing::info!(
+                    target: "acp_drop_session",
+                    tab = %req.tab_id,
+                    "drop_session requested (helper, no replacement)"
+                );
+                let conn_for_drop = Arc::clone(&conn);
+                let tab_to_session_for_drop = Arc::clone(&tab_to_session);
+                let template_memo_for_drop = template_memo.clone();
+                let cancel_signals_for_drop = Arc::clone(&cancel_signals);
+                tokio::task::spawn_local(async move {
+                    let old_sid: Option<acp::SessionId> = {
+                        let mut g = tab_to_session_for_drop.lock().await;
+                        g.remove(&req.tab_id)
+                    };
+                    if let Some(old) = old_sid {
+                        let old_str = old.to_string();
+                        template_memo_for_drop.forget(&old_str).await;
+                        if let Some(sig) = cancel_signals_for_drop
+                            .lock()
+                            .unwrap()
+                            .remove(&old_str)
+                        {
+                            let _ = sig.send(());
+                        }
+                        if let Err(e) = conn_for_drop
+                            .cancel(acp::CancelNotification::new(old.clone()))
+                            .await
+                        {
+                            tracing::warn!(
+                                target: "acp_drop_session",
+                                tab = %req.tab_id,
+                                error = ?e,
+                                "session/cancel after drop failed (helper)"
+                            );
+                        }
+                    }
+                });
+            }
+            Some(req) = rename_session_rx.recv() => {
+                let tab_to_session_for_rename = Arc::clone(&tab_to_session);
+                tokio::task::spawn_local(async move {
+                    let mut g = tab_to_session_for_rename.lock().await;
+                    let old_existed = if let Some(sid) = g.remove(&req.old_tab_id) {
+                        g.insert(req.new_tab_id.clone(), sid);
+                        true
+                    } else {
+                        false
+                    };
+                    tracing::info!(
+                        target: "helper",
+                        old_tab_id = %req.old_tab_id,
+                        new_tab_id = %req.new_tab_id,
+                        old_existed,
+                        "tab_to_session rekeyed via drag"
+                    );
+                });
+            }
+            Some(prompt) = prompt_rx.recv() => {
+                dispatch_prompt(
+                    prompt,
+                    &conn,
+                    &tab_to_session,
+                    &template_memo,
+                    &in_flight_tabs,
+                    &cancel_signals,
+                    &event_tx,
+                    &shell_mgr,
+                    &prompt_timing,
+                    wt_connected,
+                    is_agent_pane,
+                );
+            }
+            else => break,
+        }
+    }
+
+    startup_probe.log("run_acp_client_over_pipe loop ended");
+    Ok(())
+}
+
 /// Top-level ACP client task: spawn agent, handshake, prompt loop.
 pub async fn run_acp_client(
     mut agent_cmd: String,
@@ -1686,6 +2315,7 @@ pub async fn run_acp_client(
     mut new_session_rx: mpsc::UnboundedReceiver<NewSessionForTab>,
     mut load_session_rx: mpsc::UnboundedReceiver<LoadSessionForTab>,
     mut drop_session_rx: mpsc::UnboundedReceiver<DropSessionRequest>,
+    mut rename_session_rx: mpsc::UnboundedReceiver<RenameSessionRequest>,
     mut restart_rx: mpsc::UnboundedReceiver<RestartRequest>,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
@@ -1711,6 +2341,7 @@ pub async fn run_acp_client(
             &mut new_session_rx,
             &mut load_session_rx,
             &mut drop_session_rx,
+            &mut rename_session_rx,
             &mut restart_rx,
             Arc::clone(&shell_mgr),
             wt_connected,
@@ -1785,6 +2416,7 @@ async fn run_inner(
     new_session_rx: &mut mpsc::UnboundedReceiver<NewSessionForTab>,
     load_session_rx: &mut mpsc::UnboundedReceiver<LoadSessionForTab>,
     drop_session_rx: &mut mpsc::UnboundedReceiver<DropSessionRequest>,
+    rename_session_rx: &mut mpsc::UnboundedReceiver<RenameSessionRequest>,
     restart_rx: &mut mpsc::UnboundedReceiver<RestartRequest>,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
@@ -2439,6 +3071,25 @@ async fn run_inner(
                             );
                         }
                     }
+                });
+            }
+            Some(req) = rename_session_rx.recv() => {
+                let tab_to_session_for_rename = Arc::clone(&tab_to_session);
+                tokio::task::spawn_local(async move {
+                    let mut g = tab_to_session_for_rename.lock().await;
+                    let old_existed = if let Some(sid) = g.remove(&req.old_tab_id) {
+                        g.insert(req.new_tab_id.clone(), sid);
+                        true
+                    } else {
+                        false
+                    };
+                    tracing::info!(
+                        target: "helper",
+                        old_tab_id = %req.old_tab_id,
+                        new_tab_id = %req.new_tab_id,
+                        old_existed,
+                        "tab_to_session rekeyed via drag"
+                    );
                 });
             }
             Some(prompt) = prompt_rx.recv() => {

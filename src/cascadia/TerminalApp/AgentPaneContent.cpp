@@ -9,8 +9,12 @@
 #include <cwctype>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
+#include <winrt/Windows.UI.Xaml.Media.h>
 
+using namespace winrt::Windows::UI;
 using namespace winrt::Windows::UI::Xaml;
+using namespace winrt::Windows::UI::Xaml::Controls;
+using namespace winrt::Windows::UI::Xaml::Media;
 using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 
@@ -98,19 +102,66 @@ namespace winrt::TerminalApp::implementation
         _isSessionsView = active;
         _refreshLabel();
         _refreshLogo();
+        StateChanged.raise(*this, nullptr);
+    }
+
+    void AgentPaneContent::ApplyAutofixState(AutofixState state,
+                                             const winrt::hstring& paneId,
+                                             const winrt::hstring& summary,
+                                             const winrt::hstring& fixPreview,
+                                             const winrt::hstring& hotkeyHint,
+                                             const winrt::hstring& suggestionTitle)
+    {
+        _autofixState = state;
+        if (state == AutofixState::Idle)
+        {
+            // Clear caches on idle.
+            _lastErrorPaneId = {};
+            _fixPreview = {};
+            _suggestionTitle = {};
+            _detectedSummary = {};
+        }
+        else
+        {
+            if (!paneId.empty())
+            {
+                _lastErrorPaneId = paneId;
+            }
+            if (!summary.empty())
+            {
+                _detectedSummary = summary;
+            }
+            if (!fixPreview.empty())
+            {
+                _fixPreview = fixPreview;
+            }
+            if (!hotkeyHint.empty())
+            {
+                _hotkeyHint = hotkeyHint;
+            }
+            if (!suggestionTitle.empty())
+            {
+                _suggestionTitle = suggestionTitle;
+            }
+        }
+        StateChanged.raise(*this, nullptr);
+    }
+
+    void AgentPaneContent::SetAgentPanePosition(const winrt::hstring& position)
+    {
+        if (_agentPanePosition == position)
+        {
+            return;
+        }
+        _agentPanePosition = position;
+        StateChanged.raise(*this, nullptr);
     }
 
     void AgentPaneContent::_refreshLabel()
     {
         // Session-management view takes over the bar — the wta TUI below no
         // longer renders its own "Agent sessions" header, so this is where
-        // that title lives. The session list is filtered by the current
-        // agent's CLI source (see App::current_cli_filter), so we suffix
-        // the bar with the agent's display name to make the scope explicit
-        // (e.g. "Agent sessions: GitHub Copilot" — colon separator per the
-        // localized `AgentPane_SessionsTitleFormat` resource). We use
-        // _agentName verbatim — it already carries the canonical product
-        // casing from the ACP initialize response.
+        // that title lives.
         if (_isSessionsView)
         {
             const auto text = _agentName.empty() ?
@@ -120,11 +171,6 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Composition rule:
-        //     "<name> <version>"   if version present (version may already include "v" prefix)
-        //     "<name> <model>"     else if model present
-        //     "<name>"             otherwise
-        //     "Agent"              if name absent
         std::wstring text;
         if (_agentName.empty())
         {
@@ -149,11 +195,6 @@ namespace winrt::TerminalApp::implementation
 
     void AgentPaneContent::_refreshLogo()
     {
-        // Sessions view: the bar shows only the "Agent sessions" title
-        // (Figma node 912:70364 — no per-agent logo on the session list).
-        // Collapse the logo so the title shifts left to where the logo
-        // would have been, but keep the bar's 10px left padding so the
-        // text doesn't butt against the edge.
         if (_isSessionsView)
         {
             AgentLogo().Source(nullptr);
@@ -161,7 +202,6 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // No agent name yet → hide logo entirely (don't default to Copilot).
         if (_agentName.empty())
         {
             AgentLogo().Source(nullptr);
@@ -173,9 +213,6 @@ namespace winrt::TerminalApp::implementation
         uri.append(_logoFileForAgent(_agentName));
         const winrt::Windows::Foundation::Uri parsed{ winrt::hstring{ uri } };
         winrt::Windows::UI::Xaml::Media::Imaging::SvgImageSource source{ parsed };
-        // Without an explicit raster size, SvgImageSource can render to a
-        // tiny fallback bitmap that shows up as a fuzzy/grey square. The
-        // bar gives us a 14-DIP slot, so 28px @ 2x DPI is plenty.
         source.RasterizePixelWidth(28.0);
         source.RasterizePixelHeight(28.0);
         AgentLogo().Source(source);
@@ -194,17 +231,21 @@ namespace winrt::TerminalApp::implementation
         {
             impl->UpdateSettings(settings);
         }
+        // Re-pick up the pane position in case settings changed it.
+        SetAgentPanePosition(settings.GlobalSettings().AgentPanePosition());
     }
 
     winrt::Windows::Foundation::Size AgentPaneContent::MinimumSize()
     {
-        // Reserve 36px for the bar on top of the inner control's minimum.
+        // Reserve 36px (top bar) on top of the inner control's minimum.
+        // The bottom bar is window-level chrome now, so it isn't part of
+        // this pane's minimum size.
         if (const auto& impl = winrt::get_self<implementation::TerminalPaneContent>(_inner))
         {
             const auto inner = impl->MinimumSize();
             return { inner.Width, inner.Height + 36.0f };
         }
-        return { 1, 36 };
+        return { 1, 36.0f };
     }
 
     void AgentPaneContent::Focus(winrt::Windows::UI::Xaml::FocusState reason)

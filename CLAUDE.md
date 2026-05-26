@@ -84,25 +84,72 @@ Detects command failures in other panes and auto-suggests fixes via the agent.
 
 ## Logs
 
-WTA writes structured logs to the package-sandboxed LOCALAPPDATA:
+WTA writes structured logs to:
 
 ```
-%LOCALAPPDATA%\IntelligentTerminal\logs\
-  wta-ensure-host.log   — background host startup / COM connection
-  wta-attach.log        — agent pane TUI (attach mode)
-  wta-agent-pane.log    — agent pane session
-  wta-acp-debug.log     — ACP protocol debug trace
-  wta-delegate.log      — ?<prompt> delegation flow
+C:\Users\<user>\AppData\Local\IntelligentTerminal\logs\
 ```
 
-When running packaged (F5 / installed), `%LOCALAPPDATA%` is redirected to the
-package sandbox:
+The path is built off the `LOCALAPPDATA` env var, which is **not** redirected
+into the package sandbox on Win10/11 (the env-var virtualization that
+hides the regular LOCALAPPDATA was a UWP-era behavior; current Windows
+keeps the env var pointing at the real `\AppData\Local\`). Packaged and
+unpackaged wta processes therefore share the same log directory.
+
+The sandbox path
+`%LOCALAPPDATA%\Packages\IntelligentTerminal_<id>\LocalCache\Local\IntelligentTerminal\logs`
+exists as a transparent virtualization of the same directory (NTFS reparse
+points) — both paths return the same files.
+
+Log level is controlled by `WTA_LOG` env var (default: `info`; set `debug`
+for the noisy traces).
+
+### Log files in the helper+master architecture
+
 ```
-C:\Users\<user>\AppData\Local\Packages\IntelligentTerminal_<id>\LocalCache\Local\IntelligentTerminal\logs\
+wta-main_master.log    — wta-master process: agent CLI spawn, named pipe accept loop,
+                          per-helper routing, session_to_helper map updates,
+                          agent CLI exit detection
+wta-main_helper.log    — each wta-helper process: pipe connect, ACP initialize,
+                          session/new, prompts sent, agent responses received,
+                          TUI lifecycle
+wta-ensure-host.log    — WT-side background ensure-running diagnostics (kept from
+                          M3-M6 era; remains useful for SharedWta lifecycle)
+wta-acp-debug.log      — low-level ACP JSON-RPC wire trace
+wta-delegate.log       — `?<prompt>` delegation flow (separate from agent pane)
 ```
 
-Log level is controlled by the `WTA_LOG` env var (default: `info`). Set
-`WTA_LOG=debug` for verbose output.
+### Tracking flows by `target` field
+
+All tracing uses structured `target` + key=value fields. Grep patterns for common
+scenarios:
+
+| Goal | Grep |
+|---|---|
+| Master process lifecycle | `target=master` (in `wta-main_master.log`) |
+| Who's connected to master right now | `live_helpers=` in `wta-main_master.log` (climbs on connect, drops on disconnect) |
+| Which helper owns a SessionId | `step="helper→agent" op="new_session" session_id=…` |
+| Trace one prompt end-to-end | grep `session_id="X"`, look for `step="helper→agent" op="prompt"` (sent) then `step="master→helper" op="session_notification"` (response chunks) |
+| Helper pipe lifecycle | `target=master helper_id=…` shows connect+exit |
+| Agent CLI failures | `target=agent_stderr` |
+| Internal control routing | `target=internal_control` (legacy; mostly empty post-Z) |
+
+### Example: end-to-end trace of one user prompt
+
+```
+[helper] target=acp_client                — pipe connected to master
+[helper] target=acp_client                — ACP initialize sent
+[helper] target=acp_client                — session/new → session_id=abc-123
+[master] step=helper→agent op=new_session — registered abc-123 → helper_id=2
+[helper]                                  — user pressed Enter, sending prompt
+[master] step=helper→agent op=prompt      — forwarding to agent CLI (sid=abc-123)
+[master] step=agent→helper kind=agent_message_chunk — agent CLI streamed first chunk
+[master] step=master→helper               — wrote chunk back to helper_id=2 pipe
+[helper]                                  — chunk applied to TabSession.messages
+[master] step=helper→agent op=prompt elapsed_ms=842 stop_reason=…  — turn ended
+```
+
+If any step is missing, the failure is at the previous step.
 
 ## Build
 

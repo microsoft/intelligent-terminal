@@ -15,7 +15,6 @@
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="EchoConnection.cpp" />
-    <ClCompile Include="AgentPipeConnection.cpp" />
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
     <ClCompile Include="AzureConnection.cpp" />
     <ClCompile Include="init.cpp" />
@@ -24,7 +23,6 @@
   <ItemGroup>
     <ClInclude Include="pch.h" />
     <ClInclude Include="EchoConnection.h" />
-    <ClInclude Include="AgentPipeConnection.h" />
     <ClInclude Include="AzureConnection.h" />
     <ClInclude Include="AzureClientID.h" />
     <ClInclude Include="CTerminalHandoff.h" />
@@ -33,7 +31,6 @@
   <ItemGroup>
     <Midl Include="ITerminalConnection.idl" />
     <Midl Include="EchoConnection.idl" />
-    <Midl Include="AgentPipeConnection.idl" />
     <Midl Include="AzureConnection.idl" />
     <Midl Include="ConptyConnection.idl" />
     <Midl Include="ConnectionInformation.idl" />
