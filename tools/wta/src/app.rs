@@ -1244,6 +1244,17 @@ impl TabSession {
         self.refresh_command_popup();
     }
 
+    pub fn delete_word_before_cursor(&mut self) {
+        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
+        if self.cursor_pos == 0 {
+            return;
+        }
+        let word_start = prev_word_boundary(&self.input, self.cursor_pos);
+        self.input.replace_range(word_start..self.cursor_pos, "");
+        self.cursor_pos = word_start;
+        self.refresh_command_popup();
+    }
+
     pub fn delete_at_cursor(&mut self) {
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         if self.cursor_pos >= self.input.len() {
@@ -4754,6 +4765,9 @@ impl App {
                     self.turn_submit_prompt(&session_id, submitted);
                     let _ = self.prompt_tx.send(prompt);
                 }
+            }
+            KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.current_tab_mut().delete_word_before_cursor();
             }
             KeyCode::Backspace => {
                 self.current_tab_mut().delete_before_cursor();
