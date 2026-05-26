@@ -115,11 +115,15 @@ namespace winrt::TerminalApp::implementation
         _autofixState = state;
         if (state == AutofixState::Idle)
         {
-            // Clear caches on idle.
+            // Clear ALL cached fields on idle, including `_hotkeyHint`.
+            // The bottom bar reads these directly, so a leftover hint
+            // from a prior Detected/Pending transition would otherwise
+            // hang around after the bar should have gone quiet.
             _lastErrorPaneId = {};
             _fixPreview = {};
             _suggestionTitle = {};
             _detectedSummary = {};
+            _hotkeyHint = {};
         }
         else
         {

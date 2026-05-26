@@ -88,6 +88,9 @@ uiatextrange
 Uids
 UIDs
 und
+unstash
+unstashes
+unstashing
 vsdevcmd
 westus
 workarounds

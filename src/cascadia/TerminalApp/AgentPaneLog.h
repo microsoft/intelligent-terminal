@@ -25,6 +25,7 @@
 #include <fstream>
 #include <iomanip>
 #include <string>
+#include <system_error>
 
 namespace winrt::TerminalApp::implementation
 {
@@ -35,22 +36,42 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        const auto logDir = std::wstring(localAppData) + L"\\IntelligentTerminal\\logs";
-        std::filesystem::create_directories(logDir);
-        const auto logPath = logDir + L"\\wta-agent-pane.log";
-        if (auto f = std::ofstream(logPath, std::ios::app))
+        // Build a `filesystem::path` from the raw wstring. `std::ofstream`'s
+        // wstring overload is a MSVC extension; the standard ctor only
+        // accepts `const char*`, `std::string`, and `std::filesystem::path`.
+        // Going via `path` keeps the code portable.
+        std::filesystem::path logDir{ std::wstring(localAppData) };
+        logDir /= L"IntelligentTerminal";
+        logDir /= L"logs";
+
+        // No-throw overload — this is a diagnostic logger; we never want
+        // a filesystem hiccup (race with a concurrent rmdir, permission
+        // change, disk full) to bubble out as an exception that kills the
+        // caller. On failure we silently drop the log line.
+        std::error_code ec;
+        std::filesystem::create_directories(logDir, ec);
+        if (ec)
         {
-            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::system_clock::now().time_since_epoch())
-                                   .count();
-            const auto secs = static_cast<std::time_t>(nowMs / 1000);
-            const int ms = static_cast<int>(nowMs % 1000);
-            std::tm tmUtc{};
-            ::gmtime_s(&tmUtc, &secs);
-            char ts[32];
-            std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", &tmUtc);
-            f << '[' << ts << '.' << std::setw(3) << std::setfill('0') << ms
-              << "Z] " << msg << '\n';
+            return;
         }
+
+        const auto logPath = logDir / L"wta-agent-pane.log";
+        std::ofstream f{ logPath, std::ios::app };
+        if (!f)
+        {
+            return;
+        }
+
+        const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::system_clock::now().time_since_epoch())
+                               .count();
+        const auto secs = static_cast<std::time_t>(nowMs / 1000);
+        const int ms = static_cast<int>(nowMs % 1000);
+        std::tm tmUtc{};
+        ::gmtime_s(&tmUtc, &secs);
+        char ts[32];
+        std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", &tmUtc);
+        f << '[' << ts << '.' << std::setw(3) << std::setfill('0') << ms
+          << "Z] " << msg << '\n';
     }
 }

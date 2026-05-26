@@ -3,9 +3,15 @@
 
 #pragma once
 
+#include <cstdint>
 #include <mutex>
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
+
+// `winrt::hstring` lives in <winrt/base.h>. Include it explicitly so the
+// header is self-contained and not dependent on PCH / include-order
+// happenstance.
+#include <winrt/base.h>
 
 namespace winrt::TerminalApp::implementation
 {
