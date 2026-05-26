@@ -895,6 +895,8 @@ namespace winrt::TerminalApp::implementation
             overlay.Visibility(Visibility::Visible);
 
             // Focus the Next button so Enter triggers it immediately.
+            // Also announce the page title to screen readers via
+            // RaiseNotificationEvent so Narrator reads it on entry.
             // Dispatched at Low priority so it runs after all pending layout.
             Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Low,
                 [weak = get_weak()]() {
@@ -905,6 +907,16 @@ namespace winrt::TerminalApp::implementation
                         if (auto nextBtn = overlay.FindName(L"NextButton").try_as<Controls::Button>())
                         {
                             nextBtn.Focus(FocusState::Programmatic);
+
+                            // Announce page title to screen readers
+                            if (auto peer = winrt::Windows::UI::Xaml::Automation::Peers::FrameworkElementAutomationPeer::FromElement(nextBtn))
+                            {
+                                peer.RaiseNotificationEvent(
+                                    winrt::Windows::UI::Xaml::Automation::Peers::AutomationNotificationKind::Other,
+                                    winrt::Windows::UI::Xaml::Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
+                                    RS_(L"FreOverlay_WelcomeTitle/Text"),
+                                    L"FreWelcomeAnnouncement");
+                            }
                         }
                     }
                 });

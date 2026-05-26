@@ -156,10 +156,13 @@ namespace winrt::TerminalApp::implementation
             Automation::AutomationProperties::SetHelpText(SessionManagementToggle(), policyText);
         }
 
-        // ── Accessibility: set AutomationProperties.Name for interactive
-        //    controls so screen readers announce them correctly. Re-uses
-        //    the existing x:Uid .Text values from Resources.resw — no
-        //    extra resw keys needed.
+        // ── Accessibility: set AutomationProperties.Name so screen readers
+        //    announce controls and pages correctly. Re-uses existing x:Uid
+        //    .Text values from Resources.resw — no extra keys needed.
+        Automation::AutomationProperties::SetName(
+            WelcomePage(), RS_(L"FreOverlay_WelcomeTitle/Text"));
+        Automation::AutomationProperties::SetName(
+            SettingsPage(), RS_(L"FreOverlay_SettingsTitle/Text"));
         Automation::AutomationProperties::SetName(
             AutoErrorToggle(), RS_(L"FreOverlay_AutoErrorLabel/Text"));
         Automation::AutomationProperties::SetName(

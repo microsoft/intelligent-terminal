@@ -27,7 +27,8 @@
     </UserControl.Resources>
 
     <!--  Full-screen dark background  -->
-    <Grid x:Name="RootGrid" Background="#FF1E1E1E">
+    <Grid x:Name="RootGrid" Background="#FF1E1E1E"
+          HighContrastAdjustment="Auto">
         <Grid.RowDefinitions>
             <!--  Title bar space  -->
             <RowDefinition Height="32" />
@@ -152,9 +153,7 @@
                             x:Name="NextButton"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             Width="120" Height="32"
-                            Background="#FF60CDFF" Foreground="Black"
-                            FontFamily="Segoe UI Variable Text, Segoe UI"
-                            FontSize="14" CornerRadius="5"
+                            Style="{StaticResource AccentButtonStyle}"
                             Click="_OnNextButtonClick" />
                 </Grid>
             </Grid>
@@ -327,14 +326,13 @@
                                HorizontalAlignment="Left" VerticalAlignment="Center"
                                Foreground="#FFFF6B6B" FontSize="13"
                                TextWrapping="Wrap" MaxWidth="400"
-                               Visibility="Collapsed" />
+                               Visibility="Collapsed"
+                               AutomationProperties.LiveSetting="Assertive" />
                     <Button x:Uid="FreOverlay_SaveButton"
                             x:Name="SaveButton"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             Width="120" Height="32"
-                            Background="#FF60CDFF" Foreground="Black"
-                            FontFamily="Segoe UI Variable Text, Segoe UI"
-                            FontSize="14" CornerRadius="5"
+                            Style="{StaticResource AccentButtonStyle}"
                             Click="_OnSaveButtonClick" />
                 </Grid>
             </Grid>
