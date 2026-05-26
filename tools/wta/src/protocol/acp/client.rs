@@ -1571,10 +1571,29 @@ impl acp::Client for WtaClient {
             }
             acp::SessionUpdate::ToolCallUpdate(update) => {
                 if let Some(status) = &update.fields.status {
+                    // Failed updates frequently carry a `raw_output.message`
+                    // explaining *why* (e.g. Copilot in non-interactive ACP
+                    // mode emits `{"code":"rejected","message":"The user
+                    // rejected this tool call."}` when permission is auto-
+                    // denied). Surface it through the existing status string
+                    // so the chat view renders something more useful than a
+                    // bare "Failed".
+                    let reason = update
+                        .fields
+                        .raw_output
+                        .as_ref()
+                        .and_then(|v| v.get("message"))
+                        .and_then(|m| m.as_str())
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty());
+                    let status_str = match reason {
+                        Some(msg) => format!("{:?}: {}", status, msg),
+                        None => format!("{:?}", status),
+                    };
                     let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                         session_id: sid,
                         id: update.tool_call_id.to_string(),
-                        status: format!("{:?}", status),
+                        status: status_str,
                     });
                 }
             }
