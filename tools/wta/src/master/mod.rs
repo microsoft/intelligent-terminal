@@ -162,6 +162,18 @@ struct MasterStateInner {
     /// of the registry.
     pub(crate) helper_ext_subscribers:
         Mutex<HashMap<HelperId, mpsc::UnboundedSender<acp::ExtNotification>>>,
+    /// Shared `WtChannel` for outbound wtcli/COM calls — currently
+    /// used only for `intellterm.wta/focus_session` (resolves a
+    /// SessionId → pane_session_id via `registry`, then issues
+    /// `request("focus_pane", { session_id: <pane_guid> })`).
+    ///
+    /// `Option` so unit tests can construct a `MasterStateInner`
+    /// without spinning up a real wtcli channel; production sets
+    /// `Some(Arc::new(CliChannel::connect().await?))` in
+    /// `run_master_mode`. When `None`, `handle_focus_session` returns
+    /// a structured `acp::Error` so the helper can fall back to its
+    /// legacy resume path.
+    pub(crate) wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>>,
     /// The agent CLI's response to the master's startup initialize.
     /// Replayed verbatim to every helper that calls `initialize` over
     /// its pipe — re-forwarding to the agent CLI returns a stale or
@@ -1011,6 +1023,32 @@ impl acp::Agent for HelperHandler {
         );
         self.agent_conn.cancel(args).await
     }
+
+    /// Master answers our own `intellterm.wta/*` ext methods locally
+    /// (without round-tripping to the agent CLI). Today only
+    /// `focus_session` is recognized; everything else is forwarded so
+    /// future agent-native extension methods still work.
+    async fn ext_method(&self, args: acp::ExtRequest) -> acp::Result<acp::ExtResponse> {
+        let method: &str = &args.method;
+        if method == crate::session_registry::INTELLTERM_METHOD_FOCUS_SESSION {
+            tracing::info!(
+                target: "master",
+                op = "ext_method",
+                method = %method,
+                helper_id = ?self.helper_id,
+                "handling intellterm.wta/focus_session locally"
+            );
+            return handle_focus_session(&self.state, &args.params).await;
+        }
+        tracing::debug!(
+            target: "master",
+            op = "ext_method",
+            method = %method,
+            helper_id = ?self.helper_id,
+            "forwarding non-intellterm ext_method to agent CLI"
+        );
+        self.agent_conn.ext_method(args).await
+    }
 }
 
 /// Master mode entry point.
@@ -1134,10 +1172,30 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     //    starts empty and is filled below once the initialize round
     //    trip with the agent CLI completes; helpers can only connect
     //    after that, so they always see the populated cache.
+    //
+    //    `wt` is best-effort: master usually runs inside a WT pane
+    //    (so `WT_COM_CLSID` is set and `CliChannel::connect` succeeds),
+    //    but on the rare boot path where it isn't we degrade to
+    //    `None` and `handle_focus_session` returns a structured
+    //    "focus channel unavailable" error instead of crashing the
+    //    helper's ext_method call.
+    let wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>> =
+        match crate::shell::wt_channel::CliChannel::connect().await {
+            Ok(ch) => Some(Arc::new(ch)),
+            Err(err) => {
+                tracing::warn!(
+                    target: "master",
+                    error = %err,
+                    "CliChannel unavailable; intellterm.wta/focus_session will error"
+                );
+                None
+            }
+        };
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
+        wt,
         cached_init_resp: OnceLock::new(),
     });
     let client = MasterClient {
@@ -1510,6 +1568,120 @@ pub(crate) async fn broadcast_ext_to_helpers(
     }
 }
 
+/// Pure async handler for the `intellterm.wta/focus_session` ExtRequest.
+///
+/// 1. Parses `FocusSessionParams` from `params`.
+/// 2. Looks the SessionId up in `state.registry`. Miss → `NotFound`.
+/// 3. Requires the row to carry a `pane_session_id` (registry rows
+///    created before B-3 may not). Missing → `InvalidRequest` so the
+///    caller knows the row is unfocusable rather than "doesn't exist".
+/// 4. Requires `state.wt` to be `Some` (CliChannel available). None →
+///    a structured error; helper falls back to legacy focus path.
+/// 5. Dispatches `wt.request("focus_pane", { session_id: <pane_guid> })`.
+///    Wraps any wtcli failure in `internal_error` with the underlying
+///    stderr-style message so the helper can log it.
+///
+/// Returned `ExtResponse` is `{ "ok": true, "pane_session_id": "..." }`
+/// on success — the helper doesn't strictly need the echo today but it
+/// makes the wire trace self-documenting and gives us room to add
+/// e.g. `restored_from_stash: true` later without changing the method
+/// signature.
+///
+/// Factored out so unit tests can exercise it with a mock `WtChannel`
+/// + an `InMemoryRegistry` without standing up a `HelperHandler` /
+/// agent CLI / pipe pair.
+pub(crate) async fn handle_focus_session(
+    state: &MasterStateInner,
+    params: &serde_json::value::RawValue,
+) -> acp::Result<acp::ExtResponse> {
+    let parsed = crate::session_registry::parse_focus_session_params(params).map_err(|err| {
+        tracing::warn!(
+            target: "master",
+            op = "focus_session",
+            error = %err,
+            "rejecting malformed focus_session params"
+        );
+        acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
+    })?;
+
+    let info = state.registry.lookup(&parsed.session_id).await.ok_or_else(|| {
+        tracing::info!(
+            target: "master",
+            op = "focus_session",
+            session_id = ?parsed.session_id,
+            "session not in registry; nothing to focus"
+        );
+        acp::Error::resource_not_found(None).data(serde_json::json!({
+            "session_id": parsed.session_id,
+            "reason": "session_id not in master registry"
+        }))
+    })?;
+
+    let pane_session_id = info.pane_session_id.clone().ok_or_else(|| {
+        tracing::warn!(
+            target: "master",
+            op = "focus_session",
+            session_id = ?parsed.session_id,
+            "registry row has no pane_session_id; cannot focus"
+        );
+        acp::Error::invalid_request().data(serde_json::json!({
+            "session_id": parsed.session_id,
+            "reason": "session has no associated WT pane"
+        }))
+    })?;
+
+    let wt = state.wt.as_ref().ok_or_else(|| {
+        tracing::warn!(
+            target: "master",
+            op = "focus_session",
+            session_id = ?parsed.session_id,
+            "WtChannel unavailable; helper must fall back to legacy focus"
+        );
+        acp::Error::internal_error().data(serde_json::json!({
+            "reason": "focus channel unavailable"
+        }))
+    })?;
+
+    match wt
+        .request(
+            "focus_pane",
+            serde_json::json!({ "session_id": pane_session_id }),
+        )
+        .await
+    {
+        Ok(_) => {
+            tracing::info!(
+                target: "master",
+                op = "focus_session",
+                session_id = ?parsed.session_id,
+                pane_session_id = %pane_session_id,
+                "focus dispatched"
+            );
+            let resp_json = serde_json::json!({
+                "ok": true,
+                "pane_session_id": pane_session_id,
+            });
+            let raw = serde_json::value::to_raw_value(&resp_json)
+                .expect("trivial JSON value always serializes");
+            Ok(acp::ExtResponse::new(raw.into()))
+        }
+        Err(err) => {
+            tracing::warn!(
+                target: "master",
+                op = "focus_session",
+                session_id = ?parsed.session_id,
+                pane_session_id = %pane_session_id,
+                error = %err,
+                "wtcli focus_pane failed"
+            );
+            Err(acp::Error::internal_error().data(serde_json::json!({
+                "reason": "wtcli focus_pane failed",
+                "message": err.to_string(),
+            })))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1520,6 +1692,7 @@ mod tests {
             session_to_helper: Mutex::new(HashMap::new()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
+            wt: None,
             cached_init_resp: OnceLock::new(),
         })
     }
@@ -2076,5 +2249,211 @@ mod tests {
             .await
             .expect_err("create_terminal on unknown session must fail");
         assert_eq!(err.code, acp::ErrorCode::InternalError);
+    }
+
+    // ─── handle_focus_session ───────────────────────────────────────
+
+    /// Mock `WtChannel` that captures every `request` call into a
+    /// shared vec so tests can assert the dispatched method + params.
+    /// Returns `Ok(<configured-response>)` for every request — the
+    /// real `CliChannel` returns a JSON value from `wtcli`, but the
+    /// handler doesn't inspect it (it just maps `Ok(_)` to a fixed
+    /// success ExtResponse), so any JSON works here.
+    struct MockWtChannel {
+        calls: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
+        fail_with: Option<String>,
+    }
+
+    impl MockWtChannel {
+        fn ok() -> Self {
+            Self {
+                calls: std::sync::Mutex::new(Vec::new()),
+                fail_with: None,
+            }
+        }
+        fn failing(message: &str) -> Self {
+            Self {
+                calls: std::sync::Mutex::new(Vec::new()),
+                fail_with: Some(message.to_string()),
+            }
+        }
+        fn calls(&self) -> Vec<(String, serde_json::Value)> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for MockWtChannel {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((method.to_string(), params));
+            match &self.fail_with {
+                Some(msg) => Err(anyhow::anyhow!("{msg}")),
+                None => Ok(serde_json::json!({ "ok": true })),
+            }
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<MasterStateInner> {
+        Arc::new(MasterStateInner {
+            session_to_helper: Mutex::new(HashMap::new()),
+            registry: crate::session_registry::InMemoryRegistry::shared(),
+            helper_ext_subscribers: Mutex::new(HashMap::new()),
+            wt: Some(wt),
+            cached_init_resp: OnceLock::new(),
+        })
+    }
+
+    fn focus_params_for(sid: &acp::SessionId) -> Box<serde_json::value::RawValue> {
+        let req = crate::session_registry::build_focus_session_request(sid);
+        // ExtRequest stores params as Arc<RawValue>; cloning to owned Box
+        // through serialization is the simplest portable way to feed it
+        // into `handle_focus_session` which expects `&RawValue`.
+        serde_json::value::to_raw_value(&serde_json::from_str::<serde_json::Value>(req.params.get()).unwrap()).unwrap()
+    }
+
+    /// Happy path: sid in registry with pane_session_id, WtChannel present.
+    /// The handler should call `wt.request("focus_pane", { session_id: <pane_guid> })`
+    /// exactly once and return an `Ok` ExtResponse.
+    #[tokio::test]
+    async fn focus_session_dispatches_to_wt_channel_with_pane_session_id() {
+        use crate::session_registry::SessionInfo;
+        use std::path::PathBuf;
+
+        let mock = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(mock.clone());
+        let sid = acp::SessionId::new("alive-sess");
+        let mut info = SessionInfo::new(sid.clone(), PathBuf::from("/repo"));
+        info.pane_session_id = Some("pane-GUID-123".to_string());
+        state.registry.upsert(info).await;
+
+        let params = focus_params_for(&sid);
+        let resp = handle_focus_session(&state, &params)
+            .await
+            .expect("focus_session must succeed");
+
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 1, "exactly one wt.request call expected");
+        assert_eq!(calls[0].0, "focus_pane");
+        assert_eq!(
+            calls[0].1,
+            serde_json::json!({ "session_id": "pane-GUID-123" })
+        );
+
+        let body: serde_json::Value =
+            serde_json::from_str(resp.0.get()).expect("response is JSON");
+        assert_eq!(body["ok"], serde_json::Value::Bool(true));
+        assert_eq!(body["pane_session_id"], "pane-GUID-123");
+    }
+
+    /// Unknown SessionId → `resource_not_found` so the helper knows
+    /// the row doesn't exist on this master (vs. existing-but-unfocusable).
+    #[tokio::test]
+    async fn focus_session_returns_not_found_for_unknown_session() {
+        let mock = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(mock.clone());
+        let sid = acp::SessionId::new("nobody-here");
+
+        let params = focus_params_for(&sid);
+        let err = handle_focus_session(&state, &params)
+            .await
+            .expect_err("unknown sid must error");
+        assert_eq!(err.code, acp::ErrorCode::ResourceNotFound);
+        assert!(
+            mock.calls().is_empty(),
+            "no wt call when session not in registry"
+        );
+    }
+
+    /// Row exists but has no pane_session_id → `invalid_request`
+    /// (different code from "not found" so the helper can branch on it).
+    #[tokio::test]
+    async fn focus_session_returns_invalid_request_for_row_without_pane_session_id() {
+        use crate::session_registry::SessionInfo;
+        use std::path::PathBuf;
+
+        let mock = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(mock.clone());
+        let sid = acp::SessionId::new("orphan-sess");
+        let info = SessionInfo::new(sid.clone(), PathBuf::from("/repo")); // no pane_session_id
+        state.registry.upsert(info).await;
+
+        let params = focus_params_for(&sid);
+        let err = handle_focus_session(&state, &params)
+            .await
+            .expect_err("row without pane_session_id must error");
+        assert_eq!(err.code, acp::ErrorCode::InvalidRequest);
+        assert!(mock.calls().is_empty());
+    }
+
+    /// `wt: None` (master booted outside a WT pane) → `internal_error`
+    /// so the helper can fall back to its legacy focus path.
+    #[tokio::test]
+    async fn focus_session_returns_internal_error_when_wt_channel_unavailable() {
+        use crate::session_registry::SessionInfo;
+        use std::path::PathBuf;
+
+        let state = make_state(); // wt: None
+        let sid = acp::SessionId::new("alive-but-no-wt");
+        let mut info = SessionInfo::new(sid.clone(), PathBuf::from("/repo"));
+        info.pane_session_id = Some("pane-X".to_string());
+        state.registry.upsert(info).await;
+
+        let params = focus_params_for(&sid);
+        let err = handle_focus_session(&state, &params)
+            .await
+            .expect_err("wt None must error");
+        assert_eq!(err.code, acp::ErrorCode::InternalError);
+    }
+
+    /// Wtcli failure propagates as `internal_error` with the wtcli
+    /// error message embedded in `data` so the helper can log it.
+    #[tokio::test]
+    async fn focus_session_wraps_wt_failure_as_internal_error() {
+        use crate::session_registry::SessionInfo;
+        use std::path::PathBuf;
+
+        let mock = Arc::new(MockWtChannel::failing("0x80070490: pane not found"));
+        let state = make_state_with_wt(mock.clone());
+        let sid = acp::SessionId::new("alive-but-pane-gone");
+        let mut info = SessionInfo::new(sid.clone(), PathBuf::from("/repo"));
+        info.pane_session_id = Some("dead-pane".to_string());
+        state.registry.upsert(info).await;
+
+        let params = focus_params_for(&sid);
+        let err = handle_focus_session(&state, &params)
+            .await
+            .expect_err("wt failure must surface as Err");
+        assert_eq!(err.code, acp::ErrorCode::InternalError);
+        // Mock was still invoked once before failing — confirms we
+        // didn't short-circuit somewhere upstream of the dispatch.
+        assert_eq!(mock.calls().len(), 1);
+    }
+
+    /// Malformed params (e.g. missing `session_id`) → `invalid_params`
+    /// without touching the registry or wt channel.
+    #[tokio::test]
+    async fn focus_session_returns_invalid_params_for_garbage() {
+        let mock = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(mock.clone());
+
+        let garbage = serde_json::value::to_raw_value(&serde_json::json!({
+            "wrong_field": "huh"
+        }))
+        .unwrap();
+        let err = handle_focus_session(&state, &garbage)
+            .await
+            .expect_err("malformed params must error");
+        assert_eq!(err.code, acp::ErrorCode::InvalidParams);
+        assert!(mock.calls().is_empty());
     }
 }

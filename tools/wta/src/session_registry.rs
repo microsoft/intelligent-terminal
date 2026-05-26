@@ -233,6 +233,44 @@ pub fn parse_ext_notification(n: &acp::ExtNotification) -> WtaExtNotification {
     }
 }
 
+// ─── intellterm.wta/focus_session ────────────────────────────────────────────
+
+/// `ExtRequest` method for "helper asks master to focus the WT pane
+/// hosting a given ACP session".
+///
+/// Helper → master only. Master resolves the SessionId to a
+/// `pane_session_id` via its `SessionRegistry`, then dispatches via the
+/// shared `WtChannel` (`focus_pane`). Helper never touches wtcli for
+/// focus operations directly — all focus traffic funnels through
+/// master so a single in-memory map (the master's registry) is the
+/// authority on "which pane owns which sid".
+pub const INTELLTERM_METHOD_FOCUS_SESSION: &str = "intellterm.wta/focus_session";
+
+/// Wire payload for [`INTELLTERM_METHOD_FOCUS_SESSION`].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct FocusSessionParams {
+    pub session_id: acp::SessionId,
+}
+
+/// Build an `ExtRequest` for focus_session. Helper side.
+pub fn build_focus_session_request(sid: &acp::SessionId) -> acp::ExtRequest {
+    let params = FocusSessionParams {
+        session_id: sid.clone(),
+    };
+    let json = serde_json::to_string(&params)
+        .expect("FocusSessionParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::ExtRequest::new(INTELLTERM_METHOD_FOCUS_SESSION, Arc::from(raw))
+}
+
+/// Parse `FocusSessionParams` from an inbound `ExtRequest.params`. Master side.
+pub fn parse_focus_session_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<FocusSessionParams, serde_json::Error> {
+    serde_json::from_str::<FocusSessionParams>(raw.get())
+}
+
 /// One row in the registry. Mirrors the fields the F2 view needs:
 ///
 /// * `session_id` — the ACP session GUID (truth-source key).
@@ -746,6 +784,24 @@ mod tests {
             parse_ext_notification(&ext),
             WtaExtNotification::MalformedParams { .. }
         ));
+    }
+
+    // ─── focus_session ──────────────────────────────────────────────
+
+    #[test]
+    fn build_focus_session_request_carries_method_and_session_id() {
+        let sid = acp::SessionId::new("focus-target".to_string());
+        let req = build_focus_session_request(&sid);
+        assert_eq!(&*req.method, INTELLTERM_METHOD_FOCUS_SESSION);
+        let parsed = parse_focus_session_params(&req.params)
+            .expect("round-trip of FocusSessionParams must succeed");
+        assert_eq!(parsed.session_id, sid);
+    }
+
+    #[test]
+    fn parse_focus_session_params_rejects_garbage() {
+        let raw = serde_json::value::RawValue::from_string(r#"{"wrong":"shape"}"#.into()).unwrap();
+        assert!(parse_focus_session_params(&raw).is_err());
     }
 
     #[test]
