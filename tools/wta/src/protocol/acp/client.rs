@@ -1841,7 +1841,7 @@ pub async fn run_acp_client_over_pipe(
         }
     });
 
-    // Initialize — same as the child-process path. We use a 30s timeout
+    // Initialize — same as the child-process path. We use a 60s timeout
     // here because the first helper to connect to a fresh master may
     // ride along with the master's own agent CLI spawn (especially the
     // npx adapter cold start). After the first init, subsequent inits
@@ -2273,7 +2273,7 @@ pub async fn run_acp_client_over_pipe(
                         false
                     };
                     tracing::info!(
-                        target: "helper",
+                        target: "acp_rename_session",
                         old_tab_id = %req.old_tab_id,
                         new_tab_id = %req.new_tab_id,
                         old_existed,
@@ -3084,7 +3084,7 @@ async fn run_inner(
                         false
                     };
                     tracing::info!(
-                        target: "helper",
+                        target: "acp_rename_session",
                         old_tab_id = %req.old_tab_id,
                         new_tab_id = %req.new_tab_id,
                         old_existed,

@@ -7,6 +7,8 @@
 #include <mutex>
 #include <string>
 
+#include "../WinRTUtils/inc/WtExeUtils.h"
+
 namespace winrt::TerminalApp::implementation
 {
     SharedWta& SharedWta::Instance()
@@ -66,7 +68,7 @@ namespace winrt::TerminalApp::implementation
     }
 
     bool SharedWta::AcquirePane(const std::wstring_view wtaPath,
-                                const std::wstring_view extraArgs)
+                                std::span<const std::wstring> extraArgs)
     {
         if (wtaPath.empty())
         {
@@ -100,7 +102,7 @@ namespace winrt::TerminalApp::implementation
     }
 
     bool SharedWta::_SpawnLocked(const std::wstring_view wtaPath,
-                                 const std::wstring_view extraArgs)
+                                 std::span<const std::wstring> extraArgs)
     {
         // Lazily allocate the master pipe name once per process. We
         // intentionally keep it across master respawns: helpers
@@ -136,18 +138,35 @@ namespace winrt::TerminalApp::implementation
         // doc/specs/Multi-window-agent-pane.md, "Target architecture").
         // extraArgs carries per-process settings (--agent, --agent-id,
         // --acp-model, --no-autofix, --language, ...) so the master
-        // can pass them through to the agent CLI it spawns.
+        // can pass them through to the agent CLI it spawns. Each
+        // element is escaped here via QuoteAndEscapeCommandlineArg
+        // so callers don't have to think about quoting.
+        size_t argsBudget = 0;
+        for (const auto& a : extraArgs)
+        {
+            // +3 covers leading space and the two surrounding quotes
+            // that QuoteAndEscapeCommandlineArg always emits.
+            argsBudget += a.size() + 3;
+        }
         std::wstring commandline;
-        commandline.reserve(wtaPath.size() + 64 + _masterPipeName.size() + extraArgs.size());
+        commandline.reserve(wtaPath.size() + 64 + _masterPipeName.size() + argsBudget);
         commandline.push_back(L'"');
         commandline.append(wtaPath);
         commandline.append(L"\" --master \"");
         commandline.append(_masterPipeName);
         commandline.append(L"\"");
-        if (!extraArgs.empty())
+        for (const auto& arg : extraArgs)
         {
+            // Skip empty values defensively — callers shouldn't push
+            // them, but if a settings string is empty we'd otherwise
+            // emit a bare `""` arg which the agent CLI would see as a
+            // junk positional.
+            if (arg.empty())
+            {
+                continue;
+            }
             commandline.push_back(L' ');
-            commandline.append(extraArgs);
+            QuoteAndEscapeCommandlineArg(arg, commandline);
         }
 
         STARTUPINFOW si{};

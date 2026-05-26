@@ -10,7 +10,7 @@ AI-native Windows Terminal — agents (Copilot, Claude, Gemini, custom) can unde
   - IDL: `src/cascadia/TerminalProtocol/TerminalProtocol.idl`
   - Server: `src/cascadia/WindowsTerminal/TerminalProtocolComServer.cpp`
 - **WTCLI** — CLI client consuming `IProtocolServer` via `CoCreateInstance(CLSCTX_LOCAL_SERVER)`. Agents shell out to `wtcli list-panes`, `wtcli capture-pane`, etc.
-- **ACP** (Agent Control Protocol) — JSON-RPC 2.0 over stdio for in-pane agent experience (`AcpConnection.cpp`).
+- **ACP** (Agent Control Protocol) — JSON-RPC 2.0 spoken inside the helper+master architecture. `wta-helper` ↔ `wta-master` over a named pipe; `wta-master` ↔ agent CLI subprocess over stdio. The C++ side no longer participates in ACP directly — agent panes are plain `ConptyConnection`s hosting a `wta-helper` child. See `doc/specs/Multi-window-agent-pane.md`.
 
 ## UX
 
@@ -47,25 +47,50 @@ Agent pane: position configurable (`bottom`/`right`/`top`/`left`). Color-coded V
 ## Architecture
 
 ```
-WindowEmperor
+WindowEmperor (one WT process, N AppHosts/windows)
   |-- TerminalProtocolComServer (COM, MTA thread, WT_COM_CLSID)
+  |-- SharedWta (singleton) -- spawns --> wta-master ──► agent CLI (ACP/stdio)
+  |                                          ▲
+  |                                          │ ACP/JSON-RPC over named pipe
   +-- AppHost[] → TerminalWindow → TerminalPage
         |-- CommandPalette (? / & prefixes)
-        |-- Agent panes (AcpConnection)
+        |-- Per-tab agent pane: ConptyConnection ───► wta-helper (conpty child)
+        |                                            (one helper per agent pane)
         +-- Protocol bridge (TerminalPage.Protocol.cpp)
 
 External: Agent → wtcli → COM (IProtocolServer) → TerminalProtocolComServer → WindowEmperor
 ```
+
+**Per-tab + per-window routing.** Each agent pane has its own helper bound
+to an `owner_tab_id` (= WT tab StableId) and a `window_id`. All inbound
+events that mutate per-tab state (`set_agent_state`, `tab_changed`,
+`tab_closed`, `tab_renamed`) carry both ids; helpers filter by `window_id`
+and (for `tab_changed`) by owner-lock in `switch_tab_session`. Outbound
+helper events (`agent_state_changed`, `agent_status`, `autofix_state`,
+`close_agent_pane`) carry `tab_id` so C++ can route via
+`_FindTabByStableId` instead of fanning out across every pane / window.
+See `doc/specs/Multi-window-agent-pane.md` §7.
+
+**Agent pane toggle = stash, not destroy.** `Ctrl+Shift+.` /
+`Ctrl+Shift+/` / the bottom-bar button toggle via
+`Tab::StashAgentPane`/`RestoreStashedAgentPane` (built on WT's
+`Pane::HidePane`/`RestorePane`). Helper + conpty + ACP session + chat
+history all survive the toggle. The pane is only destroyed on tab close
+or `Ctrl+C×2` in the TUI. See spec §8.
 
 ## Key Files
 
 | Area | Path |
 |------|------|
 | Agent integration | `src/cascadia/TerminalApp/TerminalPage.cpp`, `TerminalPage.Protocol.cpp` |
+| Agent pane wrapper | `src/cascadia/TerminalApp/AgentPaneContent.cpp` (XAML chrome around the helper's `TermControl`) |
+| Tab-side stash | `src/cascadia/TerminalApp/Tab.cpp` (`StashAgentPane`, `RestoreStashedAgentPane`, `HasStashedAgentPane`) |
 | Command Palette | `src/cascadia/TerminalApp/CommandPalette.cpp` |
 | Protocol IDL | `src/cascadia/TerminalProtocol/TerminalProtocol.idl` |
 | COM Server | `src/cascadia/WindowsTerminal/TerminalProtocolComServer.cpp` |
-| ACP Connection | `src/cascadia/TerminalConnection/AcpConnection.cpp` |
+| Shared master spawn | `src/cascadia/TerminalApp/SharedWta.cpp` |
+| wta-master | `tools/wta/src/master/mod.rs` |
+| wta-helper / App | `tools/wta/src/app.rs`, `tools/wta/src/main.rs` |
 | Settings | `src/cascadia/TerminalSettingsModel/GlobalAppSettings.idl`, `MTSMSettings.h` |
 | Settings UI | `src/cascadia/TerminalSettingsEditor/AIAgents.xaml` |
 | Process coord | `src/cascadia/WindowsTerminal/WindowEmperor.cpp` |

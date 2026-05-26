@@ -16,6 +16,7 @@
 
 #include "../../types/inc/ColorFix.hpp"
 #include "../../types/inc/utils.hpp"
+#include "../WinRTUtils/inc/WtExeUtils.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentPolicy.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
@@ -1499,40 +1500,39 @@ namespace winrt::TerminalApp::implementation
         // These are baked at first-spawn time only; subsequent acquires
         // reuse the same master. Runtime changes flow over event channels
         // (`autofix_enabled_changed` is the existing one).
-        std::wstring extraArgs;
-        const auto appendQuoted = [](std::wstring& dst, const std::wstring_view flag, const winrt::hstring& value) {
+        //
+        // Push as tokenized flag/value pairs; SharedWta handles all
+        // Windows command-line quoting via QuoteAndEscapeCommandlineArg.
+        std::vector<std::wstring> extraArgs;
+        const auto pushFlagValue = [&extraArgs](const std::wstring_view flag, const std::wstring_view value) {
             if (value.empty())
             {
                 return;
             }
-            std::wstring s{ value };
-            for (size_t pos = 0; (pos = s.find(L'"', pos)) != std::wstring::npos; pos += 2)
-            {
-                s.replace(pos, 1, L"\"\"");
-            }
-            dst.append(L" ").append(flag).append(L" \"").append(s).append(L"\"");
+            extraArgs.emplace_back(flag);
+            extraArgs.emplace_back(value);
         };
         // `agentCliPath` was resolved above for the GPO policy check.
         // It may be empty when no agent CLI is detected but policy
         // doesn't actively block (e.g. fresh install with no agents
         // installed) — pass through anyway; wta will surface the
         // failure to spawn the child as an ACP error.
-        appendQuoted(extraArgs, L"--agent", agentCliPath);
-        appendQuoted(extraArgs, L"--agent-id", globals.EffectiveAcpAgent());
+        pushFlagValue(L"--agent", agentCliPath);
+        pushFlagValue(L"--agent-id", globals.EffectiveAcpAgent());
         if (!globals.EffectiveAutoFixEnabled())
         {
-            extraArgs.append(L" --no-autofix");
+            extraArgs.emplace_back(L"--no-autofix");
         }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
-            appendQuoted(extraArgs, L"--language", lang);
+            pushFlagValue(L"--language", lang);
         }
-        appendQuoted(extraArgs, L"--acp-model", globals.AcpModel());
-        appendQuoted(extraArgs, L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
-        appendQuoted(extraArgs, L"--delegate-model", globals.DelegateModel());
+        pushFlagValue(L"--acp-model", globals.AcpModel());
+        pushFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
+        pushFlagValue(L"--delegate-model", globals.DelegateModel());
 
         auto& shared = winrt::TerminalApp::implementation::SharedWta::Instance();
-        if (!shared.AcquirePane(std::wstring_view{ wtaPath }, std::wstring_view{ extraArgs }))
+        if (!shared.AcquirePane(std::wstring_view{ wtaPath }, extraArgs))
         {
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: SharedWta::AcquirePane failed");
             return false;
@@ -1578,18 +1578,28 @@ namespace winrt::TerminalApp::implementation
         // needs them re-stated only to drive its local UI (agent name in
         // the title bar, autofix toggle in the bar, language for its
         // own UI strings).
-        appendQuoted(helperCmd, L"--agent", agentCliPath);
-        appendQuoted(helperCmd, L"--agent-id", globals.EffectiveAcpAgent());
-        appendQuoted(helperCmd, L"--acp-model", globals.AcpModel());
-        appendQuoted(helperCmd, L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
-        appendQuoted(helperCmd, L"--delegate-model", globals.DelegateModel());
+        const auto appendHelperFlagValue = [&helperCmd](const std::wstring_view flag, const std::wstring_view value) {
+            if (value.empty())
+            {
+                return;
+            }
+            helperCmd.push_back(L' ');
+            helperCmd.append(flag);
+            helperCmd.push_back(L' ');
+            QuoteAndEscapeCommandlineArg(value, helperCmd);
+        };
+        appendHelperFlagValue(L"--agent", agentCliPath);
+        appendHelperFlagValue(L"--agent-id", globals.EffectiveAcpAgent());
+        appendHelperFlagValue(L"--acp-model", globals.AcpModel());
+        appendHelperFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
+        appendHelperFlagValue(L"--delegate-model", globals.DelegateModel());
         if (!globals.EffectiveAutoFixEnabled())
         {
             helperCmd.append(L" --no-autofix");
         }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
-            appendQuoted(helperCmd, L"--language", lang);
+            appendHelperFlagValue(L"--language", lang);
         }
         if (intoSessionsView)
         {

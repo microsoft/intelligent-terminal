@@ -14,6 +14,10 @@
 #include "Utils.h"
 #include <json/json.h>
 
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+
 using namespace winrt::Windows::ApplicationModel::DataTransfer;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Text;

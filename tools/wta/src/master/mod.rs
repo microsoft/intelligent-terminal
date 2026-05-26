@@ -50,8 +50,17 @@ struct MasterStateInner {
     /// back to the helper that owns the session. Inserted by the
     /// helper's `new_session` / `load_session` handlers atomically
     /// (before responding to the helper), so no race window.
-    session_to_helper:
-        Mutex<HashMap<acp::SessionId, mpsc::UnboundedSender<acp::SessionNotification>>>,
+    ///
+    /// Value is `(HelperId, sender)` so that on helper disconnect we
+    /// can `retain` out every session belonging to that helper
+    /// without keeping a separate index. Without that cleanup the
+    /// map would grow unboundedly across the master's lifetime —
+    /// each closed pane leaves a dead `SessionId` behind, and every
+    /// future notification for it lights up a "helper notification
+    /// channel closed" warning.
+    session_to_helper: Mutex<
+        HashMap<acp::SessionId, (HelperId, mpsc::UnboundedSender<acp::SessionNotification>)>,
+    >,
 }
 
 /// Master's `acp::Client` impl: handles inbound from the agent CLI.
@@ -88,7 +97,7 @@ impl acp::Client for MasterClient {
         let kind = notification_kind(&args);
         let tx = {
             let map = self.state.session_to_helper.lock().await;
-            map.get(&sid).cloned()
+            map.get(&sid).map(|(_hid, tx)| tx.clone())
         };
         match tx {
             Some(tx) => {
@@ -103,11 +112,21 @@ impl acp::Client for MasterClient {
                     "routed agent CLI notification to helper"
                 );
                 if !send_ok {
+                    // Helper went away between our lookup and our
+                    // send. Drop the routing entry so subsequent
+                    // notifications don't repeat the same warning
+                    // (and the map doesn't grow forever). The
+                    // `serve_helper` cleanup path also retains-out
+                    // these entries on graceful disconnect; this
+                    // path catches the race where send fails before
+                    // that runs.
+                    let mut map = self.state.session_to_helper.lock().await;
+                    map.remove(&sid);
                     tracing::warn!(
                         target: "master",
                         session_id = ?sid,
                         kind = %kind,
-                        "helper notification channel closed — helper likely disconnected; dropping update"
+                        "helper notification channel closed — helper likely disconnected; dropping update and routing entry"
                     );
                 }
             }
@@ -222,7 +241,10 @@ impl acp::Agent for HelperHandler {
         // race a session/update notification.
         let registry_size = {
             let mut map = self.state.session_to_helper.lock().await;
-            map.insert(resp.session_id.clone(), self.notif_tx.clone());
+            map.insert(
+                resp.session_id.clone(),
+                (self.helper_id, self.notif_tx.clone()),
+            );
             map.len()
         };
         tracing::info!(
@@ -245,7 +267,7 @@ impl acp::Agent for HelperHandler {
         let resp = self.agent_conn.load_session(args).await?;
         {
             let mut map = self.state.session_to_helper.lock().await;
-            map.insert(session_id.clone(), self.notif_tx.clone());
+            map.insert(session_id.clone(), (self.helper_id, self.notif_tx.clone()));
         }
         tracing::info!(
             target: "master",
@@ -565,25 +587,143 @@ async fn serve_helper(
         }
     };
 
-    // TODO Phase 2: clean stale `state.session_to_helper` entries
-    // owned by this helper. The current map value type is the bare
-    // `mpsc::UnboundedSender`, which has no back-reference to its
-    // owning helper, and `is_closed()` only flips once notif_rx is
-    // dropped — which happens AFTER this function returns. The
-    // straightforward fix is to change the map value type to
-    // `(HelperId, sender)` and `retain(|_, (hid, _)| *hid !=
-    // self.helper_id)` here. Without cleanup the agent CLI's
-    // notifications for already-detached sessions log
-    // "unknown SessionId" warnings — a quality-of-life nit, not a
-    // correctness issue (the agent typically stops emitting for
-    // released sessions).
-    let _ = &state;
+    // Drop every session this helper owned so the map can't grow
+    // unboundedly across the master's lifetime, and so the agent
+    // CLI's notifications for already-detached sessions don't keep
+    // lighting up "unknown SessionId" warnings.
+    let dropped = drop_sessions_for_helper(&state, helper_id).await;
 
     tracing::info!(
         target: "master",
         helper_id = ?helper_id,
+        sessions_dropped = dropped,
         "helper disconnected"
     );
 
     result
+}
+
+/// Remove every `session_to_helper` entry owned by `helper_id`.
+/// Returns the number of entries dropped. Factored out of
+/// `serve_helper` so the cleanup is unit-testable without a real
+/// named pipe.
+async fn drop_sessions_for_helper(state: &MasterStateInner, helper_id: HelperId) -> usize {
+    let mut map = state.session_to_helper.lock().await;
+    let before = map.len();
+    map.retain(|_, (hid, _)| *hid != helper_id);
+    before - map.len()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use acp::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
+
+    fn make_state() -> Arc<MasterStateInner> {
+        Arc::new(MasterStateInner {
+            session_to_helper: Mutex::new(HashMap::new()),
+        })
+    }
+
+    fn make_notif(sid: &SessionId) -> SessionNotification {
+        SessionNotification::new(
+            sid.clone(),
+            SessionUpdate::AgentMessageChunk(ContentChunk::new("hi".into())),
+        )
+    }
+
+    async fn route(state: &Arc<MasterStateInner>, notif: SessionNotification) {
+        let client = MasterClient {
+            state: Arc::clone(state),
+        };
+        client.session_notification(notif).await.unwrap();
+    }
+
+    /// New `session_notification`s for a registered SessionId reach
+    /// the owning helper's channel, and a second helper's channel
+    /// stays untouched.
+    #[tokio::test]
+    async fn session_notification_routes_to_owning_helper() {
+        let state = make_state();
+        let (tx1, mut rx1) = mpsc::unbounded_channel();
+        let (tx2, mut rx2) = mpsc::unbounded_channel();
+        let sid1 = SessionId::new("sess-1");
+        let sid2 = SessionId::new("sess-2");
+
+        {
+            let mut map = state.session_to_helper.lock().await;
+            map.insert(sid1.clone(), (HelperId(1), tx1));
+            map.insert(sid2.clone(), (HelperId(2), tx2));
+        }
+
+        route(&state, make_notif(&sid1)).await;
+        assert!(rx1.try_recv().is_ok(), "helper 1 should have received");
+        assert!(
+            rx2.try_recv().is_err(),
+            "helper 2 should NOT have received helper 1's notification"
+        );
+    }
+
+    /// When the helper's receiver has been dropped, the failed-send
+    /// path removes the routing entry so the warning doesn't repeat
+    /// for the same SessionId on every subsequent notification.
+    #[tokio::test]
+    async fn session_notification_drops_entry_on_send_failure() {
+        let state = make_state();
+        let (tx, rx) = mpsc::unbounded_channel::<SessionNotification>();
+        let sid = SessionId::new("dead-session");
+        {
+            let mut map = state.session_to_helper.lock().await;
+            map.insert(sid.clone(), (HelperId(7), tx));
+        }
+        drop(rx); // simulate helper going away
+
+        route(&state, make_notif(&sid)).await;
+
+        let map = state.session_to_helper.lock().await;
+        assert!(
+            !map.contains_key(&sid),
+            "send failure should have removed the routing entry"
+        );
+    }
+
+    /// Unknown SessionId is a no-op (warned but not errored) — the
+    /// `Client` trait return value must stay `Ok` so the master's
+    /// I/O loop doesn't tear down on a stale notification.
+    #[tokio::test]
+    async fn session_notification_unknown_session_is_noop() {
+        let state = make_state();
+        let sid = SessionId::new("never-registered");
+        // Just ensure the call doesn't panic and returns Ok.
+        route(&state, make_notif(&sid)).await;
+        let map = state.session_to_helper.lock().await;
+        assert!(map.is_empty());
+    }
+
+    /// `drop_sessions_for_helper` removes exactly the rows owned by
+    /// the disconnecting helper, leaving other helpers' rows intact.
+    /// This is the cleanup the helper-disconnect path runs.
+    #[tokio::test]
+    async fn drop_sessions_for_helper_retains_only_other_helpers() {
+        let state = make_state();
+        let (tx_a, _rx_a) = mpsc::unbounded_channel();
+        let (tx_b, _rx_b) = mpsc::unbounded_channel();
+        let (tx_c, _rx_c) = mpsc::unbounded_channel();
+        {
+            let mut map = state.session_to_helper.lock().await;
+            map.insert(SessionId::new("a1"), (HelperId(1), tx_a.clone()));
+            map.insert(SessionId::new("a2"), (HelperId(1), tx_a));
+            map.insert(SessionId::new("b1"), (HelperId(2), tx_b));
+            map.insert(SessionId::new("c1"), (HelperId(3), tx_c));
+        }
+
+        let dropped = drop_sessions_for_helper(&state, HelperId(1)).await;
+        assert_eq!(dropped, 2);
+
+        let map = state.session_to_helper.lock().await;
+        assert!(!map.contains_key(&SessionId::new("a1")));
+        assert!(!map.contains_key(&SessionId::new("a2")));
+        assert!(map.contains_key(&SessionId::new("b1")));
+        assert!(map.contains_key(&SessionId::new("c1")));
+    }
 }

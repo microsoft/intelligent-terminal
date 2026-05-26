@@ -26,6 +26,8 @@
 
 #include <atomic>
 #include <mutex>
+#include <span>
+#include <string>
 #include <string_view>
 
 #include <wil/resource.h>
@@ -50,13 +52,19 @@ namespace winrt::TerminalApp::implementation
         /// `wtaPath` is the full path to wta.exe — see
         /// `TerminalPage::_DetectWtaPath()`.
         ///
-        /// `extraArgs` is a pre-built suffix appended to the wta
-        /// command line at spawn time (after `--master <pipe>`). The caller
-        /// is responsible for shell-escaping. Used to bake per-process
-        /// settings (`--no-autofix`, `--language`, `--acp-model`, etc.)
-        /// at the first spawn. **Ignored on subsequent acquires** —
-        /// the singleton is already running by then. Runtime settings
-        /// updates flow over the existing event channels
+        /// `extraArgs` is a list of already-tokenized command-line
+        /// arguments appended to the wta command line at spawn time
+        /// (after `--master <pipe>`). Each element is shell-escaped
+        /// internally via `QuoteAndEscapeCommandlineArg`, so callers
+        /// can pass raw values (paths with spaces, settings strings
+        /// with quotes) without any pre-escaping. For flag/value
+        /// pairs, push them as two separate elements (`--agent`,
+        /// `<path>`); bare flags are a single element (`--no-autofix`).
+        /// Used to bake per-process settings (`--no-autofix`,
+        /// `--language`, `--acp-model`, etc.) at the first spawn.
+        /// **Ignored on subsequent acquires** — the singleton is
+        /// already running by then. Runtime settings updates flow
+        /// over the existing event channels
         /// (e.g. `autofix_enabled_changed`).
         ///
         /// Every successful `AcquirePane` MUST be paired with exactly
@@ -64,7 +72,7 @@ namespace winrt::TerminalApp::implementation
         /// When the count reaches zero the Job Object is closed,
         /// terminating wta and every descendant it spawned.
         bool AcquirePane(const std::wstring_view wtaPath,
-                         const std::wstring_view extraArgs);
+                         std::span<const std::wstring> extraArgs = {});
 
         /// Release a previously acquired reference. Calling without a
         /// matching `AcquirePane` is a no-op (safe to call from
@@ -104,7 +112,7 @@ namespace winrt::TerminalApp::implementation
 
         // All `*Locked` helpers assume the caller already holds `_mtx`.
         bool _SpawnLocked(const std::wstring_view wtaPath,
-                          const std::wstring_view extraArgs);
+                          std::span<const std::wstring> extraArgs);
         void _CleanupLocked();
 
         // Wait-callback bridge — `RegisterWaitForSingleObject` requires

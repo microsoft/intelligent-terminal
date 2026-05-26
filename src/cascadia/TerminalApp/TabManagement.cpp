@@ -16,6 +16,10 @@
 #include <til/io.h>
 #include <json/json.h>
 
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+
 #include "AgentPaneContent.h"
 #include "TabRowControl.h"
 #include "DebugTapConnection.h"

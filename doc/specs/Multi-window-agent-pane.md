@@ -1,11 +1,13 @@
 # Multi-Window Behavior of the Agent Pane
 
 Author: kaitao@microsoft.com
-Date: 2026-05-26 (revised — pivot to helper + master architecture)
+Date: 2026-05-26 (post-Z follow-ups: per-tab + per-window event routing
+hardening B12–B20; agent-pane stash/restore B4–B11)
 Branch: `dev/vanzue/window-management`
-Status: Spec under active revision. The original singleton + anonymous-pipe
-design (M3-M6 on this branch) is being **superseded** by the helper + master
-architecture described below. See "Design history" for the rationale.
+Status: Helper + master architecture (Z-M1 through Z-M6) is shipped and
+default. Post-Z work tightened the multi-tab + multi-window event
+routing model (§7) and replaced toggle-destroy with toggle-stash (§8).
+See "Design history" for the rationale of the original pivot.
 
 ## TL;DR
 
@@ -416,10 +418,32 @@ The drag triggers existing WT mechanics: `ContentId` lookup,
 the target window's pane tree. The conpty kernel object is owned by
 the master side (WT), so the master-side HANDLE pair stays the same.
 The helper's stdin/stdout HANDLEs (slave side) are unchanged in the
-helper process — the helper has no awareness of the drag.
+helper process — the conpty + ACP wires keep flowing across the drag.
 
-**Helper does nothing.** **Master does nothing.** The chat
-continues uninterrupted because no part of the agent stack moved.
+What the helper **does** see: a `tab_renamed { old_tab_id, new_tab_id,
+window_id }` event over the COM event bus. WT mints a fresh `StableId`
+on the destination tab (the source tab disappears), so the helper
+rekeys its per-tab map and pointers under the new id:
+
+- `self.tab_id` and `self.owner_tab_id` flip from `old → new`.
+- `self.window_id` snaps to the dest window's id (the helper started in
+  the source window and its `discover_pane_identity()` value is now
+  stale).
+- `tab_sessions[old_tab_id]` is moved to `tab_sessions[new_tab_id]`.
+- `session_to_tab` values pointing at `old_tab_id` are rewritten.
+- ACP client task's `tab_to_session` map is rekeyed via the
+  `rename_session_tx` channel (otherwise the next prompt on the dragged
+  tab can't find its SessionId).
+
+The C++ side emits this event **synchronously** from
+`_MakeTerminalPane` on the destination page during drop-in (not from
+the deferred `_InitializeTab` walk), so the rename lands before the
+target window's own `tab_changed` for the new id and the helper's
+per-tab state isn't clobbered by a fresh default. See "Per-tab +
+per-window event routing" below for the full model.
+
+Master does nothing — the SessionId ↔ helper-connection mapping is
+unaffected by the drag (helper process identity stays the same).
 
 #### Master crash
 
@@ -446,7 +470,130 @@ User must re-open the pane to recover.
 (Lifetimes are intentionally per-pane independent — one helper
 crashing does not affect any other pane.)
 
-### 7. Per-tab independent agents (future)
+### 7. Per-tab + per-window event routing
+
+Once Z-M6 enabled the per-tab agent-pane model by default, the legacy
+"one shared agent pane per window" assumptions inside `wta` and inside
+`TerminalPage` started leaking on multi-tab + multi-window setups. The
+B12–B20 work tightened event routing to a strict per-tab + per-window
+discipline. The model the code now follows:
+
+**Helper identity** (one helper = one tab, lives in one window at a time):
+
+| Field | Source | Updated by |
+|---|---|---|
+| `self.owner_tab_id` | `--owner-tab-id` cmdline (= dest tab StableId) | `tab_renamed` rekey |
+| `self.window_id` | `discover_pane_identity()` at startup | `tab_renamed` rekey (cross-window drag) |
+| `self.tab_id` | mirror of `owner_tab_id` while owner is set | `tab_renamed` rekey; `tab_changed` no-op for non-owner |
+
+The `--owner-tab-id` seed runs **before** the `--initial-view` block in
+`main.rs`, so the initial `--initial-view sessions` mutation and the
+first `project_active_tab_state` emit are scoped to the right tab.
+Without that ordering the seed defaults to `DEFAULT_TAB_ID` and the
+echo arrives at C++ with a tab_id no `TerminalPage` recognizes —
+`_FindTabByStableId` drops it and the just-spawned pane shows the
+wrong view.
+
+**Inbound events carry the routing keys.** Every WT-side event that
+mutates per-tab or per-window state includes the relevant ids in its
+`params`:
+
+| Event | `tab_id` | `window_id` | Filter on helper side |
+|---|---|---|---|
+| `set_agent_state` | yes | yes | skip if `our_window != target_window` (both non-empty) |
+| `tab_changed` | yes | yes | skip if `our_window != target_window`; then owner-lock in `switch_tab_session` |
+| `tab_closed` | yes | yes | skip if `our_window != target_window` |
+| `tab_renamed` | old + new | dest | owner-match self-filters; non-owners ignore |
+| `agent_prompt` | yes | n/a | route by `tab_id` |
+| `autofix_execute` | yes (+ pane_id) | n/a | route by `tab_id` / `pane_id` |
+
+**Outbound events from helpers carry `tab_id`** (= owner_tab_id). C++
+fans the COM event out to every `TerminalPage` (the shared master can't
+know which window owns the tab); each page calls
+`_FindTabByStableId(tab_id)` and drops the event when the tab isn't
+in its `_tabs` collection. Affected events:
+
+- `agent_state_changed` (view, pane_open snapshot)
+- `agent_status` (model, state, available models)
+- `autofix_state` (bar snapshot)
+- `close_agent_pane` (Ctrl+C×2 in TUI)
+- `resume_in_new_agent_tab` (slash-command / Shift+Enter on session row)
+
+**The `switch_tab_session` owner-lock.** A `tab_changed` is broadcast
+to every helper subscribed to the COM event bus. Pre-B20, every helper
+would `switch_tab_session(new_tab_id)`, which (a) overwrote `self.tab_id`
+with another tab's id, and (b) called `project_active_tab_state` which
+materialized a default `tab_sessions[new_tab_id]` entry and broadcast
+its `view=chat / pane_open=false` defaults. Two helpers in the same
+window then raced their emits: the non-owner's stale snapshot would
+land after the owner's, clobbering `pane_open=true` and making the
+just-opened pane "disappear." After B20, `switch_tab_session` early-
+returns when `self.owner_tab_id` is set and `!= new_tab_id`, so only
+the owning helper emits a snapshot. Helpers without an owner (delegate
+mode, legacy `wta` runs) still follow the active tab.
+
+**Why both window_id AND owner-lock?** The window filter alone isn't
+enough — two helpers in the *same* window are both `window_id="1"`,
+both pass the window filter, and only the owner-lock prevents the
+non-owner from emitting. The window filter alone *is* enough for
+cross-window leaks: helper-A in window 1 no longer reacts to a
+`tab_changed { window_id=2 }` from a different window.
+
+**`window_id` survives drag.** A cross-window drag updates
+`self.window_id` in the helper as part of the `tab_renamed` rekey path
+(B19). Without this, the dragged helper would stay pinned to its source
+window's id and start ignoring its own tab's events from the dest
+window.
+
+### 8. Agent pane toggle = stash, not destroy
+
+The user-visible "toggle AI assistant" gesture (`Ctrl+Shift+.` for chat,
+`Ctrl+Shift+/` for sessions, or the bottom-bar button) **hides and
+restores** the existing agent pane on the focused tab. It does **not**
+tear down the helper, the conpty, the ACP session, or the chat history.
+
+Implementation:
+
+- `Tab::StashAgentPane()` walks the pane tree, finds the agent leaf,
+  calls `parent->HidePane(agentPane)`. The sibling terminal pane expands
+  to fill the recovered space; the agent pane's TermControl is detached
+  but its `ControlCore` + `ConnectionInfo` stay alive (this is WT's
+  built-in `HidePane`/`RestorePane` mechanism — we didn't invent the
+  primitive).
+- `Tab::RestoreStashedAgentPane()` calls `parent->RestorePane(...)`
+  to re-attach. Focus is then routed to the agent pane's TermControl
+  via `DispatcherQueue.TryEnqueue(Low, ...)` — programmatic
+  `Focus(FocusState::Programmatic)` silently drops on an un-laid-out
+  element, so deferring to a low-priority dispatcher tick lets XAML
+  finish layout first. Without this defer the next chord (`Ctrl+Shift+.`
+  to toggle back) is eaten because the chord dispatcher is rooted on
+  the focused TermControl.
+
+C++ applies the toggle **locally first** (`StashAgentPane` /
+`RestoreStashedAgentPane`), then notifies `wta` via
+`set_agent_state { pane_open, view, tab_id, window_id }`. wta echoes
+back `agent_state_changed`, which `OnAgentStateChanged` applies
+idempotently. The eager local apply matters because the wta round-trip
+is slow enough that multiple rapid hotkey presses would all read the
+same stale pre-toggle state and cancel each other out.
+
+Unstash **always specifies the requested view** (`chat` or `sessions`)
+on the outbound `set_agent_state` (B14). Otherwise wta would echo back
+its stored view — which is whatever the pane was in when it got stashed
+— and a `Ctrl+Shift+.` (chat) unstash on a pane that was hidden in
+sessions view would re-open in sessions view.
+
+The pane is only truly destroyed when:
+- The tab itself closes (Tab destructor releases the stash), or
+- The user presses Ctrl+C×2 inside the TUI (helper sends
+  `close_agent_pane { tab_id }`, C++ calls `_TeardownAgentPane`).
+
+`OnAgentStateChanged`'s `pane_open` path drives stash/restore: `false`
+calls `Tab::StashAgentPane()`, `true` calls `Tab::RestoreStashedAgentPane`
+if the pane is stashed; otherwise `_AutoCreateHiddenAgentPaneShared`
+(first-open).
+
+### 9. Per-tab independent agents (future)
 
 `AttachPaneParams.agent_id` is currently metadata-only because the
 master holds a single agent CLI subprocess shared across helpers.
@@ -733,17 +880,22 @@ connection to master during the drag. **Stage 0 spike in Z-M5.**
 ### Z-R8. Old behaviors that need re-validation (carried from old R9)
 
 The shift from "one shared pane per window" to "per-tab independent
-panes" changes user-facing behaviors:
-- **Toggle AI Assistant** opens/hides the active tab's pane —
-  natural under the new model; action handler reads per-tab state.
-- **Autofix routing** is already per-tab (PR #50); master forwards
-  the WT-side autofix event to the helper owning the affected tab
-  (via `session_to_tab` reverse lookup).
-- **Bottom bar / diagnostics** is per-tab today (PR #49); display
-  logic reads from the active tab's helper-reported state.
-- **Pre-warming**: M3's auto-create-on-first-tab pre-warm becomes
-  optional under per-tab. Default: no pre-warming; first user
-  toggle creates the helper on demand. Re-evaluate in Phase 5.
+panes" changes user-facing behaviors. Status after the B12–B20 routing
+work:
+- **Toggle AI Assistant** hides/restores the active tab's pane via
+  `Tab::StashAgentPane`/`RestoreStashedAgentPane` — helper + ACP
+  session + chat history preserved across the toggle. See
+  "Agent pane toggle = stash, not destroy" above.
+- **Autofix routing** is per-tab; `autofix_state` carries `tab_id`
+  (= owner_tab_id of the helper that emitted it) and C++ routes by
+  `_FindTabByStableId` rather than fanning out to every pane.
+- **Bottom bar / diagnostics** is per-tab; the bar reads the active
+  tab's `AgentPaneContent` mirrors, which a single writer
+  (`OnAgentStateChanged`) updates from `agent_state_changed`. Cross-
+  tab and cross-window leaks are gated by the `tab_id` / `window_id`
+  filters described in §7.
+- **Pre-warming**: not implemented. First user toggle creates the
+  helper on demand.
 
 ## What this does NOT solve (out of scope)
 
