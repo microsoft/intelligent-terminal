@@ -5411,6 +5411,18 @@ impl App {
             self.project_active_tab_state();
         }
 
+        // Cross-window drag rebuilds the target window's AgentPaneContent
+        // from scratch — `_agentName/_agentVersion/_agentModel` all start
+        // empty, and nothing on the C++ side re-requests them. Re-emit
+        // `agent_status` tagged with the new tab id so the new
+        // AgentPaneContent's `UpdateAgentStatus` fires and the XAML bar
+        // (label + logo) repopulates. Only the owning helper has
+        // meaningful state to publish — other helpers' status events
+        // for the dragged tab id would be wrong.
+        if owner_matched {
+            self.publish_agent_status();
+        }
+
         // Tell the ACP client task to rekey its tab→SessionId map so the
         // next prompt on this tab finds the existing ACP session instead
         // of falling through to the lazy-create branch. The map lives
