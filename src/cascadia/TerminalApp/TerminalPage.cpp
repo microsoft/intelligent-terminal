@@ -894,6 +894,21 @@ namespace winrt::TerminalApp::implementation
             overlay.Completed({ get_weak(), &TerminalPage::_OnFreCompleted });
             overlay.Visibility(Visibility::Visible);
 
+            // Focus the Next button so Enter triggers it immediately.
+            // Dispatched at Low priority so it runs after all pending layout.
+            Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Low,
+                [weak = get_weak()]() {
+                    auto self = weak.get();
+                    if (!self) return;
+                    if (auto overlay = self->FreOverlayElement())
+                    {
+                        if (auto nextBtn = overlay.FindName(L"NextButton").try_as<Controls::Button>())
+                        {
+                            nextBtn.Focus(FocusState::Programmatic);
+                        }
+                    }
+                });
+
             // Hide the tab bar during FRE — the full-screen wizard replaces
             // the entire window content. Restored in _OnFreCompleted.
             TabRow().Visibility(Visibility::Collapsed);
