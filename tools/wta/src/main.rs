@@ -1908,6 +1908,30 @@ async fn run_acp_app(
             // ResumePaneAssigned) back into the event loop.
             app_state.set_agent_event_tx(event_tx.clone());
 
+            // Seed `app_state.tab_id` + `pane_open` from `--owner-tab-id`
+            // BEFORE the `--initial-view` block + the `project_active_tab_state`
+            // emit below. Two failure modes if we don't:
+            //   1. `current_tab_mut` in the --initial-view block falls back
+            //      to DEFAULT_TAB_ID — the view setting lands on the wrong
+            //      tab, the echo C++ receives doesn't match any real tab
+            //      and is dropped.
+            //   2. The initial echo has `pane_open=false` (default), which
+            //      C++'s `OnAgentStateChanged` interprets as "hide" and
+            //      stashes the just-spawned agent pane.
+            // The full seed block further down (which logs + redundantly
+            // sets the same fields) becomes idempotent now.
+            if let Some(ref owner_tab_id) = cli.owner_tab_id {
+                if !owner_tab_id.is_empty() && app_state.tab_id.is_none() {
+                    let tab = app_state
+                        .tab_sessions
+                        .entry(owner_tab_id.clone())
+                        .or_default();
+                    tab.pane_open = true;
+                    app_state.tab_id = Some(owner_tab_id.clone());
+                    app_state.owner_tab_id = Some(owner_tab_id.clone());
+                }
+            }
+
             // Apply --initial-view: if `sessions`, jump straight into the
             // Agents view (mirrors the F2 Chat→Agents toggle). Wired to
             // WT's Ctrl+Shift+/ binding via `--initial-view sessions` on

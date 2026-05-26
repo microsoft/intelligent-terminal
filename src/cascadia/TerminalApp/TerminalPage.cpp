@@ -1378,6 +1378,7 @@ namespace winrt::TerminalApp::implementation
         tabEvt["method"] = "tab_closed";
         Json::Value tabParams;
         tabParams["tab_id"] = winrt::to_string(tabId);
+        tabParams["window_id"] = std::to_string(_WindowProperties.WindowId());
         tabEvt["params"] = tabParams;
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
@@ -2330,15 +2331,19 @@ namespace winrt::TerminalApp::implementation
                 _agentPaneLog("found stashed agent pane on focused tab — unstashing locally + notifying wta");
                 const auto splitDir = _AgentPanePositionToSplitDirection(_settings.GlobalSettings().AgentPanePosition());
                 focusedTab->RestoreStashedAgentPane(splitDir);
-                const std::optional<std::string_view> viewReq =
-                    intoSessionsView ? std::optional<std::string_view>{ "sessions" } : std::nullopt;
+                // ALWAYS specify view on unstash. If we left it `nullopt`,
+                // wta would echo back its stored view (which is whatever
+                // the pane was in when it got hidden) — so a Ctrl+Shift+.
+                // (chat) unstash on a pane that was hidden in sessions view
+                // would re-open in sessions view. Explicit view forces wta
+                // to send the user-requested view in the echo.
+                const std::string_view viewReq = intoSessionsView ? "sessions" : "chat";
                 _RequestAgentStateForTab(focusedTab, viewReq, /*pane_open*/ true);
-                if (intoSessionsView)
+                // Eager local apply so the bottom bar + AgentPaneContent
+                // header flip instantly without waiting for the wta echo.
+                if (const auto agentContent = focusedTab->FindAgentPaneContent())
                 {
-                    if (const auto agentContent = focusedTab->FindAgentPaneContent())
-                    {
-                        agentContent.SetSessionsView(true);
-                    }
+                    agentContent.SetSessionsView(intoSessionsView);
                 }
                 _UpdateBottomBarState();
                 emitAgentPaneOpened();
@@ -6428,8 +6433,7 @@ namespace winrt::TerminalApp::implementation
             // original StableId for this ContentId, the migrating pane was
             // an agent pane. Re-wrap into AgentPaneContent here so the
             // target window restores the chrome (bottom bar, status, click
-            // handlers); the per-Tab wiring + `tab_renamed` emit happens in
-            // `_InitializeTab` once the Tab's new StableId is known.
+            // handlers).
             const uint64_t contentId = newTerminalArgs.ContentId();
             winrt::hstring oldTabId;
             if (winrt::TerminalApp::implementation::AgentPaneDragStash::Take(contentId, oldTabId))
@@ -6439,13 +6443,72 @@ namespace winrt::TerminalApp::implementation
                     wrapped->IsAgentPane(true);
                     if (const auto agentContent = wrapped->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
                     {
-                        if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent))
-                        {
-                            impl->SetPendingRenameFromTabId(oldTabId);
-                        }
                         agentContent.SetAgentPanePosition(_settings.GlobalSettings().AgentPanePosition());
                     }
-                    _agentPaneLog("_MakeTerminalPane: re-wrapped drag-in pane as AgentPaneContent, pending rename from old tab");
+                    // Emit `tab_renamed` IMMEDIATELY here. The cross-window
+                    // drag flow runs NewTab → SplitPane as serialized actions:
+                    // NewTab already created the target tab (and focused it)
+                    // by the time SplitPane (the call site for us) runs, so
+                    // the focused tab's StableId IS the new tab id. wta
+                    // helpers receive `tab_renamed { old, new }` right away
+                    // and rekey their TabSession HashMap key — the
+                    // helper-owned per-tab state (view, pane_open, messages
+                    // history) survives the drag instead of getting
+                    // replaced by a default chat / pane_open=false session
+                    // on the next tab_changed. Without this immediate emit
+                    // the agent pane visually arrives but wta clobbers it
+                    // with a fresh-default state echo (pane_open=false →
+                    // C++ stashes the just-arrived pane → user sees
+                    // "agent pane gone after drag").
+                    if (!oldTabId.empty())
+                    {
+                        if (const auto focusedTab = _GetFocusedTabImpl())
+                        {
+                            const auto newTabId = focusedTab->StableId();
+                            if (!newTabId.empty() && newTabId != oldTabId)
+                            {
+                                Json::Value evt;
+                                evt["type"] = "event";
+                                evt["method"] = "tab_renamed";
+                                Json::Value params;
+                                params["old_tab_id"] = winrt::to_string(oldTabId);
+                                params["new_tab_id"] = winrt::to_string(newTabId);
+                                // Dest window id. The helper for the dragged
+                                // tab reads this and updates its stale
+                                // `self.window_id` during rekey, so post-drag
+                                // set_agent_state events from the new window
+                                // pass the per-tab window filter.
+                                params["window_id"] = std::to_string(_WindowProperties.WindowId());
+                                evt["params"] = params;
+                                Json::StreamWriterBuilder wb;
+                                wb["indentation"] = "";
+                                const auto payload = winrt::to_hstring(Json::writeString(wb, evt));
+                                _agentPaneLog(
+                                    std::string{ "_MakeTerminalPane: emitting tab_renamed old=" } +
+                                    winrt::to_string(oldTabId) + " new=" + winrt::to_string(newTabId));
+                                ProtocolVtSequenceReceived.raise(*this, payload);
+                            }
+                            else
+                            {
+                                _agentPaneLog(
+                                    std::string{ "_MakeTerminalPane: skipping tab_renamed (newTabIdEmpty=" } +
+                                    (newTabId.empty() ? "true" : "false") + " sameAsOld=" +
+                                    (newTabId == oldTabId ? "true" : "false") + ")");
+                            }
+                        }
+                        else
+                        {
+                            _agentPaneLog("_MakeTerminalPane: no focused tab — tab_renamed deferred to _InitializeTab");
+                            if (const auto agentContent = wrapped->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
+                            {
+                                if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent))
+                                {
+                                    impl->SetPendingRenameFromTabId(oldTabId);
+                                }
+                            }
+                        }
+                    }
+                    _agentPaneLog("_MakeTerminalPane: re-wrapped drag-in pane as AgentPaneContent");
                     return wrapped;
                 }
                 _agentPaneLog("_MakeTerminalPane: drag-in agent pane wrap failed — falling back to plain pane");

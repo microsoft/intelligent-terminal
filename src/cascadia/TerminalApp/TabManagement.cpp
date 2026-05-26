@@ -256,81 +256,106 @@ namespace winrt::TerminalApp::implementation
 
         // Cross-window agent-pane drag — finalize the rename and re-wire
         // bottom-bar events for any agent pane that arrived via the drag-in
-        // path. `_MakeTerminalPane` re-wrapped the ContentId-reattached
-        // pane into AgentPaneContent and stashed the source StableId; now
-        // that the new Tab has its own StableId, broadcast a `tab_renamed`
-        // event so the wta-helper rekeys its `--owner-tab-id`. Walk the
-        // pane tree (not just FindAgentPane) for forward-compat.
-        if (const auto rootPane = newTabImpl->GetRootPane())
+        // path. `_MakeTerminalPane` re-wraps the ContentId-reattached pane
+        // into AgentPaneContent and stashes the source StableId.
+        //
+        // CRITICAL: the agent pane is added to the Tab via a SUBSEQUENT
+        // SplitPane action (cross-window drag serializes as NewTab + one
+        // SplitPane per extra pane). At the moment _InitializeTab runs, the
+        // Tab contains only the first pane — the agent pane SplitPane hasn't
+        // executed yet. A synchronous walk here would miss the agent pane
+        // entirely, `tab_renamed` would never fire, and the helper would keep
+        // owning the old (now-gone) tab id; C++ would then immediately stash
+        // the just-arrived agent pane based on the helper's stale
+        // pane_open=false state, and the user sees "agent pane gone after
+        // drag".
+        //
+        // Defer the walk to a low-priority dispatcher tick so subsequent
+        // SplitPane actions land first. Idempotent: a regular new tab (no
+        // agent pane) just no-ops here.
+        if (auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread())
         {
-            const auto newTabId = newTabImpl->StableId();
-            int agentLeavesSeen = 0;
-            int isAgentPaneLeaves = 0;
-            rootPane->WalkTree([this, &newTabImpl, &newTabId, &agentLeavesSeen, &isAgentPaneLeaves](const std::shared_ptr<Pane>& p) -> void {
-                if (!p)
+            auto weakSelf = get_weak();
+            auto weakTab = make_weak(newTabImpl);
+            dispatcher.TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low, [weakSelf, weakTab]() {
+                const auto self = weakSelf.get();
+                const auto tabImplCom = weakTab.get();
+                if (!self || !tabImplCom)
                 {
                     return;
                 }
-                if (p->IsAgentPane())
-                {
-                    ++isAgentPaneLeaves;
-                }
-                if (p->GetContent() && p->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
-                {
-                    ++agentLeavesSeen;
-                }
-                if (!p->IsAgentPane())
+                const auto rootPane = tabImplCom->GetRootPane();
+                if (!rootPane)
                 {
                     return;
                 }
-                const auto content = p->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>();
-                if (!content)
-                {
-                    return;
-                }
-                const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
-                if (!impl)
-                {
-                    return;
-                }
-                // Wire the bottom-bar click events that `_MakeTerminalPane`
-                // couldn't wire (no Tab existed yet).
-                _WireAgentPaneEvents(content, newTabImpl);
+                const auto newTabId = tabImplCom->StableId();
+                int agentLeavesSeen = 0;
+                int isAgentPaneLeaves = 0;
+                rootPane->WalkTree([self, &tabImplCom, &newTabId, &agentLeavesSeen, &isAgentPaneLeaves](const std::shared_ptr<Pane>& p) -> void {
+                    if (!p)
+                    {
+                        return;
+                    }
+                    if (p->IsAgentPane())
+                    {
+                        ++isAgentPaneLeaves;
+                    }
+                    if (p->GetContent() && p->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
+                    {
+                        ++agentLeavesSeen;
+                    }
+                    if (!p->IsAgentPane())
+                    {
+                        return;
+                    }
+                    const auto content = p->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>();
+                    if (!content)
+                    {
+                        return;
+                    }
+                    const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+                    if (!impl)
+                    {
+                        return;
+                    }
+                    self->_WireAgentPaneEvents(content, tabImplCom);
 
-                const auto oldTabId = impl->TakePendingRenameFromTabId();
-                if (oldTabId.empty() || oldTabId == newTabId)
-                {
-                    // Defensive: same window picked up its own drag, or no
-                    // rename was pending (e.g. a normal new tab) — nothing
-                    // to broadcast.
+                    const auto oldTabId = impl->TakePendingRenameFromTabId();
+                    if (oldTabId.empty() || oldTabId == newTabId)
+                    {
+                        _agentPaneLog(
+                            std::string{ "_InitializeTab(deferred): agent pane found but skipping tab_renamed (oldEmpty=" } +
+                            (oldTabId.empty() ? "true" : "false") + " sameAsNew=" +
+                            (oldTabId == newTabId ? "true" : "false") + " new=" +
+                            winrt::to_string(newTabId) + ")");
+                        return;
+                    }
+
+                    Json::Value evt;
+                    evt["type"] = "event";
+                    evt["method"] = "tab_renamed";
+                    Json::Value params;
+                    params["old_tab_id"] = winrt::to_string(oldTabId);
+                    params["new_tab_id"] = winrt::to_string(newTabId);
+                    // Dest window id — helper updates stale self.window_id
+                    // when rekeying (see app.rs tab_renamed handler).
+                    params["window_id"] = std::to_string(self->_WindowProperties.WindowId());
+                    evt["params"] = params;
+                    Json::StreamWriterBuilder wb;
+                    wb["indentation"] = "";
+                    const auto payload = winrt::to_hstring(Json::writeString(wb, evt));
                     _agentPaneLog(
-                        std::string{ "_InitializeTab: agent pane post-drag walk found AgentPaneContent but skipping tab_renamed (oldEmpty=" } +
-                        (oldTabId.empty() ? "true" : "false") + " sameAsNew=" +
-                        (oldTabId == newTabId ? "true" : "false") + " new=" +
-                        winrt::to_string(newTabId) + ")");
-                    return;
-                }
-
-                Json::Value evt;
-                evt["type"] = "event";
-                evt["method"] = "tab_renamed";
-                Json::Value params;
-                params["old_tab_id"] = winrt::to_string(oldTabId);
-                params["new_tab_id"] = winrt::to_string(newTabId);
-                evt["params"] = params;
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "";
-                const auto payload = winrt::to_hstring(Json::writeString(wb, evt));
+                        std::string{ "_InitializeTab(deferred): emitting tab_renamed old=" } +
+                        winrt::to_string(oldTabId) + " new=" + winrt::to_string(newTabId));
+                    self->ProtocolVtSequenceReceived.raise(*self, payload);
+                });
                 _agentPaneLog(
-                    std::string{ "_InitializeTab: emitting tab_renamed old=" } +
-                    winrt::to_string(oldTabId) + " new=" + winrt::to_string(newTabId));
-                ProtocolVtSequenceReceived.raise(*this, payload);
+                    std::string{ "_InitializeTab(deferred): post-walk summary new=" } +
+                    winrt::to_string(newTabId) +
+                    " isAgentPaneLeaves=" + std::to_string(isAgentPaneLeaves) +
+                    " agentLeavesSeen=" + std::to_string(agentLeavesSeen));
             });
-            _agentPaneLog(
-                std::string{ "_InitializeTab: post-walk summary new=" } +
-                winrt::to_string(newTabId) +
-                " isAgentPaneLeaves=" + std::to_string(isAgentPaneLeaves) +
-                " agentLeavesSeen=" + std::to_string(agentLeavesSeen));
         }
     }
 
