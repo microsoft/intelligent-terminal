@@ -1749,6 +1749,9 @@ Unittesting
 unittests
 unknwn
 UNORM
+unstash
+unstashes
+unstashing
 untextured
 UPDATEDISPLAY
 UPDOWN

@@ -2512,7 +2512,7 @@ namespace winrt::TerminalApp::implementation
     // subsequent key chords would be swallowed because WT's chord dispatch
     // is rooted on TermControl — no focused TermControl means no chord
     // dispatch. We MUST explicitly re-focus the agent pane's TermControl
-    // here, otherwise the next Ctrl+Shift+. (and every hotkey) is eaten.
+    // here; otherwise the next Ctrl+Shift+. (and every hotkey) is eaten.
     bool Tab::RestoreStashedAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection /*direction*/)
     {
         ASSERT_UI_THREAD();
