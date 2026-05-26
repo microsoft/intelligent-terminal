@@ -119,7 +119,7 @@ agents.status.error: "Грешка"
 agents.status.idle: "Неактивен"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. прикажи/скриј панел на агентот • Ctrl+Alt+/ прикажи/скриј сесија на агентот)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. прикажи/скриј панел на агентот • Ctrl+Shift+/ прикажи/скриј сесија на агентот)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Стартување на агентот..."

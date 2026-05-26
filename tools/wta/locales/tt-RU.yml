@@ -123,7 +123,7 @@ agents.status.error: "Хата"
 agents.status.idle: "Буш"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. агент панелен күрсәтү/яшерү • Ctrl+Alt+/ агент сеансын күрсәтү/яшерү)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. агент панелен күрсәтү/яшерү • Ctrl+Shift+/ агент сеансын күрсәтү/яшерү)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Агент эшкә кушыла..."

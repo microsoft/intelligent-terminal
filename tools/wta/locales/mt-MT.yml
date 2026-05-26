@@ -112,7 +112,7 @@ agents.status.error: "Żball"
 agents.status.idle: "Inattiv"
 
 # ── Suġġeriment tal-merħba tad-disinn (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. biex turi/taħbi l-pannell tal-aġent • Ctrl+Alt+/ biex turi/taħbi s-sessjoni tal-aġent)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. biex turi/taħbi l-pannell tal-aġent • Ctrl+Shift+/ biex turi/taħbi s-sessjoni tal-aġent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Stat tal-konnessjoni ────────────────────────────────────────────────────────
 connection.starting: "L-aġent qed jibda..."

@@ -123,7 +123,7 @@ agents.status.error: "ਗਲਤੀ"
 agents.status.idle: "ਵਿਹਲਾ"
 
 # ── ਲੇਆਉਟ ਸੁਆਗਤ ਸੰਕੇਤ (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ਏਜੰਟ ਪੈਨ ਦਿਖਾਓ/ਲੁਕਾਓ • Ctrl+Alt+/ ਏਜੰਟ ਸੈਸ਼ਨ ਦਿਖਾਓ/ਲੁਕਾਓ)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ਏਜੰਟ ਪੈਨ ਦਿਖਾਓ/ਲੁਕਾਓ • Ctrl+Shift+/ ਏਜੰਟ ਸੈਸ਼ਨ ਦਿਖਾਓ/ਲੁਕਾਓ)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── ਕਨੈਕਸ਼ਨ ਸਥਿਤੀ ────────────────────────────────────────────────────────
 connection.starting: "ਏਜੰਟ ਸ਼ੁਰੂ ਹੋ ਰਿਹਾ ਹੈ..."

@@ -112,7 +112,7 @@ agents.status.error: "Errorea"
 agents.status.idle: "Inaktibo"
 
 # ── Diseinu-ongietorri argibidea (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. agente-panela erakusteko/ezkutatzeko • Ctrl+Alt+/ agente-saioa erakusteko/ezkutatzeko)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. agente-panela erakusteko/ezkutatzeko • Ctrl+Shift+/ agente-saioa erakusteko/ezkutatzeko)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Konexio-egoera ────────────────────────────────────────────────────────
 connection.starting: "Agentea abiarazten..."

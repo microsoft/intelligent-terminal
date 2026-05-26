@@ -93,7 +93,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool ShowAcpModel();
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AcpModelEntry> AcpModelList() const { return _acpModelList; }
         // Probe in flight counts as "present" so the ComboBox stays
-        // visible (PlaceholderText="Auto") instead of flashing the
+        // visible (PlaceholderText="Default") instead of flashing the
         // free-form textbox during the probe window.
         bool HasAcpModelList() const { return _acpModelList && (_acpModelList.Size() > 0 || _acpProbing); }
         bool ShowAcpModelTextBox() const { return !HasAcpModelList(); }

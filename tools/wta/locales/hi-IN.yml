@@ -123,7 +123,7 @@ agents.status.error: "त्रुटि"
 agents.status.idle: "निष्क्रिय"
 
 # ── लेआउट स्वागत संकेत (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. एजेंट पेन दिखाएँ/छिपाएँ • Ctrl+Alt+/ एजेंट सत्र दिखाएँ/छिपाएँ)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. एजेंट पेन दिखाएँ/छिपाएँ • Ctrl+Shift+/ एजेंट सत्र दिखाएँ/छिपाएँ)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── कनेक्शन स्थिति ────────────────────────────────────────────────────────
 connection.starting: "एजेंट प्रारंभ हो रहा है..."

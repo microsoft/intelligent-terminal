@@ -123,7 +123,7 @@ agents.status.error: "خطأ"
 agents.status.idle: "خامل"
 
 # ── تلميح ترحيب التخطيط (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. لإظهار/إخفاء لوحة عامل الذكاء الاصطناعي • Ctrl+Alt+/ لإظهار/إخفاء جلسة عامل الذكاء الاصطناعي)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. لإظهار/إخفاء لوحة عامل الذكاء الاصطناعي • Ctrl+Shift+/ لإظهار/إخفاء جلسة عامل الذكاء الاصطناعي)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── حالة الاتصال ────────────────────────────────────────────────────────
 connection.starting: "جارٍ تشغيل عامل الذكاء الاصطناعي..."

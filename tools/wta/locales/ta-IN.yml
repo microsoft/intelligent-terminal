@@ -123,7 +123,7 @@ agents.status.error: "பிழை"
 agents.status.idle: "செயலற்றது"
 
 # ── தளவமைப்பு வரவேற்பு குறிப்பு (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ஏஜெண்ட் பலகத்தைக் காட்டு/மறை • Ctrl+Alt+/ ஏஜெண்ட் அமர்வைக் காட்டு/மறை)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ஏஜெண்ட் பலகத்தைக் காட்டு/மறை • Ctrl+Shift+/ ஏஜெண்ட் அமர்வைக் காட்டு/மறை)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── இணைப்பு நிலை ────────────────────────────────────────────────────────
 connection.starting: "ஏஜெண்ட் தொடங்கப்படுகிறது..."

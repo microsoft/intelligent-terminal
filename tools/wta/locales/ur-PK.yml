@@ -123,7 +123,7 @@ agents.status.error: "خرابی"
 agents.status.idle: "غیر فعال"
 
 # ── لے آؤٹ خوش آمدید اشارہ (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ایجنٹ پین دکھائیں/چھپائیں • Ctrl+Alt+/ ایجنٹ سیشن دکھائیں/چھپائیں)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ایجنٹ پین دکھائیں/چھپائیں • Ctrl+Shift+/ ایجنٹ سیشن دکھائیں/چھپائیں)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── کنیکشن حالت ────────────────────────────────────────────────────────
 connection.starting: "ایجنٹ شروع ہو رہا ہے..."

@@ -123,7 +123,7 @@ agents.status.error: "ભૂલ"
 agents.status.idle: "નિષ્ક્રિય"
 
 # ── લેઆઉટ સ્વાગત સંકેત (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. એજન્ટ પેન બતાવો/છુપાવો • Ctrl+Alt+/ એજન્ટ સત્ર બતાવો/છુપાવો)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. એજન્ટ પેન બતાવો/છુપાવો • Ctrl+Shift+/ એજન્ટ સત્ર બતાવો/છુપાવો)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── જોડાણ સ્થિતિ ────────────────────────────────────────────────────────
 connection.starting: "એજન્ટ શરૂ થઈ રહ્યો છે..."

@@ -123,7 +123,7 @@ agents.status.error: "Қате"
 agents.status.idle: "Бос"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. агент панелін көрсету/жасыру • Ctrl+Alt+/ агент сеансын көрсету/жасыру)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. агент панелін көрсету/жасыру • Ctrl+Shift+/ агент сеансын көрсету/жасыру)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Агент іске қосылуда..."

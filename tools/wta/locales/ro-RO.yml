@@ -112,7 +112,7 @@ agents.status.error: "Eroare"
 agents.status.idle: "Inactiv"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. afișare/ascundere panou agent • Ctrl+Alt+/ afișare/ascundere sesiune agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. afișare/ascundere panou agent • Ctrl+Shift+/ afișare/ascundere sesiune agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Se pornește agentul..."

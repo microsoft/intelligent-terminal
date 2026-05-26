@@ -130,7 +130,7 @@ agents.status.error: "خاتالىق"
 agents.status.idle: "بوش"
 
 # ── Layout welcome hint (src/ui/layout.rs) ────────────────────────────────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. AI ئاگېنتى تاختىسىنى كۆرسەت/يوشۇرۇش • Ctrl+Alt+/ AI ئاگېنتى ئوتتۇرىسىنى كۆرسەت/يوشۇرۇش)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. AI ئاگېنتى تاختىسىنى كۆرسەت/يوشۇرۇش • Ctrl+Shift+/ AI ئاگېنتى ئوتتۇرىسىنى كۆرسەت/يوشۇرۇش)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────────────────────
 # Status text shown while launching the agent process

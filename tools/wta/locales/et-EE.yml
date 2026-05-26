@@ -112,7 +112,7 @@ agents.status.error: "Viga"
 agents.status.idle: "Jõude"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. agendipaneeli kuvamiseks/peitmiseks • Ctrl+Alt+/ agendiseansi kuvamiseks/peitmiseks)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. agendipaneeli kuvamiseks/peitmiseks • Ctrl+Shift+/ agendiseansi kuvamiseks/peitmiseks)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agendi käivitamine..."

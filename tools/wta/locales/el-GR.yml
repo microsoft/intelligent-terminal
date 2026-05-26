@@ -112,7 +112,7 @@ agents.status.error: "Σφάλμα"
 agents.status.idle: "Αδρανής"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. για εμφάνιση/απόκρυψη πλαισίου παράγοντα • Ctrl+Alt+/ για εμφάνιση/απόκρυψη συνεδρίας παράγοντα)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. για εμφάνιση/απόκρυψη πλαισίου παράγοντα • Ctrl+Shift+/ για εμφάνιση/απόκρυψη συνεδρίας παράγοντα)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Εκκίνηση παράγοντα..."

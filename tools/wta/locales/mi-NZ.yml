@@ -112,7 +112,7 @@ agents.status.error: "Hapa"
 agents.status.idle: "Noho noa"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ki te whakaatu/huna i te papa agent • Ctrl+Alt+/ ki te whakaatu/huna i te wahanga agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ki te whakaatu/huna i te papa agent • Ctrl+Shift+/ ki te whakaatu/huna i te wahanga agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "E timata ana i te agent..."

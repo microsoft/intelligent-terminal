@@ -112,7 +112,7 @@ agents.status.error: "Gabim"
 agents.status.idle: "Joaktiv"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. shfaq/fshih panelin e agjentit • Ctrl+Alt+/ shfaq/fshih seancën e agjentit)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. shfaq/fshih panelin e agjentit • Ctrl+Shift+/ shfaq/fshih seancën e agjentit)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Po niset agjenti..."

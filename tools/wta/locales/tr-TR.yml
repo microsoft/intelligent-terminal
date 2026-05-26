@@ -123,7 +123,7 @@ agents.status.error: "Hata"
 agents.status.idle: "Boşta"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. aracı panelini göster/gizle • Ctrl+Alt+/ aracı oturumunu göster/gizle)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. aracı panelini göster/gizle • Ctrl+Shift+/ aracı oturumunu göster/gizle)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Aracı başlatılıyor..."

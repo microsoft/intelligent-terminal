@@ -112,7 +112,7 @@ agents.status.error: "Earráid"
 agents.status.idle: "Díomhaoin"
 
 # ── Leid fáilte leagan amach (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. chun pána gníomhaire a thaispeáint/a cheilt • Ctrl+Alt+/ chun seisiún gníomhaire a thaispeáint/a cheilt)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. chun pána gníomhaire a thaispeáint/a cheilt • Ctrl+Shift+/ chun seisiún gníomhaire a thaispeáint/a cheilt)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Staid ceangail ────────────────────────────────────────────────────────
 connection.starting: "Gníomhaire á thosú..."

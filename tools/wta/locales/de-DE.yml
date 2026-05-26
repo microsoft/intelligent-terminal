@@ -112,7 +112,7 @@ agents.status.error: "Fehler"
 agents.status.idle: "Inaktiv"
 
 # ── Layout-Willkommenshinweis (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. zum Ein-/Ausblenden des Agentbereichs • Ctrl+Alt+/ zum Ein-/Ausblenden der Agentsitzung)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. zum Ein-/Ausblenden des Agentbereichs • Ctrl+Shift+/ zum Ein-/Ausblenden der Agentsitzung)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Verbindungsstatus ────────────────────────────────────────────────────────────
 connection.starting: "Agent wird gestartet..."

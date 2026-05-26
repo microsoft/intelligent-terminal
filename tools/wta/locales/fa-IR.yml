@@ -123,7 +123,7 @@ agents.status.error: "خطا"
 agents.status.idle: "بیکار"
 
 # ── راهنمای خوشامدگویی چیدمان (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. نمایش/پنهان کردن پنل عامل هوش مصنوعی • Ctrl+Alt+/ نمایش/پنهان کردن نشست عامل هوش مصنوعی)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. نمایش/پنهان کردن پنل عامل هوش مصنوعی • Ctrl+Shift+/ نمایش/پنهان کردن نشست عامل هوش مصنوعی)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── وضعیت اتصال ────────────────────────────────────────────────────────
 connection.starting: "در حال راه‌اندازی عامل هوش مصنوعی..."

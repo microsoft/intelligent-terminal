@@ -137,7 +137,7 @@ agents.status.error: "Սխալ"
 agents.status.idle: "Անգործ"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ագենտի վահանակը ցույց տալ/թաքցնել • Ctrl+Alt+/ ագենտի նիստը ցույց տալ/թաքցնել)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ագենտի վահանակը ցույց տալ/թաքցնել • Ctrl+Shift+/ ագենտի նիստը ցույց տալ/թաքցնել)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────────────────────
 # Status text shown while launching the agent process
