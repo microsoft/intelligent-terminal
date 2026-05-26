@@ -333,6 +333,14 @@ namespace winrt::TerminalApp::implementation
         // thereof). Called on tab switch and whenever an AgentPaneContent
         // raises `StateChanged` for the active tab.
         void _UpdateBottomBarState();
+        // Refresh ONLY the bottom-bar visibility (show on terminal/agent
+        // tabs, collapse on Settings/etc.). Safe to call synchronously
+        // on tab switch because the decision depends solely on the
+        // focused tab's content type and not on any wta-projected
+        // agent state. `_UpdateBottomBarState` calls this first and
+        // then refreshes the agent-state-dependent UI (toggle
+        // highlights, diagnostics).
+        void _UpdateBottomBarVisibility();
         // Subscribe to an AgentPaneContent's StateChanged event so the
         // window-level bottom bar refreshes when its state mutates.
         // Wired once per AgentPaneContent creation.

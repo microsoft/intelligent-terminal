@@ -84,6 +84,26 @@ struct HelperRoute {
     helper_id: HelperId,
     notif_tx: mpsc::Sender<acp::SessionNotification>,
     forwarder: Option<Arc<acp::AgentSideConnection>>,
+    /// Per-route counter for back-pressure log rate-limiting.
+    ///
+    /// Chunk-streaming during a single agent turn is high-rate, so if
+    /// a helper's pipe stalls and we drop notifications, naively
+    /// `warn!`-ing on every drop would flood the log (and add I/O
+    /// load right when the system is already strained). Instead the
+    /// `session_notification` handler:
+    ///
+    ///   * On the FIRST `Full` (`fetch_add` returns 0): emits one
+    ///     `warn!` announcing that the helper's queue is backed up.
+    ///   * On subsequent `Full`s: silently bumps the counter — the
+    ///     summary on recovery covers them.
+    ///   * On the first `Ok` after at least one drop (`swap` returns
+    ///     >0): emits one `info!` reporting the total dropped chunks
+    ///     and that backpressure has cleared.
+    ///
+    /// This gives operators exactly one log line per stall start and
+    /// one per stall end, with the count in between, regardless of
+    /// how many chunks were dropped.
+    consecutive_drops: Arc<std::sync::atomic::AtomicU64>,
 }
 
 /// State shared between the master's `acp::Client` impl (receives
@@ -237,12 +257,17 @@ impl acp::Client for MasterClient {
         // when scrolling logs to see prompt/turn lifecycle without
         // tracing the full payload.
         let kind = notification_kind(&args);
-        let tx = {
+        // Snapshot both the sender AND the per-route drop counter
+        // under one map lock — keeps the rate-limit bookkeeping in
+        // lock-step with the routing decision.
+        let route = {
             let map = self.state.session_to_helper.lock().await;
-            map.get(&sid).map(|r| r.notif_tx.clone())
+            map.get(&sid)
+                .map(|r| (r.notif_tx.clone(), Arc::clone(&r.consecutive_drops)))
         };
-        match tx {
-            Some(tx) => {
+        match route {
+            Some((tx, drops)) => {
+                use std::sync::atomic::Ordering;
                 // `try_send` rather than `send().await`: a slow helper
                 // pipe must not back-pressure this trait method, which
                 // is driven by the agent CLI's I/O loop and is shared
@@ -250,6 +275,18 @@ impl acp::Client for MasterClient {
                 // notification delivery for everyone.
                 match tx.try_send(args) {
                     Ok(()) => {
+                        // First successful send after one or more drops
+                        // is the recovery point — summarize and reset.
+                        let dropped = drops.swap(0, Ordering::SeqCst);
+                        if dropped > 0 {
+                            tracing::info!(
+                                target: "master",
+                                session_id = ?sid,
+                                kind = %kind,
+                                dropped = dropped,
+                                "helper notification channel drained — backpressure cleared"
+                            );
+                        }
                         tracing::debug!(
                             target: "master",
                             step = "agent→helper",
@@ -265,14 +302,20 @@ impl acp::Client for MasterClient {
                         // this update rather than queue forever — the
                         // user will see a chunk gap, which is the
                         // least-bad option vs. unbounded memory growth
-                        // or master-wide stall.
-                        tracing::warn!(
-                            target: "master",
-                            session_id = ?sid,
-                            kind = %kind,
-                            capacity = NOTIF_CHANNEL_CAPACITY,
-                            "helper notification channel full — dropping update (helper is not draining)"
-                        );
+                        // or master-wide stall. Warn ONCE per stall
+                        // (first drop); subsequent drops in the same
+                        // stall increment silently and are reported in
+                        // aggregate on recovery.
+                        let prior = drops.fetch_add(1, Ordering::SeqCst);
+                        if prior == 0 {
+                            tracing::warn!(
+                                target: "master",
+                                session_id = ?sid,
+                                kind = %kind,
+                                capacity = NOTIF_CHANNEL_CAPACITY,
+                                "helper notification channel full — dropping updates (subsequent drops in this stall will be silent until drain)"
+                            );
+                        }
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => {
                         // Helper went away between our lookup and our
@@ -601,6 +644,7 @@ impl acp::Agent for HelperHandler {
                     helper_id: self.helper_id,
                     notif_tx: self.notif_tx.clone(),
                     forwarder: Some(forwarder),
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
             map.len()
@@ -632,6 +676,7 @@ impl acp::Agent for HelperHandler {
                     helper_id: self.helper_id,
                     notif_tx: self.notif_tx.clone(),
                     forwarder: Some(forwarder),
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
         }
@@ -811,30 +856,61 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         });
     }
 
-    // Reap the child so it doesn't zombie if it dies, and treat its
-    // exit as fatal for the master. Without this, helpers would stay
+    // Shutdown channel — when either the agent CLI subprocess exits or
+    // the ACP I/O loop ends, the responsible reaper task posts a reason
+    // string here, the accept loop wakes from `recv()`, and
+    // `run_master_loop` returns `Err`. Returning (rather than
+    // `process::exit`) is critical:
+    //
+    //   * The `tokio::process::Child` (`spawn_agent_process` configures
+    //     `kill_on_drop(true)`) is owned by the child reaper task. When
+    //     `LocalSet::run_until` returns, the LocalSet drops, cancels
+    //     remaining tasks, and the child handle drops — `kill_on_drop`
+    //     then reaps surviving descendants. `process::exit` would skip
+    //     that path and could orphan agent grandchildren.
+    //   * The `WorkerGuard` returned by `crate::logging::init` is held
+    //     by `run_master_mode`; it only flushes the non-blocking
+    //     tracing appender on Drop. `process::exit` skips that Drop and
+    //     the final error lines silently vanish. The graceful path
+    //     here lets the guard drop in normal stack unwinding so the
+    //     "agent CLI exited" diagnostic actually lands on disk.
+    //
+    // Capacity 2: at most one child-exit reason + one I/O-loop reason
+    // will ever be sent, and both `try_send`s are non-blocking.
+    let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<&'static str>(2);
+
+    // Reap the child so it doesn't zombie if it dies, and signal
+    // shutdown when it does. Without this, helpers would stay
     // connected to a master whose backing agent CLI is gone — every
     // prompt would hang waiting on a dead ACP peer, and SharedWta on
     // the C++ side wouldn't respawn the master (its process handle is
-    // still alive). Exiting here lets the next AcquirePane spawn a
-    // fresh master + agent CLI pair.
+    // still alive). Signalling here lets `run_master_loop` return
+    // cleanly so SharedWta can spawn a fresh master + agent CLI pair
+    // on the next `AcquirePane`.
     let mut child = spawn_result.child;
+    let shutdown_tx_child = shutdown_tx.clone();
     tokio::task::spawn_local(async move {
-        match child.wait().await {
-            Ok(status) => tracing::error!(
-                target: "master",
-                ?status,
-                "agent CLI exited — master cannot multiplex without it, exiting"
-            ),
-            Err(err) => tracing::error!(
-                target: "master",
-                error = %err,
-                "agent CLI wait failed — master state unreliable, exiting"
-            ),
-        }
-        // Flush logs before exit; tracing-appender is non-blocking and
-        // may otherwise drop the final lines.
-        std::process::exit(1);
+        let reason = match child.wait().await {
+            Ok(status) => {
+                tracing::error!(
+                    target: "master",
+                    ?status,
+                    "agent CLI exited — initiating master shutdown"
+                );
+                "agent CLI exited"
+            }
+            Err(err) => {
+                tracing::error!(
+                    target: "master",
+                    error = %err,
+                    "agent CLI wait failed — initiating master shutdown"
+                );
+                "agent CLI wait failed"
+            }
+        };
+        let _ = shutdown_tx_child.try_send(reason);
+        // `child` drops as this task body ends, firing kill_on_drop on
+        // any descendants that survived.
     });
 
     let outgoing = stdin.compat_write();
@@ -858,22 +934,34 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
 
     // The ACP I/O loop ending (clean or error) means the master can no
     // longer talk to the agent CLI — same liveness problem as a child
-    // exit. Exit so helpers fail loudly and SharedWta can rebuild a
-    // fresh master on the next AcquirePane.
+    // exit. Signal shutdown through the same channel so the accept
+    // loop can return cleanly and SharedWta can rebuild a fresh
+    // master on the next AcquirePane.
+    let shutdown_tx_io = shutdown_tx.clone();
     tokio::task::spawn_local(async move {
-        match handle_io.await {
-            Ok(()) => tracing::error!(
-                target: "master",
-                "agent CLI I/O loop ended cleanly — no agent to multiplex onto, exiting"
-            ),
-            Err(err) => tracing::error!(
-                target: "master",
-                error = %err,
-                "agent CLI I/O loop ended with error — exiting"
-            ),
-        }
-        std::process::exit(1);
+        let reason = match handle_io.await {
+            Ok(()) => {
+                tracing::error!(
+                    target: "master",
+                    "agent CLI I/O loop ended cleanly — initiating master shutdown"
+                );
+                "ACP I/O loop ended cleanly"
+            }
+            Err(err) => {
+                tracing::error!(
+                    target: "master",
+                    error = %err,
+                    "agent CLI I/O loop ended with error — initiating master shutdown"
+                );
+                "ACP I/O loop ended with error"
+            }
+        };
+        let _ = shutdown_tx_io.try_send(reason);
     });
+    // Drop our original sender so the channel closes naturally when
+    // both reaper tasks exit. The receiver in the accept loop will
+    // still observe sends from `shutdown_tx_{child,io}`.
+    drop(shutdown_tx);
 
     // 3. Initialize the agent CLI once at master startup.
     let init_timeout_secs = if is_npx { 60 } else { 15 };
@@ -926,10 +1014,27 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // "live_helpers=" reconstructs the timeline.
     let live_helpers = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     loop {
-        server
-            .connect()
-            .await
-            .with_context(|| format!("named pipe connect on '{pipe_name}'"))?;
+        // Race the next helper connect against the shutdown channel:
+        // when either reaper task posts a reason, we return early so
+        // the LocalSet unwinds and drops the Child (kill_on_drop) +
+        // WorkerGuard (flush).
+        tokio::select! {
+            connect_result = server.connect() => {
+                connect_result
+                    .with_context(|| format!("named pipe connect on '{pipe_name}'"))?;
+            }
+            shutdown_reason = shutdown_rx.recv() => {
+                let reason = shutdown_reason.unwrap_or("shutdown channel closed");
+                tracing::error!(
+                    target: "master",
+                    reason,
+                    "master accept loop exiting"
+                );
+                return Err(anyhow!(
+                    "wta-master shutting down: {reason} — SharedWta will respawn a fresh master on the next AcquirePane"
+                ));
+            }
+        }
 
         let helper_id = HelperId(next_helper_id);
         next_helper_id = next_helper_id.wrapping_add(1);
@@ -1136,6 +1241,7 @@ mod tests {
                     helper_id: HelperId(1),
                     notif_tx: tx1,
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
             map.insert(
@@ -1144,6 +1250,7 @@ mod tests {
                     helper_id: HelperId(2),
                     notif_tx: tx2,
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
         }
@@ -1172,6 +1279,7 @@ mod tests {
                     helper_id: HelperId(7),
                     notif_tx: tx,
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
         }
@@ -1205,6 +1313,7 @@ mod tests {
                     helper_id: HelperId(9),
                     notif_tx: tx.clone(),
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
         }
@@ -1251,6 +1360,7 @@ mod tests {
                     helper_id: HelperId(1),
                     notif_tx: tx_a.clone(),
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
             map.insert(
@@ -1259,6 +1369,7 @@ mod tests {
                     helper_id: HelperId(1),
                     notif_tx: tx_a,
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
             map.insert(
@@ -1267,6 +1378,7 @@ mod tests {
                     helper_id: HelperId(2),
                     notif_tx: tx_b,
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
             map.insert(
@@ -1275,6 +1387,7 @@ mod tests {
                     helper_id: HelperId(3),
                     notif_tx: tx_c,
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
         }
@@ -1325,6 +1438,7 @@ mod tests {
                     helper_id: HelperId(42),
                     notif_tx: tx,
                     forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
         }

@@ -1895,13 +1895,21 @@ namespace winrt::TerminalApp::implementation
     // The bottom bar is hidden on non-terminal tabs (Settings, etc.); for a
     // terminal tab with no agent pane the bar shows the "open agent" affordance
     // with diagnostics disabled.
-    void TerminalPage::_UpdateBottomBarState()
+    // Visibility-only refresh — sets the bottom bar to Visible on
+    // terminal/agent tabs and Collapsed on Settings/etc. Factored out
+    // of `_UpdateBottomBarState` so `_UpdatedSelectedTab` can call it
+    // synchronously on tab switch without also recomputing the
+    // agent-state-dependent parts of the bar (toggle lit-state,
+    // diagnostics) from the local AgentPaneContent mirror — those
+    // remain owned by the wta-driven `OnAgentStateChanged` callback
+    // path so the bar always reflects authoritative state.
+    //
+    // Hiding the bar collapses it (lets TabContent / Grid.Row=2 fill
+    // the recovered space). The bar contains terminal-pane-oriented
+    // controls (agent toggle, diagnostics, sessions) that have no
+    // meaningful target on a non-terminal tab anyway.
+    void TerminalPage::_UpdateBottomBarVisibility()
     {
-        // Hide the bottom bar on non-terminal tabs (Settings, etc.) — collapsing
-        // it lets TabContent (Grid.Row=2, Height="*") expand to fill the
-        // recovered space automatically. The bar contains terminal-pane-oriented
-        // controls (agent toggle, diagnostics, sessions) that have no meaningful
-        // target when a non-terminal pane is focused.
         const auto focusedTabImpl = _GetFocusedTabImpl();
         bool isTerminalTab = true;
         if (focusedTabImpl)
@@ -1913,10 +1921,30 @@ namespace winrt::TerminalApp::implementation
                 isTerminalTab = isTerm || isAgent;
             }
         }
-        auto barRoot = BottomBarRoot();
-        if (barRoot)
+        if (auto barRoot = BottomBarRoot())
         {
             barRoot.Visibility(isTerminalTab ? Visibility::Visible : Visibility::Collapsed);
+        }
+    }
+
+    void TerminalPage::_UpdateBottomBarState()
+    {
+        // Reuse the visibility helper so the show/hide decision lives
+        // in exactly one place, then bail out for non-terminal tabs
+        // (Settings, etc.) — the rest of this function only updates
+        // agent-state-dependent UI on the bar.
+        _UpdateBottomBarVisibility();
+
+        const auto focusedTabImpl = _GetFocusedTabImpl();
+        bool isTerminalTab = true;
+        if (focusedTabImpl)
+        {
+            if (const auto content = focusedTabImpl->GetActiveContent())
+            {
+                const bool isTerm = content.try_as<TerminalApp::TerminalPaneContent>() != nullptr;
+                const bool isAgent = content.try_as<TerminalApp::AgentPaneContent>() != nullptr;
+                isTerminalTab = isTerm || isAgent;
+            }
         }
         if (!isTerminalTab)
         {
