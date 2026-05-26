@@ -1722,6 +1722,49 @@ impl acp::Client for WtaClient {
             .await;
         Ok(acp::KillTerminalResponse::new())
     }
+
+    /// Receive `intellterm.wta/session_{added,removed}` notifications
+    /// pushed by master so the helper's local `alive` mirror stays in
+    /// sync without polling. We translate to an `AppEvent` rather than
+    /// mutating the registry here because the registry is owned by
+    /// `App` (constructed after the ACP client task spawns); routing
+    /// through the event loop also keeps registry mutation
+    /// single-writer and trace-able alongside other state changes.
+    ///
+    /// Unknown / malformed notifications are silently dropped — a
+    /// future master may broadcast new methods we don't recognise, and
+    /// surfacing the error here would tear down the connection on what
+    /// is by definition optional, advisory data.
+    async fn ext_notification(&self, args: acp::ExtNotification) -> acp::Result<()> {
+        use crate::session_registry::{parse_ext_notification, WtaExtNotification};
+        match parse_ext_notification(&args) {
+            WtaExtNotification::SessionAdded(info) => {
+                let _ = self.state.event_tx.send(AppEvent::AliveSessionAdded(info));
+            }
+            WtaExtNotification::SessionRemoved(sid) => {
+                let _ = self
+                    .state
+                    .event_tx
+                    .send(AppEvent::AliveSessionRemoved(sid));
+            }
+            WtaExtNotification::Unknown => {
+                tracing::trace!(
+                    target: "acp_client",
+                    method = %args.method,
+                    "ignoring ext-notification from unknown namespace"
+                );
+            }
+            WtaExtNotification::MalformedParams { method, error } => {
+                tracing::warn!(
+                    target: "acp_client",
+                    %method,
+                    %error,
+                    "dropping malformed intellterm.wta ext-notification"
+                );
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Helper-mode variant of [`run_acp_client`]. Instead of spawning the
@@ -1907,6 +1950,50 @@ pub async fn run_acp_client_over_pipe(
         "Agent init response received (over pipe): {:?}",
         init_resp
     ));
+
+    // Bootstrap the alive-session mirror BEFORE creating our own
+    // session. We want master's existing view in the registry first so
+    // that any `intellterm.wta/session_added` notification for our own
+    // brand-new session arrives after the snapshot — otherwise a stale
+    // snapshot could overwrite it. Doing this before `new_session`
+    // guarantees ordering: list_sessions completes → AliveSnapshotLoaded
+    // queued → new_session → master broadcasts session_added →
+    // AliveSessionAdded queued → both applied in arrival order on the
+    // App event loop.
+    //
+    // The call is fire-and-forget: if list_sessions fails (e.g. an
+    // older master without `unstable_session_list`) the alive mirror
+    // just stays empty and `alive_loaded` stays false, which keeps
+    // F2 routing on the legacy path.
+    match conn.list_sessions(acp::ListSessionsRequest::new()).await {
+        Ok(resp) => {
+            let items: Vec<crate::session_registry::SessionInfo> = resp
+                .sessions
+                .iter()
+                .map(|wire| {
+                    let mut meta = wire.meta.clone();
+                    let wta = crate::session_registry::extract_wta_meta(&mut meta);
+                    crate::session_registry::SessionInfo {
+                        session_id: wire.session_id.clone(),
+                        cwd: wire.cwd.clone(),
+                        title: wire.title.clone(),
+                        updated_at: wire.updated_at.clone(),
+                        pane_session_id: wta.pane_session_id,
+                    }
+                })
+                .collect();
+            startup_probe.log(&format!(
+                "alive-session bootstrap: {} sessions from master",
+                items.len()
+            ));
+            let _ = event_tx.send(AppEvent::AliveSnapshotLoaded(items));
+        }
+        Err(e) => {
+            startup_probe.log(&format!(
+                "alive-session bootstrap skipped (list_sessions failed): {e}"
+            ));
+        }
+    }
 
     // Create the initial session bound to the owner tab.
     let _ = event_tx.send(AppEvent::ConnectionStage(
@@ -3549,5 +3636,128 @@ mod tests {
             Err(err) => panic!("expected AgentError, got channel error: {err}"),
         }
         assert!(event_rx.try_recv().is_err());
+    }
+
+    /// Test the helper's mirror of master's session-broadcast feed.
+    ///
+    /// `WtaClient::ext_notification` is the helper's sole inbound path
+    /// for `intellterm.wta/session_{added,removed}` extension
+    /// notifications. It must translate them into the matching
+    /// `AppEvent::AliveSession{Added,Removed}` variants so the App
+    /// event loop — the single writer to `App.alive` — can keep the
+    /// per-helper registry mirror consistent. The tests below
+    /// construct a `WtaClient` with a fake `event_tx` and assert the
+    /// translation contract: well-formed notifications produce typed
+    /// events, malformed/unknown notifications produce nothing (and do
+    /// not tear down the connection).
+    mod ext_notification_tests {
+        use super::super::{ClientState, WtaClient};
+        use crate::app::AppEvent;
+        use crate::session_registry::{
+            build_session_added_notification, build_session_removed_notification,
+            INTELLTERM_METHOD_SESSION_REMOVED,
+        };
+        use crate::shell::ShellManager;
+        use agent_client_protocol::{self as acp, Client};
+        use std::path::PathBuf;
+        use std::sync::Arc;
+        use tokio::sync::mpsc;
+
+        fn make_client() -> (
+            WtaClient,
+            mpsc::UnboundedReceiver<AppEvent>,
+        ) {
+            let (tx, rx) = mpsc::unbounded_channel();
+            let state = Arc::new(ClientState {
+                event_tx: tx,
+                shell_mgr: Arc::new(ShellManager::new()),
+                prompt_timing: Arc::new(super::super::PromptTimingState::default()),
+            });
+            (WtaClient { state }, rx)
+        }
+
+        #[tokio::test]
+        async fn session_added_translates_to_alive_session_added_event() {
+            let (client, mut rx) = make_client();
+            let info = crate::session_registry::SessionInfo {
+                session_id: acp::SessionId::new("sess-1".to_string()),
+                cwd: PathBuf::from("/work"),
+                title: None,
+                updated_at: None,
+                pane_session_id: Some("pane-A".to_string()),
+            };
+            let ext = build_session_added_notification(&info);
+
+            client.ext_notification(ext).await.unwrap();
+
+            match rx.try_recv() {
+                Ok(AppEvent::AliveSessionAdded(got)) => {
+                    assert_eq!(got.session_id, info.session_id);
+                    assert_eq!(got.pane_session_id.as_deref(), Some("pane-A"));
+                    assert_eq!(got.cwd, info.cwd);
+                }
+                other => panic!("expected AliveSessionAdded, got something else: {}", match &other {
+                    Ok(_) => "Ok(<other variant>)",
+                    Err(_) => "Err(<recv error>)",
+                }),
+            }
+            assert!(rx.try_recv().is_err(), "exactly one event emitted");
+        }
+
+        #[tokio::test]
+        async fn session_removed_translates_to_alive_session_removed_event() {
+            let (client, mut rx) = make_client();
+            let sid = acp::SessionId::new("sess-dead".to_string());
+            let ext = build_session_removed_notification(&sid);
+
+            client.ext_notification(ext).await.unwrap();
+
+            match rx.try_recv() {
+                Ok(AppEvent::AliveSessionRemoved(got)) => assert_eq!(got, sid),
+                other => panic!("expected AliveSessionRemoved, got something else: {}", match &other {
+                    Ok(_) => "Ok(<other variant>)",
+                    Err(_) => "Err(<recv error>)",
+                }),
+            }
+            assert!(rx.try_recv().is_err());
+        }
+
+        #[tokio::test]
+        async fn unknown_namespace_is_silently_dropped() {
+            let (client, mut rx) = make_client();
+            let raw = serde_json::value::RawValue::from_string("{}".into()).unwrap();
+            let ext = acp::ExtNotification::new(
+                Arc::<str>::from("some.other.vendor/event"),
+                Arc::from(raw),
+            );
+
+            client.ext_notification(ext).await.unwrap();
+
+            assert!(
+                rx.try_recv().is_err(),
+                "unknown notification must not emit any AppEvent"
+            );
+        }
+
+        #[tokio::test]
+        async fn malformed_intellterm_params_are_silently_dropped() {
+            let (client, mut rx) = make_client();
+            let raw = serde_json::value::RawValue::from_string(
+                r#"{"not_session_id":"x"}"#.into(),
+            )
+            .unwrap();
+            let ext = acp::ExtNotification::new(
+                Arc::<str>::from(INTELLTERM_METHOD_SESSION_REMOVED),
+                Arc::from(raw),
+            );
+
+            // Must NOT return Err — that would close the ACP connection.
+            client.ext_notification(ext).await.unwrap();
+
+            assert!(
+                rx.try_recv().is_err(),
+                "malformed notification must not emit any AppEvent"
+            );
+        }
     }
 }

@@ -945,6 +945,22 @@ pub enum AppEvent {
     /// the LocalSet — which would otherwise stall `run_acp_client`,
     /// the first frame, and therefore the user-visible "connecting" state.
     HistoricalSessionsLoaded(Vec<crate::agent_sessions::AgentSession>),
+    /// Initial bootstrap of the alive-session mirror from master, in
+    /// response to the helper's startup `session/list` request. The
+    /// payload replaces any existing entries and flips `alive_loaded`
+    /// to true so F2 routing logic can start trusting `alive.lookup()`
+    /// misses as "session is gone". See
+    /// `crate::session_registry::apply_snapshot`.
+    AliveSnapshotLoaded(Vec<crate::session_registry::SessionInfo>),
+    /// Master broadcast a new alive session into the helper's mirror
+    /// via `intellterm.wta/session_added` ext-notification. Applied to
+    /// `App.alive` from the main event loop so the registry has a
+    /// single writer.
+    AliveSessionAdded(crate::session_registry::SessionInfo),
+    /// Master broadcast that an alive session is gone via
+    /// `intellterm.wta/session_removed`. Symmetric counterpart to
+    /// `AliveSessionAdded`.
+    AliveSessionRemoved(agent_client_protocol::SessionId),
 }
 
 // --- Per-tab session storage ---
@@ -2959,6 +2975,9 @@ impl App {
             AppEvent::PreflightComplete(_) => "preflight_complete",
             AppEvent::AgentSessionEvent(_) => "agent_session_event",
             AppEvent::HistoricalSessionsLoaded(_) => "historical_sessions_loaded",
+            AppEvent::AliveSnapshotLoaded(_) => "alive_snapshot_loaded",
+            AppEvent::AliveSessionAdded(_) => "alive_session_added",
+            AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
         }
     }
 
@@ -3454,6 +3473,49 @@ impl App {
                 {
                     self.current_tab_mut().agents_list_state.select(Some(0));
                 }
+            }
+            AppEvent::AliveSnapshotLoaded(items) => {
+                let count = items.len();
+                tracing::info!(
+                    target: "alive_mirror",
+                    count,
+                    "applied master alive-session bootstrap snapshot"
+                );
+                let reg = std::sync::Arc::clone(&self.alive);
+                let loaded = std::sync::Arc::clone(&self.alive_loaded);
+                // The registry is async; we cannot await here (sync
+                // event-handler context). spawn_local matches the rest
+                // of the helper's tokio LocalSet — the registry mutation
+                // races nothing else because AliveSession{Added,Removed}
+                // events are also serialized through this loop and the
+                // bootstrap snapshot is invoked at most once.
+                tokio::task::spawn_local(async move {
+                    crate::session_registry::apply_snapshot(&*reg, &loaded, items).await;
+                });
+            }
+            AppEvent::AliveSessionAdded(info) => {
+                let sid = info.session_id.clone();
+                tracing::debug!(
+                    target: "alive_mirror",
+                    session_id = %sid.0,
+                    pane = ?info.pane_session_id,
+                    "alive session added by master"
+                );
+                let reg = std::sync::Arc::clone(&self.alive);
+                tokio::task::spawn_local(async move {
+                    reg.upsert(info).await;
+                });
+            }
+            AppEvent::AliveSessionRemoved(sid) => {
+                tracing::debug!(
+                    target: "alive_mirror",
+                    session_id = %sid.0,
+                    "alive session removed by master"
+                );
+                let reg = std::sync::Arc::clone(&self.alive);
+                tokio::task::spawn_local(async move {
+                    reg.remove(&sid).await;
+                });
             }
             AppEvent::WtEvent {
                 method,

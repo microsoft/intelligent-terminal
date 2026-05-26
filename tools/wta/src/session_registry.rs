@@ -388,6 +388,38 @@ pub async fn apply_snapshot(
     loaded.store(true, Ordering::Release);
 }
 
+/// Apply a single `intellterm.wta/session_*` ext-notification to the
+/// helper's local registry mirror.
+///
+/// Splitting this out of `WtaClient::ext_notification` lets the helper
+/// trait impl stay a one-liner and keeps the interesting logic — what
+/// counts as ours, what we do with the payload — purely synchronous
+/// (well, async-fn-shaped) and unit-testable without an ACP transport.
+///
+/// Returns the parsed classification so callers can log/trace by kind;
+/// the registry side-effect has already happened by the time the value
+/// is returned.
+pub async fn apply_ext_notification(
+    reg: &dyn SessionRegistry,
+    n: &acp::ExtNotification,
+) -> WtaExtNotification {
+    let parsed = parse_ext_notification(n);
+    match &parsed {
+        WtaExtNotification::SessionAdded(info) => {
+            reg.upsert(info.clone()).await;
+        }
+        WtaExtNotification::SessionRemoved(sid) => {
+            reg.remove(sid).await;
+        }
+        // Unknown / MalformedParams: caller's job to log; never panic
+        // and never mutate the registry. A future master may broadcast
+        // notifications we don't recognise — silently ignoring them
+        // keeps the helper forward-compatible.
+        WtaExtNotification::Unknown | WtaExtNotification::MalformedParams { .. } => {}
+    }
+    parsed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -762,5 +794,86 @@ mod tests {
         let parsed = extract_wta_meta(&mut meta);
         assert_eq!(parsed, original, "round-trip preserves data");
         assert!(meta.is_none(), "round-trip ends with empty meta");
+    }
+
+    // ── apply_ext_notification ──────────────────────────────────────
+
+    #[tokio::test]
+    async fn apply_ext_notification_upserts_on_session_added() {
+        let reg = InMemoryRegistry::new();
+        let info = SessionInfo {
+            session_id: acp::SessionId::new("sess-1".to_string()),
+            cwd: std::path::PathBuf::from("/tmp/x"),
+            title: None,
+            updated_at: None,
+            pane_session_id: Some("pane-1".to_string()),
+        };
+        let ext = build_session_added_notification(&info);
+        let classified = apply_ext_notification(&reg, &ext).await;
+        assert!(matches!(classified, WtaExtNotification::SessionAdded(_)));
+        let row = reg.lookup(&info.session_id).await.expect("upserted");
+        assert_eq!(row.pane_session_id.as_deref(), Some("pane-1"));
+    }
+
+    #[tokio::test]
+    async fn apply_ext_notification_removes_on_session_removed() {
+        let reg = InMemoryRegistry::new();
+        let info = SessionInfo {
+            session_id: acp::SessionId::new("dies".to_string()),
+            cwd: std::path::PathBuf::from("/tmp/y"),
+            title: None,
+            updated_at: None,
+            pane_session_id: None,
+        };
+        reg.upsert(info.clone()).await;
+        let ext = build_session_removed_notification(&info.session_id);
+        let classified = apply_ext_notification(&reg, &ext).await;
+        assert!(matches!(classified, WtaExtNotification::SessionRemoved(_)));
+        assert!(reg.lookup(&info.session_id).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn apply_ext_notification_is_noop_on_unknown_method() {
+        let reg = InMemoryRegistry::new();
+        let pre = SessionInfo {
+            session_id: acp::SessionId::new("keep".to_string()),
+            cwd: std::path::PathBuf::from("/tmp/z"),
+            title: None,
+            updated_at: None,
+            pane_session_id: None,
+        };
+        reg.upsert(pre.clone()).await;
+        let raw = serde_json::value::RawValue::from_string("{}".into()).unwrap();
+        let ext = acp::ExtNotification::new(
+            std::sync::Arc::<str>::from("some.other.vendor/event"),
+            std::sync::Arc::from(raw),
+        );
+        let classified = apply_ext_notification(&reg, &ext).await;
+        assert!(matches!(classified, WtaExtNotification::Unknown));
+        assert!(
+            reg.lookup(&pre.session_id).await.is_some(),
+            "registry not touched"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_ext_notification_is_noop_on_malformed_params() {
+        let reg = InMemoryRegistry::new();
+        // Right method, wrong shape (missing session_id).
+        let raw =
+            serde_json::value::RawValue::from_string(r#"{"not_session_id":"x"}"#.into()).unwrap();
+        let ext = acp::ExtNotification::new(
+            std::sync::Arc::<str>::from(INTELLTERM_METHOD_SESSION_REMOVED),
+            std::sync::Arc::from(raw),
+        );
+        let classified = apply_ext_notification(&reg, &ext).await;
+        assert!(
+            matches!(classified, WtaExtNotification::MalformedParams { .. }),
+            "got {classified:?}"
+        );
+        assert!(
+            reg.snapshot().await.is_empty(),
+            "registry untouched on malformed input"
+        );
     }
 }
