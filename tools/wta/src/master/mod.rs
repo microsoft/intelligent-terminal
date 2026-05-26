@@ -133,6 +133,22 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::SessionId, HelperRoute>>,
+    /// Authoritative live-session set, owned by master. Mirrors what
+    /// helpers learn via ext-notifications and what the F2 view sees
+    /// via the standard ACP `session/list` request. Kept beside
+    /// `session_to_helper` (rather than fused with it) so the
+    /// per-row metadata that `SessionInfo` carries — cwd, future
+    /// title/updated_at — has a typed home that isn't intertwined
+    /// with notification-channel plumbing.
+    ///
+    /// Lock ordering: always take `session_to_helper` *before*
+    /// touching `registry` to keep the helper-disconnect cleanup
+    /// path single-threaded (it walks `session_to_helper` for ids
+    /// and then issues `registry.remove`). Holding `session_to_helper`
+    /// while awaiting on `registry` is safe — the registry's interior
+    /// lock is sub-µs sync HashMap work that does not re-enter
+    /// `session_to_helper`.
+    pub(crate) registry: Arc<dyn crate::session_registry::SessionRegistry>,
     /// The agent CLI's response to the master's startup initialize.
     /// Replayed verbatim to every helper that calls `initialize` over
     /// its pipe — re-forwarding to the agent CLI returns a stale or
@@ -687,6 +703,7 @@ impl acp::Agent for HelperHandler {
         // in the same place as the routing entry.
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
+        let cwd_for_registry = args.cwd.clone();
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -714,6 +731,18 @@ impl acp::Agent for HelperHandler {
             );
             map.len()
         };
+        // Mirror the binding into the live-session registry. Lock
+        // ordering matches the doc on `MasterStateInner::registry`:
+        // `session_to_helper` is no longer held here, so the upsert
+        // can't deadlock against `drop_sessions_for_helper`.
+        let info = crate::session_registry::SessionInfo {
+            session_id: resp.session_id.clone(),
+            cwd: cwd_for_registry,
+            title: None,
+            updated_at: None,
+            pane_session_id: wta_meta.pane_session_id,
+        };
+        self.state.registry.upsert(info).await;
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -733,6 +762,7 @@ impl acp::Agent for HelperHandler {
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let session_id = args.session_id.clone();
+        let cwd_for_registry = args.cwd.clone();
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -742,7 +772,17 @@ impl acp::Agent for HelperHandler {
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding load_session"
         );
-        let resp = self.agent_conn.load_session(args).await?;
+        // Pre-register routing BEFORE awaiting the agent CLI.
+        //
+        // Unlike `new_session`, the SessionId for `load_session` is a
+        // request input (the resume target) so we already know it.
+        // Agents commonly replay the session's history as a burst of
+        // `session/update` notifications *while* `load_session` is
+        // still executing on their side. If we waited for the response
+        // to install the routing entry, those early notifications hit
+        // `MasterClient::session_notification` with an unknown sid and
+        // get dropped — the user-visible symptom is "I see no scroll-
+        // back when I resume". Pre-registration closes that window.
         let forwarder = self.forwarder_for_route("load_session")?;
         {
             let mut map = self.state.session_to_helper.lock().await;
@@ -756,13 +796,44 @@ impl acp::Agent for HelperHandler {
                 },
             );
         }
-        tracing::info!(
-            target: "master",
-            helper_id = ?self.helper_id,
-            session_id = ?session_id,
-            "loaded session bound to helper"
-        );
-        Ok(resp)
+        let info = crate::session_registry::SessionInfo {
+            session_id: session_id.clone(),
+            cwd: cwd_for_registry,
+            title: None,
+            updated_at: None,
+            pane_session_id: wta_meta.pane_session_id,
+        };
+        self.state.registry.upsert(info).await;
+        match self.agent_conn.load_session(args).await {
+            Ok(resp) => {
+                tracing::info!(
+                    target: "master",
+                    helper_id = ?self.helper_id,
+                    session_id = ?session_id,
+                    "loaded session bound to helper"
+                );
+                Ok(resp)
+            }
+            Err(err) => {
+                // Roll back the pre-registration: the load failed so
+                // the helper isn't actually attached to this session.
+                // Order matches teardown: drop `session_to_helper`
+                // first, then `registry`.
+                {
+                    let mut map = self.state.session_to_helper.lock().await;
+                    map.remove(&session_id);
+                }
+                self.state.registry.remove(&session_id).await;
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?self.helper_id,
+                    session_id = ?session_id,
+                    error = %err,
+                    "load_session failed; rolled back routing + registry"
+                );
+                Err(err)
+            }
+        }
     }
 
     async fn set_session_mode(
@@ -821,6 +892,39 @@ impl acp::Agent for HelperHandler {
             "forwarding set_session_config_option"
         );
         self.agent_conn.set_session_config_option(args).await
+    }
+
+    /// Answer `session/list` from our own live-session registry instead
+    /// of forwarding to the agent CLI.
+    ///
+    /// Rationale: the only live-session view that matters to the F2
+    /// Terminal session-management panel is "what's wired up through
+    /// master right now" — agent-CLI-side dormant history is exposed
+    /// separately through `agent-pane-sessions.jsonl` + per-CLI
+    /// `<cli> --resume`. Forwarding to the agent CLI would conflate
+    /// the two and re-introduce the cross-CLI variance we built
+    /// `agent-pane-sessions.jsonl` to escape.
+    ///
+    /// The response carries our `pane_session_id` inside the standard
+    /// `_meta.wta` namespace so the helper can join it with WT pane
+    /// state for routing decisions in B-10/B-11.
+    async fn list_sessions(
+        &self,
+        _args: acp::ListSessionsRequest,
+    ) -> acp::Result<acp::ListSessionsResponse> {
+        let snapshot = self.state.registry.snapshot().await;
+        tracing::info!(
+            target: "master",
+            op = "list_sessions",
+            helper_id = ?self.helper_id,
+            count = snapshot.len(),
+            "answering session/list from master registry"
+        );
+        let sessions: Vec<acp::SessionInfo> = snapshot
+            .into_iter()
+            .map(|s| crate::session_registry::to_acp_session_info(&s))
+            .collect();
+        Ok(acp::ListSessionsResponse::new(sessions))
     }
 
     async fn prompt(
@@ -998,6 +1102,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     //    after that, so they always see the populated cache.
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        registry: crate::session_registry::InMemoryRegistry::shared(),
         cached_init_resp: OnceLock::new(),
     });
     let client = MasterClient {
@@ -1266,10 +1371,24 @@ async fn serve_helper(
 /// `serve_helper` so the cleanup is unit-testable without a real
 /// named pipe.
 async fn drop_sessions_for_helper(state: &MasterStateInner, helper_id: HelperId) -> usize {
-    let mut map = state.session_to_helper.lock().await;
-    let before = map.len();
-    map.retain(|_, route| route.helper_id != helper_id);
-    before - map.len()
+    // Collect the owned SessionIds first so we can drop them from the
+    // live registry too. Single pass through `session_to_helper` while
+    // we already hold its lock; the corresponding `registry.remove`
+    // calls happen after we release `session_to_helper` to keep with
+    // the lock ordering doc'd on `MasterStateInner::registry`.
+    let victims: Vec<acp::SessionId> = {
+        let mut map = state.session_to_helper.lock().await;
+        let victims = map
+            .iter()
+            .filter_map(|(sid, route)| (route.helper_id == helper_id).then(|| sid.clone()))
+            .collect::<Vec<_>>();
+        map.retain(|_, route| route.helper_id != helper_id);
+        victims
+    };
+    for sid in &victims {
+        state.registry.remove(sid).await;
+    }
+    victims.len()
 }
 
 #[cfg(test)]
@@ -1280,6 +1399,7 @@ mod tests {
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
             session_to_helper: Mutex::new(HashMap::new()),
+            registry: crate::session_registry::InMemoryRegistry::shared(),
             cached_init_resp: OnceLock::new(),
         })
     }
@@ -1568,6 +1688,68 @@ mod tests {
         assert!(!map.contains_key(&SessionId::new("a2")));
         assert!(map.contains_key(&SessionId::new("b1")));
         assert!(map.contains_key(&SessionId::new("c1")));
+    }
+
+    /// Companion invariant to `drop_sessions_for_helper_retains_only_other_helpers`:
+    /// the same teardown call must also remove the corresponding rows
+    /// from `state.registry`. Otherwise a `session/list` response (or
+    /// a downstream `intellterm.wta/focus_session` lookup) could hand
+    /// out a SessionId whose helper is already gone, and the F2 view
+    /// would route Enter to a dead pane.
+    #[tokio::test]
+    async fn drop_sessions_for_helper_also_clears_registry() {
+        use crate::session_registry::SessionInfo;
+        use std::path::PathBuf;
+
+        let state = make_state();
+        let (tx_a, _rx_a) = mpsc::unbounded_channel();
+        let (tx_b, _rx_b) = mpsc::unbounded_channel();
+
+        // Two helpers, one session each.
+        let sid_a = SessionId::new("alive-a");
+        let sid_b = SessionId::new("alive-b");
+        {
+            let mut map = state.session_to_helper.lock().await;
+            map.insert(
+                sid_a.clone(),
+                HelperRoute {
+                    helper_id: HelperId(1),
+                    notif_tx: tx_a,
+                    forwarder: None,
+                },
+            );
+            map.insert(
+                sid_b.clone(),
+                HelperRoute {
+                    helper_id: HelperId(2),
+                    notif_tx: tx_b,
+                    forwarder: None,
+                },
+            );
+        }
+        state
+            .registry
+            .upsert(SessionInfo::new(sid_a.clone(), PathBuf::from("/repo/a")))
+            .await;
+        state
+            .registry
+            .upsert(SessionInfo::new(sid_b.clone(), PathBuf::from("/repo/b")))
+            .await;
+
+        // Disconnect helper 1.
+        drop_sessions_for_helper(&state, HelperId(1)).await;
+
+        assert!(
+            state.registry.lookup(&sid_a).await.is_none(),
+            "registry must drop sessions owned by the disconnecting helper"
+        );
+        assert!(
+            state.registry.lookup(&sid_b).await.is_some(),
+            "registry must keep sessions owned by other helpers"
+        );
+        let snapshot = state.registry.snapshot().await;
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].session_id, sid_b);
     }
 
     /// `route_for` (used by every `MasterClient::<client-method>`

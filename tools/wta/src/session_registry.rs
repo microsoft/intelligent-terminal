@@ -100,6 +100,26 @@ pub fn inject_wta_meta(meta: &mut Option<acp::Meta>, wta: &WtaMeta) {
     );
 }
 
+/// Project a registry [`SessionInfo`] onto the ACP wire shape that
+/// `session/list` answers expect, with our `pane_session_id` stashed
+/// inside the standard `_meta.wta` namespace.
+///
+/// Kept in this module (rather than in `master/mod.rs`) so the
+/// `_meta.wta` shape lives in exactly one place — symmetric with
+/// [`extract_wta_meta`] / [`inject_wta_meta`].
+pub fn to_acp_session_info(info: &SessionInfo) -> acp::SessionInfo {
+    let mut out = acp::SessionInfo::new(info.session_id.clone(), info.cwd.clone());
+    out.title = info.title.clone();
+    out.updated_at = info.updated_at.clone();
+    inject_wta_meta(
+        &mut out.meta,
+        &WtaMeta {
+            pane_session_id: info.pane_session_id.clone(),
+        },
+    );
+    out
+}
+
 /// One row in the registry. Mirrors the fields the F2 view needs:
 ///
 /// * `session_id` — the ACP session GUID (truth-source key).
@@ -483,6 +503,38 @@ mod tests {
         let mut meta: Option<acp::Meta> = None;
         inject_wta_meta(&mut meta, &WtaMeta::default());
         assert!(meta.is_none(), "no spurious _meta created");
+    }
+
+    #[test]
+    fn to_acp_session_info_carries_pane_session_id_in_meta() {
+        let row = SessionInfo {
+            session_id: acp::SessionId::new("sess-1".to_string()),
+            cwd: PathBuf::from("/repo/a"),
+            title: Some("hello".into()),
+            updated_at: Some("2025-01-01T00:00:00Z".into()),
+            pane_session_id: Some("pane-X".into()),
+        };
+        let acp = to_acp_session_info(&row);
+        assert_eq!(acp.session_id, row.session_id);
+        assert_eq!(acp.cwd, row.cwd);
+        assert_eq!(acp.title.as_deref(), Some("hello"));
+        assert_eq!(acp.updated_at.as_deref(), Some("2025-01-01T00:00:00Z"));
+        let mut meta = acp.meta.clone();
+        let wta = extract_wta_meta(&mut meta);
+        assert_eq!(wta.pane_session_id.as_deref(), Some("pane-X"));
+    }
+
+    #[test]
+    fn to_acp_session_info_omits_meta_when_no_pane_session_id() {
+        let row = SessionInfo::new(
+            acp::SessionId::new("sess-1".to_string()),
+            PathBuf::from("/repo/a"),
+        );
+        let acp = to_acp_session_info(&row);
+        assert!(
+            acp.meta.is_none(),
+            "no _meta when there's nothing to communicate"
+        );
     }
 
     #[test]
