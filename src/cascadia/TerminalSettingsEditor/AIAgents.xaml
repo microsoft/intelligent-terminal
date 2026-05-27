@@ -40,10 +40,16 @@
 
             <!--  Page subtitle. The page title itself is rendered by the
                   Settings BreadcrumbBar from Nav_AIAgents.Content, so we only
-                  add the subtitle below it here.  -->
-            <TextBlock x:Uid="AIAgents_PageSubtitle"
-                       Opacity="0.7"
-                       Margin="0,0,0,16" />
+                  add the subtitle below it here. The inline Run/Hyperlink
+                  text is populated from the ResourceLoader in code-behind
+                  (x:Uid on inline Run is not honored in this codebase).  -->
+            <TextBlock Opacity="0.7"
+                       Margin="0,0,0,16"
+                       TextWrapping="Wrap">
+                <Run x:Name="PageSubtitlePrefix" Text="" /><Run Text=" " /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-privacy">
+                    <Run x:Name="PageSubtitlePrivacyLink" Text="" />
+                </Hyperlink>
+            </TextBlock>
 
             <!--  ═══ Agent pane group ═══
                   First sub-header on the page: override the style's 32px

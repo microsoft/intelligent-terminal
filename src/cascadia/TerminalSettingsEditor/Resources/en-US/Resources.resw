@@ -697,9 +697,21 @@
     <value>Agents</value>
     <comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment>
   </data>
+  <!--  Deprecated: superseded by AIAgents_PageSubtitlePrefix +
+        AIAgents_PageSubtitlePrivacyLink. Kept solely so the orphaned
+        translations in the other locale resw files have a neutral
+        fallback and PRI263 doesn't warn. Safe to delete once those
+        translations are cleaned up.  -->
   <data name="AIAgents_PageSubtitle.Text" xml:space="preserve">
     <value>Configure how agents work across your terminal experience</value>
-    <comment>Subtitle shown beneath the page title on the AI Agents settings page.</comment>
+  </data>
+  <data name="AIAgents_PageSubtitlePrefix" xml:space="preserve">
+    <value>Configure how agents work across your terminal experience.</value>
+    <comment>Subtitle shown beneath the page title on the AI Agents settings page. The hyperlink in AIAgents_PageSubtitlePrivacyLink follows this sentence inline; the trailing period belongs to this prefix.</comment>
+  </data>
+  <data name="AIAgents_PageSubtitlePrivacyLink" xml:space="preserve">
+    <value>Learn about how data is used.</value>
+    <comment>Inline hyperlink text that follows the AI Agents page subtitle and navigates to the privacy policy page. Includes a trailing period.</comment>
   </data>
   <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve">
     <value>Agent pane</value>
