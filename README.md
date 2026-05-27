@@ -39,7 +39,7 @@
 ## What is Intelligent Terminal?
 
 > [!IMPORTANT]
-> **Public Beta** - Intelligent Terminal is in active development. This is our experimental build where we're trying new features and iterating fast. We'd love your feedback! [Submit an issue](https://github.com/microsoft/terminal/issues) to share your thoughts.
+> **Experimental** - Intelligent Terminal is in active development. This is our experimental build where we're trying new features and iterating fast. We'd love your feedback! [Submit an issue](https://github.com/microsoft/terminal/issues) to share your thoughts.
 
 Intelligent Terminal is an experimental fork of [Windows Terminal](https://github.com/microsoft/terminal) with native agent integration.
 
@@ -218,7 +218,7 @@ Intelligent Terminal is a full rethink of how agents fit into a terminal workflo
 
 ## Feedback
 
-Intelligent Terminal is in public beta. If you have a feature request or find a bug, [submit an issue](https://github.com/microsoft/terminal/issues) on the GitHub repository.
+Intelligent Terminal is in an experimental stage. If you have a feature request or find a bug, [submit an issue](https://github.com/microsoft/terminal/issues) on the GitHub repository.
 
 ---
 
