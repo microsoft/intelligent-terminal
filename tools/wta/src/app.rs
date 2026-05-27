@@ -1499,6 +1499,11 @@ pub struct App {
     /// place of a live wtcli; not compiled into release builds.
     #[cfg(test)]
     pub last_dispatched_command: Option<DispatchedCommand>,
+    /// Test hook: prompt last passed to `delegate_to_tab_agent`.
+    /// Lets cross-tab `agent_prompt` filtering be unit-tested without
+    /// actually spawning a `wta delegate` subprocess.
+    #[cfg(test)]
+    pub last_delegated_prompt: Option<String>,
     /// Source pane GUID (set from `WTA_SOURCE_SESSION_ID` env var by the
     /// launching pane). Used by autofix to attribute which pane originated
     /// the failing command we're about to fix.
@@ -1640,6 +1645,8 @@ impl App {
             agent_event_tx: None,
             #[cfg(test)]
             last_dispatched_command: None,
+            #[cfg(test)]
+            last_delegated_prompt: None,
             source_session_id: None,
             source_cwd: None,
             log_agent_events: false,
@@ -3507,6 +3514,21 @@ impl App {
                 if method == "agent_prompt" {
                     // Command palette `?<prompt>` delegation. Not a WT
                     // notification — has nothing to do with banner/queue.
+                    //
+                    // C++ broadcasts to every helper in the window, so
+                    // we must filter here: without this check, N agent
+                    // panes across N tabs would each spawn a `wta
+                    // delegate` subprocess for a single user prompt and
+                    // get N duplicate sub-agent tabs.
+                    if !self.is_event_for_my_tab(tab_id.as_deref()) {
+                        tracing::debug!(
+                            target: "autofix",
+                            event_tab = ?tab_id,
+                            self_tab = ?self.owner_tab_id,
+                            "dropping agent_prompt for different tab"
+                        );
+                        return;
+                    }
                     let prompt = params
                         .get("prompt")
                         .and_then(|v| v.as_str())
@@ -3992,26 +4014,16 @@ impl App {
 
                 // Per-tab filter. WT broadcasts pane-scoped events to every
                 // helper in the window, but another tab's failures are not
-                // this helper's concern. Drop notifications whose tab_id
-                // doesn't match our owner_tab_id; empty/missing tab_id falls
-                // through (no per-tab scope).
-                if let (Some(event_tab), Some(self_tab)) = (
-                    notification.tab_id.as_deref(),
-                    self.owner_tab_id.as_deref(),
-                ) {
-                    if !event_tab.is_empty()
-                        && !self_tab.is_empty()
-                        && event_tab != self_tab
-                    {
-                        tracing::debug!(
-                            target: "autofix",
-                            event_tab,
-                            self_tab,
-                            method = %method,
-                            "dropping cross-tab WT event"
-                        );
-                        return;
-                    }
+                // this helper's concern.
+                if !self.is_event_for_my_tab(notification.tab_id.as_deref()) {
+                    tracing::debug!(
+                        target: "autofix",
+                        event_tab = ?notification.tab_id,
+                        self_tab = ?self.owner_tab_id,
+                        method = %method,
+                        "dropping cross-tab WT event"
+                    );
+                    return;
                 }
 
                 // Surface rule: WT events (connection_state, vt_sequence)
@@ -5528,23 +5540,43 @@ impl App {
     /// Delegate a prompt to a new tab agent by spawning `wta delegate` subprocess.
     /// This is the same path used by the command palette — single code path for
     /// context capture, prompt building, and tab creation.
-    pub fn delegate_to_tab_agent(&self, prompt: &str) {
+    pub fn delegate_to_tab_agent(&mut self, prompt: &str) {
         tracing::info!(target: "autofix", prompt_len = prompt.len(), "delegate_to_tab_agent called");
-        let exe = match std::env::current_exe() {
-            Ok(p) => p,
-            Err(_) => return,
-        };
-        let mut cmd = std::process::Command::new(exe);
-        cmd.arg("delegate").arg(prompt);
-        // The delegate child inherits WT_COM_CLSID from our env; no explicit pass needed.
-
-        // Fire-and-forget: spawn hidden, don't wait.
-        #[cfg(windows)]
+        #[cfg(test)]
         {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            self.last_delegated_prompt = Some(prompt.to_string());
+            return;
         }
-        let _ = cmd.spawn();
+        #[cfg(not(test))]
+        {
+            let exe = match std::env::current_exe() {
+                Ok(p) => p,
+                Err(_) => return,
+            };
+            let mut cmd = std::process::Command::new(exe);
+            cmd.arg("delegate").arg(prompt);
+            // The delegate child inherits WT_COM_CLSID from our env; no explicit pass needed.
+
+            // Fire-and-forget: spawn hidden, don't wait.
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            }
+            let _ = cmd.spawn();
+        }
+    }
+
+    /// True when an inbound WT event whose `tab_id` we trust should be acted on
+    /// by this helper. wta-master broadcasts every event to every helper across
+    /// the window; only the helper whose `owner_tab_id` matches should respond.
+    /// Falls through (returns true) when either side has no tab scope, so
+    /// window-wide events still get processed.
+    fn is_event_for_my_tab(&self, event_tab: Option<&str>) -> bool {
+        match (event_tab, self.owner_tab_id.as_deref()) {
+            (Some(et), Some(st)) if !et.is_empty() && !st.is_empty() => et == st,
+            _ => true,
+        }
     }
 
     /// Auto-fix: when a command fails in another pane, ask the coordinator
@@ -7811,6 +7843,38 @@ mod tests {
         assert!(!app.show_notification_banner);
         assert!(app.wt_notifications.is_empty());
         assert!(app.current_tab().messages.is_empty());
+    }
+
+    #[test]
+    fn agent_prompt_for_my_tab_delegates() {
+        let mut app = test_app();
+        app.owner_tab_id = Some("{tab-A}".to_string());
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_prompt".to_string(),
+            pane_id: String::new(),
+            tab_id: Some("{tab-A}".to_string()),
+            params: json!({"prompt": "fix the build", "tab_id": "{tab-A}"}),
+        });
+        assert_eq!(
+            app.last_delegated_prompt.as_deref(),
+            Some("fix the build")
+        );
+    }
+
+    #[test]
+    fn agent_prompt_for_other_tab_does_not_delegate() {
+        // C++ broadcasts `agent_prompt` to every helper in the window.
+        // Only the helper whose owner_tab_id matches should spawn the
+        // delegate child — else N agent panes = N duplicate sub-agents.
+        let mut app = test_app();
+        app.owner_tab_id = Some("{tab-A}".to_string());
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_prompt".to_string(),
+            pane_id: String::new(),
+            tab_id: Some("{tab-B}".to_string()),
+            params: json!({"prompt": "ignore me", "tab_id": "{tab-B}"}),
+        });
+        assert!(app.last_delegated_prompt.is_none());
     }
 
     #[test]
