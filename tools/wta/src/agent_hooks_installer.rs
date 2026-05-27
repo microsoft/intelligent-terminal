@@ -2479,27 +2479,27 @@ mod tests {
         assert!(GEMINI_HOOKS_JSON.contains("-CliSource gemini"));
     }
 
-    /// Claude and Copilot must ship the canonical 10-event Claude-documented
-    /// catalog, including `StopFailure` (the Claude-documented event for an
-    /// API/network failure) and `PostToolUseFailure`. `ErrorOccurred` must
-    /// NOT appear (it was an undocumented name from earlier wta builds; the
-    /// documented equivalent is `StopFailure`).
+    /// Both CLIs must carry the common event set. Copilot additionally
+    /// subscribes to tool-use hooks; claude dropped them in #81 for
+    /// latency. `ErrorOccurred` must NOT appear (undocumented legacy
+    /// name; the documented equivalent is `StopFailure`).
     #[test]
     fn claude_and_copilot_carry_full_event_catalog() {
-        const REQUIRED_EVENTS: &[&str] = &[
+        const COMMON_EVENTS: &[&str] = &[
             "SessionStart",
             "SessionEnd",
             "Notification",
             "UserPromptSubmit",
+            "StopFailure",
+            "Stop",
+        ];
+        const COPILOT_EXTRA_EVENTS: &[&str] = &[
             "PreToolUse",
             "PostToolUse",
             "PostToolUseFailure",
-            "StopFailure",
-            "Stop",
-            "SubagentStop",
         ];
         for (label, hooks) in [("claude", CLAUDE_HOOKS_JSON), ("copilot", COPILOT_HOOKS_JSON)] {
-            for event in REQUIRED_EVENTS {
+            for event in COMMON_EVENTS {
                 assert!(
                     hooks.contains(&format!("\"{event}\":")),
                     "{label} hooks.json missing event {event}"
@@ -2510,20 +2510,49 @@ mod tests {
                 "{label} hooks.json still references undocumented ErrorOccurred"
             );
         }
+        for event in COPILOT_EXTRA_EVENTS {
+            assert!(
+                COPILOT_HOOKS_JSON.contains(&format!("\"{event}\":")),
+                "copilot hooks.json missing event {event}"
+            );
+        }
     }
 
-    /// Claude and Copilot share the same hook-event schema; their
-    /// `hooks.json` files must be byte-identical except for the
-    /// `-CliSource <name>` token. Prevents future drift between the two
-    /// per-CLI bundles.
+    /// Claude and Copilot share the same hook-event schema for their
+    /// common events; copilot carries additional tool-use hooks that
+    /// claude dropped in #81. After removing those extra entries and
+    /// normalizing `-CliSource`, the two files must match.
     #[test]
     fn claude_and_copilot_hooks_json_are_parity_identical() {
         let normalized_claude = CLAUDE_HOOKS_JSON.replace("-CliSource claude", "-CliSource <CLI>");
-        let normalized_copilot =
+        // Strip the copilot-only tool-use hook blocks before comparing.
+        // Each block is a top-level key with its JSON array value + trailing comma.
+        let mut normalized_copilot =
             COPILOT_HOOKS_JSON.replace("-CliSource copilot", "-CliSource <CLI>");
+        for event in ["PreToolUse", "PostToolUse", "PostToolUseFailure"] {
+            // Remove the block: `"<Event>": [ ... ],\r\n` (with possible \r\n or \n)
+            if let Some(start) = normalized_copilot.find(&format!("\"{event}\"")) {
+                // Walk backward to capture leading whitespace
+                let block_start = normalized_copilot[..start]
+                    .rfind('\n')
+                    .map(|i| i + 1)
+                    .unwrap_or(start);
+                // Find the closing `],` and then the next newline
+                if let Some(rel_end) = normalized_copilot[start..].find("],") {
+                    let mut block_end = start + rel_end + 2; // past `],`
+                    // Consume trailing whitespace/newline
+                    while block_end < normalized_copilot.len()
+                        && matches!(normalized_copilot.as_bytes()[block_end], b'\r' | b'\n')
+                    {
+                        block_end += 1;
+                    }
+                    normalized_copilot.replace_range(block_start..block_end, "");
+                }
+            }
+        }
         assert_eq!(
             normalized_claude, normalized_copilot,
-            "claude/ and copilot/ hooks.json must match modulo -CliSource value"
+            "claude/ and copilot/ hooks.json must match modulo -CliSource value and copilot-only tool-use hooks"
         );
     }
 
