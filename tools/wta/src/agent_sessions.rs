@@ -195,7 +195,7 @@ impl AgentSession {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SessionEvent {
     SessionStarted   { key: AgentKey, cli_source: CliSource, pane_session_id: String, cwd: PathBuf, title: String },
     ToolStarting     { key: AgentKey, tool_name: String },

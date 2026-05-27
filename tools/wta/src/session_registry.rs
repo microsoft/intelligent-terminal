@@ -339,6 +339,218 @@ pub fn parse_focus_session_params(
     serde_json::from_str::<FocusSessionParams>(raw.get())
 }
 
+// ─── intellterm.wta/session_hook ─────────────────────────────────────────────
+
+/// ExtRequest method for "helper observed a SessionEvent; master should apply it".
+pub const INTELLTERM_METHOD_SESSION_HOOK: &str = "intellterm.wta/session_hook";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum SessionHookCliSource {
+    Known(String),
+    Unknown {
+        #[serde(rename = "Unknown")]
+        value: String,
+    },
+}
+
+impl From<&crate::agent_sessions::CliSource> for SessionHookCliSource {
+    fn from(value: &crate::agent_sessions::CliSource) -> Self {
+        match value {
+            crate::agent_sessions::CliSource::Claude => Self::Known("Claude".to_string()),
+            crate::agent_sessions::CliSource::Copilot => Self::Known("Copilot".to_string()),
+            crate::agent_sessions::CliSource::Gemini => Self::Known("Gemini".to_string()),
+            crate::agent_sessions::CliSource::Unknown(value) => Self::Unknown {
+                value: value.clone(),
+            },
+        }
+    }
+}
+
+impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
+    fn from(value: SessionHookCliSource) -> Self {
+        match value {
+            SessionHookCliSource::Known(value) => match value.as_str() {
+                "Claude" | "claude" => Self::Claude,
+                "Copilot" | "copilot" => Self::Copilot,
+                "Gemini" | "gemini" => Self::Gemini,
+                other => Self::Unknown(other.to_string()),
+            },
+            SessionHookCliSource::Unknown { value } => Self::Unknown(value),
+        }
+    }
+}
+
+/// Wire payload for [`INTELLTERM_METHOD_SESSION_HOOK`]. Mirrors every current
+/// [`crate::agent_sessions::SessionEvent`] variant.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind")]
+pub enum SessionHookParams {
+    SessionStarted {
+        key: crate::agent_sessions::AgentKey,
+        cli_source: SessionHookCliSource,
+        pane_session_id: String,
+        cwd: PathBuf,
+        title: String,
+    },
+    ToolStarting {
+        key: crate::agent_sessions::AgentKey,
+        tool_name: String,
+    },
+    ToolCompleted {
+        key: crate::agent_sessions::AgentKey,
+    },
+    Notification {
+        key: crate::agent_sessions::AgentKey,
+        message: String,
+    },
+    SessionStopped {
+        key: crate::agent_sessions::AgentKey,
+        reason: String,
+    },
+    ConnectionFailed {
+        pane_session_id: String,
+        reason: String,
+    },
+    PaneClosed {
+        pane_session_id: String,
+    },
+    ResumeDispatched {
+        key: crate::agent_sessions::AgentKey,
+    },
+    ResumePaneAssigned {
+        key: crate::agent_sessions::AgentKey,
+        pane_session_id: String,
+    },
+}
+
+impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
+    fn from(value: &crate::agent_sessions::SessionEvent) -> Self {
+        use crate::agent_sessions::SessionEvent;
+        match value {
+            SessionEvent::SessionStarted {
+                key,
+                cli_source,
+                pane_session_id,
+                cwd,
+                title,
+            } => Self::SessionStarted {
+                key: key.clone(),
+                cli_source: SessionHookCliSource::from(cli_source),
+                pane_session_id: pane_session_id.clone(),
+                cwd: cwd.clone(),
+                title: title.clone(),
+            },
+            SessionEvent::ToolStarting { key, tool_name } => Self::ToolStarting {
+                key: key.clone(),
+                tool_name: tool_name.clone(),
+            },
+            SessionEvent::ToolCompleted { key } => Self::ToolCompleted { key: key.clone() },
+            SessionEvent::Notification { key, message } => Self::Notification {
+                key: key.clone(),
+                message: message.clone(),
+            },
+            SessionEvent::SessionStopped { key, reason } => Self::SessionStopped {
+                key: key.clone(),
+                reason: reason.clone(),
+            },
+            SessionEvent::ConnectionFailed {
+                pane_session_id,
+                reason,
+            } => Self::ConnectionFailed {
+                pane_session_id: pane_session_id.clone(),
+                reason: reason.clone(),
+            },
+            SessionEvent::PaneClosed { pane_session_id } => Self::PaneClosed {
+                pane_session_id: pane_session_id.clone(),
+            },
+            SessionEvent::ResumeDispatched { key } => Self::ResumeDispatched { key: key.clone() },
+            SessionEvent::ResumePaneAssigned {
+                key,
+                pane_session_id,
+            } => Self::ResumePaneAssigned {
+                key: key.clone(),
+                pane_session_id: pane_session_id.clone(),
+            },
+        }
+    }
+}
+
+impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
+    fn from(value: SessionHookParams) -> Self {
+        match value {
+            SessionHookParams::SessionStarted {
+                key,
+                cli_source,
+                pane_session_id,
+                cwd,
+                title,
+            } => Self::SessionStarted {
+                key,
+                cli_source: cli_source.into(),
+                pane_session_id,
+                cwd,
+                title,
+            },
+            SessionHookParams::ToolStarting { key, tool_name } => {
+                Self::ToolStarting { key, tool_name }
+            }
+            SessionHookParams::ToolCompleted { key } => Self::ToolCompleted { key },
+            SessionHookParams::Notification { key, message } => {
+                Self::Notification { key, message }
+            }
+            SessionHookParams::SessionStopped { key, reason } => {
+                Self::SessionStopped { key, reason }
+            }
+            SessionHookParams::ConnectionFailed {
+                pane_session_id,
+                reason,
+            } => Self::ConnectionFailed {
+                pane_session_id,
+                reason,
+            },
+            SessionHookParams::PaneClosed { pane_session_id } => Self::PaneClosed { pane_session_id },
+            SessionHookParams::ResumeDispatched { key } => Self::ResumeDispatched { key },
+            SessionHookParams::ResumePaneAssigned {
+                key,
+                pane_session_id,
+            } => Self::ResumePaneAssigned {
+                key,
+                pane_session_id,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionHookResponse {
+    pub applied: bool,
+}
+
+/// Build a fire-and-forget helper → master `session_hook` ExtRequest.
+pub fn build_session_hook_request(event: &crate::agent_sessions::SessionEvent) -> acp::ExtRequest {
+    let params = SessionHookParams::from(event);
+    let json = serde_json::to_string(&params).expect("SessionHookParams serialization is infallible");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::ExtRequest::new(INTELLTERM_METHOD_SESSION_HOOK, Arc::from(raw))
+}
+
+/// Parse a master-bound `session_hook` body into the canonical reducer event.
+pub fn parse_session_hook_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::agent_sessions::SessionEvent, serde_json::Error> {
+    serde_json::from_str::<SessionHookParams>(raw.get()).map(Into::into)
+}
+
+/// Build a master response for `session_hook`.
+pub fn build_session_hook_response(applied: bool) -> acp::ExtResponse {
+    let response = SessionHookResponse { applied };
+    let raw = serde_json::value::to_raw_value(&response)
+        .expect("SessionHookResponse serialization is infallible");
+    acp::ExtResponse::new(raw.into())
+}
+
 /// One row in the registry. Mirrors the fields the F2 view needs:
 ///
 /// * `session_id` — the ACP session GUID (truth-source key).
@@ -1362,6 +1574,95 @@ mod tests {
     fn parse_focus_session_params_rejects_garbage() {
         let raw = serde_json::value::RawValue::from_string(r#"{"wrong":"shape"}"#.into()).unwrap();
         assert!(parse_focus_session_params(&raw).is_err());
+    }
+
+    #[test]
+    fn build_then_parse_sessions_changed_is_empty_notification() {
+        let notification = build_sessions_changed_notification();
+        assert_eq!(&*notification.method, INTELLTERM_METHOD_SESSIONS_CHANGED);
+        assert_eq!(notification.params.get(), "{}");
+    }
+
+    #[test]
+    fn build_then_parse_session_hook_round_trips_every_session_event_variant() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+
+        let cases = vec![
+            SessionEvent::SessionStarted {
+                key: "session-started".to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "pane-1".to_string(),
+                cwd: PathBuf::from(r#"C:\repo\project"#),
+                title: "fix build".to_string(),
+            },
+            SessionEvent::ToolStarting {
+                key: "tool-starting".to_string(),
+                tool_name: "edit".to_string(),
+            },
+            SessionEvent::ToolCompleted {
+                key: "tool-completed".to_string(),
+            },
+            SessionEvent::Notification {
+                key: "notification".to_string(),
+                message: "waiting for input".to_string(),
+            },
+            SessionEvent::SessionStopped {
+                key: "session-stopped".to_string(),
+                reason: "done".to_string(),
+            },
+            SessionEvent::ConnectionFailed {
+                pane_session_id: "pane-failed".to_string(),
+                reason: "pipe closed".to_string(),
+            },
+            SessionEvent::PaneClosed {
+                pane_session_id: "pane-closed".to_string(),
+            },
+            SessionEvent::ResumeDispatched {
+                key: "resume-dispatched".to_string(),
+            },
+            SessionEvent::ResumePaneAssigned {
+                key: "resume-pane-assigned".to_string(),
+                pane_session_id: "pane-resumed".to_string(),
+            },
+        ];
+
+        for event in cases {
+            let request = build_session_hook_request(&event);
+            assert_eq!(&*request.method, INTELLTERM_METHOD_SESSION_HOOK);
+            let parsed = parse_session_hook_params(&request.params)
+                .expect("session_hook request params must decode");
+            assert_eq!(parsed, event);
+        }
+    }
+
+    #[test]
+    fn session_hook_cli_source_unknown_round_trips_without_lowercasing() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+
+        let event = SessionEvent::SessionStarted {
+            key: "unknown-cli".to_string(),
+            cli_source: CliSource::Unknown("MyCustomCLI".to_string()),
+            pane_session_id: "pane-unknown".to_string(),
+            cwd: PathBuf::from(r#"C:\repo\custom"#),
+            title: "custom".to_string(),
+        };
+
+        let request = build_session_hook_request(&event);
+        let parsed = parse_session_hook_params(&request.params)
+            .expect("unknown cli_source must round-trip");
+        assert_eq!(parsed, event);
+    }
+
+    #[test]
+    fn parse_session_hook_params_rejects_garbage() {
+        let raw = serde_json::value::RawValue::from_string(r#"{"wrong":"shape"}"#.into()).unwrap();
+        assert!(parse_session_hook_params(&raw).is_err());
+    }
+
+    #[test]
+    fn build_session_hook_response_serializes_applied_flag() {
+        let response = build_session_hook_response(true);
+        assert_eq!(response.0.get(), r#"{"applied":true}"#);
     }
 
     #[test]

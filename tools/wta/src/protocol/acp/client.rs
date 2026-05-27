@@ -1833,6 +1833,7 @@ pub async fn run_acp_client_over_pipe(
     mut drop_session_rx: mpsc::UnboundedReceiver<DropSessionRequest>,
     mut rename_session_rx: mpsc::UnboundedReceiver<RenameSessionRequest>,
     mut restart_rx: mpsc::UnboundedReceiver<RestartRequest>,
+    mut session_hook_rx: mpsc::UnboundedReceiver<crate::agent_sessions::SessionEvent>,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
 ) -> Result<()> {
@@ -2176,6 +2177,26 @@ pub async fn run_acp_client_over_pipe(
     loop {
         tokio::select! {
             biased;
+            Some(event) = session_hook_rx.recv() => {
+                let conn_for_hook = Arc::clone(&conn);
+                tokio::task::spawn_local(async move {
+                    let req = crate::session_registry::build_session_hook_request(&event);
+                    match conn_for_hook.ext_method(req).await {
+                        Ok(response) => tracing::debug!(
+                            target: "session_hook",
+                            event = ?event,
+                            response = %response.0.get(),
+                            "session_hook sent to master"
+                        ),
+                        Err(err) => tracing::warn!(
+                            target: "session_hook",
+                            event = ?event,
+                            error = ?err,
+                            "session_hook ext-request to master failed"
+                        ),
+                    }
+                });
+            }
             Some(req) = restart_rx.recv() => {
                 tracing::warn!(
                     target: "helper",

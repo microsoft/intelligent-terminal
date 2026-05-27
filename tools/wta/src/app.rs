@@ -354,11 +354,24 @@ fn open_url_in_browser(url: &str) -> std::io::Result<()> {
 /// distinction.
 ///
 /// Returns `true` if the registry was updated and the UI should redraw.
+#[allow(dead_code)]
 pub fn route_agent_event_to_registry(
     reg: &mut crate::agent_sessions::AgentSessionRegistry,
     pane_session_id: &str,
     params: &serde_json::Value,
 ) -> bool {
+    route_agent_event_to_registry_with_hook_sink(reg, pane_session_id, params, |_| {})
+}
+
+pub fn route_agent_event_to_registry_with_hook_sink<F>(
+    reg: &mut crate::agent_sessions::AgentSessionRegistry,
+    pane_session_id: &str,
+    params: &serde_json::Value,
+    mut hook_sink: F,
+) -> bool
+where
+    F: FnMut(crate::agent_sessions::SessionEvent),
+{
     use crate::agent_sessions::{CliSource, SessionEvent};
     use std::path::PathBuf;
 
@@ -397,13 +410,15 @@ pub fn route_agent_event_to_registry(
     };
     let needs_synthetic_start = event != "agent.session.started" && !session_known;
     if needs_synthetic_start {
-        reg.apply(SessionEvent::SessionStarted {
+        let synthetic_event = SessionEvent::SessionStarted {
             key: key.clone(),
             cli_source: cli_source.clone(),
             pane_session_id: pane_session_id.to_string(),
             cwd: cwd.clone(),
             title: synth_title.clone(),
-        });
+        };
+        reg.apply(synthetic_event.clone());
+        hook_sink(synthetic_event);
     }
 
     if event == "agent.session.started" && !asid.is_empty() {
@@ -422,7 +437,9 @@ pub fn route_agent_event_to_registry(
             let tool_name = payload.get("tool_name").or_else(|| payload.get("toolName"))
                 .and_then(|v| v.as_str()).unwrap_or("").to_string();
             if crate::agent_sessions::is_user_input_tool(&tool_name) {
-                reg.apply(SessionEvent::ToolStarting { key: key.clone(), tool_name });
+                let tool_event = SessionEvent::ToolStarting { key: key.clone(), tool_name };
+                reg.apply(tool_event.clone());
+                hook_sink(tool_event);
                 let message = payload.get("tool_input")
                     .and_then(|ti| ti.get("question")
                         .or_else(|| ti.get("prompt"))
@@ -458,7 +475,8 @@ pub fn route_agent_event_to_registry(
         _ => return reg.take_dirty(),
     };
 
-    reg.apply(ev);
+    reg.apply(ev.clone());
+    hook_sink(ev);
 
     // Phantom-session prune: if this event was a session-end and the
     // row is now Ended for a managed CLI (Claude/Copilot/Gemini) whose
@@ -1542,6 +1560,8 @@ pub struct App {
     /// is constructed; remains None in tests so dispatch_resume is a
     /// no-op outside the integration loop.
     agent_event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
+    /// Helper-mode fire-and-forget publisher for `intellterm.wta/session_hook`.
+    session_hook_tx: Option<mpsc::UnboundedSender<crate::agent_sessions::SessionEvent>>,
     /// Test-only: last command issued via the F2 Agents view's Enter
     /// dispatch (`dispatch_resume` / focus). Used by unit tests in
     /// place of a live wtcli; not compiled into release builds.
@@ -1700,6 +1720,7 @@ impl App {
             agent_supports_load_session: false,
             install_request_tx: None,
             agent_event_tx: None,
+            session_hook_tx: None,
             #[cfg(test)]
             last_dispatched_command: None,
             source_session_id: None,
@@ -1833,6 +1854,25 @@ impl App {
     /// shared mutable access to `agent_sessions`.
     pub fn set_agent_event_tx(&mut self, tx: mpsc::UnboundedSender<AppEvent>) {
         self.agent_event_tx = Some(tx);
+    }
+
+    pub fn set_session_hook_tx(
+        &mut self,
+        tx: mpsc::UnboundedSender<crate::agent_sessions::SessionEvent>,
+    ) {
+        self.session_hook_tx = Some(tx);
+    }
+
+    fn publish_session_hook(&self, event: crate::agent_sessions::SessionEvent) {
+        if let Some(tx) = &self.session_hook_tx {
+            if let Err(err) = tx.send(event) {
+                tracing::warn!(
+                    target: "session_hook",
+                    error = %err,
+                    "failed to queue session_hook event for master"
+                );
+            }
+        }
     }
 
     /// Trigger an install-hooks request. No-op if no channel is wired
@@ -2289,8 +2329,9 @@ impl App {
         // second Enter on the same row sees a non-terminal status and
         // skips this branch (idempotent: ResumeDispatched no-ops on live
         // rows). See `agent_sessions::SessionEvent::ResumeDispatched`.
-        self.agent_sessions
-            .apply(crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() });
+        let resume_event = crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
+        self.agent_sessions.apply(resume_event.clone());
+        self.publish_session_hook(resume_event);
 
         // Bind the freshly-spawned pane GUID back to the row. Required
         // for hook-less CLIs (Gemini) so a future `PaneClosed` can
@@ -2457,8 +2498,9 @@ impl App {
 
         // Mirror dispatch_resume's optimistic state flip so a rapid
         // double press doesn't double-dispatch.
-        self.agent_sessions
-            .apply(crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() });
+        let resume_event = crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
+        self.agent_sessions.apply(resume_event.clone());
+        self.publish_session_hook(resume_event);
 
         let evt = serde_json::json!({
             "type": "event",
@@ -3686,6 +3728,7 @@ impl App {
                     event = ?ev,
                     "AgentSessionEvent posted from background callback"
                 );
+                let hook_event = ev.clone();
                 // Capture key BEFORE apply for events that unbind it
                 // (PaneClosed clears the pane→key mapping), so the
                 // phantom-session prune below can still see the row.
@@ -3699,6 +3742,7 @@ impl App {
                     _ => None,
                 };
                 self.agent_sessions.apply(ev);
+                self.publish_session_hook(hook_event);
                 if let Some(k) = key_to_prune {
                     crate::app::prune_phantom_session_if_ended(&mut self.agent_sessions, &k);
                 }
@@ -3847,11 +3891,16 @@ impl App {
                 // tab routing; runs before the same-pane skip because we want
                 // to record events from our own pane too.
                 if method == "agent_event" {
-                    let _ = route_agent_event_to_registry(
+                    let mut hook_events = Vec::new();
+                    let _ = route_agent_event_to_registry_with_hook_sink(
                         &mut self.agent_sessions,
                         pane_id.as_str(),
                         &params,
+                        |event| hook_events.push(event),
                     );
+                    for event in hook_events {
+                        self.publish_session_hook(event);
+                    }
                     // Diagnostics aid: surface the raw event payload in the
                     // active tab's chat so a developer can correlate hook
                     // wire-format with registry behavior. Off by default.
@@ -4318,11 +4367,11 @@ impl App {
                             let key_before = self
                                 .agent_sessions
                                 .key_for_pane(&pane_id);
-                            self.agent_sessions.apply(
-                                crate::agent_sessions::SessionEvent::PaneClosed {
-                                    pane_session_id: pane_id.clone(),
-                                },
-                            );
+                            let event = crate::agent_sessions::SessionEvent::PaneClosed {
+                                pane_session_id: pane_id.clone(),
+                            };
+                            self.agent_sessions.apply(event.clone());
+                            self.publish_session_hook(event);
                             if let Some(k) = key_before {
                                 crate::app::prune_phantom_session_if_ended(
                                     &mut self.agent_sessions,
@@ -4336,12 +4385,12 @@ impl App {
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("connection failed")
                                 .to_string();
-                            self.agent_sessions.apply(
-                                crate::agent_sessions::SessionEvent::ConnectionFailed {
-                                    pane_session_id: pane_id.clone(),
-                                    reason,
-                                },
-                            );
+                            let event = crate::agent_sessions::SessionEvent::ConnectionFailed {
+                                pane_session_id: pane_id.clone(),
+                                reason,
+                            };
+                            self.agent_sessions.apply(event.clone());
+                            self.publish_session_hook(event);
                         }
                         _ => {}
                     }
@@ -4380,11 +4429,11 @@ impl App {
                         // pane→key binding so the phantom-session prune
                         // can still inspect the row.
                         let key_before = self.agent_sessions.key_for_pane(&pane_id);
-                        self.agent_sessions.apply(
-                            crate::agent_sessions::SessionEvent::PaneClosed {
-                                pane_session_id: pane_id.clone(),
-                            },
-                        );
+                        let event = crate::agent_sessions::SessionEvent::PaneClosed {
+                            pane_session_id: pane_id.clone(),
+                        };
+                        self.agent_sessions.apply(event.clone());
+                        self.publish_session_hook(event);
                         if let Some(k) = key_before {
                             crate::app::prune_phantom_session_if_ended(
                                 &mut self.agent_sessions,
@@ -7776,6 +7825,76 @@ mod tests {
         App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, debug_capture, true, false)
     }
 
+    #[test]
+    fn helper_agent_event_queues_session_hook_while_updating_local_registry() {
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.set_session_hook_tx(tx);
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_event".to_string(),
+            pane_id: "pane-hook".to_string(),
+            tab_id: Some("tab-1".to_string()),
+            params: json!({
+                "event": "agent.session.started",
+                "cli_source": "copilot",
+                "agent_session_id": "sid-hook",
+                "payload": {
+                    "cwd": r#"C:\repo\hook"#,
+                }
+            }),
+        });
+
+        let queued = rx.try_recv().expect("session_hook event queued");
+        assert_eq!(
+            queued,
+            crate::agent_sessions::SessionEvent::SessionStarted {
+                key: "sid-hook".to_string(),
+                cli_source: crate::agent_sessions::CliSource::Copilot,
+                pane_session_id: "pane-hook".to_string(),
+                cwd: std::path::PathBuf::from(r#"C:\repo\hook"#),
+                title: "hook".to_string(),
+            }
+        );
+        assert!(
+            app.agent_sessions.has_session(&"sid-hook".to_string()),
+            "local registry mutation remains in place"
+        );
+    }
+
+    #[test]
+    fn helper_agent_event_queues_synthetic_start_and_followup_hook() {
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.set_session_hook_tx(tx);
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_event".to_string(),
+            pane_id: "pane-tool".to_string(),
+            tab_id: Some("tab-1".to_string()),
+            params: json!({
+                "event": "agent.tool.starting",
+                "cli_source": "copilot",
+                "agent_session_id": "sid-tool",
+                "payload": {
+                    "cwd": r#"C:\repo\tool"#,
+                    "tool_name": "edit"
+                }
+            }),
+        });
+
+        assert!(matches!(
+            rx.try_recv().expect("synthetic SessionStarted queued"),
+            crate::agent_sessions::SessionEvent::SessionStarted { ref key, .. } if key == "sid-tool"
+        ));
+        assert_eq!(
+            rx.try_recv().expect("ToolStarting queued"),
+            crate::agent_sessions::SessionEvent::ToolStarting {
+                key: "sid-tool".to_string(),
+                tool_name: "edit".to_string(),
+            }
+        );
+    }
 
     // ─── word boundary helpers ──────────────────────────────────────────────
 

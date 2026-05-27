@@ -1075,6 +1075,16 @@ impl acp::Agent for HelperHandler {
             );
             return handle_sessions_list(&self.state, &args.params).await;
         }
+        if method == crate::session_registry::INTELLTERM_METHOD_SESSION_HOOK {
+            tracing::info!(
+                target: "master",
+                op = "ext_method",
+                method = %method,
+                helper_id = ?self.helper_id,
+                "handling intellterm.wta/session_hook locally"
+            );
+            return handle_session_hook(&self.state, &args.params).await;
+        }
         tracing::debug!(
             target: "master",
             op = "ext_method",
@@ -1682,7 +1692,6 @@ pub(crate) async fn broadcast_ext_to_helpers(
     }
 }
 
-
 /// Pure async handler for the `intellterm.wta/sessions/list` ExtRequest.
 async fn handle_sessions_list(
     state: &MasterStateInner,
@@ -1702,6 +1711,43 @@ async fn handle_sessions_list(
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
     let raw = crate::session_registry::build_sessions_list_response(sessions);
     Ok(acp::ExtResponse::new(raw.into()))
+}
+
+/// Pure async handler for the `intellterm.wta/session_hook` ExtRequest.
+///
+/// Decodes the hook event, dispatches it to the master-side registry reducer
+/// (added in Task A), and broadcasts `sessions/changed` to every connected
+/// helper when the reducer actually mutated state. Idempotent / no-op events
+/// (reducer returned `false`) skip the broadcast to avoid push storms.
+async fn handle_session_hook(
+    state: &MasterStateInner,
+    params: &serde_json::value::RawValue,
+) -> acp::Result<acp::ExtResponse> {
+    let event = crate::session_registry::parse_session_hook_params(params).map_err(|err| {
+        tracing::warn!(
+            target: "session_hook",
+            error = %err,
+            "rejecting malformed session_hook params"
+        );
+        acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
+    })?;
+
+    tracing::info!(
+        target: "session_hook",
+        event = ?event,
+        "received helper session hook"
+    );
+
+    let applied = state.registry.apply_event(event).await;
+    if applied {
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
+    }
+
+    Ok(crate::session_registry::build_session_hook_response(applied))
 }
 
 /// Pure async handler for the `intellterm.wta/focus_session` ExtRequest.
@@ -2649,5 +2695,51 @@ mod tests {
             .expect_err("malformed params must error");
         assert_eq!(err.code, acp::ErrorCode::InvalidParams);
         assert!(mock.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn session_hook_returns_invalid_params_for_garbage() {
+        let state = make_state();
+        let garbage = serde_json::value::to_raw_value(&serde_json::json!({
+            "wrong_field": "huh"
+        }))
+        .unwrap();
+
+        let err = handle_session_hook(&state, &garbage)
+            .await
+            .expect_err("malformed session_hook params must error");
+        assert_eq!(err.code, acp::ErrorCode::InvalidParams);
+    }
+
+    #[tokio::test]
+    async fn session_hook_broadcasts_sessions_changed_after_valid_payload() {
+        let state = make_state();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        state.helper_ext_subscribers.lock().await.insert(HelperId(7), tx);
+
+        // Use SessionStarted because it unconditionally upserts a row,
+        // so the reducer returns true and the broadcast fires. PaneClosed
+        // against an empty registry is a no-op (returns false) and would
+        // not exercise the broadcast path.
+        let event = crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "sid-for-hook".to_string(),
+            cli_source: crate::agent_sessions::CliSource::Copilot,
+            pane_session_id: "pane-for-hook".to_string(),
+            cwd: std::path::PathBuf::from("/tmp"),
+            title: String::new(),
+        };
+        let req = crate::session_registry::build_session_hook_request(&event);
+
+        let response = handle_session_hook(&state, &req.params)
+            .await
+            .expect("valid session_hook accepted");
+        assert_eq!(response.0.get(), r#"{"applied":true}"#);
+
+        let notification = rx.try_recv().expect("sessions/changed broadcast queued");
+        assert_eq!(
+            &*notification.method,
+            crate::session_registry::INTELLTERM_METHOD_SESSIONS_CHANGED
+        );
+        assert_eq!(notification.params.get(), "{}");
     }
 }

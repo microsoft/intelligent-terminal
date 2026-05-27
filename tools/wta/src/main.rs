@@ -1965,6 +1965,12 @@ async fn run_acp_app(
             // this the agent loses turn context after a drag.
             let (rename_session_tx, rename_session_rx) =
                 tokio::sync::mpsc::unbounded_channel();
+            let (session_hook_tx_opt, session_hook_rx_opt) = if connect_master_pipe.is_some() {
+                let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+                (Some(tx), Some(rx))
+            } else {
+                (None, None)
+            };
 
             // Spawn the ACP client -- but not in setup mode, where the user
             // hasn't chosen an agent yet. Store params for deferred start.
@@ -1974,6 +1980,8 @@ async fn run_acp_app(
             // the agent lifecycle, so there's no FRE flow to defer to.
             let deferred_channels = if let Some(ref pipe_name) = connect_master_pipe {
                 let pipe_name = pipe_name.clone();
+                let session_hook_rx = session_hook_rx_opt
+                    .expect("session_hook receiver exists in helper mode");
                 let event_tx_for_pipe = event_tx.clone();
                 let shell_mgr_for_pipe = Arc::clone(&shell_mgr);
                 let acp_model = cli.acp_model.clone();
@@ -1991,6 +1999,7 @@ async fn run_acp_app(
                         drop_session_rx,
                         rename_session_rx,
                         restart_rx,
+                        session_hook_rx,
                         shell_mgr_for_pipe,
                         wt_connected,
                     )
@@ -2050,6 +2059,9 @@ async fn run_acp_app(
 
             let autofix_enabled = !cli.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, debug_capture_enabled, wt_connected, autofix_enabled);
+            if let Some(session_hook_tx) = session_hook_tx_opt {
+                app_state.set_session_hook_tx(session_hook_tx);
+            }
 
             // ── Preflight: check the agent CLI before connecting ──────────
             // Skip preflight when FRE is active — FRE has its own agent
