@@ -243,9 +243,54 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 m.Description()));
         }
 
+        // Reconcile a stale persisted id with the authoritative list. If
+        // the saved model isn't available from the current agent, rewrite
+        // it to the agent's advertised default ("default" / "auto") — or
+        // the first entry as last resort. We only do this once a real
+        // list has landed; an empty list means the probe hasn't run yet,
+        // and we mustn't clobber the user's choice in that transient
+        // state. Without this, the dropdown could visually settle on a
+        // valid entry while wta keeps receiving the stale --acp-model
+        // value at runtime.
+        if (newSize > 0)
+        {
+            const auto current = _GlobalSettings.AcpModel();
+            bool matched = false;
+            for (uint32_t i = 0; i < newSize; ++i)
+            {
+                if (_acpModelList.GetAt(i).Id() == current)
+                {
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched)
+            {
+                winrt::hstring fallbackId{};
+                for (uint32_t i = 0; i < newSize; ++i)
+                {
+                    const auto id = _acpModelList.GetAt(i).Id();
+                    if (id == L"default" || id == L"auto")
+                    {
+                        fallbackId = id;
+                        break;
+                    }
+                }
+                if (fallbackId.empty())
+                {
+                    fallbackId = _acpModelList.GetAt(0).Id();
+                }
+                if (_GlobalSettings.AcpModel() != fallbackId)
+                {
+                    _GlobalSettings.AcpModel(fallbackId);
+                }
+            }
+        }
+
         _NotifyChanges(L"AcpModelList",
                        L"HasAcpModelList",
                        L"ShowAcpModelTextBox",
+                       L"AcpModel",
                        L"CurrentAcpModelEntry");
     }
 
@@ -314,35 +359,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     Editor::AcpModelEntry AIAgentsViewModel::CurrentAcpModelEntry()
     {
-        if (!_acpModelList || _acpModelList.Size() == 0)
-        {
-            return nullptr;
-        }
+        if (!_acpModelList) return nullptr;
         const auto current = _GlobalSettings.AcpModel();
         for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
         {
             const auto entry = _acpModelList.GetAt(i);
-            if (entry.Id() == current)
-            {
-                return entry;
-            }
+            if (entry.Id() == current) return entry;
         }
-        // No match (stale id from a different agent, or empty initial value).
-        // Fall back to the agent's advertised default entry — "default" or
-        // "auto" — so ComboBox renders with selected (normal) foreground
-        // instead of falling through to PlaceholderText dim color. Last
-        // resort is the first entry. This is display-only; the setter only
-        // fires when the user actively picks something.
-        for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
-        {
-            const auto entry = _acpModelList.GetAt(i);
-            const auto id = entry.Id();
-            if (id == L"default" || id == L"auto")
-            {
-                return entry;
-            }
-        }
-        return _acpModelList.GetAt(0);
+        // Empty list (probe hasn't run yet) → ComboBox shows PlaceholderText
+        // briefly until the agent's model list arrives and
+        // _RebuildAcpModelListFromCache reconciles any stale persisted id.
+        return nullptr;
     }
 
     void AIAgentsViewModel::CurrentAcpModelEntry(const Editor::AcpModelEntry& value)
