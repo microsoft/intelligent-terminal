@@ -33,5 +33,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
 which = "7"
+win_etw_macros = "0.1.8"
+win_etw_provider = "0.1.8"
 rust-i18n = "3"
 sys-locale = "0.3"
