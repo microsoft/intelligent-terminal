@@ -1173,8 +1173,20 @@ namespace winrt::TerminalApp::implementation
             return L"\"" + escaped + L"\"";
         };
 
-        // Build: wta delegate --agent <agent> --delegate-agent <delegate> "<prompt>"
-        std::wstring cmdline = quoteArg(wtaPath) + L" delegate";
+        // Build: wta [--language <lang>] delegate --agent <agent> --delegate-agent <delegate> "<prompt>"
+        //
+        // `--language` is a top-level Cli flag, so it must appear *before* the
+        // `delegate` subcommand — otherwise clap rejects it and the process
+        // exits before `logging::init("delegate")` runs (silent failure, no
+        // wta-delegate.log, no new tab).
+        std::wstring cmdline = quoteArg(wtaPath);
+
+        if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
+        {
+            cmdline += L" --language " + quoteArg(std::wstring_view{ lang });
+        }
+
+        cmdline += L" delegate";
 
         if (!agentCliPath.empty())
         {
@@ -1190,11 +1202,6 @@ namespace winrt::TerminalApp::implementation
         if (!delegateModel.empty())
         {
             cmdline += L" --delegate-model " + quoteArg(std::wstring_view{ delegateModel });
-        }
-
-        if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
-        {
-            cmdline += L" --language " + quoteArg(std::wstring_view{ lang });
         }
 
         // Pass CWD from the active pane.
