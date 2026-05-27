@@ -38,9 +38,6 @@
 
 ## What is Intelligent Terminal?
 
-> [!IMPORTANT]
-> **Public Beta** - Intelligent Terminal is in active development. This is our experimental build where we're trying new features and iterating fast. We'd love your feedback! [Submit an issue](https://github.com/microsoft/intelligent-terminal/issues) to share your thoughts.
-
 Intelligent Terminal is an experimental fork of [Windows Terminal](https://github.com/microsoft/terminal) with native agent integration.
 
 [GitHub Copilot](https://github.com/features/copilot/cli/) is the default agent CLI, but it works with any [Agent Client Protocol (ACP)-compatible](https://agentclientprotocol.com/get-started/agents) agent CLI. All you need is to install your preferred agent CLI on your PC, and Intelligent Terminal should detect it.
@@ -54,7 +51,7 @@ Everything else about Intelligent Terminal is the same as [Windows Terminal](htt
 > [!NOTE]
 > Intelligent Terminal requires Windows 10 version 22H2 or later, or Windows 11.
 
-You also need a supported agent [CLI](https://github.com/resources/articles/what-is-a-cli) and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
+You also need a supported agent CLI and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
 
 ### Microsoft Store (recommended)
 
@@ -173,7 +170,7 @@ Everything is configurable through terminal settings, under "Agent" settings.
 
 ## Data & Privacy
 
-Intelligent Terminal is a **local transport layer**. It passes your prompts and shell context to your selected agent CLI over stdio/ACP. Terminal does not call any cloud APIs itself, does not store conversation data to disk, and does not mediate or inspect what the agent CLI does with your data.
+Intelligent Terminal is a **local transport layer**. It passes your prompts and shell context to your selected agent CLI over stdio/ACP. Terminal does not call any cloud APIs itself, does not store conversation data to disk, and does not mediate or inspect what the agent CLI does with your data. 
 
 ### What data flows through Terminal
 
@@ -191,7 +188,7 @@ All of this is held in memory for the active session only and discarded when the
 | Third-party or custom agent CLIs | Determined by the agent vendor | Governed by that vendor's terms, not Microsoft or GitHub agreements. |
 
 > [!NOTE]
-> Terminal cannot guarantee data protections for third-party agent CLIs. When you select an agent, you are choosing where your data goes. Review your agent vendor's privacy policy before use.
+> Terminal cannot guarantee data protections for third-party agent CLIs. When you select an agent, you're choosing where your data goes. Review your agent vendor's privacy policy before use. For more information on how to use GitHub Copilot responsibly, see [Responsible use of GitHub Copilot](https://docs.github.com/en/copilot/responsible-use/copilot-in-windows-terminal).
 
 ### Controls
 
@@ -199,7 +196,7 @@ All of this is held in memory for the active session only and discarded when the
 - Disable auto error detection to prevent shell output from being sent automatically
 - Intelligent Terminal always asks before running commands on your behalf
 
-For more information, see the [Microsoft Privacy Statement](https://www.microsoft.com/en-us/privacy/privacystatement).
+Intelligent Terminal only collects usage data and sends it to Microsoft to help improve our products and services. Read our [privacy statement](https://go.microsoft.com/fwlink/?LinkID=824704) to learn more. See [PRIVACY.md](./PRIVACY.md) for details and instructions on how to disable telemetry.
 
 ---
 
@@ -223,7 +220,7 @@ Intelligent Terminal is built from your feedback. We are focused on delivering a
 
 ## Feedback
 
-Intelligent Terminal is in public beta. If you have a feature request or find a bug, [submit an issue](https://github.com/microsoft/intelligent-terminal/issues) on the GitHub repository.
+Intelligent Terminal is in an experimental stage. If you have a feature request or find a bug, [submit an issue](https://github.com/microsoft/terminal/issues) on the GitHub repository.
 
 ---
 
@@ -244,12 +241,6 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 ## Security
 
 If you believe you have found a security vulnerability in this repository, please report it following the instructions in [SECURITY.md](./SECURITY.md).
-
----
-
-## Telemetry
-
-Intelligent Terminal collects usage data and sends it to Microsoft to help improve our products and services. Read our [privacy statement](https://go.microsoft.com/fwlink/?LinkID=824704) to learn more. See [PRIVACY.md](./PRIVACY.md) for details and instructions on how to disable telemetry.
 
 ---
 
