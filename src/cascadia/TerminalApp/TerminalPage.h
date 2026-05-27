@@ -375,6 +375,29 @@ namespace winrt::TerminalApp::implementation
         // _FlushPendingAgentRebuild runs the deferred rebuild from
         // _OnTabSelectionChanged once a terminal tab is active.
         bool _pendingAgentRebuild{ false };
+
+        // Plan-C resume-into-new-tab bookkeeping. When the F2 session
+        // manager's Enter handler on a Historical/Ended row creates a
+        // new tab, it stashes the requested session id + cwd here keyed
+        // by the new tab's StableId. `OnAgentStateChanged` consumes the
+        // entry the moment it spawns the new helper for that tab —
+        // passing the values down as `--initial-load-session-id` +
+        // `--initial-load-cwd` so the boot-time ACP `session/load` is
+        // atomic with helper spawn. Replaces the prior race-prone
+        // "spawn helper, then broadcast `load_session` VT event" path
+        // (the VT broadcast often landed in the wrong helper because
+        // every helper subscribed to the same shared COM event stream).
+        //
+        // Entries are one-shot; an unconsumed entry leaks until the
+        // page is torn down (only happens if the user closes the new
+        // tab before its `agent_state_changed{pane_open:true}` round-
+        // trips back from wta). Tiny worst-case memory cost.
+        struct _PendingLoadSession
+        {
+            std::string sessionId;
+            std::string cwd;
+        };
+        std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab);
@@ -389,8 +412,19 @@ namespace winrt::TerminalApp::implementation
         // `intoSessionsView` is passed through to the helper as
         // `--initial-view sessions`. Called from `_OpenOrReuseAgentPane`
         // user-initiated paths.
+        //
+        // `initialLoadSessionId` + `initialLoadCwd` plumb a Plan-C boot-time
+        // resume hint down to the helper: when non-empty, the spawned wta
+        // process gets `--initial-load-session-id` (+ `--initial-load-cwd`)
+        // on its cmdline and immediately calls `session/load` instead of
+        // creating a fresh session. Used by the F2 "Enter on Historical /
+        // Ended row" path to bundle spawn + resume atomically (replacing
+        // the prior race-prone "spawn, then broadcast `load_session` VT"
+        // design).
         bool _AutoCreateHiddenAgentPaneShared(winrt::com_ptr<Tab> tab,
-                                              bool intoSessionsView = false);
+                                              bool intoSessionsView = false,
+                                              std::string_view initialLoadSessionId = {},
+                                              std::string_view initialLoadCwd = {});
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.

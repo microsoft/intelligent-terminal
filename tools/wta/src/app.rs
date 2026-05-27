@@ -4064,6 +4064,28 @@ impl App {
                         );
                         return;
                     }
+                    // Defensive owner_tab_id filter: WT broadcasts
+                    // `load_session` over shared COM, so every helper in
+                    // every window receives it. Without this filter,
+                    // helpers owning a different tab would respond to a
+                    // load_session targeted at someone else's pane — the
+                    // misroute that bug #1 was about (the legacy resume
+                    // flow used to rely on this not filtering, but the
+                    // boot-time `--initial-load-session-id` path
+                    // (main.rs) is now the canonical way to drive
+                    // resumes into a freshly-spawned helper, so a
+                    // belt-and-suspenders filter here is safe).
+                    if let Some(owner) = self.owner_tab_id.as_deref() {
+                        if owner != tab_id {
+                            tracing::debug!(
+                                target: "acp_load_session",
+                                owner,
+                                tab_id,
+                                "ignoring load_session for non-owner tab"
+                            );
+                            return;
+                        }
+                    }
                     {
                         let tab = self.tab_mut(tab_id);
                         tab.current_view = View::Chat;
@@ -8044,6 +8066,123 @@ mod tests {
         });
         assert_eq!(app.tab_id.as_deref(), Some("AAAA"));
         assert!(app.tab_sessions.contains_key("AAAA"));
+    }
+
+    // ─── load_session owner_tab_id filter ───────────────────────────────────
+    //
+    // WT broadcasts `load_session` over shared COM, so every helper in every
+    // window receives it. Pre-PR-B, every helper would respond regardless of
+    // the target tab — the misroute at the heart of bug #1 (resume into a
+    // newly-spawned agent pane landed in the wrong helper). The filter
+    // ensures a helper only acts on a `load_session` whose `tab_id` matches
+    // its `owner_tab_id`. The legacy single-helper flow (no owner_tab_id)
+    // still works as before.
+
+    fn make_app_with_load_session_channel()
+        -> (App, tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::LoadSessionForTab>)
+    {
+        let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (load_session_tx, load_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (rename_session_tx, _rename_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
+        let debug_capture = Arc::new(AtomicBool::new(false));
+        let app = App::new(
+            prompt_tx,
+            recommendation_tx,
+            permission_tx,
+            cancel_tx,
+            new_session_tx,
+            load_session_tx,
+            drop_session_tx,
+            rename_session_tx,
+            restart_tx,
+            debug_capture,
+            true,
+            false,
+        );
+        (app, load_session_rx)
+    }
+
+    #[test]
+    fn load_session_ignored_when_target_tab_differs_from_owner() {
+        let (mut app, mut load_session_rx) = make_app_with_load_session_channel();
+        app.owner_tab_id = Some("OWNER-TAB".to_string());
+
+        // Broadcast targeting a different tab — must NOT be forwarded
+        // through the load_session_tx channel (otherwise the ACP client
+        // would call session/load and bind the wrong tab).
+        app.handle_event(AppEvent::WtEvent {
+            method: "load_session".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "tab_id": "OTHER-TAB",
+                "session_id": "sess-xyz",
+                "cwd": "C:/foo",
+            }),
+        });
+
+        assert!(
+            load_session_rx.try_recv().is_err(),
+            "load_session for non-owner tab must be silently dropped"
+        );
+    }
+
+    #[test]
+    fn load_session_applied_when_target_tab_matches_owner() {
+        let (mut app, mut load_session_rx) = make_app_with_load_session_channel();
+        app.owner_tab_id = Some("OWNER-TAB".to_string());
+        app.tab_sessions
+            .insert("OWNER-TAB".to_string(), TabSession::default());
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "load_session".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "tab_id": "OWNER-TAB",
+                "session_id": "sess-abc",
+                "cwd": "C:/foo",
+            }),
+        });
+
+        let req = load_session_rx
+            .try_recv()
+            .expect("matching tab id must enqueue a LoadSessionForTab");
+        assert_eq!(req.tab_id, "OWNER-TAB");
+        assert_eq!(req.session_id, "sess-abc");
+        assert_eq!(req.cwd.as_deref(), Some("C:/foo"));
+    }
+
+    #[test]
+    fn load_session_passes_through_when_owner_tab_id_unset() {
+        // Legacy mode: helper spawned without `--owner-tab-id` (the
+        // pre-multi-window code path). Filter must be transparent.
+        let (mut app, mut load_session_rx) = make_app_with_load_session_channel();
+        assert!(app.owner_tab_id.is_none());
+        app.tab_sessions
+            .insert("ANY-TAB".to_string(), TabSession::default());
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "load_session".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "tab_id": "ANY-TAB",
+                "session_id": "sess-legacy",
+                "cwd": "",
+            }),
+        });
+
+        let req = load_session_rx
+            .try_recv()
+            .expect("legacy mode must still forward load_session");
+        assert_eq!(req.session_id, "sess-legacy");
     }
 
     // ─── WtNotification auto-dismiss ────────────────────────────────────────

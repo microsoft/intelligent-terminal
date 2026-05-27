@@ -191,6 +191,26 @@ struct Cli {
     #[arg(long, hide = true)]
     owner_tab_id: Option<String>,
 
+    /// Boot-time hint: instead of letting the helper create a fresh ACP
+    /// session via `session/new`, immediately resume the given session id
+    /// via `session/load`. Used by the "Enter on Historical/Ended row in
+    /// F2 session manager" path: C++ spawns a new helper for the new
+    /// agent pane and bundles the resume request via these flags so the
+    /// resume is atomic — no separate `load_session` VT broadcast that
+    /// could race the helper's pipe-attach.
+    ///
+    /// Pair with `--initial-load-cwd`. Hidden — only Windows Terminal
+    /// should pass it. No-op outside `--connect-master` (only the helper
+    /// boot path consumes it).
+    #[arg(long, hide = true, value_name = "SESSION_ID")]
+    initial_load_session_id: Option<String>,
+
+    /// Working directory associated with `--initial-load-session-id`.
+    /// Passed to the agent CLI via the ACP `session/load` request so the
+    /// resumed conversation runs against the right repo root. Hidden.
+    #[arg(long, hide = true, value_name = "PATH")]
+    initial_load_cwd: Option<String>,
+
     // Legacy flags (hidden, backward compat)
     #[arg(long, hide = true)]
     info: bool,
@@ -1738,6 +1758,15 @@ async fn run_acp_app(
             // `conn.load_session` and binds the rehydrated session to
             // the tab via SessionAttached.
             let (load_session_tx, load_session_rx) = tokio::sync::mpsc::unbounded_channel();
+            // Clone for the boot-time initial-load injection below. The
+            // primary `load_session_tx` is moved into `App::new` further
+            // down; this clone is used once (if `--initial-load-session-id`
+            // was passed) to synthesize a LoadSessionForTab as soon as the
+            // helper has finished its owner_tab_id seed. The receiver in
+            // `run_acp_client_over_pipe` then drives `session/load` through
+            // its standard runtime arm — no race vs. a separate VT
+            // `load_session` broadcast.
+            let initial_load_tx = load_session_tx.clone();
             // /restart channel: App emits a RestartRequest, the ACP client
             // kills the agent child process, drops the connection, and
             // respawns from scratch. State is cleaned up on both sides.
@@ -1946,6 +1975,56 @@ async fn run_acp_app(
                 }
             }
 
+            // Plan-C boot-time initial-load: if WT spawned us with
+            // `--initial-load-session-id` (+ optional `--initial-load-cwd`)
+            // queue a LoadSessionForTab synthetically so the ACP client's
+            // existing runtime arm picks it up the moment it finishes its
+            // own bootstrap (`session/list` + `session/new`). The runtime
+            // arm cancels the just-created bootstrap session for this tab
+            // and replaces it with the requested resume, atomically. This
+            // replaces the prior race-prone design where C++ broadcast a
+            // separate `load_session` VT event right after spawning the
+            // helper — which often landed in the wrong helper because the
+            // new helper's pipe attach hadn't yet completed.
+            //
+            // Pair-only: both flags meaningless without `--owner-tab-id`
+            // (the LoadSessionForTab routes by tab id), so we silently
+            // skip if owner_tab_id is unset. Logged so a misconfigured
+            // spawn is easy to diagnose.
+            if let Some(ref sid) = cli.initial_load_session_id {
+                if !sid.is_empty() {
+                    let tab_id = app_state.owner_tab_id.clone().or_else(|| cli.owner_tab_id.clone());
+                    match tab_id {
+                        Some(tab_id) if !tab_id.is_empty() => {
+                            let cwd = cli
+                                .initial_load_cwd
+                                .as_deref()
+                                .map(str::to_string)
+                                .filter(|s| !s.is_empty());
+                            tracing::info!(
+                                target: "acp_load_session",
+                                session_id = sid,
+                                tab_id = %tab_id,
+                                cwd = ?cwd,
+                                "queueing boot-time initial load_session"
+                            );
+                            let _ = initial_load_tx.send(protocol::acp::client::LoadSessionForTab {
+                                tab_id,
+                                session_id: sid.clone(),
+                                cwd,
+                            });
+                        }
+                        _ => {
+                            tracing::warn!(
+                                target: "acp_load_session",
+                                "--initial-load-session-id given without --owner-tab-id; ignoring"
+                            );
+                        }
+                    }
+                }
+            }
+            drop(initial_load_tx);
+
             // Apply --initial-view: if `sessions`, jump straight into the
             // Agents view (mirrors the F2 Chat→Agents toggle). Wired to
             // WT's Ctrl+Shift+/ binding via `--initial-view sessions` on
@@ -2139,4 +2218,51 @@ async fn run_acp_app(
             app_state.run(terminal, event_rx, ui_event_rx).await
         })
         .await
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+    use clap::Parser;
+
+    // Plan-C boot-time initial-load flags: WT bundles a session resume
+    // with helper spawn by passing `--initial-load-session-id` (and
+    // optionally `--initial-load-cwd`) on the helper's command line.
+    // Replaces the race-prone "spawn helper, then broadcast a separate
+    // `load_session` VT event" path that often misrouted.
+
+    #[test]
+    fn cli_parses_initial_load_session_id() {
+        let cli = Cli::try_parse_from([
+            "wta",
+            "--initial-load-session-id",
+            "abc-123",
+            "--initial-load-cwd",
+            "C:/foo/bar",
+        ])
+        .expect("flags must parse");
+        assert_eq!(cli.initial_load_session_id.as_deref(), Some("abc-123"));
+        assert_eq!(cli.initial_load_cwd.as_deref(), Some("C:/foo/bar"));
+    }
+
+    #[test]
+    fn cli_initial_load_session_id_defaults_to_none() {
+        let cli = Cli::try_parse_from(["wta"]).expect("no flags must parse");
+        assert!(cli.initial_load_session_id.is_none());
+        assert!(cli.initial_load_cwd.is_none());
+    }
+
+    #[test]
+    fn cli_initial_load_session_id_without_cwd_is_allowed() {
+        // cwd is optional — the helper falls back to its process cwd when
+        // omitted (matches the runtime `load_session` arm's behavior).
+        let cli = Cli::try_parse_from([
+            "wta",
+            "--initial-load-session-id",
+            "sid-only",
+        ])
+        .expect("session id alone must parse");
+        assert_eq!(cli.initial_load_session_id.as_deref(), Some("sid-only"));
+        assert!(cli.initial_load_cwd.is_none());
+    }
 }

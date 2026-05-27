@@ -1464,7 +1464,10 @@ namespace winrt::TerminalApp::implementation
     // wta-master process that the helpers connect to over a named pipe (helper
     // ↔ master speaks ACP JSON-RPC, master owns the single agent CLI subprocess).
     // See doc/specs/Multi-window-agent-pane.md.
-    bool TerminalPage::_AutoCreateHiddenAgentPaneShared(winrt::com_ptr<Tab> tab, bool intoSessionsView)
+    bool TerminalPage::_AutoCreateHiddenAgentPaneShared(winrt::com_ptr<Tab> tab,
+                                                        bool intoSessionsView,
+                                                        std::string_view initialLoadSessionId,
+                                                        std::string_view initialLoadCwd)
     {
         if (!tab || !tab->GetActiveTerminalControl())
         {
@@ -1605,6 +1608,24 @@ namespace winrt::TerminalApp::implementation
         if (intoSessionsView)
         {
             helperCmd.append(L" --initial-view sessions");
+        }
+
+        // Plan-C: bundle the resume request with helper spawn. Caller
+        // (currently `OnResumeInNewAgentTabRequested` via the pending-
+        // load-session map in `OnAgentStateChanged`) sets these when the
+        // F2 Enter-on-Historical/Ended-row path needs the freshly-spawned
+        // helper to immediately ACP `session/load` instead of creating a
+        // fresh session. Helper-side flag handling lives in main.rs
+        // (`--initial-load-session-id` + `--initial-load-cwd`).
+        if (!initialLoadSessionId.empty())
+        {
+            const auto sidW = winrt::to_hstring(initialLoadSessionId);
+            appendHelperFlagValue(L"--initial-load-session-id", std::wstring_view{ sidW });
+            if (!initialLoadCwd.empty())
+            {
+                const auto cwdW = winrt::to_hstring(initialLoadCwd);
+                appendHelperFlagValue(L"--initial-load-cwd", std::wstring_view{ cwdW });
+            }
         }
 
         // Resolve cwd. Priority matches the legacy spawn:
@@ -4034,7 +4055,26 @@ namespace winrt::TerminalApp::implementation
                     // No pane on this tab yet — first toggle-open is the
                     // spawn path. View defaults to chat unless `view=sessions`.
                     const bool intoSessions = view.has_value() && *view == "sessions";
-                    _AutoCreateHiddenAgentPaneShared(targetTab, intoSessions);
+
+                    // Plan-C: consume any pending load-session hint for
+                    // this tab. Set by `OnResumeInNewAgentTabRequested`
+                    // when the user pressed Enter on a Historical/Ended
+                    // row in F2 — the new helper boots straight into a
+                    // `session/load` of the requested session id instead
+                    // of creating a fresh session. One-shot: the entry
+                    // is moved out and erased here so a later
+                    // `agent_state_changed` for the same tab (e.g. a
+                    // tab_changed echo) doesn't accidentally re-spawn.
+                    std::string pendingSid;
+                    std::string pendingCwd;
+                    if (const auto it = _pendingLoadSessions.find(tabId); it != _pendingLoadSessions.end())
+                    {
+                        pendingSid = std::move(it->second.sessionId);
+                        pendingCwd = std::move(it->second.cwd);
+                        _pendingLoadSessions.erase(it);
+                        _agentPaneLog("OnAgentStateChanged: consuming pending load_session for tab " + winrt::to_string(tabId));
+                    }
+                    _AutoCreateHiddenAgentPaneShared(targetTab, intoSessions, pendingSid, pendingCwd);
                 }
             }
             else
@@ -4156,17 +4196,24 @@ namespace winrt::TerminalApp::implementation
 
     // Inbound event from WTA: {method:"resume_in_new_agent_tab",
     //                          params:{session_id, cwd}}.
-    // Sent by the session view's Shift+Enter handler. We:
+    // Sent by the session view's Enter handler on a Historical/Ended row
+    // (Plan-C ResumeInAgentPane path). We:
     //   1. Create a new tab with the default profile (using the historical
     //      session's cwd as the starting directory when provided).
-    //   2. Ask wta to mark the new tab's agent pane as open; wta echoes
-    //      `agent_state_changed{pane_open:true}` which lands in
-    //      OnAgentStateChanged, which spawns the helper on the new tab.
-    //   3. Publish a `load_session` event BACK to wta carrying the new
-    //      tab's StableId + the original session_id + cwd. wta's
-    //      wt_protocol_event handler picks it up and dispatches a
-    //      LoadSessionForTab into the ACP client, which calls
-    //      `session/load` and binds the loaded session to that tab.
+    //   2. Stash the (session_id, cwd) in `_pendingLoadSessions` keyed by
+    //      the new tab's StableId.
+    //   3. Ask wta to mark the new tab's agent pane as open. wta echoes
+    //      `agent_state_changed{pane_open:true, tab_id:<new>}` which
+    //      lands in `OnAgentStateChanged`; the pending entry is consumed
+    //      there and passed to `_AutoCreateHiddenAgentPaneShared` so the
+    //      newly-spawned helper boots with `--initial-load-session-id`
+    //      (atomic spawn + `session/load` via main.rs Plan-C glue).
+    //
+    // No separate `load_session` VT broadcast — the prior design had a
+    // race where the broadcast often arrived at the WRONG helper because
+    // every helper subscribes to the same shared COM event stream and
+    // the new helper's pipe attach hadn't completed yet when the
+    // broadcast fired.
     //
     // The shared-agent-pane model means we can't actually have two
     // independent ACP connections on one window. If the running WTA was
@@ -4215,9 +4262,11 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Step 2: the new tab is now focused. Ask wta to mark it as having
-        // an open agent pane; the resulting `agent_state_changed{pane_open:true}`
-        // lands in `OnAgentStateChanged` which spawns the helper.
+        // Step 2: register the pending load-session for the new tab and
+        // ask wta to mark it as having an open agent pane. The resulting
+        // `agent_state_changed{pane_open:true}` lands in
+        // `OnAgentStateChanged`, which consumes the pending entry and
+        // spawns the helper with the bundled resume request.
         const auto newTab = _GetFocusedTabImpl();
         if (!newTab)
         {
@@ -4230,29 +4279,10 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("OnResumeInNewAgentTabRequested: new tab has empty StableId");
             return;
         }
+        _pendingLoadSessions[newStableId] = _PendingLoadSession{ sessionIdStr, cwdStr };
+        _agentPaneLog("OnResumeInNewAgentTabRequested: stashed pending load_session for tab " +
+                      winrt::to_string(newStableId) + " session_id=" + sessionIdStr);
         _RequestAgentStateForTab(newTab, std::nullopt, /*pane_open*/ true);
-
-        // Step 3: publish load_session back to wta with the new tab's
-        // StableId. ProtocolVtSequenceReceived fans this out to subscribed
-        // COM clients (including wta's `listen` subscription). wta then
-        // calls `session/load` over its existing ACP connection bound to
-        // this new tab.
-        Json::Value outEvt;
-        outEvt["type"] = "event";
-        outEvt["method"] = "load_session";
-        Json::Value outParams;
-        outParams["tab_id"] = winrt::to_string(newStableId);
-        outParams["session_id"] = sessionIdStr;
-        outParams["cwd"] = cwdStr;
-        outEvt["params"] = outParams;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        ProtocolVtSequenceReceived.raise(
-            *this,
-            winrt::to_hstring(Json::writeString(wb, outEvt)));
-
-        _agentPaneLog("OnResumeInNewAgentTabRequested: load_session event published for tab " +
-                      winrt::to_string(newStableId));
     }
 
     // Method Description:
