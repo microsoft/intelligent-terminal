@@ -51,7 +51,7 @@ Everything else about Intelligent Terminal is the same as [Windows Terminal](htt
 > [!NOTE]
 > Intelligent Terminal requires Windows 10 version 22H2 or later, or Windows 11.
 
-You also need a supported agent [CLI](https://github.com/resources/articles/what-is-a-cli) and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
+You also need a supported agent CLI and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
 
 ### Microsoft Store
 
