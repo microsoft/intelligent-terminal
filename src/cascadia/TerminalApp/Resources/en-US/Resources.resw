@@ -1191,4 +1191,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
+  <data name="Pane_AgentChipText" xml:space="preserve">
+    <value>Agent</value>
+    <comment>Short label shown in a small corner chip on the terminal pane the AI agent is about to act on. Keep very short — the chip is small. In this context, "agent" refers to an AI agent.</comment>
+  </data>
 </root>

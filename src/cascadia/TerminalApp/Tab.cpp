@@ -1554,7 +1554,7 @@ namespace winrt::TerminalApp::implementation
     void Tab::SetAgentChipOverride(std::optional<winrt::guid> sessionId)
     {
         // Treat the empty guid as "no override" so a malformed event can't
-        // pin the chip to a non-existent pane permanently.
+        // pin the chip to a nonexistent pane permanently.
         if (sessionId.has_value() && sessionId.value() == winrt::guid{})
         {
             sessionId = std::nullopt;

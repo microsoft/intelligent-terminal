@@ -3280,6 +3280,9 @@ void Pane::UpdateResources(const PaneResources& resources)
 {
     _themeResources = resources;
     UpdateVisuals();
+    // Re-apply the now-current theme brush to the chip if we've already
+    // built one. No-op when the chip hasn't been lazily created yet.
+    _UpdateAgentChipBackground();
 
     if (!_IsLeaf())
     {
@@ -3340,13 +3343,24 @@ void Pane::SetAgentChipVisible(bool value)
     if (value)
     {
         _EnsureAgentChip();
-        // Re-append so the chip sits above the borders and any splitter.
+        // Avoid XAML churn: if the chip is already visible and already at
+        // the top of the children collection (so above the borders and any
+        // splitter), this call is a no-op. `_UpdateAgentChipVisibility`
+        // runs on every active-pane update and walks the whole tree, so
+        // the repeat-true case is the common one in heavily-split tabs.
         uint32_t idx = 0;
-        if (_root.Children().IndexOf(_agentChip, idx))
+        const auto& children = _root.Children();
+        const bool found = children.IndexOf(_agentChip, idx);
+        const bool alreadyOnTop = found && idx + 1 == children.Size();
+        if (alreadyOnTop && _agentChip.Visibility() == Visibility::Visible)
         {
-            _root.Children().RemoveAt(idx);
+            return;
         }
-        _root.Children().Append(_agentChip);
+        if (found)
+        {
+            children.RemoveAt(idx);
+        }
+        children.Append(_agentChip);
         _agentChip.Visibility(Visibility::Visible);
     }
     else if (_agentChip)
@@ -3385,7 +3399,7 @@ void Pane::_EnsureAgentChip()
     }
 
     Controls::TextBlock text{};
-    text.Text(L"Agent");
+    text.Text(RS_(L"Pane_AgentChipText"));
     text.FontSize(10.0);
     text.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
     text.Foreground(Media::SolidColorBrush{ winrt::Windows::UI::Colors::White() });
@@ -3399,8 +3413,30 @@ void Pane::_EnsureAgentChip()
     _agentChip.CornerRadius({ 4, 4, 4, 4 });
     _agentChip.IsHitTestVisible(false);
     _agentChip.Visibility(Visibility::Collapsed);
-    _agentChip.Background(Media::SolidColorBrush{
-        winrt::Windows::UI::ColorHelper::FromArgb(0xFF, 0x2D, 0x6F, 0xE0) });
+    _UpdateAgentChipBackground();
+}
+
+// Apply the theme-tracking background brush to the chip. Reuses the
+// focused-border brush so the chip matches the accent color the rest of
+// Pane's chrome uses for "active" / "focused" state — picks up theme and
+// high-contrast changes for free via `UpdateResources`. Falls back to a
+// reasonable solid blue if `UpdateResources` hasn't pushed brushes yet
+// (e.g. very early in initialization).
+void Pane::_UpdateAgentChipBackground()
+{
+    if (!_agentChip)
+    {
+        return;
+    }
+    if (_themeResources.focusedBorderBrush)
+    {
+        _agentChip.Background(_themeResources.focusedBorderBrush);
+    }
+    else
+    {
+        _agentChip.Background(Media::SolidColorBrush{
+            winrt::Windows::UI::ColorHelper::FromArgb(0xFF, 0x2D, 0x6F, 0xE0) });
+    }
 }
 
 // Method Description:

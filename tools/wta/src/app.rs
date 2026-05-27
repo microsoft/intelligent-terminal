@@ -1197,7 +1197,10 @@ impl TabSession {
         }
         // Autofix fallback: the autofix prompt's `target_pane_id` is what
         // `turn_execute_card` will fill `Send.parent` with at execute time,
-        // so the chip should already point there now.
+        // so the chip should already point there now. Filter out empty
+        // strings — the C++ side treats `pane_session_id == ""` as "no
+        // override", so emitting `Some("")` would let the helper's dedupe
+        // believe it pinned the chip while WT silently ignores the event.
         if choice
             .actions
             .iter()
@@ -1207,7 +1210,8 @@ impl TabSession {
                 .turn
                 .prompt()
                 .and_then(|p| p.autofix.as_ref())
-                .map(|a| a.target_pane_id.clone());
+                .map(|a| a.target_pane_id.clone())
+                .filter(|s| !s.is_empty());
         }
         None
     }
@@ -9810,6 +9814,178 @@ mod tests {
         assert_eq!(
             app.current_tab().chat_scroll.offset, 7,
             "command popup visibility must suppress the chat-scroll fallback",
+        );
+    }
+
+    // ─── compute_chip_card_target ───────────────────────────────────────────
+
+    /// Stage a tab into `Surfaced { Recommendation(...) }` with the given
+    /// choices and selected index. Mirrors the side-effects the real
+    /// `turn_surface_recommendation` would have but skips all the
+    /// chat-history / scroll bookkeeping so the resulting state stays
+    /// minimal for the chip-target calculator.
+    fn stage_surfaced_recommendation(
+        app: &mut App,
+        choices: Vec<crate::coordinator::RecommendationChoice>,
+        selected: usize,
+        autofix_target: Option<&str>,
+    ) {
+        let prompt = SubmittedPrompt {
+            id: 1,
+            text: "p".into(),
+            submitted_at_unix_s: 0.0,
+            autofix: autofix_target.map(|t| AutofixContext {
+                target_pane_id: t.into(),
+                generation: 0,
+            }),
+        };
+        let recs = crate::coordinator::RecommendationSet {
+            recommended_choice: Some(selected),
+            choices,
+        };
+        let tab = app.tab_mut(DEFAULT_TAB_ID);
+        tab.selected_recommendation = selected;
+        tab.turn = TurnState::Surfaced {
+            prompt,
+            outcome: TurnOutcome::Recommendation(recs),
+            end_pending: false,
+        };
+    }
+
+    fn send_choice(parent: &str, input: &str) -> crate::coordinator::RecommendationChoice {
+        crate::coordinator::RecommendationChoice {
+            choice: 1,
+            title: "Run".into(),
+            rationale: String::new(),
+            actions: vec![crate::coordinator::RecommendedAction::Send {
+                parent: parent.into(),
+                input: input.into(),
+            }],
+        }
+    }
+
+    fn open_choice() -> crate::coordinator::RecommendationChoice {
+        crate::coordinator::RecommendationChoice {
+            choice: 2,
+            title: "Open".into(),
+            rationale: String::new(),
+            actions: vec![crate::coordinator::RecommendedAction::Open {
+                target: crate::coordinator::OpenTarget::Tab,
+                parent: None,
+                cwd: None,
+                title: None,
+                direction: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn chip_target_returns_none_when_idle() {
+        let app = test_app();
+        assert_eq!(app.current_tab().compute_chip_card_target(), None);
+    }
+
+    #[test]
+    fn chip_target_uses_send_parent_when_set() {
+        let mut app = test_app();
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("pane-A", "ls")],
+            0,
+            None,
+        );
+        assert_eq!(
+            app.current_tab().compute_chip_card_target(),
+            Some("pane-A".to_string()),
+        );
+    }
+
+    #[test]
+    fn chip_target_falls_back_to_autofix_target_when_send_parent_empty() {
+        let mut app = test_app();
+        // Planner-emitted Send actions in autofix turns leave `parent`
+        // blank — `turn_execute_card` fills it from `target_pane_id` at
+        // execute time. The chip should already point there now.
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("", "fix --auto")],
+            0,
+            Some("pane-failing"),
+        );
+        assert_eq!(
+            app.current_tab().compute_chip_card_target(),
+            Some("pane-failing".to_string()),
+        );
+    }
+
+    #[test]
+    fn chip_target_filters_empty_autofix_target() {
+        // C++ treats `pane_session_id == ""` as "no override", so emitting
+        // Some("") would let the helper's dedupe believe it pinned the chip
+        // while WT silently ignores the event.
+        let mut app = test_app();
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("", "fix")],
+            0,
+            Some(""),
+        );
+        assert_eq!(app.current_tab().compute_chip_card_target(), None);
+    }
+
+    #[test]
+    fn chip_target_is_none_for_non_send_card() {
+        let mut app = test_app();
+        stage_surfaced_recommendation(&mut app, vec![open_choice()], 0, None);
+        assert_eq!(app.current_tab().compute_chip_card_target(), None);
+    }
+
+    #[test]
+    fn chip_target_tracks_selected_index() {
+        let mut app = test_app();
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("pane-A", "ls"), send_choice("pane-B", "pwd")],
+            0,
+            None,
+        );
+        assert_eq!(
+            app.current_tab().compute_chip_card_target(),
+            Some("pane-A".to_string()),
+        );
+        app.current_tab_mut().selected_recommendation = 1;
+        assert_eq!(
+            app.current_tab().compute_chip_card_target(),
+            Some("pane-B".to_string()),
+        );
+    }
+
+    #[test]
+    fn chip_recompute_dedupes_and_releases_on_idle() {
+        // After surfacing a Send card, recompute should record an override.
+        // Transitioning back to Idle (here: clear the recs) should make
+        // the next recompute observe a different value and clear the
+        // last_emitted slot.
+        let mut app = test_app();
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("pane-A", "ls")],
+            0,
+            None,
+        );
+        app.recompute_chip_override(DEFAULT_TAB_ID);
+        assert_eq!(
+            app.tab_mut(DEFAULT_TAB_ID).last_emitted_chip_override,
+            Some("pane-A".to_string()),
+        );
+
+        // Drop the surfaced state — chip target now resolves to None and
+        // the dedupe slot must follow so a fresh surface re-emits cleanly.
+        app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Idle;
+        app.recompute_chip_override(DEFAULT_TAB_ID);
+        assert_eq!(
+            app.tab_mut(DEFAULT_TAB_ID).last_emitted_chip_override,
+            None,
         );
     }
 }

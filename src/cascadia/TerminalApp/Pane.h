@@ -330,6 +330,7 @@ private:
     void _SetupEntranceAnimation();
     void _UpdateBorders();
     void _EnsureAgentChip();
+    void _UpdateAgentChipBackground();
     Borders _GetCommonBorders();
     winrt::Windows::UI::Xaml::Media::SolidColorBrush _ComputeBorderColor();
 
