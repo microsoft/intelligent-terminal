@@ -194,12 +194,12 @@ pub fn build_session_removed_notification(sid: &acp::SessionId) -> acp::ExtNotif
     let params = SessionRemovedParams {
         session_id: sid.clone(),
     };
-    let json = serde_json::to_string(&params).expect("SessionRemovedParams is trivially serializable");
+    let json =
+        serde_json::to_string(&params).expect("SessionRemovedParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
     acp::ExtNotification::new(INTELLTERM_METHOD_SESSION_REMOVED, Arc::from(raw))
 }
-
 
 /// Build a `sessions/changed` ExtNotification with an intentionally empty payload.
 pub fn build_sessions_changed_notification() -> acp::ExtNotification {
@@ -256,7 +256,10 @@ pub enum WtaExtNotification {
     /// and skip rather than tear down the connection — a malformed
     /// notification is a master-side bug, but the helper must remain
     /// usable.
-    MalformedParams { method: String, error: String },
+    MalformedParams {
+        method: String,
+        error: String,
+    },
 }
 
 /// Identify whether an `ExtNotification` is one of ours and, if so,
@@ -278,7 +281,7 @@ pub fn parse_ext_notification(n: &acp::ExtNotification) -> WtaExtNotification {
                 method: method.to_string(),
                 error: err.to_string(),
             },
-        },
+        }
         INTELLTERM_METHOD_SESSION_REMOVED => {
             match serde_json::from_str::<SessionRemovedParams>(raw.get()) {
                 Ok(p) => WtaExtNotification::SessionRemoved(p.session_id),
@@ -299,6 +302,84 @@ pub fn parse_ext_notification(n: &acp::ExtNotification) -> WtaExtNotification {
         }
         _ => WtaExtNotification::Unknown,
     }
+}
+
+// ─── intellterm.wta/session_resume_dispatched ────────────────────────────────
+
+pub const INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED: &str =
+    "intellterm.wta/session_resume_dispatched";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionResumeDispatchedParams {
+    pub sid: acp::SessionId,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionResumeDispatchedResponse {
+    pub flipped: bool,
+    pub current_status: String,
+}
+
+pub fn build_session_resume_dispatched_request(sid: &acp::SessionId) -> acp::ExtRequest {
+    let params = SessionResumeDispatchedParams { sid: sid.clone() };
+    let json = serde_json::to_string(&params)
+        .expect("SessionResumeDispatchedParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::ExtRequest::new(INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED, Arc::from(raw))
+}
+
+pub fn parse_session_resume_dispatched_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<SessionResumeDispatchedParams, serde_json::Error> {
+    serde_json::from_str::<SessionResumeDispatchedParams>(raw.get())
+}
+
+pub fn parse_session_resume_dispatched_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<SessionResumeDispatchedResponse, serde_json::Error> {
+    serde_json::from_str::<SessionResumeDispatchedResponse>(raw.get())
+}
+
+// ─── intellterm.wta/session_focus ────────────────────────────────────────────
+
+pub const INTELLTERM_METHOD_SESSION_FOCUS: &str = "intellterm.wta/session_focus";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionFocusParams {
+    pub sid: acp::SessionId,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionFocusResponse {
+    pub focused: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pane_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+pub fn build_session_focus_request(sid: &acp::SessionId) -> acp::ExtRequest {
+    let params = SessionFocusParams { sid: sid.clone() };
+    let json =
+        serde_json::to_string(&params).expect("SessionFocusParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::ExtRequest::new(INTELLTERM_METHOD_SESSION_FOCUS, Arc::from(raw))
+}
+
+pub fn parse_session_focus_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<SessionFocusParams, serde_json::Error> {
+    serde_json::from_str::<SessionFocusParams>(raw.get())
+}
+
+pub fn parse_session_focus_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<SessionFocusResponse, serde_json::Error> {
+    serde_json::from_str::<SessionFocusResponse>(raw.get())
 }
 
 // ─── intellterm.wta/focus_session ────────────────────────────────────────────
@@ -325,8 +406,8 @@ pub fn build_focus_session_request(sid: &acp::SessionId) -> acp::ExtRequest {
     let params = FocusSessionParams {
         session_id: sid.clone(),
     };
-    let json = serde_json::to_string(&params)
-        .expect("FocusSessionParams is trivially serializable");
+    let json =
+        serde_json::to_string(&params).expect("FocusSessionParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
     acp::ExtRequest::new(INTELLTERM_METHOD_FOCUS_SESSION, Arc::from(raw))
@@ -573,8 +654,11 @@ pub fn build_session_hook_response(applied: bool) -> acp::ExtResponse {
 pub struct SessionInfo {
     pub session_id: acp::SessionId,
     pub cwd: PathBuf,
+    #[serde(default)]
     pub title: Option<String>,
+    #[serde(default)]
     pub updated_at: Option<String>,
+    #[serde(default)]
     pub pane_session_id: Option<String>,
     #[serde(default)]
     pub status: Option<AgentStatus>,
@@ -650,6 +734,11 @@ pub trait SessionRegistry: Send + Sync {
 
     /// Update origin metadata on an existing row.
     async fn set_origin(&self, sid: &acp::SessionId, origin: SessionOrigin) -> bool;
+
+    /// Atomically flip a Historical row to Idle for resume dispatch (Task C).
+    /// Returns Some((flipped, current_status_label)) where `flipped` is true
+    /// only when the row was Historical and was transitioned this call.
+    async fn mark_resume_dispatched(&self, sid: &acp::SessionId) -> Option<(bool, String)>;
 }
 
 /// Production implementation. Uses `tokio::sync::Mutex` for parity with the
@@ -713,6 +802,22 @@ impl SessionRegistry for InMemoryRegistry {
         }
         entry.origin = Some(origin);
         true
+    }
+
+    async fn mark_resume_dispatched(&self, sid: &acp::SessionId) -> Option<(bool, String)> {
+        let mut guard = self.inner.lock().await;
+        let row = guard.sessions.get_mut(sid)?;
+        let current_label = match &row.status {
+            Some(s) => format!("{:?}", s),
+            None => "Idle".to_string(),
+        };
+        if matches!(row.status, Some(AgentStatus::Historical)) {
+            row.status = Some(AgentStatus::Idle);
+            row.last_activity_at_ms = Some(now_ms());
+            Some((true, "Idle".to_string()))
+        } else {
+            Some((false, current_label))
+        }
     }
 }
 
@@ -1015,7 +1120,9 @@ pub async fn apply_ext_notification(
         // and never mutate the registry. A future master may broadcast
         // notifications we don't recognise — silently ignoring them
         // keeps the helper forward-compatible.
-        WtaExtNotification::Unknown | WtaExtNotification::MalformedParams { .. } => {}
+        WtaExtNotification::SessionsChanged
+        | WtaExtNotification::Unknown
+        | WtaExtNotification::MalformedParams { .. } => {}
     }
     parsed
 }
@@ -1129,7 +1236,12 @@ mod tests {
         let loaded = AtomicBool::new(false);
         reg.upsert(info("stale", Some("pa"))).await;
         reg.upsert(info("keep", Some("pb"))).await;
-        apply_snapshot(&reg, &loaded, vec![info("keep", Some("pb")), info("fresh", None)]).await;
+        apply_snapshot(
+            &reg,
+            &loaded,
+            vec![info("keep", Some("pb")), info("fresh", None)],
+        )
+        .await;
         let mut snap = reg.snapshot().await;
         snap.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
         let ids: Vec<&str> = snap.iter().map(|s| &*s.session_id.0).collect();
@@ -1340,13 +1452,15 @@ mod tests {
 
     #[test]
     fn parse_session_added_with_garbage_params_is_malformed_not_panic() {
-        let raw = serde_json::value::RawValue::from_string(r#"{"not":"a session"}"#.into()).unwrap();
+        let raw =
+            serde_json::value::RawValue::from_string(r#"{"not":"a session"}"#.into()).unwrap();
         let ext = acp::ExtNotification::new(INTELLTERM_METHOD_SESSION_ADDED, Arc::from(raw));
         assert!(matches!(
             parse_ext_notification(&ext),
             WtaExtNotification::MalformedParams { .. }
         ));
     }
+
 
 
 
@@ -1558,6 +1672,51 @@ mod tests {
         assert_eq!(row.pane_session_id.as_deref(), Some("new-pane"));
     }
 
+    // ─── Task C sessions/list + sessions/changed schemas ───────────
+
+    #[test]
+    fn build_sessions_changed_notification_decodes_to_changed() {
+        let ext = build_sessions_changed_notification();
+        assert_eq!(&*ext.method, INTELLTERM_METHOD_SESSIONS_CHANGED);
+        assert_eq!(
+            parse_ext_notification(&ext),
+            WtaExtNotification::SessionsChanged
+        );
+    }
+
+    #[test]
+    fn sessions_list_response_round_trips_session_info_with_typed_fields() {
+        let mut info = SessionInfo::new(acp::SessionId::new("sid-1"), PathBuf::from("/repo"));
+        info.title = Some("title".to_string());
+        info.status = Some(crate::agent_sessions::AgentStatus::Idle);
+        info.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
+        info.last_activity_at_ms = Some(42);
+        let resp = SessionsListResponse {
+            sessions: vec![info.clone()],
+        };
+        let raw = serde_json::value::to_raw_value(&resp).unwrap();
+        let parsed = parse_sessions_list_response(&raw).unwrap();
+        assert_eq!(parsed.sessions, vec![info]);
+    }
+
+    #[test]
+    fn session_resume_dispatched_request_carries_sid() {
+        let sid = acp::SessionId::new("resume-me");
+        let req = build_session_resume_dispatched_request(&sid);
+        assert_eq!(&*req.method, INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED);
+        let parsed = parse_session_resume_dispatched_params(&req.params).unwrap();
+        assert_eq!(parsed.sid, sid);
+    }
+
+    #[test]
+    fn session_focus_request_carries_sid() {
+        let sid = acp::SessionId::new("focus-me");
+        let req = build_session_focus_request(&sid);
+        assert_eq!(&*req.method, INTELLTERM_METHOD_SESSION_FOCUS);
+        let parsed = parse_session_focus_params(&req.params).unwrap();
+        assert_eq!(parsed.sid, sid);
+    }
+
     // ─── focus_session ──────────────────────────────────────────────
 
     #[test]
@@ -1677,8 +1836,7 @@ mod tests {
         let map = meta.expect("meta created");
         let wta = map.get("wta").and_then(|v| v.as_object()).unwrap();
         assert_eq!(
-            wta.get("pane_session_id")
-                .and_then(|v| v.as_str()),
+            wta.get("pane_session_id").and_then(|v| v.as_str()),
             Some("pane-A")
         );
     }

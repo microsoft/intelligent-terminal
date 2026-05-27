@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{anyhow, bail, Context};
 use tokio::sync::mpsc;
 
-use crate::app::DebugMessage;
 use super::WtChannel;
+use crate::app::DebugMessage;
 
 /// Extract a JSON value as a string, handling both String and Number types.
 /// Protocol IDs may arrive as either strings or numbers depending on the caller.
@@ -38,7 +38,10 @@ pub(crate) fn resolve_wtcli_path() -> String {
         //    The project output directory (wtcli/) contains the .winmd needed for MBM marshaling.
         let mut cursor = exe.parent().map(|p| p.to_path_buf());
         while let Some(dir) = cursor {
-            for sub in &["bin/x64/Debug/wtcli/wtcli.exe", "bin/x64/Release/wtcli/wtcli.exe"] {
+            for sub in &[
+                "bin/x64/Debug/wtcli/wtcli.exe",
+                "bin/x64/Release/wtcli/wtcli.exe",
+            ] {
                 let candidate = dir.join(sub);
                 if candidate.exists() {
                     return candidate.to_string_lossy().to_string();
@@ -60,6 +63,7 @@ pub(crate) fn resolve_wtcli_path() -> String {
 /// "pane GUID is no longer in any window" (caller should demote the
 /// stale row) from transient/infrastructure failures (caller should
 /// leave the row alone).
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FocusPaneFailureReason {
     /// Confirmed: the COM server iterated all windows/pages and no pane
@@ -69,7 +73,10 @@ pub enum FocusPaneFailureReason {
     /// Generic non-zero exit (legacy `E_FAIL` from older WT builds, RPC
     /// failure, broken wtcli install, etc.). Caller should NOT demote on this
     /// because the pane may still be live — log only.
-    Other { exit_code: Option<i32>, stderr: String },
+    Other {
+        exit_code: Option<i32>,
+        stderr: String,
+    },
 }
 
 /// Run `wtcli focus-pane -t <id>` on a background thread and log stdout/stderr
@@ -87,6 +94,7 @@ pub fn spawn_wtcli_focus_pane(pane_session_id: &str) {
 /// thread) when the spawned wtcli process exits non-zero. Used by
 /// `dispatch_focus_pane` to demote stale-IDLE rows back to `Ended` when the
 /// underlying pane is gone (`FocusPaneFailureReason::NotFound`).
+#[allow(dead_code)]
 pub fn spawn_wtcli_focus_pane_with_callback(
     pane_session_id: &str,
     on_failure: Option<Box<dyn FnOnce(FocusPaneFailureReason) + Send + 'static>>,
@@ -267,7 +275,8 @@ pub fn spawn_wtcli_split_then_focus_with_callback(
         // alternate camel-case spellings are kept as fallbacks for
         // forward-compat. Strip braces if the GUID arrived in `{...}`
         // form, since FocusPane resolves either form.
-        let session_id = parsed.get("session_id")
+        let session_id = parsed
+            .get("session_id")
             .or_else(|| parsed.get("SessionId"))
             .or_else(|| parsed.get("sessionId"))
             .and_then(|v| v.as_str())
@@ -413,10 +422,7 @@ impl CliChannel {
         let mut cmd = tokio::process::Command::new(&self.wtcli_path);
         cmd.arg("--json").args(args);
 
-        let output = cmd
-            .output()
-            .await
-            .context("Failed to run wtcli")?;
+        let output = cmd.output().await.context("Failed to run wtcli")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -428,8 +434,8 @@ impl CliChannel {
         if trimmed.is_empty() {
             return Ok(serde_json::Value::Null);
         }
-        let val: serde_json::Value = serde_json::from_str(trimmed)
-            .context("Failed to parse wtcli JSON output")?;
+        let val: serde_json::Value =
+            serde_json::from_str(trimmed).context("Failed to parse wtcli JSON output")?;
         Ok(val)
     }
 }
@@ -446,7 +452,10 @@ impl WtChannel for CliChannel {
             "list_windows" => self.run_wtcli(&["list-windows"]).await,
             "list_tabs" => {
                 let mut args = vec!["list-tabs"];
-                let wid = params.get("window_id").and_then(json_id_as_str).unwrap_or_default();
+                let wid = params
+                    .get("window_id")
+                    .and_then(json_id_as_str)
+                    .unwrap_or_default();
                 if !wid.is_empty() {
                     args.extend(["-w", &wid]);
                 }
@@ -454,8 +463,14 @@ impl WtChannel for CliChannel {
             }
             "list_panes" => {
                 let mut args = vec!["list-panes"];
-                let wid = params.get("window_id").and_then(json_id_as_str).unwrap_or_default();
-                let tid = params.get("tab_id").and_then(json_id_as_str).unwrap_or_default();
+                let wid = params
+                    .get("window_id")
+                    .and_then(json_id_as_str)
+                    .unwrap_or_default();
+                let tid = params
+                    .get("tab_id")
+                    .and_then(json_id_as_str)
+                    .unwrap_or_default();
                 if !wid.is_empty() {
                     args.extend(["-w", &wid]);
                 }
@@ -466,8 +481,14 @@ impl WtChannel for CliChannel {
             }
             "get_active_pane" => self.run_wtcli(&["active-pane"]).await,
             "read_pane_output" => {
-                let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
-                let max_lines = params.get("max_lines").and_then(|v| v.as_i64()).unwrap_or(200);
+                let pane_id = params
+                    .get("session_id")
+                    .and_then(json_id_as_str)
+                    .unwrap_or_default();
+                let max_lines = params
+                    .get("max_lines")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(200);
                 let source = params.get("source").and_then(|v| v.as_str()).unwrap_or("");
                 let lines_owned = max_lines.to_string();
                 let mut args = vec!["capture-pane"];
@@ -482,7 +503,10 @@ impl WtChannel for CliChannel {
                 self.run_wtcli(&args).await
             }
             "get_process_status" => {
-                let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
+                let pane_id = params
+                    .get("session_id")
+                    .and_then(json_id_as_str)
+                    .unwrap_or_default();
                 let mut args = vec!["pane-status"];
                 if !pane_id.is_empty() {
                     args.extend(["-t", &pane_id]);
@@ -491,7 +515,10 @@ impl WtChannel for CliChannel {
             }
             "create_tab" => {
                 let mut args = vec!["new-tab"];
-                let cmd = params.get("commandline").and_then(|v| v.as_str()).unwrap_or("");
+                let cmd = params
+                    .get("commandline")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let title = params.get("title").and_then(|v| v.as_str()).unwrap_or("");
                 let cwd = params.get("cwd").and_then(|v| v.as_str()).unwrap_or("");
                 let cmd_owned;
@@ -512,9 +539,18 @@ impl WtChannel for CliChannel {
                 self.run_wtcli(&args).await
             }
             "split_pane" => {
-                let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
-                let cmd = params.get("commandline").and_then(|v| v.as_str()).unwrap_or("");
-                let dir = params.get("direction").and_then(|v| v.as_str()).unwrap_or("");
+                let pane_id = params
+                    .get("session_id")
+                    .and_then(json_id_as_str)
+                    .unwrap_or_default();
+                let cmd = params
+                    .get("commandline")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let dir = params
+                    .get("direction")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let cmd_owned;
                 let dir_owned;
                 let mut args = vec!["split-pane"];
@@ -536,15 +572,24 @@ impl WtChannel for CliChannel {
                 self.run_wtcli(&args).await
             }
             "close_pane" => {
-                let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
+                let pane_id = params
+                    .get("session_id")
+                    .and_then(json_id_as_str)
+                    .unwrap_or_default();
                 self.run_wtcli(&["kill-pane", "-t", &pane_id]).await
             }
             "focus_pane" => {
-                let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
+                let pane_id = params
+                    .get("session_id")
+                    .and_then(json_id_as_str)
+                    .unwrap_or_default();
                 self.run_wtcli(&["focus-pane", "-t", &pane_id]).await
             }
             "send_input" => {
-                let pane_id = params.get("session_id").and_then(json_id_as_str).unwrap_or_default();
+                let pane_id = params
+                    .get("session_id")
+                    .and_then(json_id_as_str)
+                    .unwrap_or_default();
                 // Strict validation: caller errors must surface as errors,
                 // not silently degrade to a no-op SendInput("") that wta
                 // then reports as success. The downstream COM layer treats

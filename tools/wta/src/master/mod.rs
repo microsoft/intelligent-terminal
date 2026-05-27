@@ -290,10 +290,7 @@ impl acp::Client for MasterClient {
         resp
     }
 
-    async fn session_notification(
-        &self,
-        args: acp::SessionNotification,
-    ) -> acp::Result<()> {
+    async fn session_notification(&self, args: acp::SessionNotification) -> acp::Result<()> {
         let sid = args.session_id.clone();
         // Discriminator for "what KIND of notification this is" — useful
         // when scrolling logs to see prompt/turn lifecycle without
@@ -541,8 +538,7 @@ impl acp::Client for MasterClient {
         args: acp::WaitForTerminalExitRequest,
     ) -> acp::Result<acp::WaitForTerminalExitResponse> {
         let sid = args.session_id.clone();
-        let (helper_id, forwarder) =
-            self.route_for(&sid, "wait_for_terminal_exit").await?;
+        let (helper_id, forwarder) = self.route_for(&sid, "wait_for_terminal_exit").await?;
         tracing::info!(
             target: "master",
             step = "agent→helper",
@@ -658,8 +654,7 @@ impl HelperHandler {
                 helper_id = ?self.helper_id,
                 "helper AgentSideConnection already dropped — cannot route new request"
             );
-            acp::Error::internal_error()
-                .data(serde_json::json!("helper connection dropped"))
+            acp::Error::internal_error().data(serde_json::json!("helper connection dropped"))
         })
     }
 }
@@ -998,10 +993,7 @@ impl acp::Agent for HelperHandler {
         Ok(acp::ListSessionsResponse::new(sessions))
     }
 
-    async fn prompt(
-        &self,
-        args: acp::PromptRequest,
-    ) -> acp::Result<acp::PromptResponse> {
+    async fn prompt(&self, args: acp::PromptRequest) -> acp::Result<acp::PromptResponse> {
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -1084,6 +1076,12 @@ impl acp::Agent for HelperHandler {
                 "handling intellterm.wta/session_hook locally"
             );
             return handle_session_hook(&self.state, &args.params).await;
+        }
+        if method == crate::session_registry::INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED {
+            return handle_session_resume_dispatched(&self.state, &args.params).await;
+        }
+        if method == crate::session_registry::INTELLTERM_METHOD_SESSION_FOCUS {
+            return handle_session_focus(&self.state, &args.params).await;
         }
         tracing::debug!(
             target: "master",
@@ -1443,11 +1441,9 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         // helper can connect concurrently.
         let connected = std::mem::replace(
             &mut server,
-            ServerOptions::new()
-                .create(&pipe_name)
-                .with_context(|| {
-                    format!("failed to create follow-up pipe instance for '{pipe_name}'")
-                })?,
+            ServerOptions::new().create(&pipe_name).with_context(|| {
+                format!("failed to create follow-up pipe instance for '{pipe_name}'")
+            })?,
         );
 
         let agent_conn = Arc::clone(&agent_conn);
@@ -1495,8 +1491,7 @@ async fn serve_helper(
     // wire-write loop below; the `tokio::select!` can dispatch each to
     // the appropriate `AgentSideConnection` method without an enum
     // discriminator at every write site.
-    let (ext_tx, mut ext_rx) =
-        mpsc::unbounded_channel::<acp::ExtNotification>();
+    let (ext_tx, mut ext_rx) = mpsc::unbounded_channel::<acp::ExtNotification>();
     {
         let mut subs = state.helper_ext_subscribers.lock().await;
         subs.insert(helper_id, ext_tx);
@@ -1512,8 +1507,7 @@ async fn serve_helper(
     // conn owns the handler, the handler owns this slot — if the
     // slot held a strong `Arc` back to the conn, the conn could
     // never drop after helper disconnect.
-    let agent_side_slot: Arc<OnceLock<Weak<acp::AgentSideConnection>>> =
-        Arc::new(OnceLock::new());
+    let agent_side_slot: Arc<OnceLock<Weak<acp::AgentSideConnection>>> = Arc::new(OnceLock::new());
 
     let handler = HelperHandler {
         helper_id,
@@ -1786,18 +1780,22 @@ pub(crate) async fn handle_focus_session(
         acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
     })?;
 
-    let info = state.registry.lookup(&parsed.session_id).await.ok_or_else(|| {
-        tracing::info!(
-            target: "master",
-            op = "focus_session",
-            session_id = ?parsed.session_id,
-            "session not in registry; nothing to focus"
-        );
-        acp::Error::resource_not_found(None).data(serde_json::json!({
-            "session_id": parsed.session_id,
-            "reason": "session_id not in master registry"
-        }))
-    })?;
+    let info = state
+        .registry
+        .lookup(&parsed.session_id)
+        .await
+        .ok_or_else(|| {
+            tracing::info!(
+                target: "master",
+                op = "focus_session",
+                session_id = ?parsed.session_id,
+                "session not in registry; nothing to focus"
+            );
+            acp::Error::resource_not_found(None).data(serde_json::json!({
+                "session_id": parsed.session_id,
+                "reason": "session_id not in master registry"
+            }))
+        })?;
 
     let pane_session_id = info.pane_session_id.clone().ok_or_else(|| {
         tracing::warn!(
@@ -1860,6 +1858,124 @@ pub(crate) async fn handle_focus_session(
                 "reason": "wtcli focus_pane failed",
                 "message": err.to_string(),
             })))
+        }
+    }
+}
+
+async fn handle_session_resume_dispatched(
+    state: &MasterStateInner,
+    params: &serde_json::value::RawValue,
+) -> acp::Result<acp::ExtResponse> {
+    let parsed =
+        crate::session_registry::parse_session_resume_dispatched_params(params).map_err(|err| {
+            acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
+        })?;
+    // TODO(Task A merge): keep this check-and-flip on the expanded reducer-owned status field.
+    let (flipped, current_status) = state
+        .registry
+        .mark_resume_dispatched(&parsed.sid)
+        .await
+        .unwrap_or((false, "Idle".to_string()));
+    if flipped {
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
+    }
+    let body = crate::session_registry::SessionResumeDispatchedResponse {
+        flipped,
+        current_status,
+    };
+    let raw = serde_json::value::to_raw_value(&body).expect("resume response serializes");
+    Ok(acp::ExtResponse::new(raw.into()))
+}
+
+async fn handle_session_focus(
+    state: &MasterStateInner,
+    params: &serde_json::value::RawValue,
+) -> acp::Result<acp::ExtResponse> {
+    let parsed = crate::session_registry::parse_session_focus_params(params).map_err(|err| {
+        acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
+    })?;
+    let Some(info) = state.registry.lookup(&parsed.sid).await else {
+        let body = crate::session_registry::SessionFocusResponse {
+            focused: false,
+            pane_session_id: None,
+            reason: Some("no_pane".to_string()),
+            detail: Some("session id is not in the master registry".to_string()),
+        };
+        let raw = serde_json::value::to_raw_value(&body).expect("focus response serializes");
+        return Ok(acp::ExtResponse::new(raw.into()));
+    };
+    let Some(pane_session_id) = info.pane_session_id.clone() else {
+        let body = crate::session_registry::SessionFocusResponse {
+            focused: false,
+            pane_session_id: None,
+            reason: Some("no_pane".to_string()),
+            detail: None,
+        };
+        let raw = serde_json::value::to_raw_value(&body).expect("focus response serializes");
+        return Ok(acp::ExtResponse::new(raw.into()));
+    };
+    let Some(wt) = state.wt.as_ref() else {
+        let body = crate::session_registry::SessionFocusResponse {
+            focused: false,
+            pane_session_id: Some(pane_session_id),
+            reason: Some("wtcli_error".to_string()),
+            detail: Some("focus channel unavailable".to_string()),
+        };
+        let raw = serde_json::value::to_raw_value(&body).expect("focus response serializes");
+        return Ok(acp::ExtResponse::new(raw.into()));
+    };
+    match wt
+        .request(
+            "focus_pane",
+            serde_json::json!({ "session_id": pane_session_id }),
+        )
+        .await
+    {
+        Ok(_) => {
+            let body = crate::session_registry::SessionFocusResponse {
+                focused: true,
+                pane_session_id: Some(pane_session_id),
+                reason: None,
+                detail: None,
+            };
+            let raw = serde_json::value::to_raw_value(&body).expect("focus response serializes");
+            Ok(acp::ExtResponse::new(raw.into()))
+        }
+        Err(err) => {
+            let detail = err.to_string();
+            let not_found =
+                detail.to_ascii_lowercase().contains("not found") || detail.contains("0x80070490");
+            if not_found {
+                let mut demoted = info;
+                demoted.status = Some(crate::agent_sessions::AgentStatus::Ended);
+                demoted.pane_session_id = None;
+                state.registry.upsert(demoted).await;
+                // TODO(Task A merge): route this through the shared reducer after registry expansion lands.
+                broadcast_ext_to_helpers(
+                    state,
+                    crate::session_registry::build_sessions_changed_notification(),
+                )
+                .await;
+            }
+            let body = crate::session_registry::SessionFocusResponse {
+                focused: false,
+                pane_session_id: None,
+                reason: Some(
+                    if not_found {
+                        "not_found"
+                    } else {
+                        "wtcli_error"
+                    }
+                    .to_string(),
+                ),
+                detail: Some(detail),
+            };
+            let raw = serde_json::value::to_raw_value(&body).expect("focus response serializes");
+            Ok(acp::ExtResponse::new(raw.into()))
         }
     }
 }
@@ -2246,10 +2362,7 @@ mod tests {
             subs.insert(HelperId(2), tx2);
         }
 
-        let info = SessionInfo::new(
-            SessionId::new("alive-x"),
-            PathBuf::from("/repo/x"),
-        );
+        let info = SessionInfo::new(SessionId::new("alive-x"), PathBuf::from("/repo/x"));
         broadcast_ext_to_helpers(&state, build_session_added_notification(&info)).await;
 
         let got1 = rx1.try_recv().expect("helper 1 receives broadcast");
@@ -2272,7 +2385,7 @@ mod tests {
     /// every future fan-out.
     #[tokio::test]
     async fn broadcast_ext_to_helpers_prunes_dead_subscribers() {
-        use crate::session_registry::{build_session_removed_notification};
+        use crate::session_registry::build_session_removed_notification;
 
         let state = make_state();
         let (tx_dead, rx_dead) = mpsc::unbounded_channel::<acp::ExtNotification>();
@@ -2424,16 +2537,15 @@ mod tests {
         let client = MasterClient {
             state: Arc::clone(&state),
         };
-        let req = acp::CreateTerminalRequest::new(
-            SessionId::new("nobody-home"),
-            "echo".to_string(),
-        );
+        let req =
+            acp::CreateTerminalRequest::new(SessionId::new("nobody-home"), "echo".to_string());
         let err = client
             .create_terminal(req)
             .await
             .expect_err("create_terminal on unknown session must fail");
         assert_eq!(err.code, acp::ErrorCode::InternalError);
     }
+
 
 
     #[tokio::test]
@@ -2491,6 +2603,119 @@ mod tests {
         assert!(methods.contains(&session_registry::INTELLTERM_METHOD_SESSIONS_CHANGED.to_string()));
     }
 
+    // ─── Task C master mutation RPCs ────────────────────────────────
+
+    #[tokio::test]
+    async fn session_resume_dispatched_historical_flips_and_broadcasts() {
+        use crate::session_registry::SessionInfo;
+        use std::path::PathBuf;
+        let state = make_state();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        state
+            .helper_ext_subscribers
+            .lock()
+            .await
+            .insert(HelperId(7), tx);
+        let sid = acp::SessionId::new("hist-sid");
+        let mut info = SessionInfo::new(sid.clone(), PathBuf::from("/repo"));
+        info.status = Some(crate::agent_sessions::AgentStatus::Historical);
+        state.registry.upsert(info).await;
+        let params = session_resume_params_for(&sid);
+        let resp = handle_session_resume_dispatched(&state, &params)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_str(resp.0.get()).unwrap();
+        assert_eq!(body["flipped"], true);
+        assert_eq!(body["current_status"], "Idle");
+        assert_eq!(
+            state.registry.lookup(&sid).await.unwrap().status,
+            Some(crate::agent_sessions::AgentStatus::Idle)
+        );
+        let notif = rx.try_recv().expect("flip must broadcast sessions/changed");
+        assert_eq!(
+            &*notif.method,
+            crate::session_registry::INTELLTERM_METHOD_SESSIONS_CHANGED
+        );
+    }
+
+    #[tokio::test]
+    async fn session_resume_dispatched_live_is_noop() {
+        use crate::session_registry::SessionInfo;
+        use std::path::PathBuf;
+        let state = make_state();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        state
+            .helper_ext_subscribers
+            .lock()
+            .await
+            .insert(HelperId(7), tx);
+        let sid = acp::SessionId::new("live-sid");
+        let mut info = SessionInfo::new(sid.clone(), PathBuf::from("/repo"));
+        info.status = Some(crate::agent_sessions::AgentStatus::Idle);
+        state.registry.upsert(info).await;
+        let params = session_resume_params_for(&sid);
+        let resp = handle_session_resume_dispatched(&state, &params)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_str(resp.0.get()).unwrap();
+        assert_eq!(body["flipped"], false);
+        assert_eq!(body["current_status"], "Idle");
+        assert!(rx.try_recv().is_err(), "no-op must not broadcast");
+    }
+
+    #[tokio::test]
+    async fn session_focus_with_bound_pane_calls_wtcli() {
+        use crate::session_registry::SessionInfo;
+        use std::path::PathBuf;
+        let mock = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(mock.clone());
+        let sid = acp::SessionId::new("focus-sid");
+        let mut info = SessionInfo::new(sid.clone(), PathBuf::from("/repo"));
+        info.pane_session_id = Some("pane-123".to_string());
+        state.registry.upsert(info).await;
+        let params = session_focus_params_for(&sid);
+        let resp = handle_session_focus(&state, &params).await.unwrap();
+        let body: serde_json::Value = serde_json::from_str(resp.0.get()).unwrap();
+        assert_eq!(body["focused"], true);
+        assert_eq!(body["pane_session_id"], "pane-123");
+        assert_eq!(mock.calls()[0].0, "focus_pane");
+    }
+
+    #[tokio::test]
+    async fn session_focus_without_pane_returns_no_pane() {
+        use crate::session_registry::SessionInfo;
+        use std::path::PathBuf;
+        let mock = Arc::new(MockWtChannel::ok());
+        let state = make_state_with_wt(mock.clone());
+        let sid = acp::SessionId::new("orphan-sid");
+        state
+            .registry
+            .upsert(SessionInfo::new(sid.clone(), PathBuf::from("/repo")))
+            .await;
+        let params = session_focus_params_for(&sid);
+        let resp = handle_session_focus(&state, &params).await.unwrap();
+        let body: serde_json::Value = serde_json::from_str(resp.0.get()).unwrap();
+        assert_eq!(body["focused"], false);
+        assert_eq!(body["reason"], "no_pane");
+        assert!(mock.calls().is_empty());
+    }
+
+    fn session_resume_params_for(sid: &acp::SessionId) -> Box<serde_json::value::RawValue> {
+        let req = crate::session_registry::build_session_resume_dispatched_request(sid);
+        serde_json::value::to_raw_value(
+            &serde_json::from_str::<serde_json::Value>(req.params.get()).unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn session_focus_params_for(sid: &acp::SessionId) -> Box<serde_json::value::RawValue> {
+        let req = crate::session_registry::build_session_focus_request(sid);
+        serde_json::value::to_raw_value(
+            &serde_json::from_str::<serde_json::Value>(req.params.get()).unwrap(),
+        )
+        .unwrap()
+    }
+
     // ─── handle_focus_session ───────────────────────────────────────
 
     /// Mock `WtChannel` that captures every `request` call into a
@@ -2543,7 +2768,9 @@ mod tests {
         }
     }
 
-    fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<MasterStateInner> {
+    fn make_state_with_wt(
+        wt: Arc<dyn crate::shell::wt_channel::WtChannel>,
+    ) -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
             session_to_helper: Mutex::new(HashMap::new()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
@@ -2558,7 +2785,10 @@ mod tests {
         // ExtRequest stores params as Arc<RawValue>; cloning to owned Box
         // through serialization is the simplest portable way to feed it
         // into `handle_focus_session` which expects `&RawValue`.
-        serde_json::value::to_raw_value(&serde_json::from_str::<serde_json::Value>(req.params.get()).unwrap()).unwrap()
+        serde_json::value::to_raw_value(
+            &serde_json::from_str::<serde_json::Value>(req.params.get()).unwrap(),
+        )
+        .unwrap()
     }
 
     /// Happy path: sid in registry with pane_session_id, WtChannel present.
@@ -2589,8 +2819,7 @@ mod tests {
             serde_json::json!({ "session_id": "pane-GUID-123" })
         );
 
-        let body: serde_json::Value =
-            serde_json::from_str(resp.0.get()).expect("response is JSON");
+        let body: serde_json::Value = serde_json::from_str(resp.0.get()).expect("response is JSON");
         assert_eq!(body["ok"], serde_json::Value::Bool(true));
         assert_eq!(body["pane_session_id"], "pane-GUID-123");
     }

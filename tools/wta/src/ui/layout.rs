@@ -1,7 +1,9 @@
-use ratatui::prelude::*;
 use crate::app::{App, AppMode, View, DEFAULT_TAB_ID};
+use ratatui::prelude::*;
 
-use super::{auth, agents_view, chat, command_popup, debug_panel, input, permission, recommendations, setup};
+use super::{
+    agents_view, auth, chat, command_popup, debug_panel, input, permission, recommendations, setup,
+};
 
 pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
@@ -14,10 +16,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(1),
-                Constraint::Length(input_height),
-            ])
+            .constraints([Constraint::Min(1), Constraint::Length(input_height)])
             .split(area);
         auth::render(frame, app, chunks[0]);
         input::render(frame, app, chunks[1]);
@@ -32,10 +31,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(1),
-                Constraint::Length(input_height),
-            ])
+            .constraints([Constraint::Min(1), Constraint::Length(input_height)])
             .split(area);
         setup::render(frame, app, chunks[0]);
         input::render(frame, app, chunks[1]);
@@ -58,6 +54,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             &app.agent_sessions,
+            tab.agents_view.snapshot.as_deref(),
             &mut tab.agents_list_state,
             load_state,
             activity_frame,
@@ -98,11 +95,15 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     if !transient_visible {
         app.transient_hint = None;
     }
-    let welcome_visible = app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected;
+    let welcome_visible =
+        app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected;
     let hint_visible = welcome_visible || transient_visible;
     let hint_h: u16 = if hint_visible { 1 } else { 0 };
-    let rec_hint_h: u16 = if app.current_tab().turn.recommendations().is_some() { 1 } else { 0 };
+    let rec_hint_h: u16 = if app.current_tab().turn.recommendations().is_some() {
+        1
+    } else {
+        0
+    };
 
     // The host (Windows Terminal) renders the agent bar in XAML above this
     // pane, so wta uses the full pane area for chat / recommendations / input.
@@ -138,15 +139,27 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // Horizontal padding for chat, recommendations, and permission
     let h_chat = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
         .split(chunks[0]);
     let h_rec = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
         .split(chunks[1]);
     let h_perm = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
         .split(chunks[2]);
 
     chat::render(frame, app, h_chat[1]);

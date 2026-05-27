@@ -8,23 +8,27 @@ use ratatui::{
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthStr;
 
-use crate::agent_sessions::{AgentSession, AgentSessionRegistry, AgentStatus, CliSource, SessionOrigin};
+use crate::agent_sessions::{
+    AgentSession, AgentSessionRegistry, AgentStatus, CliSource, SessionOrigin,
+};
 use crate::app::HistoryLoadState;
+use crate::session_registry::SessionInfo;
 use crate::ui::shimmer;
 
 // Figma palette — keep these in one place so the row renderer and any
 // future status indicators stay in sync with the design tokens.
-const ACCENT_CYAN:   Color = Color::Rgb(0x60, 0xcd, 0xff); // Selected-row title / cursor
-const ACCENT_GREEN:  Color = Color::Rgb(0x6c, 0xcb, 0x5f); // Active status badge
+const ACCENT_CYAN: Color = Color::Rgb(0x60, 0xcd, 0xff); // Selected-row title / cursor
+const ACCENT_GREEN: Color = Color::Rgb(0x6c, 0xcb, 0x5f); // Active status badge
 const ACCENT_YELLOW: Color = Color::Rgb(0xfa, 0xe2, 0x46); // Waiting for input
-const ACCENT_RED:    Color = Color::Rgb(0xff, 0x6b, 0x6b); // Error
-const SOFT_WHITE:    Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
-const MUTED_WHITE:   Color = Color::Rgb(0x8b, 0x8b, 0x8b); // 54% white — timestamp
+const ACCENT_RED: Color = Color::Rgb(0xff, 0x6b, 0x6b); // Error
+const SOFT_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
+const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // 54% white — timestamp
 
 pub fn render(
-    f:    &mut Frame,
+    f: &mut Frame,
     area: Rect,
-    reg:  &AgentSessionRegistry,
+    reg: &AgentSessionRegistry,
+    snapshot: Option<&[SessionInfo]>,
     list_state: &mut ListState,
     history_load_state: HistoryLoadState,
     activity_frame: usize,
@@ -63,7 +67,10 @@ pub fn render(
             width: area.width,
             height: 1,
         };
-        let list = Rect { height: inner.height - 2, ..inner };
+        let list = Rect {
+            height: inner.height - 2,
+            ..inner
+        };
         (list, Some(hint))
     } else if inner.height >= 2 {
         let hint = Rect {
@@ -72,18 +79,40 @@ pub fn render(
             width: area.width,
             height: 1,
         };
-        let list = Rect { height: inner.height - 1, ..inner };
+        let list = Rect {
+            height: inner.height - 1,
+            ..inner
+        };
         (list, Some(hint))
     } else {
         (inner, None)
     };
 
-    let sorted = reg.iter_sorted_filtered(cli_filter);
+    let using_snapshot = snapshot.is_some();
+    let sorted: Vec<AgentSession> = if let Some(snapshot) = snapshot {
+        let mut rows: Vec<_> = snapshot
+            .iter()
+            .map(crate::app::session_info_to_agent_session)
+            .collect();
+        rows.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+        if let Some(want) = cli_filter {
+            rows.retain(|s| {
+                &s.cli_source == want
+                    || matches!(&s.cli_source, CliSource::Unknown(v) if v.is_empty())
+            });
+        }
+        rows
+    } else {
+        reg.iter_sorted_filtered(cli_filter)
+            .into_iter()
+            .cloned()
+            .collect()
+    };
     tracing::info!(
         target: "agents_view_filter",
         filter = ?cli_filter,
         visible = sorted.len(),
-        total = reg.iter_sorted().len(),
+        total = if using_snapshot { sorted.len() } else { reg.iter_sorted().len() },
         "rendering agent sessions list"
     );
     tracing::debug!(
@@ -105,7 +134,7 @@ pub fn render(
     // with a single shimmer-styled loading row. Showing live rows alongside
     // a dim "loading…" hint led users to think the list was complete (only
     // the 1 live session) and dismiss the view before the scan finished.
-    if history_load_state == HistoryLoadState::Loading {
+    if !using_snapshot && history_load_state == HistoryLoadState::Loading {
         render_left_bar(f, area.x, list_area, None);
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
         let loading_label = t!("agents.loading").into_owned();
@@ -121,7 +150,7 @@ pub fn render(
     let selected = list_state.selected();
     let row_width = list_area.width as usize;
     let rows: Vec<ListItem> = sorted
-        .into_iter()
+        .iter()
         .enumerate()
         .map(|(i, s)| row_for(s, Some(i) == selected, row_width))
         .collect();
@@ -188,9 +217,7 @@ fn render_footer_hint(f: &mut Frame, area: Rect) {
     // vertical bar, so the hint already sits one column inside the bar and
     // reads as left-aligned chrome rather than another row.
     let text = trunc(&hint, area.width as usize);
-    let line = Line::from(vec![
-        Span::styled(text, Style::default().fg(MUTED_WHITE)),
-    ]);
+    let line = Line::from(vec![Span::styled(text, Style::default().fg(MUTED_WHITE))]);
     f.render_widget(
         Paragraph::new(line).alignment(crate::rtl::text_alignment()),
         area,
@@ -199,11 +226,14 @@ fn render_footer_hint(f: &mut Frame, area: Rect) {
 
 fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'static> {
     let origin_prefix = origin_prefix_for(s);
-    let prefix_w      = origin_prefix.as_deref().map(UnicodeWidthStr::width).unwrap_or(0);
-    let title_text  = display_title(s, prefix_w);
-    let badge       = status_badge(s);
+    let prefix_w = origin_prefix
+        .as_deref()
+        .map(UnicodeWidthStr::width)
+        .unwrap_or(0);
+    let title_text = display_title(s, prefix_w);
+    let badge = status_badge(s);
     let badge_style = badge_style(s);
-    let age         = relative_age(s.last_activity_at);
+    let age = relative_age(s.last_activity_at);
 
     // Unselected rows: no `.fg(...)` override — fall through to the
     // terminal's default foreground so titles match the surrounding pane
@@ -225,7 +255,12 @@ fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'stat
     // Leftmost column: `>` cursor for the selected row, blank otherwise.
     // Two cells (caret + space) so titles line up regardless of selection.
     let caret = if selected {
-        Span::styled("> ", Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD))
+        Span::styled(
+            "> ",
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
+        )
     } else {
         Span::raw("  ")
     };
@@ -247,35 +282,42 @@ fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'stat
     const TITLE_FLOOR: usize = 8;
     const MIN_PAD: usize = 1;
 
-    let caret_w    = 2_usize;
-    let badge_w    = if badge.is_empty() { 0 } else { badge.width() + 2 }; // "  badge"
-    let cli_w      = if cli_suffix.is_empty() { 0 } else { cli_suffix.width() + 1 };
-    let age_w      = age.width();
+    let caret_w = 2_usize;
+    let badge_w = if badge.is_empty() {
+        0
+    } else {
+        badge.width() + 2
+    }; // "  badge"
+    let cli_w = if cli_suffix.is_empty() {
+        0
+    } else {
+        cli_suffix.width() + 1
+    };
+    let age_w = age.width();
 
-    let leading       = caret_w + prefix_w;
+    let leading = caret_w + prefix_w;
     let reserved_tail = MIN_PAD + age_w;
 
     let mut keep_badge = badge_w > 0;
-    let mut keep_cli   = cli_w > 0;
-    let mut title_cap  = row_width
-        .saturating_sub(leading + reserved_tail + badge_w + cli_w);
+    let mut keep_cli = cli_w > 0;
+    let mut title_cap = row_width.saturating_sub(leading + reserved_tail + badge_w + cli_w);
 
     if title_cap < TITLE_FLOOR && keep_cli {
-        keep_cli  = false;
+        keep_cli = false;
         title_cap = row_width.saturating_sub(leading + reserved_tail + badge_w);
     }
     if title_cap < TITLE_FLOOR && keep_badge {
         keep_badge = false;
-        title_cap  = row_width.saturating_sub(leading + reserved_tail);
+        title_cap = row_width.saturating_sub(leading + reserved_tail);
     }
 
     let title_text = trunc(&title_text, title_cap.max(1));
 
-    let title_w       = title_text.width();
+    let title_w = title_text.width();
     let final_badge_w = if keep_badge { badge_w } else { 0 };
-    let final_cli_w   = if keep_cli   { cli_w   } else { 0 };
-    let used          = caret_w + prefix_w + title_w + final_badge_w + final_cli_w + age_w;
-    let pad           = row_width.saturating_sub(used).max(1);
+    let final_cli_w = if keep_cli { cli_w } else { 0 };
+    let used = caret_w + prefix_w + title_w + final_badge_w + final_cli_w + age_w;
+    let pad = row_width.saturating_sub(used).max(1);
 
     let mut spans = vec![caret];
     if let Some(prefix) = origin_prefix {
@@ -313,7 +355,11 @@ fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'stat
 /// rows without a prefix get. A floor of 20 keeps even very long
 /// prefixes from squashing the title to uselessness.
 fn display_title(s: &AgentSession, prefix_w: usize) -> String {
-    let raw = if s.title.is_empty() { cwd_basename(s) } else { s.title.clone() };
+    let raw = if s.title.is_empty() {
+        cwd_basename(s)
+    } else {
+        s.title.clone()
+    };
     const TITLE_BUDGET: usize = 64;
     const TITLE_MIN: usize = 20;
     let cap = TITLE_BUDGET.saturating_sub(prefix_w).max(TITLE_MIN);
@@ -321,7 +367,9 @@ fn display_title(s: &AgentSession, prefix_w: usize) -> String {
 }
 
 fn cwd_basename(s: &AgentSession) -> String {
-    s.cwd.file_name().and_then(|n| n.to_str())
+    s.cwd
+        .file_name()
+        .and_then(|n| n.to_str())
         .unwrap_or("?")
         .to_string()
 }
@@ -332,10 +380,10 @@ fn cwd_basename(s: &AgentSession) -> String {
 /// actively running a tool.
 fn status_badge(s: &AgentSession) -> String {
     match s.status {
-        AgentStatus::Working   => t!("agents.status.active").into_owned(),
+        AgentStatus::Working => t!("agents.status.active").into_owned(),
         AgentStatus::Attention => t!("agents.status.waiting_for_input").into_owned(),
-        AgentStatus::Error     => t!("agents.status.error").into_owned(),
-        AgentStatus::Idle      => t!("agents.status.idle").into_owned(),
+        AgentStatus::Error => t!("agents.status.error").into_owned(),
+        AgentStatus::Idle => t!("agents.status.idle").into_owned(),
         AgentStatus::Ended | AgentStatus::Historical => String::new(),
     }
 }
@@ -345,12 +393,12 @@ fn badge_style(s: &AgentSession) -> Style {
         // "Active" reads as a healthy / running state, so green — leaving
         // cyan as the dedicated "selection cursor" color so the two don't
         // collide visually when a non-selected row is running a tool.
-        AgentStatus::Working   => Style::default().fg(ACCENT_GREEN),
+        AgentStatus::Working => Style::default().fg(ACCENT_GREEN),
         AgentStatus::Attention => Style::default().fg(ACCENT_YELLOW),
-        AgentStatus::Error     => Style::default().fg(ACCENT_RED),
+        AgentStatus::Error => Style::default().fg(ACCENT_RED),
         // Idle: muted off-white so it reads as a real status badge but
         // stays visually quieter than the colored Active/Waiting tags.
-        AgentStatus::Idle      => Style::default().fg(SOFT_WHITE),
+        AgentStatus::Idle => Style::default().fg(SOFT_WHITE),
         AgentStatus::Ended | AgentStatus::Historical => Style::default(),
     }
 }
@@ -361,11 +409,13 @@ fn badge_style(s: &AgentSession) -> Style {
 /// cluttering the historical list.
 fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
     let surface = selected || matches!(s.status, AgentStatus::Working | AgentStatus::Attention);
-    if !surface { return String::new(); }
+    if !surface {
+        return String::new();
+    }
     let label = match s.cli_source {
-        CliSource::Claude  => "claude",
+        CliSource::Claude => "claude",
         CliSource::Copilot => "copilot",
-        CliSource::Gemini  => "gemini",
+        CliSource::Gemini => "gemini",
         CliSource::Unknown(_) => return String::new(),
     };
     format!("· {}", label)
@@ -416,15 +466,27 @@ fn relative_age(t: SystemTime) -> String {
         rust_i18n::t!("time.just_now").into_owned()
     } else if secs < 3600 {
         let n = secs / 60;
-        let key = if n == 1 { "time.minute_singular" } else { "time.minutes_other" };
+        let key = if n == 1 {
+            "time.minute_singular"
+        } else {
+            "time.minutes_other"
+        };
         rust_i18n::t!(key, count = n.to_string()).into_owned()
     } else if secs < 86_400 {
         let n = secs / 3600;
-        let key = if n == 1 { "time.hour_singular" } else { "time.hours_other" };
+        let key = if n == 1 {
+            "time.hour_singular"
+        } else {
+            "time.hours_other"
+        };
         rust_i18n::t!(key, count = n.to_string()).into_owned()
     } else if secs < 7 * 86_400 {
         let n = secs / 86_400;
-        let key = if n == 1 { "time.day_singular" } else { "time.days_other" };
+        let key = if n == 1 {
+            "time.day_singular"
+        } else {
+            "time.days_other"
+        };
         rust_i18n::t!(key, count = n.to_string()).into_owned()
     } else {
         format_calendar_date(t)
@@ -444,7 +506,7 @@ fn relative_age(t: SystemTime) -> String {
 /// unreadable timestamps and an ISO fallback if the OS call fails.
 fn format_calendar_date(t: SystemTime) -> String {
     let secs = match t.duration_since(UNIX_EPOCH) {
-        Ok(d)  => d.as_secs() as i64,
+        Ok(d) => d.as_secs() as i64,
         Err(_) => return "—".to_string(),
     };
     let (y, m, d) = civil_from_days(secs.div_euclid(86_400));
@@ -496,22 +558,28 @@ fn format_calendar_date(t: SystemTime) -> String {
 /// Civil date from days since the Unix epoch (1970-01-01).
 /// Source: Hinnant, "chrono-Compatible Low-Level Date Algorithms".
 fn civil_from_days(days: i64) -> (i32, u8, u8) {
-    let z   = days + 719_468;
+    let z = days + 719_468;
     let era = z.div_euclid(146_097);
-    let doe = (z - era * 146_097) as u64;                                   // [0, 146096]
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;      // [0, 399]
-    let y   = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);                      // [0, 365]
-    let mp  = (5 * doy + 2) / 153;                                          // [0, 11]
-    let d   = (doy - (153 * mp + 2) / 5 + 1) as u8;
-    let m   = if mp < 10 { mp + 3 } else { mp - 9 } as u8;
+    let doe = (z - era * 146_097) as u64; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u8;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u8;
     let year = (y + if m <= 2 { 1 } else { 0 }) as i32;
     (year, m, d)
 }
 
 fn trunc(s: &str, n: usize) -> String {
-    if s.chars().count() <= n { s.to_string() }
-    else { format!("{}…", s.chars().take(n.saturating_sub(1)).collect::<String>()) }
+    if s.chars().count() <= n {
+        s.to_string()
+    } else {
+        format!(
+            "{}…",
+            s.chars().take(n.saturating_sub(1)).collect::<String>()
+        )
+    }
 }
 
 #[cfg(test)]
@@ -597,8 +665,8 @@ mod tests {
         // reference. No locale-specific content asserted — just that
         // each locale's output is well-formed and distinct.
         let locales = &[
-            "en-US", "zh-CN", "zh-TW", "ja-JP", "ko-KR",
-            "de-DE", "fr-FR", "es-ES", "ru-RU", "ar-SA", "he-IL",
+            "en-US", "zh-CN", "zh-TW", "ja-JP", "ko-KR", "de-DE", "fr-FR", "es-ES", "ru-RU",
+            "ar-SA", "he-IL",
         ];
 
         // Reference output (en-US) — used to assert that other locales
@@ -623,7 +691,9 @@ mod tests {
                 assert!(
                     !s.starts_with("time."),
                     "[{}] {}: raw key leaked: {:?}",
-                    locale, label, s,
+                    locale,
+                    label,
+                    s,
                 );
             }
 
@@ -642,16 +712,20 @@ mod tests {
             let date_str = relative_age(week_old);
             assert!(!date_str.is_empty(), "[{}] calendar date empty", locale);
             assert!(
-                date_str.chars().any(|c| c.is_ascii_digit() || c.is_numeric()),
+                date_str
+                    .chars()
+                    .any(|c| c.is_ascii_digit() || c.is_numeric()),
                 "[{}] calendar date has no digits: {:?}",
-                locale, date_str,
+                locale,
+                date_str,
             );
             // English "ago" must never appear in the calendar fallback —
             // that would mean we hit the relative-time path by accident.
             assert!(
                 !date_str.to_lowercase().ends_with("ago"),
                 "[{}] expected calendar date, got {:?}",
-                locale, date_str,
+                locale,
+                date_str,
             );
         }
     }
@@ -667,8 +741,7 @@ mod tests {
         let target = UNIX_EPOCH + Duration::from_secs(20_595 * 86_400);
 
         let locales = &[
-            "en-US", "zh-CN", "zh-TW", "ja-JP", "ko-KR",
-            "de-DE", "fr-FR", "ru-RU", "ar-SA",
+            "en-US", "zh-CN", "zh-TW", "ja-JP", "ko-KR", "de-DE", "fr-FR", "ru-RU", "ar-SA",
         ];
 
         // Track unique outputs — different locales should generally
@@ -680,7 +753,9 @@ mod tests {
             assert!(!s.is_empty(), "[{}] empty calendar date", locale);
             assert!(
                 s.chars().any(|c| c.is_ascii_digit() || c.is_numeric()),
-                "[{}] no digits in {:?}", locale, s,
+                "[{}] no digits in {:?}",
+                locale,
+                s,
             );
             outputs.push((locale, s));
         }
@@ -689,8 +764,16 @@ mod tests {
         // from en-US — guards against the Windows API silently falling
         // back to en-US for all input locales (e.g. if locale-name
         // formatting goes wrong).
-        let en_us = outputs.iter().find(|(l, _)| *l == "en-US").unwrap().1.clone();
-        let distinct = outputs.iter().filter(|(l, s)| *l != "en-US" && *s != en_us).count();
+        let en_us = outputs
+            .iter()
+            .find(|(l, _)| *l == "en-US")
+            .unwrap()
+            .1
+            .clone();
+        let distinct = outputs
+            .iter()
+            .filter(|(l, s)| *l != "en-US" && *s != en_us)
+            .count();
         assert!(
             distinct >= outputs.len() / 2,
             "expected most non-en-US locales to differ from en-US date; got {}/{} distinct\nOutputs: {:?}",
