@@ -19,10 +19,11 @@
 // processes only via fields explicitly shared (e.g. `PaneId`).
 //
 // Events emitted from this module:
-//   - AgentPromptSent       (WTA dispatches a prompt over ACP)
-//   - AgentResponseReceived (ACP returns first token / completes)
-//   - ErrorDetected         (classify_wt_event positively classifies an error)
-//   - ErrorFixResolved      (next command's exit code is 0 after a fix attempt)
+//   - AgentPromptSent          (WTA dispatches a prompt over ACP)
+//   - AgentResponseFirstToken  (ACP returns the first text chunk)
+//   - AgentResponseComplete    (ACP prompt request completes)
+//   - ErrorDetected            (classify_wt_event positively classifies an error)
+//   - ErrorFixResolved         (next command's exit code is 0 after a fix attempt)
 //
 // Conventions:
 //   - TraceLoggingDescription equivalent: passed as the event's metadata comment
@@ -117,6 +118,12 @@ pub fn log_agent_prompt_sent(
 
 /// Emitted when the agent's first text chunk arrives back over ACP.
 /// `first_token_latency_ms` is wall-clock from prompt dispatch to first token.
+///
+/// Uses a distinct event name (`AgentResponseFirstToken`) so the field
+/// schema is unambiguous in downstream decoders — keeping a single
+/// `AgentResponseReceived` name across the first-token and complete cases
+/// would yield two metadata definitions for the same event name in ETW
+/// (the schemas differ), which complicates query/decode.
 pub fn log_agent_response_first_token(
     session_id: &str,
     first_token_latency_ms: f64,
@@ -124,11 +131,10 @@ pub fn log_agent_response_first_token(
 ) {
     tlg::write_event!(
         AGENT_PROVIDER,
-        "AgentResponseReceived",
+        "AgentResponseFirstToken",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
         str8("SessionId", session_id),
-        str8("Phase", "FirstToken"),
         f64("FirstTokenLatencyMs", &first_token_latency_ms),
         u32("ChunkLengthBytes", &chunk_byte_len),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
@@ -143,6 +149,9 @@ pub fn log_agent_response_first_token(
 /// chunks — it is a transport-level volume metric, not a measure of the
 /// final answer length. The ETW field name (`TotalResponseBytes`) is
 /// preserved for downstream compatibility.
+///
+/// Uses a distinct event name (`AgentResponseComplete`) — see the note on
+/// `log_agent_response_first_token` for why this is split into two events.
 pub fn log_agent_response_complete(
     session_id: &str,
     total_duration_ms: f64,
@@ -152,11 +161,10 @@ pub fn log_agent_response_complete(
     let success_i32: i32 = if success { 1 } else { 0 };
     tlg::write_event!(
         AGENT_PROVIDER,
-        "AgentResponseReceived",
+        "AgentResponseComplete",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
         str8("SessionId", session_id),
-        str8("Phase", "Complete"),
         f64("TotalDurationMs", &total_duration_ms),
         u64("TotalResponseBytes", &raw_stdout_bytes_after_prompt),
         bool32("Success", &success_i32),
