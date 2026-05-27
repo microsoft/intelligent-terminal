@@ -6278,14 +6278,17 @@ impl App {
     fn turn_close_finalize_autofix(&mut self, session_id: &str, buf: &str) {
         match parse_autofix_response(buf) {
             AutofixDecision::Fix(recommendations) => {
+                crate::telemetry::error_fix_resolved("fix_suggested");
                 self.turn_surface_fix(session_id, recommendations, "autofix_fix");
                 self.turn_release_end_pending(session_id);
             }
             AutofixDecision::Explain { title, explanation } => {
+                crate::telemetry::error_fix_resolved("explained");
                 self.turn_surface_explain(session_id, title, explanation, "autofix_explain");
                 self.turn_release_end_pending(session_id);
             }
             AutofixDecision::Ignore => {
+                crate::telemetry::error_fix_resolved("ignored");
                 let target_tab = self.tab_for_session(session_id);
                 let pane_id = self.session_tab(session_id).autofix.pane_id.clone();
                 self.log_selection_phase_for(
@@ -6450,10 +6453,24 @@ impl App {
             .prompt()
             .and_then(|p| p.autofix.as_ref())
             .map(|a| a.target_pane_id.clone());
+        let is_autofix = armed_pane.is_some();
+
+        // ETW: record the action type before `choice` is moved.
+        let action_type = match choice.actions.first() {
+            Some(crate::coordinator::RecommendedAction::Send { .. }) => "send",
+            Some(crate::coordinator::RecommendedAction::OpenAndSend { .. }) => "open_and_send",
+            Some(crate::coordinator::RecommendedAction::Open { .. }) => "open",
+            None => "none",
+        };
+        crate::telemetry::agent_response_action(action_type, is_autofix);
+        if is_autofix {
+            crate::telemetry::error_fix_resolved("applied");
+        }
+
         let _ = self
             .recommendation_tx
             .send(crate::coordinator::ChoiceExecution { choice, insert_only });
-        if armed_pane.is_some() {
+        if is_autofix {
             self.emit_autofix_state_cleared(&target_tab);
         }
         self.session_tab_mut(session_id).autofix.pane_id = None;

@@ -18,7 +18,7 @@ use crate::coordinator::default_supported_delegate_agents;
 use crate::pane_context::PaneContext;
 use crate::shell::{ShellManager, TerminalConfig};
 
-const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
+const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 16000;
 
 /// Which prompt template was last shipped on a given ACP session.
 /// Used by [`TemplateMemo`] to decide whether the next turn needs to
@@ -729,7 +729,11 @@ async fn complete_prompt_request<T, E: std::fmt::Display>(
     prompt_timing: &PromptTimingState,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     session_id: String,
+    submitted_at_unix_s: f64,
 ) {
+    let success = result.is_ok();
+    let duration_ms = ((now_unix_s() - submitted_at_unix_s) * 1000.0).max(0.0) as u64;
+
     match result {
         Ok(_) => {
             let timing_note = prompt_timing.complete(&session_id, true, None);
@@ -771,6 +775,9 @@ async fn complete_prompt_request<T, E: std::fmt::Display>(
             });
         }
     }
+
+    // ETW: record that the agent's response completed.
+    crate::telemetry::agent_response_received(success, duration_ms);
 }
 
 fn humanize_model_name(model: &str) -> String {
@@ -2017,6 +2024,11 @@ pub async fn run_acp_client_over_pipe(
         load_session_supported,
     });
 
+    // Record the agent identity for ETW telemetry events.
+    if let Some(info) = init_resp.agent_info.as_ref() {
+        crate::telemetry::set_agent_id(&info.name);
+    }
+
     // Per-tab session cache. Same semantics as in `run_inner`.
     let tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::SessionId>>> =
         Arc::new(tokio::sync::Mutex::new(HashMap::new()));
@@ -2789,6 +2801,12 @@ async fn run_inner(
         load_session_supported,
     });
 
+    // Record the agent identity for ETW telemetry events.
+    // Use the registry-sanitized id (e.g. "copilot", "claude") rather than
+    // the raw command path to avoid leaking local filesystem paths.
+    let telemetry_agent_id = crate::agent_registry::lookup_profile(raw_program).id;
+    crate::telemetry::set_agent_id(telemetry_agent_id);
+
     // Per-tab session cache, shared across all in-flight prompt tasks.
     // The startup session is bound to the owner tab GUID passed in by WT
     // (via --owner-tab-id) so the first prompt on that tab reuses the
@@ -3390,6 +3408,9 @@ async fn dispatch_prompt_body(
             });
             prompt_timing_task.mark_prompt_sent(&prompt_session_id_str);
 
+            // ETW: record that a prompt was dispatched to the agent.
+            crate::telemetry::agent_prompt_sent(prompt.is_autofix);
+
             // Register a cancel oneshot for this prompt. The cancel
             // listener picks the sender out by session_id and signals it
             // when the user presses Ctrl+C.
@@ -3412,6 +3433,7 @@ async fn dispatch_prompt_body(
                         &prompt_timing_task,
                         &event_tx_task,
                         prompt_session_id_str.clone(),
+                        prompt.submitted_at_unix_s,
                     )
                     .await;
                     false
@@ -3514,6 +3536,7 @@ mod tests {
             &prompt_timing,
             &event_tx,
             "test-session".to_string(),
+            now_unix_s(),
         )
         .await;
 
@@ -3537,6 +3560,7 @@ mod tests {
             &prompt_timing,
             &event_tx,
             "test-session".to_string(),
+            now_unix_s(),
         )
         .await;
 

@@ -20,6 +20,7 @@ mod runtime_paths;
 mod rtl;
 mod pane_context;
 mod shell;
+mod telemetry;
 #[cfg(test)]
 mod test_support;
 mod theme;
@@ -1303,6 +1304,7 @@ async fn delegate_with_context(
 
 async fn run_default_tui(cli: Cli) -> Result<()> {
     let _guard = logging::init("main");
+    telemetry::init();
     tracing::info!("=== run_default_tui started ===");
 
     // Debug channel for TUI debug panel (WT protocol traffic viewer)
@@ -1346,6 +1348,7 @@ async fn run_default_tui(cli: Cli) -> Result<()> {
 /// supplied named pipe and forwards ACP traffic over it.
 pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Result<()> {
     let _guard = logging::init("main_helper");
+    telemetry::init();
     tracing::info!(target: "helper", pipe = %pipe_name, "=== wta-helper starting (TUI) ===");
 
     // Debug channel — same wiring as run_default_tui.

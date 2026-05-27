@@ -1696,6 +1696,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2275,6 +2281,7 @@ dependencies = [
  "atomic",
  "getrandom 0.4.2",
  "js-sys",
+ "sha1_smol",
  "wasm-bindgen",
 ]
 
@@ -2497,6 +2504,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "widestring"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
+
+[[package]]
+name = "win_etw_macros"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ceb3b134affad802f6509077e40a4fc4982981a4687ce020d0b03779b589642"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "sha1_smol",
+ "syn 2.0.117",
+ "uuid",
+ "win_etw_metadata",
+]
+
+[[package]]
+name = "win_etw_metadata"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5113ede807966842887ba64b2bba9e1079e19efaea612b6e83449af29b4b194"
+dependencies = [
+ "bitflags 2.11.0",
+]
+
+[[package]]
+name = "win_etw_provider"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d57b25caee8f665da0fb8c9b47b3b0d34752c90436ea9c6c97030e3bf80ca527"
+dependencies = [
+ "widestring",
+ "win_etw_metadata",
+ "windows-sys",
+ "zerocopy",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2668,7 +2716,29 @@ dependencies = [
  "tracing-subscriber",
  "unicode-width",
  "which",
+ "win_etw_macros",
+ "win_etw_provider",
  "windows-sys",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.8.49"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bce33a6288fa3f072a8c2c7d0f2fdbb90e28298f0135c1f99b96c3db2efcc60b"
+dependencies = [
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.49"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fd425244944f4ab65ccff928e7323354c5a018c75838362fdce749dfad2ee1e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
