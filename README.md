@@ -11,7 +11,7 @@
 
 - [What is Intelligent Terminal?](#what-is-intelligent-terminal)
 - [Installing and running Intelligent Terminal](#installing-and-running-intelligent-terminal)
-  - [Microsoft Store](#microsoft-store)
+  - [Microsoft Store](#microsoft-store-recommended)
   - [WinGet](#winget)
   - [Downloads](#downloads)
 - [Get Started](#get-started)
@@ -40,7 +40,7 @@
 
 Intelligent Terminal is an experimental fork of [Windows Terminal](https://github.com/microsoft/terminal) with native agent integration.
 
-[GitHub Copilot](https://github.com/features/copilot/cli/) is the default agent CLI, but it works with any [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLI. All you need is to install your preferred agent CLI on your PC, and Intelligent Terminal should detect it.
+[GitHub Copilot](https://github.com/features/copilot/cli/) is the default agent CLI, but it works with any [Agent Client Protocol (ACP)-compatible](https://agentclientprotocol.com/get-started/agents) agent CLI. All you need is to install your preferred agent CLI on your PC, and Intelligent Terminal should detect it.
 
 Everything else about Intelligent Terminal is the same as [Windows Terminal](https://aka.ms/terminal-docs): tabs, profiles, themes, settings, shells, and keyboard shortcuts all work the way you expect.
 
@@ -53,13 +53,11 @@ Everything else about Intelligent Terminal is the same as [Windows Terminal](htt
 
 You also need a supported agent CLI and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
 
-### Microsoft Store
+### Microsoft Store (recommended)
 
 Install the [Intelligent Terminal from the Microsoft Store](TODO: insert store link).
 This allows you to always be on the latest version when we release new builds
 with automatic upgrades.
-
-This is our preferred method.
 
 ### WinGet
 
@@ -81,10 +79,17 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 ## Get Started
 
-1. Install Intelligent Terminal using one of the methods above.
-2. Open Intelligent Terminal. On first run, you'll be asked to select your agent. [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs already on your machine (GitHub Copilot, Codex, Gemini, and others) are detected automatically. If no agent CLIs are detected, Intelligent Terminal will default to GitHub Copilot CLI and install it for you.
-3. If you aren't already signed in, the agent pane will prompt you to authenticate.
-4. Start asking questions. The agent has context on your shell output so there's no copy-pasting needed.
+### Install
+Grab Intelligent Terminal from the [Microsoft Store](#microsoft-store-recommended), [WinGet](#winget), or [Downloads](#downloads).
+
+### Pick your agent
+On first launch, you'll choose your agent. Intelligent Terminal auto-detects [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs already on your machine (GitHub Copilot, Codex, Gemini, and others). If none are found, it defaults to GitHub Copilot CLI and installs it for you.
+
+### Sign in
+If you aren't already authenticated, the agent pane walks you through it.
+
+### Go
+Start asking questions. The agent has context on your shell output, no copy-pasting needed.
 
 ---
 
@@ -118,7 +123,7 @@ You'll see all your active agents and their current status, plus past sessions y
 
 When a command fails, Terminal picks it up. An indicator appears in the agent status bar: "Error detected." That opens the agent pane with the error context already loaded. The agent explains what happened and can suggest or auto-run the best fix.
 
-Intelligent Terminal has a permission model you control: "always ask" (default), "ask once per agent," or "always allow for trusted agents." Same suggest-and-confirm approach as VS Code GitHub Copilot.
+Intelligent Terminal has a permission model you control: "always ask" (default), "ask once per agent," or "always allow for trusted agents." It's the same suggest-and-confirm approach as VS Code GitHub Copilot.
 
 ### Command Palette
 
@@ -205,11 +210,11 @@ Building Intelligent Terminal is the same as building Windows Terminal. See the 
 
 ### Why a separate app?
 
-Intelligent Terminal ships as a separate app and installs next to your existing Windows Terminal. If you don't want agents in your terminal, nothing changes for you. With this model, we can move fast on new features without risking stability for the millions of developers who depend on mainline Terminal every day.
+Intelligent Terminal ships as a separate app and installs next to your existing Windows Terminal. If you don't want agents in your terminal, nothing changes for you. With this model, we can learn, experiment, and iterate with you, the community, on what this evolution might look like without breaking your existing Windows Terminal flows.
 
 ### Terminal Chat deprecation
 
-Intelligent Terminal is a full rethink of how agents fit into a terminal workflow, focused around the way developers actually use agents today. It's the evolution of the learnings from Terminal Chat, built into an experience that understands what's happening in the shell, catches errors to fix them, and works with you across longer tasks. With this release, Terminal Chat in Windows Terminal Canary is deprecated. If you're currently using Terminal Chat, we recommend switching to Intelligent Terminal.
+Intelligent Terminal is built from your feedback. We are focused on delivering agents based on the way developers actually use agents today. With this release, we are deprecating Terminal Chat in Canary. If you're currently using Terminal Chat, we recommend switching to Intelligent Terminal.
 
 ---
 
@@ -229,7 +234,7 @@ We are excited to work alongside you, our amazing community, to build and enhanc
 
 ## Code of Conduct
 
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information, see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
 ---
 
