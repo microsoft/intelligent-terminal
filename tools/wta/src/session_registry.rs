@@ -981,6 +981,19 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
         SessionEvent::ToolStarting { key, tool_name } => {
             let sid = acp::SessionId::new(key);
             let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
+            // Refuse to resurrect terminal-state rows. If a prior
+            // SessionStarted at the same pane ended this row (master's
+            // active_by_pane handoff), a straggling ToolStarting hook
+            // would re-promote status to Working while pane_session_id
+            // stays None — the row would appear as "Working with no
+            // pane" in F2, fail decide_enter_action's LiveWithoutPane
+            // guard, and visually duplicate the synthetic pane:<guid>
+            // row that took over the binding. Reject the resurrection
+            // so the demotion stays sticky and F2 shows a single Live
+            // row at the pane.
+            if matches!(entry.status, Some(AgentStatus::Ended | AgentStatus::Historical)) {
+                return false;
+            }
             entry.status = Some(AgentStatus::Working);
             entry.current_tool = Some(tool_name);
             entry.last_activity_at_ms = Some(now);
@@ -989,6 +1002,13 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
         SessionEvent::ToolCompleted { key } => {
             let sid = acp::SessionId::new(key);
             let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
+            // Same resurrection guard as ToolStarting — a stale
+            // ToolCompleted on an Ended row would either be a no-op or
+            // (worse) drop current_tool that some other resurrected
+            // state depended on. Treat it as a no-op for terminal rows.
+            if matches!(entry.status, Some(AgentStatus::Ended | AgentStatus::Historical)) {
+                return false;
+            }
             if matches!(entry.status, Some(AgentStatus::Working | AgentStatus::Attention)) {
                 entry.status = Some(AgentStatus::Idle);
                 entry.attention_reason = None;
@@ -1000,6 +1020,13 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
         SessionEvent::Notification { key, message } => {
             let sid = acp::SessionId::new(key);
             let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
+            // Same resurrection guard — a stale Notification on an
+            // Ended row would flip it to Attention and surface a
+            // spurious "agent needs input" prompt for a session that
+            // has already been ended.
+            if matches!(entry.status, Some(AgentStatus::Ended | AgentStatus::Historical)) {
+                return false;
+            }
             entry.status = Some(AgentStatus::Attention);
             entry.attention_reason = Some(message);
             entry.last_activity_at_ms = Some(now);
@@ -1712,6 +1739,135 @@ mod tests {
             parse_ext_notification(&ext),
             WtaExtNotification::SessionsChanged
         );
+    }
+
+    // ─── activity-event resurrection guards ─────────────────────────
+
+    #[tokio::test]
+    async fn tool_starting_does_not_resurrect_ended_row() {
+        // Regression: a straggling ToolStarting hook arriving after a
+        // SessionStarted-at-same-pane handoff ended the row used to
+        // re-promote status to Working while leaving pane_session_id
+        // None, producing the "Working with no pane" zombie the user
+        // sees as a duplicate row in F2.
+        use crate::agent_sessions::{AgentStatus, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        let mut info = SessionInfo::new(acp::SessionId::new("ended-sid"), PathBuf::from("/repo"));
+        info.status = Some(AgentStatus::Ended);
+        reg.upsert(info).await;
+        let applied = reg
+            .apply_event(SessionEvent::ToolStarting {
+                key: "ended-sid".to_string(),
+                tool_name: "edit".to_string(),
+            })
+            .await;
+        assert!(!applied, "ToolStarting on Ended row must be a no-op");
+        let row = reg.lookup(&acp::SessionId::new("ended-sid")).await.unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Ended), "status must stay Ended");
+        assert_eq!(row.current_tool, None, "current_tool must not be set on a zombie");
+    }
+
+    #[tokio::test]
+    async fn tool_starting_still_promotes_live_idle_row_to_working() {
+        // Defense-against-overcorrection: the guard above must not
+        // accidentally block legitimate Idle -> Working transitions.
+        use crate::agent_sessions::{AgentStatus, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        let mut info = SessionInfo::new(acp::SessionId::new("idle-sid"), PathBuf::from("/repo"));
+        info.status = Some(AgentStatus::Idle);
+        reg.upsert(info).await;
+        let applied = reg
+            .apply_event(SessionEvent::ToolStarting {
+                key: "idle-sid".to_string(),
+                tool_name: "edit".to_string(),
+            })
+            .await;
+        assert!(applied);
+        let row = reg.lookup(&acp::SessionId::new("idle-sid")).await.unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Working));
+        assert_eq!(row.current_tool.as_deref(), Some("edit"));
+    }
+
+    #[tokio::test]
+    async fn notification_does_not_resurrect_ended_row() {
+        use crate::agent_sessions::{AgentStatus, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        let mut info = SessionInfo::new(acp::SessionId::new("ended-sid"), PathBuf::from("/repo"));
+        info.status = Some(AgentStatus::Ended);
+        reg.upsert(info).await;
+        let applied = reg
+            .apply_event(SessionEvent::Notification {
+                key: "ended-sid".to_string(),
+                message: "needs input".to_string(),
+            })
+            .await;
+        assert!(!applied);
+        let row = reg.lookup(&acp::SessionId::new("ended-sid")).await.unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Ended));
+        assert_eq!(row.attention_reason, None);
+    }
+
+    #[tokio::test]
+    async fn tool_completed_does_not_resurrect_ended_row() {
+        use crate::agent_sessions::{AgentStatus, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        let mut info = SessionInfo::new(acp::SessionId::new("ended-sid"), PathBuf::from("/repo"));
+        info.status = Some(AgentStatus::Ended);
+        info.current_tool = Some("edit".to_string()); // pretend it had a tool when ended
+        reg.upsert(info).await;
+        let applied = reg
+            .apply_event(SessionEvent::ToolCompleted {
+                key: "ended-sid".to_string(),
+            })
+            .await;
+        assert!(!applied);
+        let row = reg.lookup(&acp::SessionId::new("ended-sid")).await.unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Ended));
+    }
+
+    #[tokio::test]
+    async fn session_started_at_same_pane_ends_prev_and_tool_event_cannot_resurrect_it() {
+        // End-to-end repro of the user-visible scenario: real session
+        // A runs at pane X, synthetic SessionStarted (or new session)
+        // arrives at pane X, then a straggling ToolStarting for A
+        // tries to re-promote it. The combined behavior across both
+        // reducers must leave A in a stable Ended state with no pane.
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        // Seed A as Live at pane X.
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "sid-a".to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "pane-x".to_string(),
+            cwd: PathBuf::from("/repo"),
+            title: String::new(),
+        })
+        .await;
+        // Another SessionStarted arrives at pane X (e.g., synthetic
+        // pane:<guid> placeholder created from a tool event without
+        // agent_session_id). This handoff must end A.
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "sid-b".to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "pane-x".to_string(),
+            cwd: PathBuf::from("/repo"),
+            title: String::new(),
+        })
+        .await;
+        let a_after_handoff = reg.lookup(&acp::SessionId::new("sid-a")).await.unwrap();
+        assert_eq!(a_after_handoff.status, Some(AgentStatus::Ended));
+        assert_eq!(a_after_handoff.pane_session_id, None);
+        // A straggling ToolStarting for A must not resurrect it.
+        reg.apply_event(SessionEvent::ToolStarting {
+            key: "sid-a".to_string(),
+            tool_name: "edit".to_string(),
+        })
+        .await;
+        let a_final = reg.lookup(&acp::SessionId::new("sid-a")).await.unwrap();
+        assert_eq!(a_final.status, Some(AgentStatus::Ended),
+            "ToolStarting after pane handoff must not flip Ended -> Working (zombie)");
+        assert_eq!(a_final.pane_session_id, None,
+            "pane binding must stay None after handoff");
     }
 
     #[test]
