@@ -1199,6 +1199,11 @@ pub struct App {
     pub show_notification_banner: bool,
     // Auto-fix: the pane ID where the error occurred (used to auto-fill Send parent)
     pub autofix_pane_id: Option<String>,
+    // Wall-clock instant at which the current `autofix_pane_id` was armed.
+    // Used to compute `TimeSinceFixMs` when the fix resolves (next command in
+    // the same pane exits zero). Overwritten on every new arming; the resolve
+    // path is gated by `autofix_pane_id`, so a stale value here is unreachable.
+    pub autofix_armed_at: Option<std::time::Instant>,
     // Auto-fix Suggested state: pane ID with a non-actionable suggestion shown on
     // the bottom bar. Cleared when the user runs a successful command in the
     // same pane (signal that they've moved on) or when a new autofix triggers.
@@ -1383,6 +1388,7 @@ impl App {
             wt_notifications: VecDeque::new(),
             show_notification_banner: false,
             autofix_pane_id: None,
+            autofix_armed_at: None,
             suggested_pane_id: None,
             autofix_enabled,
             autofix_generation: 0,
@@ -3409,11 +3415,16 @@ impl App {
                             if is_exit_zero && self.autofix_pane_id.as_deref() == Some(pane_id.as_str()) {
                                 // Telemetry: a fix was armed for this pane and the next
                                 // command exited cleanly — the user's problem resolved.
-                                // TimeSinceFixMs is a placeholder (0.0) until we track
-                                // an `autofix_armed_at: Instant` on App state.
+                                // Elapsed is wall-clock from arm to clean exit; if the
+                                // arming Instant is missing (defensive), report 0.0.
+                                let elapsed_ms = self
+                                    .autofix_armed_at
+                                    .take()
+                                    .map(|t| t.elapsed().as_secs_f64() * 1000.0)
+                                    .unwrap_or(0.0);
                                 crate::telemetry::log_error_fix_resolved(
                                     pane_id.as_str(),
-                                    0.0,
+                                    elapsed_ms,
                                 );
 
                                 // `turn_cancel` owns the full cleanup: bumps
@@ -4715,6 +4726,7 @@ impl App {
         // Store the failing pane ID so the Esc dismiss path can find it
         // (legacy; the new state machine carries it via AutofixContext).
         self.autofix_pane_id = Some(notification.pane_id.clone());
+        self.autofix_armed_at = Some(std::time::Instant::now());
 
         let prompt = PromptSubmission::new_autofix(prompt_text, Some(pane_context));
         let submitted = SubmittedPrompt {
