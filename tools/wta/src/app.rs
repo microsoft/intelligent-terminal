@@ -3504,6 +3504,20 @@ impl App {
                     return;
                 }
 
+                if method == "agent_prompt" {
+                    // Command palette `?<prompt>` delegation. Not a WT
+                    // notification — has nothing to do with banner/queue.
+                    let prompt = params
+                        .get("prompt")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    tracing::info!(target: "autofix", prompt_len = prompt.len(), "agent_prompt: delegating");
+                    if !prompt.is_empty() {
+                        self.delegate_to_tab_agent(prompt);
+                    }
+                    return;
+                }
+
                 if method == "autofix_enabled_changed" {
                     // C++ pushes this when the user toggles "Auto-suggest
                     // fixes" in settings while WTA is already running.
@@ -3976,54 +3990,43 @@ impl App {
                     classify_wt_event(&method, &pane_id, tab_id.as_deref(), &params);
                 tracing::debug!(target: "autofix", severity = ?notification.severity, summary = %notification.summary, tab_id = ?notification.tab_id, "classified");
 
-                // Always log to chat for critical/actionable events
-                match notification.severity {
-                    WtEventSeverity::Critical => {
-                        self.current_tab_mut().messages
-                            .push(ChatMessage::Error(notification.summary.clone()));
-                        self.show_notification_banner = true;
-                        self.scroll_to_bottom();
+                // Per-tab filter. WT broadcasts pane-scoped events to every
+                // helper in the window, but another tab's failures are not
+                // this helper's concern. Drop notifications whose tab_id
+                // doesn't match our owner_tab_id; empty/missing tab_id falls
+                // through (no per-tab scope).
+                if let (Some(event_tab), Some(self_tab)) = (
+                    notification.tab_id.as_deref(),
+                    self.owner_tab_id.as_deref(),
+                ) {
+                    if !event_tab.is_empty()
+                        && !self_tab.is_empty()
+                        && event_tab != self_tab
+                    {
+                        tracing::debug!(
+                            target: "autofix",
+                            event_tab,
+                            self_tab,
+                            method = %method,
+                            "dropping cross-tab WT event"
+                        );
+                        return;
                     }
-                    WtEventSeverity::Actionable => {
-                        if method == "agent_prompt" {
-                            // Command palette prompt: delegate directly to a new tab agent.
-                            let prompt = params
-                                .get("prompt")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            tracing::info!(target: "autofix", prompt_len = prompt.len(), "agent_prompt: delegating");
-                            if !prompt.is_empty() {
-                                self.delegate_to_tab_agent(&prompt);
-                            }
-                            return;
-                        }
+                }
 
+                // Surface rule: WT events (connection_state, vt_sequence)
+                // surface via the bottom bar / `wt_notifications` queue ONLY.
+                // Chat is the agent dialogue surface — only user input and
+                // agent responses go there.
+                match notification.severity {
+                    WtEventSeverity::Critical | WtEventSeverity::Actionable => {
                         self.show_notification_banner = true;
-                        // Only OSC-133;D vt_sequence events carry enough info
-                        // to drive autofix (a per-command exit code from a
-                        // shell-integrated pane whose shell is still alive
-                        // so we can read its buffer). `connection_state:
-                        // closed` is just process termination — no exit
-                        // code, no command context, fires for both exit 0
-                        // and exit 1, and the pane is *gone* so any
-                        // downstream `wt_read_last_prompt(<dead_guid>)`
-                        // throws E_FAIL on the C++ side. Surface those as a
-                        // System message instead.
-                        let is_autofix_candidate = method == "vt_sequence";
-                        if is_autofix_candidate {
-                            // Always run the autofix trigger — when
-                            // auto-suggest is on we Pending+submit; when
-                            // off we just surface the Detected pill so
-                            // the user can opt in. Either way the
-                            // function pushes its own chat message.
+                        // Only OSC-133;D vt_sequence events have the exit
+                        // code + live shell buffer needed to drive autofix.
+                        // `connection_state: closed`/`failed` is just process
+                        // termination — banner-only.
+                        if method == "vt_sequence" {
                             self.maybe_trigger_autofix(&notification);
-                        } else {
-                            // Not an autofix candidate (e.g. connection_state:closed):
-                            // surface the event in chat so the user still sees it.
-                            self.current_tab_mut().messages
-                                .push(ChatMessage::System(notification.summary.clone()));
-                            self.scroll_to_bottom();
                         }
                     }
                     WtEventSeverity::Informational => {
@@ -7725,7 +7728,10 @@ mod tests {
     // ─── App notification state ─────────────────────────────────────────────
 
     #[test]
-    fn wt_event_critical_shows_banner_and_error_message() {
+    fn wt_event_critical_raises_banner_only_no_chat() {
+        // WT events route through the bottom bar / `wt_notifications` queue,
+        // never the agent's chat history. The chat is for agent dialogue;
+        // process-lifecycle noise belongs in the bar.
         let mut app = test_app();
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
@@ -7736,12 +7742,14 @@ mod tests {
         assert!(app.show_notification_banner);
         assert_eq!(app.wt_notifications.len(), 1);
         assert_eq!(app.wt_notifications[0].severity, WtEventSeverity::Critical);
-        // Should have an Error message in chat
-        assert!(app.current_tab().messages.iter().any(|m| matches!(m, ChatMessage::Error(_))));
+        assert!(
+            app.current_tab().messages.is_empty(),
+            "WT events must not pollute chat history with Error messages"
+        );
     }
 
     #[test]
-    fn wt_event_actionable_shows_banner_and_system_message() {
+    fn wt_event_actionable_raises_banner_only_no_chat() {
         let mut app = test_app();
         app.handle_event(AppEvent::WtEvent {
             method: "connection_state".to_string(),
@@ -7750,7 +7758,10 @@ mod tests {
             params: json!({"session_id": "5", "state": "closed"}),
         });
         assert!(app.show_notification_banner);
-        assert!(app.current_tab().messages.iter().any(|m| matches!(m, ChatMessage::System(_))));
+        assert!(
+            app.current_tab().messages.is_empty(),
+            "WT events must not pollute chat history with System messages"
+        );
     }
 
     #[test]
@@ -7781,6 +7792,45 @@ mod tests {
         assert!(!app.show_notification_banner);
         assert!(app.wt_notifications.is_empty());
         assert!(app.current_tab().messages.is_empty());
+    }
+
+    #[test]
+    fn wt_event_critical_from_other_tab_does_not_surface_in_owner_tab() {
+        // Regression for the cross-tab "Pane …: connection failed" leak:
+        // helper A owns tab A; tab B's Copilot pane fails; WT broadcasts
+        // the `connection_state:failed` event to every helper. Helper A
+        // must drop it instead of writing a red Error into tab A's chat.
+        let mut app = test_app();
+        app.owner_tab_id = Some("{tab-A}".to_string());
+        app.handle_event(AppEvent::WtEvent {
+            method: "connection_state".to_string(),
+            pane_id: "B-PANE".to_string(),
+            tab_id: Some("{tab-B}".to_string()),
+            params: json!({"pane_id": "B-PANE", "state": "failed", "tab_id": "{tab-B}"}),
+        });
+        assert!(!app.show_notification_banner);
+        assert!(app.wt_notifications.is_empty());
+        assert!(app.current_tab().messages.is_empty());
+    }
+
+    #[test]
+    fn wt_event_critical_from_owner_tab_raises_banner_not_chat() {
+        // Same-tab event raises the banner but still does NOT push into chat
+        // — the bar is the user-visible surface for connection failures.
+        let mut app = test_app();
+        app.owner_tab_id = Some("{tab-A}".to_string());
+        app.handle_event(AppEvent::WtEvent {
+            method: "connection_state".to_string(),
+            pane_id: "A-PANE".to_string(),
+            tab_id: Some("{tab-A}".to_string()),
+            params: json!({"pane_id": "A-PANE", "state": "failed", "tab_id": "{tab-A}"}),
+        });
+        assert!(app.show_notification_banner);
+        assert_eq!(app.wt_notifications.len(), 1);
+        assert!(
+            app.current_tab().messages.is_empty(),
+            "WT events must not pollute chat history"
+        );
     }
 
     #[test]
@@ -7941,8 +7991,9 @@ mod tests {
         assert_eq!(app.unacknowledged_count(), 2);
         // Banner should show (due to critical + actionable)
         assert!(app.show_notification_banner);
-        // Chat should have 2 messages (critical error + actionable system msg)
-        assert_eq!(app.current_tab().messages.len(), 2);
+        // Chat must stay empty — WT events surface in the bar/banner, never
+        // in agent dialogue.
+        assert!(app.current_tab().messages.is_empty());
     }
 
     // ─── F2 Agents view: Enter / Delete dispatch ───────────────────────────
@@ -8768,14 +8819,13 @@ mod tests {
             app.current_tab().turn.is_idle(),
             "no autofix prompt should be in-flight"
         );
-        // The user still gets a system message about the pane closing.
+        // The pane-closed event surfaces via the banner / `wt_notifications`,
+        // never in chat. Chat is the agent dialogue surface.
         assert!(
-            app.current_tab()
-                .messages
-                .iter()
-                .any(|m| matches!(m, ChatMessage::System(_))),
-            "the user still gets a system message about the pane closing"
+            app.current_tab().messages.is_empty(),
+            "WT events must not push into chat history"
         );
+        assert!(app.show_notification_banner);
     }
 
     /// Defense-in-depth: a vt_sequence (osc:133;D non-zero) inside an agent
