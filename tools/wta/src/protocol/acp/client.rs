@@ -1759,13 +1759,12 @@ impl acp::Client for WtaClient {
                 let _ = self.state.event_tx.send(AppEvent::AliveSessionRemoved(sid));
             }
             WtaExtNotification::SessionsChanged => {
-                let _ = self.state.event_tx.send(AppEvent::SessionsChanged);
-            }
-            WtaExtNotification::SessionsChanged => {
-                tracing::trace!(
+                tracing::info!(
                     target: "acp_client",
-                    "ignoring sessions/changed until helper viewer consumes it"
+                    "received intellterm.wta/sessions/changed broadcast from master; \
+                     scheduling refetch for any open F2 view"
                 );
+                let _ = self.state.event_tx.send(AppEvent::SessionsChanged);
             }
             WtaExtNotification::Unknown => {
                 tracing::trace!(
@@ -2168,6 +2167,20 @@ pub async fn run_acp_client_over_pipe(
 
     let conn = Arc::new(conn);
 
+    // DEBUG: periodic 3s tick that fans out an AppEvent::SessionsChanged
+    // to force a refetch in any open F2 view. Belt-and-suspenders against
+    // missed `intellterm.wta/sessions/changed` broadcasts (whose receipt
+    // is now also info-logged in WtaClient::ext_notification).
+    //
+    // Independent of the push channel — fires regardless of whether
+    // master actually broadcasts. If F2 shows stale data we know it's a
+    // RENDERING bug, not a push-delivery bug. Cheap: refetch only fires
+    // for tabs whose snapshot.is_some() (i.e. F2 is currently open).
+    let mut periodic_refetch = tokio::time::interval(std::time::Duration::from_secs(3));
+    periodic_refetch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // Burn the first tick (fires immediately on creation).
+    periodic_refetch.tick().await;
+
     // Main event loop. Mirrors `run_inner`'s select arms, minus the
     // restart-loop wrapper (helper mode can't restart — master owns
     // the agent CLI). A `/restart` signal is logged and reported back
@@ -2176,6 +2189,13 @@ pub async fn run_acp_client_over_pipe(
     loop {
         tokio::select! {
             biased;
+            _ = periodic_refetch.tick() => {
+                tracing::debug!(
+                    target: "acp_client",
+                    "periodic 3s refetch tick → AppEvent::SessionsChanged"
+                );
+                let _ = event_tx.send(AppEvent::SessionsChanged);
+            }
             Some(event) = session_hook_rx.recv() => {
                 let conn_for_hook = Arc::clone(&conn);
                 tokio::task::spawn_local(async move {

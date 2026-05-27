@@ -2662,10 +2662,20 @@ impl App {
         let request = {
             let tab = self.tab_mut(tab_id);
             if tab.agents_view.snapshot.is_none() {
+                tracing::trace!(
+                    target: "agents_view",
+                    tab_id,
+                    "schedule_agents_refetch_for_tab: skipping — F2 not open (snapshot=None)"
+                );
                 return;
             }
             if tab.agents_view.refetch_in_flight {
                 tab.agents_view.dirty = true;
+                tracing::trace!(
+                    target: "agents_view",
+                    tab_id,
+                    "schedule_agents_refetch_for_tab: coalescing — request in flight, marked dirty"
+                );
                 return;
             }
             tab.agents_view.refetch_in_flight = true;
@@ -2673,6 +2683,12 @@ impl App {
             tab.agents_view.next_request_id = tab.agents_view.next_request_id.wrapping_add(1);
             let request_id = tab.agents_view.next_request_id;
             tab.agents_view.latest_request_id = Some(request_id);
+            tracing::info!(
+                target: "agents_view",
+                tab_id,
+                request_id,
+                "schedule_agents_refetch_for_tab: dispatching SessionsList RPC"
+            );
             crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id }
         };
         let _ = self.master_request_tx.send(request);
@@ -2684,6 +2700,11 @@ impl App {
             .iter()
             .filter_map(|(id, tab)| tab.agents_view.snapshot.as_ref().map(|_| id.clone()))
             .collect();
+        tracing::debug!(
+            target: "agents_view",
+            open_view_tab_count = tabs.len(),
+            "schedule_agents_refetch_for_open_views: triggering refetch"
+        );
         for tab_id in tabs {
             self.schedule_agents_refetch_for_tab(&tab_id);
         }
