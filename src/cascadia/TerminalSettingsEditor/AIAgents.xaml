@@ -48,7 +48,7 @@
             <!--  ═══ Agent pane group ═══
                   First sub-header on the page: override the style's 32px
                   top margin to 0 so the page subtitle's bottom margin is
-                  the only gap above the header. Otherwise the page
+                  the only gap above the header. Otherwise, the page
                   subtitle + sub-header margins stack to ~48px and look
                   visibly larger than every other settings page (which
                   doesn't render a page subtitle).  -->
