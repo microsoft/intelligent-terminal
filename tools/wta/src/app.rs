@@ -1108,6 +1108,14 @@ pub struct TabSession {
     pub selected_button: usize,
     pub rec_scroll: Scroll,
 
+    /// Last value the helper published for this tab in a
+    /// `set_agent_chip_target` event. `Some(pane_id)` means we last asked
+    /// C++ to pin the blue "Agent" chip onto that pane; `None` means we
+    /// last asked C++ to fall back to the source-of-agent flag. Used as a
+    /// dedupe key so we only fire an event when the effective chip target
+    /// actually changes.
+    pub last_emitted_chip_override: Option<String>,
+
 
     // Input editor state — per-tab so each tab keeps its own draft text,
     // cursor, and slash-command popup across switches.
@@ -1163,6 +1171,45 @@ impl TabSession {
         self.selected_recommendation = 0;
         self.selected_button = 0;
         self.rec_scroll.reset();
+    }
+
+    /// The pane the "Agent" chip should be pinned to while this tab has a
+    /// recommendation card with a `Send` action selected, or `None` when the
+    /// tab is not in that state. Returning `None` lets the C++ side fall
+    /// back to its default behavior (chip follows the source-of-agent flag).
+    ///
+    /// Resolution order for the pane id:
+    ///   1. `Send.parent` on the selected choice when non-empty.
+    ///   2. Autofix `target_pane_id` on the current prompt (for autofix
+    ///      turns where the recommendation's `Send.parent` is left blank
+    ///      and only gets filled at execute time — see `turn_execute_card`).
+    pub fn compute_chip_card_target(&self) -> Option<String> {
+        let recs = self.turn.recommendations()?;
+        let choice = recs.choices.get(self.selected_recommendation)?;
+        let send_parent = choice.actions.iter().find_map(|a| match a {
+            crate::coordinator::RecommendedAction::Send { parent, .. } if !parent.is_empty() => {
+                Some(parent.clone())
+            }
+            _ => None,
+        });
+        if send_parent.is_some() {
+            return send_parent;
+        }
+        // Autofix fallback: the autofix prompt's `target_pane_id` is what
+        // `turn_execute_card` will fill `Send.parent` with at execute time,
+        // so the chip should already point there now.
+        if choice
+            .actions
+            .iter()
+            .any(|a| matches!(a, crate::coordinator::RecommendedAction::Send { .. }))
+        {
+            return self
+                .turn
+                .prompt()
+                .and_then(|p| p.autofix.as_ref())
+                .map(|a| a.target_pane_id.clone());
+        }
+        None
     }
 
     pub fn clear_chat_history(&mut self) {
@@ -4557,6 +4604,10 @@ impl App {
                     self.current_tab_mut().selected_recommendation -= 1;
                     self.current_tab_mut().selected_button = self.default_button_for_selected();
                     self.scroll_rec_to_selected(self.main_area_width());
+                    // Selection moved — the new card may target a different
+                    // pane (or have no Send action), so re-pin the chip.
+                    let tab_id = self.active_tab_key().to_string();
+                    self.recompute_chip_override(&tab_id);
                 }
             }
             KeyCode::Down if self.current_tab().input.is_empty() && self.current_tab().turn.recommendations().is_some() => {
@@ -4571,6 +4622,8 @@ impl App {
                     self.current_tab_mut().selected_recommendation += 1;
                     self.current_tab_mut().selected_button = default_btn;
                     self.scroll_rec_to_selected(self.main_area_width());
+                    let tab_id = self.active_tab_key().to_string();
+                    self.recompute_chip_override(&tab_id);
                 }
             }
             // Wheel-as-arrow scroll fallback: when the input is empty and no
@@ -5266,6 +5319,16 @@ impl App {
         // and the agent bar shows "Agent sessions" while the TUI below
         // actually renders chat (or vice versa).
         self.project_active_tab_state();
+
+        // Push the new active tab's chip-target (or release it) so the C++
+        // side stops drawing the previous tab's override. Helpers are
+        // per-tab and the owner-lock guard above means we only reach here
+        // for our own owner tab, so this is just a re-publish — not a
+        // cross-tab decision.
+        let to_recompute = self.tab_id.clone();
+        if let Some(t) = to_recompute {
+            self.recompute_chip_override(&t);
+        }
     }
 
     /// Drop the per-tab state for a tab that WT has just destroyed. Removes
@@ -5895,6 +5958,10 @@ impl App {
         }
         self.push_execution_info(format!("Auto-executing choice {}.", choice_label));
         self.emit_autofix_state_cleared(&active_tab);
+        // Defensive: covers the fall-back path above where we dispatched the
+        // choice directly without going through `turn_execute_card`. The
+        // matched-path case already recomputes via that callee.
+        self.recompute_chip_override(&active_tab);
     }
 
     fn emit_autofix_state_cleared(&mut self, target_tab_id: &str) {
@@ -5954,6 +6021,36 @@ impl App {
         if target_tab_id == self.active_tab_key() {
             send_bar_event(&snapshot, Some(target_tab_id));
         }
+    }
+
+    /// Recompute the chip-target override for the tab and, if it changed
+    /// since the last emit, publish a `set_agent_chip_target` event so the
+    /// C++ side pins the "Agent" chip on the right pane (or releases it,
+    /// returning to source-of-agent driven rendering). Hooked at every
+    /// state-mutation point that could affect the result: surfacing a
+    /// recommendation, navigating between cards, executing/cancelling a
+    /// card, switching the active tab.
+    fn recompute_chip_override(&mut self, tab_id: &str) {
+        let new_target = self.tab_mut(tab_id).compute_chip_card_target();
+        let tab = self.tab_mut(tab_id);
+        if tab.last_emitted_chip_override == new_target {
+            return;
+        }
+        tab.last_emitted_chip_override = new_target.clone();
+        emit_agent_chip_target(tab_id, new_target.as_deref());
+    }
+
+    /// Publish the chip-target state for this tab unconditionally, even
+    /// when it matches the last value we emitted. Used at helper startup
+    /// (right after `tab_id` is seeded from `--owner-tab-id`) so the C++
+    /// side runs `_UpdateAgentChipVisibility` against the now-current
+    /// pane tree. Without this kick, the first-launch race where the
+    /// chip-visibility hook runs *before* `IsSourceOfAgentPane` is set
+    /// leaves the chip hidden until the user induces another transition.
+    pub fn recompute_chip_override_initial(&mut self, tab_id: &str) {
+        let new_target = self.tab_mut(tab_id).compute_chip_card_target();
+        self.tab_mut(tab_id).last_emitted_chip_override = new_target.clone();
+        emit_agent_chip_target(tab_id, new_target.as_deref());
     }
 
     fn armed_fix_preview(rec: &crate::coordinator::RecommendationSet) -> String {
@@ -6084,6 +6181,16 @@ impl App {
         tab.activity_frame = 0;
         tab.timing_note = None;
         tab.turn = TurnState::Submitted(prompt);
+
+        // Submitting a new prompt dismisses any prior leftover card (the
+        // `selected_recommendation = 0` + turn reset above). If the helper
+        // had pinned the chip onto that card's pane, release it now so the
+        // chip falls back to source-of-agent while the new turn is in
+        // flight. Note: this only matters for the new-turn case; the
+        // freshly-submitted autofix path overrides chip via the eventual
+        // `turn_surface_*` callback once recommendations arrive.
+        let owned_tab = tab_id.to_string();
+        self.recompute_chip_override(&owned_tab);
     }
 
     /// Observe a streamed chunk. Thought chunks only advance the state
@@ -6483,6 +6590,11 @@ impl App {
             outcome: TurnOutcome::Empty,
             end_pending,
         };
+
+        // Exiting Surfaced{Recommendation} — release any chip override the
+        // card had pinned. The C++ side falls back to source-of-agent.
+        let target_tab = self.tab_for_session(session_id);
+        self.recompute_chip_override(&target_tab);
     }
 
     /// User pressed Esc — cancel the in-flight turn. Bumps
@@ -6562,6 +6674,11 @@ impl App {
         tab.progress_status = None;
         tab.activity_frame = 0;
         tab.turn = TurnState::Idle;
+
+        // Esc on a Send card or in-flight autofix exits the chip-override
+        // state; release whatever the helper had pinned. C++ falls back to
+        // source-of-agent driven rendering.
+        self.recompute_chip_override(&target_tab);
     }
 
     // ── Internal surface helpers (shared between eager and end-of-turn). ──
@@ -6610,6 +6727,13 @@ impl App {
             outcome: TurnOutcome::Recommendation(recommendations),
             end_pending: true,
         };
+
+        // Entering Surfaced{Recommendation} with a Send card selected is
+        // the typing→card transition; ask C++ to pin the chip onto that
+        // card's target pane (or release it when the selected card has no
+        // Send action).
+        let target_tab = self.tab_for_session(session_id);
+        self.recompute_chip_override(&target_tab);
     }
 
     /// Surface an autofix Fix recommendation as an Armed card.
@@ -6664,6 +6788,11 @@ impl App {
             outcome: TurnOutcome::Recommendation(recommendations),
             end_pending: true,
         };
+
+        // Same handoff as `turn_surface_recommendation`: a fresh Send card
+        // is now selectable, pin the chip onto its target pane.
+        let target_tab = self.tab_for_session(session_id);
+        self.recompute_chip_override(&target_tab);
     }
 
     /// Surface an autofix Explain answer as a chat turn + bottom-bar
@@ -7113,6 +7242,22 @@ fn send_bar_event(snapshot: &AutofixBarSnapshot, tab_id: Option<&str>) {
             );
         }
     }
+    send_wt_protocol_event(evt.to_string());
+}
+
+/// Tell WT which pane in `tab_id` should display the blue "Agent" chip.
+/// `pane_session_id = None` releases the override and lets the C++ side
+/// fall back to its source-of-agent driven default. Fires per-tab; multiple
+/// helpers can publish independently and C++ routes each event by tab id.
+fn emit_agent_chip_target(tab_id: &str, pane_session_id: Option<&str>) {
+    let evt = serde_json::json!({
+        "type": "event",
+        "method": "set_agent_chip_target",
+        "params": {
+            "tab_id": tab_id,
+            "pane_session_id": pane_session_id,
+        }
+    });
     send_wt_protocol_event(evt.to_string());
 }
 

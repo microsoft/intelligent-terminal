@@ -153,5 +153,11 @@ private:
     // `load_session` event back to the wta TUI for the new tab's StableId.
     static void _dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson);
 
+    // Same shape, for {method:"set_agent_chip_target"} — helper-side
+    // override for which pane in a tab gets the "Agent" chip. With
+    // pane_session_id=null the tab reverts to the default
+    // source-of-agent driven chip.
+    static void _dispatchAgentChipTargetToPage(const winrt::hstring& eventJson);
+
     static WindowEmperor* s_emperor;
 };

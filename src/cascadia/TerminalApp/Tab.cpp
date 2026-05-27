@@ -1460,6 +1460,12 @@ namespace winrt::TerminalApp::implementation
             previousActive->UpdateVisuals();
         }
 
+        // Recompute the "Agent" chip on every pane in this tab. Both the
+        // ClearActive() above and the SetSourceOfAgentPane(true) we may
+        // have just done can flip which pane is "the source", and the chip
+        // follows that signal whenever there is no protocol-driven override.
+        _UpdateAgentChipVisibility();
+
         // Update our own title text to match the newly-active pane.
         UpdateTitle();
         _UpdateProgressState();
@@ -1517,6 +1523,51 @@ namespace winrt::TerminalApp::implementation
         }
 
         _UpdateMenuItemStates();
+    }
+
+    // Recompute the "Agent" chip visibility on every pane in this tab.
+    // When the helper has supplied a session-id override (typically while a
+    // Send recommendation is selected in the agent pane), chip visibility
+    // is pinned to the pane whose connection SessionId matches. Otherwise
+    // it follows the source-of-agent flag.
+    void Tab::_UpdateAgentChipVisibility()
+    {
+        if (!_rootPane)
+        {
+            return;
+        }
+        if (_agentChipOverride.has_value())
+        {
+            const auto target = _agentChipOverride.value();
+            _rootPane->WalkTree([&target](const auto& pane) {
+                pane->SetAgentChipVisible(pane->GetSessionId() == target);
+            });
+        }
+        else
+        {
+            _rootPane->WalkTree([](const auto& pane) {
+                pane->SetAgentChipVisible(pane->IsSourceOfAgentPane());
+            });
+        }
+    }
+
+    void Tab::SetAgentChipOverride(std::optional<winrt::guid> sessionId)
+    {
+        // Treat the empty guid as "no override" so a malformed event can't
+        // pin the chip to a non-existent pane permanently.
+        if (sessionId.has_value() && sessionId.value() == winrt::guid{})
+        {
+            sessionId = std::nullopt;
+        }
+        _agentChipOverride = sessionId;
+        // Always recompute, even when the value didn't change. The helper
+        // re-publishes its current state on startup (and a few other sync
+        // points) so an "equal-but-redundant" event arriving here is the
+        // signal that the C++ side should re-walk the pane tree — for
+        // example to pick up a `IsSourceOfAgentPane()` transition the
+        // chip-visibility hook in `_UpdateActivePane` missed (legacy
+        // call sites that mutate the flag without going through it).
+        _UpdateAgentChipVisibility();
     }
 
     void Tab::_UpdateMenuItemStates()
@@ -2531,7 +2582,19 @@ namespace winrt::TerminalApp::implementation
         // guard, so do FocusPane (which calls _Focus) FIRST (agent's flag
         // is still false from the stash). _UpdateActivePane sets the flag.
         _rootPane->FocusPane(agentPane);
-        _UpdateActivePane(agentPane);
+        // FocusPane's synchronous `_Focus` raised GotFocus, which already
+        // called Tab::_UpdateActivePane(agentPane) via our gotFocus handler
+        // — including the SetSourceOfAgentPane(true) call that pins the
+        // chip / border onto the previously-focused terminal pane. A
+        // redundant _UpdateActivePane(agentPane) here would re-run
+        // ClearActive() and wipe that flag again (the condition that
+        // re-sets it requires `previousActive` to be the non-agent pane,
+        // but at this point previousActive is the agent pane itself).
+        // So only fall through if the GotFocus path didn't update us.
+        if (_activePane != agentPane)
+        {
+            _UpdateActivePane(agentPane);
+        }
 
         // CRITICAL: synchronous Focus(Programmatic) is unreliable on
         // freshly-re-parented or freshly-spawned TermControls. The element

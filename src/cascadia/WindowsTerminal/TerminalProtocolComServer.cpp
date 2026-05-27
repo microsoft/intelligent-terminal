@@ -738,6 +738,11 @@ void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
         // a new tab and asks wta to open an agent pane in it.
         _dispatchResumeInNewAgentTabToPage(eventJson);
         return;
+    case ProtocolParsing::SendEventRoute::AgentChipTarget:
+        // Helper override for which pane gets the "Agent" chip; null
+        // pane_session_id reverts the tab to source-flag-driven chip.
+        _dispatchAgentChipTargetToPage(eventJson);
+        return;
     case ProtocolParsing::SendEventRoute::Broadcast:
     {
         Json::StreamWriterBuilder wb;
@@ -922,6 +927,42 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
                 try
                 {
                     page.OnResumeInNewAgentTabRequested(eventJson);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchAgentChipTargetToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // Tab StableIds are unique across windows; fan out to every window's
+    // page and let _FindTabByStableId pick the right one (pages without
+    // a matching tab no-op the call). Same shape as the other dispatchers.
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnAgentChipTargetChanged(eventJson);
                 }
                 catch (...)
                 {

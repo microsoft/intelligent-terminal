@@ -3333,6 +3333,76 @@ void Pane::SetSourceOfAgentPane(bool value) noexcept
     _isSourceOfAgentPane = value;
 }
 
+// Show or hide the blue "Agent" pill in the bottom-right corner of the pane.
+// Driven from Tab / protocol-event layer — this pane just renders.
+void Pane::SetAgentChipVisible(bool value)
+{
+    if (value)
+    {
+        _EnsureAgentChip();
+        // Re-append so the chip sits above the borders and any splitter.
+        uint32_t idx = 0;
+        if (_root.Children().IndexOf(_agentChip, idx))
+        {
+            _root.Children().RemoveAt(idx);
+        }
+        _root.Children().Append(_agentChip);
+        _agentChip.Visibility(Visibility::Visible);
+    }
+    else if (_agentChip)
+    {
+        _agentChip.Visibility(Visibility::Collapsed);
+    }
+}
+
+// The connection's session GUID for terminal panes. Returns the empty
+// guid for non-terminal panes (e.g. branch nodes, agent panes, snippets).
+// Used by Tab to match a protocol-supplied pane id to a Pane.
+winrt::guid Pane::GetSessionId() const
+{
+    // Mirror `_getSessionIdFromPane` in TerminalPage.Protocol.cpp:
+    // walk content → control → connection and read the SessionId. Using
+    // GetContent() (instead of `_content` directly) keeps the non-leaf
+    // case to a clean nullptr without needing an explicit leaf check.
+    if (const auto termContent = GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+    {
+        if (const auto control = termContent.GetTermControl())
+        {
+            if (const auto conn = control.Connection())
+            {
+                return conn.SessionId();
+            }
+        }
+    }
+    return {};
+}
+
+void Pane::_EnsureAgentChip()
+{
+    if (_agentChip)
+    {
+        return;
+    }
+
+    Controls::TextBlock text{};
+    text.Text(L"Agent");
+    text.FontSize(10.0);
+    text.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    text.Foreground(Media::SolidColorBrush{ winrt::Windows::UI::Colors::White() });
+
+    _agentChip = Controls::Border{};
+    _agentChip.Child(text);
+    _agentChip.HorizontalAlignment(HorizontalAlignment::Right);
+    _agentChip.VerticalAlignment(VerticalAlignment::Bottom);
+    _agentChip.Margin({ 0, 0, 8, 8 });
+    _agentChip.Padding({ 8, 1, 8, 2 });
+    _agentChip.CornerRadius({ 4, 4, 4, 4 });
+    _agentChip.IsHitTestVisible(false);
+    _agentChip.Visibility(Visibility::Collapsed);
+    _agentChip.Background(Media::SolidColorBrush{
+        winrt::Windows::UI::ColorHelper::FromArgb(0xFF, 0x2D, 0x6F, 0xE0) });
+}
+
 // Method Description:
 // - If we're a parent, place the taskbar state for all our leaves into the
 //   provided vector.

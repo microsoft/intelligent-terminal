@@ -36,6 +36,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
         AgentState,           // Direct to TerminalPage, no broadcast — unified per-tab agent-pane UI snapshot (view + pane_open + ...)
         ResumeInNewAgentTab,  // Direct to TerminalPage, no broadcast
+        AgentChipTarget,      // Direct to TerminalPage, no broadcast — "draw the Agent chip on this pane (or hide override)"
         Broadcast,            // Normalize envelope + broadcast to all subscribers
         Invalid               // Failed validation
     };
@@ -84,6 +85,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "resume_in_new_agent_tab")
             {
                 return SendEventRoute::ResumeInNewAgentTab;
+            }
+            if (method == "set_agent_chip_target")
+            {
+                return SendEventRoute::AgentChipTarget;
             }
         }
 

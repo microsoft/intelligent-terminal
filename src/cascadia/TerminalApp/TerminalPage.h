@@ -208,6 +208,7 @@ namespace winrt::TerminalApp::implementation
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
+        void OnAgentChipTargetChanged(hstring eventJson);
 
         til::property_changed_event PropertyChanged;
 

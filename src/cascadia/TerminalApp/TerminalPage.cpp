@@ -4097,6 +4097,10 @@ namespace winrt::TerminalApp::implementation
             {
                 if (targetTab->FindAgentPane())
                 {
+                    // The agent pane is being hidden — drop any chip
+                    // override so the chip doesn't stay pinned on a
+                    // background pane while the agent is out of sight.
+                    targetTab->SetAgentChipOverride(std::nullopt);
                     targetTab->StashAgentPane();
                 }
             }
@@ -4148,6 +4152,10 @@ namespace winrt::TerminalApp::implementation
         }
         // Tell wta to drop this tab's ACP session.
         _NotifyAgentTabReset(ownerTab->StableId());
+        // The agent pane (and its helper) is going away, so any chip
+        // override the helper had set is no longer authoritative. Drop it
+        // here so the chip can't get pinned by a dead helper.
+        ownerTab->SetAgentChipOverride(std::nullopt);
         _TeardownAgentPane(ownerTab);
     }
 
@@ -4208,6 +4216,68 @@ namespace winrt::TerminalApp::implementation
             winrt::to_hstring(Json::writeString(wb, evt)));
 
         // WTA will emit autofix_state:cleared — OnAutofixStateChanged handles the transition.
+    }
+
+    // Inbound event from WTA: {method:"set_agent_chip_target",
+    //                          params:{tab_id, pane_session_id?}}.
+    // Selects which pane in the tab shows the blue "Agent" chip. When
+    // pane_session_id is missing or null the tab reverts to the default
+    // chip behavior (driven by IsSourceOfAgentPane on each pane).
+    void TerminalPage::OnAgentChipTargetChanged(hstring eventJson)
+    {
+        Json::Value evt;
+        Json::CharReaderBuilder rb;
+        std::istringstream ss(winrt::to_string(eventJson));
+        std::string errs;
+        if (!Json::parseFromStream(rb, ss, &evt, &errs))
+        {
+            return;
+        }
+        const auto& params = evt["params"];
+        if (!params.isObject())
+        {
+            return;
+        }
+
+        winrt::hstring tabId;
+        if (params.isMember("tab_id") && params["tab_id"].isString())
+        {
+            tabId = winrt::to_hstring(params["tab_id"].asString());
+        }
+        if (tabId.empty())
+        {
+            return;
+        }
+        const auto targetTab = _FindTabByStableId(tabId);
+        if (!targetTab)
+        {
+            // Tab not in this window — fan-out will hit the right one.
+            return;
+        }
+
+        std::optional<winrt::guid> sessionId;
+        if (params.isMember("pane_session_id") &&
+            params["pane_session_id"].isString())
+        {
+            const auto raw = params["pane_session_id"].asString();
+            if (!raw.empty())
+            {
+                const auto wide = winrt::to_hstring(raw);
+                try
+                {
+                    // Accept both braced ({…}) and plain GUID encodings.
+                    sessionId = (raw.size() >= 2 && raw.front() == '{')
+                                    ? winrt::guid{ ::Microsoft::Console::Utils::GuidFromString(wide.c_str()) }
+                                    : winrt::guid{ ::Microsoft::Console::Utils::GuidFromPlainString(wide.c_str()) };
+                }
+                catch (...)
+                {
+                    sessionId = std::nullopt;
+                }
+            }
+        }
+
+        targetTab->SetAgentChipOverride(sessionId);
     }
 
     // Inbound event from WTA: {method:"resume_in_new_agent_tab",

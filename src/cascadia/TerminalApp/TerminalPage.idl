@@ -151,5 +151,12 @@ namespace TerminalApp
         // publishes a `load_session` event back to wta carrying the new
         // tab's StableId so wta calls ACP `session/load` for that tab.
         void OnResumeInNewAgentTabRequested(String eventJson);
+
+        // Inbound event from WTA carrying
+        // {method:"set_agent_chip_target",params:{tab_id, pane_session_id?}}.
+        // Helper override for which pane in the tab gets the blue "Agent"
+        // chip. A missing or null pane_session_id reverts that tab to the
+        // default chip behavior (driven by the source-of-agent flag).
+        void OnAgentChipTargetChanged(String eventJson);
     }
 }

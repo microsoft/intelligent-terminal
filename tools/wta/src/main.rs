@@ -2129,7 +2129,19 @@ async fn run_acp_app(
                     // (pre-warm path) where C++ has already stashed the
                     // pane — see comment on the earlier seed block.
                     tab.pane_open = !cli.start_stashed;
-                    app_state.tab_id = Some(owner_tab_id);
+                    app_state.tab_id = Some(owner_tab_id.clone());
+
+                    // Publish an initial chip-target state for this tab so
+                    // the C++ side can sync regardless of which transitions
+                    // it has seen so far. At startup no Send card is
+                    // selected, so the published target is `None` — i.e.
+                    // "release any override, fall back to the source-of-
+                    // agent flag". This is harmless when the C++ side is
+                    // already in that state and load-bearing in the race
+                    // where the agent pane was just restored from a stash
+                    // and the chip-visibility hook on the C++ side hasn't
+                    // run with the right `previousActive` yet.
+                    app_state.recompute_chip_override_initial(&owner_tab_id);
                 }
             }
 
