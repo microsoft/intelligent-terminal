@@ -1125,6 +1125,16 @@ pub struct TabSession {
     /// even though no `TurnState::Submitted` was created for the
     /// replay — `turn` stays Idle through the load.
     pub loading_session: bool,
+    /// The session id we're currently loading into this tab, set when
+    /// `loading_session` flips to true. The `SessionAttached` handler
+    /// closes the replay window only when an attach event arrives whose
+    /// `session_id` matches this value — otherwise an unrelated
+    /// `SessionAttached` (e.g. the helper's bootstrap `session/new`
+    /// that completed while a Plan-C `--initial-load-session-id` was
+    /// still being processed) would prematurely flip `loading_session`
+    /// off and the agent's replay chunks would be dropped at the chunk
+    /// handlers' `if !loading_session { return; }` gate.
+    pub loading_target_session_id: Option<String>,
     // Explicit per-turn lifecycle. Source of truth in the new state machine
     // (see `doc/specs/turn-state-refactor.md`).
     pub turn: TurnState,
@@ -3329,17 +3339,26 @@ impl App {
                 self.session_to_tab
                     .insert(session_id.clone(), tab_id.clone());
                 let tab = self.tab_mut(&tab_id);
-                tab.session_id = Some(session_id);
-                // Close the session/load replay window if it was open.
-                // The agent has finished returning the load_session
-                // RPC; any straggling session/update notifications
-                // arriving after this point would have been pushed
-                // already (the spec requires they precede the
-                // PromptResponse-equivalent). Flush any pending
-                // user/agent buffers as a final turn boundary.
-                if tab.loading_session {
+                tab.session_id = Some(session_id.clone());
+                // Close the session/load replay window only when this
+                // attach is for the session we asked to load. An
+                // unrelated `SessionAttached` (e.g. the bootstrap
+                // `session/new` that runs once at helper startup, which
+                // can race against a Plan-C `--initial-load-session-id`
+                // load_session queued at boot) would otherwise flip
+                // `loading_session` off prematurely and the agent's
+                // replay chunks would hit the chunk handlers'
+                // `if !loading_session { return; }` gate and be
+                // dropped.
+                let is_load_target = tab
+                    .loading_target_session_id
+                    .as_deref()
+                    .map(|t| t == session_id.as_str())
+                    .unwrap_or(false);
+                if tab.loading_session && is_load_target {
                     tab.flush_load_replay_pending();
                     tab.loading_session = false;
+                    tab.loading_target_session_id = None;
                     tab.scroll_to_bottom();
                 }
                 // Per-session model lists could differ — surface the new
@@ -3362,6 +3381,7 @@ impl App {
                 // session-load attempt, not the whole connection.
                 let tab = self.tab_mut(&tab_id);
                 tab.loading_session = false;
+                tab.loading_target_session_id = None;
                 tab.progress_status = None;
                 tab.pending_agent_response.clear();
                 tab.pending_user_replay.clear();
@@ -4096,9 +4116,14 @@ impl App {
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by
-                        // the SessionAttached handler when
-                        // `conn.load_session` returns.
+                        // the SessionAttached handler when the attach
+                        // event arrives for THIS specific session id
+                        // (unrelated SessionAttached events — e.g. the
+                        // bootstrap `session/new` racing with a
+                        // boot-time Plan-C initial-load — must not
+                        // close it).
                         tab.loading_session = true;
+                        tab.loading_target_session_id = Some(session_id.to_string());
                         tab.messages.push(ChatMessage::System(format!(
                             "Resuming session {}...",
                             session_id
@@ -8183,6 +8208,132 @@ mod tests {
             .try_recv()
             .expect("legacy mode must still forward load_session");
         assert_eq!(req.session_id, "sess-legacy");
+    }
+
+    // ─── SessionAttached load-target gating (Plan-C race fix) ───────────────
+
+    /// After a load_session sets the replay window open, an unrelated
+    /// `SessionAttached` (e.g. the bootstrap `session/new` that the helper
+    /// always runs at startup) MUST NOT close the window — otherwise
+    /// subsequent replay chunks for the real load target get dropped at
+    /// the chunk handlers' `if !loading_session { return; }` gate.
+    /// This is the exact race the Plan-C
+    /// `--initial-load-session-id` boot path was hitting (helper queued
+    /// the load_session via AppEvent before bootstrap completed, then
+    /// bootstrap SessionAttached arrived and prematurely closed the
+    /// window).
+    #[test]
+    fn session_attached_for_bootstrap_does_not_close_load_replay_window() {
+        let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+        app.owner_tab_id = Some("OWNER-TAB".to_string());
+        app.tab_sessions
+            .insert("OWNER-TAB".to_string(), TabSession::default());
+
+        // Open the replay window targeting "sess-target".
+        app.handle_event(AppEvent::WtEvent {
+            method: "load_session".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "tab_id": "OWNER-TAB",
+                "session_id": "sess-target",
+                "cwd": "",
+            }),
+        });
+        assert!(app.tab_sessions["OWNER-TAB"].loading_session);
+        assert_eq!(
+            app.tab_sessions["OWNER-TAB"].loading_target_session_id.as_deref(),
+            Some("sess-target")
+        );
+
+        // Bootstrap `session/new` completes — SessionAttached for a
+        // DIFFERENT session id arrives.
+        app.handle_event(AppEvent::SessionAttached {
+            tab_id: "OWNER-TAB".to_string(),
+            session_id: "sess-bootstrap".to_string(),
+            available_models: vec![],
+            current_model_id: None,
+        });
+
+        // Window MUST still be open so replay chunks for sess-target
+        // (which arrive after `session/load` actually runs) are accepted.
+        assert!(
+            app.tab_sessions["OWNER-TAB"].loading_session,
+            "unrelated SessionAttached must not close the load_session replay window"
+        );
+        assert_eq!(
+            app.tab_sessions["OWNER-TAB"].loading_target_session_id.as_deref(),
+            Some("sess-target"),
+            "load target must persist across unrelated SessionAttached"
+        );
+    }
+
+    /// SessionAttached for the actual load target DOES close the window
+    /// (the normal happy path — keep working).
+    #[test]
+    fn session_attached_for_load_target_closes_replay_window() {
+        let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+        app.owner_tab_id = Some("OWNER-TAB".to_string());
+        app.tab_sessions
+            .insert("OWNER-TAB".to_string(), TabSession::default());
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "load_session".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "tab_id": "OWNER-TAB",
+                "session_id": "sess-target",
+                "cwd": "",
+            }),
+        });
+        assert!(app.tab_sessions["OWNER-TAB"].loading_session);
+
+        app.handle_event(AppEvent::SessionAttached {
+            tab_id: "OWNER-TAB".to_string(),
+            session_id: "sess-target".to_string(),
+            available_models: vec![],
+            current_model_id: None,
+        });
+
+        assert!(
+            !app.tab_sessions["OWNER-TAB"].loading_session,
+            "SessionAttached for the load target must close the window"
+        );
+        assert!(
+            app.tab_sessions["OWNER-TAB"].loading_target_session_id.is_none(),
+            "target id must be cleared after window closes"
+        );
+    }
+
+    /// TabError must clear both flags so a subsequent load can re-open
+    /// the window cleanly.
+    #[test]
+    fn tab_error_clears_load_target() {
+        let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+        app.owner_tab_id = Some("OWNER-TAB".to_string());
+        app.tab_sessions
+            .insert("OWNER-TAB".to_string(), TabSession::default());
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "load_session".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "tab_id": "OWNER-TAB",
+                "session_id": "sess-target",
+                "cwd": "",
+            }),
+        });
+        assert!(app.tab_sessions["OWNER-TAB"].loading_session);
+
+        app.handle_event(AppEvent::TabError {
+            tab_id: "OWNER-TAB".to_string(),
+            message: "agent rejected load_session".to_string(),
+        });
+
+        assert!(!app.tab_sessions["OWNER-TAB"].loading_session);
+        assert!(app.tab_sessions["OWNER-TAB"].loading_target_session_id.is_none());
     }
 
     // ─── WtNotification auto-dismiss ────────────────────────────────────────

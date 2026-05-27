@@ -1977,24 +1977,46 @@ async fn run_acp_app(
 
             // Plan-C boot-time initial-load: if WT spawned us with
             // `--initial-load-session-id` (+ optional `--initial-load-cwd`)
-            // queue a LoadSessionForTab synthetically so the ACP client's
-            // existing runtime arm picks it up the moment it finishes its
-            // own bootstrap (`session/list` + `session/new`). The runtime
-            // arm cancels the just-created bootstrap session for this tab
-            // and replaces it with the requested resume, atomically. This
-            // replaces the prior race-prone design where C++ broadcast a
-            // separate `load_session` VT event right after spawning the
-            // helper — which often landed in the wrong helper because the
-            // new helper's pipe attach hadn't yet completed.
+            // synthesize an `AppEvent::WtEvent { method:"load_session" }`
+            // and queue it on `event_tx`. The App's event loop will pick
+            // it up after startup and route it through the same handler
+            // that the runtime `wt_event` path uses (app.rs ~4039) —
+            // which:
+            //   1) clears the tab's chat and sets `loading_session=true`,
+            //      so the chunk handlers ACCEPT replay chunks during the
+            //      ensuing `session/load`. Going through the channel
+            //      directly (the old design) skipped this, and the
+            //      master DID route the replay chunks back to the
+            //      helper, but the App's AgentMessageChunk handler
+            //      dropped them because `turn.is_in_flight() == false`
+            //      and `loading_session == false` — user-visible
+            //      symptom: "Session loaded." footer with no past
+            //      content above.
+            //   2) emits a "Resuming session …" system message so the
+            //      user has a visible cue while the load is in flight,
+            //   3) forwards into the same `load_session_tx` channel the
+            //      runtime arm uses, which drives `conn.load_session`
+            //      on the ACP client side — atomically replacing the
+            //      bootstrap session created by `session/new` moments
+            //      earlier.
+            //
+            // This replaces the prior race-prone design where C++
+            // broadcast a separate `load_session` VT event right after
+            // spawning the helper — which often landed in the wrong
+            // helper because the new helper's pipe attach hadn't yet
+            // completed.
             //
             // Pair-only: both flags meaningless without `--owner-tab-id`
-            // (the LoadSessionForTab routes by tab id), so we silently
-            // skip if owner_tab_id is unset. Logged so a misconfigured
-            // spawn is easy to diagnose.
+            // (the load_session handler routes by tab id), so we
+            // silently skip if owner_tab_id is unset. Logged so a
+            // misconfigured spawn is easy to diagnose.
             if let Some(ref sid) = cli.initial_load_session_id {
                 if !sid.is_empty() {
-                    let tab_id = app_state.owner_tab_id.clone().or_else(|| cli.owner_tab_id.clone());
-                    match tab_id {
+                    let tab_id_opt = app_state
+                        .owner_tab_id
+                        .clone()
+                        .or_else(|| cli.owner_tab_id.clone());
+                    match tab_id_opt {
                         Some(tab_id) if !tab_id.is_empty() => {
                             let cwd = cli
                                 .initial_load_cwd
@@ -2006,12 +2028,28 @@ async fn run_acp_app(
                                 session_id = sid,
                                 tab_id = %tab_id,
                                 cwd = ?cwd,
-                                "queueing boot-time initial load_session"
+                                "queueing boot-time initial load_session via AppEvent::WtEvent"
                             );
-                            let _ = initial_load_tx.send(protocol::acp::client::LoadSessionForTab {
-                                tab_id,
-                                session_id: sid.clone(),
-                                cwd,
+                            let mut params = serde_json::Map::new();
+                            params.insert(
+                                "tab_id".to_string(),
+                                serde_json::Value::String(tab_id.clone()),
+                            );
+                            params.insert(
+                                "session_id".to_string(),
+                                serde_json::Value::String(sid.clone()),
+                            );
+                            if let Some(cwd_str) = cwd {
+                                params.insert(
+                                    "cwd".to_string(),
+                                    serde_json::Value::String(cwd_str),
+                                );
+                            }
+                            let _ = event_tx.send(app::AppEvent::WtEvent {
+                                method: "load_session".to_string(),
+                                pane_id: String::new(),
+                                tab_id: Some(tab_id),
+                                params: serde_json::Value::Object(params),
                             });
                         }
                         _ => {
@@ -2023,6 +2061,11 @@ async fn run_acp_app(
                     }
                 }
             }
+            // `initial_load_tx` is no longer used (the runtime
+            // `load_session_tx` path is now reached via the App's
+            // WtEvent handler) but we still need to drop the cloned
+            // sender so the receiver future inside `run_acp_client`
+            // doesn't keep an extra producer alive past shutdown.
             drop(initial_load_tx);
 
             // Apply --initial-view: if `sessions`, jump straight into the
