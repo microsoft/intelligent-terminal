@@ -16,6 +16,7 @@
   - [Downloads](#downloads)
 - [Get Started](#get-started)
 - [Features](#features)
+  - [Agent Status Bar](#agent-status-bar)
   - [Agent Pane](#agent-pane)
   - [Agent Management](#agent-management)
   - [Error Detection](#error-detection)
@@ -94,6 +95,14 @@ Start asking questions. The agent has context on your shell output, no copy-past
 ---
 
 ## Features
+
+### Agent Status Bar
+
+<p align="center">
+  <img src="./images/intelligent-terminal-status-bar.png" alt="Screenshot of the agent status bar at the bottom of the terminal window">
+</p>
+
+The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle and the error detection icon, which lights up when a fixable error is detected. On the right: the agent management icon that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents.
 
 ### Agent Pane
 
