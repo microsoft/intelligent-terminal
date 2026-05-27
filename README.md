@@ -38,9 +38,6 @@
 
 ## What is Intelligent Terminal?
 
-> [!IMPORTANT]
-> **Experimental** - Intelligent Terminal is in active development. This is our experimental build where we're trying new features and iterating fast. We'd love your feedback! [Submit an issue](https://github.com/microsoft/terminal/issues) to share your thoughts.
-
 Intelligent Terminal is an experimental fork of [Windows Terminal](https://github.com/microsoft/terminal) with native agent integration.
 
 [GitHub Copilot](https://github.com/features/copilot/cli/) is the default agent CLI, but it works with any [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLI. All you need is to install your preferred agent CLI on your PC, and Intelligent Terminal should detect it.
