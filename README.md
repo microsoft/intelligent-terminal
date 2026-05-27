@@ -168,8 +168,7 @@ Everything is configurable through terminal settings, under "Agent" settings.
 
 ## Data & Privacy
 
-Intelligent Terminal is a **local transport layer**. It passes your prompts and shell context to your selected agent CLI over stdio/ACP. Terminal does not call any cloud APIs itself, does not store conversation data to disk, and does not mediate or inspect what the agent CLI does with your data. Intelligent Terminal only collects usage data and sends it to Microsoft to help improve our products and services. Read our [privacy statement](https://go.microsoft.com/fwlink/?LinkID=824704) to learn more. See [PRIVACY.md](./PRIVACY.md) for details and instructions on how to disable telemetry.
-
+Intelligent Terminal is a **local transport layer**. It passes your prompts and shell context to your selected agent CLI over stdio/ACP. Terminal does not call any cloud APIs itself, does not store conversation data to disk, and does not mediate or inspect what the agent CLI does with your data. 
 
 ### What data flows through Terminal
 
@@ -195,7 +194,7 @@ All of this is held in memory for the active session only and discarded when the
 - Disable auto error detection to prevent shell output from being sent automatically
 - Intelligent Terminal always asks before running commands on your behalf
 
-For more information, see the [Microsoft Privacy Statement](https://www.microsoft.com/en-us/privacy/privacystatement).
+Intelligent Terminal only collects usage data and sends it to Microsoft to help improve our products and services. Read our [privacy statement](https://go.microsoft.com/fwlink/?LinkID=824704) to learn more. See [PRIVACY.md](./PRIVACY.md) for details and instructions on how to disable telemetry.
 
 ---
 
