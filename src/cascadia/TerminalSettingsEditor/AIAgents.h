@@ -16,11 +16,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         static double InstalledOpacity(bool isInstalled) { return isInstalled ? 1.0 : 0.4; }
         static bool NotBool(bool value) { return !value; }
-        static winrt::Windows::UI::Text::FontStyle AddNewFontStyle(bool isAddNew)
-        {
-            return isAddNew ? winrt::Windows::UI::Text::FontStyle::Italic
-                            : winrt::Windows::UI::Text::FontStyle::Normal;
-        }
 
         til::property_changed_event PropertyChanged;
         WINRT_OBSERVABLE_PROPERTY(Editor::AIAgentsViewModel, ViewModel, PropertyChanged.raise, nullptr);

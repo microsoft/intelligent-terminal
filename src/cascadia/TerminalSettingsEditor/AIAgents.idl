@@ -12,6 +12,5 @@ namespace Microsoft.Terminal.Settings.Editor
 
         static Double InstalledOpacity(Boolean isInstalled);
         static Boolean NotBool(Boolean value);
-        static Windows.UI.Text.FontStyle AddNewFontStyle(Boolean isAddNew);
     }
 }

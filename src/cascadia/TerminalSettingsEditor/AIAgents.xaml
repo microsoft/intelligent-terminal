@@ -20,8 +20,7 @@
             <DataTemplate x:Key="AgentEntryTemplate"
                           x:DataType="local:AgentEntry">
                 <TextBlock Text="{x:Bind DisplayLabel}"
-                           Opacity="{x:Bind local:AIAgents.InstalledOpacity(IsInstalled)}"
-                           FontStyle="{x:Bind local:AIAgents.AddNewFontStyle(IsAddNew)}" />
+                           Opacity="{x:Bind local:AIAgents.InstalledOpacity(IsInstalled)}" />
             </DataTemplate>
 
             <DataTemplate x:Key="EnumComboBoxTemplate"
@@ -46,10 +45,16 @@
                        Opacity="0.7"
                        Margin="0,0,0,16" />
 
-            <!--  ═══ Agent pane group ═══  -->
+            <!--  ═══ Agent pane group ═══
+                  First sub-header on the page: override the style's 32px
+                  top margin to 0 so the page subtitle's bottom margin is
+                  the only gap above the header. Otherwise the page
+                  subtitle + sub-header margins stack to ~48px and look
+                  visibly larger than every other settings page (which
+                  doesn't render a page subtitle).  -->
             <TextBlock x:Uid="AIAgents_AcpGroupHeader"
-                       Style="{StaticResource SubtitleTextBlockStyle}"
-                       Margin="0,0,0,8" />
+                       Style="{StaticResource TextBlockSubHeaderStyle}"
+                       Margin="0,0,0,4" />
 
             <!--  Agent (ACP CLI)  -->
             <local:SettingContainer x:Name="AcpAgent"
@@ -63,7 +68,6 @@
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
-                               FontStyle="Italic"
                                Margin="0,4,0,0" />
                     <!--  Read-only preview when custom agent is selected on page load  -->
                     <StackPanel Orientation="Vertical"
@@ -137,7 +141,6 @@
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsAutoFixPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
-                               FontStyle="Italic"
                                Margin="0,4,0,0" />
                 </StackPanel>
             </local:SettingContainer>
@@ -189,7 +192,6 @@
                             <TextBlock x:Uid="AIAgents_PolicyLocked"
                                        Visibility="{x:Bind ViewModel.IsAgentSessionHooksPolicyLocked, Mode=OneWay}"
                                        Opacity="0.6"
-                                       FontStyle="Italic"
                                        Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
@@ -277,8 +279,7 @@
 
             <!--  ═══ Command palette group ═══  -->
             <TextBlock x:Uid="AIAgents_DelegateGroupHeader"
-                       Style="{StaticResource SubtitleTextBlockStyle}"
-                       Margin="0,16,0,8" />
+                       Style="{StaticResource TextBlockSubHeaderStyle}" />
 
             <!--  Agent (delegate / on-demand CLI)  -->
             <local:SettingContainer x:Name="DelegateAgent"
@@ -292,7 +293,6 @@
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
-                               FontStyle="Italic"
                                Margin="0,4,0,0" />
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsCustomDelegateAgentSelected, Mode=OneWay}"

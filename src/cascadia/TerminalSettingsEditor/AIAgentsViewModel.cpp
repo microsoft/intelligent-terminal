@@ -314,7 +314,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     Editor::AcpModelEntry AIAgentsViewModel::CurrentAcpModelEntry()
     {
-        if (!_acpModelList)
+        if (!_acpModelList || _acpModelList.Size() == 0)
         {
             return nullptr;
         }
@@ -327,10 +327,22 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 return entry;
             }
         }
-        // No match: stale id from a different agent. ComboBox's
-        // PlaceholderText surfaces "Auto" until the probe re-runs
-        // and lands a list this id matches.
-        return nullptr;
+        // No match (stale id from a different agent, or empty initial value).
+        // Fall back to the agent's advertised default entry — "default" or
+        // "auto" — so ComboBox renders with selected (normal) foreground
+        // instead of falling through to PlaceholderText dim color. Last
+        // resort is the first entry. This is display-only; the setter only
+        // fires when the user actively picks something.
+        for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
+        {
+            const auto entry = _acpModelList.GetAt(i);
+            const auto id = entry.Id();
+            if (id == L"default" || id == L"auto")
+            {
+                return entry;
+            }
+        }
+        return _acpModelList.GetAt(0);
     }
 
     void AIAgentsViewModel::CurrentAcpModelEntry(const Editor::AcpModelEntry& value)
