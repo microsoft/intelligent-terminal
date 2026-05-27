@@ -243,46 +243,52 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 m.Description()));
         }
 
-        // Reconcile a stale persisted id with the authoritative list. If
-        // the saved model isn't available from the current agent, rewrite
-        // it to the agent's advertised default ("default" / "auto") — or
-        // the first entry as last resort. We only do this once a real
-        // list has landed; an empty list means the probe hasn't run yet,
-        // and we mustn't clobber the user's choice in that transient
-        // state. Without this, the dropdown could visually settle on a
-        // valid entry while wta keeps receiving the stale --acp-model
-        // value at runtime.
+        // Reconcile a *stale* persisted id with the authoritative list.
+        // Only fires when the user has actively configured a specific model
+        // (non-empty) that this agent doesn't advertise — e.g. switching
+        // agents leaves a leftover id. In that case rewrite to the agent's
+        // advertised default ("default" / "auto") so the dropdown and the
+        // runtime --acp-model value stay in sync.
+        //
+        // We *don't* reconcile when the persisted id is empty: empty is a
+        // legitimate "use whatever default the agent picks" sentinel that
+        // the user never typed in, and silently writing "default" into
+        // settings.json would be surprising. The visual fallback for that
+        // case lives in CurrentAcpModelEntry().
         if (newSize > 0)
         {
             const auto current = _GlobalSettings.AcpModel();
-            bool matched = false;
-            for (uint32_t i = 0; i < newSize; ++i)
+            if (!current.empty())
             {
-                if (_acpModelList.GetAt(i).Id() == current)
-                {
-                    matched = true;
-                    break;
-                }
-            }
-            if (!matched)
-            {
-                winrt::hstring fallbackId{};
+                bool matched = false;
                 for (uint32_t i = 0; i < newSize; ++i)
                 {
-                    const auto id = _acpModelList.GetAt(i).Id();
-                    if (id == L"default" || id == L"auto")
+                    if (_acpModelList.GetAt(i).Id() == current)
                     {
-                        fallbackId = id;
+                        matched = true;
                         break;
                     }
                 }
-                if (fallbackId.empty())
+                if (!matched)
                 {
-                    fallbackId = _acpModelList.GetAt(0).Id();
-                }
-                if (_GlobalSettings.AcpModel() != fallbackId)
-                {
-                    _GlobalSettings.AcpModel(fallbackId);
+                    winrt::hstring fallbackId{};
+                    for (uint32_t i = 0; i < newSize; ++i)
+                    {
+                        const auto id = _acpModelList.GetAt(i).Id();
+                        if (id == L"default" || id == L"auto")
+                        {
+                            fallbackId = id;
+                            break;
+                        }
+                    }
+                    if (fallbackId.empty())
+                    {
+                        fallbackId = _acpModelList.GetAt(0).Id();
+                    }
+                    if (_GlobalSettings.AcpModel() != fallbackId)
+                    {
+                        _GlobalSettings.AcpModel(fallbackId);
+                    }
                 }
             }
         }
@@ -366,9 +372,26 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             const auto entry = _acpModelList.GetAt(i);
             if (entry.Id() == current) return entry;
         }
+        // Visual-only fallback for the unconfigured case: the user has
+        // never picked a model (empty persisted id), so we surface the
+        // agent's advertised default entry as the selected item instead
+        // of letting the ComboBox render dim PlaceholderText. We *don't*
+        // write to settings here — leaving the empty id in place keeps
+        // wta's "use the agent's own default" semantics intact.
+        // The stale-id case (non-empty + no match) is handled at the
+        // data layer by _RebuildAcpModelListFromCache.
+        if (current.empty() && _acpModelList.Size() > 0)
+        {
+            for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
+            {
+                const auto entry = _acpModelList.GetAt(i);
+                const auto id = entry.Id();
+                if (id == L"default" || id == L"auto") return entry;
+            }
+            return _acpModelList.GetAt(0);
+        }
         // Empty list (probe hasn't run yet) → ComboBox shows PlaceholderText
-        // briefly until the agent's model list arrives and
-        // _RebuildAcpModelListFromCache reconciles any stale persisted id.
+        // briefly until the agent's model list arrives.
         return nullptr;
     }
 
