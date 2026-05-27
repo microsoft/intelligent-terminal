@@ -1296,6 +1296,56 @@ mod tests {
         assert_eq!(row.pane_session_id.as_deref(), Some("p"));
     }
 
+    #[tokio::test]
+    async fn master_reducer_resume_dispatched_promotes_ended_without_binding_pane() {
+        let reg = InMemoryRegistry::new();
+        reg.apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: crate::agent_sessions::CliSource::Gemini,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        reg.apply_event(crate::agent_sessions::SessionEvent::PaneClosed { pane_session_id: "p".into() }).await;
+
+        let changed = reg.apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched { key: "sid".into() }).await;
+        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+
+        assert!(changed);
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
+        assert!(row.pane_session_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn master_reducer_resume_pane_assigned_binds_new_pane() {
+        let reg = InMemoryRegistry::new();
+        reg.upsert(SessionInfo {
+            session_id: acp::SessionId::new("sid".to_string()),
+            cwd: PathBuf::from("C:\\x"),
+            title: Some("historical".into()),
+            updated_at: None,
+            pane_session_id: None,
+            status: Some(crate::agent_sessions::AgentStatus::Historical),
+            cli_source: Some(crate::agent_sessions::CliSource::Gemini),
+            current_tool: None,
+            attention_reason: None,
+            last_activity_at_ms: Some(1),
+            origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
+            last_error: None,
+        }).await;
+        reg.apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched { key: "sid".into() }).await;
+
+        let changed = reg.apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+            key: "sid".into(),
+            pane_session_id: "New-Pane".into(),
+        }).await;
+        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+
+        assert!(changed);
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
+        assert_eq!(row.pane_session_id.as_deref(), Some("new-pane"));
+    }
+
     // ─── focus_session ──────────────────────────────────────────────
 
     #[test]
