@@ -31,7 +31,7 @@ use std::time::SystemTime;
 
 pub type AgentKey = String;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CliSource {
     Claude,
     Copilot,
@@ -65,7 +65,7 @@ impl CliSource {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AgentStatus {
     Idle,
     Working,
@@ -130,7 +130,7 @@ pub enum LivenessState {
 /// that index when reconstructing historical rows. Live rows default to
 /// `Unknown` because the UI only surfaces this badge for ended/historical
 /// sessions, where it is most useful.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SessionOrigin {
     /// Origin not recorded — either the session pre-dates the index, was
     /// started outside of WTA (user ran `copilot` by hand), or the index

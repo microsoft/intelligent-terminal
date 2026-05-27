@@ -35,6 +35,7 @@
 //     `ShellManager`, etc.).
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock, Weak};
 
 /// Per-helper notification channel capacity. Sized for bursty chunk
@@ -760,13 +761,11 @@ impl acp::Agent for HelperHandler {
         // ordering matches the doc on `MasterStateInner::registry`:
         // `session_to_helper` is no longer held here, so the upsert
         // can't deadlock against `drop_sessions_for_helper`.
-        let info = crate::session_registry::SessionInfo {
-            session_id: resp.session_id.clone(),
-            cwd: cwd_for_registry,
-            title: None,
-            updated_at: None,
-            pane_session_id: wta_meta.pane_session_id,
-        };
+        let mut info = crate::session_registry::SessionInfo::new(
+            resp.session_id.clone(),
+            cwd_for_registry,
+        );
+        info.pane_session_id = wta_meta.pane_session_id;
         self.state.registry.upsert(info.clone()).await;
         // Fan a `session_added` ExtNotification out to every other
         // helper so their mirrors learn about this new row without
@@ -777,6 +776,11 @@ impl acp::Agent for HelperHandler {
         crate::master::broadcast_ext_to_helpers(
             &self.state,
             crate::session_registry::build_session_added_notification(&info),
+        )
+        .await;
+        crate::master::broadcast_ext_to_helpers(
+            &self.state,
+            crate::session_registry::build_sessions_changed_notification(),
         )
         .await;
         tracing::info!(
@@ -840,17 +844,20 @@ impl acp::Agent for HelperHandler {
         }
         match self.agent_conn.load_session(args).await {
             Ok(resp) => {
-                let info = crate::session_registry::SessionInfo {
-                    session_id: session_id.clone(),
-                    cwd: cwd_for_registry,
-                    title: None,
-                    updated_at: None,
-                    pane_session_id: wta_meta.pane_session_id,
-                };
+                let mut info = crate::session_registry::SessionInfo::new(
+                    session_id.clone(),
+                    cwd_for_registry,
+                );
+                info.pane_session_id = wta_meta.pane_session_id;
                 self.state.registry.upsert(info.clone()).await;
                 crate::master::broadcast_ext_to_helpers(
                     &self.state,
                     crate::session_registry::build_session_added_notification(&info),
+                )
+                .await;
+                crate::master::broadcast_ext_to_helpers(
+                    &self.state,
+                    crate::session_registry::build_sessions_changed_notification(),
                 )
                 .await;
                 tracing::info!(
@@ -1058,6 +1065,16 @@ impl acp::Agent for HelperHandler {
             );
             return handle_focus_session(&self.state, &args.params).await;
         }
+        if method == crate::session_registry::INTELLTERM_METHOD_SESSIONS_LIST {
+            tracing::info!(
+                target: "master",
+                op = "ext_method",
+                method = %method,
+                helper_id = ?self.helper_id,
+                "handling intellterm.wta/sessions/list locally"
+            );
+            return handle_sessions_list(&self.state, &args.params).await;
+        }
         tracing::debug!(
             target: "master",
             op = "ext_method",
@@ -1089,6 +1106,79 @@ pub async fn run_master_mode(cli: Cli, pipe_name: String) -> Result<()> {
     local_set
         .run_until(async move { run_master_loop(cli, pipe_name).await })
         .await
+}
+
+
+struct MasterPipeDiscoveryGuard {
+    path: Option<PathBuf>,
+    pipe_name: String,
+}
+
+impl MasterPipeDiscoveryGuard {
+    fn write(pipe_name: &str) -> Self {
+        let path = crate::runtime_paths::master_pipe_file_path();
+        if let Some(path) = &path {
+            if let Some(parent) = path.parent() {
+                if let Err(err) = std::fs::create_dir_all(parent) {
+                    tracing::warn!(
+                        target: "master",
+                        path = %path.display(),
+                        error = %err,
+                        "failed to create master pipe discovery directory"
+                    );
+                    return Self {
+                        path: None,
+                        pipe_name: pipe_name.to_string(),
+                    };
+                }
+            }
+            match std::fs::write(path, pipe_name) {
+                Ok(()) => tracing::info!(
+                    target: "master",
+                    path = %path.display(),
+                    pipe_name = %pipe_name,
+                    "master pipe discovery file written"
+                ),
+                Err(err) => {
+                    tracing::warn!(
+                        target: "master",
+                        path = %path.display(),
+                        error = %err,
+                        "failed to write master pipe discovery file"
+                    );
+                    return Self {
+                        path: None,
+                        pipe_name: pipe_name.to_string(),
+                    };
+                }
+            }
+        }
+        Self {
+            path,
+            pipe_name: pipe_name.to_string(),
+        }
+    }
+}
+
+impl Drop for MasterPipeDiscoveryGuard {
+    fn drop(&mut self) {
+        let Some(path) = &self.path else {
+            return;
+        };
+        let should_remove = std::fs::read_to_string(path)
+            .map(|current| current.trim() == self.pipe_name)
+            .unwrap_or(false);
+        if should_remove {
+            if let Err(err) = std::fs::remove_file(path) {
+                tracing::warn!(
+                    target: "master",
+                    path = %path.display(),
+                    error = %err,
+                    "failed to remove master pipe discovery file"
+                );
+            }
+        }
+    }
 }
 
 async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
@@ -1299,6 +1389,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         pipe_name = %pipe_name,
         "named pipe listening; awaiting helper connections"
     );
+    let _pipe_discovery_guard = MasterPipeDiscoveryGuard::write(&pipe_name);
 
     let mut next_helper_id: u64 = 1;
     // Cheap monotonic counter for tracking concurrent helper count.
@@ -1551,6 +1642,11 @@ async fn drop_sessions_for_helper(state: &MasterStateInner, helper_id: HelperId)
             crate::session_registry::build_session_removed_notification(sid),
         )
         .await;
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
     }
     victims.len()
 }
@@ -1584,6 +1680,28 @@ pub(crate) async fn broadcast_ext_to_helpers(
     for helper_id in dead {
         subs.remove(&helper_id);
     }
+}
+
+
+/// Pure async handler for the `intellterm.wta/sessions/list` ExtRequest.
+async fn handle_sessions_list(
+    state: &MasterStateInner,
+    params: &serde_json::value::RawValue,
+) -> acp::Result<acp::ExtResponse> {
+    crate::session_registry::parse_sessions_list_params(params).map_err(|err| {
+        tracing::warn!(
+            target: "master",
+            op = "sessions_list",
+            error = %err,
+            "rejecting malformed sessions/list params"
+        );
+        acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
+    })?;
+
+    let mut sessions = state.registry.snapshot().await;
+    sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
+    let raw = crate::session_registry::build_sessions_list_response(sessions);
+    Ok(acp::ExtResponse::new(raw.into()))
 }
 
 /// Pure async handler for the `intellterm.wta/focus_session` ExtRequest.
@@ -2182,16 +2300,14 @@ mod tests {
 
         drop_sessions_for_helper(&state, HelperId(1)).await;
 
-        // Expect two session_removed notifications on peer 2's channel.
+        // Expect two session_removed notifications on peer 2's channel;
+        // Task A also emits sessions/changed after each registry mutation.
         let mut got: Vec<acp::SessionId> = Vec::new();
         while let Ok(ext) = ext_rx2.try_recv() {
-            assert_eq!(
-                &*ext.method,
-                session_registry::INTELLTERM_METHOD_SESSION_REMOVED
-            );
             match session_registry::parse_ext_notification(&ext) {
                 session_registry::WtaExtNotification::SessionRemoved(sid) => got.push(sid),
-                other => panic!("expected SessionRemoved, got {other:?}"),
+                session_registry::WtaExtNotification::SessionsChanged => {}
+                other => panic!("expected SessionRemoved or SessionsChanged, got {other:?}"),
             }
         }
         got.sort_by(|a, b| a.0.cmp(&b.0));
@@ -2271,6 +2387,62 @@ mod tests {
             .await
             .expect_err("create_terminal on unknown session must fail");
         assert_eq!(err.code, acp::ErrorCode::InternalError);
+    }
+
+
+    #[tokio::test]
+    async fn sessions_list_handler_returns_registry_snapshot_payload() {
+        use crate::session_registry::{self, SessionInfo};
+        use std::path::PathBuf;
+
+        let state = make_state();
+        let mut row = SessionInfo::new(SessionId::new("sess-b"), PathBuf::from("C:\\repo\\b"));
+        row.status = Some(crate::agent_sessions::AgentStatus::Idle);
+        row.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
+        row.last_activity_at_ms = Some(42);
+        state.registry.upsert(row.clone()).await;
+
+        let req = session_registry::build_sessions_list_request();
+        let resp = handle_sessions_list(&state, &req.params)
+            .await
+            .expect("sessions/list succeeds");
+        let parsed = session_registry::parse_sessions_list_response(&resp.0)
+            .expect("response parses");
+
+        assert_eq!(parsed.sessions, vec![row]);
+    }
+
+    #[tokio::test]
+    async fn drop_sessions_for_helper_broadcasts_sessions_changed() {
+        use crate::session_registry::{self, SessionInfo};
+        use std::path::PathBuf;
+
+        let state = make_state();
+        let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+        let (ext_tx, mut ext_rx) = mpsc::unbounded_channel::<acp::ExtNotification>();
+        let sid = SessionId::new("removed-a");
+        {
+            let mut map = state.session_to_helper.lock().await;
+            map.insert(sid.clone(), HelperRoute {
+                helper_id: HelperId(1),
+                notif_tx,
+                forwarder: None,
+                consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            });
+        }
+        state.registry.upsert(SessionInfo::new(sid, PathBuf::from("C:\\repo"))).await;
+        {
+            let mut subs = state.helper_ext_subscribers.lock().await;
+            subs.insert(HelperId(2), ext_tx);
+        }
+
+        drop_sessions_for_helper(&state, HelperId(1)).await;
+
+        let methods: Vec<String> = std::iter::from_fn(|| ext_rx.try_recv().ok())
+            .map(|ext| ext.method.to_string())
+            .collect();
+        assert!(methods.contains(&session_registry::INTELLTERM_METHOD_SESSION_REMOVED.to_string()));
+        assert!(methods.contains(&session_registry::INTELLTERM_METHOD_SESSIONS_CHANGED.to_string()));
     }
 
     // ─── handle_focus_session ───────────────────────────────────────

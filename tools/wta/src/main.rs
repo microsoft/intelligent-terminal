@@ -28,6 +28,8 @@ mod theme;
 mod ui;
 mod ui_trace;
 
+use acp::Agent as _;
+use agent_client_protocol as acp;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use crossterm::{
@@ -41,6 +43,7 @@ use serde_json::json;
 use std::io;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use shell::wt_channel::{CliChannel, WtChannel};
 use shell::ShellManager;
@@ -419,6 +422,12 @@ enum Command {
         action: HooksAction,
     },
 
+    /// Inspect sessions known to the shared wta-master.
+    Sessions {
+        #[command(subcommand)]
+        action: SessionsAction,
+    },
+
     /// One-shot ACP handshake to read an agent's advertised model list.
     /// Spawned by the Settings UI when the user picks a new ACP agent so
     /// the model dropdown can populate before any real agent pane is
@@ -433,6 +442,18 @@ enum Command {
         /// "copilot --acp --stdio" or "npx -y @zed-industries/claude-code-acp").
         #[arg(long)]
         agent: String,
+    },
+}
+
+
+/// Subcommands for `wta sessions`.
+#[derive(Subcommand, Debug)]
+enum SessionsAction {
+    /// List sessions in the master registry.
+    List {
+        /// Override the wta-master named pipe path.
+        #[arg(long, value_name = "PIPE_NAME")]
+        master: Option<String>,
     },
 }
 
@@ -726,6 +747,11 @@ async fn main() -> Result<()> {
         // ── Listen for events ──
         Some(Command::Listen { target }) => run_listen(target.as_deref()).await,
 
+        // ── Master session registry CLI ──
+        Some(Command::Sessions { action }) => match action {
+            SessionsAction::List { master } => run_sessions_list(master, json_mode).await,
+        },
+
         // ── Manage agent hooks (install/status/uninstall) ──
         Some(Command::Hooks { action }) => match action {
             HooksAction::Install { cli } => run_hooks_install(cli),
@@ -972,6 +998,161 @@ async fn get_first_tab_id(channel: &CliChannel, window_id: &str) -> Result<Strin
             _ => None,
         })
         .ok_or_else(|| anyhow::anyhow!("{}", t!("output.no_tabs_in_window", window_id = window_id)))
+}
+
+
+// ─── sessions CLI helpers ───────────────────────────────────────────────────
+
+const MASTER_NOT_RUNNING: &str = "wta-master not running. Start Windows Terminal first.";
+
+struct SessionsCliClient;
+
+#[async_trait::async_trait(?Send)]
+impl acp::Client for SessionsCliClient {
+    async fn request_permission(
+        &self,
+        _args: acp::RequestPermissionRequest,
+    ) -> acp::Result<acp::RequestPermissionResponse> {
+        Err(acp::Error::internal_error().data("sessions CLI cannot answer permission requests"))
+    }
+
+    async fn session_notification(&self, _args: acp::SessionNotification) -> acp::Result<()> {
+        Ok(())
+    }
+}
+
+async fn run_sessions_list(master_override: Option<String>, json_mode: bool) -> Result<()> {
+    let local = tokio::task::LocalSet::new();
+    let sessions = local
+        .run_until(fetch_sessions_from_master(master_override))
+        .await?;
+    if json_mode {
+        print!("{}", format_sessions_json_lines(&sessions)?);
+    } else {
+        print!("{}", format_sessions_table(&sessions));
+    }
+    Ok(())
+}
+
+async fn fetch_sessions_from_master(
+    master_override: Option<String>,
+) -> Result<Vec<session_registry::SessionInfo>> {
+    let pipe_name = resolve_master_pipe(master_override).await?;
+    let pipe = open_master_pipe_for_cli(&pipe_name).await?;
+    let (read_half, write_half) = tokio::io::split(pipe);
+    let outgoing = write_half.compat_write();
+    let incoming = read_half.compat();
+    let (conn, handle_io) = acp::ClientSideConnection::new(SessionsCliClient, outgoing, incoming, |fut| {
+        tokio::task::spawn_local(fut);
+    });
+    tokio::task::spawn_local(async move {
+        let _ = handle_io.await;
+    });
+
+    conn.initialize(
+        acp::InitializeRequest::new(acp::ProtocolVersion::V1)
+            .client_capabilities(acp::ClientCapabilities::new())
+            .client_info(
+                acp::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
+                    .title("Windows Terminal Agent sessions CLI"),
+            ),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+
+    let req = session_registry::build_sessions_list_request();
+    let resp = conn
+        .ext_method(req)
+        .await
+        .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+    let parsed = session_registry::parse_sessions_list_response(&resp.0)
+        .context("parse sessions/list response")?;
+    Ok(parsed.sessions)
+}
+
+async fn resolve_master_pipe(master_override: Option<String>) -> Result<String> {
+    if let Some(pipe) = master_override.filter(|s| !s.trim().is_empty()) {
+        return Ok(pipe);
+    }
+
+    for attempt in 0..2 {
+        if let Some(path) = runtime_paths::master_pipe_file_path() {
+            if let Ok(contents) = std::fs::read_to_string(path) {
+                let pipe = contents.trim();
+                if !pipe.is_empty() {
+                    return Ok(pipe.to_string());
+                }
+            }
+        }
+        if attempt == 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
+    Err(anyhow::anyhow!(MASTER_NOT_RUNNING))
+}
+
+async fn open_master_pipe_for_cli(
+    pipe_name: &str,
+) -> Result<tokio::net::windows::named_pipe::NamedPipeClient> {
+    for attempt in 0..2 {
+        match tokio::net::windows::named_pipe::ClientOptions::new().open(pipe_name) {
+            Ok(pipe) => return Ok(pipe),
+            Err(_) if attempt == 0 => {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await
+            }
+            Err(_) => return Err(anyhow::anyhow!(MASTER_NOT_RUNNING)),
+        }
+    }
+    Err(anyhow::anyhow!(MASTER_NOT_RUNNING))
+}
+
+fn format_sessions_json_lines(sessions: &[session_registry::SessionInfo]) -> Result<String> {
+    let mut out = String::new();
+    for session in sessions {
+        out.push_str(&serde_json::to_string(session)?);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+fn format_sessions_table(sessions: &[session_registry::SessionInfo]) -> String {
+    let mut out = String::new();
+    if sessions.is_empty() {
+        out.push_str("No sessions.\n");
+        return out;
+    }
+    out.push_str(&format!(
+        "{:<24} {:<10} {:<10} {:<20} {:<20} {}\n",
+        "SESSION", "STATUS", "CLI", "PANE", "UPDATED", "TITLE"
+    ));
+    for session in sessions {
+        let sid = session.session_id.to_string();
+        let short_sid = if sid.len() > 24 { &sid[..24] } else { sid.as_str() };
+        out.push_str(&format!(
+            "{:<24} {:<10} {:<10} {:<20} {:<20} {}\n",
+            short_sid,
+            status_label(session.status.as_ref()),
+            cli_source_label(session.cli_source.as_ref()),
+            session.pane_session_id.as_deref().unwrap_or("-"),
+            session.updated_at.as_deref().unwrap_or("-"),
+            session.title.as_deref().unwrap_or("-"),
+        ));
+    }
+    out
+}
+
+fn status_label(status: Option<&agent_sessions::AgentStatus>) -> String {
+    status.map(|s| format!("{s:?}")).unwrap_or_else(|| "-".to_string())
+}
+
+fn cli_source_label(source: Option<&agent_sessions::CliSource>) -> String {
+    match source {
+        Some(agent_sessions::CliSource::Claude) => "Claude".to_string(),
+        Some(agent_sessions::CliSource::Copilot) => "Copilot".to_string(),
+        Some(agent_sessions::CliSource::Gemini) => "Gemini".to_string(),
+        Some(agent_sessions::CliSource::Unknown(s)) if !s.is_empty() => s.clone(),
+        _ => "-".to_string(),
+    }
 }
 
 // ─── Output helpers ─────────────────────────────────────────────────────────
@@ -2307,5 +2488,65 @@ mod cli_tests {
         .expect("session id alone must parse");
         assert_eq!(cli.initial_load_session_id.as_deref(), Some("sid-only"));
         assert!(cli.initial_load_cwd.is_none());
+    }
+
+    #[test]
+    fn sessions_list_cli_parses_json_and_master_override() {
+        let cli = Cli::try_parse_from([
+            "wta",
+            "sessions",
+            "list",
+            "--json",
+            "--master",
+            r"\\.\pipe\wta-master-test",
+        ])
+        .expect("sessions list parses");
+
+        assert!(cli.json);
+        match cli.command {
+            Some(Command::Sessions { action: SessionsAction::List { master } }) => {
+                assert_eq!(master.as_deref(), Some(r"\\.\pipe\wta-master-test"));
+            }
+            other => panic!("expected sessions list command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sessions_json_lines_prints_one_session_info_per_line() {
+        let mut row = session_registry::SessionInfo::new(
+            agent_client_protocol::SessionId::new("sid-json"),
+            std::path::PathBuf::from("C:\\repo"),
+        );
+        row.status = Some(agent_sessions::AgentStatus::Working);
+        row.cli_source = Some(agent_sessions::CliSource::Copilot);
+        row.current_tool = Some("shell".into());
+
+        let out = format_sessions_json_lines(&[row]).expect("format jsonl");
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines.len(), 1);
+        let value: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(value["session_id"], "sid-json");
+        assert_eq!(value["status"], "Working");
+        assert_eq!(value["cli_source"], "Copilot");
+        assert_eq!(value["current_tool"], "shell");
+    }
+
+    #[test]
+    fn sessions_table_prints_header_and_rows() {
+        let mut row = session_registry::SessionInfo::new(
+            agent_client_protocol::SessionId::new("sid-table"),
+            std::path::PathBuf::from("C:\\repo"),
+        );
+        row.title = Some("fix build".into());
+        row.status = Some(agent_sessions::AgentStatus::Idle);
+        row.cli_source = Some(agent_sessions::CliSource::Claude);
+        row.pane_session_id = Some("pane-table".into());
+
+        let out = format_sessions_table(&[row]);
+        assert!(out.contains("SESSION"));
+        assert!(out.contains("sid-table"));
+        assert!(out.contains("Idle"));
+        assert!(out.contains("Claude"));
+        assert!(out.contains("pane-table"));
     }
 }

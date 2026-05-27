@@ -1747,6 +1747,12 @@ impl acp::Client for WtaClient {
                     .event_tx
                     .send(AppEvent::AliveSessionRemoved(sid));
             }
+            WtaExtNotification::SessionsChanged => {
+                tracing::trace!(
+                    target: "acp_client",
+                    "ignoring sessions/changed until helper viewer consumes it"
+                );
+            }
             WtaExtNotification::Unknown => {
                 tracing::trace!(
                     target: "acp_client",
@@ -2008,13 +2014,14 @@ pub async fn run_acp_client_over_pipe(
                 .map(|wire| {
                     let mut meta = wire.meta.clone();
                     let wta = crate::session_registry::extract_wta_meta(&mut meta);
-                    crate::session_registry::SessionInfo {
-                        session_id: wire.session_id.clone(),
-                        cwd: wire.cwd.clone(),
-                        title: wire.title.clone(),
-                        updated_at: wire.updated_at.clone(),
-                        pane_session_id: wta.pane_session_id,
-                    }
+                    let mut info = crate::session_registry::SessionInfo::new(
+                        wire.session_id.clone(),
+                        wire.cwd.clone(),
+                    );
+                    info.title = wire.title.clone();
+                    info.updated_at = wire.updated_at.clone();
+                    info.pane_session_id = wta.pane_session_id;
+                    info
                 })
                 .collect();
             startup_probe.log(&format!(
@@ -3822,13 +3829,11 @@ mod tests {
         #[tokio::test]
         async fn session_added_translates_to_alive_session_added_event() {
             let (client, mut rx) = make_client();
-            let info = crate::session_registry::SessionInfo {
-                session_id: acp::SessionId::new("sess-1".to_string()),
-                cwd: PathBuf::from("/work"),
-                title: None,
-                updated_at: None,
-                pane_session_id: Some("pane-A".to_string()),
-            };
+            let info = crate::session_registry::SessionInfo::new(
+                acp::SessionId::new("sess-1".to_string()),
+                PathBuf::from("/work"),
+            )
+            .with_pane_session_id("pane-A".to_string());
             let ext = build_session_added_notification(&info);
 
             client.ext_notification(ext).await.unwrap();

@@ -19,6 +19,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionOrigin};
 use tokio::sync::Mutex;
 
 /// Top-level key under `_meta` reserved for our extension. ACP lets
@@ -146,6 +149,12 @@ pub const INTELLTERM_METHOD_SESSION_ADDED: &str = "intellterm.wta/session_added"
 /// future explicit close).
 pub const INTELLTERM_METHOD_SESSION_REMOVED: &str = "intellterm.wta/session_removed";
 
+/// ExtNotification method for "master's session registry changed; refetch if interested".
+pub const INTELLTERM_METHOD_SESSIONS_CHANGED: &str = "intellterm.wta/sessions/changed";
+
+/// ExtRequest method for fetching the master's full session registry snapshot.
+pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "intellterm.wta/sessions/list";
+
 /// Wire payload for [`INTELLTERM_METHOD_SESSION_REMOVED`].
 ///
 /// We only need the session id — helpers look the row up locally to
@@ -153,6 +162,18 @@ pub const INTELLTERM_METHOD_SESSION_REMOVED: &str = "intellterm.wta/session_remo
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionRemovedParams {
     pub session_id: acp::SessionId,
+}
+
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionsChangedParams {}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionsListParams {}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionsListResponse {
+    pub sessions: Vec<SessionInfo>,
 }
 
 /// Build a `session_added` ExtNotification from a registry row.
@@ -179,6 +200,45 @@ pub fn build_session_removed_notification(sid: &acp::SessionId) -> acp::ExtNotif
     acp::ExtNotification::new(INTELLTERM_METHOD_SESSION_REMOVED, Arc::from(raw))
 }
 
+
+/// Build a `sessions/changed` ExtNotification with an intentionally empty payload.
+pub fn build_sessions_changed_notification() -> acp::ExtNotification {
+    let json = serde_json::to_string(&SessionsChangedParams::default())
+        .expect("SessionsChangedParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::ExtNotification::new(INTELLTERM_METHOD_SESSIONS_CHANGED, Arc::from(raw))
+}
+
+/// Build an `ExtRequest` for `intellterm.wta/sessions/list`.
+pub fn build_sessions_list_request() -> acp::ExtRequest {
+    let json = serde_json::to_string(&SessionsListParams::default())
+        .expect("SessionsListParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::ExtRequest::new(INTELLTERM_METHOD_SESSIONS_LIST, Arc::from(raw))
+}
+
+pub fn parse_sessions_list_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<SessionsListParams, serde_json::Error> {
+    serde_json::from_str::<SessionsListParams>(raw.get())
+}
+
+pub fn build_sessions_list_response(
+    sessions: Vec<SessionInfo>,
+) -> Box<serde_json::value::RawValue> {
+    let response = SessionsListResponse { sessions };
+    serde_json::value::to_raw_value(&response)
+        .expect("SessionsListResponse serialization is infallible for owned data")
+}
+
+pub fn parse_sessions_list_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<SessionsListResponse, serde_json::Error> {
+    serde_json::from_str::<SessionsListResponse>(raw.get())
+}
+
 /// Parsed view of an inbound ACP `ExtNotification` from master, as
 /// recognized by the helper's live-set mirror.
 ///
@@ -189,6 +249,7 @@ pub fn build_session_removed_notification(sid: &acp::SessionId) -> acp::ExtNotif
 pub enum WtaExtNotification {
     SessionAdded(SessionInfo),
     SessionRemoved(acp::SessionId),
+    SessionsChanged,
     /// Not one of ours. Caller should silently ignore.
     Unknown,
     /// Method matched but params failed to parse. Caller should log
@@ -207,13 +268,11 @@ pub fn parse_ext_notification(n: &acp::ExtNotification) -> WtaExtNotification {
         INTELLTERM_METHOD_SESSION_ADDED => match serde_json::from_str::<acp::SessionInfo>(raw.get()) {
             Ok(mut wire) => {
                 let wta = extract_wta_meta(&mut wire.meta);
-                WtaExtNotification::SessionAdded(SessionInfo {
-                    session_id: wire.session_id,
-                    cwd: wire.cwd,
-                    title: wire.title,
-                    updated_at: wire.updated_at,
-                    pane_session_id: wta.pane_session_id,
-                })
+                let mut info = SessionInfo::new(wire.session_id, wire.cwd);
+                info.title = wire.title;
+                info.updated_at = wire.updated_at;
+                info.pane_session_id = wta.pane_session_id;
+                WtaExtNotification::SessionAdded(info)
             }
             Err(err) => WtaExtNotification::MalformedParams {
                 method: method.to_string(),
@@ -223,6 +282,15 @@ pub fn parse_ext_notification(n: &acp::ExtNotification) -> WtaExtNotification {
         INTELLTERM_METHOD_SESSION_REMOVED => {
             match serde_json::from_str::<SessionRemovedParams>(raw.get()) {
                 Ok(p) => WtaExtNotification::SessionRemoved(p.session_id),
+                Err(err) => WtaExtNotification::MalformedParams {
+                    method: method.to_string(),
+                    error: err.to_string(),
+                },
+            }
+        }
+        INTELLTERM_METHOD_SESSIONS_CHANGED => {
+            match serde_json::from_str::<SessionsChangedParams>(raw.get()) {
+                Ok(_) => WtaExtNotification::SessionsChanged,
                 Err(err) => WtaExtNotification::MalformedParams {
                     method: method.to_string(),
                     error: err.to_string(),
@@ -289,13 +357,27 @@ pub fn parse_focus_session_params(
 ///                  field was introduced) so this is `Option`. Serialized
 ///                  into `acp::SessionInfo._meta.wta.pane_session_id` on
 ///                  the wire so we don't pollute the standard ACP schema.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionInfo {
     pub session_id: acp::SessionId,
     pub cwd: PathBuf,
     pub title: Option<String>,
     pub updated_at: Option<String>,
     pub pane_session_id: Option<String>,
+    #[serde(default)]
+    pub status: Option<AgentStatus>,
+    #[serde(default)]
+    pub cli_source: Option<CliSource>,
+    #[serde(default)]
+    pub current_tool: Option<String>,
+    #[serde(default)]
+    pub attention_reason: Option<String>,
+    #[serde(default)]
+    pub last_activity_at_ms: Option<u64>,
+    #[serde(default)]
+    pub origin: Option<SessionOrigin>,
+    #[serde(default)]
+    pub last_error: Option<String>,
 }
 
 impl SessionInfo {
@@ -308,6 +390,13 @@ impl SessionInfo {
             title: None,
             updated_at: None,
             pane_session_id: None,
+            status: None,
+            cli_source: None,
+            current_tool: None,
+            attention_reason: None,
+            last_activity_at_ms: None,
+            origin: None,
+            last_error: None,
         }
     }
 
@@ -323,6 +412,7 @@ impl SessionInfo {
 /// hold an `Arc<dyn SessionRegistry>` so unit tests can swap in mocks
 /// without spinning up a real pipe. In production both sides use
 /// `InMemoryRegistry`.
+#[allow(dead_code)] // Task B wires hook RPCs into these reducer methods.
 #[async_trait::async_trait]
 pub trait SessionRegistry: Send + Sync {
     /// Insert-or-replace the row for `info.session_id`. Idempotent — calling
@@ -342,14 +432,26 @@ pub trait SessionRegistry: Send + Sync {
     /// stable order should sort by `session_id` themselves. The clone is
     /// cheap because `SessionInfo` is small (`Arc<str>` for the id).
     async fn snapshot(&self) -> Vec<SessionInfo>;
+
+    /// Apply a helper-observed session event to the master-side reducer state.
+    async fn apply_event(&self, ev: SessionEvent) -> bool;
+
+    /// Update origin metadata on an existing row.
+    async fn set_origin(&self, sid: &acp::SessionId, origin: SessionOrigin) -> bool;
 }
 
 /// Production implementation. Uses `tokio::sync::Mutex` for parity with the
 /// existing master state; the critical sections are all sync HashMap ops
 /// so a future sync-lock conversion is a mechanical swap.
 #[derive(Default)]
+struct RegistryState {
+    sessions: HashMap<acp::SessionId, SessionInfo>,
+    active_by_pane: HashMap<String, acp::SessionId>,
+}
+
+#[derive(Default)]
 pub struct InMemoryRegistry {
-    inner: Mutex<HashMap<acp::SessionId, SessionInfo>>,
+    inner: Mutex<RegistryState>,
 }
 
 impl InMemoryRegistry {
@@ -366,22 +468,269 @@ impl InMemoryRegistry {
 impl SessionRegistry for InMemoryRegistry {
     async fn upsert(&self, info: SessionInfo) {
         let mut guard = self.inner.lock().await;
-        guard.insert(info.session_id.clone(), info);
+        upsert_locked(&mut guard, info);
     }
 
     async fn remove(&self, sid: &acp::SessionId) -> Option<SessionInfo> {
         let mut guard = self.inner.lock().await;
-        guard.remove(sid)
+        remove_locked(&mut guard, sid)
     }
 
     async fn lookup(&self, sid: &acp::SessionId) -> Option<SessionInfo> {
         let guard = self.inner.lock().await;
-        guard.get(sid).cloned()
+        guard.sessions.get(sid).cloned()
     }
 
     async fn snapshot(&self) -> Vec<SessionInfo> {
         let guard = self.inner.lock().await;
-        guard.values().cloned().collect()
+        guard.sessions.values().cloned().collect()
+    }
+
+    async fn apply_event(&self, ev: SessionEvent) -> bool {
+        let mut guard = self.inner.lock().await;
+        apply_event_locked(&mut guard, ev)
+    }
+
+    async fn set_origin(&self, sid: &acp::SessionId, origin: SessionOrigin) -> bool {
+        let mut guard = self.inner.lock().await;
+        let Some(entry) = guard.sessions.get_mut(sid) else {
+            return false;
+        };
+        if entry.origin.as_ref() == Some(&origin) {
+            return false;
+        }
+        entry.origin = Some(origin);
+        true
+    }
+}
+
+#[allow(dead_code)] // Used through apply_event once Task B forwards hook events.
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn pane_key(pane_session_id: &str) -> String {
+    pane_session_id.to_ascii_lowercase()
+}
+
+fn upsert_locked(state: &mut RegistryState, info: SessionInfo) {
+    if let Some(old) = state.sessions.get(&info.session_id) {
+        if let Some(old_pane) = old.pane_session_id.as_deref() {
+            state.active_by_pane.remove(&pane_key(old_pane));
+        }
+    }
+    if let Some(pane) = info.pane_session_id.as_deref() {
+        if !pane.is_empty() {
+            state.active_by_pane.insert(pane_key(pane), info.session_id.clone());
+        }
+    }
+    state.sessions.insert(info.session_id.clone(), info);
+}
+
+fn remove_locked(state: &mut RegistryState, sid: &acp::SessionId) -> Option<SessionInfo> {
+    let removed = state.sessions.remove(sid);
+    if let Some(info) = &removed {
+        if let Some(pane) = info.pane_session_id.as_deref() {
+            state.active_by_pane.remove(&pane_key(pane));
+        }
+    }
+    removed
+}
+
+#[allow(dead_code)] // Used through apply_event once Task B forwards hook events.
+fn end_entry(state: &mut RegistryState, sid: &acp::SessionId, now: u64) -> bool {
+    let Some(entry) = state.sessions.get_mut(sid) else {
+        return false;
+    };
+    entry.status = Some(AgentStatus::Ended);
+    if let Some(pane) = entry.pane_session_id.take() {
+        state.active_by_pane.remove(&pane_key(&pane));
+    }
+    entry.current_tool = None;
+    entry.attention_reason = None;
+    entry.last_activity_at_ms = Some(now);
+    true
+}
+
+#[allow(dead_code)] // Task B calls this via SessionRegistry::apply_event.
+fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
+    let now = now_ms();
+    let ev = match ev {
+        SessionEvent::SessionStarted {
+            key,
+            cli_source,
+            pane_session_id,
+            cwd,
+            title,
+        } => SessionEvent::SessionStarted {
+            key,
+            cli_source,
+            pane_session_id: pane_key(&pane_session_id),
+            cwd,
+            title,
+        },
+        SessionEvent::ConnectionFailed {
+            pane_session_id,
+            reason,
+        } => SessionEvent::ConnectionFailed {
+            pane_session_id: pane_key(&pane_session_id),
+            reason,
+        },
+        SessionEvent::PaneClosed { pane_session_id } => SessionEvent::PaneClosed {
+            pane_session_id: pane_key(&pane_session_id),
+        },
+        SessionEvent::ResumePaneAssigned {
+            key,
+            pane_session_id,
+        } => SessionEvent::ResumePaneAssigned {
+            key,
+            pane_session_id: pane_key(&pane_session_id),
+        },
+        other => other,
+    };
+
+    match ev {
+        SessionEvent::SessionStarted { key, cli_source, pane_session_id, cwd, title } => {
+            let sid = acp::SessionId::new(key.clone());
+            let pane_known = !pane_session_id.is_empty();
+            if pane_known {
+                if let Some(prev_sid) = state.active_by_pane.get(&pane_session_id).cloned() {
+                    if prev_sid != sid {
+                        let _ = end_entry(state, &prev_sid, now);
+                    }
+                }
+            }
+
+            let entry = state
+                .sessions
+                .entry(sid.clone())
+                .or_insert_with(|| SessionInfo::new(sid.clone(), cwd.clone()));
+            if let Some(old_pane) = entry.pane_session_id.take() {
+                if old_pane != pane_session_id {
+                    state.active_by_pane.remove(&pane_key(&old_pane));
+                }
+            }
+            entry.cwd = cwd;
+            if !title.is_empty() {
+                entry.title = Some(title);
+            }
+            entry.cli_source = Some(cli_source);
+            entry.status = Some(AgentStatus::Idle);
+            entry.last_error = None;
+            entry.attention_reason = None;
+            entry.current_tool = None;
+            entry.last_activity_at_ms = Some(now);
+            if pane_known {
+                entry.pane_session_id = Some(pane_session_id.clone());
+                state.active_by_pane.insert(pane_session_id, sid);
+            } else {
+                entry.pane_session_id = None;
+            }
+            true
+        }
+        SessionEvent::ToolStarting { key, tool_name } => {
+            let sid = acp::SessionId::new(key);
+            let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
+            entry.status = Some(AgentStatus::Working);
+            entry.current_tool = Some(tool_name);
+            entry.last_activity_at_ms = Some(now);
+            true
+        }
+        SessionEvent::ToolCompleted { key } => {
+            let sid = acp::SessionId::new(key);
+            let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
+            if matches!(entry.status, Some(AgentStatus::Working | AgentStatus::Attention)) {
+                entry.status = Some(AgentStatus::Idle);
+                entry.attention_reason = None;
+            }
+            entry.current_tool = None;
+            entry.last_activity_at_ms = Some(now);
+            true
+        }
+        SessionEvent::Notification { key, message } => {
+            let sid = acp::SessionId::new(key);
+            let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
+            entry.status = Some(AgentStatus::Attention);
+            entry.attention_reason = Some(message);
+            entry.last_activity_at_ms = Some(now);
+            true
+        }
+        SessionEvent::SessionStopped { key, reason } => {
+            let sid = acp::SessionId::new(key);
+            let reason_keeps_session_alive = reason == "complete";
+            let pane_still_live = state.sessions.get(&sid)
+                .and_then(|s| s.pane_session_id.as_deref())
+                .map(|p| state.active_by_pane.get(&pane_key(p)) == Some(&sid))
+                .unwrap_or(false);
+            let is_agent_pane_session = state.sessions.get(&sid)
+                .map(|s| s.origin == Some(SessionOrigin::AgentPane))
+                .unwrap_or(false);
+            let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
+            if is_agent_pane_session && pane_still_live && reason_keeps_session_alive {
+                entry.status = Some(AgentStatus::Idle);
+            } else {
+                entry.status = Some(AgentStatus::Ended);
+                if let Some(pane) = entry.pane_session_id.take() {
+                    state.active_by_pane.remove(&pane_key(&pane));
+                }
+            }
+            entry.current_tool = None;
+            entry.attention_reason = None;
+            entry.last_activity_at_ms = Some(now);
+            true
+        }
+        SessionEvent::PaneClosed { pane_session_id } => {
+            let Some(sid) = state.active_by_pane.remove(&pane_session_id) else { return false; };
+            let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
+            entry.status = Some(AgentStatus::Ended);
+            entry.pane_session_id = None;
+            entry.current_tool = None;
+            entry.attention_reason = None;
+            entry.last_activity_at_ms = Some(now);
+            true
+        }
+        SessionEvent::ConnectionFailed { pane_session_id, reason } => {
+            let Some(sid) = state.active_by_pane.get(&pane_session_id).cloned() else { return false; };
+            let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
+            entry.status = Some(AgentStatus::Error);
+            entry.last_error = Some(reason);
+            entry.last_activity_at_ms = Some(now);
+            true
+        }
+        SessionEvent::ResumeDispatched { key } => {
+            let sid = acp::SessionId::new(key);
+            let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
+            if matches!(entry.status, Some(AgentStatus::Historical | AgentStatus::Ended)) {
+                entry.status = Some(AgentStatus::Idle);
+                entry.last_activity_at_ms = Some(now);
+                return true;
+            }
+            false
+        }
+        SessionEvent::ResumePaneAssigned { key, pane_session_id } => {
+            let sid = acp::SessionId::new(key);
+            if let Some(prev_sid) = state.active_by_pane.get(&pane_session_id).cloned() {
+                if prev_sid != sid {
+                    let _ = end_entry(state, &prev_sid, now);
+                }
+            }
+            let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
+            if entry.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
+                return false;
+            }
+            if let Some(old_pane) = entry.pane_session_id.take() {
+                if old_pane != pane_session_id {
+                    state.active_by_pane.remove(&pane_key(&old_pane));
+                }
+            }
+            entry.pane_session_id = Some(pane_session_id.clone());
+            entry.last_activity_at_ms = Some(now);
+            state.active_by_pane.insert(pane_session_id, sid);
+            true
+        }
     }
 }
 
@@ -449,6 +798,7 @@ pub async fn apply_ext_notification(
         WtaExtNotification::SessionRemoved(sid) => {
             reg.remove(sid).await;
         }
+        WtaExtNotification::SessionsChanged => {}
         // Unknown / MalformedParams: caller's job to log; never panic
         // and never mutate the registry. A future master may broadcast
         // notifications we don't recognise — silently ignoring them
@@ -690,13 +1040,13 @@ mod tests {
 
     #[test]
     fn to_acp_session_info_carries_pane_session_id_in_meta() {
-        let row = SessionInfo {
-            session_id: acp::SessionId::new("sess-1".to_string()),
-            cwd: PathBuf::from("/repo/a"),
-            title: Some("hello".into()),
-            updated_at: Some("2025-01-01T00:00:00Z".into()),
-            pane_session_id: Some("pane-X".into()),
-        };
+        let mut row = SessionInfo::new(
+            acp::SessionId::new("sess-1".to_string()),
+            PathBuf::from("/repo/a"),
+        );
+        row.title = Some("hello".into());
+        row.updated_at = Some("2025-01-01T00:00:00Z".into());
+        row.pane_session_id = Some("pane-X".into());
         let acp = to_acp_session_info(&row);
         assert_eq!(acp.session_id, row.session_id);
         assert_eq!(acp.cwd, row.cwd);
@@ -724,13 +1074,13 @@ mod tests {
 
     #[test]
     fn build_then_parse_session_added_is_round_trip() {
-        let row = SessionInfo {
-            session_id: acp::SessionId::new("sess-77".to_string()),
-            cwd: PathBuf::from("/repo/x"),
-            title: Some("hello".into()),
-            updated_at: Some("2025-01-02T03:04:05Z".into()),
-            pane_session_id: Some("pane-ZZ".into()),
-        };
+        let mut row = SessionInfo::new(
+            acp::SessionId::new("sess-77".to_string()),
+            PathBuf::from("/repo/x"),
+        );
+        row.title = Some("hello".into());
+        row.updated_at = Some("2025-01-02T03:04:05Z".into());
+        row.pane_session_id = Some("pane-ZZ".into());
         let ext = build_session_added_notification(&row);
         assert_eq!(&*ext.method, INTELLTERM_METHOD_SESSION_ADDED);
         match parse_ext_notification(&ext) {
@@ -784,6 +1134,166 @@ mod tests {
             parse_ext_notification(&ext),
             WtaExtNotification::MalformedParams { .. }
         ));
+    }
+
+
+
+    // ─── Task A: expanded SessionInfo + sessions/list + reducers ───────────
+
+    #[test]
+    fn session_info_json_round_trips_all_master_fields() {
+        let row = SessionInfo {
+            session_id: acp::SessionId::new("sess-full".to_string()),
+            cwd: PathBuf::from("C:\\repo"),
+            title: Some("fix the build".into()),
+            updated_at: Some("2026-05-27T12:34:56Z".into()),
+            pane_session_id: Some("pane-1".into()),
+            status: Some(crate::agent_sessions::AgentStatus::Attention),
+            cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+            current_tool: Some("ask_user".into()),
+            attention_reason: Some("Need approval".into()),
+            last_activity_at_ms: Some(1717012345678),
+            origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
+            last_error: Some("previous failure".into()),
+        };
+
+        let json = serde_json::to_string(&row).expect("serialize SessionInfo");
+        let parsed: SessionInfo = serde_json::from_str(&json).expect("deserialize SessionInfo");
+
+        assert_eq!(parsed, row);
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["status"], "Attention");
+        assert_eq!(value["cli_source"], "Copilot");
+        assert_eq!(value["origin"], "AgentPane");
+        assert_eq!(value["last_activity_at_ms"], 1717012345678u64);
+    }
+
+    #[test]
+    fn build_sessions_list_request_round_trips_empty_params() {
+        let req = build_sessions_list_request();
+        assert_eq!(&*req.method, INTELLTERM_METHOD_SESSIONS_LIST);
+        parse_sessions_list_params(&req.params).expect("empty object params are valid");
+    }
+
+    #[test]
+    fn build_sessions_changed_notification_has_empty_params() {
+        let ext = build_sessions_changed_notification();
+        assert_eq!(&*ext.method, INTELLTERM_METHOD_SESSIONS_CHANGED);
+        assert_eq!(ext.params.get(), "{}");
+        assert!(matches!(parse_ext_notification(&ext), WtaExtNotification::SessionsChanged));
+    }
+
+    #[test]
+    fn sessions_list_response_round_trips_rows() {
+        let row = SessionInfo {
+            session_id: acp::SessionId::new("sess-list".to_string()),
+            cwd: PathBuf::from("C:\\repo"),
+            title: Some("title".into()),
+            updated_at: Some("2026-05-27T12:34:56Z".into()),
+            pane_session_id: Some("pane-list".into()),
+            status: Some(crate::agent_sessions::AgentStatus::Idle),
+            cli_source: Some(crate::agent_sessions::CliSource::Claude),
+            current_tool: None,
+            attention_reason: None,
+            last_activity_at_ms: Some(123),
+            origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
+            last_error: None,
+        };
+        let raw = build_sessions_list_response(vec![row.clone()]);
+        let parsed = parse_sessions_list_response(&raw).expect("response parses");
+        assert_eq!(parsed.sessions, vec![row]);
+    }
+
+    #[tokio::test]
+    async fn master_reducer_session_started_creates_idle_entry_bound_to_pane() {
+        let reg = InMemoryRegistry::new();
+        let changed = reg.apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "sid-1".into(),
+            cli_source: crate::agent_sessions::CliSource::Claude,
+            pane_session_id: "Pane-A".into(),
+            cwd: PathBuf::from("C:\\work"),
+            title: "claude — work".into(),
+        }).await;
+
+        assert!(changed);
+        let row = reg.lookup(&acp::SessionId::new("sid-1")).await.unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
+        assert_eq!(row.cli_source, Some(crate::agent_sessions::CliSource::Claude));
+        assert_eq!(row.pane_session_id.as_deref(), Some("pane-a"));
+        assert_eq!(row.title.as_deref(), Some("claude — work"));
+    }
+
+    #[tokio::test]
+    async fn master_reducer_tool_lifecycle_and_notification_update_activity_fields() {
+        let reg = InMemoryRegistry::new();
+        reg.apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: crate::agent_sessions::CliSource::Copilot,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        reg.apply_event(crate::agent_sessions::SessionEvent::ToolStarting { key: "sid".into(), tool_name: "bash".into() }).await;
+        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Working));
+        assert_eq!(row.current_tool.as_deref(), Some("bash"));
+
+        reg.apply_event(crate::agent_sessions::SessionEvent::Notification { key: "sid".into(), message: "approve?".into() }).await;
+        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Attention));
+        assert_eq!(row.attention_reason.as_deref(), Some("approve?"));
+
+        reg.apply_event(crate::agent_sessions::SessionEvent::ToolCompleted { key: "sid".into() }).await;
+        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
+        assert!(row.current_tool.is_none());
+        assert!(row.attention_reason.is_none());
+    }
+
+    #[tokio::test]
+    async fn master_reducer_session_stopped_and_pane_closed_end_sessions() {
+        let reg = InMemoryRegistry::new();
+        reg.apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: crate::agent_sessions::CliSource::Gemini,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        reg.set_origin(&acp::SessionId::new("sid"), crate::agent_sessions::SessionOrigin::AgentPane).await;
+        reg.apply_event(crate::agent_sessions::SessionEvent::SessionStopped { key: "sid".into(), reason: "user_exit".into() }).await;
+        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Ended));
+        assert!(row.pane_session_id.is_none());
+
+        reg.apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "sid2".into(),
+            cli_source: crate::agent_sessions::CliSource::Gemini,
+            pane_session_id: "p2".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        reg.apply_event(crate::agent_sessions::SessionEvent::PaneClosed { pane_session_id: "P2".into() }).await;
+        let row = reg.lookup(&acp::SessionId::new("sid2")).await.unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Ended));
+        assert!(row.pane_session_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn master_reducer_connection_failed_sets_error_on_bound_session() {
+        let reg = InMemoryRegistry::new();
+        reg.apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: crate::agent_sessions::CliSource::Claude,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        reg.apply_event(crate::agent_sessions::SessionEvent::ConnectionFailed { pane_session_id: "P".into(), reason: "ECONNRESET".into() }).await;
+        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Error));
+        assert_eq!(row.last_error.as_deref(), Some("ECONNRESET"));
+        assert_eq!(row.pane_session_id.as_deref(), Some("p"));
     }
 
     // ─── focus_session ──────────────────────────────────────────────
@@ -857,13 +1367,11 @@ mod tests {
     #[tokio::test]
     async fn apply_ext_notification_upserts_on_session_added() {
         let reg = InMemoryRegistry::new();
-        let info = SessionInfo {
-            session_id: acp::SessionId::new("sess-1".to_string()),
-            cwd: std::path::PathBuf::from("/tmp/x"),
-            title: None,
-            updated_at: None,
-            pane_session_id: Some("pane-1".to_string()),
-        };
+        let info = SessionInfo::new(
+            acp::SessionId::new("sess-1".to_string()),
+            std::path::PathBuf::from("/tmp/x"),
+        )
+        .with_pane_session_id("pane-1".to_string());
         let ext = build_session_added_notification(&info);
         let classified = apply_ext_notification(&reg, &ext).await;
         assert!(matches!(classified, WtaExtNotification::SessionAdded(_)));
@@ -874,13 +1382,10 @@ mod tests {
     #[tokio::test]
     async fn apply_ext_notification_removes_on_session_removed() {
         let reg = InMemoryRegistry::new();
-        let info = SessionInfo {
-            session_id: acp::SessionId::new("dies".to_string()),
-            cwd: std::path::PathBuf::from("/tmp/y"),
-            title: None,
-            updated_at: None,
-            pane_session_id: None,
-        };
+        let info = SessionInfo::new(
+            acp::SessionId::new("dies".to_string()),
+            std::path::PathBuf::from("/tmp/y"),
+        );
         reg.upsert(info.clone()).await;
         let ext = build_session_removed_notification(&info.session_id);
         let classified = apply_ext_notification(&reg, &ext).await;
@@ -891,13 +1396,10 @@ mod tests {
     #[tokio::test]
     async fn apply_ext_notification_is_noop_on_unknown_method() {
         let reg = InMemoryRegistry::new();
-        let pre = SessionInfo {
-            session_id: acp::SessionId::new("keep".to_string()),
-            cwd: std::path::PathBuf::from("/tmp/z"),
-            title: None,
-            updated_at: None,
-            pane_session_id: None,
-        };
+        let pre = SessionInfo::new(
+            acp::SessionId::new("keep".to_string()),
+            std::path::PathBuf::from("/tmp/z"),
+        );
         reg.upsert(pre.clone()).await;
         let raw = serde_json::value::RawValue::from_string("{}".into()).unwrap();
         let ext = acp::ExtNotification::new(
