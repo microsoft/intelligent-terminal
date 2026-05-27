@@ -504,7 +504,6 @@ mutates per-tab or per-window state includes the relevant ids in its
 | `tab_changed` | yes | yes | skip if `our_window != target_window`; then owner-lock in `switch_tab_session` |
 | `tab_closed` | yes | yes | skip if `our_window != target_window` |
 | `tab_renamed` | old + new | dest | owner-match self-filters; non-owners ignore |
-| `agent_prompt` | yes | n/a | route by `tab_id` |
 | `autofix_execute` | yes (+ pane_id) | n/a | route by `tab_id` / `pane_id` |
 
 **Outbound events from helpers carry `tab_id`** (= owner_tab_id). C++

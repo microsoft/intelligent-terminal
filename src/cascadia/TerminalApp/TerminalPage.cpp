@@ -965,7 +965,7 @@ namespace winrt::TerminalApp::implementation
         // welcome hint immediately.
         if (const auto tab = _GetFocusedTabImpl())
         {
-            _OpenOrReuseAgentPane(L"", false, L"FirstRunExperience");
+            _OpenOrReuseAgentPane(false, L"FirstRunExperience");
             // Focus is set in the Initialized callback once the pane is ready.
         }
     }
@@ -1840,7 +1840,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ false, L"BottomBarToggle");
+        _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"BottomBarToggle");
         _UpdateBottomBarState();
     }
 
@@ -1880,7 +1880,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         // No agent pane on this tab — spawn one in sessions view.
-        _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true, L"BottomBarSessions");
+        _OpenOrReuseAgentPane(/*intoSessionsView*/ true, L"BottomBarSessions");
         _UpdateBottomBarState();
     }
 
@@ -2372,7 +2372,7 @@ namespace winrt::TerminalApp::implementation
         // Recreate on the active terminal tab so the user sees something
         // immediately. Other tabs that had an agent pane will need to be
         // re-toggled by the user.
-        _OpenOrReuseAgentPane(L"", false, L"SettingsReload");
+        _OpenOrReuseAgentPane(false, L"SettingsReload");
     }
 
     void TerminalPage::_FlushPendingAgentRebuild()
@@ -2390,9 +2390,9 @@ namespace winrt::TerminalApp::implementation
         _RebuildAgentStack();
     }
 
-    void TerminalPage::_OpenOrReuseAgentPane(const winrt::hstring& prompt, bool intoSessionsView, const wchar_t* triggerSource)
+    void TerminalPage::_OpenOrReuseAgentPane(bool intoSessionsView, const wchar_t* triggerSource)
     {
-        _agentPaneLog("_OpenOrReuseAgentPane called, prompt='" + winrt::to_string(prompt) + "', intoSessionsView=" + (intoSessionsView ? "true" : "false"));
+        _agentPaneLog(std::string{ "_OpenOrReuseAgentPane called, intoSessionsView=" } + (intoSessionsView ? "true" : "false"));
 
         const auto emitAgentPaneOpened = [&]() {
 #if defined(WT_BRANDING_RELEASE)
@@ -2489,25 +2489,6 @@ namespace winrt::TerminalApp::implementation
 
             _agentPaneLog("found agent pane on focused tab");
 
-            if (!prompt.empty())
-            {
-                // Broadcast prompt to wta via the WT protocol.
-                _agentPaneLog("prompt non-empty, broadcasting agent_prompt event");
-                Json::Value evt;
-                evt["type"] = "event";
-                evt["method"] = "agent_prompt";
-                Json::Value params;
-                params["prompt"] = winrt::to_string(prompt);
-                params["tab_id"] = winrt::to_string(focusedTab->StableId());
-                evt["params"] = params;
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "";
-                ProtocolVtSequenceReceived.raise(
-                    *this,
-                    winrt::to_hstring(Json::writeString(wb, evt)));
-                return;
-            }
-
             if (intoSessionsView)
             {
                 // Open-into-sessions: never close, just flip the view +
@@ -2522,10 +2503,10 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
-            // Empty prompt: toggle close. Apply locally FIRST (see comment
-            // on the unstash branch above for why we don't wait for wta's
-            // echo). wta echo lands in OnAgentStateChanged and is
-            // idempotent against the already-stashed pane.
+            // Toggle close. Apply locally FIRST (see comment on the unstash
+            // branch above for why we don't wait for wta's echo). wta echo
+            // lands in OnAgentStateChanged and is idempotent against the
+            // already-stashed pane.
             _agentPaneLog("toggle: stashing existing agent pane locally + notifying wta");
             focusedTab->StashAgentPane();
             _RequestAgentStateForTab(focusedTab, std::nullopt, /*pane_open*/ false);
@@ -2535,10 +2516,6 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("no agent pane on focused tab, creating new one");
 
-        if (!prompt.empty())
-        {
-            _agentPaneLog("_OpenOrReuseAgentPane: dropping prompt (not yet wired through helper+master)");
-        }
         if (!_AutoCreateHiddenAgentPaneShared(focusedTab, intoSessionsView))
         {
             _agentPaneLog("_OpenOrReuseAgentPane: _AutoCreateHiddenAgentPaneShared failed");
@@ -2565,7 +2542,7 @@ namespace winrt::TerminalApp::implementation
         if (!existingPane)
         {
             // No agent pane on this tab — open one.
-            _OpenOrReuseAgentPane(L"", false, L"FocusAction");
+            _OpenOrReuseAgentPane(false, L"FocusAction");
             return;
         }
 

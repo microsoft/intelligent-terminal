@@ -634,7 +634,7 @@ namespace winrt::TerminalApp::implementation
         // per-pane-wta architecture was deleted. Helper processes are now
         // ordinary conpty children of TermControl — TermControl /
         // ConptyConnection owns their lifetime.
-        void _OpenOrReuseAgentPane(const winrt::hstring& prompt, bool intoSessionsView, const wchar_t* triggerSource);
+        void _OpenOrReuseAgentPane(bool intoSessionsView, const wchar_t* triggerSource);
         void _FocusAgentPane();
         void _RepositionAgentPanes();
         static winrt::Microsoft::Terminal::Settings::Model::SplitDirection _AgentPanePositionToSplitDirection(const winrt::hstring& position);

@@ -686,20 +686,6 @@ pub fn classify_wt_event(
                 age_ticks: 100,
             }
         }
-        "agent_prompt" => {
-            let prompt = params
-                .get("prompt")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            WtNotification {
-                severity: WtEventSeverity::Actionable,
-                pane_id: pane_id.to_string(),
-                tab_id: tab,
-                summary: format!("agent_prompt:{}", prompt),
-                acknowledged: false,
-                age_ticks: 0,
-            }
-        }
         "set_agent_state" => {
             // handle_event consumes set_agent_state at the top of WtEvent
             // before classification runs, so classify normally never sees

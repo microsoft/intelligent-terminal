@@ -1695,7 +1695,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        _OpenOrReuseAgentPane(L"", false, L"Action");
+        _OpenOrReuseAgentPane(false, L"Action");
         args.Handled(true);
     }
 
@@ -1741,7 +1741,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true, L"SessionsAction");
+        _OpenOrReuseAgentPane(/*intoSessionsView*/ true, L"SessionsAction");
         args.Handled(true);
     }
 

@@ -133,7 +133,7 @@ flowchart TB
     InPane -- "ConPTY stdout<br/>VT / OSC 133 / AgentEvent" --> WT
     DelegateAgent -- "ConPTY stdout<br/>VT / OSC / optional hooks" --> WT
     WT -- "render/capture output" --> Scroll
-    WT -- "VT/OSC, agent_prompt,<br/>autofix events" --> EventBus
+    WT -- "VT/OSC,<br/>autofix events" --> EventBus
 
     WTAAgent -- "spawn wtcli<br/>for WT operations<br/>(including send-keys)" --> WTCLI
     WTADelegate -- "GetActivePane / ReadPaneOutput /<br/>CreateTab(commandline)<br/>via wtcli / COM" --> WTCLI
