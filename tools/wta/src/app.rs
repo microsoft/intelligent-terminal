@@ -759,6 +759,10 @@ pub enum AppEvent {
     Key(KeyEvent),
     Tick,
     Resize(u16, u16), // terminal resize (handled by ratatui)
+    /// XAML focus on our hosting TermControl changed — true when the agent
+    /// pane gained focus, false when it lost focus. Sourced from xterm
+    /// focus-in/out (CSI I / CSI O) delivered through conpty.
+    FocusChanged(bool),
     ConnectionStage(String),
     /// `session_id` lets us route the status update to the originating tab
     /// once an ACP session is bound to it. Pre-session statuses (startup
@@ -1401,6 +1405,11 @@ pub struct App {
     pub wt_connected: bool,
     pub terminal_rows: u16,
     pub terminal_cols: u16,
+    /// Whether our hosting agent pane currently has XAML focus. Driven by
+    /// xterm focus-in/out delivered through conpty. Default true: a freshly
+    /// opened pane is normally focused, and conpty only delivers an event
+    /// on the *transition*, so absent a signal we assume focused.
+    pub pane_focused: bool,
     pub should_quit: bool,
     prompt_tx: mpsc::UnboundedSender<PromptSubmission>,
     recommendation_tx: mpsc::UnboundedSender<crate::coordinator::ChoiceExecution>,
@@ -1595,6 +1604,7 @@ impl App {
             wt_connected,
             terminal_rows: 24,
             terminal_cols: 80,
+            pane_focused: true,
             should_quit: false,
             prompt_tx,
             recommendation_tx,
@@ -2900,6 +2910,7 @@ impl App {
             AppEvent::Key(_) => "key",
             AppEvent::Tick => "tick",
             AppEvent::Resize(_, _) => "resize",
+            AppEvent::FocusChanged(_) => "focus_changed",
             AppEvent::ConnectionStage(_) => "connection_stage",
             AppEvent::ProgressStatus { .. } => "progress_status",
             AppEvent::AgentConnected { .. } => "agent_connected",
@@ -2987,6 +2998,9 @@ impl App {
             AppEvent::Resize(w, h) => {
                 self.terminal_cols = w;
                 self.terminal_rows = h;
+            }
+            AppEvent::FocusChanged(focused) => {
+                self.pane_focused = focused;
             }
             AppEvent::ConnectionStage(stage) => {
                 self.state = ConnectionState::Connecting(stage);

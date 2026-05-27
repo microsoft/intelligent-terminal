@@ -67,13 +67,20 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         // the glyph would be painted onto the black cell bg first (Black
         // on Black = invisible) before the cursor overlay had anything to
         // reveal.
+        //
+        // Only paint the white block when the pane is focused — when WT's
+        // block cursor isn't landing on the cell, the bare white square is
+        // a misleading "cursor here" indicator. Render the whole placeholder
+        // dim instead.
         let mut placeholder_spans = vec![Span::styled(INPUT_PROMPT, theme::DIM)];
         let mut chars = placeholder.chars();
         if let Some(first) = chars.next() {
-            placeholder_spans.push(Span::styled(
-                first.to_string(),
-                Style::new().fg(Color::Black).bg(Color::White),
-            ));
+            let first_style = if app.pane_focused {
+                Style::new().fg(Color::Black).bg(Color::White)
+            } else {
+                theme::DIM
+            };
+            placeholder_spans.push(Span::styled(first.to_string(), first_style));
             let rest: String = chars.collect();
             if !rest.is_empty() {
                 placeholder_spans.push(Span::styled(rest, theme::DIM));

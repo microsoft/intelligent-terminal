@@ -74,11 +74,17 @@ pub async fn read_crossterm_events(tx: mpsc::UnboundedSender<AppEvent>) {
                         AppEvent::Key(key)
                     }
                     Event::Resize(w, h) => AppEvent::Resize(w, h),
+                    // WT/conpty forwards xterm focus-in/out (CSI I / CSI O)
+                    // to the child unconditionally when the hosting TermControl
+                    // gains/loses XAML focus — one event per pane, not per
+                    // window. Used to hide the input cursor when the agent
+                    // pane is not the focused pane.
+                    Event::FocusGained => AppEvent::FocusChanged(true),
+                    Event::FocusLost => AppEvent::FocusChanged(false),
                     // We do not enable mouse capture (see main.rs run_acp_tui_mode).
                     // The terminal emulator translates wheel into Up/Down arrow
                     // keystrokes in alt-screen mode, so we never observe raw
-                    // Event::Mouse here. Drop anything else (FocusGained,
-                    // FocusLost, Paste, etc.).
+                    // Event::Mouse here. Drop anything else (Paste, etc.).
                     _ => continue,
                 };
                 if tx.send(app_event).is_err() {
