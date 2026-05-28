@@ -6508,28 +6508,19 @@ impl App {
             return;
         }
 
-        // Suppress autofix when the failing/exiting pane is an agent CLI
-        // session (Claude/Copilot/Gemini). An agent CLI exiting (whether via
-        // `/exit`, Ctrl+C, or the user typing `exit` after a resume) is
-        // intentional teardown, not a fixable command failure. Without this
-        // guard, the autofix prompt path issues a `wt_read_last_prompt` /
-        // `wt_read_pane_output` against the just-closed pane GUID, which
-        // makes WT's `TerminalProtocolComServer::ReadPaneOutput` throw
-        // `E_FAIL` (pane not found). The error is swallowed by the Rust
-        // RPC layer but surfaces as a noisy first-chance exception in the
-        // C++ debugger.
-        //
-        // `is_agent_pane()` was added for exactly this purpose (see its
-        // doc comment) but was previously only consulted by the C++
-        // get_active_pane handler. Wire it into the Rust trigger path too.
-        if self.agent_sessions.is_agent_pane(&notification.pane_id) {
-            tracing::info!(
-                target: "autofix",
-                pane_id = %notification.pane_id,
-                "suppressed: pane is bound to an agent CLI session",
-            );
-            return;
-        }
+        // No `is_agent_pane` suppression here. This path is reached only
+        // for `vt_sequence` notifications (see the dispatcher in
+        // `handle_event`), and `vt_sequence` Actionable events come from
+        // shell integration's `osc:133;D;<exit>` markers — the agent CLI
+        // doesn't emit OSC 133, so a D arriving implies the shell is the
+        // current foreground process and there's no agent teardown to
+        // filter. The two genuine "agent exited" paths are handled
+        // elsewhere: `osc:133;A` triggers a `PaneClosed` demotion above
+        // `classify_wt_event`, and pane-process exit surfaces as
+        // `connection_state: closed/failed`, which the dispatcher routes
+        // to the banner only — not here. A stale agent binding sitting in
+        // the registry (e.g. left by a hook that misreported `pane_id`)
+        // must not be allowed to eat a real shell command failure.
 
         // Resolve the target tab: the tab that owns the failing pane.
         // Without it we can't route the autofix to the right ACP session
@@ -10598,57 +10589,6 @@ mod tests {
         );
     }
 
-    // ─── Autofix suppression for agent CLI panes ───────────────────────────
-    //
-    // Regression test: typing `exit` in a resumed Claude/Gemini/Copilot pane
-    // emits `connection_state: closed` for that pane GUID. Without this
-    // guard, autofix fires with the dead pane GUID as `source_pane_id`, and
-    // the ACP client's prompt-context read trips
-    // `TerminalProtocolComServer::ReadPaneOutput` -> `winrt::throw_hresult(E_FAIL)`
-    // on the C++ side. `is_agent_pane()` was added precisely to suppress
-    // this, but until this fix nothing in the Rust autofix path consulted it.
-
-    #[test]
-    fn autofix_suppressed_when_pane_is_agent_session() {
-        use crate::agent_sessions::{CliSource, SessionEvent};
-        use std::path::PathBuf;
-        let mut app = test_app();
-        // Autofix needs Connected state to consider triggering at all.
-        app.state = ConnectionState::Connected;
-        app.autofix_enabled = true;
-        // Bind a pane GUID to a Claude agent session.
-        let pane = "11111111-2222-3333-4444-555555555555";
-        app.agent_sessions.apply(SessionEvent::SessionStarted {
-            key: "claude-key".into(),
-            cli_source: CliSource::Claude,
-            pane_session_id: pane.into(),
-            cwd: PathBuf::from("/work/proj"),
-            title: "t".into(),
-        });
-
-        // Simulate the closure event that fires when the user types `exit`
-        // in the resumed Claude pane.
-        let notification = WtNotification {
-            severity: WtEventSeverity::Actionable,
-            pane_id: pane.to_string(),
-            tab_id: Some("test-tab".to_string()),
-            summary: format!("Pane {}: process exited", pane),
-            acknowledged: false,
-            age_ticks: 0,
-        };
-        app.maybe_trigger_autofix(&notification);
-
-        // Suppression: no autofix prompt should be in-flight, no armed pane.
-        assert!(
-            app.tab_mut("test-tab").autofix.pane_id.is_none(),
-            "autofix must not arm an agent CLI pane on its own exit"
-        );
-        assert!(
-            app.tab_mut("test-tab").turn.is_idle(),
-            "no autofix prompt should have been sent"
-        );
-    }
-
     #[test]
     fn autofix_still_triggers_for_non_agent_pane() {
         let mut app = test_app();
@@ -10679,13 +10619,12 @@ mod tests {
         );
     }
 
-    /// Copilot scenario: agent CLI's SessionStopped hook runs before the
-    /// pane's connection_state:closed event arrives, so by the time
-    /// `is_agent_pane` would be queried inside `maybe_trigger_autofix`,
-    /// `active_by_pane` has already been cleared. The deeper guard at the
-    /// `handle_event` layer — only routing `vt_sequence` events to autofix
-    /// — covers this case because pane closure (`connection_state:closed`)
-    /// no longer dispatches to autofix at all.
+    /// `connection_state: closed/failed` is pane-process termination, not
+    /// a shell command failure — it carries no exit code, no command
+    /// context, and the pane is gone so any follow-up ReadPaneOutput
+    /// would trip E_FAIL. The dispatcher in `handle_event` only routes
+    /// `vt_sequence` events to autofix; this asserts the connection_state
+    /// path stays banner-only.
     #[test]
     fn connection_state_closed_does_not_trigger_autofix_even_when_binding_cleared() {
         use crate::agent_sessions::{CliSource, SessionEvent};
@@ -10745,11 +10684,18 @@ mod tests {
         assert!(app.show_notification_banner);
     }
 
-    /// Defense-in-depth: a vt_sequence (osc:133;D non-zero) inside an agent
-    /// pane is unusual but possible. The original `is_agent_pane` guard
-    /// inside `maybe_trigger_autofix` covers it.
+    /// Regression: a stale agent-CLI binding in the registry must NOT eat a
+    /// real shell command failure. OSC 133;D is emitted by shell integration
+    /// (PowerShell/bash), never by an agent CLI, so a D arriving in an
+    /// "agent-bound" pane implies the binding is a ghost — typically left
+    /// over from a hook that misreported `pane_id`, or from the previous
+    /// agent CLI having exited without the registry catching it yet.
+    /// Real-world repro: autofix runs Copilot, Copilot's hooks emit events
+    /// with `pane_id` = the source (user's) pane, registry registers the
+    /// user's PowerShell pane as Copilot-bound, then the next typo there
+    /// silently dies in the suppression check.
     #[test]
-    fn vt_sequence_failure_in_agent_pane_is_suppressed() {
+    fn ghost_agent_binding_does_not_suppress_shell_failure() {
         use crate::agent_sessions::{CliSource, SessionEvent};
         use std::path::PathBuf;
         let mut app = test_app();
@@ -10757,29 +10703,28 @@ mod tests {
         app.autofix_enabled = true;
         let pane = "11111111-2222-3333-4444-555555555555";
         app.agent_sessions.apply(SessionEvent::SessionStarted {
-            key: "claude-key".into(),
-            cli_source: CliSource::Claude,
+            key: "copilot-key".into(),
+            cli_source: CliSource::Copilot,
             pane_session_id: pane.into(),
             cwd: PathBuf::from("/work"),
             title: "t".into(),
         });
+        assert!(app.agent_sessions.is_agent_pane(pane), "precondition: pane is registered as agent-bound");
 
-        // Synthesize an osc:133;D;1 from inside the agent pane.
         app.handle_event(AppEvent::WtEvent {
             method: "vt_sequence".to_string(),
             pane_id: pane.to_string(),
-            tab_id: None,
+            tab_id: Some("test-tab".to_string()),
             params: serde_json::json!({
                 "session_id": pane,
                 "sequence": "osc:133;D;1",
             }),
         });
 
-        assert!(
-            app.tab_sessions
-                .values()
-                .all(|t| t.autofix.pane_id.is_none()),
-            "agent CLI panes must not arm autofix even on osc:133;D failures"
+        assert_eq!(
+            app.tab_mut("test-tab").autofix.pane_id.as_deref(),
+            Some(pane),
+            "shell failure must arm autofix even when the registry still holds a stale agent binding for the pane"
         );
     }
 
