@@ -34,11 +34,14 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     let pending = pending_stream_height(tab, wrap_width);
     // Welcome overlay sits above all chat content when `show_welcome_hint`
     // is on; must be counted here or else any pushed message will scroll
-    // it off the top of the visible chat block.
+    // it off the top of the visible chat block. Width-aware so a long
+    // translation or narrow pane reserves the wrapped row count, matching
+    // what `push_dot_prefixed_lines` would render at draw time.
     let welcome = if app.show_welcome_hint
         && app.state == crate::app::ConnectionState::Connected
     {
-        1
+        let body_width = wrap_width.saturating_sub(2).max(1);
+        wrap_count(&t!("chat.welcome_title"), body_width)
     } else {
         0
     };
@@ -82,8 +85,12 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
         ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
         ChatMessage::ToolCall { .. } => 1,
         ChatMessage::Plan(entries) => 2 + entries.len(), // header + each entry + blank
-        // Disclaimer = single dim row + trailing blank.
-        ChatMessage::Disclaimer => 2,
+        // Disclaimer = wrapped disclaimer text (no prefix) + trailing blank.
+        // Same `wrap_count(text, wrap_width)` shape as System/AgentEvent so
+        // a long translation or narrow pane reserves the right number of rows.
+        ChatMessage::Disclaimer => {
+            wrap_count(&t!("chat.welcome_disclaimer"), wrap_width) + 1
+        }
     }
 }
 
