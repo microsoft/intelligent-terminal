@@ -729,6 +729,46 @@ namespace winrt::TerminalApp::implementation
                 co_return false;
 
             _SetFocusedTab(tab);
+
+            // The pane may be a currently-stashed agent pane (Ctrl+Shift+. /
+            // openAgentPane toggle). `FindPaneBySessionId` happily returns
+            // hidden panes (HidePane only collapses the XAML layout, it
+            // doesn't detach from the parent's _firstChild/_secondChild
+            // tree), but `FocusPane` → `_Focus()` on a hidden TermControl
+            // silently drops because the element isn't in the visual tree.
+            // Detect that case and route through `RestoreStashedAgentPane`,
+            // which re-adds the pane to the XAML tree and schedules a
+            // low-priority Focus() so the freshly re-parented TermControl
+            // actually receives focus.
+            if (foundPane->IsHidden())
+            {
+                const auto splitDir = _AgentPanePositionToSplitDirection(_settings.GlobalSettings().AgentPanePosition());
+                if (tabImpl->RestoreStashedAgentPane(splitDir))
+                {
+                    // Mirror the unstash to wta so wta's tab.pane_open
+                    // state stays in sync. Without this, the
+                    // `_SetFocusedTab(tab)` above triggers a `tab_changed`
+                    // round-trip whose echo (`agent_state_changed` with
+                    // the stale `pane_open=false`) lands in
+                    // `OnAgentStateChanged` and immediately re-stashes
+                    // the pane we just restored. Matches the unstash
+                    // path in `_OpenOrReuseAgentPane`
+                    // (TerminalPage.cpp:2510-2518).
+                    //
+                    // View is intentionally left as nullopt: focus_pane
+                    // is a "go look at this session" gesture, not a
+                    // chat/sessions view switch, so we let wta echo back
+                    // whichever view the pane was last in.
+                    _RequestAgentStateForTab(tabImpl, std::nullopt, /*pane_open*/ true);
+                    co_return true;
+                }
+                // Restore precondition failed (e.g. agent pane is the root
+                // pane, so there's no parent to fold into). Fall through to
+                // the legacy focus path — it will no-op visually but won't
+                // crash, and the caller will at least observe a `false`
+                // return and can decide to escalate (e.g. open a new pane).
+            }
+
             if (!tabImpl->FocusPane(paneId.value()))
                 co_return false;
 
