@@ -482,7 +482,7 @@ fn build_message_lines<'a>(
                 Span::raw("  "),
                 Span::styled(
                     t!("chat.welcome_disclaimer").into_owned(),
-                    Style::new().fg(Color::DarkGray),
+                    Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
                 ),
             ]));
         }
