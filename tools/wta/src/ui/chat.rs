@@ -72,6 +72,10 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
         ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
         ChatMessage::ToolCall { .. } => 1,
         ChatMessage::Plan(entries) => 2 + entries.len(), // header + each entry + blank
+        // Welcome = bold title row + trailing blank.
+        ChatMessage::Welcome => 2,
+        // Disclaimer = single dim row + trailing blank.
+        ChatMessage::Disclaimer => 2,
     }
 }
 
@@ -141,22 +145,6 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
                 break;
             }
         }
-    }
-
-    // First-run welcome: shown once until user sends first message
-    if app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected
-    {
-        let mut welcome_lines = vec![
-            Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    t!("chat.welcome_title").into_owned(),
-                    Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
-                ),
-            ]),
-        ];
-        reversed_lines.extend(welcome_lines.drain(..).rev());
     }
 
     let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
@@ -460,6 +448,23 @@ fn build_message_lines<'a>(
                     )));
                 }
             }
+            lines.push(Line::default());
+        }
+        ChatMessage::Welcome => {
+            lines.push(Line::from(vec![
+                Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    t!("chat.welcome_title").into_owned(),
+                    Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+                ),
+            ]));
+            lines.push(Line::default());
+        }
+        ChatMessage::Disclaimer => {
+            lines.push(Line::from(Span::styled(
+                t!("chat.welcome_disclaimer").into_owned(),
+                Style::new().fg(Color::DarkGray),
+            )));
             lines.push(Line::default());
         }
     }
