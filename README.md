@@ -56,7 +56,7 @@ You also need a supported agent CLI and subscription. [GitHub Copilot](https://g
 
 ### Microsoft Store (recommended)
 
-Install the [Intelligent Terminal from the Microsoft Store](TODO: insert store link).
+Install the [Intelligent Terminal from the Microsoft Store](ms-windows-store://pdp/?productid=9NMQC2SSJX24).
 This allows you to always be on the latest version when we release new builds
 with automatic upgrades.
 
