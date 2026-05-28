@@ -10979,7 +10979,7 @@ mod tests {
         );
     }
 
-    /// Returning to Idle clears the echo guard. Otherwise a stale
+    /// Returning to Idle clears the echo guard. Otherwise, a stale
     /// `trigger_echo_pane` could swallow a real prompt-start that arrives
     /// long after the state has already been cleared by other means
     /// (e.g. the user clicked the Suggested pill, then the autofix
