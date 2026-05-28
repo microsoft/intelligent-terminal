@@ -8,6 +8,7 @@
 #include <string>
 
 #include "../WinRTUtils/inc/WtExeUtils.h"
+#include "../inc/WtaProcess.h"
 
 namespace winrt::TerminalApp::implementation
 {
@@ -183,6 +184,17 @@ namespace winrt::TerminalApp::implementation
         // (no job → no KILL_ON_JOB_CLOSE containment).
         DWORD creationFlags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED;
 
+        // FRE may install Copilot CLI via winget *after* WT's own process
+        // env block was captured at launch. WT does not handle WM_SETTINGCHANGE
+        // to refresh its PATH (see WindowEmperor.cpp WM_SETTINGCHANGE handler;
+        // env-var reload is explicitly deferred per GH#15102). If we passed
+        // lpEnvironment=nullptr, wta would inherit that stale block and fail
+        // to find newly-installed CLIs in the same session. Extend PATH with
+        // %LOCALAPPDATA%\Microsoft\WinGet\Links and %APPDATA%\npm so a freshly
+        // installed Copilot is discoverable on first agent-pane open.
+        auto envBlock = Microsoft::Terminal::WtaProcess::BuildExtendedPathEnvBlock();
+        wchar_t* lpEnvironment = envBlock.empty() ? nullptr : envBlock.data();
+
         std::wstring mutableCmdLine{ commandline };
         if (!CreateProcessW(
                 /* lpApplicationName    */ nullptr,
@@ -191,7 +203,7 @@ namespace winrt::TerminalApp::implementation
                 /* lpThreadAttributes   */ nullptr,
                 /* bInheritHandles      */ FALSE,
                 /* dwCreationFlags      */ creationFlags,
-                /* lpEnvironment        */ nullptr,
+                /* lpEnvironment        */ lpEnvironment,
                 /* lpCurrentDirectory   */ nullptr,
                 /* lpStartupInfo        */ &si,
                 /* lpProcessInformation */ &pi))

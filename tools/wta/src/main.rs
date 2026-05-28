@@ -530,6 +530,20 @@ enum InitialView {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Refresh PATH from the Windows registry before any spawn / find_exe
+    // call. wta is normally launched by Windows Terminal, whose process
+    // environment block is captured at WT startup and never refreshed
+    // (WT explicitly defers WM_SETTINGCHANGE env reload — see
+    // WindowEmperor.cpp WM_SETTINGCHANGE handler, GH#15102). If the user
+    // just installed (or upgraded) a CLI like Copilot via winget through
+    // the FRE, our inherited PATH is stale and `tokio::Command::new(
+    // "copilot")` would miss the new shim. agent_check::refresh_path()
+    // re-reads HKLM+HKCU\Environment PATH and updates this process's
+    // env so subsequent spawns find the binary. Cheap, idempotent, and
+    // belt-and-suspenders against any future caller that forgets to
+    // pass an extended env block.
+    agent_check::refresh_path();
+
     // Detect and set the system locale for i18n.
     // normalize_locale() maps unmatched regions to the canonical variant (e.g., de-AT → de-DE).
     //
