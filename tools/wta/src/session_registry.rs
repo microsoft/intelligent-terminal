@@ -1998,6 +1998,24 @@ mod tests {
             "pane binding must stay None after handoff");
     }
 
+    #[tokio::test]
+    async fn registry_assigns_codex_cli_source_when_session_started_via_agent_id() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        let cli = CliSource::from_agent_id("codex")
+            .expect("from_agent_id('codex') must yield Some(Codex)");
+        let event = SessionEvent::SessionStarted {
+            key: "codex-fanin-test".to_string(),
+            cli_source: cli.clone(),
+            pane_session_id: "p1".to_string(),
+            cwd: PathBuf::from(r#"C:\x"#),
+            title: "fan-in test".to_string(),
+        };
+        reg.apply_event(event).await;
+        let row = reg.lookup(&acp::SessionId::new("codex-fanin-test")).await.expect("row inserted");
+        assert_eq!(row.cli_source, Some(CliSource::Codex));
+    }
+
     #[test]
     fn sessions_list_response_round_trips_session_info_with_typed_fields() {
         let mut info = SessionInfo::new(acp::SessionId::new("sid-1"), PathBuf::from("/repo"));
