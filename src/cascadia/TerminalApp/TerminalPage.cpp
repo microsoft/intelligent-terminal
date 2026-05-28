@@ -959,10 +959,24 @@ namespace winrt::TerminalApp::implementation
             LOG_CAUGHT_EXCEPTION();
         }
 
-        // Now create the agent pane — settings are already configured.
-        // No --setup first-run needed; WTA starts in normal mode.
-        // After FRE the pane should be visible so the user sees the
-        // welcome hint immediately.
+        // Execute deferred startup actions — tab creation was postponed
+        // until FRE completed so that the ConptyConnection picks up any
+        // PATH changes from winget installs (see _OnFirstLayout deferral).
+        if (_deferredStartupConnection)
+        {
+            CreateTabFromConnection(std::move(_deferredStartupConnection));
+        }
+        else if (!_deferredStartupActions.empty())
+        {
+            ProcessStartupActions(std::move(_deferredStartupActions));
+        }
+        else
+        {
+            // No deferred actions — open a default tab.
+            _OpenNewTab(nullptr);
+        }
+
+        // Now create the agent pane on the freshly-created tab.
         if (const auto tab = _GetFocusedTabImpl())
         {
             _OpenOrReuseAgentPane(false, L"FirstRunExperience");
@@ -2711,13 +2725,29 @@ namespace winrt::TerminalApp::implementation
         {
             _startupState = StartupState::InStartup;
 
-            if (_startupConnection)
+            // When FRE is required, defer tab creation until after FRE
+            // completes. This ensures the first tab's ConptyConnection
+            // is created AFTER winget installs any agent CLIs, so the
+            // shell process inherits an environment with the updated
+            // registry PATH (including WinGet\Links).  Without this
+            // deferral, the first tab's ConptyConnection captures a
+            // stale PATH at launch time, and child processes can't
+            // find freshly-installed executables in the same session.
+            if (_IsFreRequired())
             {
-                CreateTabFromConnection(std::move(_startupConnection));
+                _deferredStartupActions = std::move(_startupActions);
+                _deferredStartupConnection = std::move(_startupConnection);
             }
-            else if (!_startupActions.empty())
+            else
             {
-                ProcessStartupActions(std::move(_startupActions));
+                if (_startupConnection)
+                {
+                    CreateTabFromConnection(std::move(_startupConnection));
+                }
+                else if (!_startupActions.empty())
+                {
+                    ProcessStartupActions(std::move(_startupActions));
+                }
             }
 
             _CompleteInitialization();
@@ -2862,7 +2892,7 @@ namespace winrt::TerminalApp::implementation
         // GH#12267: Make sure that we don't instantly close ourselves when
         // we're readying to accept a defterm connection. In that case, we don't
         // have a tab yet, but will once we're initialized.
-        if (_tabs.Size() == 0)
+        if (_tabs.Size() == 0 && !_IsFreRequired())
         {
             CloseWindowRequested.raise(*this, nullptr);
             co_return;

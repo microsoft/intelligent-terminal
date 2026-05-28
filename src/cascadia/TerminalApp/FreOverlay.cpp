@@ -264,6 +264,7 @@ namespace winrt::TerminalApp::implementation
 
         auto cmdline = fmt::format(
             L"winget install --id {} --exact --silent "
+            L"--source winget "
             L"--accept-source-agreements --accept-package-agreements "
             L"--disable-interactivity",
             id);

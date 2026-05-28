@@ -308,6 +308,12 @@ namespace winrt::TerminalApp::implementation
         std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> _startupActions;
         winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection _startupConnection{ nullptr };
 
+        // Deferred startup state — when FRE is active, tab creation is
+        // postponed until FRE completes so ConptyConnection picks up
+        // PATH changes from winget installs.
+        std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> _deferredStartupActions;
+        winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection _deferredStartupConnection{ nullptr };
+
         std::shared_ptr<Toast> _windowIdToast{ nullptr };
         std::shared_ptr<Toast> _actionSavedToast{ nullptr };
         std::shared_ptr<Toast> _actionSaveFailedToast{ nullptr };
