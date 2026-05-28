@@ -204,6 +204,7 @@ sandboxing
 screenshots
 serde
 servicebus
+sessionless
 sidechain
 sideload
 sids
