@@ -42,11 +42,16 @@
                   Settings BreadcrumbBar from Nav_AIAgents.Content, so we only
                   add the subtitle below it here. The inline Run/Hyperlink
                   text is populated from the ResourceLoader in code-behind
-                  (x:Uid on inline Run is not honored in this codebase).  -->
-            <TextBlock Opacity="0.7"
-                       Margin="0,0,0,16"
+                  (x:Uid on inline Run is not honored in this codebase).
+                  The muted "secondary" foreground is applied only to the
+                  non-link Runs so the Hyperlink keeps its full theme
+                  accent contrast (and its hover/pressed affordance).  -->
+            <TextBlock Margin="0,0,0,16"
                        TextWrapping="Wrap">
-                <Run x:Name="PageSubtitlePrefix" Text="" /><Run Text=" " /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-privacy">
+                <Run x:Name="PageSubtitlePrefix"
+                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                     Text="" /><Run Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text=" " /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-privacy">
                     <Run x:Name="PageSubtitlePrivacyLink" Text="" />
                 </Hyperlink>
             </TextBlock>

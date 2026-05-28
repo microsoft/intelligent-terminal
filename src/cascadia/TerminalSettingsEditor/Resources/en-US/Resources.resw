@@ -697,13 +697,9 @@
     <value>Agents</value>
     <comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment>
   </data>
-  <!--  Deprecated: superseded by AIAgents_PageSubtitlePrefix +
-        AIAgents_PageSubtitlePrivacyLink. Kept solely so the orphaned
-        translations in the other locale resw files have a neutral
-        fallback and PRI263 doesn't warn. Safe to delete once those
-        translations are cleaned up.  -->
   <data name="AIAgents_PageSubtitle.Text" xml:space="preserve">
     <value>Configure how agents work across your terminal experience</value>
+    <comment>DEPRECATED — do not translate. Superseded by AIAgents_PageSubtitlePrefix + AIAgents_PageSubtitlePrivacyLink. Kept in en-US only as a neutral fallback for the not-yet-updated translations in the other locale resw files (without it, PRI263 warns about a missing neutral resource). Safe to delete once those translations are cleaned up.</comment>
   </data>
   <data name="AIAgents_PageSubtitlePrefix" xml:space="preserve">
     <value>Configure how agents work across your terminal experience.</value>
