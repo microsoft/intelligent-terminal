@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>Терминалска апликација која се покреће када се апликација из командне линије покрене без постојеће сесије, као, на пример, из Старт менија или из дијалога Покрени.</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>Графички API</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>Ово мења начин на који се долазни текст распоређује у ћелије. Опција „Скупине графема” је најсавременији и Unicode-исправан начин за то, док је „wcswidth” уобичајен приступ на UNIX системима, а „Windows Console” опонаша начин на који је то некада радило у Windows-у. Измена овог подешавања захтева поновно покретање програма Windows Терминал и примењује се само на апликације покренуте из њега.</value>
+    <value>Ово мења начин на који се долазни текст распоређује у ћелије. Опција „Скупине графема” је најсавременији и Unicode-исправан начин за то, док је „wcswidth” уобичајен приступ на UNIX системима, а „Windows Console” опонаша начин на који је то некада радило у Windows-у. Измена овог подешавања захтева поновно покретање програма Интелигентни Терминал и примењује се само на апликације покренуте из њега.</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Скупине графема</value>
@@ -374,7 +374,7 @@
     <value>Ширина двосмислених знакова</value>
     <comment>A label for a drop down selector, referring to the East Asian Ambiguous Width Unicode specification.</comment>
   </data><data name="Globals_AmbiguousWidth.HelpText" xml:space="preserve">
-    <value>Подешава ширину која се користи за источноазијске знакове двосмислене ширине. „Уско” (подразумевано) даје предност компатибилности, док „Широко” даје предност читљивости са многим CJK фонтовима. У режиму „Широко” неке апликације можда неће радити исправно и могу изазвати непредвидљиво померање курсора. Измена овог подешавања захтева поновно покретање програма Windows Терминал и примењује се само на апликације покренуте из њега.</value>
+    <value>Подешава ширину која се користи за источноазијске знакове двосмислене ширине. „Уско” (подразумевано) даје предност компатибилности, док „Широко” даје предност читљивости са многим CJK фонтовима. У режиму „Широко” неке апликације можда неће радити исправно и могу изазвати непредвидљиво померање курсора. Измена овог подешавања захтева поновно покретање програма Интелигентни Терминал и примењује се само на апликације покренуте из њега.</value>
   </data><data name="Globals_AmbiguousWidth_Narrow.Text" xml:space="preserve">
     <value>Уско</value>
     <comment>As in "narrow width". Refers to the East Asian Ambiguous Width Unicode specification.</comment>
@@ -574,8 +574,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>Дозволи да се Windows Терминал извршава у позадини</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>Дозволи да се Интелигентни Терминал извршава у позадини</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>Укључи функције за отклањање грешака</value>
@@ -708,8 +708,8 @@
     <value>Агент</value>
     <comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment>
   </data><data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
-    <value>Изаберите CLI агента који се користи у панелу агента. Биће откривен сваки компатибилан ACP CLI.</value>
-    <comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment>
+    <value>Изаберите агента који се користи у панелу агента. Сваки компатибилан ACP агент биће аутоматски откривен.</value>
+    <comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment>
   </data><data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>Модел</value>
     <comment>Header for the setting that specifies the model used by the agent pane agent.</comment>
@@ -723,10 +723,10 @@
     <value>Изаберите агента који се користи за брзе радње у палети команди.</value>
     <comment>Supplementary description for the command palette agent setting.</comment>
   </data><data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>Аутоматско откривање грешака</value>
+    <value>Аутоматски предложи исправке за неуспеле команде</value>
     <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
   </data><data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>Аутоматски открива грешке у командама и предлаже исправке.</value>
+    <value>Када је омогућено, ВИ агент аутоматски анализира неуспеле команде и предлаже исправку. Када је онемогућено, неуспеле команде приказују наговештај на који је могуће кликнути у статусној траци — притисните Ctrl+Alt+. или кликните на наговештај да бисте затражили исправку.</value>
     <comment>Supplementary description for the auto-error-detection setting.</comment>
   </data><data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Позиција панела</value>
@@ -734,6 +734,22 @@
   </data><data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
     <value>Где се панел агента отвара у односу на ваш терминал.</value>
     <comment>Supplementary description for the pane position setting.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
+    <value>Доле</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionBottom string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Right" xml:space="preserve">
+    <value>Десно</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionRight string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Top" xml:space="preserve">
+    <value>Горе</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionTop string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Left" xml:space="preserve">
+    <value>Лево</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data><data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
     <value>Hooks агента</value>
     <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment>
@@ -741,8 +757,8 @@
     <value>Инсталирај Hook скрипте агента</value>
     <comment>Header for the Agent Hooks install section.</comment>
   </data><data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>Неопходно за управљање сесијама агента. Инсталира Hooks у сваки откривени CLI (Copilot, Claude, Gemini) како би панелу агента пријављивали сесије и статус. Након инсталације поново покрените све отворене CLI-је агената.</value>
-    <comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment>
+    <value>Пратите сесије међу агентима. Неопходно за управљање сесијама агената.</value>
+    <comment>Help text shown under the expandable section header.</comment>
   </data><data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Инсталирај Hooks</value>
     <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment>
@@ -972,7 +988,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>Аутоматски</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>Шема боја</value>
@@ -2323,7 +2339,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Windows Терминал се извршава у преносном режиму.</value>
+    <value>Интелигентни Терминал се извршава у преносном режиму.</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
@@ -2682,7 +2698,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>Прикажи штит у насловној линији када се Windows Терминал извршава као Администратор</value>
+    <value>Прикажи штит у насловној линији када се Интелигентни Терминал извршава као Администратор</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">
@@ -2854,6 +2870,44 @@
     <value>Овај текст ће бити уметнут између путања више датотека превучених у терминал.</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
-
-
+  <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
+    <value>Овом поставком управља ваша организација.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
+    <value>Инсталирање hooks...</value>
+    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
+    <value>Уклањање Copilot hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
+    <value>Уклањање Claude hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
+    <value>Уклањање Gemini hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
+    <value>Неуспех: није могуће пронаћи wta.exe</value>
+    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
+    <value>Hooks су уклоњени. Поново покрените све отворене агенте да бисте одбацили претходне hooks.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
+    <value>Hooks су инсталирани. Поново покрените све отворене агенте да бисте преузели нове hooks.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
+    <value>Уклањање Hook није успело. Детаље потражите у %LOCALAPPDATA%\IntelligentTerminal\logs\.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
+    <value>Инсталација Hooks није успела. Детаље потражите у %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
+  </data>
 </root>

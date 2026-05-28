@@ -9,11 +9,9 @@ It provides three interfaces:
 - **MCP server** (`wta mcp`) -- headless tool server that an external agent calls to interact with shells and Windows Terminal.
 - **CLI helpers** (`wta list-panes`, `wta capture-pane`, `wta new-tab`, etc.) -- thin commands for humans and agents that can shell out. Direct keystroke injection is not exposed by the CLI.
 
-ACP and MCP modes share `ShellManager`, which routes operations to either local subprocesses or Windows Terminal panes. WT pane operations use a `WtChannel` abstraction:
+ACP and MCP modes share `ShellManager`, which routes operations to either local subprocesses or Windows Terminal panes. WT pane operations use a `WtChannel` abstraction with a single implementation today:
 
-- `CliChannel` shells out to `wtcli.exe`, which calls WT's COM `IProtocolServer`.
-- `PipeChannel` uses an inherited anonymous pipe pair and is reserved for capability-gated methods, currently `send_input`.
-- `RoutedChannel` sends `send_input` to `PipeChannel` and falls back to `CliChannel` for the remaining methods.
+- `CliChannel` shells out to `wtcli.exe`, which calls WT's COM `IProtocolServer`. All WT operations — including `send_input` (via `wtcli send-keys`) — go through this path.
 
 ## System Diagram
 
@@ -31,21 +29,16 @@ ACP and MCP modes share `ShellManager`, which routes operations to either local 
                        |                                   |
                  ShellManager                              |
                        |                                   |
-                 RoutedChannel                             |
-                  |          |                             |
-                  |          +-----------------------------+
-                  |
-      +-----------+----------------+
-      |                            |
- PipeChannel                 CliChannel
- inherited HANDLE            wtcli.exe -> COM IProtocolServer
- send_input only             reads + non-input WT control
-      |                            |
-      v                            v
- TerminalProtocolPipeServer   TerminalProtocolComServer
-      \____________________________/
-                    |
-             Windows Terminal
+                  CliChannel <-------------------------+---+
+                       |
+                       v
+              wtcli.exe -> COM IProtocolServer
+                       |
+                       v
+              TerminalProtocolComServer
+                       |
+                       v
+              Windows Terminal
 ```
 
 ## Protocol Stack
@@ -90,12 +83,12 @@ Tools exposed:
 | WT Query | `wt_get_process_status` | Running/exit status |
 | WT Control | `wt_create_tab` | Create new tab |
 | WT Control | `wt_split_pane` | Split a pane |
-| WT Control | `wt_send_input` | Type text into a pane via the inherited pipe when available |
+| WT Control | `wt_send_input` | Type text into a pane via `wtcli send-keys` / COM `SendInput` |
 | WT Control | `wt_close_pane` | Close a pane |
 
 ### WT COM Protocol
 
-Most WT operations flow through `wtcli.exe` to WT's out-of-process COM server.
+All WT operations flow through `wtcli.exe` to WT's out-of-process COM server.
 
 - Client wrapper: `src/shell/wt_channel/cli_channel.rs`
 - CLI executable: `src/tools/wtcli/main.cpp`
@@ -103,20 +96,7 @@ Most WT operations flow through `wtcli.exe` to WT's out-of-process COM server.
 - WT-side server: `src/cascadia/WindowsTerminal/TerminalProtocolComServer.cpp`
 - Discovery: `WT_COM_CLSID`, injected into panes by WT
 
-The COM surface currently exposes reads and several mutations, including `list_*`, `read_pane_output`, `create_tab`, `split_pane`, `close_pane`, `focus_pane`, and event subscribe/publish. It does **not** expose direct shell input.
-
-### Per-WTA Inherited Pipe
-
-Shell input is capability-gated through an anonymous duplex pipe pair created by WT when it launches WTA.
-
-- WTA-side client: `src/shell/wt_channel/pipe_channel.rs`
-- WT-side launcher: `src/cascadia/TerminalApp/WtaProcessLauncher.cpp`
-- WT-side server: `src/cascadia/TerminalApp/TerminalProtocolPipeServer.cpp`
-- Environment handles: `WT_PROTOCOL_PIPE_R` and `WT_PROTOCOL_PIPE_W`
-- Wire format: 4-byte little-endian length + JSON-RPC 2.0 body
-- Current methods: `hello`, `send_input`
-
-WT passes only the WTA-side handles using `STARTUPINFOEX` + `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`. WTA consumes the handle values, removes the environment variables, and clears `HANDLE_FLAG_INHERIT` so child agent CLIs do not inherit the shell-input capability.
+The COM surface exposes reads and mutations, including `list_*`, `read_pane_output`, `create_tab`, `split_pane`, `close_pane`, `focus_pane`, `send_input` (via `wtcli send-keys`), and event subscribe/publish.
 
 ## Agent Integration
 
@@ -171,9 +151,7 @@ Agents that can shell out, and humans debugging WTA, can use WTA as a small WT h
 
 `CliChannel` uses `wtcli.exe`, and `wtcli.exe` discovers WT through `WT_COM_CLSID`. WT injects this environment variable into pane shells.
 
-The inherited pipe is separate from COM discovery. It is available only to WTA processes that WT launched with `WT_PROTOCOL_PIPE_R/W`; arbitrary shell-launched WTA processes cannot synthesize those handle capabilities.
-
-`pipe-id` and `set-env` are diagnostic subcommands that surface the inherited `WT_COM_CLSID` value. They should not be described as a named-pipe security boundary.
+`pipe-id` and `set-env` are diagnostic subcommands that surface the inherited `WT_COM_CLSID` value. They should not be described as a security boundary.
 
 ## Pane Identity
 
@@ -224,3 +202,127 @@ For normal local WTA development, always produce the binary at `tools/wta/target
 | `crossterm` | 0.29 | Terminal I/O |
 | `clap` | 4 | CLI parsing |
 | `serde_json` | 1 | JSON handling |
+
+---
+
+## Session liveness + Enter routing (F2 view)
+
+The F2 "Session management" view (a.k.a. `/sessions`) lists every
+agent session that WTA knows about — both currently connected ("Live")
+and replayed from on-disk history ("Historical" / "Ended"). Enter and
+Shift+Enter on a row are routed through a closed-form state machine
+that splits the legacy one-dimensional `AgentStatus` into a
+**two-dimensional** model.
+
+### The two axes
+
+* **Activity** — `Idle | Working | Attention | Error`. Surfaces what
+  the connected agent is *doing* right now. Driven by ACP
+  `session/update` (`ToolCall`, `ToolCallUpdate`) on Class A
+  sessions, and by shell-integration hooks on Class B.
+
+* **Liveness** — `Live { pane_session_id } | Ended | Historical`.
+  Surfaces whether the session is currently attached to a process.
+  `Historical` = reconstructed from disk only; `Ended` = was Live
+  in this WTA process at some point, then closed.
+
+The legacy `AgentStatus` field is still the storage; `activity()`
+and `liveness()` derive from it (see `agent_sessions.rs`).
+
+### Class A vs Class B
+
+* **Class A** (`SessionOrigin::AgentPane`) — created by WTA on behalf
+  of an Intelligent Terminal agent pane (recorded in
+  `agent-pane-sessions.jsonl`). For these rows the natural Enter
+  target is the *same* agent pane; the natural Resume target is ACP
+  `session/load` so the conversation rehydrates in-place.
+
+* **Class B** (`SessionOrigin::Unknown`) — user ran the CLI directly
+  (`copilot`, `claude`, `gemini`) in a normal pane. The natural
+  Enter target is to focus that pane; the natural Resume target is
+  the CLI's own `--resume` flag (because the CLI owns the
+  conversation, not WTA).
+
+### Liveness data sources (composite)
+
+* **Class A** is composite: `liveness = Live` requires *both*
+  `alive_mirror.lookup(sid).is_some()` (the master-pushed registry
+  mirror via `intellterm.wta/session_added|removed` ext
+  notifications) *and* no local `PaneClosed` tombstone. Local
+  pane-close events trump the mirror so the row flips to `Ended`
+  immediately, even if master's `session_removed` notification
+  hasn't landed yet.
+
+* **Class B** is driven entirely by hooks + WT pane events
+  (`SessionStarted` / `SessionStopped` / `PaneClosed`).
+
+### Cold-startup race
+
+History scan and alive-mirror bootstrap arrive in either order. Both
+paths post `AppEvent::AliveJoinUpgrade`, which calls
+`AgentSessionRegistry::apply_alive_session_join` to upgrade
+**Historical** rows whose ACP session_id is in the alive mirror to
+`LivenessState::Live`. **Ended** rows (locally tombstoned by a
+`PaneClosed` event in this process) are **not** upgraded — local
+tombstones are authoritative, so a stale `session_added` broadcast
+arriving after `PaneClosed` cannot resurrect a row that has no
+demotion path back. Live rows are never demoted — preserves
+tool/attention state. See `agent_sessions.rs::apply_alive_session_join`.
+
+### Steady-state alive-mirror updates
+
+Every `intellterm.wta/session_added` notification from master also
+runs the incremental join synchronously in `app.rs` (calls
+`apply_alive_session_join([(sid, pane)])` before the async mirror
+upsert), so a Historical row matched by an arriving alive broadcast
+becomes Live in the same tick. Every `intellterm.wta/session_removed`
+notification calls `apply_master_session_ended(sid)` — the
+counterpart of `apply_alive_pane_snapshot` for a single explicit
+disappearance — which demotes a Live row to Ended, clears the pane
+binding, and prunes `known_alive_panes`. Without these two
+synchronous reducer calls, F2 rows would stay frozen at whatever
+state the last bootstrap snapshot saw.
+
+### Enter / Shift+Enter dispatch
+
+The pure-function core is `session_mgmt::decide_enter_action`. It
+takes a `RowSnapshot` (origin + liveness + cli + agent capabilities)
+and a `shift` boolean, and returns one of:
+
+* `Focus { pane_session_id }` — hand off to `wtcli focus-pane`
+  (which transparently restores a stashed agent pane after PR A).
+* `ResumeInAgentPane { key, cli }` — new tab + agent pane + ACP
+  `session/load(key)` (requires `loadSession` capability).
+* `ResumeCliFlag { key, cli }` — new tab + plain pane running
+  `<cli> --resume <key>` (requires the CLI to advertise a resume
+  flag — Codex doesn't).
+* `NotResumable { reason }` — surface a system message.
+
+The table (matching `session_mgmt.rs` and the plan):
+
+| Row state                  | Enter            | Shift+Enter      |
+| -------------------------- | ---------------- | ---------------- |
+| Any Live (Class A or B)    | Focus            | Focus (same)     |
+| Class A dead (Ended/Hist)  | ResumeInAgentPane| ResumeCliFlag    |
+| Class B dead (Ended/Hist)  | ResumeCliFlag    | ResumeInAgentPane|
+| Unknown CLI                | NotResumable     | NotResumable     |
+| Missing capability         | NotResumable     | NotResumable     |
+
+Shift on Live is intentionally identical to Enter — agents forbid two
+clients on one session, so any "force second copy" attempt would just
+error out. Shift is a safety alias there.
+
+### Dispatch boundary
+
+`App::activate_agent_session_with_shift` (`app.rs`) is the only
+caller of `decide_enter_action` from production code. It then
+dispatches into the existing helpers (`dispatch_focus_pane`,
+`dispatch_resume_in_agent_pane`, `dispatch_resume`) — those own
+all the side effects:
+
+* phantom-on-disk guard (`key_is_resumable_on_disk`),
+* optimistic `SessionEvent::ResumeDispatched` state flip,
+* `resume_in_new_agent_tab` event publish (for the WT side to open
+  a new tab + reconcile the agent pane),
+* on-failure `PaneClosed` rebroadcast (so a stuck Live row
+  transitions to Ended after `wtcli focus-pane` returns NotFound).

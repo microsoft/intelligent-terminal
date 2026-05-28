@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>Приложение терминала, запускаемое при запуске приложения командной строки без существующего сеанса, например из меню "Пуск" или из диалогового окна "Выполнить".</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>API графики</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>Это меняет способ группирования входящего текста в ячейки. Параметр "Кластеры Grapheme" — это самый современный и правильный для Unicode способ сделать это, в то время как "wcswidth" является распространенным подходом в UNIX, а "Консоль Windows" повторяет способ работы в Windows. Изменение этого параметра требует перезапуска терминала Windows и применяется только к приложениям, запущенным из него.</value>
+    <value>Это меняет способ группирования входящего текста в ячейки. Параметр "Кластеры Grapheme" — это самый современный и правильный для Unicode способ сделать это, в то время как "wcswidth" является распространенным подходом в UNIX, а "Консоль Windows" повторяет способ работы в Windows. Изменение этого параметра требует перезапуска Интеллектуального Терминала и применяется только к приложениям, запущенным из него.</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Кластеры Grapheme</value>
@@ -574,8 +574,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>Разрешить запуск терминала Windows в фоновом режиме</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>Разрешить запуск Интеллектуального Терминала в фоновом режиме</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>Включить функции отладки</value>
@@ -896,7 +896,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>Автоматически</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>Цветовая схема</value>
@@ -2223,7 +2223,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Терминал Windows работает в переносном режиме.</value>
+    <value>Интеллектуальный Терминал работает в переносном режиме.</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
@@ -2578,7 +2578,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>Отображать экран в заголовке, когда Терминал Windows от имени администратора</value>
+    <value>Отображать экран в заголовке, когда Интеллектуальный Терминал от имени администратора</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">
@@ -2768,8 +2768,8 @@
     <value>Агент</value>
   </data>
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
-    <value>Выберите CLI-агент для панели агента. Все совместимые ACP CLI обнаруживаются автоматически.</value>
-    <comment>{Locked="ACP","CLI"}</comment>
+    <value>Выберите агента, используемого в панели агента. Любой совместимый агент ACP будет обнаружен автоматически.</value>
+    <comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>Модель</value>
@@ -2784,16 +2784,32 @@
     <value>Выберите агента, используемого для быстрых действий в палитре команд.</value>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>Автоматическое обнаружение ошибок</value>
+    <value>Автоматически предлагать исправления для команд с ошибками</value>
   </data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>Обнаруживает ошибки команд и автоматически предлагает исправления.</value>
+    <value>Если включено, ИИ-агент автоматически анализирует команды с ошибками и предлагает исправление. Если отключено, для команд с ошибками в строке состояния отображается подсказка, по которой можно щелкнуть — нажмите Ctrl+Alt+. или щелкните подсказку, чтобы запросить исправление.</value>
   </data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Положение панели</value>
   </data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
     <value>Где панель агента будет открываться относительно терминала.</value>
+  </data>
+  <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
+    <value>Снизу</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionBottom string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Right" xml:space="preserve">
+    <value>Справа</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionRight string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Top" xml:space="preserve">
+    <value>Сверху</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionTop string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Left" xml:space="preserve">
+    <value>Слева</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
     <value>Hooks для агентов</value>
@@ -2802,8 +2818,8 @@
     <value>Установить скрипты Hooks для агентов</value>
   </data>
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>Требуется для управления сеансами агентов. Устанавливает Hooks в каждый обнаруженный CLI (Copilot, Claude, Gemini), чтобы панель агента получала сведения о сеансах и состоянии. После установки перезапустите все открытые CLI агентов.</value>
-    <comment>{Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment>
+    <value>Отслеживайте сеансы между агентами. Требуется для управления сеансами агентов.</value>
+    <comment>Help text shown under the expandable section header.</comment>
   </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Установить Hooks</value>
@@ -2832,5 +2848,45 @@
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
     <value>https://aka.ms/intelligentterminal/portable-mode</value>
     <comment>{Locked}</comment>
+  </data>
+  <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
+    <value>Этот параметр управляется вашей организацией.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
+    <value>Установка hooks...</value>
+    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
+    <value>Удаление Copilot hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
+    <value>Удаление Claude hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
+    <value>Удаление Gemini hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
+    <value>Сбой: не удалось найти wta.exe</value>
+    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
+    <value>Hooks удалены. Перезапустите все открытые агенты, чтобы удалить предыдущие hooks.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
+    <value>Hooks установлены. Перезапустите все открытые агенты, чтобы использовать новые hooks.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
+    <value>Не удалось удалить Hook. Подробности см. в %LOCALAPPDATA%\IntelligentTerminal\logs\.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
+    <value>Не удалось установить Hooks. Подробности см. в %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
 </root>

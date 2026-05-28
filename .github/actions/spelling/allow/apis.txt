@@ -37,6 +37,8 @@ ENDSESSION
 enumset
 environstrings
 EXACTSIZEONLY
+EXECUTEDEFAULT
+EXECUTEONLYONCE
 EXPCMDFLAGS
 EXPCMDSTATE
 filetime
@@ -195,6 +197,7 @@ winsta
 winstamin
 wmemcmp
 wpc
+wtcli
 WSF
 WWH
 wwinmain

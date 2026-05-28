@@ -5,7 +5,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.session.start"
+          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.session.start"
         }]
       }
     ],
@@ -14,7 +14,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.session.end"
+          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.session.end"
         }]
       }
     ],
@@ -23,7 +23,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.notification"
+          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.notification"
         }]
       }
     ],
@@ -32,7 +32,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.prompt.submit"
+          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.prompt.submit"
         }]
       }
     ],
@@ -41,7 +41,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.tool.starting"
+          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.tool.starting"
         }]
       }
     ],
@@ -50,7 +50,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.tool.finished"
+          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.tool.finished"
         }]
       }
     ],
@@ -59,7 +59,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.tool.failed"
+          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.tool.failed"
         }]
       }
     ],
@@ -68,7 +68,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.error"
+          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.error"
         }]
       }
     ],
@@ -77,16 +77,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.stop"
-        }]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "matcher": ".*",
-        "hooks": [{
-          "type": "command",
-          "command": "powershell -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.subagent.stop"
+          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource copilot agent.stop"
         }]
       }
     ]

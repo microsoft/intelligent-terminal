@@ -206,7 +206,6 @@ Terms that should always be locked:
 | PATH | Environment variable |
 | PowerShell | Product name |
 | Copilot, Claude, Gemini | Brand names |
-| Intelligent Terminal | Product name |
 | JSON, YAML, XML | Technical formats |
 
 ### Translator guidance comments

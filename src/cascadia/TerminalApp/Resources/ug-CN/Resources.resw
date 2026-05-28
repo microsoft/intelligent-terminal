@@ -1,0 +1,172 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>Intelligent Terminal ھە خوش كەلدىڭىز</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>ئىچكى گە ياردەمچىڭىزنى تەڭشەڭ، خاتالىقلارنى چۈشەندۈرۈش، بۇيرۇقلارنى تۈزۈش ۋە ۋەزىپىلەرنى ھەل قىلىشتا ياردەم بېرىش. </value>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>Intelligent Terminal ھەققىدە تېخىمۇ بىلىڭ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>ئىچكى گە AI ۋەكىلىڭىز بىلەن ئېقىمدا قالىڭ</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>ۋەكىلىڭىز تېرمىنالدا نېمە بولۇۋاتقانلىقنى بىلىدۇ ۋە خاتالىقلارنى چۈشىنىش ۋە تۈزىتىشكە ياردەم بېرەلەيدۇ.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>توختاقان يېرىڭىزدىن داۋاملاشتۇرۇڭ</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>ئاكتىۋ ۋە ئالدىنقى ۋەكىل ئوتتۇرىلىرىڭىزنى باشقۇرۇڭ ۋە بىر نەچچە سېكونتتا ئىشقا قايتىڭ. جەرياندىكى ۋەزىپىلەرنى كۆرۈڭ ياكى ئالدىنقى ئىشلارغا قايتىڭ، ئورنىڭىزنى يوقاتماي.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>كېيىنكى</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>Intelligent Terminal ھە خوش كەلدىڭىز</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>ھازىر نېمە تەڭشەيدىغاننى تاللاڭ. بۇلارنى ئىختىيارى ۋاقتتا ئۆزگەرتەلەيسىز </value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>تەڭشەكلەر</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>ۋەكىل</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>ۋەكىل تاختىسىدا ئىشلىتىلىدىغان ۋەكىلنى تاللاڭ. ھەرقانداق ماسلاشقان ACP ۋەكىل ئاپتوماتىك بايقىلىدۇ.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ بۇ ۋەكىل Node.js ۋە NPX نى تەلەپ قىلىدۇ، ئەگەر ئورنىتىلمىغان بولسا ئاپتوماتىك ئورنىتىلىدۇ.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>مەغلۇپ بولغان بۇيرۇقلار ئۈچۈن تۈزىتىشلەرنى ئاپتوماتىك تەۋسىيە قىلىش</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>قوزغىتىلغاندا، AI ۋاكالەتچىسى مەغلۇپ بولغان بۇيرۇقلارنى ئاپتوماتىك تەھلىل قىلىپ، بىر تۈزىتىش تەكلىپ قىلىدۇ. چەكلەنگەندە، مەغلۇپ بولغان بۇيرۇقلار ھالەت بالداقتا چېكىشكە بولىدىغان كۆرسەتمە كۆرسىتىدۇ — تۈزىتىش تەلەپ قىلىش ئۈچۈن Ctrl+Alt+. نى بېسىڭ ياكى كۆرسەتمىنى چېكىڭ.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
+    <value>ئوتتۇرا باشقۇرۇش</value>
+  </data>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal غا ئىشلىۋاتقان ياكى ئاكتىۋ ۋەكىللىرىڭىزنىڭ ھالىتىنى بايقاش ئىزنى بېرىڭ.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ بۇنى ئاچسىڭىز، ۋەكىللىرىڭىز ئارىسىدىكى ئولتۇرۇشلارنى ئىز قوغلاش ئۈچۈن بىرلەشتۈرۈش hooks ئورنىتىلىدۇ.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>تاختا ئورنى</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>ۋەكىل تاختىسى تېرمىنالىڭىزغا نىسبەتەن قەيەردە ئېچىلىدۇ.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>ساقلاش</value>
+  </data>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (ئورنىتىلىدۇ)</value>
+  </data>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (ئورنىتىلغان)</value>
+  </data>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>ئاستى</value>
+  </data>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>ئوڭ</value>
+  </data>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>سول</value>
+  </data>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>ئۈستى</value>
+  </data>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>تەڭشەلىۋاتىدۇ...</value>
+  </data>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ GitHub Copilot ئورنىتىش مەغلۇب بولدى. تور باغلىنىشىڭىزنى تەكشۈرۈڭ ۋە قايتا سىناڭ.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Node.js ئورنىتىش مەغلۇب بولدى. تور باغلىنىشىڭىزنى تەكشۈرۈڭ ۋە قايتا سىناڭ.</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>ئاچىق</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>ياپىق</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>خاتالىق تەھلىل قىلىنىۋاتىدۇ…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>خاتالىق بايقالدى: تەھلىل قىلىنىۋاتىدۇ…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>خاتالىق بايقالدى: تۈزىتىش ئۈچۈن {0}</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>تۈزىتىش تەييار — قوللىنىش ئۈچۈن {0}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>تۈزىتىش تەييار — قوللىنىش ئۈچۈن {0}: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>تەكلىپ تەييار — ئاگېنت كۆزنەكچىسىنى ئېچىڭ</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>ئاپتوماتىك تۈزىتىش بۇنى بىۋاسىتە تۈزىتىشنى رەت قىلدى. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>ئاگېنت كۆزنەكچىسىنى ئېچىپ تولۇق تەكلىپنى ئوقۇش ئۈچۈن بۇ يەرنى چېكىڭ ياكى Ctrl+Shift+. نى بېسىڭ.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>دىئاگنوز</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>ئاگېنت ئولتۇرۇشلىرى</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>ئاگېنت ئولتۇرۇشلىرى: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+</root>

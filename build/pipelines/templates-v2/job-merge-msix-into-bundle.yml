@@ -55,7 +55,7 @@ jobs:
           BuildConfiguration: ${{ config }}
   variables:
     ${{ if eq(parameters.branding, 'Release') }}:
-      BundleStemName: Microsoft.WindowsTerminal
+      BundleStemName: Microsoft.IntelligentTerminal
     ${{ elseif eq(parameters.branding, 'Preview') }}:
       BundleStemName: Microsoft.WindowsTerminalPreview
     ${{ elseif eq(parameters.branding, 'Canary') }}:

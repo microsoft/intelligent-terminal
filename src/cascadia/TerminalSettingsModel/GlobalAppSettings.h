@@ -80,6 +80,20 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 
         winrt::hstring SourceBasePath;
 
+        // ── Policy-aware effective getters ───────────────────────────────
+        // These return the user setting value after applying GPO policy
+        // overrides. If the selected agent is blocked by policy, returns
+        // empty. If a feature is blocked by policy, returns false.
+        hstring EffectiveAcpAgent() const;
+        hstring EffectiveDelegateAgent() const;
+        bool EffectiveAutoFixEnabled() const;
+
+        // Whether GPO policy is actively restricting these settings.
+        bool IsAgentPolicyLocked() const;
+        bool IsCustomAgentPolicyLocked() const;
+        bool IsAutoFixPolicyLocked() const;
+        bool IsAgentSessionHooksPolicyLocked() const;
+
         INHERITABLE_SETTING(Model::GlobalAppSettings, hstring, UnparsedDefaultProfile, L"");
 
 #define GLOBAL_SETTINGS_INITIALIZE(type, name, jsonKey, ...) \

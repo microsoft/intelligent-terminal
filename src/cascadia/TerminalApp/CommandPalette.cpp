@@ -1160,9 +1160,19 @@ namespace winrt::TerminalApp::implementation
 
     void CommandPalette::EnableCommandPaletteMode(const CommandPaletteLaunchMode launchMode)
     {
-        const auto mode = (launchMode == CommandPaletteLaunchMode::CommandLine) ?
-                              CommandPaletteMode::CommandlineMode :
-                              CommandPaletteMode::ActionMode;
+        CommandPaletteMode mode;
+        switch (launchMode)
+        {
+        case CommandPaletteLaunchMode::CommandLine:
+            mode = CommandPaletteMode::CommandlineMode;
+            break;
+        case CommandPaletteLaunchMode::AgentDelegation:
+            mode = CommandPaletteMode::AgentForegroundMode;
+            break;
+        default:
+            mode = CommandPaletteMode::ActionMode;
+            break;
+        }
 
         _switchToMode(mode);
     }

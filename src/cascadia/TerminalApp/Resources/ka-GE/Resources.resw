@@ -1,0 +1,172 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>Intelligent Terminal-ში მოგესალმებით</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>დააკონფიგურირეთ თქვენი ჩაშენებული ასისტენტი, რათა დაგეხმაროთ შეცდომების ახსნაში, ბრძანებების შედგენასა და ამოცანების განბლოკვაში პირდაპირ თქვენს სამუშაო გარემოში. </value>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>შეიტყვეთ მეტი Intelligent Terminal-ის შესახებ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>დარჩით ნაკადში თქვენი ჩაშენებული AI აგენტით</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>თქვენი აგენტი აკვირდება რა ხდება თქვენს ტერმინალში და დაგეხმარებათ შეცდომების გაგებასა და გამოსწორებაში მათი გამოჩენისთანავე.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>გააგრძელეთ იქიდან, სადაც შეჩერდით</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>თვალყური ადევნეთ აქტიურ და წარსულ აგენტის სესიებს და დაუბრუნდით სამუშაოს წამებში. გადახედეთ მიმდინარე ამოცანებს ან დაუბრუნდით ადრინდელ სამუშაოს ადგილის დაკარგვის გარეშე.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>შემდეგი</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>Intelligent Terminal-ში მოგესალმებით</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>აირჩიეთ რა დააკონფიგურიროთ ახლა. ამის შეცვლა ნებისმიერ დროს შეგიძლიათ </value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>პარამეტრებში</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>აგენტი</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>აირჩიეთ აგენტი, რომელიც გამოიყენება აგენტის პანელში. ნებისმიერი თავსებადი ACP აგენტი ავტომატურად აღმოჩნდება.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ ეს აგენტი მოითხოვს Node.js-სა და NPX-ს, რომლებიც ავტომატურად დაინსტალირდება, თუ უკვე არ არის.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>ავტომატურად შესთავაზე გასწორებები წარუმატებელი ბრძანებებისთვის</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>ჩართვისას, AI აგენტი ავტომატურად აანალიზებს წარუმატებელ ბრძანებებს და სთავაზობს გასწორებას. გამორთვისას, წარუმატებელი ბრძანებები სტატუსის ზოლზე აჩვენებენ დაჭერად მინიშნებას — დააჭირეთ Ctrl+Alt+. ან დააწკაპუნეთ მინიშნებაზე გასწორების მოთხოვნისთვის.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
+    <value>სესიების მართვა</value>
+  </data>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>მიეცით Intelligent Terminal-ს უფლება თვალყური ადევნოს თქვენი გაშვებული ან აქტიური აგენტების სტატუსს.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ ამის ჩართვა დააინსტალირებს ინტეგრაციის hooks-ს თქვენს აგენტებში სესიების თვალყურისდევნებისთვის.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>პანელის პოზიცია</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>სად იხსნება აგენტის პანელი თქვენი ტერმინალის მიმართ.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>შენახვა</value>
+  </data>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (დაინსტალირდება)</value>
+  </data>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (დაინსტალირებულია)</value>
+  </data>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>ქვემოთ</value>
+  </data>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>მარჯვნივ</value>
+  </data>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>მარცხნივ</value>
+  </data>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>ზემოთ</value>
+  </data>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>კონფიგურაცია...</value>
+  </data>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ GitHub Copilot-ის ინსტალაცია ვერ მოხერხდა. შეამოწმეთ ქსელის კავშირი და სცადეთ თავიდან.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Node.js-ის ინსტალაცია ვერ მოხერხდა. შეამოწმეთ ქსელის კავშირი და სცადეთ თავიდან.</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>ჩართ</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>გამორთ</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>მიმდინარეობს შეცდომის ანალიზი…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>აღმოჩენილია შეცდომა: მიმდინარეობს ანალიზი…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>აღმოჩენილია შეცდომა: {0} შესასწორებლად</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>შესწორება მზადაა — {0} გამოსაყენებლად</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>შესწორება მზადაა — {0} გამოსაყენებლად: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>შეთავაზება მზადაა — გახსენით აგენტის პანელი</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>ავტომატურმა შესწორებამ უარი თქვა ამის პირდაპირ შესწორებაზე. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>დააწკაპუნეთ აქ ან დააჭირეთ Ctrl+Shift+. აგენტის პანელის გასახსნელად და სრული შეთავაზების წასაკითხად.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>დიაგნოსტიკა</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>აგენტის სესიები</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>აგენტის სესიები: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+</root>

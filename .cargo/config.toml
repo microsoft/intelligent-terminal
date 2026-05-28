@@ -1,0 +1,12 @@
+# Static-link the MSVC CRT so wta.exe doesn't import VCRUNTIME140.dll
+# (the package strips Microsoft.VCLibs and ships no VC runtime; missing
+# this flag causes wta.exe to fail to launch on clean machines like
+# Windows Sandbox).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

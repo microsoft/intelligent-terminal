@@ -1,0 +1,286 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Microsoft ResX Schema
+
+    Version 2.0
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
+    associated with the data types.
+
+    Example:
+
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+
+    There are any number of "resheader" rows that contain simple
+    name/value pairs.
+
+    Each data row contains a name, and value. The row also contains a
+    type or mimetype. Type corresponds to a .NET class that support
+    text/value conversion through the TypeConverter architecture.
+    Classes that don't support this are serialized and stored with the
+    mimetype set.
+
+    The mimetype is used for serialized objects, and tells the
+    ResXResourceReader how to depersist the object. This is currently not
+    extensible. For a given mimetype the value must be set accordingly:
+
+    Note - application/x-microsoft.net.object.binary.base64 is the format
+    that the ResXResourceWriter will generate, however the reader can
+    read any of the formats listed below.
+
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>Intelligent Terminal ਵਿੱਚ ਤੁਹਾਡਾ ਸੁਆਗਤ ਹੈ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>ਗਲਤੀਆਂ ਸਮਝਾਉਣ, ਕਮਾਂਡਾਂ ਦਾ ਖਰੜਾ ਤਿਆਰ ਕਰਨ ਅਤੇ ਕੰਮਾਂ ਨੂੰ ਅਨਬਲੌਕ ਕਰਨ ਵਿੱਚ ਮਦਦ ਲਈ ਆਪਣਾ ਬਿਲਟ-ਇਨ ਸਹਾਇਕ ਸੈੱਟ ਅੱਪ ਕਰੋ, ਜਿੱਥੇ ਤੁਸੀਂ ਕੰਮ ਕਰਦੇ ਹੋ ਉੱਥੇ ਹੀ। </value>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>Intelligent Terminal ਬਾਰੇ ਹੋਰ ਜਾਣੋ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>ਆਪਣੇ ਬਿਲਟ-ਇਨ AI ਏਜੰਟ ਨਾਲ ਪ੍ਰਵਾਹ ਵਿੱਚ ਰਹੋ</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>ਤੁਹਾਡਾ ਏਜੰਟ ਤੁਹਾਡੇ ਟਰਮੀਨਲ ਵਿੱਚ ਕੀ ਹੋ ਰਿਹਾ ਹੈ ਇਸ ਬਾਰੇ ਜਾਣੂ ਰਹਿੰਦਾ ਹੈ ਅਤੇ ਗਲਤੀਆਂ ਨੂੰ ਸਮਝਣ ਅਤੇ ਠੀਕ ਕਰਨ ਵਿੱਚ ਤੁਹਾਡੀ ਮਦਦ ਕਰ ਸਕਦਾ ਹੈ।</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>ਜਿੱਥੇ ਛੱਡਿਆ ਸੀ ਉੱਥੋਂ ਹੀ ਸ਼ੁਰੂ ਕਰੋ</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>ਆਪਣੇ ਸਕ੍ਰਿਯ ਅਤੇ ਪਿਛਲੇ ਏਜੰਟ ਸੈਸ਼ਨਾਂ ਦਾ ਟਰੈਕ ਰੱਖੋ ਅਤੇ ਸੈਕਿੰਡਾਂ ਵਿੱਚ ਆਪਣੇ ਕੰਮ 'ਤੇ ਵਾਪਸ ਜਾਓ। ਪ੍ਰਗਤੀ ਵਿੱਚ ਕੀ ਹੈ ਇਸਦੀ ਸਮੀਖਿਆ ਕਰੋ ਜਾਂ ਆਪਣੀ ਥਾਂ ਗੁਆਏ ਬਿਨਾਂ ਪਹਿਲਾਂ ਦੇ ਕੰਮ 'ਤੇ ਵਾਪਸ ਜਾਓ।</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>ਅੱਗੇ</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>Intelligent Terminal ਵਿੱਚ ਤੁਹਾਡਾ ਸੁਆਗਤ ਹੈ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>ਹੁਣ ਕੀ ਸੈੱਟ ਅੱਪ ਕਰਨਾ ਹੈ ਚੁਣੋ। ਤੁਸੀਂ ਇਹਨਾਂ ਨੂੰ ਕਦੇ ਵੀ ਬਦਲ ਸਕਦੇ ਹੋ </value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>ਸੈਟਿੰਗਾਂ</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>ਏਜੰਟ</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>ਏਜੰਟ ਪੈਨ ਵਿੱਚ ਵਰਤੇ ਜਾਣ ਵਾਲੇ ਏਜੰਟ ਨੂੰ ਚੁਣੋ। ਕੋਈ ਵੀ ਅਨੁਕੂਲ ACP ਏਜੰਟ ਆਪਣੇ ਆਪ ਖੋਜਿਆ ਜਾਵੇਗਾ।</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ ਇਸ ਏਜੰਟ ਨੂੰ Node.js ਅਤੇ NPX ਦੀ ਲੋੜ ਹੈ, ਜੋ ਪਹਿਲਾਂ ਤੋਂ ਮੌਜੂਦ ਨਾ ਹੋਣ 'ਤੇ ਆਪਣੇ ਆਪ ਇੰਸਟਾਲ ਹੋ ਜਾਣਗੇ।</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>ਅਸਫਲ ਕਮਾਂਡਾਂ ਲਈ ਆਪਣੇ-ਆਪ ਠੀਕ ਸੁਝਾਓ</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>ਜਦੋਂ ਯੋਗ ਕੀਤਾ ਜਾਂਦਾ ਹੈ, AI ਏਜੰਟ ਅਸਫਲ ਕਮਾਂਡਾਂ ਦਾ ਆਪਣੇ-ਆਪ ਵਿਸ਼ਲੇਸ਼ਣ ਕਰਦਾ ਹੈ ਅਤੇ ਇੱਕ ਠੀਕ ਦਾ ਪ੍ਰਸਤਾਵ ਦਿੰਦਾ ਹੈ। ਜਦੋਂ ਅਯੋਗ ਕੀਤਾ ਜਾਂਦਾ ਹੈ, ਅਸਫਲ ਕਮਾਂਡਾਂ ਸਥਿਤੀ ਪੱਟੀ ਵਿੱਚ ਕਲਿੱਕ ਕਰਨ ਯੋਗ ਸੰਕੇਤ ਦਿਖਾਉਂਦੀਆਂ ਹਨ — ਠੀਕ ਦੀ ਬੇਨਤੀ ਕਰਨ ਲਈ Ctrl+Alt+. ਦਬਾਓ ਜਾਂ ਸੰਕੇਤ 'ਤੇ ਕਲਿੱਕ ਕਰੋ।</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
+    <value>ਸੈਸ਼ਨ ਪ੍ਰਬੰਧਨ</value>
+  </data>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal ਨੂੰ ਤੁਹਾਡੇ ਚੱਲ ਰਹੇ ਜਾਂ ਸਕ੍ਰਿਯ ਏਜੰਟਾਂ ਦੀ ਸਥਿਤੀ ਟਰੈਕ ਕਰਨ ਦੀ ਇਜਾਜ਼ਤ ਦਿਓ।</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ ਇਸਨੂੰ ਸਮਰੱਥ ਕਰਨ ਨਾਲ ਤੁਹਾਡੇ ਏਜੰਟਾਂ ਵਿੱਚ ਸੈਸ਼ਨਾਂ ਨੂੰ ਟਰੈਕ ਕਰਨ ਲਈ ਇੰਟੀਗ੍ਰੇਸ਼ਨ hooks ਇੰਸਟਾਲ ਹੋਣਗੇ।</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>ਪੈਨ ਸਥਿਤੀ</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>ਤੁਹਾਡੇ ਟਰਮੀਨਲ ਦੇ ਸਾਪੇਖ ਏਜੰਟ ਪੈਨ ਕਿੱਥੇ ਖੁੱਲ੍ਹਦਾ ਹੈ।</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>ਸੰਭਾਲੋ</value>
+  </data>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (ਇੰਸਟਾਲ ਕੀਤਾ ਜਾਵੇਗਾ)</value>
+  </data>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (ਇੰਸਟਾਲ ਹੈ)</value>
+  </data>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>ਤਲ</value>
+  </data>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>ਸੱਜੇ</value>
+  </data>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>ਖੱਬੇ</value>
+  </data>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>ਸਿਖਰ</value>
+  </data>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>ਸੈੱਟ ਅੱਪ ਹੋ ਰਿਹਾ ਹੈ...</value>
+  </data>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ GitHub Copilot ਇੰਸਟਾਲ ਕਰਨ ਵਿੱਚ ਅਸਫਲ। ਆਪਣਾ ਨੈੱਟਵਰਕ ਜਾਂਚੋ ਅਤੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Node.js ਇੰਸਟਾਲ ਕਰਨ ਵਿੱਚ ਅਸਫਲ। ਆਪਣਾ ਨੈੱਟਵਰਕ ਜਾਂਚੋ ਅਤੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>ਚਾਲੂ</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>ਬੰਦ</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>ਗਲਤੀ ਦਾ ਵਿਸ਼ਲੇਸ਼ਣ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>ਗਲਤੀ ਮਿਲੀ: ਵਿਸ਼ਲੇਸ਼ਣ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>ਗਲਤੀ ਮਿਲੀ: ਠੀਕ ਕਰਨ ਲਈ {0}</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>ਫਿਕਸ ਤਿਆਰ — ਲਾਗੂ ਕਰਨ ਲਈ {0}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>ਫਿਕਸ ਤਿਆਰ — ਲਾਗੂ ਕਰਨ ਲਈ {0}: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>ਸੁਝਾਅ ਤਿਆਰ — ਏਜੰਟ ਪੇਨ ਖੋਲ੍ਹੋ</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Auto-fix ਨੇ ਇਸਨੂੰ ਸਿੱਧਾ ਠੀਕ ਕਰਨ ਤੋਂ ਇਨਕਾਰ ਕੀਤਾ। </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>ਏਜੰਟ ਪੇਨ ਖੋਲ੍ਹਣ ਅਤੇ ਪੂਰਾ ਸੁਝਾਅ ਪੜ੍ਹਨ ਲਈ ਇੱਥੇ ਕਲਿੱਕ ਕਰੋ ਜਾਂ Ctrl+Shift+. ਦਬਾਓ।</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>ਡਾਇਗਨੋਸਟਿਕਸ</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>ਏਜੰਟ ਸੈਸ਼ਨ</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>ਏਜੰਟ ਸੈਸ਼ਨ: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+</root>

@@ -5,12 +5,15 @@
 #include "App.h"
 
 #include "TerminalPage.h"
+#include "AgentPaneContent.h"
+#include "AgentPaneLog.h"
 #include "ScratchpadContent.h"
 #include "../inc/ShellIntegration.h"
 #include "../WinRTUtils/inc/WtExeUtils.h"
 #include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "Utils.h"
+#include <json/json.h>
 
 using namespace winrt::Windows::ApplicationModel::DataTransfer;
 using namespace winrt::Windows::UI::Xaml;
@@ -1662,29 +1665,37 @@ namespace winrt::TerminalApp::implementation
                                             const ActionEventArgs& args)
     {
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentPane called\n");
+        const auto activeTabPre = _GetFocusedTabImpl();
+        const auto agentPanePre = activeTabPre ? activeTabPre->FindAgentPane() : nullptr;
+        const bool stashedPre = agentPanePre && agentPanePre->IsHidden();
+        _agentPaneLog(std::string{ "_HandleOpenAgentPane fired hasPane=" } + (agentPanePre ? "yes" : "no") + " stashed=" + (stashedPre ? "yes" : "no"));
 
-        // Symmetric counterpart of _HandleOpenAgentSessions: when the pane
-        // is visible on the active tab and currently showing the sessions
-        // view, switch to chat (the "autofix agent pane") rather than
-        // closing. All other cases fall through to the legacy
-        // _OpenOrReuseAgentPane toggle (open/close/relocate).
-        const auto pane = _FindAgentPane();
+        // Per-tab. Three cases (in priority order):
+        //   * Pane stashed (hidden) → fall through to _OpenOrReuseAgentPane
+        //     which unstashes via wta. Don't switch view here — restore in
+        //     whatever view it had when hidden.
+        //   * Pane visible, sessions view → switch to chat view.
+        //   * Pane visible, chat view OR no pane → fall through.
         const auto activeTab = _GetFocusedTabImpl();
-        const bool visibleOnActiveTab =
-            pane && activeTab && (_FindTabContainingAgentPane() == activeTab) && !pane->IsHidden();
-
-        if (visibleOnActiveTab && _agentSessionsViewActive)
+        if (activeTab)
         {
-            OutputDebugStringW(L"[AgentPane] OpenAgentPane: switch to chat — pane visible and in sessions view\n");
-            _BroadcastAgentSetView("chat");
-            _agentSessionsViewActive = false;
-            _UpdateBottomBarState();
-            args.Handled(true);
-            return;
+            const auto agentPane = activeTab->FindAgentPane();
+            const bool isStashed = agentPane && agentPane->IsHidden();
+            if (!isStashed)
+            {
+                if (const auto agentContent = activeTab->FindAgentPaneContent())
+                {
+                    if (agentContent.IsSessionsView())
+                    {
+                        _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
+                        args.Handled(true);
+                        return;
+                    }
+                }
+            }
         }
 
-        _OpenOrReuseAgentPane(L"");
-        _UpdateBottomBarState();
+        _OpenOrReuseAgentPane(false, L"Action");
         args.Handled(true);
     }
 
@@ -1700,53 +1711,191 @@ namespace winrt::TerminalApp::implementation
                                                 const ActionEventArgs& args)
     {
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentSessions called\n");
+        const auto activeTabPre = _GetFocusedTabImpl();
+        const auto agentPanePre = activeTabPre ? activeTabPre->FindAgentPane() : nullptr;
+        const bool stashedPre = agentPanePre && agentPanePre->IsHidden();
+        _agentPaneLog(std::string{ "_HandleOpenAgentSessions fired hasPane=" } + (agentPanePre ? "yes" : "no") + " stashed=" + (stashedPre ? "yes" : "no"));
 
-        // Toggle semantics for the session-management view:
-        //   - Pane not visible on the active tab  → open + sessions view
-        //   - Pane visible AND already in sessions → close the pane
-        //   - Pane visible but in chat view       → switch to sessions
-        //
-        // "Visible on the active tab" requires the pane to exist, to live
-        // in the focused tab, and to not be hidden. The reuse path inside
-        // _OpenOrReuseAgentPane handles the "exists but on another tab /
-        // hidden" cases by relocating + showing the pane.
-        const auto pane = _FindAgentPane();
+        // Per-tab sessions toggle. Cases (priority order):
+        //   * Pane stashed → fall through (_OpenOrReuseAgentPane unstashes
+        //     in sessions view via wta echo).
+        //   * Pane visible, sessions view → hide (stash).
+        //   * Pane visible, chat view → switch to sessions.
+        //   * No pane → spawn in sessions view.
         const auto activeTab = _GetFocusedTabImpl();
-        const bool visibleOnActiveTab =
-            pane && activeTab && (_FindTabContainingAgentPane() == activeTab) && !pane->IsHidden();
-
-        if (visibleOnActiveTab && _agentSessionsViewActive)
+        if (activeTab)
         {
-            // Toggle off: close the pane on the active tab. Mirrors the
-            // closing half of the Ctrl+Shift+. toggle path.
-            OutputDebugStringW(L"[AgentPane] OpenAgentSessions: toggle close — pane visible and already in sessions view\n");
-            activeTab->AgentPaneOpen(false);
-            _ReconcileAgentPaneForActiveTab();
-            _agentSessionsViewActive = false;
-            _UpdateBottomBarState();
-            args.Handled(true);
-            return;
+            const auto agentPane = activeTab->FindAgentPane();
+            const bool isStashed = agentPane && agentPane->IsHidden();
+            if (!isStashed)
+            {
+                if (const auto agentContent = activeTab->FindAgentPaneContent())
+                {
+                    if (agentContent.IsSessionsView())
+                    {
+                        _RequestAgentStateForTab(activeTab, std::nullopt, /*pane_open*/ false);
+                        args.Handled(true);
+                        return;
+                    }
+                }
+            }
         }
 
-        // Either the pane needs opening/relocating, or it's open in chat
-        // view and we want to switch it. Both go through the existing
-        // intoSessionsView=true code path, which sets _agentSessionsViewActive
-        // = true on success.
-        _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true);
-        _UpdateBottomBarState();
+        _OpenOrReuseAgentPane(/*intoSessionsView*/ true, L"SessionsAction");
         args.Handled(true);
     }
 
     void TerminalPage::_HandleTriggerAutofix(const IInspectable& /*sender*/,
                                               const ActionEventArgs& args)
     {
-        // Only act when a fix is actually armed. In Pending/Idle the hotkey
-        // does nothing, so the chord can fall through to other consumers.
-        if (_diagnostics.autofixState == AutofixState::Armed)
+        // Per-tab: read autofix state from the active tab's AgentPaneContent.
+        const auto activeTab = _GetFocusedTabImpl();
+        if (!activeTab)
         {
-            _TriggerAutofix();
+            return;
+        }
+        const auto agentContent = activeTab->FindAgentPaneContent();
+        if (!agentContent)
+        {
+            return;
+        }
+        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+        if (!impl)
+        {
+            return;
+        }
+        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
+        const auto state = impl->GetAutofixState();
+        if (state == AS::Armed)
+        {
+            _TriggerAutofix(activeTab, L"Hotkey");
             args.Handled(true);
         }
+        else if (state == AS::Detected)
+        {
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "autofix_execute_from_detected";
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(impl->GetLastErrorPaneId());
+            params["tab_id"] = winrt::to_string(activeTab->StableId());
+            evt["params"] = params;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            ProtocolVtSequenceReceived.raise(
+                *this,
+                winrt::to_hstring(Json::writeString(wb, evt)));
+            args.Handled(true);
+        }
+    }
+
+    // Bundle WTA / Intelligent Terminal diagnostic logs into a timestamped zip on the
+    // Desktop, then pop Explorer with the new file selected so the user can drag it
+    // straight into a bug report. Runs entirely on a background thread — the UI is
+    // never blocked even if the logs dir is large.
+    static safe_void_coroutine _CreateBugReportZipAsync()
+    {
+        co_await winrt::resume_background();
+
+        wil::unique_cotaskmem_string desktopRaw;
+        if (FAILED(SHGetKnownFolderPath(FOLDERID_Desktop, 0, nullptr, &desktopRaw)) || !desktopRaw)
+        {
+            co_return;
+        }
+        wil::unique_cotaskmem_string localAppDataRaw;
+        if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppDataRaw)) || !localAppDataRaw)
+        {
+            co_return;
+        }
+
+        const std::filesystem::path desktop{ desktopRaw.get() };
+        const std::filesystem::path logsDir = std::filesystem::path(localAppDataRaw.get()) / L"IntelligentTerminal" / L"logs";
+
+        // create_directories is a no-op if the path already exists. We do this so
+        // tar always has *something* to archive, even on a brand-new install where
+        // no logs have been written yet.
+        std::error_code ec;
+        std::filesystem::create_directories(logsDir, ec);
+
+        SYSTEMTIME st{};
+        GetLocalTime(&st);
+        const auto zipName = fmt::format(L"intelligent-terminal-logs-{:04d}{:02d}{:02d}-{:02d}{:02d}{:02d}.zip",
+                                          st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+        const auto zipPath = desktop / zipName;
+
+        // Resolve absolute paths to tar.exe and explorer.exe up-front so we
+        // never rely on PATH / current-directory lookup (binary-planting hardening).
+        // tar.exe ships in System32 on Windows 10 1803+ (libarchive); explorer.exe
+        // lives in the Windows directory.
+        wchar_t systemDir[MAX_PATH]{};
+        wchar_t windowsDir[MAX_PATH]{};
+        if (!GetSystemDirectoryW(systemDir, ARRAYSIZE(systemDir)) ||
+            !GetWindowsDirectoryW(windowsDir, ARRAYSIZE(windowsDir)))
+        {
+            co_return;
+        }
+        const std::filesystem::path tarExe = std::filesystem::path{ systemDir } / L"tar.exe";
+        const std::filesystem::path explorerExe = std::filesystem::path{ windowsDir } / L"explorer.exe";
+
+        // `-a` picks the archive format from the .zip extension; `-C <parent>`
+        // keeps a clean top-level `logs/` folder inside the archive instead of
+        // leaking an absolute path. argv[0] must still be present in lpCommandLine
+        // even though lpApplicationName provides the executable.
+        auto cmdline = fmt::format(LR"("{}" -a -c -f "{}" -C "{}" logs)",
+                                    tarExe.wstring(), zipPath.wstring(), logsDir.parent_path().wstring());
+
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        PROCESS_INFORMATION pi{};
+        if (!CreateProcessW(tarExe.c_str(), cmdline.data(), nullptr, nullptr, FALSE,
+                            CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+        {
+            co_return;
+        }
+
+        // Be strict about the wait result: on timeout or failure, kill the child
+        // so a runaway tar.exe can't outlive this action. We're already on a
+        // background thread, so 60s is a soft cap — anything longer almost
+        // certainly means tar is stuck on a permission/handle issue.
+        const DWORD waitResult = WaitForSingleObject(pi.hProcess, 60000);
+        DWORD exitCode = 1;
+        if (waitResult == WAIT_OBJECT_0)
+        {
+            GetExitCodeProcess(pi.hProcess, &exitCode);
+        }
+        else
+        {
+            TerminateProcess(pi.hProcess, 1);
+            WaitForSingleObject(pi.hProcess, 5000); // reap, best-effort
+        }
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+
+        if (exitCode != 0 || !std::filesystem::exists(zipPath, ec))
+        {
+            co_return;
+        }
+
+        // Reveal the zip in Explorer (file pre-selected) so the user can drag it
+        // into a GitHub issue or email immediately.
+        auto selectArgs = fmt::format(LR"(/select,"{}")", zipPath.wstring());
+        SHELLEXECUTEINFOW seInfo{ 0 };
+        seInfo.cbSize = sizeof(seInfo);
+        seInfo.fMask = SEE_MASK_NOASYNC;
+        seInfo.lpVerb = L"open";
+        seInfo.lpFile = explorerExe.c_str();
+        seInfo.lpParameters = selectArgs.c_str();
+        seInfo.nShow = SW_SHOWNORMAL;
+        LOG_IF_WIN32_BOOL_FALSE(ShellExecuteExW(&seInfo));
+    }
+
+    void TerminalPage::_HandleBugReport(const IInspectable& /*sender*/,
+                                        const ActionEventArgs& args)
+    {
+        _CreateBugReportZipAsync();
+        args.Handled(true);
     }
 
     void TerminalPage::_HandleShowProtocolInfo(const IInspectable& /*sender*/,
@@ -1770,7 +1919,7 @@ namespace winrt::TerminalApp::implementation
 
         if (_windowIdToast != nullptr)
         {
-            WindowIdToast().Title(L"Terminal Protocol");
+            WindowIdToast().Title(RS_(L"TerminalProtocolTeachingTipTitle"));
             WindowIdToast().Subtitle(pipeName);
             _windowIdToast->Open();
         }

@@ -1020,70 +1020,187 @@
     <value>智能体不可用</value>
   </data>
   <data name="AgentNotConfiguredSubtitle" xml:space="preserve">
-    <value>找不到任何智能体。请安装智能体 CLI（例如 copilot、gemini），并确保其位于你的 PATH 中，或在“设置”>“智能体”中配置。</value>
-    <comment>{Locked="CLI","PATH","copilot","gemini"}</comment>
+    <value>找不到任何智能体。请安装智能体（例如 copilot、gemini），并确保其位于你的 PATH 中，或在"设置"&gt;"智能体"中配置。</value>
+    <comment>{Locked="PATH","copilot","gemini"}</comment>
   </data>
-  <data name="FreOverlay_Title" xml:space="preserve">
-    <value>Intelligent Terminal 的新增功能</value>
-    <comment>{Locked="Intelligent Terminal"}</comment>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>欢迎使用智能终端</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_Card1Title" xml:space="preserve">
-    <value>欢迎使用 Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"}</comment>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>设置内置助手，帮助你在工作中直接解释错误、起草命令并扫清任务阻碍。</value>
   </data>
-  <data name="FreOverlay_Card1Description" xml:space="preserve">
-    <value>设置内置智能体，让它在你的工作环境中直接为你提供帮助</value>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>详细了解智能终端</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_Card2Title" xml:space="preserve">
-    <value>自动错误检测</value>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>借助内置智能体保持工作节奏</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_Card2Description" xml:space="preserve">
-    <value>智能体窗格始终具备上下文，并已准备好使用你喜爱的智能体 CLI</value>
-    <comment>{Locked="CLI"}</comment>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>智能体会持续关注终端中发生的情况，并在错误出现时帮助你理解和修复。</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_Card3Title" xml:space="preserve">
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>从上次中断的地方继续</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>跟踪你的活动和过去的智能体会话，几秒钟内即可恢复工作。查看进行中的内容或回顾之前的工作，而不会丢失当前位置。</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>下一步</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>欢迎使用智能终端</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>选择要立即设置的项目。你可以随时在</value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>智能体</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>选择在智能体窗格中使用的智能体。任何兼容的 ACP 智能体都会被自动检测。</value>
+    <comment>{Locked="ACP"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ 此智能体需要 Node.js 和 NPX，如果尚未安装，将自动安装。</value>
+    <comment>{Locked="Node.js","NPX"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>自动为失败的命令建议修复方案</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>启用后,AI 智能体将自动分析失败的命令并提出修复建议。禁用后,失败的命令会在状态栏中显示一个可点击的提示 — 按 Ctrl+Alt+. 或单击该提示以请求修复。</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>会话管理</value>
   </data>
-  <data name="FreOverlay_Card3Description" xml:space="preserve">
-    <value>会话管理可帮助你跟踪智能体，并快速返回之前的会话</value>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>授予智能终端跟踪正在运行或活动中的智能体状态的权限。</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_Card4Title" xml:space="preserve">
-    <value>快速智能体命令</value>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ 启用此功能将安装集成 hooks，以跟踪跨智能体的会话。</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
-  <data name="FreOverlay_Card4Description" xml:space="preserve">
-    <value>命令面板可快速启动后台标签页</value>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>窗格位置</value>
   </data>
-  <data name="FreOverlay_DetailTitle" xml:space="preserve">
-    <value>欢迎使用 Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"}</comment>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>智能体窗格相对于终端打开的位置。</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_DetailDescription" xml:space="preserve">
-    <value>设置内置智能体，让它在你的工作环境中帮助你解释错误、起草命令并扫清任务阻碍。</value>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>保存</value>
   </data>
-  <data name="FreOverlay_Detail2Title" xml:space="preserve">
-    <value>自动错误检测</value>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (将被安装)</value>
   </data>
-  <data name="FreOverlay_Detail2Description" xml:space="preserve">
-    <value>智能体窗格始终具备上下文，并已准备好使用你喜爱的智能体 CLI。</value>
-    <comment>{Locked="CLI"}</comment>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (已安装)</value>
   </data>
-  <data name="FreOverlay_Detail3Title" xml:space="preserve">
-    <value>会话管理</value>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>底部</value>
   </data>
-  <data name="FreOverlay_Detail3Description" xml:space="preserve">
-    <value>会话管理可帮助你跟踪智能体，并快速返回之前的会话。</value>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>右侧</value>
   </data>
-  <data name="FreOverlay_Detail4Title" xml:space="preserve">
-    <value>快速智能体命令</value>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>左侧</value>
   </data>
-  <data name="FreOverlay_Detail4Description" xml:space="preserve">
-    <value>使用命令面板可从终端中的任意位置快速运行由智能体驱动的任务。</value>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>顶部</value>
   </data>
-  <data name="FreOverlay_DetailLink" xml:space="preserve">
-    <value>详细了解 Intelligent Terminal。</value>
-    <comment>{Locked="Intelligent Terminal"}</comment>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>正在设置...</value>
   </data>
-  <data name="FreOverlay_NextButton" xml:space="preserve">
-    <value>开始探索</value>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ 安装 GitHub Copilot 失败。请检查网络并重试。</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ 安装 Node.js 失败。请检查网络并重试。</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>开</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>关</value>
+  </data>
+  <data name="AgentBlockedByPolicyTitle" xml:space="preserve">
+    <value>AI 智能体受限</value>
+    <comment>Title shown when Group Policy blocks the user from opening the agent pane. "agent" refers to an AI intelligent agent (e.g., Copilot, Claude), not a proxy or human agent.</comment>
+  </data>
+  <data name="AgentBlockedByPolicySubtitle" xml:space="preserve">
+    <value>你的组织策略不允许使用任何 AI 智能体。请联系 IT 管理员寻求帮助。</value>
+    <comment>Subtitle shown when Group Policy blocks all AI agents from running.</comment>
+  </data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>此设置由你的组织管理。</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>正在分析错误…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>检测到错误：正在分析…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>检测到错误：按 {0} 修复</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>修复已就绪 — 按 {0} 应用</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>修复已就绪 — 按 {0} 应用：{1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>建议已就绪 — 打开智能体窗格</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>自动修复已拒绝直接修复此问题。 </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>单击此处或按 Ctrl+Shift+. 打开智能体窗格并阅读完整建议。</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>诊断</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>智能体会话</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>智能体会话：{0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
 </root>

@@ -8,7 +8,7 @@ use crate::theme;
 use crate::ui::shimmer;
 use crate::ui_trace;
 
-const ACTIVITY_LABEL: &str = "Thinking…";
+fn activity_label() -> String { t!("chat.activity_thinking").into_owned() }
 
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 
@@ -41,7 +41,7 @@ fn pending_stream_height(tab: &crate::app::TabSession, wrap_width: usize) -> usi
         return 0;
     };
     let body_width = wrap_width.saturating_sub(2).max(1);
-    wrap_count(&text, body_width)
+    dot_wrap_count(&text, body_width)
 }
 
 fn wrap_count(text: &str, width: usize) -> usize {
@@ -55,14 +55,20 @@ fn wrap_count(text: &str, width: usize) -> usize {
         .max(1)
 }
 
+/// Mirrors `push_dot_prefixed_lines`: leading blank paragraphs are skipped
+/// (the dot lands on the first content row), so they must not be counted
+/// against the chat-area height either.
+fn dot_wrap_count(text: &str, width: usize) -> usize {
+    wrap_count(text.trim_start_matches('\n'), width)
+}
+
 fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
     // Most variants render with a 2-cell prefix ("● " for agent/error,
     // "> " for user) and a trailing blank line.
     let body_width = wrap_width.saturating_sub(2).max(1);
     match msg {
-        ChatMessage::User(t) | ChatMessage::Agent(t) | ChatMessage::Error(t) => {
-            wrap_count(t, body_width) + 1
-        }
+        ChatMessage::Agent(t) | ChatMessage::Error(t) => dot_wrap_count(t, body_width) + 1,
+        ChatMessage::User(t) => wrap_count(t, body_width) + 1,
         ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
         ChatMessage::ToolCall { .. } => 1,
         ChatMessage::Plan(entries) => 2 + entries.len(), // header + each entry + blank
@@ -145,7 +151,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
             Line::from(vec![
                 Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
                 Span::styled(
-                    "Welcome to Intelligent Terminal!",
+                    t!("chat.welcome_title").into_owned(),
                     Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
                 ),
             ]),
@@ -160,6 +166,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let paragraph = Paragraph::new(lines)
         .block(inner)
+        .alignment(crate::rtl::text_alignment())
         .wrap(Wrap { trim: false })
         .scroll((scroll as u16, 0));
 
@@ -218,6 +225,16 @@ fn build_completed_turn_lines<'a>(
         Span::styled(truncate_render_text(&turn.prompt), prompt_style),
     ])];
 
+    // Index of the line that should receive an inline trailing marker (eg
+    // "(canceled)" / "→ executed: …"). Expanded turns attach it to the
+    // first detail row (right after the header chevron line); collapsed
+    // turns put it next to the prompt header.
+    let marker_target_idx = if turn.expanded && !turn.details.is_empty() {
+        Some(lines.len())
+    } else {
+        Some(0)
+    };
+
     if turn.expanded {
         // Render the captured details — the agent reply, tool calls,
         // plans, etc. — using the same builder as the active turn so the
@@ -229,7 +246,20 @@ fn build_completed_turn_lines<'a>(
         }
     }
 
-    lines.push(Line::default());
+    if let (Some(marker), Some(idx)) = (turn.trailing_marker.as_deref(), marker_target_idx) {
+        if let Some(line) = lines.get_mut(idx) {
+            line.spans.push(Span::raw("  "));
+            line.spans.push(Span::styled(marker, theme::DIM));
+        }
+    }
+
+    // Push a trailing blank only if the last detail (or the prompt header
+    // for collapsed turns) didn't already supply one. Agent / Error /
+    // System / Plan / AgentEvent all trail a blank via build_message_lines;
+    // ToolCall does not, and collapsed turns stop at the prompt header.
+    if lines.last().map_or(true, |l| !l.spans.is_empty()) {
+        lines.push(Line::default());
+    }
     lines
 }
 
@@ -238,8 +268,9 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
     if tab.turn.spinner_label().is_none() || pending_render_text(tab).is_some() {
         return None;
     }
+    let label = activity_label();
     Some(Line::from(shimmer::shimmer_spans(
-        ACTIVITY_LABEL,
+        &label,
         tab.activity_frame,
     )))
 }
@@ -247,7 +278,7 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
 /// Incrementally extracts a JSON string field's decoded value from a
 /// possibly-truncated text. Handles `\"`, `\\`, `\n`, `\t`, `\u{XXXX}` etc.
 /// Returns the partial value if the closing quote hasn't arrived yet.
-fn extract_json_string_field(text: &str, field: &str) -> Option<String> {
+pub(crate) fn extract_json_string_field(text: &str, field: &str) -> Option<String> {
     let key = format!("\"{field}\"");
     let start = text.find(&key)?;
     let rest = text[start + key.len()..].trim_start();
@@ -289,7 +320,7 @@ fn extract_json_string_field(text: &str, field: &str) -> Option<String> {
     Some(out)
 }
 
-/// Resolves what (if anything) the pending stream should render.
+/// Resolves the user-visible portion of a streaming buffer:
 ///
 /// - Buffer starts with a JSON wrapper (autofix): extract the `explanation`
 ///   field so the user sees flowing markdown rather than raw JSON syntax.
@@ -299,9 +330,11 @@ fn extract_json_string_field(text: &str, field: &str) -> Option<String> {
 ///   terminal-task mode): render only the prose prefix; the recommendation
 ///   card replaces it on eager/end-of-turn finalize.
 /// - Pure prose: stream as-is.
-fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
-    // Pending text is only meaningful while the turn is actively streaming.
-    let text = tab.turn.buffer()?;
+///
+/// Callers outside the render path (e.g. turn-cancel / ignore commits) use
+/// this to record exactly what the user saw during streaming, instead of the
+/// raw buffer (which may contain JSON the UI deliberately hid).
+pub(crate) fn user_visible_stream_text(text: &str) -> Option<Cow<'_, str>> {
     let trimmed = text.trim_start();
     if trimmed.is_empty() {
         return None;
@@ -320,6 +353,11 @@ fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
         };
     }
     Some(Cow::Borrowed(text))
+}
+
+fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
+    // Pending text is only meaningful while the turn is actively streaming.
+    user_visible_stream_text(tab.turn.buffer()?)
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
@@ -384,12 +422,12 @@ fn build_message_lines<'a>(
             )));
         }
         ChatMessage::Plan(entries) => {
-            lines.push(Line::from(Span::styled("Plan:", theme::PLAN_STYLE)));
+            lines.push(Line::from(Span::styled(t!("chat.plan_header").into_owned(), theme::PLAN_STYLE)));
             for entry in entries {
                 let marker = match entry.status {
-                    PlanEntryStatus::Completed => "[x]",
-                    PlanEntryStatus::InProgress => "[>]",
-                    PlanEntryStatus::Pending => "[ ]",
+                    PlanEntryStatus::Completed => t!("chat.plan_marker_completed").into_owned(),
+                    PlanEntryStatus::InProgress => t!("chat.plan_marker_in_progress").into_owned(),
+                    PlanEntryStatus::Pending => t!("chat.plan_marker_pending").into_owned(),
                 };
                 lines.push(Line::from(Span::styled(
                     format!("  {} {}", marker, truncate_render_text(&entry.content)),
@@ -446,16 +484,14 @@ fn push_dot_prefixed_lines<'a>(
 
     for paragraph in text.split('\n') {
         if paragraph.is_empty() {
-            // Preserve blank lines between paragraphs.
+            // Skip leading blanks so the dot lands on the first content row
+            // — many models prefix prose with `\n` / `\n\n`, which would
+            // otherwise burn the dot on an empty line. Blank lines between
+            // paragraphs are still preserved.
             if first_row {
-                lines.push(Line::from(vec![
-                    Span::styled("● ", dot_style),
-                    Span::styled(String::new(), text_style),
-                ]));
-                first_row = false;
-            } else {
-                lines.push(Line::default());
+                continue;
             }
+            lines.push(Line::default());
             continue;
         }
 

@@ -994,52 +994,126 @@
   </data><data name="AgentNotConfiguredTitle" xml:space="preserve">
     <value>ВИ агент није доступан</value>
   </data><data name="AgentNotConfiguredSubtitle" xml:space="preserve">
-    <value>Ниједан ВИ агент није пронађен. Инсталирајте CLI агента (нпр. copilot, gemini) и уверите се да је на вашем PATH-у или га конфигуришите у одељку Подешавања &gt; ВИ агенти.</value>
-    <comment>{Locked="CLI","PATH","copilot","gemini"}</comment>
-  </data><data name="FreOverlay_Title" xml:space="preserve">
-    <value>Ново у Intelligent Terminal-у</value>
-    <comment>{Locked="Intelligent Terminal"}</comment>
-  </data><data name="FreOverlay_Card1Title" xml:space="preserve">
+    <value>Ниједан ВИ агент није пронађен. Инсталирајте агента (нпр. copilot, gemini) и уверите се да је на вашем PATH-у или га конфигуришите у одељку Подешавања &gt; ВИ агенти.</value>
+    <comment>{Locked="PATH","copilot","gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Добро дошли у Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"}</comment>
-  </data><data name="FreOverlay_Card1Description" xml:space="preserve">
-    <value>Подесите уграђеног агента да вам помаже тамо где радите</value>
-  </data><data name="FreOverlay_Card2Title" xml:space="preserve">
-    <value>Аутоматско откривање грешака</value>
-  </data><data name="FreOverlay_Card2Description" xml:space="preserve">
-    <value>Панел агента увек има контекст и спреман је за рад са вашим омиљеним CLI агентом</value>
-    <comment>{Locked="CLI"}</comment>
-  </data><data name="FreOverlay_Card3Title" xml:space="preserve">
-    <value>Управљање сесијама</value>
-  </data><data name="FreOverlay_Card3Description" xml:space="preserve">
-    <value>Управљање сесијама вам помаже да пратите агенте и вратите се претходним сесијама</value>
-  </data><data name="FreOverlay_Card4Title" xml:space="preserve">
-    <value>Брзе агентске команде</value>
-  </data><data name="FreOverlay_Card4Description" xml:space="preserve">
-    <value>Палета команди може брзо да покрене агентске задатке у позадини</value>
-  </data><data name="FreOverlay_DetailTitle" xml:space="preserve">
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>Подесите уграђеног помоћника да вам помогне да објасните грешке, саставите команде и решите блокаде у задацима тамо где радите. </value>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>Сазнајте више о Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>Останите у току са уграђеним ВИ агентом</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>Ваш агент прати шта се дешава у терминалу и може вам помоћи да разумете и исправите грешке чим се појаве.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>Наставите тачно одакле сте стали</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>Пратите активне и претходне сесије агената и вратите се на посао за неколико секунди. Прегледајте шта је у току или се вратите на раније радове без губљења места.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>Даље</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>Добро дошли у Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"}</comment>
-  </data><data name="FreOverlay_DetailDescription" xml:space="preserve">
-    <value>Подесите уграђеног агента да вам помогне да објасните грешке, саставите команде и решите блокаде у задацима тамо где радите.</value>
-  </data><data name="FreOverlay_Detail2Title" xml:space="preserve">
-    <value>Аутоматско откривање грешака</value>
-  </data><data name="FreOverlay_Detail2Description" xml:space="preserve">
-    <value>Панел агента увек има контекст и спреман је за рад са вашим омиљеним CLI агентом.</value>
-    <comment>{Locked="CLI"}</comment>
-  </data><data name="FreOverlay_Detail3Title" xml:space="preserve">
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>Изаберите шта желите да подесите сада. Ово можете променити у било ком тренутку у </value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>Подешавања</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>Агент</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>Изаберите агента који се користи у панелу агента. Сваки компатибилан ACP агент биће аутоматски откривен.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ Овај агент захтева Node.js и NPX, који ће бити аутоматски инсталирани ако нису већ присутни.</value>
+    <comment>{Locked="Node.js","NPX"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>Аутоматски предложи исправке за неуспеле команде</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>Када је омогућено, ВИ агент аутоматски анализира неуспеле команде и предлаже исправку. Када је онемогућено, неуспеле команде приказују наговештај на који је могуће кликнути у статусној траци — притисните Ctrl+Alt+. или кликните на наговештај да бисте затражили исправку.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Управљање сесијама</value>
-  </data><data name="FreOverlay_Detail3Description" xml:space="preserve">
-    <value>Управљање сесијама вам помаже да пратите агенте и вратите се претходним сесијама.</value>
-  </data><data name="FreOverlay_Detail4Title" xml:space="preserve">
-    <value>Брзе агентске команде</value>
-  </data><data name="FreOverlay_Detail4Description" xml:space="preserve">
-    <value>Помоћу палете команди можете брзо да покрећете задатке које покреће агент са било ког места у терминалу.</value>
-  </data><data name="FreOverlay_DetailLink" xml:space="preserve">
-    <value>Сазнајте више о Intelligent Terminal-у.</value>
-    <comment>{Locked="Intelligent Terminal"}</comment>
-  </data><data name="FreOverlay_NextButton" xml:space="preserve">
-    <value>Почните да истражујете</value>
+  </data>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>Дајте Intelligent Terminal дозволу да прати стање ваших покренутих или активних агената.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ Омогућавање овога ће инсталирати интеграционе hooks за праћење сесија у свим вашим агентима.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>Позиција панела</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>Где се панел агента отвара у односу на ваш терминал.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>Сачувај</value>
+  </data>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (биће инсталиран)</value>
+  </data>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (инсталиран)</value>
+  </data>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>Доле</value>
+  </data>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>Десно</value>
+  </data>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>Лево</value>
+  </data>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>Горе</value>
+  </data>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>Подешавање...</value>
+  </data>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ Инсталација GitHub Copilot није успела. Проверите мрежну везу и покушајте поново.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Инсталација Node.js није успела. Проверите мрежну везу и покушајте поново.</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>Укљ</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>Искљ</value>
   </data>
 
 
@@ -1064,8 +1138,64 @@
 
 
 
-
-
-
-
+  <data name="AgentBlockedByPolicyTitle" xml:space="preserve">
+    <value>╨Æ╨ÿ ╨░╨│╨╡╨╜╤é╨╕ ╤ü╤â ╨╛╨│╤Ç╨░╨╜╨╕╤ç╨╡╨╜╨╕</value>
+    <comment>Title shown when Group Policy blocks the user from opening the agent pane. "agent" refers to an AI intelligent agent (e.g., Copilot, Claude), not a proxy or human agent.</comment>
+  </data>
+  <data name="AgentBlockedByPolicySubtitle" xml:space="preserve">
+    <value>╨í╨╝╨╡╤Ç╨╜╨╕╤å╨╡ ╨▓╨░╤ê╨╡ ╨╛╤Ç╨│╨░╨╜╨╕╨╖╨░╤å╨╕╤ÿ╨╡ ╨╜╨╡ ╨┤╨╛╨╖╨▓╨╛╤Ö╨░╨▓╨░╤ÿ╤â ╨║╨╛╤Ç╨╕╤ê╤¢╨╡╤Ü╨╡ ╨▒╨╕╨╗╨╛ ╨║╨░╨║╨▓╨╕╤à ╨Æ╨ÿ ╨░╨│╨╡╨╜╨░╤é╨░. ╨₧╨▒╤Ç╨░╤é╨╕╤é╨╡ ╤ü╨╡ ╨ÿ╨ó ╨░╨┤╨╝╨╕╨╜╨╕╤ü╤é╤Ç╨░╤é╨╛╤Ç╤â ╨╖╨░ ╨┐╨╛╨╝╨╛╤¢.</value>
+    <comment>Subtitle shown when Group Policy blocks all AI agents from running.</comment>
+  </data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>╨₧╨▓╨╛╨╝ ╨┐╨╛╤ü╤é╨░╨▓╨║╨╛╨╝ ╤â╨┐╤Ç╨░╨▓╤Ö╨░ ╨▓╨░╤ê╨░ ╨╛╤Ç╨│╨░╨╜╨╕╨╖╨░╤å╨╕╤ÿ╨░.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Анализирање грешке…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Откривена је грешка: анализа…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Откривена је грешка: {0} за поправку</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Исправка је спремна — {0} за примену</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Исправка је спремна — {0} за примену: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Предлог је спреман — отворите окно агента</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Аутоматска исправка је одбила да ово исправи директно. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Кликните овде или притисните Ctrl+Shift+. да отворите окно агента и прочитате цео предлог.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Дијагностика</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Сесије агената</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Сесије агената: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
 </root>

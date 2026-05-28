@@ -75,26 +75,61 @@ namespace Microsoft.Terminal.Settings.Editor
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, DelegateModel);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, AutoFixEnabled);
 
+        // GPO policy lock indicators.
+        // IsAgentPolicyLocked: AllowedAgents policy is active — agent
+        //   dropdown options are filtered, but the control stays enabled.
+        // IsCustomAgentPolicyLocked: AllowCustomAgents is disabled.
+        // IsAutoFixPolicyLocked / IsAgentSessionHooksPolicyLocked:
+        //   the control is disabled and forced off.
+        Boolean IsAgentPolicyLocked { get; };
+        Boolean IsCustomAgentPolicyLocked { get; };
+        Boolean IsAutoFixPolicyLocked { get; };
+        Boolean IsAgentSessionHooksPolicyLocked { get; };
+
         event Windows.Foundation.TypedEventHandler<AIAgentsViewModel, Microsoft.Terminal.Settings.Model.ShellIntegrationTarget> InitShellIntegrationRequested;
 
         IInspectable CurrentAgentPanePosition;
         Windows.Foundation.Collections.IObservableVector<EnumEntry> AgentPanePositionList { get; };
 
         // ── Agent Hooks ──────────────────────────────────────────────────
-        // Detection of each supported CLI on PATH and whether the
-        // wt-agent-hooks plugin / extension is currently installed for it.
-        // Hidden behind a single primary "Install hooks" button that
-        // delegates to `wta.exe install-hooks`.
+        // Drives the "Agent session tracking (hooks)" expander. Shape:
+        //   Row 1 always: "Install hooks" button — runs `wta hooks install`
+        //                 across every CLI on PATH (idempotent).
+        //   Rows 2+ : one per CLI that currently has any hook state on
+        //             disk (marketplace registered OR plugin installed),
+        //             whether fully installed or partial. Each row exposes
+        //             a Remove button that runs `wta hooks uninstall --cli <name>`.
+        //
+        // `Show{...}HookRow` decides whether each CLI row is visible at all.
+        // `{...}HooksSubtitle` carries the detail line below the CLI name
+        // (e.g. "partially installed (marketplace registered, plugin missing)");
+        // it's empty when the CLI is fully installed.
+        // `Show{...}HooksSubtitle` is true iff the subtitle text is non-empty —
+        // exposed as its own bool so XAML can bind Visibility directly.
         Boolean IsCopilotCliDetected { get; };
         Boolean IsClaudeCliDetected { get; };
         Boolean IsGeminiCliDetected { get; };
         Boolean IsAnyAgentCliDetected { get; };
-        String CopilotHooksStatusText { get; };
-        String ClaudeHooksStatusText { get; };
-        String GeminiHooksStatusText { get; };
+        Boolean ShowCopilotHookRow { get; };
+        Boolean ShowClaudeHookRow { get; };
+        Boolean ShowGeminiHookRow { get; };
+        String CopilotHooksSubtitle { get; };
+        String ClaudeHooksSubtitle { get; };
+        String GeminiHooksSubtitle { get; };
+        Boolean ShowCopilotHooksSubtitle { get; };
+        Boolean ShowClaudeHooksSubtitle { get; };
+        Boolean ShowGeminiHooksSubtitle { get; };
+        Boolean CanInstallAgentHooks { get; };
         Boolean IsInstallingAgentHooks { get; };
         String AgentHooksInstallSummary { get; };
+        // True iff AgentHooksInstallSummary is non-empty — gates the
+        // subtitle line under the Install row so the empty initial state
+        // doesn't reserve vertical space.
+        Boolean HasAgentHooksInstallSummary { get; };
         void RefreshAgentHooksStatus();
-        void InstallAgentHooks();
+        void InstallAllAgentHooks();
+        void RemoveCopilotHooks();
+        void RemoveClaudeHooks();
+        void RemoveGeminiHooks();
     }
 }

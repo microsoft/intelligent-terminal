@@ -53,10 +53,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         // own span so the placeholder/typed text/cursor all sit in the same
         // column whether the input is empty or not.
         let placeholder = match &app.state {
-            ConnectionState::Connected => "Ask anything, / for commands..".to_string(),
-            ConnectionState::Connecting(_) => "connecting...".to_string(),
-            ConnectionState::Disconnected => "disconnect".to_string(),
-            ConnectionState::Failed(_) => "disconnect".to_string(),
+            ConnectionState::Connected => t!("input.placeholder.connected").into_owned(),
+            ConnectionState::Connecting(_) => t!("input.placeholder.connecting").into_owned(),
+            ConnectionState::Disconnected => t!("input.placeholder.disconnected").into_owned(),
+            ConnectionState::Failed(_) => t!("input.placeholder.disconnected").into_owned(),
         };
         // Paint the first cell of the placeholder as "white block with
         // black glyph" directly in the buffer. The WT block cursor lands
@@ -67,13 +67,21 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         // the glyph would be painted onto the black cell bg first (Black
         // on Black = invisible) before the cursor overlay had anything to
         // reveal.
+        //
+        // Only paint the white block when the input cell is actually the
+        // live caret target: the pane has XAML focus *and* the TUI's arrow
+        // keys land in the input (not in a recommendation card or a
+        // selected completed turn). See TabSession::input_has_nav_focus.
+        let input_active = app.pane_focused && tab.input_has_nav_focus();
         let mut placeholder_spans = vec![Span::styled(INPUT_PROMPT, theme::DIM)];
         let mut chars = placeholder.chars();
         if let Some(first) = chars.next() {
-            placeholder_spans.push(Span::styled(
-                first.to_string(),
-                Style::new().fg(Color::Black).bg(Color::White),
-            ));
+            let first_style = if input_active {
+                Style::new().fg(Color::Black).bg(Color::White)
+            } else {
+                theme::DIM
+            };
+            placeholder_spans.push(Span::styled(first.to_string(), first_style));
             let rest: String = chars.collect();
             if !rest.is_empty() {
                 placeholder_spans.push(Span::styled(rest, theme::DIM));

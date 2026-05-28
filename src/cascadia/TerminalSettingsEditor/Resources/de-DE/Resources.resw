@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>Die Terminalanwendung, die gestartet wird, wenn eine Befehlszeilenanwendung ohne vorhandene Sitzung gestartet wird, beispielsweise vom Startmenü oder über das Dialogfeld "Ausführen".</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligentes Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>Grafik-API</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>Dadurch wird geändert, wie eingehender Text in Zellen gruppiert wird. Die Option "Grapheme clusters" ist die moderne und unicode-korrekte Methode, während "wcswidth" ein gängiger Ansatz für UNIX ist und "Windows-Konsole" die für die Arbeit unter Windows verwendete Methode repliziert. Das Ändern dieser Einstellung erfordert einen Neustart von Windows-Terminal und gilt nur für Anwendungen, die innerhalb der Einstellung gestartet werden.</value>
+    <value>Dadurch wird geändert, wie eingehender Text in Zellen gruppiert wird. Die Option "Grapheme clusters" ist die moderne und unicode-korrekte Methode, während "wcswidth" ein gängiger Ansatz für UNIX ist und "Windows-Konsole" die für die Arbeit unter Windows verwendete Methode repliziert. Das Ändern dieser Einstellung erfordert einen Neustart von Intelligentes Terminal und gilt nur für Anwendungen, die innerhalb der Einstellung gestartet werden.</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Graphemcluster</value>
@@ -376,7 +376,7 @@
     <comment>A label for a drop down selector, referring to the East Asian Ambiguous Width Unicode specification.</comment>
   </data>
   <data name="Globals_AmbiguousWidth.HelpText" xml:space="preserve">
-    <value>Legt die Breite fest, die für ostasiatische mehrdeutige Zeichen verwendet wird. „Eng“ (Standard) priorisiert die Kompatibilität, während „Weit“ die Lesbarkeit mit vielen CJK-Schriftarten priorisiert. Im Modus „Breit“ funktionieren einige Anwendungen möglicherweise nicht ordnungsgemäß und verursachen eine erratische Cursorbewegung. Das Ändern dieser Einstellung erfordert einen Neustart von Windows-Terminal und gilt nur für Anwendungen, die von dort aus gestartet werden.</value>
+    <value>Legt die Breite fest, die für ostasiatische mehrdeutige Zeichen verwendet wird. „Eng“ (Standard) priorisiert die Kompatibilität, während „Weit“ die Lesbarkeit mit vielen CJK-Schriftarten priorisiert. Im Modus „Breit“ funktionieren einige Anwendungen möglicherweise nicht ordnungsgemäß und verursachen eine erratische Cursorbewegung. Das Ändern dieser Einstellung erfordert einen Neustart von Intelligentes Terminal und gilt nur für Anwendungen, die von dort aus gestartet werden.</value>
   </data>
   <data name="Globals_AmbiguousWidth_Narrow.Text" xml:space="preserve">
     <value>Schmal</value>
@@ -574,8 +574,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>Ausführung von Windows Terminal im Hintergrund zulassen</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>Ausführung von Intelligentes Terminal im Hintergrund zulassen</value>
+    <comment>Header for a control to toggle support for Intelligentes Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>Debugfeatures aktivieren</value>
@@ -896,7 +896,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>Automatisch</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligentes Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>Farbschema</value>
@@ -2223,7 +2223,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Windows-Terminal wird im portablen Modus ausgeführt.</value>
+    <value>Intelligentes Terminal wird im portablen Modus ausgeführt.</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
@@ -2578,7 +2578,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>Zeigt ein Schild in der Titelleiste an, wenn Windows Terminal als Administrator ausgeführt wird.</value>
+    <value>Zeigt ein Schild in der Titelleiste an, wenn Intelligentes Terminal als Administrator ausgeführt wird.</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">
@@ -2757,18 +2757,34 @@
   <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>Agentbereich</value><comment>Section header for the agent pane settings group.</comment></data>
   <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve"><value>Befehlspalette</value><comment>Section header for the command palette agent settings group.</comment></data>
   <data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>Agent</value><comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment></data>
-  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Wählen Sie die Agent-CLI aus, die im Agentbereich verwendet wird. Jede kompatible ACP-CLI wird erkannt.</value><comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment></data>
+  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Wählen Sie den Agenten aus, der im Agentbereich verwendet wird. Jeder kompatible ACP-Agent wird erkannt.</value><comment>Supplementary description for the agent pane agent setting. {Locked="ACP"}</comment></data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>Modell</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Wählen Sie das Modell aus, das von diesem Agenten verwendet wird.</value><comment>Supplementary description for the model setting.</comment></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Agent</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Wählen Sie den Agenten aus, der für Schnellaktionen in der Befehlspalette verwendet wird.</value><comment>Supplementary description for the command palette agent setting.</comment></data>
-  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Automatische Fehlererkennung</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
-  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Befehlsfehler erkennen und automatisch Korrekturvorschläge machen.</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Korrekturen für fehlgeschlagene Befehle automatisch vorschlagen</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
+  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Wenn aktiviert, analysiert der KI-Agent fehlgeschlagene Befehle automatisch und schlägt eine Korrektur vor. Wenn deaktiviert, wird für fehlgeschlagene Befehle ein anklickbarer Hinweis in der Statusleiste angezeigt — drücken Sie Ctrl+Alt+. oder klicken Sie auf den Hinweis, um eine Korrektur anzufordern.</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>Position des Agentbereichs</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>Legt fest, wo der Agentbereich relativ zu Ihrem Terminal geöffnet wird.</value><comment>Supplementary description for the pane position setting.</comment></data>
+  <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
+    <value>Unten</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionBottom string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Right" xml:space="preserve">
+    <value>Rechts</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionRight string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Top" xml:space="preserve">
+    <value>Oben</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionTop string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Left" xml:space="preserve">
+    <value>Links</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
+  </data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>Agent-Hooks</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>Hook-Skripte für Agenten installieren</value><comment>Header for the Agent Hooks install section.</comment></data>
-  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Erforderlich für die Verwaltung von Agentensitzungen. Installiert Hooks in jede erkannte CLI (Copilot, Claude, Gemini), damit Sitzungen und Status an den Agentbereich gemeldet werden. Starten Sie alle geöffneten Agent-CLIs nach der Installation neu.</value><comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment></data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Sitzungen über Agenten hinweg verfolgen. Erforderlich für die Verwaltung von Agentensitzungen.</value><comment>Description for the Agent Hooks install section.</comment></data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Hooks installieren</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment></data>
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>Aktualisieren</value><comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment></data>
   <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>Beim Schließen warnen</value><comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment></data>
@@ -2778,4 +2794,44 @@
   <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>Mehrere Registerkarten oder Bereiche</value><comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment></data>
   <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>Desktopbenachrichtigung</value><comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment></data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://aka.ms/intelligentterminal/portable-mode</value><comment>{Locked}</comment></data>
+  <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
+    <value>Diese Einstellung wird von Ihrer Organisation verwaltet.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
+    <value>hooks werden installiert...</value>
+    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
+    <value>Copilot hooks werden entfernt...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
+    <value>Claude hooks werden entfernt...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
+    <value>Gemini hooks werden entfernt...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
+    <value>Fehler: wta.exe konnte nicht gefunden werden</value>
+    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
+    <value>Hooks entfernt. Starten Sie alle geöffneten Agenten neu, um die vorherigen hooks zu entfernen.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
+    <value>Hooks installiert. Starten Sie alle geöffneten Agenten neu, um die neuen hooks zu übernehmen.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
+    <value>Hook-Entfernung fehlgeschlagen. Überprüfen Sie %LOCALAPPDATA%\IntelligentTerminal\logs\ auf Details.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
+    <value>Hooks-Installation fehlgeschlagen. Überprüfen Sie %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log auf Details.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
+  </data>
 </root>

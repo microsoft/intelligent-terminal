@@ -1008,24 +1008,182 @@
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve"><value>Помилка інтеграції оболонки</value></data>
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>Не вдалося ініціалізувати інтеграцію оболонки. Не вдалося визначити шлях до вашого профілю PowerShell. Переконайтеся, що цільову оболонку встановлено.</value><comment>{Locked="PowerShell"}</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>Агент ШІ недоступний</value></data>
-  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>Не вдалося знайти жодного агента ШІ. Установіть CLI агента (наприклад, copilot або gemini) і переконайтеся, що його додано до PATH, або налаштуйте його в Налаштування &gt; Агенти.</value><comment>{Locked="CLI","PATH","copilot","gemini"}</comment></data>
-  <data name="FreOverlay_Title" xml:space="preserve"><value>Нове в Intelligent Terminal</value><comment>{Locked="Intelligent Terminal"}</comment></data>
-  <data name="FreOverlay_Card1Title" xml:space="preserve"><value>Ласкаво просимо до Intelligent Terminal</value><comment>{Locked="Intelligent Terminal"}</comment></data>
-  <data name="FreOverlay_Card1Description" xml:space="preserve"><value>Налаштуйте вбудованого агента ШІ, щоб він допомагав вам саме там, де ви працюєте</value></data>
-  <data name="FreOverlay_Card2Title" xml:space="preserve"><value>Автовиявлення помилок</value></data>
-  <data name="FreOverlay_Card2Description" xml:space="preserve"><value>Панель агента завжди має контекст і готова до роботи з вашим улюбленим CLI</value><comment>{Locked="CLI"}</comment></data>
-  <data name="FreOverlay_Card3Title" xml:space="preserve"><value>Керування сеансами</value></data>
-  <data name="FreOverlay_Card3Description" xml:space="preserve"><value>Керування сеансами допомагає відстежувати агентів і повертатися до попередніх сеансів</value></data>
-  <data name="FreOverlay_Card4Title" xml:space="preserve"><value>Швидкі команди агента</value></data>
-  <data name="FreOverlay_Card4Description" xml:space="preserve"><value>Палітра команд дає змогу запускати завдання агента у фонових вкладках</value></data>
-  <data name="FreOverlay_DetailTitle" xml:space="preserve"><value>Ласкаво просимо до Intelligent Terminal</value><comment>{Locked="Intelligent Terminal"}</comment></data>
-  <data name="FreOverlay_DetailDescription" xml:space="preserve"><value>Налаштуйте вбудованого агента ШІ, щоб він допомагав вам пояснювати помилки, складати команди та розблоковувати завдання саме там, де ви працюєте.</value></data>
-  <data name="FreOverlay_Detail2Title" xml:space="preserve"><value>Автовиявлення помилок</value></data>
-  <data name="FreOverlay_Detail2Description" xml:space="preserve"><value>Панель агента завжди має контекст і готова до роботи з вашим улюбленим CLI.</value><comment>{Locked="CLI"}</comment></data>
-  <data name="FreOverlay_Detail3Title" xml:space="preserve"><value>Керування сеансами</value></data>
-  <data name="FreOverlay_Detail3Description" xml:space="preserve"><value>Керування сеансами допомагає відстежувати агентів і повертатися до попередніх сеансів.</value></data>
-  <data name="FreOverlay_Detail4Title" xml:space="preserve"><value>Швидкі команди агента</value></data>
-  <data name="FreOverlay_Detail4Description" xml:space="preserve"><value>Використовуйте палітру команд, щоб швидко запускати завдання за участю агента з будь-якого місця у вашому терміналі.</value></data>
-  <data name="FreOverlay_DetailLink" xml:space="preserve"><value>Дізнайтеся більше про Intelligent Terminal.</value><comment>{Locked="Intelligent Terminal"}</comment></data>
-  <data name="FreOverlay_NextButton" xml:space="preserve"><value>Почати знайомство</value></data>
+  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>Не вдалося знайти жодного агента ШІ. Установіть агента (наприклад, copilot або gemini) і переконайтеся, що його додано до PATH, або налаштуйте його в Налаштування &gt; Агенти.</value><comment>{Locked="PATH","copilot","gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>Ласкаво просимо до Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>Налаштуйте вбудованого помічника, щоб він допомагав пояснювати помилки, складати команди та розблоковувати завдання саме там, де ви працюєте. </value>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>Дізнатися більше про Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>Залишайтесь у потоці з вбудованим агентом ШІ</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>Ваш агент відстежує, що відбувається у терміналі, та допомагає зрозуміти й виправити помилки в міру їх появи.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>Продовжуйте саме з того місця, де зупинилися</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>Відстежуйте активні та минулі сеанси агентів і повертайтесь до роботи за лічені секунди. Переглядайте поточні завдання або повертайтесь до попередніх, не втрачаючи свого місця.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>Далі</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>Ласкаво просимо до Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>Оберіть, що налаштувати зараз. Ви можете змінити це будь-коли у розділі </value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>Налаштування</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>Агент</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>Оберіть агента, який використовується в панелі агента. Будь-який сумісний агент ACP буде виявлено автоматично.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ Цей агент потребує Node.js та NPX, які будуть встановлені автоматично, якщо ще не встановлені.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>Автоматично пропонувати виправлення для невдалих команд</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>Якщо ввімкнено, ШІ-агент автоматично аналізує невдалі команди та пропонує виправлення. Якщо вимкнено, невдалі команди показують підказку в рядку стану, на яку можна клацнути — натисніть Ctrl+Alt+. або клацніть підказку, щоб запитати виправлення.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
+    <value>Керування сеансами</value>
+  </data>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>Надайте Intelligent Terminal дозвіл відстежувати стан ваших запущених або активних агентів.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ Увімкнення цієї функції встановить інтеграційні hooks для відстеження сеансів у всіх ваших агентах.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>Положення панелі</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>Де панель агента відкривається відносно вашого терміналу.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>Зберегти</value>
+  </data>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (буде встановлено)</value>
+  </data>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (встановлено)</value>
+  </data>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>Знизу</value>
+  </data>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>Праворуч</value>
+  </data>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>Ліворуч</value>
+  </data>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>Зверху</value>
+  </data>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>Налаштування...</value>
+  </data>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ Не вдалося встановити GitHub Copilot. Перевірте мережеве підключення та спробуйте знову.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Не вдалося встановити Node.js. Перевірте мережеве підключення та спробуйте знову.</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>Увімк</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>Вимк</value>
+  </data>
+  <data name="AgentBlockedByPolicyTitle" xml:space="preserve">
+    <value>╨É╨│╨╡╨╜╤é╨╕ ╨¿╨å ╨╛╨▒╨╝╨╡╨╢╨╡╨╜╤û</value>
+    <comment>Title shown when Group Policy blocks the user from opening the agent pane. "agent" refers to an AI intelligent agent (e.g., Copilot, Claude), not a proxy or human agent.</comment>
+  </data>
+  <data name="AgentBlockedByPolicySubtitle" xml:space="preserve">
+    <value>╨ƒ╨╛╨╗╤û╤é╨╕╨║╨░ ╨▓╨░╤ê╨╛╤ù ╨╛╤Ç╨│╨░╨╜╤û╨╖╨░╤å╤û╤ù ╨╜╨╡ ╨┤╨╛╨╖╨▓╨╛╨╗╤Å╤ö ╨▓╨╕╨║╨╛╤Ç╨╕╤ü╤é╨╛╨▓╤â╨▓╨░╤é╨╕ ╨▒╤â╨┤╤î-╤Å╨║╨╕╤à ╨░╨│╨╡╨╜╤é╤û╨▓ ╨¿╨å. ╨ù╨▓╨╡╤Ç╨╜╤û╤é╤î╤ü╤Å ╨┐╨╛ ╨┤╨╛╨┐╨╛╨╝╨╛╨│╤â ╨┤╨╛ ╤ü╨▓╨╛╨│╨╛ ╨å╨ó-╨░╨┤╨╝╤û╨╜╤û╤ü╤é╤Ç╨░╤é╨╛╤Ç╨░.</value>
+    <comment>Subtitle shown when Group Policy blocks all AI agents from running.</comment>
+  </data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>╨ª╨╡╨╣ ╨┐╨░╤Ç╨░╨╝╨╡╤é╤Ç ╨║╨╡╤Ç╤â╤ö╤é╤î╤ü╤Å ╨▓╨░╤ê╨╛╤Ä ╨╛╤Ç╨│╨░╨╜╤û╨╖╨░╤å╤û╤ö╤Ä.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Аналіз помилки…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Виявлено помилку: аналіз…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Виявлено помилку: {0}, щоб виправити</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Виправлення готове — {0}, щоб застосувати</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Виправлення готове — {0}, щоб застосувати: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Пропозиція готова — відкрийте панель агента</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Автовиправлення відмовилося виправляти це безпосередньо. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Клацніть тут або натисніть Ctrl+Shift+., щоб відкрити панель агента та прочитати повну пропозицію.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Діагностика</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Сеанси агентів</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Сеанси агентів: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
 </root>

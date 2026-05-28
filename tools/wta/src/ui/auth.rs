@@ -26,25 +26,23 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(vec![
             Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
             Span::styled(
-                format!("Agent CLI {} is selected", auth.agent_name),
+                t!("auth.agent_selected", name = &auth.agent_name).into_owned(),
                 Style::new().fg(Color::White),
             ),
         ]));
         lines.push(Line::from(""));
 
         if auth.status_message.is_empty() {
-            // Still checking auth
             lines.push(Line::from(vec![
                 Span::styled(
-                    format!("  {} Checking authentication...", spinner_char),
+                    t!("auth.checking_authentication", spinner = spinner_char.to_string()).into_owned(),
                     Style::new().fg(Color::Yellow),
                 ),
             ]));
         } else {
-            // Got device code — show it prominently
             lines.push(Line::from(vec![
                 Span::styled(
-                    format!("  {} Waiting for authorization...", spinner_char),
+                    t!("auth.waiting_for_authorization", spinner = spinner_char.to_string()).into_owned(),
                     Style::new().fg(Color::Yellow),
                 ),
             ]));
@@ -55,17 +53,16 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             )));
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
-                "  Code copied to clipboard — paste it in your browser.",
+                t!("auth.code_copied_hint").into_owned(),
                 DIM_TEXT,
             )));
         }
     } else {
-        // "● Agent CLI <name> is selected" + optional reason on same line
         if auth.status_message.is_empty() {
             lines.push(Line::from(vec![
                 Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
                 Span::styled(
-                    format!("Agent CLI {} is selected", auth.agent_name),
+                    t!("auth.agent_selected", name = &auth.agent_name).into_owned(),
                     Style::new().fg(Color::White),
                 ),
             ]));
@@ -73,7 +70,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             lines.push(Line::from(vec![
                 Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
                 Span::styled(
-                    format!("Agent CLI {} — ", auth.agent_name),
+                    t!("auth.agent_selected_with_status", name = &auth.agent_name).into_owned(),
                     Style::new().fg(Color::White),
                 ),
                 Span::styled(
@@ -83,35 +80,29 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             ]));
         }
 
-        // Blank line
         lines.push(Line::from(""));
 
-        // "● Sign in to use your agent:"
         lines.push(Line::from(vec![
             Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
             Span::styled(
-                "Sign in to use your agent:",
+                t!("auth.sign_in_prompt").into_owned(),
                 Style::new().fg(Color::White),
             ),
         ]));
 
-        // Blank line
         lines.push(Line::from(""));
 
-        // Card: "Connect <agent> to enable agent features"
         lines.push(Line::from(Span::styled(
-            format!("  Connect {} to enable agent features", auth.agent_name),
+            t!("auth.card_connect", name = &auth.agent_name).into_owned(),
             Style::new().fg(Color::White),
         )));
 
-        // Blank line
         lines.push(Line::from(""));
 
-        // Sign-in button — agent-specific text
         let button_text = if auth.agent_name.contains("Copilot") {
-            "[ Sign in with GitHub ]".to_string()
+            t!("auth.button_sign_in_github").into_owned()
         } else {
-            format!("[ Sign in with {} ]", auth.agent_name)
+            t!("auth.button_sign_in_with", name = &auth.agent_name).into_owned()
         };
         lines.push(Line::from(vec![
             Span::raw("                          "),
@@ -121,14 +112,13 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             ),
         ]));
 
-        // Hint
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "  Press Enter to sign in, Esc to go back",
+            t!("auth.hint_footer").into_owned(),
             DIM_TEXT,
         )));
     }
 
-    let paragraph = Paragraph::new(lines);
+    let paragraph = Paragraph::new(lines).alignment(crate::rtl::text_alignment());
     frame.render_widget(paragraph, area);
 }

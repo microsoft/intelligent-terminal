@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>시작 메뉴나 실행 대화 상자와 같이 기존 세션이 없으면 명령 줄 응용 프로그램을 실행하고 있는 터미널 응용 프로그램입니다.</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>Graphics API</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>들어오는 텍스트가 셀로 그룹화되는 방식을 변경합니다. "Grapheme 클러스터" 옵션은 가장 최신이며 유니코드로 올바른 방법이며, "wcswidth"는 UNIX에서 일반적인 접근 방식이며 "Windows 콘솔"은 Windows에서 작동하는 방식을 복제합니다. 이 설정을 변경하려면 Windows 터미널 다시 시작해야 하며 이 설정 내에서 시작된 애플리케이션에만 적용됩니다.</value>
+    <value>들어오는 텍스트가 셀로 그룹화되는 방식을 변경합니다. "Grapheme 클러스터" 옵션은 가장 최신이며 유니코드로 올바른 방법이며, "wcswidth"는 UNIX에서 일반적인 접근 방식이며 "Windows 콘솔"은 Windows에서 작동하는 방식을 복제합니다. 이 설정을 변경하려면 지능형 터미널 다시 시작해야 하며 이 설정 내에서 시작된 애플리케이션에만 적용됩니다.</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Grapheme 클러스터</value>
@@ -376,7 +376,7 @@
     <comment>A label for a drop down selector, referring to the East Asian Ambiguous Width Unicode specification.</comment>
   </data>
   <data name="Globals_AmbiguousWidth.HelpText" xml:space="preserve">
-    <value>동아시아의 모호한 문자에 사용되는 너비를 설정하세요. "좁게"(기본값)는 호환성을 우선시하고, "넓게"는 많은 CJK 글꼴에서 가독성을 우선시합니다. "넓게" 모드에서는 일부 애플리케이션이 제대로 작동하지 않아 커서가 이상하게 움직일 수 있습니다. 이 설정을 변경하려면 Windows 터미널을 다시 시작해야 하며, 이 설정은 Windows 터미널 내에서 실행된 애플리케이션에만 적용됩니다.</value>
+    <value>동아시아의 모호한 문자에 사용되는 너비를 설정하세요. "좁게"(기본값)는 호환성을 우선시하고, "넓게"는 많은 CJK 글꼴에서 가독성을 우선시합니다. "넓게" 모드에서는 일부 애플리케이션이 제대로 작동하지 않아 커서가 이상하게 움직일 수 있습니다. 이 설정을 변경하려면 지능형 터미널을 다시 시작해야 하며, 이 설정은 지능형 터미널 내에서 실행된 애플리케이션에만 적용됩니다.</value>
   </data>
   <data name="Globals_AmbiguousWidth_Narrow.Text" xml:space="preserve">
     <value>좁게</value>
@@ -574,8 +574,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>Windows 터미널 백그라운드에서 실행하도록 허용</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>지능형 터미널 백그라운드에서 실행하도록 허용</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>디버깅 기능 사용</value>
@@ -896,7 +896,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>자동</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>색 구성표</value>
@@ -2223,7 +2223,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Windows 터미널이 이식 가능 모드에서 실행되고 있습니다.</value>
+    <value>지능형 터미널이 이식 가능 모드에서 실행되고 있습니다.</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
@@ -2578,7 +2578,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>Windows 터미널 관리자 권한으로 실행 중일 때 제목 표시줄에 실드 표시</value>
+    <value>지능형 터미널 관리자 권한으로 실행 중일 때 제목 표시줄에 실드 표시</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">
@@ -2773,8 +2773,8 @@
     <comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment>
   </data>
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
-    <value>에이전트 창에서 사용할 에이전트 CLI를 선택하세요. 호환되는 ACP CLI는 모두 감지됩니다.</value>
-    <comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment>
+    <value>에이전트 창에서 사용할 에이전트를 선택하세요. 호환되는 ACP 에이전트는 모두 감지됩니다.</value>
+    <comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>모델</value>
@@ -2793,11 +2793,11 @@
     <comment>Supplementary description for the command palette agent setting.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>자동 오류 감지</value>
+    <value>실패한 명령에 대한 수정 사항 자동 제안</value>
     <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
   </data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>명령 오류를 감지하고 수정 사항을 자동으로 제안합니다.</value>
+    <value>사용하도록 설정하면 AI 에이전트가 실패한 명령을 자동으로 분석하고 수정 사항을 제안합니다. 사용하지 않도록 설정하면 실패한 명령에 대해 상태 표시줄에 클릭 가능한 힌트가 표시됩니다 — Ctrl+Alt+. 를 누르거나 힌트를 클릭하여 수정을 요청합니다.</value>
     <comment>Supplementary description for the auto-error-detection setting.</comment>
   </data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
@@ -2808,6 +2808,22 @@
     <value>터미널을 기준으로 에이전트 창이 열리는 위치입니다.</value>
     <comment>Supplementary description for the pane position setting.</comment>
   </data>
+  <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
+    <value>아래쪽</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionBottom string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Right" xml:space="preserve">
+    <value>오른쪽</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionRight string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Top" xml:space="preserve">
+    <value>위쪽</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionTop string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Left" xml:space="preserve">
+    <value>왼쪽</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
+  </data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
     <value>에이전트 Hooks</value>
     <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment>
@@ -2817,8 +2833,8 @@
     <comment>Header for the Agent Hooks install section.</comment>
   </data>
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>에이전트 세션 관리에 필요합니다. 감지된 각 CLI(Copilot, Claude, Gemini)에 Hooks를 설치하여 세션과 상태를 에이전트 창에 보고하도록 합니다. 설치 후 열려 있는 에이전트 CLI를 모두 다시 시작하세요.</value>
-    <comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment>
+    <value>에이전트 간에 세션을 추적합니다. 에이전트 세션 관리에 필요합니다.</value>
+    <comment>Help text shown under the expandable section header.</comment>
   </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Hooks 설치</value>
@@ -2855,5 +2871,45 @@
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
     <value>https://aka.ms/intelligentterminal/portable-mode</value>
     <comment>{Locked}</comment>
+  </data>
+  <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
+    <value>이 설정은 조직에서 관리합니다.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
+    <value>hooks 설치 중...</value>
+    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
+    <value>Copilot hooks 제거 중...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
+    <value>Claude hooks 제거 중...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
+    <value>Gemini hooks 제거 중...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
+    <value>실패: wta.exe를 찾을 수 없습니다</value>
+    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
+    <value>Hooks가 제거되었습니다. 이전 hooks를 해제하려면 열려 있는 에이전트를 다시 시작하세요.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
+    <value>Hooks가 설치되었습니다. 새 hooks를 적용하려면 열려 있는 에이전트를 다시 시작하세요.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
+    <value>Hook 제거에 실패했습니다. 자세한 내용은 %LOCALAPPDATA%\IntelligentTerminal\logs\를 확인하세요.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
+    <value>Hooks 설치에 실패했습니다. 자세한 내용은 %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log를 확인하세요.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
 </root>

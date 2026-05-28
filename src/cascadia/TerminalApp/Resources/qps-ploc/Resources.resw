@@ -929,4 +929,186 @@
   <data name="InvalidRegex" xml:space="preserve">
     <value>Дŉ ΐňνãľîδ ŗěğµℓдř ë×ρяēѕšιбή ẃăѕ ƒοůŉđ. !!! !!! !!! !!!</value>
   </data>
-<data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>Shell integration has been configured. Please restart your PowerShell session or open a new tab for the changes to take effect.</value></data><data name="FreOverlay_Detail4Description" xml:space="preserve"><value>Use the command palette to quickly run agent-powered tasks from anywhere in your terminal.</value></data><data name="FreOverlay_Detail2Description" xml:space="preserve"><value>Agent pane always has context and is ready with your favorite agent CLI.</value></data><data name="NotificationMessage_TabActivityInWindow" xml:space="preserve"><value>Activity in tab "{0}" (window "{1}")</value><comment>{0} is the tab title, {1} is the window name. Shown as the body of a desktop notification when tab activity is detected and the window has a name.</comment></data><data name="ConfirmCloseDialog_Cancel" xml:space="preserve"><value>Cancel</value></data><data name="CommandPaletteModeAnnouncement_AgentBackgroundMode" xml:space="preserve"><value>Agent background task mode</value><comment>This text will be read aloud using assistive technologies when the command palette switches into the agent background task mode.</comment></data><data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve"><value>Close tab</value></data><data name="FreOverlay_Detail4Title" xml:space="preserve"><value>Quick agent commands</value></data><data name="InitShellIntegrationSuccessTitle" xml:space="preserve"><value>Shell Integration Initialized</value></data><data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve"><value>Close all</value></data><data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve"><value>Close pane</value></data><data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve"><value>Do you want to close all windows?</value></data><data name="FreOverlay_Detail3Description" xml:space="preserve"><value>Session management helps you track agents and jump back into prior sessions.</value></data><data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve"><value>Close tabs</value></data><data name="NotificationMessage_TabActivity" xml:space="preserve"><value>Activity in tab "{0}"</value><comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment></data><data name="FreOverlay_Detail3Title" xml:space="preserve"><value>Session management</value></data><data name="CmdPalAgentBackgroundPrompt" xml:space="preserve"><value>Run agent task in background...</value><comment>Placeholder text shown in the command palette search box when in agent background task mode.</comment></data><data name="FreOverlay_NextButton" xml:space="preserve"><value>Start exploring</value></data><data name="ConfirmCloseDialog_TabTitle" xml:space="preserve"><value>Do you want to close this tab?</value></data><data name="FreOverlay_Card1Title" xml:space="preserve"><value>Welcome to Intelligent Terminal</value></data><data name="FreOverlay_Card2Description" xml:space="preserve"><value>Agent pane always has context and is ready with your favorite agent CLI</value></data><data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve"><value>Agent prompt mode</value><comment>This text will be read aloud using assistive technologies when the command palette switches into the agent foreground prompt mode.</comment></data><data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve"><value>Do you want to close all tabs?</value></data><data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>No AI agent could be found. Install an agent CLI (e.g. copilot, gemini) and make sure it is on your PATH, or configure one in Settings &gt; AI Agents.</value></data><data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve"><value>Do you want to close these panes?</value></data><data name="FreOverlay_Title" xml:space="preserve"><value>New in Intelligent Terminal</value></data><data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve"><value>Do you want to close this pane?</value></data><data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve"><value>Close panes</value></data><data name="FreOverlay_Detail2Title" xml:space="preserve"><value>Auto error detection</value></data><data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve"><value>Do you want to close these tabs?</value></data><data name="FreOverlay_Card3Description" xml:space="preserve"><value>Session management helps you track agents and jump back into prior sessions</value></data><data name="FreOverlay_DetailLink" xml:space="preserve"><value>Learn more about Intelligent Terminal.</value></data><data name="FreOverlay_Card3Title" xml:space="preserve"><value>Session management</value></data><data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>Failed to initialize shell integration. Could not determine your PowerShell profile path. Make sure the target shell is installed.</value></data><data name="FreOverlay_Card1Description" xml:space="preserve"><value>Set up your built-in assistant to help you right where you work</value></data><data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve"><value>Close all</value></data><data name="InitShellIntegrationErrorTitle" xml:space="preserve"><value>Shell Integration Error</value></data><data name="FreOverlay_DetailDescription" xml:space="preserve"><value>Set up your built-in assistant to help you explain errors, draft commands, and unblock tasks right where you work.</value></data><data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve"><value>Shell Integration Already Configured</value></data><data name="FreOverlay_Card4Title" xml:space="preserve"><value>Quick agent commands</value></data><data name="CmdPalAgentForegroundPrompt" xml:space="preserve"><value>Ask agent...</value><comment>Placeholder text shown in the command palette search box when in agent foreground prompt mode.</comment></data><data name="FreOverlay_DetailTitle" xml:space="preserve"><value>Welcome to Intelligent Terminal</value></data><data name="FreOverlay_Card2Title" xml:space="preserve"><value>Auto error detection</value></data><data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>Shell integration is already configured in your PowerShell profile.</value></data><data name="AgentNotConfiguredTitle" xml:space="preserve"><value>AI Assistant is not available</value></data><data name="FreOverlay_Card4Description" xml:space="preserve"><value>Command palette can kick off background tabs</value></data></root>
+<data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>Shell integration has been configured. Please restart your PowerShell session or open a new tab for the changes to take effect.</value></data><data name="NotificationMessage_TabActivityInWindow" xml:space="preserve"><value>Activity in tab "{0}" (window "{1}")</value><comment>{0} is the tab title, {1} is the window name. Shown as the body of a desktop notification when tab activity is detected and the window has a name.</comment></data><data name="ConfirmCloseDialog_Cancel" xml:space="preserve"><value>Cancel</value></data><data name="CommandPaletteModeAnnouncement_AgentBackgroundMode" xml:space="preserve"><value>Agent background task mode</value><comment>This text will be read aloud using assistive technologies when the command palette switches into the agent background task mode.</comment></data><data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve"><value>Close tab</value></data><data name="InitShellIntegrationSuccessTitle" xml:space="preserve"><value>Shell Integration Initialized</value></data><data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve"><value>Close all</value></data><data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve"><value>Close pane</value></data><data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve"><value>Do you want to close all windows?</value></data><data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve"><value>Close tabs</value></data><data name="NotificationMessage_TabActivity" xml:space="preserve"><value>Activity in tab "{0}"</value><comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment></data><data name="CmdPalAgentBackgroundPrompt" xml:space="preserve"><value>Run agent task in background...</value><comment>Placeholder text shown in the command palette search box when in agent background task mode.</comment></data><data name="ConfirmCloseDialog_TabTitle" xml:space="preserve"><value>Do you want to close this tab?</value></data><data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve"><value>Agent prompt mode</value><comment>This text will be read aloud using assistive technologies when the command palette switches into the agent foreground prompt mode.</comment></data><data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve"><value>Do you want to close all tabs?</value></data><data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>No AI agent could be found. Install an agent (e.g. copilot, gemini) and make sure it is on your PATH, or configure one in Settings &gt; AI Agents.</value><comment>{Locked="PATH","copilot","gemini"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data><data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve"><value>Do you want to close these panes?</value></data><data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve"><value>Do you want to close this pane?</value></data><data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve"><value>Close panes</value></data><data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve"><value>Do you want to close these tabs?</value></data><data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>Failed to initialize shell integration. Could not determine your PowerShell profile path. Make sure the target shell is installed.</value></data><data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve"><value>Close all</value></data><data name="InitShellIntegrationErrorTitle" xml:space="preserve"><value>Shell Integration Error</value></data><data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve"><value>Shell Integration Already Configured</value></data><data name="CmdPalAgentForegroundPrompt" xml:space="preserve"><value>Ask agent...</value><comment>Placeholder text shown in the command palette search box when in agent foreground prompt mode.</comment></data><data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>Shell integration is already configured in your PowerShell profile.</value></data><data name="AgentNotConfiguredTitle" xml:space="preserve"><value>AI Assistant is not available</value></data>
+  <!-- ═══ FRE Welcome Page ═══ -->
+  <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
+    <value>Welcome to Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
+    <value>Set up your built-in assistant to help you explain errors, draft commands, and unblock tasks right where you work. </value>
+  </data>
+  <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
+    <value>Learn more about Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
+    <value>Stay in flow with your built-in AI agent</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
+    <value>Your agent stays aware of what's happening in your terminal and can help you understand and fix errors as they appear.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_Card2Title.Text" xml:space="preserve">
+    <value>Pick up right where you left off</value>
+  </data>
+  <data name="FreOverlay_Card2Description.Text" xml:space="preserve">
+    <value>Keep track of your active and past agent sessions and jump back into your work in seconds. Review what's in progress or revisit earlier work without losing your place.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_NextButton.Content" xml:space="preserve">
+    <value>Next</value>
+  </data>
+  <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
+    <value>Welcome to Intelligent Terminal</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
+    <value>Choose what to set up now. You can change these anytime in </value>
+  </data>
+  <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
+    <value>Agent</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
+    <value>Choose the agent used in the agent pane. Any compatible ACP agent will be detected.</value>
+    <comment>{Locked="ACP"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
+    <value>ℹ This agent requires Node.js and NPX, which will be installed automatically if not already present.</value>
+    <comment>{Locked="Node.js","NPX"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>Auto-suggest fixes for failed commands</value>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>When enabled, the AI agent automatically analyzes failed commands and proposes a fix. When disabled, failed commands surface a clickable hint in the status bar — press Ctrl+Alt+. or click the hint to request a fix.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  </data>
+  <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
+    <value>Session management</value>
+  </data>
+  <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
+    <value>Give Intelligent Terminal permission to track the status of your running or active agents.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
+    <value>ℹ Enabling this will install integration hooks to track sessions across your agents.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>Pane position</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>Where the agent pane opens relative to your terminal.</value>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
+  <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
+    <value> (will be installed)</value>
+  </data>
+  <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
+    <value> (installed)</value>
+  </data>
+  <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
+    <value>Bottom</value>
+  </data>
+  <data name="FreOverlay_PanePositionRight" xml:space="preserve">
+    <value>Right</value>
+  </data>
+  <data name="FreOverlay_PanePositionLeft" xml:space="preserve">
+    <value>Left</value>
+  </data>
+  <data name="FreOverlay_PanePositionTop" xml:space="preserve">
+    <value>Top</value>
+  </data>
+  <data name="FreOverlay_SettingUp" xml:space="preserve">
+    <value>Setting up...</value>
+  </data>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ Failed to install GitHub Copilot. Check your network and try again.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Failed to install Node.js. Check your network and try again.</value>
+    <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_ToggleOn" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="FreOverlay_ToggleOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="AgentBlockedByPolicyTitle" xml:space="preserve">
+    <value>AI agents are restricted</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} Title shown when Group Policy blocks the user from opening the agent pane.</comment>
+  </data>
+  <data name="AgentBlockedByPolicySubtitle" xml:space="preserve">
+    <value>Your organization's policy does not allow any AI agents. Contact your IT administrator for assistance.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} Subtitle shown when Group Policy blocks all AI agents from running.</comment>
+  </data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>This setting is managed by your organization.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording. {Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Analyzing error…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Error detected: analyzing…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Error detected: {0} to fix</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Fix ready — {0} to apply</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Fix ready — {0} to apply: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Suggestion ready — open agent pane</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Auto-fix declined to fix this directly. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Click here or press Ctrl+Shift+. to open the agent pane and read the full suggestion.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Diagnostics</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Agent sessions</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Agent sessions: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+</root>

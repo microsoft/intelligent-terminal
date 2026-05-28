@@ -20,3 +20,7 @@ pub fn runtime_log_path(file_name: &str) -> PathBuf {
 
     PathBuf::from(file_name)
 }
+
+pub fn master_pipe_file_path() -> Option<PathBuf> {
+    intelligent_terminal_root().map(|root| root.join("master-pipe.txt"))
+}

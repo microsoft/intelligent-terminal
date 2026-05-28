@@ -3,10 +3,13 @@
 //! Both [`super::client::run_inner`] and [`super::probe::probe_models`]
 //! need to spawn an ACP agent the same way: parse the user-facing
 //! cmdline, resolve bare names via [`crate::agent_registry`], optionally
-//! wrap in `cmd /c`, scrub `CLAUDECODE`, and pipe stdio with
-//! `kill_on_drop`. They diverge only after `spawn()` — the full client
-//! wraps stdio with instrumentation and drives a prompt loop; the probe
-//! attaches raw stdio, runs `initialize` + `new_session`, and exits.
+//! wrap in `cmd /c`, scrub the claude-code-acp guard env var, and pipe
+//! stdio with `kill_on_drop`. They diverge only after `spawn()` — the
+//! full client wraps stdio with instrumentation and drives a prompt
+//! loop; the probe attaches raw stdio, runs `initialize` + `new_session`,
+//! and exits.
+
+use std::path::Path;
 
 use anyhow::{anyhow, Result};
 
@@ -35,7 +38,14 @@ impl AgentSpawn {
     }
 }
 
-pub(crate) fn spawn_agent_process(agent_cmd: &str) -> Result<AgentSpawn> {
+/// Spawn the ACP agent process.
+///
+/// `cwd` pins the child's working directory to the user's active pane cwd so
+/// the agent's `execute_command` tool — which inherits the agent process cwd
+/// when its shell wrapper doesn't explicitly set one — starts in the user's
+/// project. None preserves the parent's cwd (probe path, where it doesn't
+/// matter).
+pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
         .first()
@@ -61,11 +71,47 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str) -> Result<AgentSpawn> {
     if needs_cmd {
         cmd.arg("/c").arg(&resolved_program);
     }
-    // claude-code-acp refuses to start when CLAUDECODE=1 is set — that
-    // guard exists to block recursive `claude` shells from sharing
-    // runtime, but doesn't apply to an ACP host. Scrub unconditionally;
-    // other agents don't care.
+    // The claude-code-acp adapter refuses to start when its recursion-
+    // guard env var is set — that guard exists to block recursive
+    // `claude` shells from sharing runtime, but doesn't apply to an
+    // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
+
+    // Forward the user's locale to the agent process via standard POSIX
+    // environment variables. Many agent CLIs (and the large language models
+    // they speak to) honor `LANG` / `LC_ALL` to choose their response
+    // language. We keep the ACP wire format itself untouched — this is
+    // purely a hint for the agent's response language. Format:
+    // `<lang>_<REGION>.UTF-8` (BCP-47 with dashes converted to underscores;
+    // language lowercase, 2-letter region uppercase, plus UTF-8 codeset).
+    //
+    // Don't override the user's own locale env vars: if the user has
+    // intentionally pinned `LANG` or `LC_ALL` in their shell (e.g. to
+    // get an English-only Copilot response while running a zh-CN UI),
+    // respect that. Only set what's missing.
+    //
+    // Pseudo-locales (`qps-ploc*`) are UI-only and not real BCP-47 tags;
+    // forwarding them verbatim would make agent CLIs warn or fall back.
+    // Map them to en_US.UTF-8 so the agent gets a real locale.
+    {
+        let current_locale = rust_i18n::locale().to_string();
+        if !current_locale.is_empty() {
+            let posix_locale = if current_locale.starts_with("qps-") {
+                "en_US.UTF-8".to_string()
+            } else {
+                canonicalize_posix_locale(&current_locale)
+            };
+            if std::env::var_os("LANG").is_none() {
+                cmd.env("LANG", &posix_locale);
+            }
+            if std::env::var_os("LC_ALL").is_none() {
+                cmd.env("LC_ALL", &posix_locale);
+            }
+        }
+    }
+    if let Some(cwd) = cwd {
+        cmd.current_dir(cwd);
+    }
     let child = cmd
         .args(&args)
         .stdin(std::process::Stdio::piped())
@@ -83,3 +129,68 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str) -> Result<AgentSpawn> {
         adapter_package,
     })
 }
+
+/// Convert a BCP-47 locale tag (e.g. `zh-CN`, `gd-gb`) to the POSIX
+/// `LANG`/`LC_ALL` form (e.g. `zh_CN.UTF-8`, `gd_GB.UTF-8`).
+///
+/// POSIX runtimes expect language lowercase + region uppercase (e.g.
+/// `gd_GB.UTF-8`, not `gd_gb.UTF-8`). Our locale folder names are
+/// canonical BCP-47 except for a few inconsistencies like `gd-gb` —
+/// canonicalize defensively rather than depending on every locale file
+/// being named correctly.
+///
+/// Rules:
+/// - Split on `-`. First segment is always the language, lowercased.
+/// - Two-letter segments after the first are treated as ISO 3166-1
+///   region codes and converted to uppercase.
+/// - Four-letter segments are treated as ISO 15924 script codes and
+///   title-cased (e.g. `Latn`, `Cyrl`).
+/// - Anything else (numeric region, variant) is left as-is.
+/// - Joined with `_` per POSIX convention; UTF-8 codeset appended.
+fn canonicalize_posix_locale(tag: &str) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(3);
+    for (i, seg) in tag.split('-').enumerate() {
+        if i == 0 {
+            parts.push(seg.to_lowercase());
+        } else if seg.len() == 2 && seg.chars().all(|c| c.is_ascii_alphabetic()) {
+            parts.push(seg.to_uppercase());
+        } else if seg.len() == 4 && seg.chars().all(|c| c.is_ascii_alphabetic()) {
+            let mut chars = seg.chars();
+            let first = chars.next().unwrap().to_ascii_uppercase();
+            let rest: String = chars.map(|c| c.to_ascii_lowercase()).collect();
+            parts.push(format!("{}{}", first, rest));
+        } else {
+            parts.push(seg.to_string());
+        }
+    }
+    format!("{}.UTF-8", parts.join("_"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonicalizes_simple_lang_region() {
+        assert_eq!(canonicalize_posix_locale("zh-CN"), "zh_CN.UTF-8");
+        assert_eq!(canonicalize_posix_locale("en-US"), "en_US.UTF-8");
+        // Lowercase region in source folder names gets normalized.
+        assert_eq!(canonicalize_posix_locale("gd-gb"), "gd_GB.UTF-8");
+        // Already-uppercase region preserved (idempotent).
+        assert_eq!(canonicalize_posix_locale("de-DE"), "de_DE.UTF-8");
+    }
+
+    #[test]
+    fn canonicalizes_script_code() {
+        // 4-letter script code (ISO 15924) → title case, region preserved.
+        assert_eq!(canonicalize_posix_locale("sr-Cyrl-RS"), "sr_Cyrl_RS.UTF-8");
+        assert_eq!(canonicalize_posix_locale("zh-Hans-CN"), "zh_Hans_CN.UTF-8");
+        assert_eq!(canonicalize_posix_locale("az-Latn-AZ"), "az_Latn_AZ.UTF-8");
+    }
+
+    #[test]
+    fn canonicalizes_language_only() {
+        assert_eq!(canonicalize_posix_locale("en"), "en.UTF-8");
+    }
+}
+

@@ -20,8 +20,7 @@
             <DataTemplate x:Key="AgentEntryTemplate"
                           x:DataType="local:AgentEntry">
                 <TextBlock Text="{x:Bind DisplayLabel}"
-                           Opacity="{x:Bind local:AIAgents.InstalledOpacity(IsInstalled)}"
-                           FontStyle="{x:Bind local:AIAgents.AddNewFontStyle(IsAddNew)}" />
+                           Opacity="{x:Bind local:AIAgents.InstalledOpacity(IsInstalled)}" />
             </DataTemplate>
 
             <DataTemplate x:Key="EnumComboBoxTemplate"
@@ -41,15 +40,32 @@
 
             <!--  Page subtitle. The page title itself is rendered by the
                   Settings BreadcrumbBar from Nav_AIAgents.Content, so we only
-                  add the subtitle below it here.  -->
-            <TextBlock x:Uid="AIAgents_PageSubtitle"
-                       Opacity="0.7"
-                       Margin="0,0,0,16" />
+                  add the subtitle below it here. The inline Run/Hyperlink
+                  text is populated from the ResourceLoader in code-behind
+                  (x:Uid on inline Run is not honored in this codebase).
+                  The muted "secondary" foreground is applied only to the
+                  non-link Runs so the Hyperlink keeps its full theme
+                  accent contrast (and its hover/pressed affordance).  -->
+            <TextBlock Margin="0,0,0,16"
+                       TextWrapping="Wrap">
+                <Run x:Name="PageSubtitlePrefix"
+                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                     Text="" /><Run Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text=" " /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-privacy">
+                    <Run x:Name="PageSubtitlePrivacyLink" Text="" />
+                </Hyperlink>
+            </TextBlock>
 
-            <!--  ═══ Agent pane group ═══  -->
+            <!--  ═══ Agent pane group ═══
+                  First sub-header on the page: override the style's 32px
+                  top margin to 0 so the page subtitle's bottom margin is
+                  the only gap above the header. Otherwise, the page
+                  subtitle + sub-header margins stack to ~48px and look
+                  visibly larger than every other settings page (which
+                  doesn't render a page subtitle).  -->
             <TextBlock x:Uid="AIAgents_AcpGroupHeader"
-                       Style="{StaticResource SubtitleTextBlockStyle}"
-                       Margin="0,0,0,8" />
+                       Style="{StaticResource TextBlockSubHeaderStyle}"
+                       Margin="0,0,0,4" />
 
             <!--  Agent (ACP CLI)  -->
             <local:SettingContainer x:Name="AcpAgent"
@@ -60,6 +76,10 @@
                               ItemsSource="{x:Bind ViewModel.AcpAgentList, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.CurrentAcpAgent, Mode=TwoWay}"
                               Style="{StaticResource ComboBoxSettingStyle}" />
+                    <TextBlock x:Uid="AIAgents_PolicyLocked"
+                               Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
+                               Opacity="0.6"
+                               Margin="0,4,0,0" />
                     <!--  Read-only preview when custom agent is selected on page load  -->
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsCustomAcpAgentSelected, Mode=OneWay}"
@@ -101,12 +121,12 @@
                               ItemsSource="{x:Bind ViewModel.AcpModelList, Mode=OneWay}"
                               ItemTemplate="{StaticResource AcpModelEntryTemplate}"
                               SelectedItem="{x:Bind ViewModel.CurrentAcpModelEntry, Mode=TwoWay}"
-                              PlaceholderText="Auto"
+                              PlaceholderText="Default"
                               Style="{StaticResource ComboBoxSettingStyle}"
                               Visibility="{x:Bind ViewModel.HasAcpModelList, Mode=OneWay}" />
                     <!--  Free-form fallback: agent pane never connected, custom agent, or agent didn't advertise models  -->
                     <TextBox Text="{x:Bind ViewModel.AcpModel, Mode=TwoWay}"
-                             PlaceholderText="Auto"
+                             PlaceholderText="Default"
                              Style="{StaticResource TextBoxSettingStyle}"
                              Visibility="{x:Bind ViewModel.ShowAcpModelTextBox, Mode=OneWay}" />
                 </Grid>
@@ -125,14 +145,152 @@
             <!--  Auto-error detection  -->
             <local:SettingContainer x:Name="AutoFixEnabled"
                                     x:Uid="AIAgents_AutoFix">
-                <ToggleSwitch IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
-                              Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+                <StackPanel>
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind local:AIAgents.NotBool(ViewModel.IsAutoFixPolicyLocked), Mode=OneWay}"
+                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+                    <TextBlock x:Uid="AIAgents_PolicyLocked"
+                               Visibility="{x:Bind ViewModel.IsAutoFixPolicyLocked, Mode=OneWay}"
+                               Opacity="0.6"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+            </local:SettingContainer>
+
+            <!--  Agent session tracking (hooks) — last entry in the Agent pane group.
+                  Collapsible SettingContainer (Expander style). When expanded:
+                    1. Top row: "Install hooks" action (accent button) — runs
+                       the installer across every detected CLI.
+                    2. One row per CLI that has any wt-agent-hooks state on disk
+                       (whether fully installed or partial); each row carries a
+                       Remove button and an optional subtitle describing the
+                       current install state when it isn't clean.
+                  Each row is wrapped in a Border with a thin top divider to
+                  match the design's "faint separator between rows".  -->
+            <local:SettingContainer x:Name="AgentHooksInstall"
+                                    x:Uid="AIAgents_HooksInstall"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                <StackPanel Orientation="Vertical">
+                    <!--  Row 1: "Install hooks" action. Always present; enabled
+                          when at least one agent CLI is on PATH. The most recent
+                          install/remove progress + result message is shown as a
+                          subtitle under the row label (same layout pattern as
+                          the per-CLI rows below).  -->
+                    <Border BorderThickness="0,1,0,0"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Padding="0,16,0,16">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock x:Uid="AIAgents_HooksInstallRowLabel"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{x:Bind ViewModel.AgentHooksInstallSummary, Mode=OneWay}"
+                                               Visibility="{x:Bind ViewModel.HasAgentHooksInstallSummary, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Opacity="0.6"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        x:Uid="AIAgents_HooksInstallButton"
+                                        Click="{x:Bind ViewModel.InstallAllAgentHooks}"
+                                        IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        MinWidth="120" />
+                            </Grid>
+                            <TextBlock x:Uid="AIAgents_PolicyLocked"
+                                       Visibility="{x:Bind ViewModel.IsAgentSessionHooksPolicyLocked, Mode=OneWay}"
+                                       Opacity="0.6"
+                                       Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <!--  Per-CLI Remove rows. Each is visible whenever the CLI
+                          has any hook state, so users can also clean up partial
+                          installs. Subtitle below the name surfaces the detail
+                          when state isn't fully clean.  -->
+                    <Border Visibility="{x:Bind ViewModel.ShowCopilotHookRow, Mode=OneWay}"
+                            BorderThickness="0,1,0,0"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Padding="0,16,0,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="GitHub Copilot" TextWrapping="Wrap" />
+                                <!--  Subtitle collapses to zero height when empty (no MinHeight
+                                      reservation), so the agent name stays vertically centered
+                                      in the row in the typical clean-install state.  -->
+                                <TextBlock Text="{x:Bind ViewModel.CopilotHooksSubtitle, Mode=OneWay}"
+                                           Visibility="{x:Bind ViewModel.ShowCopilotHooksSubtitle, Mode=OneWay}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Opacity="0.6"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    x:Uid="AIAgents_HooksRemoveButton"
+                                    Click="{x:Bind ViewModel.RemoveCopilotHooks}"
+                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    MinWidth="120" />
+                        </Grid>
+                    </Border>
+                    <Border Visibility="{x:Bind ViewModel.ShowClaudeHookRow, Mode=OneWay}"
+                            BorderThickness="0,1,0,0"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Padding="0,16,0,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="Claude Code" TextWrapping="Wrap" />
+                                <TextBlock Text="{x:Bind ViewModel.ClaudeHooksSubtitle, Mode=OneWay}"
+                                           Visibility="{x:Bind ViewModel.ShowClaudeHooksSubtitle, Mode=OneWay}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Opacity="0.6"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    x:Uid="AIAgents_HooksRemoveButton"
+                                    Click="{x:Bind ViewModel.RemoveClaudeHooks}"
+                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    MinWidth="120" />
+                        </Grid>
+                    </Border>
+                    <Border Visibility="{x:Bind ViewModel.ShowGeminiHookRow, Mode=OneWay}"
+                            BorderThickness="0,1,0,0"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Padding="0,16,0,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="Gemini CLI" TextWrapping="Wrap" />
+                                <TextBlock Text="{x:Bind ViewModel.GeminiHooksSubtitle, Mode=OneWay}"
+                                           Visibility="{x:Bind ViewModel.ShowGeminiHooksSubtitle, Mode=OneWay}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Opacity="0.6"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    x:Uid="AIAgents_HooksRemoveButton"
+                                    Click="{x:Bind ViewModel.RemoveGeminiHooks}"
+                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    MinWidth="120" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
             </local:SettingContainer>
 
             <!--  ═══ Command palette group ═══  -->
             <TextBlock x:Uid="AIAgents_DelegateGroupHeader"
-                       Style="{StaticResource SubtitleTextBlockStyle}"
-                       Margin="0,16,0,8" />
+                       Style="{StaticResource TextBlockSubHeaderStyle}" />
 
             <!--  Agent (delegate / on-demand CLI)  -->
             <local:SettingContainer x:Name="DelegateAgent"
@@ -143,6 +301,10 @@
                               ItemsSource="{x:Bind ViewModel.DelegateAgentList, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.CurrentDelegateAgent, Mode=TwoWay}"
                               Style="{StaticResource ComboBoxSettingStyle}" />
+                    <TextBlock x:Uid="AIAgents_PolicyLocked"
+                               Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
+                               Opacity="0.6"
+                               Margin="0,4,0,0" />
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsCustomDelegateAgentSelected, Mode=OneWay}"
                                 Margin="0,8,0,0"
@@ -169,36 +331,6 @@
                             <Button Content="Cancel" Click="{x:Bind ViewModel.CancelCustomDelegateAgent}" />
                         </StackPanel>
                     </StackPanel>
-                </StackPanel>
-            </local:SettingContainer>
-
-            <!--  ═══ Agent Hooks ═══  -->
-            <TextBlock x:Uid="AIAgents_HooksGroupHeader"
-                       Style="{StaticResource SubtitleTextBlockStyle}"
-                       Margin="0,16,0,8" />
-
-            <local:SettingContainer x:Name="AgentHooksInstall"
-                                    x:Uid="AIAgents_HooksInstall">
-                <StackPanel Orientation="Vertical" Spacing="8">
-                    <StackPanel Orientation="Vertical" Spacing="2">
-                        <TextBlock Text="{x:Bind ViewModel.CopilotHooksStatusText, Mode=OneWay}"
-                                   IsTextSelectionEnabled="True" />
-                        <TextBlock Text="{x:Bind ViewModel.ClaudeHooksStatusText, Mode=OneWay}"
-                                   IsTextSelectionEnabled="True" />
-                        <TextBlock Text="{x:Bind ViewModel.GeminiHooksStatusText, Mode=OneWay}"
-                                   IsTextSelectionEnabled="True" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Button x:Uid="AIAgents_HooksInstallButton"
-                                Click="{x:Bind ViewModel.InstallAgentHooks}"
-                                IsEnabled="{x:Bind ViewModel.IsAnyAgentCliDetected, Mode=OneWay}"
-                                Style="{StaticResource AccentButtonStyle}" />
-                        <Button x:Uid="AIAgents_HooksRefreshButton"
-                                Click="{x:Bind ViewModel.RefreshAgentHooksStatus}" />
-                    </StackPanel>
-                    <TextBlock Text="{x:Bind ViewModel.AgentHooksInstallSummary, Mode=OneWay}"
-                               TextWrapping="Wrap"
-                               Opacity="0.8" />
                 </StackPanel>
             </local:SettingContainer>
 

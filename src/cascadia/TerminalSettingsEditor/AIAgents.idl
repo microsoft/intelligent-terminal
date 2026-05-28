@@ -11,6 +11,6 @@ namespace Microsoft.Terminal.Settings.Editor
         AIAgentsViewModel ViewModel { get; };
 
         static Double InstalledOpacity(Boolean isInstalled);
-        static Windows.UI.Text.FontStyle AddNewFontStyle(Boolean isAddNew);
+        static Boolean NotBool(Boolean value);
     }
 }

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -318,7 +318,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>當執行命令列應用程式且不使用現有工作模式而啟動的終端機應用程式 (例如從 [開始] 功能表或 [執行] 對話方塊)。</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>圖形 API</value>
@@ -358,7 +358,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>這會變更內送文字群組到儲存格的方式。[Grapheme 叢集] 選項是最新式且更正確的 Unicode 方法，而 “wcswidth” 是 UNIX 的常見方法，而 [Windows 控制台] 則會復寫它在 Windows 上運作的方式。變更此設定需要重新啟動Windows 終端機，且只適用於從其中啟動的應用程式。</value>
+    <value>這會變更內送文字群組到儲存格的方式。[Grapheme 叢集] 選項是最新式且更正確的 Unicode 方法，而 “wcswidth” 是 UNIX 的常見方法，而 [Windows 控制台] 則會復寫它在 Windows 上運作的方式。變更此設定需要重新啟動智慧終端機，且只適用於從其中啟動的應用程式。</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Grapheme 叢集</value>
@@ -376,7 +376,7 @@
     <comment>A label for a drop down selector, referring to the East Asian Ambiguous Width Unicode specification.</comment>
   </data>
   <data name="Globals_AmbiguousWidth.HelpText" xml:space="preserve">
-    <value>設定東亞模糊字元的寬度。「窄」(預設) 以相容性為優先，而「寬」則以多數中日韓字型的可讀性為優先。在「寬」模式下，部分應用程式可能無法正常運作，導致游標移動異常。變更此設定後，需重新啟動 Windows 終端機，且僅適用於從 Windows 終端機內啟動的應用程式。</value>
+    <value>設定東亞模糊字元的寬度。「窄」(預設) 以相容性為優先，而「寬」則以多數中日韓字型的可讀性為優先。在「寬」模式下，部分應用程式可能無法正常運作，導致游標移動異常。變更此設定後，需重新啟動 智慧終端機，且僅適用於從 智慧終端機內啟動的應用程式。</value>
   </data>
   <data name="Globals_AmbiguousWidth_Narrow.Text" xml:space="preserve">
     <value>窄</value>
@@ -522,7 +522,7 @@
     <comment>Header for a control to toggle whether the terminal's title is shown as the application title, or not.</comment>
   </data>
   <data name="Globals_ShowTitleInTitlebar.HelpText" xml:space="preserve">
-    <value>停用時，標題列會是 [Windows 終端機]。</value>
+    <value>停用時，標題列會是 [智慧終端機]。</value>
     <comment>A description for what the "show title in titlebar" setting does. Presented near "Globals_ShowTitleInTitlebar.Header".{Locked="Windows"}</comment>
   </data>
   <data name="Globals_SnapToGridOnResize.Header" xml:space="preserve">
@@ -574,8 +574,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>允許 Windows 終端機 在背景執行</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>允許 智慧終端機 在背景執行</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>啟用偵錯功能</value>
@@ -896,7 +896,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>自動</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>色彩配置</value>
@@ -1218,7 +1218,7 @@
     <comment>A supplementary setting to the "starting directory" setting. "Parent" refers to the parent process of the current process.</comment>
   </data>
   <data name="Profile_StartingDirectoryUseParentCheckbox.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>如果啟用，這個設定檔將會在啟動 Windows 終端機的目錄中產生。</value>
+    <value>如果啟用，這個設定檔將會在啟動 智慧終端機的目錄中產生。</value>
     <comment>A description for what the supplementary "use parent process directory" setting does. Presented near "Profile_StartingDirectoryUseParentCheckbox".</comment>
   </data>
   <data name="Profile_SuppressApplicationTitle.Header" xml:space="preserve">
@@ -2223,7 +2223,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Windows 終端機正以可攜式模式執行。</value>
+    <value>智慧終端機正以可攜式模式執行。</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
@@ -2578,7 +2578,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>當 Windows 終端機 以系統管理員身分執行時，在標題欄中顯示遮罩</value>
+    <value>當 智慧終端機 以系統管理員身分執行時，在標題欄中顯示遮罩</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">
@@ -2757,18 +2757,34 @@
   <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>代理窗格</value><comment>Section header for the agent pane settings group.</comment></data>
   <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve"><value>命令選擇區</value><comment>Section header for the command palette agent settings group.</comment></data>
   <data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>代理</value><comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment></data>
-  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>選擇要在代理窗格中使用的代理 CLI。系統會偵測任何相容的 ACP CLI。</value><comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment></data>
+  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>選擇要在代理窗格中使用的代理。系統會偵測任何相容的 ACP 代理。</value><comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment></data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>模型</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>選擇此代理使用的模型。</value><comment>Supplementary description for the model setting.</comment></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>代理</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>選擇要在命令選擇區中用於快速動作的代理。</value><comment>Supplementary description for the command palette agent setting.</comment></data>
-  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>自動錯誤偵測</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
-  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>自動偵測命令錯誤並提出修正建議。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>自動為失敗的命令建議修正</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
+  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>啟用時,AI 代理會自動分析失敗的命令並提出修正建議。停用時,失敗的命令會在狀態列中顯示可點擊的提示 — 按 Ctrl+Alt+. 或點擊提示以要求修正。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>窗格位置</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>指定代理窗格相對於終端機的開啟位置。</value><comment>Supplementary description for the pane position setting.</comment></data>
+  <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
+    <value>底部</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionBottom string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Right" xml:space="preserve">
+    <value>右側</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionRight string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Top" xml:space="preserve">
+    <value>頂部</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionTop string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Left" xml:space="preserve">
+    <value>左側</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
+  </data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>代理 Hooks</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>安裝代理 Hook 指令碼</value><comment>Header for the Agent Hooks install section.</comment></data>
-  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>代理工作階段管理需要此功能。系統會將 Hooks 安裝到每個偵測到的 CLI (Copilot, Claude, Gemini) 中，讓它們將工作階段與狀態回報給代理窗格。安裝完成後，請重新啟動所有已開啟的代理 CLIs。</value><comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment></data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>跨代理追蹤工作階段。代理工作階段管理需要此功能。</value><comment>Help text shown under the expandable section header.</comment></data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>安裝 Hooks</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment></data>
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>重新整理</value><comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment></data>
   <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>關閉前警告</value><comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment></data>
@@ -2778,4 +2794,44 @@
   <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>多個索引標籤或窗格</value><comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment></data>
   <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>桌面通知</value><comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment></data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://aka.ms/intelligentterminal/portable-mode</value><comment>{Locked}</comment></data>
+  <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
+    <value>此設定由您的組織管理。</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
+    <value>正在安裝 hooks...</value>
+    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
+    <value>正在移除 Copilot hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
+    <value>正在移除 Claude hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
+    <value>正在移除 Gemini hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
+    <value>失敗: 找不到 wta.exe</value>
+    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
+    <value>Hooks 已移除。請重新啟動任何開啟的智慧代理，以捨棄先前的 hooks。</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
+    <value>Hooks 已安裝。請重新啟動任何開啟的智慧代理，以採用新的 hooks。</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
+    <value>Hook 移除失敗。請查看 %LOCALAPPDATA%\IntelligentTerminal\logs\ 以取得詳細資料。</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
+    <value>Hooks 安裝失敗。請查看 %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log 以取得詳細資料。</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
+  </data>
 </root>

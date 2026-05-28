@@ -22,6 +22,7 @@
       <Filter>profileGeneration</Filter>
     </ClCompile>
     <ClCompile Include="CascadiaSettings.cpp" />
+    <ClCompile Include="AgentPolicy.cpp" />
     <ClCompile Include="CascadiaSettingsSerialization.cpp" />
     <ClCompile Include="GlobalAppSettings.cpp" />
     <ClCompile Include="KeyChordSerialization.cpp" />
@@ -65,6 +66,7 @@
       <Filter>profileGeneration</Filter>
     </ClInclude>
     <ClInclude Include="CascadiaSettings.h" />
+    <ClInclude Include="..\inc\AgentPolicy.h" />
     <ClInclude Include="GlobalAppSettings.h" />
     <ClInclude Include="TerminalSettingsSerializationHelpers.h" />
     <ClInclude Include="KeyChordSerialization.h" />

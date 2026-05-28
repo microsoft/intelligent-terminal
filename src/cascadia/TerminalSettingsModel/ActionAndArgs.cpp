@@ -107,6 +107,7 @@ static constexpr std::string_view FocusAgentPaneKey{ "focusAgentPane" };
 static constexpr std::string_view OpenAgentSessionsKey{ "openAgentSessions" };
 static constexpr std::string_view TriggerAutofixKey{ "triggerAutofix" };
 static constexpr std::string_view ShowProtocolInfoKey{ "showProtocolInfo" };
+static constexpr std::string_view BugReportKey{ "bugReport" };
 
 static constexpr std::string_view ActionKey{ "action" };
 

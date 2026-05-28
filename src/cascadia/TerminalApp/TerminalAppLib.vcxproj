@@ -106,6 +106,9 @@
       <SubType>Code</SubType>
     </ClInclude>
     <ClInclude Include="BasePaletteItem.h" />
+    <ClInclude Include="SharedWta.h" />
+    <ClInclude Include="AgentPaneDragStash.h" />
+    <ClInclude Include="AgentPaneLog.h" />
     <ClInclude Include="Tab.h">
       <DependentUpon>Tab.idl</DependentUpon>
     </ClInclude>
@@ -195,8 +198,6 @@
       <DependentUpon>FreOverlay.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="WindowsPackageManagerFactory.h" />
-    <ClInclude Include="WtaProcessLauncher.h" />
-    <ClInclude Include="TerminalProtocolPipeServer.h" />
   </ItemGroup>
   <!-- ========================= Cpp Files ======================== -->
   <ItemGroup>
@@ -216,6 +217,7 @@
       <DependentUpon>PaletteItemTemplateSelector.idl</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
+    <ClCompile Include="SharedWta.cpp" />
     <ClCompile Include="Tab.cpp">
       <DependentUpon>Tab.idl</DependentUpon>
     </ClCompile>
@@ -239,8 +241,6 @@
       <DependentUpon>TerminalPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
-    <ClCompile Include="WtaProcessLauncher.cpp" />
-    <ClCompile Include="TerminalProtocolPipeServer.cpp" />
     <ClCompile Include="TerminalTabStatus.cpp">
       <DependentUpon>TerminalTabStatus.idl</DependentUpon>
       <SubType>Code</SubType>

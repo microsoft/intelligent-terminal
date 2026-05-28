@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -461,6 +461,9 @@
   </data>
   <data name="ToggleCommandPaletteCommandLineModeCommandKey" xml:space="preserve">
     <value>Ťŏġĝļĕ çбmмáήď φàłėŧτĕ ίη ċσmмäпδ ℓìņє mόð℮ !!! !!! !!! !!! </value>
+  </data>
+  <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
+    <value>Ťŏġĝļĕ çбmмáήď φàłėŧτĕ ίη äġëṅт ďëλεġäтίόη mόð℮ !!! !!! !!! !!! </value>
   </data>
   <data name="ToggleFocusModeCommandKey" xml:space="preserve">
     <value>Ţоģġľе ƒöςŭś mσďē !!! !!</value>
@@ -976,4 +979,4 @@
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>Šрļϊŧ ѕìžє !!!</value>
   </data>
-<data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>Toggle pane visibility</value></data><data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>Show Terminal Protocol Info</value></data><data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Open AI assistant sessions list</value></data><data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Prompt</value></data><data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Focus AI assistant pane</value></data><data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Trigger autofix</value></data><data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Toggle AI assistant</value></data></root>
+<data name="TogglePaneVisibilityCommandKey" xml:space="preserve"><value>Toggle pane visibility</value></data><data name="ShowProtocolInfoCommandKey" xml:space="preserve"><value>Show Terminal Protocol Info</value></data><data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Open AI assistant sessions list</value></data><data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Prompt</value></data><data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Focus AI assistant pane</value></data><data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Trigger autofix</value></data><data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Toggle AI assistant</value></data><data name="BugReportCommandKey" xml:space="preserve"><value>Report a bug (collect logs)</value></data></root>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -328,7 +328,7 @@
   </data>
   <data name="Globals_DefaultTerminal.HelpText" xml:space="preserve">
     <value>Програма терміналу, яка запускається, коли програма командного рядка запускається без наявного сеансу, наприклад із меню "Пуск" або діалогового вікна "Виконати".</value>
-    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Windows Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
+    <comment>A description to clarify that the dropdown choice for default terminal will tell the operating system which Terminal application (Intelligent Terminal, the preview build, the legacy inbox window, or a 3rd party one) to use when starting a command line tool like CMD or Powershell that does not already have a window.</comment>
   </data>
   <data name="Globals_GraphicsAPI.Header" xml:space="preserve">
     <value>Графічний API</value>
@@ -368,7 +368,7 @@
     <comment>This text is shown next to a list of choices.</comment>
   </data>
   <data name="Globals_TextMeasurement.HelpText" xml:space="preserve">
-    <value>Це змінює спосіб групування вхідного тексту в клітинки. Параметр "Кластери графем" є найсучаснішим і правильним для Unicode способом зробити це, тоді як "wcswidth" є поширеним підходом у UNIX, а "Консоль Windows" повторює спосіб, яким він працював у Windows. Зміна цього параметра потребує перезапуску терміналу Windows, і це стосується лише програм, запущених із нього.</value>
+    <value>Це змінює спосіб групування вхідного тексту в клітинки. Параметр "Кластери графем" є найсучаснішим і правильним для Unicode способом зробити це, тоді як "wcswidth" є поширеним підходом у UNIX, а "Консоль Windows" повторює спосіб, яким він працював у Windows. Зміна цього параметра потребує перезапуску Інтелектуальному Терміналу, і це стосується лише програм, запущених із нього.</value>
   </data>
   <data name="Globals_TextMeasurement_Graphemes.Text" xml:space="preserve">
     <value>Кластери графем</value>
@@ -581,8 +581,8 @@
     <comment>{Locked="OSC 52"}{Locked="Manipulate Selection Data"}Header for a control to toggle support for applications to change the contents of the Windows system clipboard.</comment>
   </data>
   <data name="Globals_AllowHeadless.Header" xml:space="preserve">
-    <value>Дозволити терміналу Windows працювати у фоновому режимі</value>
-    <comment>Header for a control to toggle support for Windows Terminal to run in the background.</comment>
+    <value>Дозволити Інтелектуальному Терміналу працювати у фоновому режимі</value>
+    <comment>Header for a control to toggle support for Intelligent Terminal to run in the background.</comment>
   </data>
   <data name="Globals_DebugFeaturesEnabled.Header" xml:space="preserve">
     <value>Увімкнути функції налагодження</value>
@@ -896,7 +896,7 @@
   </data>
   <data name="Profile_CloseOnExitAutomatic.Content" xml:space="preserve">
     <value>Автоматично</value>
-    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Windows Terminal.</comment>
+    <comment>An option to choose from for the "profile termination behavior" (or "close on exit") setting. When selected, the terminal closes if the process exits in a controlled scenario successfully and the process was launched by Intelligent Terminal.</comment>
   </data>
   <data name="Profile_ColorScheme.Header" xml:space="preserve">
     <value>Колірна схема</value>
@@ -1954,7 +1954,7 @@
     <comment>As in: Always VS Never</comment>
   </data>
   <data name="Settings_PortableModeNote.Text" xml:space="preserve">
-    <value>Термінал Windows працює в портативному режимі.</value>
+    <value>Інтелектуальний Термінал працює в портативному режимі.</value>
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
@@ -2321,7 +2321,7 @@
     <comment>Header for a control to toggle allowing unfocused windows to have an acrylic background.</comment>
   </data>
   <data name="Globals_ShowAdminShield.Header" xml:space="preserve">
-    <value>Відображати щит у рядку заголовка, коли термінал Windows запущено від імені Адміністратора</value>
+    <value>Відображати щит у рядку заголовка, коли Інтелектуальний Термінал запущено від імені Адміністратора</value>
     <comment>Header for a control to toggle displaying a shield in the title bar of the app. "Admin" refers to elevated sessions like "run as Admin"</comment>
   </data>
   <data name="Globals_ShowTabsFullscreen.Header" xml:space="preserve">
@@ -2480,7 +2480,7 @@
   <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>Панель агента</value><comment>Section header for the agent pane settings group.</comment></data>
   <data name="AIAgents_DelegateGroupHeader.Text" xml:space="preserve"><value>Палітра команд</value><comment>Section header for the command palette agent settings group.</comment></data>
   <data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>Агент</value><comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment></data>
-  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Виберіть CLI, який використовується в панелі агента. Буде виявлено будь-який сумісний ACP CLI.</value><comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment></data>
+  <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Оберіть агента, який використовується в панелі агента. Будь-який сумісний агент ACP буде виявлено автоматично.</value><comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment></data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>Модель</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Виберіть модель, яку використовує цей агент.</value><comment>Supplementary description for the model setting.</comment></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Агент</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
@@ -2489,9 +2489,25 @@
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Автоматично виявляйте помилки команд і пропонуйте виправлення.</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>Розташування панелі</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>Де відкриватиметься панель агента відносно вашого терміналу.</value><comment>Supplementary description for the pane position setting.</comment></data>
+  <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
+    <value>Знизу</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionBottom string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Right" xml:space="preserve">
+    <value>Праворуч</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionRight string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Top" xml:space="preserve">
+    <value>Зверху</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionTop string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Left" xml:space="preserve">
+    <value>Ліворуч</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
+  </data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>Hooks агента</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>Установити скрипти Hooks агента</value><comment>Header for the Agent Hooks install section.</comment></data>
-  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Потрібно для керування сеансами агентів. Установлює Hooks в кожен виявлений CLI (Copilot, Claude, Gemini), щоб вони передавали відомості про сеанси та стан до панелі агента. Після встановлення перезапустіть усі відкриті CLI агентів.</value><comment>Description for the Agent Hooks install section. {Locked="CLI","CLIs","Copilot","Claude","Gemini"}</comment></data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Відстежуйте сеанси між агентами. Потрібно для керування сеансами агентів.</value><comment>Help text shown under the expandable section header.</comment></data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Установити Hooks</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment></data>
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>Оновити</value><comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment></data>
   <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>Попереджати під час закриття</value><comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment></data>
@@ -2500,4 +2516,44 @@
   <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve"><value>Завжди</value><comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment></data>
   <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>Кілька вкладок або панелей</value><comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment></data>
   <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>Сповіщення на робочому столі</value><comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment></data>
+  <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
+    <value>Цей параметр керується вашою організацією.</value>
+    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
+    <value>Установлення hooks...</value>
+    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
+    <value>Видалення Copilot hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
+    <value>Видалення Claude hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
+    <value>Видалення Gemini hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
+    <value>Помилка: не вдалося знайти wta.exe</value>
+    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
+    <value>Hooks видалено. Перезапустіть усіх відкритих агентів, щоб прибрати попередні hooks.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
+    <value>Hooks установлено. Перезапустіть усіх відкритих агентів, щоб використовувати нові hooks.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
+    <value>Не вдалося видалити Hook. Докладні відомості див. у %LOCALAPPDATA%\IntelligentTerminal\logs\.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
+    <value>Не вдалося встановити Hooks. Докладні відомості див. у %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
+  </data>
 </root>
