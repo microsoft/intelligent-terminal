@@ -45,7 +45,7 @@ auth.hint_footer: "ກົດ Enter ເພື່ອເຂົ້າສູ່ລະ
 chat.activity_thinking: "ກຳລັງຄິດ…"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "ຍິນດີຕ້ອນຮັບສູ່ Intelligent Terminal!"
-chat.welcome_disclaimer: "AI ອາດຈະເຮັດຜິດພາດໄດ້"
+chat.welcome_disclaimer: "Intelligent Terminal ໃຊ້ AI. ກວດເບິ່ງຂໍ້ຜິດພາດ"
 chat.plan_header: "ແຜນການ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

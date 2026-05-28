@@ -48,7 +48,7 @@ auth.hint_footer: "  Սեղմեք Enter մուտք գործելու համար, 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────────────────────────────
 chat.activity_thinking: "Մտածում եմ…"
 chat.welcome_title: "Բարի գալուստ Intelligent Terminal!"
-chat.welcome_disclaimer: "AI-ն կարող է սխալվել"
+chat.welcome_disclaimer: "Intelligent Terminal-ը օգտագործում է AI: Ստուգեք սխալները"
 # Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Պլան՝"
 chat.plan_marker_completed: "[x]"  # {Locked}

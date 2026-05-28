@@ -45,7 +45,7 @@ auth.hint_footer: "  დააჭირეთ Enter შესასვლელ�
 chat.activity_thinking: "ვფიქრობ…"
 # {Locked="Intelligent Terminal"} - პროდუქტის სახელი, არ ითარგმნება
 chat.welcome_title: "Intelligent Terminal-ში მოგესალმებით!"
-chat.welcome_disclaimer: "AI-მ შეიძლება შეცდომა დაუშვას"
+chat.welcome_disclaimer: "Intelligent Terminal იყენებს AI-ს. შეამოწმეთ შეცდომები"
 chat.plan_header: "გეგმა:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

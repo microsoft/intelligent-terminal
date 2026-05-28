@@ -45,7 +45,7 @@ auth.hint_footer: "  לחץ Enter כדי להיכנס, Esc כדי לחזור"  #
 chat.activity_thinking: "חושב…"
 # {Locked="Intelligent Terminal"} - שם המוצר, אין לתרגם
 chat.welcome_title: "ברוכים הבאים ל-Intelligent Terminal!"
-chat.welcome_disclaimer: "AI עלול לטעות"
+chat.welcome_disclaimer: "Intelligent Terminal משתמש ב-AI. בדוק אם יש שגיאות"
 chat.plan_header: "תוכנית:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

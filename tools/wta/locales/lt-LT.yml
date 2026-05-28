@@ -45,7 +45,7 @@ auth.hint_footer: "  Paspauskite Enter, kad prisijungtumėte, Esc, kad grįžtum
 chat.activity_thinking: "Mąsto..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Sveiki atvykę į Intelligent Terminal!"
-chat.welcome_disclaimer: "AI gali daryti klaidų"
+chat.welcome_disclaimer: "Intelligent Terminal naudoja AI. Tikrinkite klaidas"
 chat.plan_header: "Planas:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

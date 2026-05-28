@@ -45,7 +45,7 @@ auth.hint_footer: "  Жүйеге кіру үшін Enter, артқа қайту
 chat.activity_thinking: "Ойланып жатырмын…"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Intelligent Terminal-ға қош келдіңіз!"
-chat.welcome_disclaimer: "AI қателесуі мүмкін"
+chat.welcome_disclaimer: "Intelligent Terminal AI пайдаланады. Қателерді тексеріңіз"
 chat.plan_header: "Жоспар:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

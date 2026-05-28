@@ -45,7 +45,7 @@ auth.hint_footer: "  Vajutage Enter sisselogimiseks, Esc tagasi minemiseks"  # {
 chat.activity_thinking: "Mõtleb..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Tere tulemast Intelligent Terminali!"
-chat.welcome_disclaimer: "AI võib teha vigu"
+chat.welcome_disclaimer: "Intelligent Terminal kasutab AI-d. Kontrollige vigu"
 chat.plan_header: "Plaan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

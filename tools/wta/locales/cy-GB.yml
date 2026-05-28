@@ -45,7 +45,7 @@ auth.hint_footer: "  Pwyswch Enter i fewngofnodi, Esc i fynd yn ôl"  # {Locked=
 chat.activity_thinking: "Yn meddwl…"
 # {Locked="Intelligent Terminal"} - enw'r cynnyrch, peidiwch a chyfieithu
 chat.welcome_title: "Croeso i Intelligent Terminal!"
-chat.welcome_disclaimer: "Gall AI wneud camgymeriadau"
+chat.welcome_disclaimer: "Mae Intelligent Terminal yn defnyddio AI. Gwiriwch am gamgymeriadau"
 chat.plan_header: "Cynllun:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

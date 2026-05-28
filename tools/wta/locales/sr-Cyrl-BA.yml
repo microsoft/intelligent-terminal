@@ -45,7 +45,7 @@ auth.hint_footer: "  Притисните Enter за пријаву, Esc за п
 chat.activity_thinking: "Размишљам…"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Добродошли у Intelligent Terminal!"
-chat.welcome_disclaimer: "AI може да направи грешке"
+chat.welcome_disclaimer: "Intelligent Terminal користи AI. Проверите грешке"
 chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

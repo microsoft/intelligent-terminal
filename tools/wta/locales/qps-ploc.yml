@@ -46,7 +46,7 @@ auth.hint_footer: "[  Ṗŕéśś Enter ţö śïğñ ïñ, Esc ţö ğö ƀåç
 chat.activity_thinking: "[Ţĥïñķïñğ…!!]"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "[Ŵéĺçöḿé ţö Intelligent Terminal!!]"
-chat.welcome_disclaimer: "[AI çåñ ḿåķé ḿïşţåķé!!]"
+chat.welcome_disclaimer: "[Ťĥïş åķé ḿïşţåķé!!]"
 chat.plan_header: "[Ṗĺåñ:!!]"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

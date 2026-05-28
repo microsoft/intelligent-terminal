@@ -45,7 +45,7 @@ auth.hint_footer: "  Agħfas Enter biex tidħol, Esc biex tmur lura"  # {Locked=
 chat.activity_thinking: "Qed jaħseb…"
 # {Locked="Intelligent Terminal"} - isem il-prodott, tittradux
 chat.welcome_title: "Merħba fl-Intelligent Terminal!"
-chat.welcome_disclaimer: "L-AI jista' jagħmel żbalji"
+chat.welcome_disclaimer: "Intelligent Terminal juża l-AI. Iċċekkja għall-iżbalji"
 chat.plan_header: "Pjan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -45,7 +45,7 @@ auth.hint_footer: "  Pindutin ang Enter para mag-sign in, Esc para bumalik"  # {
 chat.activity_thinking: "Nag-iisip…"
 # {Locked="Intelligent Terminal"} - pangalan ng produkto, huwag isalin
 chat.welcome_title: "Maligayang pagdating sa Intelligent Terminal!"
-chat.welcome_disclaimer: "Maaaring magkamali ang AI"
+chat.welcome_disclaimer: "Gumagamit ang Intelligent Terminal ng AI. Suriin ang mga pagkakamali"
 chat.plan_header: "Plano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

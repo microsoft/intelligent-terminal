@@ -41,7 +41,7 @@ auth.hint_footer: "  Enter でサインイン、Esc で戻る"  # {Locked="Enter
 # ── チャット ビュー (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "考え中…"
 chat.welcome_title: "インテリジェント ターミナルへようこそ！"
-chat.welcome_disclaimer: "AI は間違えることがあります"
+chat.welcome_disclaimer: "Intelligent Terminal は AI を使用しています。誤りがないか確認してください"
 chat.plan_header: "プラン:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

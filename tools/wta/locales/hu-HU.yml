@@ -45,7 +45,7 @@ auth.hint_footer: "  Nyomja meg az Entert a bejelentkezéshez, az Esc-et a vissz
 chat.activity_thinking: "Gondolkodás..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Üdvözli az Intelligent Terminal!"
-chat.welcome_disclaimer: "Az AI hibázhat"
+chat.welcome_disclaimer: "Az Intelligent Terminal AI-t használ. Ellenőrizze a hibákat"
 chat.plan_header: "Terv:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

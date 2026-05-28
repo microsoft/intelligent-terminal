@@ -45,7 +45,7 @@ auth.hint_footer: "  Paina Enter kirjautuaksesi sisään, Esc palataksesi takais
 chat.activity_thinking: "Ajattelee..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Tervetuloa Intelligent Terminaliin!"
-chat.welcome_disclaimer: "Tekoäly voi tehdä virheitä"
+chat.welcome_disclaimer: "Intelligent Terminal käyttää tekoälyä. Tarkista virheet"
 chat.plan_header: "Suunnitelma:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

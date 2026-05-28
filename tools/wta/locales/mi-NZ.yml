@@ -45,7 +45,7 @@ auth.hint_footer: "  Pehi Enter ki te takiuru, Esc ki te hoki"  # {Locked="Enter
 chat.activity_thinking: "E whakaaro ana..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Nau mai ki Intelligent Terminal!"
-chat.welcome_disclaimer: "Ka hapa pea te AI"
+chat.welcome_disclaimer: "Ka whakamahia e Intelligent Terminal te AI. Tirohia ngā hapa"
 chat.plan_header: "Mahere:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

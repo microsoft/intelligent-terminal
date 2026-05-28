@@ -45,7 +45,7 @@ auth.hint_footer: "  Dréckt Enter fir Iech unzemellen, Esc fir zréckzegoen"  #
 chat.activity_thinking: "Denkt no…"
 # {Locked="Intelligent Terminal"} - Produktnumm, net iwwersetzen
 chat.welcome_title: "Wëllkomm am Intelligent Terminal!"
-chat.welcome_disclaimer: "KI kann Feeler maachen"
+chat.welcome_disclaimer: "Intelligent Terminal benotzt KI. Kuckt no Feeler"
 chat.plan_header: "Plang:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
