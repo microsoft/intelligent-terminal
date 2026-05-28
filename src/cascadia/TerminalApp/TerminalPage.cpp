@@ -976,6 +976,14 @@ namespace winrt::TerminalApp::implementation
             _OpenNewTab(nullptr);
         }
 
+        // If no tabs were created (e.g. deferred actions only launched an
+        // elevated profile), close the window.
+        if (_tabs.Size() == 0)
+        {
+            CloseWindowRequested.raise(*this, nullptr);
+            return;
+        }
+
         // Now create the agent pane on the freshly-created tab.
         if (const auto tab = _GetFocusedTabImpl())
         {

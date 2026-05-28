@@ -2032,17 +2032,24 @@ impl App {
 
         if let (Some(ref tx), Some(ref mut params)) = (&self.event_tx, &mut self.deferred_acp) {
             // If channels were consumed by a previous (failed) attempt, create fresh ones.
-            // Also update self.prompt_tx so the App sends prompts to the new ACP client.
+            // Also update all sender fields on self so the App routes to the new ACP client.
             if params.prompt_rx.is_none() {
                 let (ptx, prx) = mpsc::unbounded_channel();
-                let (_ctx, crx) = mpsc::unbounded_channel();
-                let (_ntx, nrx) = mpsc::unbounded_channel();
-                let (_ltx, lrx) = mpsc::unbounded_channel();
-                let (_dtx, drx) = mpsc::unbounded_channel();
-                let (_rntx, rnrx) = mpsc::unbounded_channel();
-                let (_rtx, rrx) = mpsc::unbounded_channel();
-                let (_mtx, mrx) = mpsc::unbounded_channel();
+                let (ctx, crx) = mpsc::unbounded_channel();
+                let (ntx, nrx) = mpsc::unbounded_channel();
+                let (ltx, lrx) = mpsc::unbounded_channel();
+                let (dtx, drx) = mpsc::unbounded_channel();
+                let (rntx, rnrx) = mpsc::unbounded_channel();
+                let (rtx, rrx) = mpsc::unbounded_channel();
+                let (mtx, mrx) = mpsc::unbounded_channel();
                 self.prompt_tx = ptx;
+                self.cancel_tx = ctx;
+                self.new_session_tx = ntx;
+                self.load_session_tx = ltx;
+                self.drop_session_tx = dtx;
+                self.rename_session_tx = rntx;
+                self.restart_tx = rtx;
+                self.master_request_tx = mtx;
                 params.prompt_rx = Some(prx);
                 params.cancel_rx = Some(crx);
                 params.new_session_rx = Some(nrx);
@@ -8698,6 +8705,7 @@ mod tests {
             debug_capture,
             true,
             false,
+            Arc::new(crate::shell::ShellManager::new()),
         )
     }
 
@@ -9104,6 +9112,7 @@ mod tests {
             debug_capture,
             true,
             false,
+            Arc::new(crate::shell::ShellManager::new()),
         );
         (app, master_rx)
     }
@@ -9335,6 +9344,7 @@ mod tests {
             debug_capture,
             true,
             false,
+            Arc::new(crate::shell::ShellManager::new()),
         );
 
         app.tab_id = Some("AAAA".to_string());
@@ -9392,6 +9402,7 @@ mod tests {
             debug_capture,
             true,
             false,
+            Arc::new(crate::shell::ShellManager::new()),
         );
 
         app.tab_id = Some("AAAA".to_string());
@@ -9481,6 +9492,7 @@ mod tests {
             debug_capture,
             true,
             false,
+            Arc::new(crate::shell::ShellManager::new()),
         );
         (app, load_session_rx)
     }
