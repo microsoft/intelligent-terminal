@@ -219,7 +219,7 @@ pub(crate) fn key_is_resumable_on_disk_in(
     use crate::agent_sessions::CliSource;
     match cli {
         CliSource::Claude  => claude_key_is_resumable_on_disk_in(home, key),
-        CliSource::Codex   => true,
+        CliSource::Codex   => codex_key_is_resumable_on_disk_in(home, key),
         CliSource::Copilot => copilot_key_is_resumable_on_disk_in(home, key),
         CliSource::Gemini  => gemini_key_is_resumable_on_disk_in(home, key),
         CliSource::Unknown(_) => true,
@@ -264,7 +264,7 @@ pub(crate) fn key_has_definite_resumable_content_in(
     use crate::agent_sessions::CliSource;
     match cli {
         CliSource::Claude  => claude_key_has_definite_resumable_content_in(home, key),
-        CliSource::Codex   => true,
+        CliSource::Codex   => codex_key_has_definite_resumable_content_in(home, key),
         CliSource::Copilot => copilot_key_has_definite_resumable_content_in(home, key),
         CliSource::Gemini  => gemini_key_has_definite_resumable_content_in(home, key),
         CliSource::Unknown(_) => true,
@@ -399,6 +399,22 @@ pub(crate) fn gemini_jsonl_has_real_content(path: &Path) -> bool {
         if val.get("type").is_some() { return true; }
     }
     false
+}
+
+// ─── Codex per-key helpers ──────────────────────────────────────────────
+
+fn codex_key_is_resumable_on_disk_in(home: &Path, id: &str) -> bool {
+    match find_codex_rollout_by_id(home, id) {
+        None => true,
+        Some(path) => codex_session_has_real_content(&path),
+    }
+}
+
+fn codex_key_has_definite_resumable_content_in(home: &Path, id: &str) -> bool {
+    match find_codex_rollout_by_id(home, id) {
+        None => false,
+        Some(path) => codex_session_has_real_content(&path),
+    }
 }
 
 // ─── Copilot ────────────────────────────────────────────────────────────
@@ -1786,7 +1802,7 @@ mod tests {
         // in-memory rows / test fixtures aren't blocked preemptively.
         use crate::agent_sessions::CliSource;
         let home = tmp_root("resumable-missing-all-clis");
-        for cli in [CliSource::Claude, CliSource::Copilot, CliSource::Gemini] {
+        for cli in [CliSource::Claude, CliSource::Codex, CliSource::Copilot, CliSource::Gemini] {
             assert!(
                 key_is_resumable_on_disk_in(&home, &cli, "no-such-id"),
                 "{:?} should defer to CLI when on-disk artefact is missing",
@@ -1927,7 +1943,7 @@ mod tests {
         // row stuck Ended in F2.
         use crate::agent_sessions::CliSource;
         let home = tmp_root("strict-probe-missing");
-        for cli in [CliSource::Claude, CliSource::Copilot, CliSource::Gemini] {
+        for cli in [CliSource::Claude, CliSource::Codex, CliSource::Copilot, CliSource::Gemini] {
             assert!(
                 !key_has_definite_resumable_content_in(&home, &cli, "no-such-id"),
                 "{:?} strict probe must report phantom when artefact is missing",
@@ -2290,6 +2306,56 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert!(rows[0].title.contains("refactor the parser"),
                 "got title: {:?}", rows[0].title);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_key_resumable_returns_true_when_artefact_missing() {
+        use crate::agent_sessions::CliSource;
+        let home = tmp_root("codex-resumable-missing");
+        // Lenient probe: missing on-disk artefact defers to CLI (true)
+        // so fresh in-memory rows aren't blocked preemptively.
+        assert!(key_is_resumable_on_disk_in(&home, &CliSource::Codex, "no-such-id"));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_key_resumable_returns_false_for_meta_only_jsonl() {
+        use crate::agent_sessions::CliSource;
+        let home = tmp_root("codex-resumable-phantom");
+        let id = "ffffffff-2222-3333-4444-555555555555";
+        // Build the meta-only file inline. The path shape is:
+        //   home/.codex/sessions/2026/05/28/rollout-2026-05-28T10-00-00-<id>.jsonl
+        let dir = home.join(".codex").join("sessions").join("2026").join("05").join("28");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("rollout-2026-05-28T10-00-00-{}.jsonl", id));
+        let meta = format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"timestamp\":\"2026-05-28T10:00:00Z\",\"cwd\":\"C:/x\",\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\"source\":\"cli\"}}}}\n");
+        fs::write(&path, meta).unwrap();
+        assert!(!key_is_resumable_on_disk_in(&home, &CliSource::Codex, id));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_key_resumable_returns_true_for_jsonl_with_user_message() {
+        use crate::agent_sessions::CliSource;
+        let home = tmp_root("codex-resumable-real");
+        let id = "abcdef00-2222-3333-4444-555555555555";
+        let dir = home.join(".codex").join("sessions").join("2026").join("05").join("28");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("rollout-2026-05-28T10-30-00-{}.jsonl", id));
+        let content = format!(
+            "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"timestamp\":\"2026-05-28T10:30:00Z\",\"cwd\":\"C:/x\",\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\"source\":\"cli\"}}}}\n\
+{{\"type\":\"event_msg\",\"payload\":{{\"type\":\"user_message\",\"message\":\"hi\"}}}}\n");
+        fs::write(&path, content).unwrap();
+        assert!(key_is_resumable_on_disk_in(&home, &CliSource::Codex, id));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_strict_probe_returns_false_when_artefact_missing() {
+        use crate::agent_sessions::CliSource;
+        let home = tmp_root("codex-strict-missing");
+        assert!(!key_has_definite_resumable_content_in(&home, &CliSource::Codex, "no-id"));
         let _ = fs::remove_dir_all(&home);
     }
 
