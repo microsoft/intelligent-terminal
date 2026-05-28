@@ -1934,9 +1934,8 @@ namespace winrt::TerminalApp::implementation
             // Suggested has no executable action — the explanation lives in
             // the chat history. The user's click means "show me what's
             // wrong", so ensure the pane is visible in chat view. The pane
-            // may be stashed, currently in sessions view, or even absent
-            // (the bar caches autofix state across stash), so handle all
-            // three before dismissing the bar indicator.
+            // may be stashed or currently in sessions view, so handle both
+            // before dismissing the bar indicator.
             const auto agentPane = activeTab->FindAgentPane();
             if (agentPane && !agentPane->IsHidden())
             {
