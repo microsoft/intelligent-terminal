@@ -32,8 +32,18 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     let messages: usize = tab.messages.iter().map(|m| message_height(m, wrap_width)).sum();
     let turns: usize = tab.completed_turns.iter().map(|t| turn_height(t, wrap_width)).sum();
     let pending = pending_stream_height(tab, wrap_width);
+    // Welcome overlay sits above all chat content when `show_welcome_hint`
+    // is on; must be counted here or else any pushed message will scroll
+    // it off the top of the visible chat block.
+    let welcome = if app.show_welcome_hint
+        && app.state == crate::app::ConnectionState::Connected
+    {
+        1
+    } else {
+        0
+    };
 
-    (activity + messages + turns + pending).max(1).min(u16::MAX as usize) as u16
+    (activity + messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
 }
 
 fn pending_stream_height(tab: &crate::app::TabSession, wrap_width: usize) -> usize {
