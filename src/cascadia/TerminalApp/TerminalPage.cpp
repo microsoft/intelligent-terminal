@@ -4278,7 +4278,7 @@ namespace winrt::TerminalApp::implementation
     // other windows' panes (if any) are torn down implicitly when the
     // shared master they were attached to dies under `SharedWta::Restart()`
     // (helper pipes go EOF → helpers exit → ConPty death → those tabs
-    // show "process exited" panes until the user retoggles).
+    // show "process exited" panes until the user toggles them open again).
     //
     // Designed as a near-clone of the `_RebuildAgentStack` settings-change
     // path: tear down every agent pane in this window, then re-toggle the
@@ -4345,7 +4345,7 @@ namespace winrt::TerminalApp::implementation
 
         // Reopen the active tab's pane immediately so the user sees
         // continuity. Tabs that had a pane but aren't active need to be
-        // retoggled by the user — same UX as _RebuildAgentStack.
+        // toggled open again by the user — same UX as _RebuildAgentStack.
         _OpenOrReuseAgentPane(false, L"RestartAgent");
     }
 

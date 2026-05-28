@@ -87,7 +87,7 @@ commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 commands.help.summary: "Show this command list"
 commands.clear.summary: "Clear the chat scrollback (keeps session)"
 commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
-commands.restart.summary: "Restart agent: reset CLI and reopen the pane"
+commands.restart.summary: "Restart agent: reset CLI and reconnect"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 

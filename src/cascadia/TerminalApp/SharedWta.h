@@ -25,10 +25,13 @@
 // helpers can reconnect.
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <wil/resource.h>
 
@@ -148,9 +151,16 @@ namespace winrt::TerminalApp::implementation
         void _CleanupLocked();
 
         // Wait-callback bridge — `RegisterWaitForSingleObject` requires
-        // a free function. The thunk dispatches to the instance method.
+        // a free function. The `context` PVOID carries the PID this
+        // wait was registered for (not a `this` pointer — the singleton
+        // is reached via `Instance()`), so the callback can detect a
+        // stale registration after `_CleanupLocked` + `_SpawnLocked`
+        // replaced the master out from under it. Without that check,
+        // a delayed callback for the OLD master would null out the
+        // *new* master's `_process` / `_waitHandle` and silently break
+        // crash detection.
         static void CALLBACK _OnProcessExitedThunk(PVOID context, BOOLEAN timedOut);
-        void _OnProcessExited();
+        void _OnProcessExited(DWORD observedPid);
 
         mutable std::mutex _mtx;
         wil::unique_handle _process;
@@ -170,5 +180,14 @@ namespace winrt::TerminalApp::implementation
         // agent pane. Empty when no successful spawn has happened.
         std::wstring _cachedWtaPath;
         std::vector<std::wstring> _cachedExtraArgs;
+        // Wall-clock-ish stamp of the most recent successful spawn.
+        // Used by the no-arg `Restart()` to dedup the fan-out from
+        // `_dispatchRestartAgentStackToPage`: every open window's
+        // `OnRestartAgentStackRequested` calls `Restart()` on its own
+        // UI thread, and without dedup they sequentially kill each
+        // other's freshly-spawned masters. A short time window is
+        // enough because the fan-out runs in tight succession on
+        // adjacent UI-thread ticks.
+        std::optional<std::chrono::steady_clock::time_point> _lastRespawn;
     };
 }

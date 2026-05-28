@@ -2221,8 +2221,9 @@ pub async fn run_acp_client_over_pipe(
                 // that gets spawned will reconnect to the new master and
                 // the user sees a fresh session.
                 //
-                // Signal travels: helper → `wtcli send_event` →
-                // `IProtocolServer::SendEvent` (route `RestartAgentStack`) →
+                // Signal travels: helper → `wtcli publish` (see
+                // `app::send_wt_protocol_event`) → `IProtocolServer::SendEvent`
+                // (route `RestartAgentStack`) →
                 // `TerminalPage::OnRestartAgentStackRequested`.
                 tracing::info!(
                     target: "helper",

@@ -113,9 +113,24 @@ namespace winrt::TerminalApp::implementation
             return true;
         }
 
+        // Dedup the multi-window fan-out. `/restart` arrives via
+        // `_dispatchRestartAgentStackToPage`, which calls
+        // `OnRestartAgentStackRequested` (and thus `Restart()`) on EVERY
+        // window's UI thread. Without this guard, window B's Restart kills
+        // window A's just-spawned master, breaking the freshly-reopened
+        // helper in window A. 500 ms is comfortably larger than the typical
+        // UI-thread RunAsync hop (the 07:32 log showed a 240 ms gap between
+        // windows) and tiny compared to any human-driven legitimate "two
+        // restarts in a row".
+        if (_lastRespawn &&
+            std::chrono::steady_clock::now() - *_lastRespawn < std::chrono::milliseconds(500))
+        {
+            return true;
+        }
+
         // No cached args means we've never successfully spawned in this
         // process, which contradicts `_process.is_valid()` — defensive
-        // bail rather than _SpawnLocked'ing with empty wtaPath.
+        // bail rather than spawning with empty wtaPath.
         if (_cachedWtaPath.empty())
         {
             return false;
@@ -298,12 +313,18 @@ namespace winrt::TerminalApp::implementation
         // back to "no wta" so the next AcquirePane respawns. Set up
         // BEFORE ResumeThread so the wait is in place by the time
         // the child actually starts running.
+        //
+        // Context is the PID, not a `this` pointer. The callback
+        // dispatches via `Instance()` and uses the captured PID to
+        // detect a stale registration (see `_OnProcessExited`'s
+        // mismatch bail). Casting via `uintptr_t` is the canonical
+        // PVOID-as-integer round trip.
         HANDLE waitHandle = nullptr;
         if (!RegisterWaitForSingleObject(
                 &waitHandle,
                 process.get(),
                 &SharedWta::_OnProcessExitedThunk,
-                this,
+                reinterpret_cast<PVOID>(static_cast<uintptr_t>(pid)),
                 INFINITE,
                 WT_EXECUTEONLYONCE))
         {
@@ -329,6 +350,7 @@ namespace winrt::TerminalApp::implementation
         // leave the previous cache intact.
         _cachedWtaPath.assign(wtaPath);
         _cachedExtraArgs.assign(extraArgs.begin(), extraArgs.end());
+        _lastRespawn = std::chrono::steady_clock::now();
         return true;
     }
 
@@ -352,10 +374,15 @@ namespace winrt::TerminalApp::implementation
 
     void CALLBACK SharedWta::_OnProcessExitedThunk(PVOID context, BOOLEAN /*timedOut*/)
     {
-        static_cast<SharedWta*>(context)->_OnProcessExited();
+        // `context` is the PID at registration time, packed via
+        // `reinterpret_cast<PVOID>(static_cast<uintptr_t>(pid))`. Round
+        // trip back and let `_OnProcessExited` compare against the
+        // currently-registered PID to detect a stale callback.
+        const auto observedPid = static_cast<DWORD>(reinterpret_cast<uintptr_t>(context));
+        SharedWta::Instance()._OnProcessExited(observedPid);
     }
 
-    void SharedWta::_OnProcessExited()
+    void SharedWta::_OnProcessExited(DWORD observedPid)
     {
         // Runs on a Win32 thread-pool thread. wta has exited (crash,
         // OOM, manual kill). Clear our process record so the next
@@ -364,6 +391,19 @@ namespace winrt::TerminalApp::implementation
         // ReleasePane (which will then no-op the cleanup since
         // _process is already invalid).
         std::lock_guard lock{ _mtx };
+
+        // Stale-callback bail. `_CleanupLocked` only does a non-blocking
+        // `UnregisterWaitEx(nullptr)`, so a callback that was already
+        // queued for the OLD master can still fire after `_SpawnLocked`
+        // has installed a NEW master. The captured PID lets us tell:
+        // when it doesn't match the live `_pid`, the callback is for
+        // a previously-killed master and must not touch `_process` /
+        // `_waitHandle` (which now belong to the new master).
+        if (_pid != observedPid)
+        {
+            return;
+        }
+
         if (!_process.is_valid())
         {
             // Race: Release already cleaned up before our callback
