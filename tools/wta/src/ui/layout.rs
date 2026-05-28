@@ -50,6 +50,20 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         let activity_frame = app.activity_frame as usize;
         let cli_filter = app.current_cli_filter();
         let tab = app.tab_sessions.entry(tab_id).or_default();
+        // Show the loading shimmer while we're waiting on the very first
+        // `session/list` response from master. `open_agents_view_for_tab`
+        // primes snapshot to `Some(Vec::new())` *and* sets
+        // `refetch_in_flight = true`, so this flag is true exactly until
+        // master returns either a populated list (clears refetch_in_flight,
+        // shimmer turns into rows) or an empty list (clears
+        // refetch_in_flight, shimmer turns into the genuine empty state).
+        let awaiting_first_snapshot = tab.agents_view.refetch_in_flight
+            && tab
+                .agents_view
+                .snapshot
+                .as_deref()
+                .map(|s| s.is_empty())
+                .unwrap_or(false);
         agents_view::render(
             frame,
             area,
@@ -59,6 +73,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             load_state,
             activity_frame,
             cli_filter.as_ref(),
+            awaiting_first_snapshot,
         );
         return;
     }

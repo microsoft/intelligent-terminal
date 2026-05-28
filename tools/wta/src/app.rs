@@ -399,7 +399,60 @@ where
         .get("agent_session_id")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let key = reg.resolve_or_synthesize_key(asid, pane_session_id);
+    let mut key = reg.resolve_or_synthesize_key(asid, pane_session_id);
+    // Some agent CLIs fire hooks
+    // without populating either `agent_session_id` (in the JSON
+    // payload) or `WT_SESSION` (in the env of the hook subprocess).
+    // The reproducible case is Copilot CLI's `Notification` hook,
+    // which fires when the agent needs user input (e.g. "approve this
+    // command?"). Without both inputs, `resolve_or_synthesize_key`
+    // hands back `pane:<focused-pane-guid>` — a key that no real
+    // session row owns. The reducer then no-ops, AND the synthetic
+    // key gates the event out of the master publish path (see
+    // `key_is_synthetic` below), so master never learns the row is
+    // now waiting for input. Net effect: the F2 row stays at
+    // `Working` ("Active") from the prior `tool.starting` and never
+    // flips to `Attention` ("Waiting for input").
+    //
+    // The fallback is intentionally narrow:
+    //   * Only triggers when the resolved key is synthetic AND the
+    //     event carried no agent_session_id at all (so we don't paper
+    //     over genuinely unknown session ids the agent DID provide).
+    //   * Only triggers for the events that observably exhibit the
+    //     missing-id problem in the wild — limiting blast radius if a
+    //     CLI starts emitting hooks for sessions WTA truly doesn't
+    //     know about.
+    //   * Filters by `cli_source` so a sessionless Copilot event can't
+    //     accidentally land on the user's Claude row.
+    //   * `most_recent_live_session_for_cli` rejects `Unknown` cli
+    //     hints, so any event without a trustworthy CLI label still
+    //     falls through to the synthetic key.
+    let mut key_is_synthetic = key.starts_with("pane:");
+    if key_is_synthetic && asid.is_empty() {
+        let needs_fallback = matches!(
+            event,
+            "agent.notification"
+                | "agent.tool.starting"
+                | "agent.tool.completed"
+                | "agent.tool.finished"
+                | "agent.tool.failed"
+        );
+        if needs_fallback {
+            if let Some(fallback) = reg.most_recent_live_session_for_cli(&cli_source) {
+                tracing::info!(
+                    target: "agent_route",
+                    event = %event,
+                    cli_source = ?cli_source,
+                    pane_session_id = %pane_session_id,
+                    from = %key,
+                    to = %fallback,
+                    "sessionless hook: falling back to most-recently-active live session for cli",
+                );
+                key = fallback;
+                key_is_synthetic = false;
+            }
+        }
+    }
     let key_for_refresh = key.clone();
     tracing::info!(
         target: "agent_route",
@@ -434,15 +487,16 @@ where
     };
     // A `pane:<guid>` key means we couldn't resolve a real ACP session id
     // from the event payload (broken hook, race between hook arrival and
-    // `new_session` reaching master, etc.). Keep the local placeholder for
-    // helper bookkeeping (so `is_agent_pane(pane_id)` works for the OSC
-    // 133;A handler) but DO NOT publish these to master — master only ever
+    // `new_session` reaching master, etc.) AND the cli-source fallback
+    // above (`most_recent_live_session_for_cli`) didn't find a live
+    // session to attach to. Keep the local placeholder for helper
+    // bookkeeping (so `is_agent_pane(pane_id)` works for the OSC 133;A
+    // handler) but DO NOT publish these to master — master only ever
     // learns about real ACP sessions via `new_session`/`load_session`,
     // and feeding it synthetic rows produces duplicate F2 entries that
     // shadow the real session (one with the real sid, one with `pane:`
     // key, both pointing at the same agent — see PR B debug session log
     // around 2026-05-28T00:30 for the user-visible repro).
-    let key_is_synthetic = key.starts_with("pane:");
     let needs_synthetic_start = event != "agent.session.started" && !session_known;
     if needs_synthetic_start {
         let synthetic_event = SessionEvent::SessionStarted {
@@ -8467,6 +8521,175 @@ mod tests {
             true,
             false,
         )
+    }
+
+    /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event
+    /// arrives with neither `agent_session_id` nor a `pane_session_id`
+    /// resolving to a live session — exactly the shape Copilot CLI's
+    /// `Notification` hook emits (no `session_id` field in the JSON
+    /// payload AND no `WT_SESSION` inherited by the hook subprocess).
+    ///
+    /// Before the fix, `resolve_or_synthesize_key` produces `pane:<x>`,
+    /// the reducer no-ops (synthetic session unknown) AND the synthetic
+    /// key gates the event out of the master publish path, so the row
+    /// stays at `Working` from the prior `tool.starting`.
+    ///
+    /// After the fix, the routing layer falls back to the most-recently-
+    /// active live session for the same `cli_source` — the row flips to
+    /// `Attention` locally AND a real-key event is published to master.
+    #[test]
+    fn sessionless_notification_falls_back_to_recent_live_cli_session() {
+        use crate::agent_sessions::{
+            AgentSessionRegistry, AgentStatus, CliSource, SessionEvent,
+        };
+        let mut reg = AgentSessionRegistry::new();
+        // One live Copilot session bound to a known pane.
+        reg.apply(SessionEvent::SessionStarted {
+            key: "real-copilot-sid".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "11111111-1111-1111-1111-111111111111".into(),
+            cwd: std::path::PathBuf::from("/work"),
+            title: "live copilot".into(),
+        });
+        reg.take_dirty();
+
+        // Notification arrives with an UNRELATED active-pane GUID
+        // (user focused on a different pane) and no agent_session_id —
+        // mirrors the WT_SESSION-less Copilot hook trace.
+        let unrelated_pane = "99999999-9999-9999-9999-999999999999";
+        let params = json!({
+            "event": "agent.notification",
+            "cli_source": "copilot",
+            "agent_session_id": "",  // missing — the bug shape
+            "payload": { "message": "approve: rm -rf foo" }
+        });
+
+        let mut published: Vec<SessionEvent> = Vec::new();
+        route_agent_event_to_registry_with_hook_sink(
+            &mut reg,
+            unrelated_pane,
+            &params,
+            |ev| published.push(ev),
+        );
+
+        // Local reducer flipped the real row to Attention.
+        let s = reg.get(&"real-copilot-sid".to_string()).expect("row preserved");
+        assert_eq!(
+            s.status,
+            AgentStatus::Attention,
+            "fallback must route the Notification to the live Copilot row",
+        );
+        assert_eq!(s.attention_reason.as_deref(), Some("approve: rm -rf foo"));
+
+        // Master got a real-key (not synthetic `pane:`) Notification.
+        let notif_to_master = published.iter().find_map(|ev| match ev {
+            SessionEvent::Notification { key, .. } => Some(key.clone()),
+            _ => None,
+        });
+        assert_eq!(
+            notif_to_master.as_deref(),
+            Some("real-copilot-sid"),
+            "Notification must be published to master keyed by the real session id; \
+             synthetic `pane:` keys are dropped from the publish path",
+        );
+        assert!(
+            !published.iter().any(|ev| matches!(
+                ev,
+                SessionEvent::Notification { key, .. } if key.starts_with("pane:")
+            )),
+            "no synthetic-key Notification should leak to master",
+        );
+    }
+
+    /// Counterpart guard: when the event carries a real `agent_session_id`,
+    /// the fallback must NOT replace it — the explicit session id always
+    /// wins over the heuristic.
+    #[test]
+    fn notification_with_real_session_id_skips_fallback() {
+        use crate::agent_sessions::{
+            AgentSessionRegistry, AgentStatus, CliSource, SessionEvent,
+        };
+        let mut reg = AgentSessionRegistry::new();
+        // Two Copilot sessions; `target` is the explicit one in the hook,
+        // `other` is the most-recently-active and would win the fallback.
+        reg.apply(SessionEvent::SessionStarted {
+            key: "target".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".into(),
+            cwd: std::path::PathBuf::from("/work"),
+            title: "target".into(),
+        });
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        reg.apply(SessionEvent::SessionStarted {
+            key: "other".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb".into(),
+            cwd: std::path::PathBuf::from("/work"),
+            title: "other".into(),
+        });
+        reg.take_dirty();
+
+        let params = json!({
+            "event": "agent.notification",
+            "cli_source": "copilot",
+            "agent_session_id": "target",
+            "payload": { "message": "explicit" }
+        });
+        let unrelated_pane = "99999999-9999-9999-9999-999999999999";
+        route_agent_event_to_registry_with_hook_sink(
+            &mut reg, unrelated_pane, &params, |_| {},
+        );
+
+        assert_eq!(
+            reg.get(&"target".to_string()).unwrap().status,
+            AgentStatus::Attention,
+            "explicit session id must win over the fallback heuristic",
+        );
+        assert_ne!(
+            reg.get(&"other".to_string()).unwrap().status,
+            AgentStatus::Attention,
+            "fallback target must NOT be touched when explicit sid was supplied",
+        );
+    }
+
+    /// The fallback must refuse to act when `cli_source` is `Unknown`
+    /// (no trustworthy CLI hint). Otherwise a sessionless event from an
+    /// unknown source could land on whichever live session happened to be
+    /// the most recent across ALL CLIs.
+    #[test]
+    fn sessionless_notification_with_unknown_cli_does_not_fall_back() {
+        use crate::agent_sessions::{
+            AgentSessionRegistry, AgentStatus, CliSource, SessionEvent,
+        };
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: "copilot".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".into(),
+            cwd: std::path::PathBuf::from("/work"),
+            title: "live".into(),
+        });
+
+        // No cli_source field at all → CliSource::Unknown — fallback
+        // must NOT pick the only live row.
+        let params = json!({
+            "event": "agent.notification",
+            "agent_session_id": "",
+            "payload": { "message": "approve?" }
+        });
+        let _ = route_agent_event_to_registry_with_hook_sink(
+            &mut reg,
+            "99999999-9999-9999-9999-999999999999",
+            &params,
+            |_| {},
+        );
+
+        assert_ne!(
+            reg.get(&"copilot".to_string()).unwrap().status,
+            AgentStatus::Attention,
+            "fallback must require a trustworthy cli_source hint to avoid \
+             routing sessionless events into unrelated CLIs",
+        );
     }
 
     #[test]

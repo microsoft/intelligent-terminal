@@ -665,6 +665,41 @@ impl AgentSessionRegistry {
         self.sessions.contains_key(key)
     }
 
+    /// Returns the [`AgentKey`] of the most-recently-active *live* session
+    /// (status is `Idle` / `Working` / `Attention` / `Error`) whose
+    /// [`CliSource`] matches `cli`. Used as a last-resort fallback by
+    /// `route_agent_event_to_registry_with_hook_sink` when a hook event
+    /// arrives carrying neither an `agent_session_id` *nor* a
+    /// `pane_session_id` that resolves to a known live session.
+    ///
+    /// The motivating case is Copilot CLI's `Notification` hook (e.g.
+    /// "approve this command?"), which observably fires without a
+    /// `session_id` field in its JSON payload AND from a subprocess that
+    /// does not inherit `WT_SESSION`. Without this fallback, the event
+    /// synthesises a `pane:<arbitrary-pane-guid>` key, the reducer
+    /// no-ops because no session matches, AND the event never reaches
+    /// master (the routing layer drops synthetic keys to avoid duplicate
+    /// rows). Net effect: the row stays at `Working` from the prior
+    /// `tool.starting` and never flips to `Attention`, so F2 shows
+    /// "Active" instead of "Waiting for input".
+    ///
+    /// Returns `None` for [`CliSource::Unknown`] — we never want to
+    /// route a sessionless event into an unrelated session just because
+    /// it's the only live one. The narrow Copilot-style fallback is
+    /// keyed on a CLI hint we trust.
+    pub fn most_recent_live_session_for_cli(&self, cli: &CliSource) -> Option<AgentKey> {
+        if matches!(cli, CliSource::Unknown(_)) {
+            return None;
+        }
+        self.sessions
+            .iter()
+            .filter(|(_, s)| {
+                &s.cli_source == cli && s.liveness() == LivenessState::Live
+            })
+            .max_by_key(|(_, s)| s.last_activity_at)
+            .map(|(k, _)| k.clone())
+    }
+
     /// Read-only borrow of the [`AgentSession`] for `key`, or `None` if
     /// the key isn't tracked. Used by post-apply hooks in the routing
     /// layer that need to inspect the session's `cli_source` / `status`
@@ -2537,5 +2572,139 @@ mod tests {
         reg.apply_master_session_ended("never-seen");
         assert!(reg.sessions.is_empty());
         assert!(!reg.take_dirty());
+    }
+
+    #[test]
+    fn most_recent_live_session_for_cli_returns_none_for_empty_registry() {
+        let reg = AgentSessionRegistry::new();
+        assert_eq!(reg.most_recent_live_session_for_cli(&CliSource::Copilot), None);
+    }
+
+    #[test]
+    fn most_recent_live_session_for_cli_returns_none_for_unknown_cli() {
+        // CliSource::Unknown is a refusal sentinel — we should never
+        // route a sessionless event into "the only live session" just
+        // because we couldn't identify which CLI emitted it.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Unknown(String::new())),
+            None,
+            "Unknown cli_source must never resolve to a fallback",
+        );
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Unknown("foo".into())),
+            None,
+        );
+    }
+
+    #[test]
+    fn most_recent_live_session_for_cli_picks_matching_cli_only() {
+        // Two live sessions for different CLIs — picking the most recent
+        // must still match on cli_source so a sessionless Copilot
+        // notification can't land on the Claude row just because Claude
+        // was touched more recently.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("copilot-old"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p1"), cwd: PathBuf::from("/x"),
+            title: "copilot".into(),
+        });
+        // Force a measurable activity gap so the later session truly
+        // sorts after the earlier one (clock resolution can otherwise
+        // tie the two on fast machines).
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("claude-new"), cli_source: CliSource::Claude,
+            pane_session_id: pane("p2"), cwd: PathBuf::from("/y"),
+            title: "claude".into(),
+        });
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Copilot),
+            Some(k("copilot-old")),
+            "fallback must filter by cli_source, not just pick the freshest row",
+        );
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Claude),
+            Some(k("claude-new")),
+        );
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Gemini),
+            None,
+        );
+    }
+
+    #[test]
+    fn most_recent_live_session_for_cli_picks_freshest_matching() {
+        // Two live sessions for the same CLI — the one whose
+        // last_activity_at is most recent wins. Mirrors the user
+        // scenario of having one stale Copilot pane and one active one;
+        // a sessionless notification should land on the active one.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("stale"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p1"), cwd: PathBuf::from("/x"),
+            title: "stale".into(),
+        });
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("fresh"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p2"), cwd: PathBuf::from("/y"),
+            title: "fresh".into(),
+        });
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        // Touch `stale` last — should still lose to `fresh` because
+        // ToolStarting bumps last_activity_at, and the second
+        // SessionStarted on `fresh` set its last_activity_at, then we
+        // touch stale, making it the freshest now.
+        reg.apply(SessionEvent::ToolStarting {
+            key: k("stale"), tool_name: "bash".into(),
+        });
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Copilot),
+            Some(k("stale")),
+            "ToolStarting bumps last_activity_at, so 'stale' is now freshest",
+        );
+    }
+
+    #[test]
+    fn most_recent_live_session_for_cli_skips_ended_and_historical() {
+        // Ended/Historical rows must NOT be candidates — the fallback is
+        // for routing a *live* event to the right *live* session, and
+        // resurrecting a dead session via a stray notification would be
+        // worse than no-op (it would resurface a terminated row in F2
+        // with bogus Attention state).
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("live"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p1"), cwd: PathBuf::from("/x"),
+            title: "live".into(),
+        });
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("ended"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p2"), cwd: PathBuf::from("/y"),
+            title: "ended".into(),
+        });
+        // Drive `ended` to a terminal state.
+        reg.sessions.get_mut("ended").unwrap().status = AgentStatus::Ended;
+
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Copilot),
+            Some(k("live")),
+            "Ended rows must be ineligible for the sessionless-event fallback",
+        );
+
+        // Now flip the only live row to Historical too — fallback must
+        // return None rather than picking a non-live row.
+        reg.sessions.get_mut("live").unwrap().status = AgentStatus::Historical;
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Copilot),
+            None,
+            "Historical rows must also be ineligible — no live target ⇒ no fallback",
+        );
     }
 }

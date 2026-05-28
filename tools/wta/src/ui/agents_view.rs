@@ -33,6 +33,16 @@ pub fn render(
     history_load_state: HistoryLoadState,
     activity_frame: usize,
     cli_filter: Option<&CliSource>,
+    // True iff the F2 view is waiting on its first `session/list`
+    // snapshot from master (snapshot is currently empty AND a refetch
+    // request is in flight). Without this signal we have no way to
+    // distinguish "view just opened, master hasn't responded yet" from
+    // "view loaded, there really are zero sessions" — `open_agents_view`
+    // primes `snapshot = Some(Vec::new())` so the historical
+    // `!snapshot.is_some()` heuristic for the loading shimmer is always
+    // false after PR #73. Caller (ui::layout) computes this from
+    // `tab.agents_view.refetch_in_flight && snapshot.is_empty()`.
+    awaiting_first_snapshot: bool,
 ) {
     // No in-TUI header: the "Agent sessions" title lives in the C++ agent
     // bar above this pane (AgentPaneContent::SetSessionsView), so we render
@@ -134,7 +144,21 @@ pub fn render(
     // with a single shimmer-styled loading row. Showing live rows alongside
     // a dim "loading…" hint led users to think the list was complete (only
     // the 1 live session) and dismiss the view before the scan finished.
-    if !using_snapshot && history_load_state == HistoryLoadState::Loading {
+    //
+    // Two distinct "we don't have any rows to show yet" sources trigger
+    // the shimmer:
+    //   * Legacy `!using_snapshot` path: registry-driven render with the
+    //     on-disk history scan still in progress (pre-PR-#73 behaviour,
+    //     kept for completeness — `using_snapshot` is now always true
+    //     when the view is open).
+    //   * Snapshot path: F2 was just opened, master hasn't yet replied
+    //     to our `session/list` refetch, and the placeholder snapshot
+    //     is still the empty Vec primed by `open_agents_view_for_tab`.
+    //     Without this branch the user sees a blank list (no shimmer,
+    //     no rows) and can't tell loading from "really empty".
+    let snapshot_loading = awaiting_first_snapshot && sorted.is_empty();
+    let legacy_loading = !using_snapshot && history_load_state == HistoryLoadState::Loading;
+    if snapshot_loading || legacy_loading {
         render_left_bar(f, area.x, list_area, None);
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
         let loading_label = t!("agents.loading").into_owned();
