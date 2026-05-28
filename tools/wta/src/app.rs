@@ -8724,7 +8724,7 @@ mod tests {
     }
 
     /// The fallback must refuse to act when `cli_source` is `Unknown`
-    /// (no trustworthy CLI hint). Otherwise a sessionless event from an
+    /// (no trustworthy CLI hint); otherwise a sessionless event from an
     /// unknown source could land on whichever live session happened to be
     /// the most recent across ALL CLIs.
     #[test]
