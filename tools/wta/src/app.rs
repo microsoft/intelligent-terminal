@@ -269,11 +269,6 @@ pub enum ChatMessage {
     /// codes, OSC sequences). Distinct from `Error` so we can theme it
     /// differently and skip autofix wiring.
     AgentEvent(String),
-    /// First-run welcome card ("Welcome to Intelligent Terminal!"). Pushed
-    /// once, gated by `welcome_shown_in_state()` so it only appears on the
-    /// first-ever agent-pane startup. Treated as a normal message after
-    /// that — turn boundaries clear it like any other.
-    Welcome,
     /// "AI can make mistake" disclaimer. Pushed on every agent-pane startup,
     /// no persistence gating — getting cleared by the next turn is fine,
     /// the next pane startup re-pushes it.
@@ -3792,12 +3787,11 @@ impl App {
                     self.mode = AppMode::Chat;
                     self.setup = None;
                 }
-                // Welcome card is gated by the persisted `agentWelcomeShown`
-                // flag — first-ever startup only. The `AI can make mistake`
-                // disclaimer is unconditional: pushed on every agent-pane
-                // startup, fine to be cleared by a subsequent turn.
-                let push_welcome = !welcome_shown_in_state();
-                if push_welcome {
+                // Show welcome hint on first-ever connect (persisted in state.json).
+                // The `AI can make mistake` disclaimer is unconditional —
+                // pushed as a ChatMessage on every agent-pane startup, fine
+                // to be cleared by a subsequent turn.
+                if !welcome_shown_in_state() {
                     self.show_welcome_hint = true;
                 }
                 // Bind the startup session to whichever tab we own.
@@ -3810,27 +3804,17 @@ impl App {
                 let tab = self.tab_mut(&bind_tab);
                 tab.session_id = Some(session_id);
                 let has_real_content = !tab.completed_turns.is_empty()
-                    || tab.messages.iter().any(|m| {
-                        !matches!(m, ChatMessage::Welcome | ChatMessage::Disclaimer)
-                    });
-                if !has_real_content {
-                    let mut insert_at = 0;
-                    if push_welcome
-                        && !tab
-                            .messages
-                            .iter()
-                            .any(|m| matches!(m, ChatMessage::Welcome))
-                    {
-                        tab.messages.insert(insert_at, ChatMessage::Welcome);
-                        insert_at += 1;
-                    }
-                    if !tab
+                    || tab
+                        .messages
+                        .iter()
+                        .any(|m| !matches!(m, ChatMessage::Disclaimer));
+                if !has_real_content
+                    && !tab
                         .messages
                         .iter()
                         .any(|m| matches!(m, ChatMessage::Disclaimer))
-                    {
-                        tab.messages.insert(insert_at, ChatMessage::Disclaimer);
-                    }
+                {
+                    tab.messages.insert(0, ChatMessage::Disclaimer);
                 }
                 self.publish_agent_status();
             }
