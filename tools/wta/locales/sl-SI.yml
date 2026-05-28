@@ -70,7 +70,7 @@ commands.help_close_hint: "  Esc        Zapri to pomoč"  # {Locked="Esc"}
 commands.help.summary: "Prikaži ta seznam ukazov"
 commands.clear.summary: "Počisti zgodovino klepeta (seja se ohrani)"
 commands.new.summary: "Začni novo sejo ACP (zavrže zgodovino)"  # {Locked="ACP"}
-commands.restart.summary: "Ponovno poveži: končaj proces agenta in ga znova zaženi"
+commands.restart.summary: "Ponovno zaženi agenta"
 commands.stop.summary: "Prekliči poziv v teku"
 commands.sessions.summary: "Odpri izbirnik preteklih sej (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────

@@ -76,7 +76,7 @@ commands.help_close_hint: "  Esc        بۇ ياردەمنى تاقاش"  # {Lo
 commands.help.summary: "بۇ بۇيرۇق تىزىملىكىنى كۆرسىتىش"
 commands.clear.summary: "سۆھبەتنىڭ سىيرىلىش تارىخىنى تازىلاش (سېسىيەنى ساقلايدۇ)"
 commands.new.summary: "يېڭى ACP سېسىيەسىنى باشلاش (تارىخنى تاشلايدۇ)"  # {Locked="ACP"}
-commands.restart.summary: "قايتا باغلىنىش: ئاگېنت جەريانىنى توختىتىپ قايتا قوزغىتىش"
+commands.restart.summary: "ۋاكالەتچىنى قايتا قوزغات"
 commands.stop.summary: "ئىجرا قىلىنىۋاتقان سوراقنى بىكار قىلىش"
 commands.sessions.summary: "تارىخىي سېسىيەلەر تاللىغۇچىنى ئېچىش (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 

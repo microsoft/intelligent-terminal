@@ -70,7 +70,7 @@ commands.help_close_hint: "  Esc        Zatvoriť túto pomoc"  # {Locked="Esc"}
 commands.help.summary: "Zobraziť tento zoznam príkazov"
 commands.clear.summary: "Vymazať históriu chatu (relácia zostane zachovaná)"
 commands.new.summary: "Spustiť novú reláciu ACP (zahodí históriu)"  # {Locked="ACP"}
-commands.restart.summary: "Znova sa pripojiť: ukončiť proces agenta a znova ho spustiť"
+commands.restart.summary: "Reštartovať agenta"
 commands.stop.summary: "Zrušiť prebiehajúcu výzvu"
 commands.sessions.summary: "Otvoriť výber historických relácií (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────

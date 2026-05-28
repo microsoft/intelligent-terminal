@@ -73,7 +73,7 @@ commands.help_close_hint: "  Esc        إغلاق هذه المساعدة"  # {
 commands.help.summary: "إظهار قائمة الأوامر هذه"
 commands.clear.summary: "مسح سجل تمرير الدردشة (مع الاحتفاظ بالجلسة)"
 commands.new.summary: "بدء جلسة ACP جديدة (حذف السجل)"  # {Locked="ACP"}
-commands.restart.summary: "إعادة الاتصال: إنهاء عملية عامل الذكاء الاصطناعي وإعادة تشغيلها"
+commands.restart.summary: "إعادة تشغيل العميل"
 commands.stop.summary: "إلغاء الأمر قيد التنفيذ"
 commands.sessions.summary: "فتح منتقي الجلسات التاريخية (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 

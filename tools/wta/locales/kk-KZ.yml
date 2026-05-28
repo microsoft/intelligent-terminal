@@ -73,7 +73,7 @@ commands.help_close_hint: "  Esc        Бұл көмекті жабу"  # {Lock
 commands.help.summary: "Осы командалар тізімін көрсету"
 commands.clear.summary: "Чаттың айналдыру журналын тазалау (сеансты сақтайды)"
 commands.new.summary: "Жаңа ACP сеансын бастау (тарихты жояды)"  # {Locked="ACP"}
-commands.restart.summary: "Қайта қосылу: агент процесін аяқтап, қайта іске қосу"
+commands.restart.summary: "Агентті қайта іске қосу"
 commands.stop.summary: "Орындалып жатқан сұраудан бас тарту"
 commands.sessions.summary: "Тарихи сеанстар таңдағышын ашу (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 

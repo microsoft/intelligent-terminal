@@ -73,7 +73,7 @@ commands.help_close_hint: "  Esc        ਇਹ ਮਦਦ ਬੰਦ ਕਰੋ"  #
 commands.help.summary: "ਇਹ ਕਮਾਂਡ ਸੂਚੀ ਦਿਖਾਓ"
 commands.clear.summary: "ਚੈਟ ਸਕ੍ਰੋਲਬੈਕ ਸਾਫ਼ ਕਰੋ (ਸੈਸ਼ਨ ਰੱਖਦਾ ਹੈ)"
 commands.new.summary: "ਨਵਾਂ ACP ਸੈਸ਼ਨ ਸ਼ੁਰੂ ਕਰੋ (ਇਤਿਹਾਸ ਹਟਾਉਂਦਾ ਹੈ)"  # {Locked="ACP"}
-commands.restart.summary: "ਮੁੜ ਕਨੈਕਟ ਕਰੋ: ਏਜੰਟ ਪ੍ਰਕਿਰਿਆ ਨੂੰ ਖਤਮ ਕਰਕੇ ਮੁੜ ਸ਼ੁਰੂ ਕਰੋ"
+commands.restart.summary: "ਏਜੰਟ ਮੁੜ-ਚਾਲੂ ਕਰੋ"
 commands.stop.summary: "ਚੱਲ ਰਹੇ ਪ੍ਰਾਂਪਟ ਨੂੰ ਰੱਦ ਕਰੋ"
 commands.sessions.summary: "ਇਤਿਹਾਸਕ ਸੈਸ਼ਨ ਪਿਕਰ ਖੋਲ੍ਹੋ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 

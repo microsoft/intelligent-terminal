@@ -70,7 +70,7 @@ commands.help_close_hint: "  Esc        Закрыть эту справку"  #
 commands.help.summary: "Показать этот список команд"
 commands.clear.summary: "Очистить историю чата (сеанс сохраняется)"
 commands.new.summary: "Начать новый сеанс ACP (история будет удалена)"  # {Locked="ACP"}
-commands.restart.summary: "Переподключиться: завершить процесс агента и запустить снова"
+commands.restart.summary: "Перезапустить агент"
 commands.stop.summary: "Отменить выполняющийся запрос"
 commands.sessions.summary: "Открыть выбор прошлых сеансов (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Панель рекомендаций (src/ui/recommendations.rs) ───────────────────────────────────

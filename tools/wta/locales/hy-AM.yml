@@ -80,7 +80,7 @@ commands.help_close_hint: "  Esc        Փակել օգնությունը"  # {L
 commands.help.summary: "Ցուցադրել այս հրամանների ցանկը"
 commands.clear.summary: "Մաքրել զրույցի ոլորման պատմությունը (նիստը պահպանվում է)"
 commands.new.summary: "Սկսել նոր ACP նիստ (ջնջել պատմությունը)"  # {Locked="ACP"}
-commands.restart.summary: "Վերամիացում․ ավարտել ագենտի գործընթացը և նորից գործարկել"
+commands.restart.summary: "Վերագործարկել ագենտը"
 commands.stop.summary: "Չեղարկել ընթացիկ հարցումը"
 commands.sessions.summary: "Բացել պատմական նիստերի ընտրիչը (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 

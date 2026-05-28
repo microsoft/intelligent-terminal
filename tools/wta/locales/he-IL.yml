@@ -73,7 +73,7 @@ commands.help_close_hint: "  Esc        סגור עזרה זו"  # {Locked="Esc"
 commands.help.summary: "הצג את רשימת הפקודות הזו"
 commands.clear.summary: "נקה את היסטוריית הגלילה של הצ׳אט (משאיר את ההפעלה)"
 commands.new.summary: "התחל הפעלת ACP חדשה (מוחק היסטוריה)"  # {Locked="ACP"}
-commands.restart.summary: "התחבר מחדש: סיים את תהליך הסוכן והפעל מחדש"
+commands.restart.summary: "הפעל מחדש את הסוכן"
 commands.stop.summary: "בטל את הבקשה שמתבצעת"
 commands.sessions.summary: "פתח את בורר ההפעלות ההיסטוריות (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 
