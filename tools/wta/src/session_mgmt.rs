@@ -78,8 +78,7 @@ pub enum NotResumableReason {
     /// Wanted `ResumeInAgentPane` but the connected agent didn't
     /// advertise the `loadSession` capability.
     LoadSessionNotSupported,
-    /// Wanted `ResumeCliFlag` but the CLI has no `--resume`-style flag
-    /// (Codex today).
+    /// Wanted `ResumeCliFlag` but the CLI has no `--resume`-style flag.
     CliHasNoResumeFlag,
     /// `CliSource::Unknown(_)` — we don't know how to spawn the CLI, so
     /// neither dead-row path applies.
@@ -123,7 +122,8 @@ pub struct RowSnapshot {
     /// ACP) advertised the `loadSession` capability at initialize.
     pub load_session_supported: bool,
     /// Whether the CLI has a `--resume`-style flag. True for
-    /// Claude/Copilot/Gemini, false for Codex.
+    /// Claude/Copilot/Codex/Gemini (all four CLIs accept some form of
+    /// `--resume`/`resume <id>` re-attach surface).
     pub cli_supports_resume_flag: bool,
 }
 

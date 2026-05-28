@@ -2151,8 +2151,9 @@ impl App {
             decide_enter_action, liveness_from_status, EnterAction, NotResumableReason, RowSnapshot,
         };
         // Ambient: load_session capability is set during ACP init;
-        // resume-flag support is a per-CLI profile constant (false for
-        // Codex today; true for Claude/Copilot/Gemini).
+        // resume-flag support is a per-CLI profile constant — true for
+        // Claude / Codex / Copilot / Gemini (all four CLIs accept some
+        // form of `--resume`/`resume <id>` re-attach surface).
         let cli_supports_resume_flag = match s.cli_source {
             crate::agent_sessions::CliSource::Unknown(_) => false,
             ref known => {
@@ -2339,7 +2340,7 @@ impl App {
     /// Open a new WT tab whose primary pane runs `<cli> <resume_flag>
     /// <session_key>` to rehydrate a Historical/Ended agent session from
     /// the CLI's on-disk session store. Silent no-op for CLIs without a
-    /// resume flag (Codex today) or unknown CLI sources.
+    /// resume flag or unknown CLI sources.
     ///
     /// Flow:
     ///   1. Apply `ResumeDispatched` synchronously so a rapid second Enter

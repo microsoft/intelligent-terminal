@@ -123,7 +123,10 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         install_hint: "npm install -g @openai/codex",
         install_url: "https://github.com/openai/codex",
         auth_check_command: "",
-        resume_flag: "",
+        // `codex resume <session-id>` is a subcommand (not a flag);
+        // the command-synthesis template `format!("{cli} {flag} {key}")`
+        // produces `codex resume <uuid>` which Codex CLI accepts.
+        resume_flag: "resume",
         auth_hint: "Run: codex auth (or set OPENAI_API_KEY)",
     },
     AgentProfile {
@@ -501,5 +504,16 @@ mod tests {
         assert_eq!(resolve_agent_id_from_cmd("   "),        "unknown");
         assert_eq!(resolve_agent_id_from_cmd("npx"),        "unknown");
         assert_eq!(resolve_agent_id_from_cmd("my-bot --x"), "unknown");
+    }
+
+    #[test]
+    fn codex_profile_advertises_resume_support() {
+        let profile = lookup_profile_by_id("codex");
+        assert_eq!(
+            profile.resume_flag, "resume",
+            "Codex CLI uses `codex resume <id>` (subcommand form, no dash). \
+             An empty resume_flag would make session_mgmt classify Codex rows \
+             as Class B (not-resumable) and silently break F2 Enter."
+        );
     }
 }
