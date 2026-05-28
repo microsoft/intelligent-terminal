@@ -251,7 +251,7 @@
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
-    <value>Xato aniqlandi. AI agentdan tashxis qoʻyish va tuzatishni taklif qilishni soʻrash uchun {0} tugmasini bosing.</value>
+    <value>Xato aniqlandi. AI agentdan tashxis qoʻyish va tuzatishni taklif qilishni soʻrash uchun {0} tugmasini cherting yoki bosing.</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
