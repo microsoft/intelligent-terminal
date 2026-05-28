@@ -45,6 +45,7 @@ auth.hint_footer: "  اضغط Enter لتسجيل الدخول، Esc للرجوع
 chat.activity_thinking: "جارٍ التفكير…"
 # {Locked="Intelligent Terminal"} - اسم المنتج، لا تترجمه
 chat.welcome_title: "مرحبًا بك في Intelligent Terminal!"
+chat.welcome_disclaimer: "يمكن أن يرتكب AI أخطاء"
 chat.plan_header: "الخطة:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

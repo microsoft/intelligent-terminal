@@ -45,6 +45,7 @@ auth.hint_footer: "  Stiskněte Enter pro přihlášení, Esc pro návrat"  # {L
 chat.activity_thinking: "Přemýšlím..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Vítejte v Intelligent Terminal!"
+chat.welcome_disclaimer: "AI se může mýlit"
 chat.plan_header: "Plán:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

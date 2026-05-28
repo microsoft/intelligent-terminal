@@ -45,6 +45,7 @@ auth.hint_footer: "  Enter nit'iy yaykunapaq, Esc kutirinapaq"  # {Locked="Enter
 chat.activity_thinking: "Yuyachkan..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Allillanchu Intelligent Terminal!"
+chat.welcome_disclaimer: "AI pantayta atin"
 chat.plan_header: "Ruwana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -45,6 +45,7 @@ auth.hint_footer: "  Enter كىرىش ئۈچۈن, Esc قايتىش ئۈچۈن ب
 chat.activity_thinking: "ئويلىنىۋاتىدۇ…"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Intelligent Terminal ھە خوش كەلدىڭىز!"
+chat.welcome_disclaimer: "AI خاتالىق قىلىشى مۇمكىن"
 chat.plan_header: "پىلان:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

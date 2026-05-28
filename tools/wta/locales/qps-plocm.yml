@@ -45,6 +45,7 @@ auth.hint_footer: "[!!   Pr_ess Enter to sign in, Esc to go back !!]"  # {Locked
 chat.activity_thinking: "[!! Thi_nking... !!]"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "[!! Welco_me to Intelligent Terminal! !!]"
+chat.welcome_disclaimer: "[!! AI ca_n make mistake !!]"
 chat.plan_header: "[!! Pla_n: !!]"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -45,6 +45,7 @@ auth.hint_footer: "  Керү өчен Enter, артка кайту өчен Esc
 chat.activity_thinking: "Уйлыйм…"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Intelligent Terminal-га рәхим итегез!"
+chat.welcome_disclaimer: "AI хата ясый ала"
 chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

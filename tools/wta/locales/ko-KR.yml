@@ -41,6 +41,7 @@ auth.hint_footer: "  Enter를 눌러 로그인, Esc를 눌러 뒤로 가기"  # 
 # ── 채팅 보기 (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "생각 중…"
 chat.welcome_title: "지능형 터미널에 오신 것을 환영합니다!"
+chat.welcome_disclaimer: "AI는 실수할 수 있습니다"
 chat.plan_header: "계획:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -45,6 +45,7 @@ auth.hint_footer: "  Tryk Enter for at logge ind, Esc for at gå tilbage"  # {Lo
 chat.activity_thinking: "Tænker..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Velkommen til Intelligent Terminal!"
+chat.welcome_disclaimer: "AI kan begå fejl"
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

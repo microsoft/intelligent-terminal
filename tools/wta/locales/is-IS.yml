@@ -45,6 +45,7 @@ auth.hint_footer: "  Ýttu á Enter til að skrá þig inn, Esc til að fara til
 chat.activity_thinking: "Hugsa..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Velkomin í Intelligent Terminal!"
+chat.welcome_disclaimer: "AI getur gert mistök"
 chat.plan_header: "Áætlun:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

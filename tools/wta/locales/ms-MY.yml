@@ -45,6 +45,7 @@ auth.hint_footer: "  Tekan Enter untuk log masuk, Esc untuk kembali"  # {Locked=
 chat.activity_thinking: "Sedang berfikir…"
 # {Locked="Intelligent Terminal"} - nama produk, jangan diterjemahkan
 chat.welcome_title: "Selamat datang ke Intelligent Terminal!"
+chat.welcome_disclaimer: "AI boleh membuat kesilapan"
 chat.plan_header: "Pelan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

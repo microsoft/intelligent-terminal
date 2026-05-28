@@ -45,6 +45,7 @@ auth.hint_footer: "  Brúigh Enter chun síniú isteach, Esc chun dul ar ais"  #
 chat.activity_thinking: "Ag smaoineamh…"
 # {Locked="Intelligent Terminal"} - ainm an táirge, ná haistrigh
 chat.welcome_title: "Fáilte go Intelligent Terminal!"
+chat.welcome_disclaimer: "Is féidir le AI botúin a dhéanamh"
 chat.plan_header: "Plean:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

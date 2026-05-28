@@ -45,6 +45,7 @@ auth.hint_footer: "  साइन इन करपाक Enter दामात, 
 chat.activity_thinking: "विचार करता…"
 # {Locked="Intelligent Terminal"} - उत्पाद नाम, अणकार करूं नाका
 chat.welcome_title: "Intelligent Terminal ंत आपलें स्वागत!"
+chat.welcome_disclaimer: "AI चूक करूं शकता"
 chat.plan_header: "योजना:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
