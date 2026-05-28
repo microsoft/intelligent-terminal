@@ -478,10 +478,13 @@ fn build_message_lines<'a>(
             lines.push(Line::default());
         }
         ChatMessage::Disclaimer => {
-            lines.push(Line::from(Span::styled(
-                t!("chat.welcome_disclaimer").into_owned(),
-                Style::new().fg(Color::DarkGray),
-            )));
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    t!("chat.welcome_disclaimer").into_owned(),
+                    Style::new().fg(Color::DarkGray),
+                ),
+            ]));
         }
     }
     lines

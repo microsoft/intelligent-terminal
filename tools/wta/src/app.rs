@@ -269,7 +269,8 @@ pub enum ChatMessage {
     /// codes, OSC sequences). Distinct from `Error` so we can theme it
     /// differently and skip autofix wiring.
     AgentEvent(String),
-    /// "AI can make mistake" disclaimer. Pushed on every agent-pane startup,
+    /// "Intelligent Terminal uses AI. Check for mistakes" disclaimer.
+    /// Pushed on every agent-pane startup,
     /// no persistence gating — getting cleared by the next turn is fine,
     /// the next pane startup re-pushes it.
     Disclaimer,
@@ -3788,7 +3789,7 @@ impl App {
                     self.setup = None;
                 }
                 // Show welcome hint on first-ever connect (persisted in state.json).
-                // The `AI can make mistake` disclaimer is unconditional —
+                // The `Intelligent Terminal uses AI. Check for mistakes` disclaimer is unconditional —
                 // pushed as a ChatMessage on every agent-pane startup, fine
                 // to be cleared by a subsequent turn.
                 if !welcome_shown_in_state() {
