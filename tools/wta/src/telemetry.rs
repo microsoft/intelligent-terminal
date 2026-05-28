@@ -14,11 +14,17 @@
 // on both the C++ and Rust sides). Microsoft-internal builds may rewrite the
 // provider-name string literal below via the
 // `Microsoft.Windows.Terminal.Versioning` NuGet package's `Setup.ps1`
-// (see `build/pipelines/templates-v2/steps-setup-versioning.yml`); the GUID
-// then changes deterministically because both sides derive it from the same
-// name. There is intentionally NO explicit GUID literal here — keeping the
-// provider name as the single source of truth means the overlay surface is
-// one string in C++ and one string in Rust.
+// (see `build/pipelines/templates-v2/steps-setup-versioning.yml`).
+//
+// On the C++ side the provider is declared with `TRACELOGGING_DEFINE_PROVIDER`
+// in `src/cascadia/TerminalApp/init.cpp`, which takes BOTH the name string
+// *and* an explicit GUID literal (originally produced by `TlgGuid.exe`).
+// An internal overlay therefore has to keep those two values in sync on the
+// C++ side. On this Rust side we intentionally pass only the name to
+// `tlg::define_provider!` and let the crate's `Guid::from_name` derive the
+// GUID, so the overlay only needs to touch one string here — but the C++
+// side remains the canonical place where the (name, GUID) pair is asserted
+// to match.
 //
 // Note: cross-process correlation by `SessionId` is intentionally NOT
 // provided here. The `SessionId` field on WTA events identifies the ACP
@@ -66,9 +72,12 @@ pub const PDT_PRODUCT_AND_SERVICE_PERFORMANCE: u64 = 0x0;
 // `g_hTerminalAppProvider` in `src/cascadia/TerminalApp/init.cpp`). The ETW
 // provider GUID is derived from the name by the `tracelogging` crate's
 // `Guid::from_name` (TraceLogging-style SHA-1 hash) — exactly the same
-// algorithm the C++ side uses — so both processes register the SAME GUID
-// without us having to repeat it as a literal. If a Microsoft-internal build
-// overlay rewrites the name string, both sides shift in lockstep.
+// algorithm the C++ side uses — so registering only the name here is
+// sufficient to land on the same GUID. The C++ side still declares its
+// GUID as an explicit literal (paired with the name in
+// `TRACELOGGING_DEFINE_PROVIDER`); any internal overlay that rewrites the
+// name must update both halves on the C++ side. Omitting the literal here
+// just means the Rust side has one less thing to keep in sync.
 //
 // `group_id` is the Microsoft Telemetry option group, equivalent to the C++
 // TraceLoggingOptionMicrosoftTelemetry() macro
