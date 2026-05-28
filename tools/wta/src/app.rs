@@ -3789,9 +3789,12 @@ impl App {
                     self.setup = None;
                 }
                 // Show welcome hint on first-ever connect (persisted in state.json).
-                // The `Intelligent Terminal uses AI. Check for mistakes` disclaimer is unconditional —
-                // pushed as a ChatMessage on every agent-pane startup, fine
-                // to be cleared by a subsequent turn.
+                // The disclaimer card is pushed as a `ChatMessage::Disclaimer`
+                // on every agent-pane startup that lands on an empty chat (no
+                // prior completed turns and no other in-flight messages), so
+                // a session restored with history doesn't get a disclaimer
+                // injected on top. Once shown it's allowed to be cleared by
+                // a subsequent turn — the next startup re-pushes it.
                 if !welcome_shown_in_state() {
                     self.show_welcome_hint = true;
                 }
