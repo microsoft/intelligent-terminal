@@ -158,5 +158,13 @@ namespace TerminalApp
         // chip. A missing or null pane_session_id reverts that tab to the
         // default chip behavior (driven by the source-of-agent flag).
         void OnAgentChipTargetChanged(String eventJson);
+
+        // Inbound event from WTA carrying {method:"restart_agent_stack"}.
+        // Emitted by the `/restart` slash command. The page tears down
+        // every agent pane, force-restarts the wta-master process via
+        // `SharedWta::Restart()` (bypassing the AcquirePane refcount),
+        // and re-toggles the active tab's pane so the user lands on a
+        // fresh agent CLI session under the same stable master pipe.
+        void OnRestartAgentStackRequested(String eventJson);
     }
 }

@@ -209,6 +209,7 @@ namespace winrt::TerminalApp::implementation
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
         void OnAgentChipTargetChanged(hstring eventJson);
+        void OnRestartAgentStackRequested(hstring eventJson);
 
         til::property_changed_event PropertyChanged;
 
@@ -404,6 +405,13 @@ namespace winrt::TerminalApp::implementation
         void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab);
         void _RebuildAgentStack();
         void _FlushPendingAgentRebuild();
+        // Build the per-process flag/value pairs that the wta-master
+        // inherits at spawn time (--agent, --agent-id, --no-autofix,
+        // --language, --acp-model, --delegate-agent, --delegate-model).
+        // Single source of truth shared by `_AutoCreateHiddenAgentPaneShared`
+        // (first acquire) and `_RebuildAgentStack` (settings-change-driven
+        // SharedWta::Restart). Reads from `_settings.GlobalSettings()`.
+        std::vector<std::wstring> _BuildSharedWtaExtraArgs();
         // Helper+master agent-pane creation (Z-M3, default since Z-M6):
         // spawns a wta-helper as a normal conpty child for this pane and
         // connects it to the SharedWta-managed wta-master process over a

@@ -14,6 +14,19 @@ pub enum CommandKind {
     Clear,
     Stop,
     New,
+    /// Reset the agent CLI subprocess.
+    ///
+    /// * Standalone wta: tears down + respawns the agent CLI in-process;
+    ///   tabs lazily get fresh sessions on the next prompt.
+    /// * Helper mode: fires a `restart_agent_stack` `SendEvent` to the C++
+    ///   side, which mirrors the path settings reload already takes when
+    ///   `acpAgent` changes: tear down every agent pane (master + helper
+    ///   processes die with them), force `SharedWta::Restart()` to bypass
+    ///   refcount and respawn master on the *same stable pipe name*, and
+    ///   re-toggle the active tab's agent pane. The new helper auto-
+    ///   connects to the new master. Visible UX: agent panes flash closed
+    ///   and reopen with a clean session; nothing requires the user to
+    ///   restart Windows Terminal.
     Restart,
     Sessions,
 }

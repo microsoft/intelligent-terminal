@@ -743,6 +743,12 @@ void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
         // pane_session_id reverts the tab to source-flag-driven chip.
         _dispatchAgentChipTargetToPage(eventJson);
         return;
+    case ProtocolParsing::SendEventRoute::RestartAgentStack:
+        // `/restart` from any agent pane TUI. Page-side handler tears
+        // down every agent pane in its window and force-restarts the
+        // wta-master process via SharedWta.
+        _dispatchRestartAgentStackToPage(eventJson);
+        return;
     case ProtocolParsing::SendEventRoute::Broadcast:
     {
         Json::StreamWriterBuilder wb;
@@ -855,6 +861,44 @@ void TerminalProtocolComServer::_dispatchCloseAgentPaneToPage(const winrt::hstri
                 try
                 {
                     page.OnCloseAgentPaneRequested(eventJson);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchRestartAgentStackToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // Fan out to every window so each page tears down its own agent panes.
+    // The actual `SharedWta::Restart()` call inside each page-side handler
+    // takes the shared lock and is safe to invoke multiple times — only the
+    // first one in flight does work; the others observe `_process` invalid
+    // (or already-respawned by the winning thread) and no-op.
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnRestartAgentStackRequested(eventJson);
                 }
                 catch (...)
                 {

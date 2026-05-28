@@ -101,6 +101,68 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    bool SharedWta::Restart()
+    {
+        std::lock_guard lock{ _mtx };
+
+        // Nothing running → nothing to restart. Caller's surrounding
+        // teardown+reopen path will trigger the usual lazy `AcquirePane`
+        // spawn anyway, so this is a benign no-op (not an error).
+        if (!_process.is_valid())
+        {
+            return true;
+        }
+
+        // No cached args means we've never successfully spawned in this
+        // process, which contradicts `_process.is_valid()` — defensive
+        // bail rather than _SpawnLocked'ing with empty wtaPath.
+        if (_cachedWtaPath.empty())
+        {
+            return false;
+        }
+
+        // Drop the Job first so KILL_ON_JOB_CLOSE reaps the old master +
+        // every agent CLI descendant, then respawn under the same
+        // _masterPipeName. Any helper that's about to be torn down (the
+        // /restart caller closes every agent pane) sees its pipe go EOF
+        // and exits naturally; any helper that races a reconnect against
+        // the respawn finds the new master listening on the same name.
+        // Refcount is left untouched on purpose — the caller is still
+        // holding refs for the panes it's about to close-and-reopen, and
+        // the matching ReleasePane / AcquirePane pair will balance out.
+        _CleanupLocked();
+        return _SpawnLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs);
+    }
+
+    bool SharedWta::Restart(const std::wstring_view wtaPath,
+                            std::span<const std::wstring> extraArgs)
+    {
+        if (wtaPath.empty())
+        {
+            return false;
+        }
+
+        std::lock_guard lock{ _mtx };
+
+        // Nothing live to replace (e.g. settings changed while no pane
+        // was open in any window). The next AcquirePane will _SpawnLocked
+        // with freshly-built args anyway, so we don't need to touch the
+        // cache here.
+        if (!_process.is_valid())
+        {
+            return true;
+        }
+
+        // Respawn the master with the *new* args so the running agent
+        // CLI is replaced with whatever the new settings demand. The
+        // surrounding `_RebuildAgentStack` flow has already torn down
+        // every agent pane in this window and is about to reopen one;
+        // refcount is left alone for the same reason as the cached-args
+        // overload — outgoing ReleasePane / incoming AcquirePane balance.
+        _CleanupLocked();
+        return _SpawnLocked(wtaPath, extraArgs);
+    }
+
     bool SharedWta::_SpawnLocked(const std::wstring_view wtaPath,
                                  std::span<const std::wstring> extraArgs)
     {
@@ -259,6 +321,14 @@ namespace winrt::TerminalApp::implementation
         _job = std::move(job);
         _pid = pid;
         _waitHandle = waitHandle;
+
+        // Cache the spawn inputs so `Restart()` can replay them. Overwrites
+        // any prior cache: if a respawn after crash used different
+        // settings (none today, but the path is here), the most recent
+        // wins. Done at the very end so partial-failure paths above
+        // leave the previous cache intact.
+        _cachedWtaPath.assign(wtaPath);
+        _cachedExtraArgs.assign(extraArgs.begin(), extraArgs.end());
         return true;
     }
 

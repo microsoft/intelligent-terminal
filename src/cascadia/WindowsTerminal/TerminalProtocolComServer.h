@@ -159,5 +159,12 @@ private:
     // source-of-agent driven chip.
     static void _dispatchAgentChipTargetToPage(const winrt::hstring& eventJson);
 
+    // Same shape, for {method:"restart_agent_stack"} — emitted by the
+    // `/restart` slash command in any agent pane TUI. Fans out to every
+    // window so each page can tear down its agent panes; the
+    // `SharedWta::Restart()` call inside is process-wide and idempotent
+    // across windows.
+    static void _dispatchRestartAgentStackToPage(const winrt::hstring& eventJson);
+
     static WindowEmperor* s_emperor;
 };
