@@ -1936,7 +1936,7 @@ async fn handle_load_failure(
                 target: "acp_load_session",
                 tab = %tab_id,
                 fallback_session_id = %new_sid,
-                "boot-time load fallback to new_session succeeded"
+                "boot-time load fell back to new_session successfully"
             );
             {
                 let mut g = tab_to_session.lock().await;
@@ -2359,7 +2359,7 @@ pub async fn run_acp_client_over_pipe(
     });
 
     // Per-tab session cache. Same semantics as in `run_inner`. Only
-    // pre-populate the owner-tab binding when we actually have a
+    // prepopulate the owner-tab binding when we actually have a
     // bootstrap session — otherwise the `load_session_rx` arm would
     // see the placeholder sid as a prior session, try to `cancel` it,
     // and the agent CLI would reject the cancel for an unknown sid.
