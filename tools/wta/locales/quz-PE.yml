@@ -105,8 +105,8 @@ agent.custom.auth_hint: "%{name} churasqa kasqanta PATH nisqapiña kasqanta qhaw
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Chaqachkan..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ purinapaq • Enter musuq ripapi hunt'ata qallarichiy • Shift+enter agente k'itipi hunt'ata qallarichiy • Esc lluqsinapaq)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ purinapaq • Enter hunt'ata qallarichiy • Esc lluqsinapaq)"
 agents.status.active: "Llamk'achkan"
 agents.status.waiting_for_input: "Yaykuyta suyachkan"
 agents.status.error: "Pantay"

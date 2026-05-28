@@ -105,8 +105,8 @@ agent.custom.auth_hint: "Assicurati che %{name} sia installato e nel PATH."  # {
 
 # ── Vista agenti (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Caricamento..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - combinazioni di tasti, non tradurre
-agents.footer_hint: "(↑ ↓ per navigare • Enter per avviare la sessione in una nuova scheda • Shift+enter per avviare la sessione nel riquadro dell'agente • Esc per uscire)"
+# {Locked="Enter","Esc","↑","↓"} - combinazioni di tasti, non tradurre
+agents.footer_hint: "(↑ ↓ per navigare • Enter per avviare la sessione • Esc per uscire)"
 agents.status.active: "Attivo"
 agents.status.waiting_for_input: "In attesa di input"
 agents.status.error: "Errore"

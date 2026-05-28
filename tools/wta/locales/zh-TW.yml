@@ -101,8 +101,8 @@ agent.custom.auth_hint: "請確認 %{name} 已安裝並位於 PATH 上。"  # {L
 
 # ── 智慧代理檢視 (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "載入中..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - 組合鍵，請勿翻譯
-agents.footer_hint: "(↑ ↓ 瀏覽 • Enter 在新索引標籤中啟動工作階段 • Shift+enter 在智慧代理窗格中啟動工作階段 • Esc 結束)"
+# {Locked="Enter","Esc","↑","↓"} - 組合鍵，請勿翻譯
+agents.footer_hint: "(↑ ↓ 瀏覽 • Enter 啟動工作階段 • Esc 結束)"
 agents.status.active: "使用中"
 agents.status.waiting_for_input: "等待輸入"
 agents.status.error: "錯誤"

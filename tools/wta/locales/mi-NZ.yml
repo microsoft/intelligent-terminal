@@ -105,8 +105,8 @@ agent.custom.auth_hint: "Kia mohio kua tautahia a %{name} a kei runga i to PATH.
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "E uta ana..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ ki te whakatere • Enter ki te whakarewa wahanga i te ripa hou • Shift+enter ki te whakarewa wahanga i te papa agent • Esc ki te puta)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ ki te whakatere • Enter ki te whakarewa wahanga • Esc ki te puta)"
 agents.status.active: "Hohe"
 agents.status.waiting_for_input: "E tatari ana mo te tauuru"
 agents.status.error: "Hapa"

@@ -105,8 +105,8 @@ agent.custom.auth_hint: "Hãy đảm bảo %{name} đã được cài đặt và
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Đang tải..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ để di chuyển • Enter để mở phiên trong tab mới • Shift+enter để mở phiên trong bảng tác nhân AI • Esc để thoát)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ để di chuyển • Enter để mở phiên • Esc để thoát)"
 agents.status.active: "Đang hoạt động"
 agents.status.waiting_for_input: "Đang chờ nhập liệu"
 agents.status.error: "Lỗi"

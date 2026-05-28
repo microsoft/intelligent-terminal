@@ -112,8 +112,8 @@ agent.custom.auth_hint: "Уверете се, че %{name} е инсталира
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Зареждане..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ за навигация • Enter за стартиране на сесия в нов раздел • Shift+enter за стартиране на сесия в панела на агента • Esc за изход)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ за навигация • Enter за стартиране на сесия • Esc за изход)"
 agents.status.active: "Активен"
 agents.status.waiting_for_input: "Очаква въвеждане"
 agents.status.error: "Грешка"

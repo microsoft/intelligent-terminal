@@ -112,8 +112,8 @@ agent.custom.auth_hint: "Ujistěte se, že %{name} je nainstalován a je v PATH.
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Načítání..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ pro navigaci • Enter pro spuštění relace v nové kartě • Shift+enter pro spuštění relace v panelu agenta • Esc pro ukončení)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ pro navigaci • Enter pro spuštění relace • Esc pro ukončení)"
 agents.status.active: "Aktivní"
 agents.status.waiting_for_input: "Čeká na vstup"
 agents.status.error: "Chyba"

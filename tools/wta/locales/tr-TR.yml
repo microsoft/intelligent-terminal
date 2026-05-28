@@ -116,8 +116,8 @@ agent.custom.auth_hint: "%{name} yüklü olduğundan ve PATH'te bulunduğundan e
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Yükleniyor..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ gezinmek için • Enter yeni sekmede oturum açmak için • Shift+enter aracı panelinde oturum açmak için • Esc çıkmak için)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ gezinmek için • Enter oturum açmak için • Esc çıkmak için)"
 agents.status.active: "Aktif"
 agents.status.waiting_for_input: "Giriş bekleniyor"
 agents.status.error: "Hata"

@@ -116,8 +116,8 @@ agent.custom.auth_hint: "تأكد من أن %{name} مثبّت وموجود في
 
 # ── عرض عوامل الذكاء الاصطناعي (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "جارٍ التحميل..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - مجموعات المفاتيح، لا تترجمها
-agents.footer_hint: "(↑ ↓ للتنقل • Enter لبدء جلسة في علامة تبويب جديدة • Shift+enter لبدء جلسة في لوحة عامل الذكاء الاصطناعي • Esc للخروج)"
+# {Locked="Enter","Esc","↑","↓"} - مجموعات المفاتيح، لا تترجمها
+agents.footer_hint: "(↑ ↓ للتنقل • Enter لبدء جلسة • Esc للخروج)"
 agents.status.active: "نشط"
 agents.status.waiting_for_input: "في انتظار الإدخال"
 agents.status.error: "خطأ"

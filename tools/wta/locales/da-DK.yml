@@ -105,8 +105,8 @@ agent.custom.auth_hint: "Sørg for at %{name} er installeret og på din PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Indlæser..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ for at navigere • Enter for at starte session i ny fane • Shift+enter for at starte session i agentpanelet • Esc for at afslutte)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ for at navigere • Enter for at starte session • Esc for at afslutte)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Venter på input"
 agents.status.error: "Fejl"

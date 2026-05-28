@@ -105,8 +105,8 @@ agent.custom.auth_hint: "Varmista, että %{name} on asennettu ja PATH-muuttujass
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Ladataan..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ navigoidaksesi • Enter käynnistääksesi istunnon uudessa välilehdessä • Shift+enter käynnistääksesi istunnon agenttipaneelissa • Esc poistuaksesi)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ navigoidaksesi • Enter käynnistääksesi istunnon • Esc poistuaksesi)"
 agents.status.active: "Aktiivinen"
 agents.status.waiting_for_input: "Odottaa syötettä"
 agents.status.error: "Virhe"

@@ -105,8 +105,8 @@ agent.custom.auth_hint: "Cinntigh go bhfuil %{name} suiteáilte agus ar do PATH.
 
 # ── Amharc gníomhairí (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Á luchtú..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - teaglamaí eochracha, ná haistrigh
-agents.footer_hint: "(↑ ↓ chun nascleanúint • Enter chun seisiún a sheoladh i gcluaisín nua • Shift+enter chun seisiún a sheoladh i bpána gníomhaire • Esc chun scor)"
+# {Locked="Enter","Esc","↑","↓"} - teaglamaí eochracha, ná haistrigh
+agents.footer_hint: "(↑ ↓ chun nascleanúint • Enter chun seisiún a sheoladh • Esc chun scor)"
 agents.status.active: "Gníomhach"
 agents.status.waiting_for_input: "Ag fanacht le hionchur"
 agents.status.error: "Earráid"

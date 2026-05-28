@@ -112,8 +112,8 @@ agent.custom.auth_hint: "Proverite da je %{name} instaliran i da se nalazi u PAT
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Učitavanje..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ za navigaciju • Enter za otvaranje sesije u novoj kartici • Shift+enter za otvaranje sesije u panelu agenta • Esc za izlaz)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ za navigaciju • Enter za otvaranje sesije • Esc za izlaz)"
 agents.status.active: "Aktivan"
 agents.status.waiting_for_input: "Čeka na unos"
 agents.status.error: "Greška"

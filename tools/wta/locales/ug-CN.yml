@@ -121,8 +121,8 @@ agent.custom.auth_hint: "%{name} نىڭ ئورنىتىلغانلىقى ۋە PATH
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────────────────────────────────
 agents.loading: "يۈكلەنۋاتىدۇ..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ يۆتكەش • Enter يېڭى بەتكۈچتە ئوتتۇرا ئېچىش • Shift+enter AI ئاگېنتى تاختىسىدا ئوتتۇرا ئېچىش • Esc چىقىش)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ يۆتكەش • Enter ئوتتۇرا ئېچىش • Esc چىقىش)"
 agents.status.active: "ئاكتىۋ"
 agents.status.waiting_for_input: "كىرگۈزۈش كۈتۈلۈۋاتىدۇ"
 # Status badge when agent session encountered an error

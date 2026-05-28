@@ -105,8 +105,8 @@ agent.custom.auth_hint: "Győződjön meg róla, hogy a(z) %{name} telepítve va
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Betöltés..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ navigáláshoz • Enter munkamenet indításához új lapon • Shift+enter munkamenet indításához az ügynök panelen • Esc kilépéshez)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ navigáláshoz • Enter munkamenet indításához • Esc kilépéshez)"
 agents.status.active: "Aktív"
 agents.status.waiting_for_input: "Bemenetre vár"
 agents.status.error: "Hiba"

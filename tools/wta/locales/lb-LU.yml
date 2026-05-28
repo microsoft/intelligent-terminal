@@ -105,8 +105,8 @@ agent.custom.auth_hint: "Suergt dofir datt %{name} installéiert ass an op Ärem
 
 # ── Agenten-Vue (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Gëtt gelueden..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - Tast-Kombinatiounen, net iwwersetzen
-agents.footer_hint: "(↑ ↓ fir ze navigéieren • Enter fir d'Sëtzung an engem neien Tab ze starten • Shift+enter fir d'Sëtzung am Agent-Panell ze starten • Esc fir eraus)"
+# {Locked="Enter","Esc","↑","↓"} - Tast-Kombinatiounen, net iwwersetzen
+agents.footer_hint: "(↑ ↓ fir ze navigéieren • Enter fir d'Sëtzung ze starten • Esc fir eraus)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Waart op Input"
 agents.status.error: "Feeler"

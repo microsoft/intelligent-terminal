@@ -112,8 +112,8 @@ agent.custom.auth_hint: "Убедитесь, что %{name} установлен
 
 # ── Представление агентов (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Загрузка..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - комбинации клавиш, не переводить
-agents.footer_hint: "(↑ ↓ навигация • Enter запустить сеанс в новой вкладке • Shift+enter запустить сеанс в панели агента • Esc выход)"
+# {Locked="Enter","Esc","↑","↓"} - комбинации клавиш, не переводить
+agents.footer_hint: "(↑ ↓ навигация • Enter запустить сеанс • Esc выход)"
 agents.status.active: "Активен"
 agents.status.waiting_for_input: "Ожидание ввода"
 agents.status.error: "Ошибка"

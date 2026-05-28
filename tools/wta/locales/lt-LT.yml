@@ -105,8 +105,8 @@ agent.custom.auth_hint: "Įsitikinkite, kad %{name} yra įdiegtas ir yra jūsų 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Įkeliama..."
-# {Locked="Enter","Shift+enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ naršyti • Enter pradėti seansą naujame skirtuke • Shift+enter pradėti seansą agento skydelyje • Esc išeiti)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ naršyti • Enter pradėti seansą • Esc išeiti)"
 agents.status.active: "Aktyvus"
 agents.status.waiting_for_input: "Laukia įvesties"
 agents.status.error: "Klaida"
