@@ -878,6 +878,25 @@ impl acp::Agent for HelperHandler {
                     .duration_since(std::time::UNIX_EPOCH)
                     .ok()
                     .map(|d| d.as_millis() as u64);
+                // Carry the title (and updated_at) forward from the row
+                // that already exists for this sid. Master seeds the
+                // registry at startup with rows from `history_loader`
+                // which include the disk-derived chat title (e.g.
+                // "# Terminal AgentYou"). A naked `SessionInfo::new`
+                // upsert would clobber that title with `None`, leaving
+                // the resumed Live row showing "—" in F2. By copying
+                // the prior title we keep the resumed row identifiable
+                // to the user.
+                if let Some(existing) =
+                    self.state.registry.lookup(&session_id).await
+                {
+                    if info.title.is_none() {
+                        info.title = existing.title;
+                    }
+                    if info.updated_at.is_none() {
+                        info.updated_at = existing.updated_at;
+                    }
+                }
                 self.state.registry.upsert(info.clone()).await;
                 crate::master::broadcast_ext_to_helpers(
                     &self.state,
