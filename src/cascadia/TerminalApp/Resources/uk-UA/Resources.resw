@@ -1155,7 +1155,7 @@
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
-    <value>Виявлено помилку. Натисніть або натисніть {0}, щоб попросити AI-агента діагностувати її та запропонувати виправлення.</value>
+    <value>Виявлено помилку. Клацніть або натисніть {0}, щоб попросити AI-агента діагностувати її та запропонувати виправлення.</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
