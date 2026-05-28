@@ -34,14 +34,13 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     let pending = pending_stream_height(tab, wrap_width);
     // Welcome overlay sits above all chat content when `show_welcome_hint`
     // is on; must be counted here or else any pushed message will scroll
-    // it off the top of the visible chat block. Width-aware so a long
-    // translation or narrow pane reserves the wrapped row count, matching
-    // what `push_dot_prefixed_lines` would render at draw time.
+    // it off the top of the visible chat block. Always a single row —
+    // terminal min-width guarantees the localized title fits without
+    // wrapping.
     let welcome = if app.show_welcome_hint
         && app.state == crate::app::ConnectionState::Connected
     {
-        let body_width = wrap_width.saturating_sub(2).max(1);
-        wrap_count(&t!("chat.welcome_title"), body_width)
+        1
     } else {
         0
     };
@@ -85,12 +84,9 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
         ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
         ChatMessage::ToolCall { .. } => 1,
         ChatMessage::Plan(entries) => 2 + entries.len(), // header + each entry + blank
-        // Disclaimer = wrapped disclaimer text (no prefix) + trailing blank.
-        // Same `wrap_count(text, wrap_width)` shape as System/AgentEvent so
-        // a long translation or narrow pane reserves the right number of rows.
-        ChatMessage::Disclaimer => {
-            wrap_count(&t!("chat.welcome_disclaimer"), wrap_width) + 1
-        }
+        // Disclaimer is a single dim row — terminal min-width guarantees the
+        // short text fits without wrapping, and no trailing blank is needed.
+        ChatMessage::Disclaimer => 1,
     }
 }
 
@@ -486,7 +482,6 @@ fn build_message_lines<'a>(
                 t!("chat.welcome_disclaimer").into_owned(),
                 Style::new().fg(Color::DarkGray),
             )));
-            lines.push(Line::default());
         }
     }
     lines
