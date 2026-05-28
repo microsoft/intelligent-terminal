@@ -1542,6 +1542,37 @@ void Pane::_CloseChild(const bool closeFirst)
         }
     }
 
+    // If the only thing left in this subtree is an agent pane, collapse the
+    // whole subtree. Agent panes are supplementary chrome and shouldn't
+    // outlive their owning normal pane — leaving one as the sole content of
+    // its parent (or the root) would orphan it in an otherwise-empty tab.
+    // Bubbling Closed lets the parent's _CloseChild (or, at the root, the
+    // Tab's _rootClosedToken) tear the rest down.
+    if (remainingChild->_IsLeaf() && remainingChild->_isAgentPane)
+    {
+        remainingChild->_setPaneContent(nullptr);
+        closedChild->Closed(closedChildClosedToken);
+        // Revoke our own routing token on the agent pane first so the
+        // Closed.raise below doesn't re-enter _CloseChildRoutine on us.
+        remainingChild->Closed(remainingChildClosedToken);
+        // Fire the agent pane's Closed for any *other* subscribers — most
+        // importantly the `SharedWta::ReleasePane` handler registered at
+        // agent-pane creation (TerminalPage.cpp). Without this, the WTA
+        // shared-master refcount leaks every time this branch tears down
+        // an agent pane (the `_RemoveTab` walk-the-tree compensation can't
+        // see it either, since we null the child pointers below before
+        // Tab::Closed bubbles up).
+        remainingChild->Closed.raise(nullptr, nullptr);
+        _firstChild = nullptr;
+        _secondChild = nullptr;
+        // Become an empty leaf so that subsequent `Pane::Shutdown` (driven
+        // by `Tab::Shutdown` once our Closed bubbles up) takes the leaf
+        // branch instead of dereferencing the now-null children.
+        _splitState = SplitState::None;
+        Closed.raise(nullptr, nullptr);
+        return;
+    }
+
     // If the only child left is a leaf, that means we're a leaf now.
     if (remainingChild->_IsLeaf())
     {
