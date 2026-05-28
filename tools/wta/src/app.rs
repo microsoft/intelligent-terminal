@@ -1147,6 +1147,14 @@ pub struct TabAutofixState {
     /// tab wasn't active). Used to re-emit on tab_changed so the bar
     /// shows the right state when the user comes back to this tab.
     pub bar_snapshot: AutofixBarSnapshot,
+    /// PaneID where the most recent D-synchronous state set happened
+    /// (Detected or Pending — both fire ~1ms before PowerShell emits the
+    /// next `osc:133;A`). The next prompt-start in that pane is consumed
+    /// as the trigger's echo rather than as a "user moved on" dismiss,
+    /// otherwise the state we just set would be cleared before reaching
+    /// the user. Cleared when the echo A arrives, or when the state
+    /// transitions out (set_bar_snapshot → Idle).
+    pub trigger_echo_pane: Option<String>,
 }
 
 /// Snapshot of the bottom-bar autofix state for one tab. Mirrors the
@@ -4908,13 +4916,18 @@ impl App {
                         }
                     }
                     WtEventSeverity::Informational => {
-                        // A successful command (exit 0) in the armed/pending pane
-                        // means the error was resolved. Cancel any in-flight fix and dismiss.
-                        //
-                        // Suggested has weaker semantics: any prompt activity in any
-                        // pane (osc:133;A start of a new prompt, OR osc:133;D;0
-                        // exit-zero) signals the user is moving on. Suggested is a
-                        // global UI state, not pane-local.
+                        // "User moved past this prompt" = dismiss. Two signals
+                        // both count as "moved on":
+                        //   * exit-zero (D;0): the user ran any successful
+                        //     command in the failing pane.
+                        //   * prompt-start (A): the shell drew a fresh prompt
+                        //     line (user pressed Enter, switched away, etc.).
+                        // For Pending/Armed/Detected we gate prompt-start on
+                        // `trigger_echo_pane` so the immediate A that
+                        // PowerShell emits ~1ms after every D doesn't
+                        // dismiss the state we just established. Suggested
+                        // fires asynchronously (after the LLM returns), so
+                        // it has no echo to skip and dismisses on any A.
                         if method == "vt_sequence" {
                             let seq = params
                                 .get("sequence")
@@ -4931,12 +4944,39 @@ impl App {
                             // Older events without tab_id can't be cleanly
                             // routed; skip the per-tab clear for them.
                             let event_tab = tab_id.clone();
+                            // Consume the trigger-echo flag if this A is the
+                            // one PowerShell emits immediately after the
+                            // triggering D. `effective_prompt_start` is the
+                            // "user actually moved on" signal for D-synchronous
+                            // states (Pending / Detected). Suggested uses raw
+                            // `is_prompt_start` since it fires post-LLM.
+                            let effective_prompt_start = if is_prompt_start {
+                                if let Some(t) = event_tab.as_deref() {
+                                    let echo = self
+                                        .tab_mut(&t.to_string())
+                                        .autofix
+                                        .trigger_echo_pane
+                                        .clone();
+                                    if echo.as_deref() == Some(pane_id.as_str()) {
+                                        self.tab_mut(&t.to_string())
+                                            .autofix
+                                            .trigger_echo_pane = None;
+                                        false
+                                    } else {
+                                        true
+                                    }
+                                } else {
+                                    true
+                                }
+                            } else {
+                                false
+                            };
                             let armed_in_event_tab = event_tab
                                 .as_deref()
                                 .and_then(|t| self.tab_sessions.get(t))
                                 .and_then(|t| t.autofix.pane_id.as_deref())
                                 .map(str::to_string);
-                            if is_exit_zero
+                            if (is_exit_zero || effective_prompt_start)
                                 && armed_in_event_tab.as_deref() == Some(pane_id.as_str())
                             {
                                 let target_tab = event_tab
@@ -4983,12 +5023,13 @@ impl App {
                                     }
                                 }
                             }
-                            // Detected (suggest-mode pill): dismiss when
-                            // the user makes a fresh successful run in
-                            // the same pane. The Detected snapshot has
-                            // no in-flight turn to cancel — just clear
-                            // the bar.
-                            if is_exit_zero {
+                            // Detected (suggest-mode pill): dismiss when the
+                            // user moves on in the same pane — either a
+                            // successful command (exit-zero) or a fresh
+                            // prompt-start that isn't the trigger's echo.
+                            // The Detected snapshot has no in-flight turn
+                            // to cancel — just clear the bar.
+                            if is_exit_zero || effective_prompt_start {
                                 if let Some(t) = event_tab.as_deref() {
                                     let t_owned = t.to_string();
                                     let detected_matches = matches!(
@@ -6553,6 +6594,11 @@ impl App {
                 tab_id = %target_tab_id,
                 "auto-suggest off — surfacing Detected pill, no LLM call",
             );
+            // D-driven: PowerShell will emit an immediate echo A within
+            // ~1ms. Arm the gate so it gets consumed rather than
+            // dismissing the pill we just set.
+            self.tab_mut(&target_tab_id).autofix.trigger_echo_pane =
+                Some(notification.pane_id.clone());
             self.emit_autofix_state_detected(
                 &target_tab_id,
                 &notification.pane_id,
@@ -6591,6 +6637,10 @@ impl App {
                     tab_id = %target_tab_id,
                     "autofix re-trigger same pane while pending — re-emit only",
                 );
+                // This branch is only reached on a fresh D event (the
+                // dispatcher routes vt_sequence here); arm the echo gate.
+                self.tab_mut(&target_tab_id).autofix.trigger_echo_pane =
+                    Some(notification.pane_id.clone());
                 self.emit_autofix_state_pending(
                     &target_tab_id,
                     &notification.pane_id,
@@ -6669,6 +6719,16 @@ impl App {
 
         // Light up the bottom-bar diagnostic icon in "Pending" state — the
         // user knows something went wrong even before the agent responds.
+        // Arm the echo gate ONLY for D-driven entries (forced=false).
+        // The `execute_from_detected` path (forced=true) fires this on a
+        // stable prompt — no echo A is in flight, and arming would eat
+        // the user's first Enter as a fake echo. Bug repro: typo →
+        // Detected pill → click pill → Pending → Armed → press Enter
+        // (consumed as echo) → press Enter again (finally dismisses).
+        if !forced {
+            self.tab_mut(&target_tab_id).autofix.trigger_echo_pane =
+                Some(notification.pane_id.clone());
+        }
         self.emit_autofix_state_pending(
             &target_tab_id,
             &notification.pane_id,
@@ -6693,6 +6753,11 @@ impl App {
             pane_id: pane_id.to_string(),
             summary: summary.to_string(),
         };
+        // NOTE: `trigger_echo_pane` is armed by the *caller*, not here —
+        // only D-driven calls expect an immediate echo A. The
+        // `execute_from_detected` path also funnels through Pending but
+        // runs on a stable prompt (no D), so arming inside this helper
+        // would consume the user's first real Enter as a fake echo.
         self.set_bar_snapshot(target_tab_id, snapshot);
     }
 
@@ -6706,6 +6771,8 @@ impl App {
             summary: summary.to_string(),
             hotkey_hint: "Ctrl+Alt+.".to_string(),
         };
+        // See note in `emit_autofix_state_pending`: caller arms the echo
+        // gate when (and only when) a D-driven trigger is in progress.
         self.set_bar_snapshot(target_tab_id, snapshot);
     }
 
@@ -6841,6 +6908,10 @@ impl App {
         // `lastErrorSessionId` based on the state alone. Reusing the
         // `Idle` snapshot means a subsequent tab switch re-emits a
         // clean state rather than something stale.
+        // Also drop any pending trigger-echo gate: once we're back to
+        // Idle there's no state to protect, and leaving the pane
+        // armed would silently swallow the next real prompt-start.
+        self.tab_mut(target_tab_id).autofix.trigger_echo_pane = None;
         self.set_bar_snapshot(target_tab_id, AutofixBarSnapshot::Idle);
     }
 
@@ -10752,6 +10823,188 @@ mod tests {
             app.tab_mut("test-tab").autofix.pane_id.as_deref(),
             Some(pane),
             "vt_sequence osc:133;D;<non-zero> in a normal pane must still arm autofix"
+        );
+    }
+
+    fn vt_event(pane: &str, tab: &str, seq: &str) -> AppEvent {
+        AppEvent::WtEvent {
+            method: "vt_sequence".to_string(),
+            pane_id: pane.to_string(),
+            tab_id: Some(tab.to_string()),
+            params: serde_json::json!({ "session_id": pane, "sequence": seq }),
+        }
+    }
+
+    /// Detected state must survive the `osc:133;A` that PowerShell emits
+    /// ~1ms after the triggering `osc:133;D` — that A is the trigger's
+    /// echo, not the user moving on. The NEXT prompt-start (after the
+    /// user actually does something) is what dismisses.
+    #[test]
+    fn detected_survives_trigger_echo_dismisses_on_next_prompt_start() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.autofix_enabled = false; // suggest-mode → produces Detected
+        let pane = "11111111-2222-3333-4444-555555555555";
+        let tab = "tab-A";
+
+        // D;1 → Detected pill armed.
+        app.handle_event(vt_event(pane, tab, "osc:133;D;1"));
+        assert!(
+            matches!(
+                app.tab_mut(tab).autofix.bar_snapshot,
+                AutofixBarSnapshot::Detected { .. }
+            ),
+            "D;1 must establish Detected"
+        );
+        assert_eq!(
+            app.tab_mut(tab).autofix.trigger_echo_pane.as_deref(),
+            Some(pane),
+            "trigger_echo_pane must be armed at Detected set so the immediate A is consumed"
+        );
+
+        // Immediate A (PowerShell redrawing the prompt) — must NOT dismiss.
+        app.handle_event(vt_event(pane, tab, "osc:133;A"));
+        assert!(
+            matches!(
+                app.tab_mut(tab).autofix.bar_snapshot,
+                AutofixBarSnapshot::Detected { .. }
+            ),
+            "the trigger-echo A must not dismiss Detected"
+        );
+        assert!(
+            app.tab_mut(tab).autofix.trigger_echo_pane.is_none(),
+            "trigger_echo_pane must be consumed by the echo A"
+        );
+
+        // A second A (user actually moved on) — must dismiss.
+        app.handle_event(vt_event(pane, tab, "osc:133;A"));
+        assert!(
+            matches!(
+                app.tab_mut(tab).autofix.bar_snapshot,
+                AutofixBarSnapshot::Idle
+            ),
+            "a subsequent A (user moved on) must dismiss Detected"
+        );
+    }
+
+    /// Pending state (auto-suggest on path: D arms `autofix.pane_id` and
+    /// emits Pending) must also survive the trigger-echo A and dismiss on
+    /// the next user-driven prompt-start. The Pending/Armed dismiss path
+    /// goes through `turn_cancel` (or its manual fallback when no ACP
+    /// session is bound).
+    #[test]
+    fn pending_survives_trigger_echo_dismisses_on_next_prompt_start() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.autofix_enabled = true; // LLM-call path → produces Pending
+        let pane = "22222222-3333-4444-5555-666666666666";
+        let tab = "tab-B";
+
+        app.handle_event(vt_event(pane, tab, "osc:133;D;1"));
+        assert_eq!(
+            app.tab_mut(tab).autofix.pane_id.as_deref(),
+            Some(pane),
+            "D;1 must arm Pending (autofix.pane_id set)"
+        );
+        assert_eq!(
+            app.tab_mut(tab).autofix.trigger_echo_pane.as_deref(),
+            Some(pane),
+        );
+
+        // Echo A — Pending stays.
+        app.handle_event(vt_event(pane, tab, "osc:133;A"));
+        assert_eq!(
+            app.tab_mut(tab).autofix.pane_id.as_deref(),
+            Some(pane),
+            "trigger-echo A must not cancel Pending"
+        );
+
+        // Real A — turn_cancel (or manual fallback) clears pane_id and bar.
+        app.handle_event(vt_event(pane, tab, "osc:133;A"));
+        assert!(
+            app.tab_mut(tab).autofix.pane_id.is_none(),
+            "subsequent A must cancel Pending"
+        );
+        assert!(
+            matches!(
+                app.tab_mut(tab).autofix.bar_snapshot,
+                AutofixBarSnapshot::Idle
+            ),
+            "bar must return to Idle after Pending cancel"
+        );
+    }
+
+    /// User clicks the Detected pill on a stable prompt → autofix
+    /// transitions Detected → Pending → Armed via the LLM call. No D
+    /// event is in flight during this transition, so no echo A is
+    /// coming. The next prompt-start the user produces must dismiss on
+    /// the FIRST Enter, not be eaten as a fake echo.
+    ///
+    /// Bug repro before this fix: emit_autofix_state_pending used to
+    /// arm `trigger_echo_pane` unconditionally, so the forced-from-
+    /// Detected path planted a gate with no echo to consume. The
+    /// gate then ate the user's first real Enter.
+    #[test]
+    fn force_from_detected_does_not_arm_echo_gate() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.autofix_enabled = false; // suggest-mode produces Detected first
+        let pane = "44444444-5555-6666-7777-888888888888";
+        let tab = "tab-D";
+
+        // D;1 → Detected (gate armed, echo A consumed below).
+        app.handle_event(vt_event(pane, tab, "osc:133;D;1"));
+        app.handle_event(vt_event(pane, tab, "osc:133;A")); // echo
+        assert!(
+            app.tab_mut(tab).autofix.trigger_echo_pane.is_none(),
+            "echo A must consume the gate"
+        );
+
+        // User clicks the pill → forced trigger → Pending. This is on a
+        // stable prompt with no D in flight — gate must NOT re-arm.
+        let synth = WtNotification {
+            severity: WtEventSeverity::Actionable,
+            pane_id: pane.to_string(),
+            tab_id: Some(tab.to_string()),
+            summary: "Command failed (exit 1)".to_string(),
+            acknowledged: false,
+            age_ticks: 0,
+        };
+        app.trigger_autofix_inner(&synth, /*forced*/ true);
+        assert!(
+            app.tab_mut(tab).autofix.trigger_echo_pane.is_none(),
+            "force-from-Detected path must not arm trigger_echo_pane — \
+             no D is in flight, no echo A is coming, and arming would eat \
+             the user's first dismiss Enter"
+        );
+    }
+
+    /// Returning to Idle clears the echo guard. Otherwise a stale
+    /// `trigger_echo_pane` could swallow a real prompt-start that arrives
+    /// long after the state has already been cleared by other means
+    /// (e.g. the user clicked the Suggested pill, then the autofix
+    /// re-fires later in the same pane).
+    #[test]
+    fn trigger_echo_pane_clears_when_state_returns_to_idle() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.autofix_enabled = false;
+        let pane = "33333333-4444-5555-6666-777777777777";
+        let tab = "tab-C";
+
+        app.handle_event(vt_event(pane, tab, "osc:133;D;1"));
+        assert_eq!(
+            app.tab_mut(tab).autofix.trigger_echo_pane.as_deref(),
+            Some(pane)
+        );
+
+        // Externally clear the bar (e.g. user dismissed via Esc / pill).
+        let tab_owned = tab.to_string();
+        app.emit_autofix_state_cleared(&tab_owned);
+        assert!(
+            app.tab_mut(tab).autofix.trigger_echo_pane.is_none(),
+            "trigger_echo_pane must be released when bar transitions to Idle, \
+             otherwise the next real prompt-start would be silently swallowed"
         );
     }
 
