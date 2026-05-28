@@ -288,6 +288,42 @@ pub struct CompletedTurn {
     pub trailing_marker: Option<String>,
 }
 
+/// Maximum displayed characters for a collapsed turn header preview.
+/// Picked so the `▶ > <preview>…` row stays well under a typical 120-col
+/// wrap width even after the chevron + prompt prefix; longer prompts get
+/// truncated with a trailing ellipsis. The full original text is always
+/// preserved in the turn's first `details` entry.
+const COLLAPSED_PROMPT_PREVIEW_CHARS: usize = 80;
+
+/// Build the single-line preview shown in a collapsed `CompletedTurn`
+/// header. Takes the first non-blank line of the prompt and clips it to
+/// `COLLAPSED_PROMPT_PREVIEW_CHARS`. Multi-line prompts (system prompts,
+/// pasted blocks, etc.) collapse to one row instead of wrapping over
+/// dozens of lines in the chat scrollback.
+pub fn collapsed_prompt_preview(text: &str) -> String {
+    let first_line = text
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    let mut iter = first_line.chars();
+    let mut out: String = (&mut iter).take(COLLAPSED_PROMPT_PREVIEW_CHARS).collect();
+    // Append ellipsis if the prompt has more content than the preview
+    // covered — either the first line itself was longer, or there are
+    // additional non-empty lines below.
+    let truncated = iter.next().is_some()
+        || text
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .nth(1)
+            .is_some();
+    if truncated {
+        out.push('…');
+    }
+    out
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlanEntry {
     pub content: String,
@@ -1462,6 +1498,67 @@ impl TabSession {
             let text = std::mem::take(&mut self.pending_agent_response);
             self.messages.push(ChatMessage::Agent(text));
         }
+    }
+
+    /// Compact replayed history into collapsed `CompletedTurn` rows so a
+    /// long resumed session doesn't dump the entire transcript inline.
+    /// Called at session/load completion (after `flush_load_replay_pending`)
+    /// from the `SessionAttached` handler.
+    ///
+    /// Algorithm: walk `self.messages` left-to-right; each `User` opens a
+    /// new turn. The turn's `prompt` is a SHORT single-line preview of
+    /// the user text (so the collapsed `▶ > <preview>` row stays at one
+    /// visual line even for huge system-prompt-as-user dumps); the full
+    /// original `User(text)` is stored as the first entry of `details`,
+    /// followed by subsequent non-User messages. Messages that come
+    /// BEFORE the first User (e.g. the `System("Resuming session …")`
+    /// marker, or a stray Agent dump) stay in `messages` as-is — only
+    /// User-anchored turns get packed. Each packed turn has `expanded:
+    /// false` so history is collapsed by default. Tab + Enter toggles
+    /// individual rows.
+    pub fn pack_replayed_messages_into_turns(&mut self) {
+        if self.messages.is_empty() {
+            return;
+        }
+        let drained: Vec<ChatMessage> = std::mem::take(&mut self.messages);
+        let mut kept: Vec<ChatMessage> = Vec::new();
+        // `details` always opens with the full original ChatMessage::User
+        // so expanding the turn shows the entire prompt text. `prompt`
+        // is the short preview used in the collapsed header row.
+        let mut current: Option<(String, Vec<ChatMessage>)> = None;
+        for msg in drained {
+            match msg {
+                ChatMessage::User(text) => {
+                    if let Some((prompt, details)) = current.take() {
+                        self.completed_turns.push(CompletedTurn {
+                            prompt,
+                            details,
+                            expanded: false,
+                            trailing_marker: None,
+                        });
+                    }
+                    let preview = collapsed_prompt_preview(&text);
+                    let details = vec![ChatMessage::User(text)];
+                    current = Some((preview, details));
+                }
+                other => {
+                    if let Some((_, details)) = current.as_mut() {
+                        details.push(other);
+                    } else {
+                        kept.push(other);
+                    }
+                }
+            }
+        }
+        if let Some((prompt, details)) = current.take() {
+            self.completed_turns.push(CompletedTurn {
+                prompt,
+                details,
+                expanded: false,
+                trailing_marker: None,
+            });
+        }
+        self.messages = kept;
     }
 
     /// Cycle the past-turn selection toward older entries.
@@ -3825,6 +3922,7 @@ impl App {
                     .unwrap_or(false);
                 if tab.loading_session && is_load_target {
                     tab.flush_load_replay_pending();
+                    tab.pack_replayed_messages_into_turns();
                     tab.loading_session = false;
                     tab.loading_target_session_id = None;
                     tab.scroll_to_bottom();
@@ -9658,6 +9756,159 @@ mod tests {
         assert!(app.tab_sessions["OWNER-TAB"]
             .loading_target_session_id
             .is_none());
+    }
+
+    /// Replayed history must be packed into collapsed CompletedTurn rows
+    /// after session/load completes. Each User message opens a new turn;
+    /// the prompt header is a short preview (the full original User text
+    /// is kept as the first details entry so expanding shows everything).
+    /// Subsequent non-User messages become later details. Default
+    /// `expanded: false` so the resumed transcript doesn't dump as one
+    /// long wall.
+    #[test]
+    fn pack_replayed_messages_groups_into_collapsed_turns() {
+        let mut tab = TabSession::default();
+        tab.messages = vec![
+            ChatMessage::System("Resuming session abc...".to_string()),
+            ChatMessage::User("# Terminal Agent\nYou are...".to_string()),
+            ChatMessage::Agent("Hello, I am ready.".to_string()),
+            ChatMessage::User("list files".to_string()),
+            ChatMessage::ToolCall {
+                id: "t1".to_string(),
+                title: "ls".to_string(),
+                status: "done".to_string(),
+            },
+            ChatMessage::Agent("Here are the files...".to_string()),
+        ];
+
+        tab.pack_replayed_messages_into_turns();
+
+        // System marker stays — it's not anchored to a User.
+        assert_eq!(tab.messages.len(), 1);
+        assert!(matches!(&tab.messages[0], ChatMessage::System(s) if s.starts_with("Resuming")));
+
+        // Two turns: one per User prompt.
+        assert_eq!(tab.completed_turns.len(), 2);
+
+        let t0 = &tab.completed_turns[0];
+        // Preview shows first non-empty line + ellipsis (extra lines below).
+        assert_eq!(t0.prompt, "# Terminal Agent…");
+        // details = [original full User, Agent reply].
+        assert_eq!(t0.details.len(), 2);
+        assert!(matches!(&t0.details[0], ChatMessage::User(s) if s.starts_with("# Terminal Agent\nYou are")));
+        assert!(matches!(&t0.details[1], ChatMessage::Agent(_)));
+        assert!(!t0.expanded, "replayed turn must default to collapsed");
+        assert!(t0.trailing_marker.is_none());
+
+        let t1 = &tab.completed_turns[1];
+        // Short single-line prompt — no ellipsis.
+        assert_eq!(t1.prompt, "list files");
+        // details = [original User, ToolCall, Agent].
+        assert_eq!(t1.details.len(), 3);
+        assert!(matches!(&t1.details[0], ChatMessage::User(s) if s == "list files"));
+        assert!(matches!(&t1.details[1], ChatMessage::ToolCall { .. }));
+        assert!(matches!(&t1.details[2], ChatMessage::Agent(_)));
+        assert!(!t1.expanded);
+    }
+
+    /// Preview logic: huge single-line prompt must clip to the cap with
+    /// a trailing ellipsis; short single-line prompts stay verbatim.
+    #[test]
+    fn collapsed_prompt_preview_clips_long_single_line() {
+        let long = "a".repeat(500);
+        let preview = collapsed_prompt_preview(&long);
+        // 80 chars + ellipsis.
+        assert_eq!(preview.chars().count(), 81);
+        assert!(preview.ends_with('…'));
+
+        let short = "hello world";
+        assert_eq!(collapsed_prompt_preview(short), "hello world");
+        assert!(!collapsed_prompt_preview(short).ends_with('…'));
+    }
+
+    /// Edge: messages that come BEFORE the first User must NOT be lost —
+    /// they stay in `tab.messages`. Pre-User stray Agent dumps (rare but
+    /// possible) should remain visible rather than being silently dropped.
+    #[test]
+    fn pack_replayed_messages_preserves_pre_user_orphans() {
+        let mut tab = TabSession::default();
+        tab.messages = vec![
+            ChatMessage::System("Resuming...".to_string()),
+            ChatMessage::Agent("stray context dump".to_string()),
+            ChatMessage::User("hi".to_string()),
+            ChatMessage::Agent("hello".to_string()),
+        ];
+
+        tab.pack_replayed_messages_into_turns();
+
+        assert_eq!(tab.messages.len(), 2);
+        assert!(matches!(&tab.messages[0], ChatMessage::System(_)));
+        assert!(matches!(&tab.messages[1], ChatMessage::Agent(s) if s == "stray context dump"));
+        assert_eq!(tab.completed_turns.len(), 1);
+        assert_eq!(tab.completed_turns[0].prompt, "hi");
+        assert!(!tab.completed_turns[0].expanded);
+    }
+
+    /// Empty messages must no-op (no panic, no spurious turn).
+    #[test]
+    fn pack_replayed_messages_empty_is_noop() {
+        let mut tab = TabSession::default();
+        tab.pack_replayed_messages_into_turns();
+        assert!(tab.messages.is_empty());
+        assert!(tab.completed_turns.is_empty());
+    }
+
+    /// Integration: SessionAttached for the load target must trigger
+    /// packing — replayed User/Agent rows must end up as collapsed
+    /// CompletedTurn entries, not loose ChatMessage rows.
+    #[test]
+    fn session_attached_for_load_target_packs_replayed_history() {
+        let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+        app.owner_tab_id = Some("OWNER-TAB".to_string());
+        app.tab_sessions
+            .insert("OWNER-TAB".to_string(), TabSession::default());
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "load_session".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "tab_id": "OWNER-TAB",
+                "session_id": "sess-target",
+                "cwd": "",
+            }),
+        });
+        // Simulate replay chunks landing in messages.
+        let tab = app.tab_sessions.get_mut("OWNER-TAB").unwrap();
+        tab.messages.push(ChatMessage::User("first prompt".to_string()));
+        tab.messages.push(ChatMessage::Agent("first reply".to_string()));
+        tab.messages.push(ChatMessage::User("second prompt".to_string()));
+        tab.messages.push(ChatMessage::Agent("second reply".to_string()));
+
+        app.handle_event(AppEvent::SessionAttached {
+            tab_id: "OWNER-TAB".to_string(),
+            session_id: "sess-target".to_string(),
+            available_models: vec![],
+            current_model_id: None,
+        });
+
+        let tab = &app.tab_sessions["OWNER-TAB"];
+        assert!(!tab.loading_session);
+        assert_eq!(
+            tab.completed_turns.len(),
+            2,
+            "both replayed user prompts must become collapsed CompletedTurn rows"
+        );
+        for turn in &tab.completed_turns {
+            assert!(!turn.expanded, "replayed turns default collapsed");
+        }
+        // The leading System("Resuming session ...") marker stays in
+        // messages — it's not anchored to a User so packing leaves it
+        // alone.
+        assert!(tab
+            .messages
+            .iter()
+            .all(|m| matches!(m, ChatMessage::System(_))));
     }
 
     // ─── WtNotification auto-dismiss ────────────────────────────────────────
