@@ -1931,8 +1931,27 @@ namespace winrt::TerminalApp::implementation
         }
         case AS::Suggested:
         {
-            // Ask wta to clear the suggestion — the agent pane is already
-            // open by virtue of having a non-Idle autofix state.
+            // Suggested has no executable action — the explanation lives in
+            // the chat history. The user's click means "show me what's
+            // wrong", so ensure the pane is visible in chat view. The pane
+            // may be stashed, currently in sessions view, or even absent
+            // (the bar caches autofix state across stash), so handle all
+            // three before dismissing the bar indicator.
+            const auto agentPane = activeTab->FindAgentPane();
+            if (agentPane && !agentPane->IsHidden())
+            {
+                if (agentContent.IsSessionsView())
+                {
+                    _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
+                }
+            }
+            else
+            {
+                _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"AutofixSuggestion");
+            }
+
+            // Now that the user is reading the explanation in the pane,
+            // drop the bar's Suggested indicator.
             Json::Value evt;
             evt["type"] = "event";
             evt["method"] = "autofix_dismiss_suggestion";
