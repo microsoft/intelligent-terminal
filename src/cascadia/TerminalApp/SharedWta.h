@@ -25,10 +25,13 @@
 // helpers can reconnect.
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <wil/resource.h>
 
@@ -79,6 +82,38 @@ namespace winrt::TerminalApp::implementation
         /// teardown paths that aren't sure whether they acquired).
         void ReleasePane();
 
+        /// Force-restart the wta-master process, bypassing the
+        /// `AcquirePane`/`ReleasePane` reference count. Used by the
+        /// `/restart` slash command path: the caller (TerminalPage)
+        /// tears down every agent pane around this call, so the
+        /// refcount-based teardown isn't enough — there may be other
+        /// panes' Closed handlers that have yet to fire. After this
+        /// returns, the next `AcquirePane` finds a fresh master
+        /// listening on the same `_masterPipeName` (intentionally
+        /// stable across respawns so any helpers spawned with the old
+        /// cmdline can still find it).
+        ///
+        /// Replays the `wtaPath` + `extraArgs` cached from the first
+        /// successful spawn so the new master inherits the same
+        /// per-process settings as the one being replaced. This makes
+        /// `/restart` semantically "give me the same agent CLI but
+        /// fresh".
+        ///
+        /// Settings changes (acpAgent / acpModel / etc.) need to spawn
+        /// the master with a *different* cmdline. For that case, call
+        /// the overload that takes a fresh `wtaPath` + `extraArgs` —
+        /// it replaces the cached spawn args before respawning, so
+        /// the new master inherits the new per-process settings and
+        /// any subsequent crash-recovery respawn uses the same.
+        ///
+        /// No-op if the master isn't running, or if there were no
+        /// cached spawn args (no AcquirePane has succeeded this
+        /// process) and no fresh args were supplied. Returns true on
+        /// successful respawn or no-op.
+        bool Restart();
+        bool Restart(const std::wstring_view wtaPath,
+                     std::span<const std::wstring> extraArgs);
+
         /// Whether wta is currently spawned. Becomes false after a
         /// crash is observed by the wait callback, or after the last
         /// pane releases.
@@ -116,9 +151,16 @@ namespace winrt::TerminalApp::implementation
         void _CleanupLocked();
 
         // Wait-callback bridge — `RegisterWaitForSingleObject` requires
-        // a free function. The thunk dispatches to the instance method.
+        // a free function. The `context` PVOID carries the PID this
+        // wait was registered for (not a `this` pointer — the singleton
+        // is reached via `Instance()`), so the callback can detect a
+        // stale registration after `_CleanupLocked` + `_SpawnLocked`
+        // replaced the master out from under it. Without that check,
+        // a delayed callback for the OLD master would null out the
+        // *new* master's `_process` / `_waitHandle` and silently break
+        // crash detection.
         static void CALLBACK _OnProcessExitedThunk(PVOID context, BOOLEAN timedOut);
-        void _OnProcessExited();
+        void _OnProcessExited(DWORD observedPid);
 
         mutable std::mutex _mtx;
         wil::unique_handle _process;
@@ -131,5 +173,21 @@ namespace winrt::TerminalApp::implementation
         // helpers spawned with stale cmdline can still find the
         // currently-live master.
         std::wstring _masterPipeName;
+        // Cached cmdline inputs from the most recent successful
+        // `_SpawnLocked`. Replayed verbatim by `Restart()` so the
+        // refreshed master inherits the per-process settings that
+        // were in effect when this Terminal process first booted an
+        // agent pane. Empty when no successful spawn has happened.
+        std::wstring _cachedWtaPath;
+        std::vector<std::wstring> _cachedExtraArgs;
+        // Wall-clock-ish stamp of the most recent successful spawn.
+        // Used by the no-arg `Restart()` to dedup the fan-out from
+        // `_dispatchRestartAgentStackToPage`: every open window's
+        // `OnRestartAgentStackRequested` calls `Restart()` on its own
+        // UI thread, and without dedup they sequentially kill each
+        // other's freshly-spawned masters. A short time window is
+        // enough because the fan-out runs in tight succession on
+        // adjacent UI-thread ticks.
+        std::optional<std::chrono::steady_clock::time_point> _lastRespawn;
     };
 }

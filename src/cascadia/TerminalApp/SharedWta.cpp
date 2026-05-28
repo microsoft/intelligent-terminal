@@ -101,6 +101,83 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    bool SharedWta::Restart()
+    {
+        std::lock_guard lock{ _mtx };
+
+        // Nothing running → nothing to restart. Caller's surrounding
+        // teardown+reopen path will trigger the usual lazy `AcquirePane`
+        // spawn anyway, so this is a benign no-op (not an error).
+        if (!_process.is_valid())
+        {
+            return true;
+        }
+
+        // Dedup the multi-window fan-out. `/restart` arrives via
+        // `_dispatchRestartAgentStackToPage`, which calls
+        // `OnRestartAgentStackRequested` (and thus `Restart()`) on EVERY
+        // window's UI thread. Without this guard, window B's Restart kills
+        // window A's just-spawned master, breaking the freshly-reopened
+        // helper in window A. 500 ms is comfortably larger than the typical
+        // UI-thread RunAsync hop (the 07:32 log showed a 240 ms gap between
+        // windows) and tiny compared to any human-driven legitimate "two
+        // restarts in a row".
+        if (_lastRespawn &&
+            std::chrono::steady_clock::now() - *_lastRespawn < std::chrono::milliseconds(500))
+        {
+            return true;
+        }
+
+        // No cached args means we've never successfully spawned in this
+        // process, which contradicts `_process.is_valid()` — defensive
+        // bail rather than spawning with empty wtaPath.
+        if (_cachedWtaPath.empty())
+        {
+            return false;
+        }
+
+        // Drop the Job first so KILL_ON_JOB_CLOSE reaps the old master +
+        // every agent CLI descendant, then respawn under the same
+        // _masterPipeName. Any helper that's about to be torn down (the
+        // /restart caller closes every agent pane) sees its pipe go EOF
+        // and exits naturally; any helper that races a reconnect against
+        // the respawn finds the new master listening on the same name.
+        // Refcount is left untouched on purpose — the caller is still
+        // holding refs for the panes it's about to close-and-reopen, and
+        // the matching ReleasePane / AcquirePane pair will balance out.
+        _CleanupLocked();
+        return _SpawnLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs);
+    }
+
+    bool SharedWta::Restart(const std::wstring_view wtaPath,
+                            std::span<const std::wstring> extraArgs)
+    {
+        if (wtaPath.empty())
+        {
+            return false;
+        }
+
+        std::lock_guard lock{ _mtx };
+
+        // Nothing live to replace (e.g. settings changed while no pane
+        // was open in any window). The next AcquirePane will _SpawnLocked
+        // with freshly-built args anyway, so we don't need to touch the
+        // cache here.
+        if (!_process.is_valid())
+        {
+            return true;
+        }
+
+        // Respawn the master with the *new* args so the running agent
+        // CLI is replaced with whatever the new settings demand. The
+        // surrounding `_RebuildAgentStack` flow has already torn down
+        // every agent pane in this window and is about to reopen one;
+        // refcount is left alone for the same reason as the cached-args
+        // overload — outgoing ReleasePane / incoming AcquirePane balance.
+        _CleanupLocked();
+        return _SpawnLocked(wtaPath, extraArgs);
+    }
+
     bool SharedWta::_SpawnLocked(const std::wstring_view wtaPath,
                                  std::span<const std::wstring> extraArgs)
     {
@@ -236,12 +313,18 @@ namespace winrt::TerminalApp::implementation
         // back to "no wta" so the next AcquirePane respawns. Set up
         // BEFORE ResumeThread so the wait is in place by the time
         // the child actually starts running.
+        //
+        // Context is the PID, not a `this` pointer. The callback
+        // dispatches via `Instance()` and uses the captured PID to
+        // detect a stale registration (see `_OnProcessExited`'s
+        // mismatch bail). Casting via `uintptr_t` is the canonical
+        // PVOID-as-integer round trip.
         HANDLE waitHandle = nullptr;
         if (!RegisterWaitForSingleObject(
                 &waitHandle,
                 process.get(),
                 &SharedWta::_OnProcessExitedThunk,
-                this,
+                reinterpret_cast<PVOID>(static_cast<uintptr_t>(pid)),
                 INFINITE,
                 WT_EXECUTEONLYONCE))
         {
@@ -259,6 +342,15 @@ namespace winrt::TerminalApp::implementation
         _job = std::move(job);
         _pid = pid;
         _waitHandle = waitHandle;
+
+        // Cache the spawn inputs so `Restart()` can replay them. Overwrites
+        // any prior cache: if a respawn after crash used different
+        // settings (none today, but the path is here), the most recent
+        // wins. Done at the very end so partial-failure paths above
+        // leave the previous cache intact.
+        _cachedWtaPath.assign(wtaPath);
+        _cachedExtraArgs.assign(extraArgs.begin(), extraArgs.end());
+        _lastRespawn = std::chrono::steady_clock::now();
         return true;
     }
 
@@ -282,10 +374,15 @@ namespace winrt::TerminalApp::implementation
 
     void CALLBACK SharedWta::_OnProcessExitedThunk(PVOID context, BOOLEAN /*timedOut*/)
     {
-        static_cast<SharedWta*>(context)->_OnProcessExited();
+        // `context` is the PID at registration time, packed via
+        // `reinterpret_cast<PVOID>(static_cast<uintptr_t>(pid))`. Round
+        // trip back and let `_OnProcessExited` compare against the
+        // currently-registered PID to detect a stale callback.
+        const auto observedPid = static_cast<DWORD>(reinterpret_cast<uintptr_t>(context));
+        SharedWta::Instance()._OnProcessExited(observedPid);
     }
 
-    void SharedWta::_OnProcessExited()
+    void SharedWta::_OnProcessExited(DWORD observedPid)
     {
         // Runs on a Win32 thread-pool thread. wta has exited (crash,
         // OOM, manual kill). Clear our process record so the next
@@ -294,6 +391,19 @@ namespace winrt::TerminalApp::implementation
         // ReleasePane (which will then no-op the cleanup since
         // _process is already invalid).
         std::lock_guard lock{ _mtx };
+
+        // Stale-callback bail. `_CleanupLocked` only does a non-blocking
+        // `UnregisterWaitEx(nullptr)`, so a callback that was already
+        // queued for the OLD master can still fire after `_SpawnLocked`
+        // has installed a NEW master. The captured PID lets us tell:
+        // when it doesn't match the live `_pid`, the callback is for
+        // a previously-killed master and must not touch `_process` /
+        // `_waitHandle` (which now belong to the new master).
+        if (_pid != observedPid)
+        {
+            return;
+        }
+
         if (!_process.is_valid())
         {
             // Race: Release already cleaned up before our callback

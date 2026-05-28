@@ -1789,7 +1789,10 @@ impl acp::Client for WtaClient {
 ///
 /// Wires the same App-facing select-loop as `run_inner`, minus the
 /// restart-loop wrapper: helper mode doesn't own the agent CLI lifetime
-/// (master does), so `restart_rx` is drained but logged as unsupported.
+/// (master does). `/restart` is delegated to the C++ side via a
+/// `restart_agent_stack` `SendEvent`; that path tears down every agent
+/// pane, force-restarts master under the same stable pipe name, and
+/// re-toggles the active pane so the user lands on a fresh session.
 ///
 /// See doc/specs/Multi-window-agent-pane.md for the helper+master
 /// architecture, and `tools/wta/src/master/mod.rs` for the peer.
@@ -2173,10 +2176,11 @@ pub async fn run_acp_client_over_pipe(
     periodic_refetch.tick().await;
 
     // Main event loop. Mirrors `run_inner`'s select arms, minus the
-    // restart-loop wrapper (helper mode can't restart — master owns
-    // the agent CLI). A `/restart` signal is logged and reported back
-    // to the user as a no-op; deeper restart support is a Phase 3+
-    // concern (the master itself would need a "respawn" path).
+    // restart-loop wrapper (helper mode can't restart in-process — master
+    // owns the agent CLI). `/restart` fires a `restart_agent_stack`
+    // `SendEvent` to the C++ side; that path force-restarts the whole
+    // agent stack (tear down panes → `SharedWta::Restart()` → respawn on
+    // the same stable pipe name → re-toggle active pane).
     loop {
         tokio::select! {
             biased;
@@ -2207,19 +2211,31 @@ pub async fn run_acp_client_over_pipe(
                 dispatch_master_ext_request(req, &conn, &event_tx);
             }
             Some(req) = restart_rx.recv() => {
-                tracing::warn!(
+                // Helper can't restart the agent CLI in-process — master owns
+                // its lifetime, and master itself is a singleton owned by
+                // `SharedWta` on the C++ side. Ask the C++ side to do a full
+                // force-restart of the agent stack: tear down every agent
+                // pane, kill master via `SharedWta::Restart()` (bypassing
+                // refcount), respawn master under the same stable pipe name,
+                // and re-toggle the active tab's pane. The new wta-helper
+                // that gets spawned will reconnect to the new master and
+                // the user sees a fresh session.
+                //
+                // Signal travels: helper → `wtcli publish` (see
+                // `app::send_wt_protocol_event`) → `IProtocolServer::SendEvent`
+                // (route `RestartAgentStack`) →
+                // `TerminalPage::OnRestartAgentStackRequested`.
+                tracing::info!(
                     target: "helper",
                     new_agent = ?req.agent_cmd,
-                    "restart requested in helper mode — not supported \
-                     (master owns the agent CLI lifetime); reporting to user"
+                    "restart requested — asking WT to force-restart the agent stack"
                 );
-                let _ = event_tx.send(AppEvent::AgentError {
-                    session_id: None,
-                    message: "/restart is not available in this agent pane \
-                              — restart is owned by the shared wta-master \
-                              process. Close and reopen the pane to recover."
-                        .to_string(),
+                let evt = serde_json::json!({
+                    "type": "event",
+                    "method": "restart_agent_stack",
+                    "params": {},
                 });
+                crate::app::send_wt_protocol_event(evt.to_string());
             }
             Some(req) = cancel_rx.recv() => {
                 let session_id_str = req.session_id.clone();
