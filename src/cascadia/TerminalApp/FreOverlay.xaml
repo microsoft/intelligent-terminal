@@ -80,7 +80,7 @@
                                    LineHeight="18" MaxWidth="480"
                                    Margin="0,4,0,0">
                             <Run x:Name="WelcomeSubtitlePrefix" Text="" />
-                            <Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal/"
+                            <Hyperlink NavigateUri="https://aka.ms/intelligent-terminal"
                                        Foreground="#FF99EBFF">
                                 <Run x:Name="WelcomeSubtitleLink" Text="" />
                             </Hyperlink>
