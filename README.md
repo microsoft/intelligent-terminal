@@ -130,8 +130,10 @@ The agent status bar sits at the bottom of the window and gives you quick access
 A context-aware, docked pane with your agent CLI of choice. The pane has context on your shell output across all your shells. Toggle with <kbd>Ctrl+Shift+.</kbd>, switch focus with <kbd>Ctrl+Shift+I</kbd>. If the agent needs to do multiple or complex tasks, it spins up background tasks in new tabs so your active shell stays focused.
 
 <p align="center">
-  <img src="./images/intelligent-terminal-agent-focus.png" alt="Screenshot of the agent pane with focus, showing the prompt input">
+  <img src="./images/intelligent-terminal-agent-focus.png" alt="Screenshot of the agent pane with focus, showing multiple panes">
 </p>
+
+When you have multiple panes active, a small "Agent" indicator will appear on the pane that your agent has "focus" on.
 
 ### Agent Management
 
