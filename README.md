@@ -77,8 +77,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 ## Get Started
 
-2. On first launch, choose your agent. Intelligent Terminal auto-detects supported agent CLIs (Copilot/Claude/Codex/Gemini) on your machine; other ACP-compatible CLIs can be used by configuring a custom agent command. If Copilot isn't installed, setup can install it via WinGet.
-2. On first launch, choose your agent. Intelligent Terminal auto-detects [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine. If none are found, it defaults to GitHub Copilot CLI and installs it for you.
+1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (Copilot/Claude/Codex/Gemini). If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
 3. If you aren't already authenticated, the agent pane walks you through sign-in.
 4. Start asking questions. The agent has context on your shell output, no copy-pasting needed.
 
@@ -158,7 +157,7 @@ Type `?` followed by your prompt in the Command Palette to kick off an agent tas
 
 ## Data & Privacy
 
-Intelligent Terminal is a **local transport layer**. It passes your prompts and shell context to your selected agent CLI over stdio/ACP. Intelligent Terminal does not call any cloud APIs itself and does not persist conversation history, but it may write diagnostic logs to disk (for example under `%LOCALAPPDATA%\IntelligentTerminal\logs\`).
+Intelligent Terminal is a **local transport layer**. It passes your prompts and shell context to your selected agent CLI over stdio/ACP. Intelligent Terminal does not call any cloud APIs itself and does not persist conversation history, however, diagnostic logs may be written to disk and telemetry may be emitted as described below.
 
 ### What data flows through Terminal
 
@@ -181,8 +180,8 @@ All of this is held in memory for the active session only and discarded when the
 ### Controls
 
 - Choose your agent CLI at any time in Settings > Agent
-- Disable auto error detection to prevent shell output from being sent automatically
-- Intelligent Terminal always asks before running commands on your behalf
+- Disable auto error detection to prevent shell output from being detected automatically
+- Intelligent Terminal always asks before running commands on your behalf in your shell
 
 Intelligent Terminal only collects usage data and sends it to Microsoft to help improve our products and services. Read our [privacy statement](https://go.microsoft.com/fwlink/?LinkID=824704) to learn more. See [PRIVACY.md](./PRIVACY.md) for details and instructions on how to disable telemetry.
 
