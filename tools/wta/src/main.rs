@@ -407,7 +407,9 @@ enum Command {
         target: Option<String>,
     },
 
-    /// Delegate a prompt to a new tab with a configured agent (fire-and-forget)
+    /// Open a configured delegate agent in a new tab (fire-and-forget). With a
+    /// PROMPT, the prompt is baked into the agent's launch; omit PROMPT to open
+    /// the agent interactively with no startup prompt.
     Delegate {
         /// The prompt to send to the delegate agent. Omit to open the agent
         /// interactively in a new tab with no startup prompt.

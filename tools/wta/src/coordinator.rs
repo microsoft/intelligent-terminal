@@ -1066,7 +1066,8 @@ fn extract_balanced_json_object(text: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_delegate_launch_commandline, default_delegate_agent_runtimes, parse_autofix_response,
+        build_delegate_interactive_commandline, build_delegate_launch_commandline,
+        default_delegate_agent_runtimes, parse_autofix_response,
         parse_recommendation_set, resolve_created_pane_id,
         validate_recommendation_set_for_coordinator_target, AutofixDecision,
         DelegatePromptDelivery, OpenTarget, RecommendedAction,
@@ -1167,6 +1168,27 @@ mod tests {
         assert!(commandline.contains("copilot"));
         assert!(commandline.contains("--model claude-haiku-4.5"));
         assert!(commandline.contains("-i \"Fix the Rust build error and run cargo build\""));
+    }
+
+    #[test]
+    fn delegate_interactive_commandline_omits_startup_prompt() {
+        let runtime = default_delegate_agent_runtimes(
+            Some("copilot --model claude-haiku-4.5"),
+            Some("copilot --acp --stdio --model gpt-5.2"),
+            None,
+        )
+        .into_iter()
+        .find(|runtime| runtime.id == "copilot")
+        .expect("copilot runtime should exist");
+
+        let commandline = build_delegate_interactive_commandline(&runtime).unwrap();
+
+        // May be wrapped as "cmd /c copilot ..." if copilot.exe isn't on PATH.
+        assert!(commandline.contains("copilot"));
+        // Model is still applied for the interactive launch.
+        assert!(commandline.contains("--model claude-haiku-4.5"));
+        // No startup-prompt flag is appended when there's no prompt.
+        assert!(!commandline.contains("-i "));
     }
 
     #[test]
