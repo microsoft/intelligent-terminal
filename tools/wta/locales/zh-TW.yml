@@ -1,17 +1,17 @@
 # 設定畫面標題
 setup.title.first_run: "歡迎使用智慧型終端機！"
-setup.title.agent_missing: "找不到智慧代理"
-setup.title.agent_error: "智慧代理連線失敗"
-setup.title.switch_agent: "切換智慧代理"
-setup.title.not_available: "智慧代理無法使用"
+setup.title.agent_missing: "找不到智能體"
+setup.title.agent_error: "智能體連線失敗"
+setup.title.switch_agent: "切換智能體"
+setup.title.not_available: "智能體無法使用"
 setup.title.sign_in: "需要登入"
 
-# %{agent} 會在執行階段替換為智慧代理的顯示名稱。
-setup.subtitle.copilot_missing: "您的智慧代理 \"%{agent}\" 尚未安裝。請依照下列步驟進行安裝。若要切換智慧代理，請前往Intelligent Terminal Settings > Agent。"
-setup.subtitle.agent_missing: "您的智慧代理 \"%{agent}\" 尚未安裝。請手動重新安裝，然後重試。若要切換智慧代理，請前往Intelligent Terminal Settings > Agent。"
-setup.subtitle.copilot_auth: "您的智慧代理 \"%{agent}\" 需要驗證。請依照下列步驟登入。若要切換智慧代理，請前往Intelligent Terminal Settings > Agent。"
-setup.subtitle.agent_auth: "您的智慧代理 \"%{agent}\" 需要驗證。請透過智慧代理登入，然後選擇下方的 \"我已登入\"。若要切換智慧代理，請前往Intelligent Terminal Settings > Agent。"
-setup.description.fre_line1: "選擇您要在智慧型終端機中使用的預設智慧代理。您可以"
+# %{agent} 會在執行階段替換為智能體的顯示名稱。
+setup.subtitle.copilot_missing: "您的智能體 \"%{agent}\" 尚未安裝。請依照下列步驟進行安裝。若要切換智能體，請前往Intelligent Terminal Settings > Agent。"
+setup.subtitle.agent_missing: "您的智能體 \"%{agent}\" 尚未安裝。請手動重新安裝，然後重試。若要切換智能體，請前往Intelligent Terminal Settings > Agent。"
+setup.subtitle.copilot_auth: "您的智能體 \"%{agent}\" 需要驗證。請依照下列步驟登入。若要切換智能體，請前往Intelligent Terminal Settings > Agent。"
+setup.subtitle.agent_auth: "您的智能體 \"%{agent}\" 需要驗證。請透過智能體登入，然後選擇下方的 \"我已登入\"。若要切換智能體，請前往Intelligent Terminal Settings > Agent。"
+setup.description.fre_line1: "選擇您要在智慧型終端機中使用的預設智能體。您可以"
 setup.description.fre_line2: "前往設定來配置及設定您的工作區。"
 
 setup.option.install: "安裝 %{agent}"
@@ -27,13 +27,13 @@ setup.status.installing_winget: " 正在透過 winget 安裝..."
 
 # ── 驗證流程 (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - 縮寫，不翻譯
-auth.agent_selected: "已選取智慧代理 %{name}"
-auth.agent_selected_with_status: "智慧代理 %{name} — "
+auth.agent_selected: "已選取智能體 %{name}"
+auth.agent_selected_with_status: "智能體 %{name} — "
 auth.checking_authentication: "  %{spinner} 正在檢查驗證..."
 auth.waiting_for_authorization: "  %{spinner} 正在等待授權..."
 auth.code_copied_hint: "  代碼已複製到剪貼簿 — 請在瀏覽器中貼上。"
-auth.sign_in_prompt: "登入以使用您的智慧代理："
-auth.card_connect: "  連接 %{name} 以啟用智慧代理功能"
+auth.sign_in_prompt: "登入以使用您的智能體："
+auth.card_connect: "  連接 %{name} 以啟用智能體功能"
 auth.button_sign_in_github: "[ 使用 GitHub 登入 ]"  # {Locked="GitHub"}
 auth.button_sign_in_with: "[ 使用 %{name} 登入 ]"
 auth.hint_footer: "  按 Enter 登入，按 Esc 返回"  # {Locked="Enter","Esc"}
@@ -73,7 +73,7 @@ recommendations.button_open_in_new_panel: "在新面板中開啟 ↵"
 recommendations.button_open_tab: "開啟索引標籤 ↵"
 recommendations.button_open_panel: "開啟面板 ↵"
 recommendations.button_execute: "執行 ↵"
-recommendations.agent_fallback: "智慧代理"
+recommendations.agent_fallback: "智能體"
 recommendations.open_and_send_display: "%{agent}: %{input}"
 recommendations.open_kind_tab: "索引標籤"
 recommendations.open_kind_panel: "面板"
@@ -88,7 +88,7 @@ permission.compact.default_description: "已要求權限"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N 回答 · 調整視窗大小以檢視完整卡片]"  # {Locked="Y/N"}
 
-# ── 智慧代理狀態 (src/agent_check.rs) ───────────────────────────────────────
+# ── 智能體狀態 (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_installed_auto: "未安裝 — 選取以自動安裝"
 agent.status.not_found: "找不到"
 agent.status.detected: "已偵測到"
@@ -100,7 +100,7 @@ agent.install.winget_failed_code: "winget 安裝失敗（結束代碼 %{code}）
 agent.install.unsupported: "不支援自動安裝 %{agent}"
 agent.custom.auth_hint: "請確認 %{name} 已安裝並位於 PATH 上。"  # {Locked="PATH"}
 
-# ── 智慧代理檢視 (src/ui/agents_view.rs) ─────────────────────────────────────
+# ── 智能體檢視 (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "載入中..."
 # {Locked="Enter","Esc","↑","↓"} - 組合鍵，請勿翻譯
 agents.footer_hint: "(↑ ↓ 瀏覽 • Enter 啟動工作階段 • Esc 結束)"
@@ -110,10 +110,10 @@ agents.status.error: "錯誤"
 agents.status.idle: "閒置"
 
 # ── 版面配置歡迎提示 (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. 顯示/隱藏智慧代理窗格 • Ctrl+Shift+/ 顯示/隱藏智慧代理工作階段)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. 顯示/隱藏智能體窗格 • Ctrl+Shift+/ 顯示/隱藏智能體工作階段)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── 連線狀態 ────────────────────────────────────────────────────────────
-connection.starting: "正在啟動智慧代理..."
+connection.starting: "正在啟動智能體..."
 connection.reconnecting: "正在重新連線..."
 
 # ── 系統訊息 (src/app.rs) ────────────────────────────────────────────────
@@ -173,6 +173,6 @@ time.days_other: "%{count} 天前"
 commands.help.summary: "顯示此命令清單"
 commands.clear.summary: "清除聊天記錄（保留工作階段）"
 commands.new.summary: "啟動新的 ACP 工作階段（清空歷史記錄）"
-commands.restart.summary: "重新啟動智慧代理"
+commands.restart.summary: "重新啟動智能體"
 commands.stop.summary: "取消進行中的提示"
 commands.sessions.summary: "開啟歷史工作階段選擇器（Ctrl+Shift+/）"
