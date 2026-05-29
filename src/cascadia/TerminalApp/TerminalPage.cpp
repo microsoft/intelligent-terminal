@@ -308,6 +308,34 @@ namespace winrt::TerminalApp::implementation
             _agentSettingsSnapshotInitialized = true;
         }
 
+        // Shell-integration reconcile (silent, background).
+        //
+        // Fires on first-load AND whenever EffectiveAutoErrorDetectionEnabled
+        // changes between settings reloads. This handles two cases that
+        // the explicit FRE/Settings-Save install paths miss:
+        //
+        //   1. Toggle-OFF: previously a no-op, leaving our $PROFILE block
+        //      in place. We now call UninstallForTarget to strip it.
+        //   2. Roaming/sync: a synced settings.json arriving on a fresh
+        //      machine never triggered an install because no user action
+        //      ran. First-load reconcile installs based on the current
+        //      effective setting.
+        //
+        // Install/Uninstall are both idempotent — when the on-disk state
+        // already matches the desired state they return alreadyInstalled
+        // and do no I/O beyond a read. Safe to call every reload.
+        {
+            const bool currentDetection = _settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled();
+            const bool shouldReconcile = !_autoErrorDetectionSnapshotInitialized ||
+                                         _lastAutoErrorDetectionEnabled != currentDetection;
+            _lastAutoErrorDetectionEnabled = currentDetection;
+            _autoErrorDetectionSnapshotInitialized = true;
+            if (shouldReconcile)
+            {
+                _ReconcileShellIntegration(currentDetection);
+            }
+        }
+
         // Auto-suggest toggle hot-reload: when the effective auto-fix
         // value changes between settings reloads, push the new value
         // to WTA over the protocol. Tracks `EffectiveAutoFixEnabled`

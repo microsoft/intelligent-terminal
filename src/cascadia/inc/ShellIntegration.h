@@ -447,4 +447,132 @@ if (-not $Global:__ShellInteg_Installed) {
         }
         return Install(profilePath);
     }
+
+    // Remove the managed block from $PROFILE. The versioned script file
+    // next to the profile is intentionally left on disk — it is inert
+    // once the dot-source line is gone, and leaving it avoids touching
+    // OneDrive-synced content unnecessarily.
+    //
+    // `alreadyInstalled` is reused to mean "already in the desired state"
+    // (i.e. no block was present, so nothing to remove) — same semantics
+    // as Install's "already configured, no-op". Idempotent.
+    //
+    // Synchronous — call from a background thread.
+    inline InstallResult Uninstall(const std::wstring& profilePathW)
+    {
+        if (profilePathW.empty())
+        {
+            return { false, false, L"Profile path is empty" };
+        }
+
+        const std::filesystem::path profilePath{ profilePathW };
+
+        // If the profile file doesn't exist there is nothing to remove.
+        std::error_code ec;
+        if (!std::filesystem::exists(profilePath, ec))
+        {
+            return { true, true, {} };
+        }
+
+        std::string contents;
+        {
+            std::ifstream in{ profilePath, std::ios::binary };
+            if (!in)
+            {
+                return { false, false, L"Failed to open PowerShell profile for reading" };
+            }
+            contents.assign(std::istreambuf_iterator<char>(in),
+                            std::istreambuf_iterator<char>());
+            if (in.bad())
+            {
+                return { false, false, L"Failed to read PowerShell profile" };
+            }
+        }
+
+        const auto [lineStart, lineEnd] = FindShellIntegrationBlock(contents);
+        if (lineStart == std::string::npos)
+        {
+            // Nothing managed by us → already in the desired state.
+            return { true, true, {} };
+        }
+
+        // Orphan-open-marker safety: FindShellIntegrationBlock returns
+        // ONLY the marker line when a previous write was interrupted and
+        // the close marker is missing. The active `$__it_si = ...` /
+        // `. $__it_si` lines that follow would survive the strip and
+        // remain executable with no marker to clean them up later. Skip
+        // the uninstall in that case — the next Install will overwrite
+        // the orphan with a fresh well-formed block, which is the only
+        // safe recovery path.
+        const std::string_view matched{ contents.data() + lineStart, lineEnd - lineStart };
+        const bool isModernOrphan =
+            matched.size() >= kShellIntegrationBlockOpenMarker.size() &&
+            matched.substr(0, kShellIntegrationBlockOpenMarker.size()) == kShellIntegrationBlockOpenMarker &&
+            matched.find(kShellIntegrationBlockCloseMarker) == std::string_view::npos;
+        if (isModernOrphan)
+        {
+            return { true, true, {} };
+        }
+
+        // Expand the removed range to consume the line terminator that
+        // immediately follows the block so we don't leave an orphan
+        // empty line behind. We intentionally do NOT touch any leading
+        // newline — that may be user-authored content. Install only
+        // appends a single eol before the block, so removing block +
+        // trailing eol leaves the file cleanly terminated.
+        size_t removeStart = lineStart;
+        size_t removeEnd = lineEnd;
+        if (removeEnd < contents.size() && contents[removeEnd] == '\r')
+        {
+            ++removeEnd;
+        }
+        if (removeEnd < contents.size() && contents[removeEnd] == '\n')
+        {
+            ++removeEnd;
+        }
+
+        // Backup before mutating (non-fatal if it fails).
+        {
+            const auto now = std::chrono::system_clock::now();
+            const auto tt = std::chrono::system_clock::to_time_t(now);
+            struct tm tm{};
+            localtime_s(&tm, &tt);
+            wchar_t timeBuf[32]{};
+            wcsftime(timeBuf, std::size(timeBuf), L"%Y%m%d-%H%M%S", &tm);
+
+            const auto contentHash = std::hash<std::string>{}(contents);
+            auto backupPath = profilePath.wstring() +
+                L".bak." + timeBuf + L"." +
+                fmt::format(FMT_COMPILE(L"{:08x}"), contentHash & 0xFFFFFFFF);
+            std::filesystem::copy_file(profilePath, backupPath,
+                                       std::filesystem::copy_options::overwrite_existing, ec);
+        }
+
+        contents.erase(removeStart, removeEnd - removeStart);
+
+        std::ofstream profileOut{ profilePath, std::ios::binary | std::ios::trunc };
+        if (!profileOut)
+        {
+            return { false, false, L"Failed to write PowerShell profile" };
+        }
+        profileOut.write(contents.data(), contents.size());
+        profileOut.close();
+        if (!profileOut)
+        {
+            return { false, false, L"Failed to write PowerShell profile (write/close failed)" };
+        }
+        return { true, false, {} };
+    }
+
+    // Convenience: discover profile path + uninstall, for a given target.
+    // Synchronous — call from a background thread.
+    inline InstallResult UninstallForTarget(Target target)
+    {
+        auto profilePath = DiscoverProfilePath(target);
+        if (profilePath.empty())
+        {
+            return { false, false, L"Could not discover PowerShell profile path" };
+        }
+        return Uninstall(profilePath);
+    }
 }

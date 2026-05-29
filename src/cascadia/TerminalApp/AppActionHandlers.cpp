@@ -1997,6 +1997,30 @@ namespace winrt::TerminalApp::implementation
         _InitShellIntegration(target);
     }
 
+    // Silent install/uninstall driven by EffectiveAutoErrorDetectionEnabled.
+    // Called from SetSettings on first-load and on every change of the
+    // effective detection setting. No dialog — this is the background
+    // reconcile that keeps $PROFILE in sync with the user's stored
+    // preference (including roaming/sync arrivals on fresh machines and
+    // toggle-OFF cleanup that the FRE/Settings-Save dialog path doesn't
+    // perform). Install/Uninstall are both idempotent.
+    safe_void_coroutine TerminalPage::_ReconcileShellIntegration(bool enabled)
+    {
+        co_await winrt::resume_background();
+
+        namespace SI = ::Microsoft::Terminal::ShellIntegration;
+        if (enabled)
+        {
+            SI::InstallForTarget(SI::Target::Pwsh);
+            SI::InstallForTarget(SI::Target::WindowsPowerShell);
+        }
+        else
+        {
+            SI::UninstallForTarget(SI::Target::Pwsh);
+            SI::UninstallForTarget(SI::Target::WindowsPowerShell);
+        }
+    }
+
     void TerminalPage::_ShowShellIntegrationDialog(const winrt::hstring& title, const winrt::hstring& message)
     {
         if (auto presenter{ _dialogPresenter.get() })

@@ -375,6 +375,15 @@ namespace winrt::TerminalApp::implementation
         // requiring the agent pane to be torn down and restarted.
         bool _lastAutoFixEnabled{ false };
         bool _autoFixEnabledSnapshotInitialized{ false };
+        // Snapshot of EffectiveAutoErrorDetectionEnabled at last
+        // SetSettings call. Drives the silent shell-integration reconcile
+        // (Install when ON, Uninstall when OFF) on first-load and on
+        // every change — handles both Settings-UI toggle-off (which
+        // previously left our $PROFILE block behind) and roaming
+        // settings.json arriving on a fresh machine (which previously
+        // never ran the install).
+        bool _lastAutoErrorDetectionEnabled{ false };
+        bool _autoErrorDetectionSnapshotInitialized{ false };
         bool _agentRebuilding{ false };
         // Set when a settings change wants a rebuild but the active
         // tab can't host an agent pane (e.g. the Settings tab itself).
@@ -500,6 +509,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowLargePasteWarningDialog();
 
         safe_void_coroutine _InitShellIntegration(const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
+        safe_void_coroutine _ReconcileShellIntegration(bool enabled);
         void _ShowShellIntegrationDialog(const winrt::hstring& title, const winrt::hstring& message);
         void _OnSettingsInitShellIntegration(const winrt::Windows::Foundation::IInspectable& sender, const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
 
