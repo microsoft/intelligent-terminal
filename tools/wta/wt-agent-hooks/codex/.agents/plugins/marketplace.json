@@ -1,0 +1,20 @@
+{
+  "name": "wt-local",
+  "interface": {
+    "displayName": "Windows Terminal (local)"
+  },
+  "plugins": [
+    {
+      "name": "wt-agent-hooks",
+      "source": {
+        "source": "local",
+        "path": "./plugins/wt-agent-hooks"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
