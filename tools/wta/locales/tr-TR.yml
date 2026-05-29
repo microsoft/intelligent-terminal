@@ -45,7 +45,7 @@ auth.hint_footer: "  Oturum açmak için Enter, geri dönmek için Esc tuşuna b
 chat.activity_thinking: "Düşünüyor…"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Intelligent Terminal'e hoş geldiniz!"
-chat.welcome_disclaimer: "Intelligent Terminal, AI kullanır. Hataları kontrol edin"
+chat.welcome_disclaimer: "Intelligent Terminal, AI kullanır. Hataları kontrol edin."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -45,7 +45,7 @@ auth.hint_footer: "  Tizimga kirish uchun Enter, orqaga qaytish uchun Esc bosing
 chat.activity_thinking: "Oʻylayapman…"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Intelligent Terminal-ga xush kelibsiz!"
-chat.welcome_disclaimer: "Intelligent Terminal AI-dan foydalanadi. Xatolarni tekshiring"
+chat.welcome_disclaimer: "Intelligent Terminal AI-dan foydalanadi. Xatolarni tekshiring."
 chat.plan_header: "Reja:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

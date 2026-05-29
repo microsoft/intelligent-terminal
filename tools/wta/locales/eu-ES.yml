@@ -45,7 +45,7 @@ auth.hint_footer: "  Sakatu Enter saioa hasteko, Esc atzera joateko"  # {Locked=
 chat.activity_thinking: "Pentsatzen…"
 # {Locked="Intelligent Terminal"} - produktuaren izena, ez itzuli
 chat.welcome_title: "Ongi etorri Intelligent Terminal-era!"
-chat.welcome_disclaimer: "Intelligent Terminal-ek AI erabiltzen du. Egiaztatu akatsak"
+chat.welcome_disclaimer: "Intelligent Terminal-ek AI erabiltzen du. Egiaztatu akatsak."
 chat.plan_header: "Plana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

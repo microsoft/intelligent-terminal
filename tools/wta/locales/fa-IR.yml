@@ -45,7 +45,7 @@ auth.hint_footer: "  Enter را برای ورود فشار دهید، Esc برا
 chat.activity_thinking: "در حال فکر کردن…"
 # {Locked="Intelligent Terminal"} - نام محصول، ترجمه نکنید
 chat.welcome_title: "به Intelligent Terminal خوش آمدید!"
-chat.welcome_disclaimer: "Intelligent Terminal از AI استفاده می‌کند. خطاها را بررسی کنید"
+chat.welcome_disclaimer: "Intelligent Terminal از AI استفاده می‌کند. خطاها را بررسی کنید."
 chat.plan_header: "طرح:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -45,7 +45,7 @@ auth.hint_footer: "  സൈന്‍ ഇന്‍ ചെയ്യാന്‍ En
 chat.activity_thinking: "ചിന്തിക്കുന്നു…"
 # {Locked="Intelligent Terminal"} - ഉല്‍പ്പന്ന നാമം, വിവര്‍ത്തനം ചെയ്യരുത്
 chat.welcome_title: "Intelligent Terminal-ലേക്ക് സ്വാഗതം!"
-chat.welcome_disclaimer: "Intelligent Terminal AI ഉപയോഗിക്കുന്നു. തെറ്റുകൾ പരിശോധിക്കുക"
+chat.welcome_disclaimer: "Intelligent Terminal AI ഉപയോഗിക്കുന്നു. തെറ്റുകൾ പരിശോധിക്കുക."
 chat.plan_header: "പദ്ധതി:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

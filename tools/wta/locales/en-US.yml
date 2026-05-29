@@ -51,7 +51,7 @@ auth.hint_footer: "  Press Enter to sign in, Esc to go back"  # {Locked="Enter",
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Thinking…"
 chat.welcome_title: "Welcome to Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal uses AI. Check for mistakes"
+chat.welcome_disclaimer: "Intelligent Terminal uses AI. Check for mistakes."
 # Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}

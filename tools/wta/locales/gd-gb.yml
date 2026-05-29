@@ -45,7 +45,7 @@ auth.hint_footer: "  Brùth Enter gus clàradh a-steach, Esc gus tilleadh"  # {L
 chat.activity_thinking: "A' smaoineachadh…"
 # {Locked="Intelligent Terminal"} - ainm an toraidh, na eadar-theangaich
 chat.welcome_title: "Fàilte gu Intelligent Terminal!"
-chat.welcome_disclaimer: "Bidh Intelligent Terminal a' cleachdadh AI. Thoir sùil airson mearachdan"
+chat.welcome_disclaimer: "Bidh Intelligent Terminal a' cleachdadh AI. Thoir sùil airson mearachdan."
 chat.plan_header: "Plana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

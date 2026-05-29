@@ -45,7 +45,7 @@ auth.hint_footer: "  চাইন ইনৰ বাবে Enter টিপক, উ
 chat.activity_thinking: "চিন্তা কৰি আছে…"
 # {Locked="Intelligent Terminal"} - প্ৰডাক্টৰ নাম, অনুবাদ নকৰিব
 chat.welcome_title: "Intelligent Terminal লৈ স্বাগতম!"
-chat.welcome_disclaimer: "Intelligent Terminal-এ AI ব্যৱহাৰ কৰে। ভুলৰ বাবে পৰীক্ষা কৰক"
+chat.welcome_disclaimer: "Intelligent Terminal-এ AI ব্যৱহাৰ কৰে। ভুলৰ বাবে পৰীক্ষা কৰক."
 chat.plan_header: "পৰিকল্পনা:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

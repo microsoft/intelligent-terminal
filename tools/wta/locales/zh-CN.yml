@@ -41,7 +41,7 @@ auth.hint_footer: "  按 Enter 登录，按 Esc 返回"  # {Locked="Enter","Esc"
 # ── 聊天视图 (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "思考中…"
 chat.welcome_title: "欢迎使用智能终端！"
-chat.welcome_disclaimer: "Intelligent Terminal 使用 AI。请检查是否有误"
+chat.welcome_disclaimer: "Intelligent Terminal 使用 AI。请检查是否有误。"
 chat.plan_header: "计划："
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

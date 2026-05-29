@@ -45,7 +45,7 @@ auth.hint_footer: "  Premi Enter per accedere, Esc per tornare indietro"  # {Loc
 chat.activity_thinking: "Elaborazione in corso…"
 # {Locked="Intelligent Terminal"} - nome del prodotto, non tradurre
 chat.welcome_title: "Benvenuto in Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal usa l'IA. Verifica la presenza di errori"
+chat.welcome_disclaimer: "Intelligent Terminal usa l'IA. Verifica la presenza di errori."
 chat.plan_header: "Piano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

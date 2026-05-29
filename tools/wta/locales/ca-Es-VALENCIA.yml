@@ -45,7 +45,7 @@ auth.hint_footer: "  Premeu Enter per a iniciar la sessió, Esc per a tornar arr
 chat.activity_thinking: "Pensant…"
 # {Locked="Intelligent Terminal"} - nom del producte, no traduïu
 chat.welcome_title: "Vos donem la benvinguda a l'Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal utilitza IA. Comproveu si hi ha errors"
+chat.welcome_disclaimer: "Intelligent Terminal utilitza IA. Comproveu si hi ha errors."
 chat.plan_header: "Pla:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -47,7 +47,7 @@ chat.activity_thinking: "[Ţĥïñķïñğ…!!]"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "[Ŵéĺçöḿé ţö Intelligent Terminal!!]"
 # {Locked="Intelligent Terminal","AI"} - product name and acronym, do not translate
-chat.welcome_disclaimer: "[Intelligent Terminal ûśéś AI. Çĥéçķ ƒöŕ ḿïśţåķéś!!]"
+chat.welcome_disclaimer: "[Intelligent Terminal ûśéś AI. Çĥéçķ ƒöŕ ḿïśţåķéś.!!]"
 chat.plan_header: "[Ṗĺåñ:!!]"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
