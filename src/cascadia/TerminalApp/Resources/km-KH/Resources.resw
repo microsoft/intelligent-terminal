@@ -40,10 +40,10 @@
     <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name. Keep it in English.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>ជ្រើសរើសអ្វីដែលត្រូវដំឡើងឥឡូវ។ អ្នកអាចផ្លាស់ប្តូរនៅពេលណាក្នុង </value>
+    <value>ជ្រើសរើសអ្វីដែលត្រូវដំឡើងឥឡូវនេះ។ អ្នកអាចផ្លាស់ប្តូរទាំងនេះបានគ្រប់ពេល។ </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>ការកំណត់</value>
+    <value>ស្វែងយល់អំពីរបៀបប្រើប្រាស់ទិន្នន័យ</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>ភ្នាក់ងារ</value>

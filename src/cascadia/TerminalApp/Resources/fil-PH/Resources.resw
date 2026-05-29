@@ -153,10 +153,10 @@
     <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name. Keep it in English.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Piliin kung ano ang ise-set up ngayon. Maaari mong baguhin ang mga ito kahit kailan sa </value>
+    <value>Piliin kung ano ang ise-set up ngayon. Maaari mong baguhin ang mga ito anumang oras. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Mga Setting</value>
+    <value>Alamin kung paano ginagamit ang data</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Agent</value>

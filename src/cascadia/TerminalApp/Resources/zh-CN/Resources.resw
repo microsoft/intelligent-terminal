@@ -1059,10 +1059,10 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>选择要立即设置的项目。你可以随时在</value>
+    <value>选择要立即设置的项目。你可以随时更改这些设置。</value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>设置</value>
+    <value>了解数据的使用方式</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>智能体</value>

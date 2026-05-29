@@ -153,10 +153,10 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>ഇപ്പോൾ എന്ത് സജ്ജമാക്കണമെന്ന് തിരഞ്ഞെടുക്കുക. ഇവ എപ്പോൾ വേണമെങ്കിലും മാറ്റാം </value>
+    <value>ഇപ്പോൾ എന്ത് സജ്ജമാക്കണമെന്ന് തിരഞ്ഞെടുക്കുക. നിങ്ങൾക്ക് ഇവ എപ്പോൾ വേണമെങ്കിലും മാറ്റാം. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>ക്രമീകരണങ്ങൾ</value>
+    <value>ഡാറ്റ എങ്ങനെ ഉപയോഗിക്കുന്നുവെന്ന് അറിയുക</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>ഏജന്റ്</value>

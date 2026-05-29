@@ -182,11 +182,10 @@
                                LineHeight="18"
                                Margin="0,4,0,0">
                         <Run x:Name="SettingsSubtitlePrefix" Text="" />
-                        <Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal/"
+                        <Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-privacy"
                                    Foreground="#FF99EBFF">
                             <Run x:Name="SettingsSubtitleLink" Text="" />
                         </Hyperlink>
-                        <Run Text="." />
                     </TextBlock>
                 </StackPanel>
 

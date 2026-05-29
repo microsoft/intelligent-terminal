@@ -40,10 +40,10 @@
     <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Akllay imata churanaykita kunan. Kay t'ikray atinki mayk'aqpas </value>
+    <value>Kunan imata churanata akllay. Kay churanakunata mayk'aqpipas tikrayta atinki. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Churanakuna</value>
+    <value>Yachay imaynatas datokunata llamk'achinku</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Agente</value>

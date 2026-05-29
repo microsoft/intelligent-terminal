@@ -153,10 +153,10 @@
     <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Välj vad du vill konfigurera nu. Du kan ändra dessa när som helst i </value>
+    <value>Välj vad du vill konfigurera nu. Du kan ändra dessa inställningar när som helst. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Inställningar</value>
+    <value>Läs om hur data används</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Agent</value>

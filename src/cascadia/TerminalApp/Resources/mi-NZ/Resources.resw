@@ -40,10 +40,10 @@
     <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Kōwhiria he aha hei whakarite ināianei. Ka taea e koe te huri i ēnei āhuatanga i ngā wā katoa i </value>
+    <value>Kōwhiria he aha hei whakarite ināianei. Ka taea e koe te huri i ēnei i ngā wā katoa. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Ngā tautuhinga</value>
+    <value>Akona me pēhea te whakamahi raraunga</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Kaitiaki</value>

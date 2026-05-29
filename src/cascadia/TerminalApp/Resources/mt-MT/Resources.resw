@@ -40,10 +40,10 @@
     <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Agħżel x'se tissettja issa. Tista' tibdel dawn fi kwalunkwe ħin fi </value>
+    <value>Agħżel x'trid tissettja issa. Tista' tibdel dawn fi kwalunkwe ħin. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Settings</value>
+    <value>Tgħallem kif tintuża d-data</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Aġent</value>

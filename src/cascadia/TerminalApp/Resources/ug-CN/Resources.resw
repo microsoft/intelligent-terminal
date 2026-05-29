@@ -40,10 +40,10 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>ھازىر نېمە تەڭشەيدىغاننى تاللاڭ. بۇلارنى ئىختىيارى ۋاقتتا ئۆزگەرتەلەيسىز </value>
+    <value>ھازىر نېمىنى تەڭشەشنى تاللاڭ. بۇلارنى ھەر ۋاقىتتا ئۆزگەرتەلەيسىز. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>تەڭشەكلەر</value>
+    <value>سانلىق مەلۇماتلارنىڭ قانداق ئىشلىتىلىدىغانلىقىنى ئۆگىنىڭ</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>ۋەكىل</value>

@@ -153,10 +153,10 @@
     <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Válassza ki, mit szeretne most beállítani. Ezeket bármikor módosíthatja a következő helyen: </value>
+    <value>Válassza ki, mit szeretne most beállítani. Ezeket a beállításokat bármikor módosíthatja. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Beállítások</value>
+    <value>Tudjon meg többet az adatok felhasználásáról</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Ügynök</value>
