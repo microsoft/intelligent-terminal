@@ -1098,7 +1098,7 @@
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
-    <value>Appuyez sur {0} pour examiner</value>
+    <value>Correctif prêt. Appuyez sur {0} pour examiner</value>
     <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ReviewTooltip" xml:space="preserve">

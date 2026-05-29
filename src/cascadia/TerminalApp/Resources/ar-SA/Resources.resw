@@ -252,7 +252,7 @@
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
-    <value>اضغط {0} للمراجعة</value>
+    <value>الإصلاح جاهز. اضغط {0} للمراجعة</value>
     <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
