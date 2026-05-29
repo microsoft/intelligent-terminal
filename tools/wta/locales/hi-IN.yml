@@ -45,7 +45,7 @@ auth.hint_footer: "  साइन इन के लिए Enter दबाएँ,
 chat.activity_thinking: "सोच रहा है…"
 # {Locked="Intelligent Terminal"} - उत्पाद नाम, अनुवाद न करें
 chat.welcome_title: "Intelligent Terminal में आपका स्वागत है!"
-chat.welcome_disclaimer: "Intelligent Terminal AI का उपयोग करता है। गलतियों की जाँच करें."
+chat.welcome_disclaimer: "Intelligent Terminal AI का उपयोग करता है। गलतियों की जाँच करें।"
 chat.plan_header: "योजना:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
