@@ -258,9 +258,6 @@ workarounds
 WSLs
 XBox
 YBox
-changelists
-screenshots
-CLIs
 yeelam
 ymdhms
 ZDOTDIR

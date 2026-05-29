@@ -70,7 +70,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 | Distribution | Architecture | Link |
 |--------------|:------------:|------|
-| App Installer | x64, arm64, x86 | [Download](https://github.com/microsoft/intelligent-terminal/releases/tag/v0.1.0) |
+| App Installer | x64, arm64, x86 | [Download](https://github.com/microsoft/intelligent-terminal/releases/latest) |
 
 ---
 
