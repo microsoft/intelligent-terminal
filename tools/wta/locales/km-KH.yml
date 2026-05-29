@@ -48,7 +48,7 @@ auth.hint_footer: "  ចុច Enter ដើម្បីចូល, Esc ដើម�
 chat.activity_thinking: "កំពុងគិត…"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "សូមស្វាគមន៍មកកាន់ Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal ប្រើ AI។ ពិនិត្យមើលកំហុស."
+chat.welcome_disclaimer: "Intelligent Terminal ប្រើ AI។ ពិនិត្យមើលកំហុស។"
 # Header label for the AI agent’s step-by-step plan section
 chat.plan_header: "ផែនការ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
