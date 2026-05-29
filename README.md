@@ -94,7 +94,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 ## Keyboard Shortcuts
 
-All shortcuts are customizable through terminal settings.
+All shortcuts are customizable through Intelligent Terminal settings.
 
 | Shortcut | Action |
 |----------|--------|
@@ -108,7 +108,7 @@ All shortcuts are customizable through terminal settings.
 
 ## Configuration
 
-Everything is configurable through terminal settings, under "Agent" settings.
+Everything is configurable through Intelligent Terminal settings, under "Agent" settings.
 
 | Setting | Options |
 |---------|---------|
