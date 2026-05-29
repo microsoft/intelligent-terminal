@@ -70,7 +70,8 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 | Distribution | Architecture | Link |
 |--------------|:------------:|------|
-| App Installer | x64, arm64, x86 | [Download](https://github.com/microsoft/intelligent-terminal/releases/latest) |
+| App Installer | x64, arm64, x86 | [Download](https://github.com/microsoft/intelligent-terminal/releases/latest) |
+
 
 ---
 
@@ -157,7 +158,7 @@ Type `?` followed by your prompt in the Command Palette to kick off an agent tas
 
 ## Data & Privacy
 
-Intelligent Terminal is a **local transport layer**. It passes your prompts and shell context to your selected agent CLI over stdio/ACP. Terminal does not call any cloud APIs itself, does not store conversation data to disk, and does not mediate or inspect what the agent CLI does with your data. 
+Intelligent Terminal is a **local transport layer**. It passes your prompts and shell context to your selected agent CLI over stdio/ACP. Intelligent Terminal does not call any cloud APIs itself and does not persist conversation history, but it may write diagnostic logs to disk (for example under `%LOCALAPPDATA%\IntelligentTerminal\logs\`).
 
 ### What data flows through Terminal
 
