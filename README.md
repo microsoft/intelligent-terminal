@@ -139,7 +139,6 @@ All shortcuts are customizable through terminal settings.
 | <kbd>Ctrl+Alt+.</kbd> | Open agent pane with error context |
 | <kbd>Ctrl+Shift+/</kbd> | Open agent management |
 | <kbd>Alt+Shift+/</kbd> | Open Command Palette in prompt mode |
-| <kbd>Ctrl+Shift+P</kbd> | Open Command Palette |
 
 ---
 
@@ -155,7 +154,6 @@ Everything is configurable through terminal settings, under "Agent" settings.
 |---------|---------|
 | Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. |
 | Pane placement | Top, Bottom (default), Left, Right |
-| Permission | Always ask (default), Ask once per agent, Always allow |
 | Auto error detection | Give the agent pane the ability to catch and suggest fixes to errors automatically |
 
 ---
