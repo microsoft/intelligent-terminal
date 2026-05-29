@@ -5490,6 +5490,10 @@ namespace winrt::TerminalApp::implementation
             return true;
         case ConfirmOnClose::Automatic:
         {
+            if (_tabs.Size() == 0)
+            {
+                return false;
+            }
             // Warn if there's more than one tab, or the one tab has more than one pane.
             return _HasMultipleTabs() || _GetTabImpl(_tabs.GetAt(0))->GetLeafPaneCount() > 1;
         }
@@ -5527,6 +5531,14 @@ namespace winrt::TerminalApp::implementation
     //   warn for the current window state, show a warning dialog.
     safe_void_coroutine TerminalPage::CloseWindow()
     {
+        // During FRE, tabs are deferred (zero tabs). No warning needed;
+        // just close the window immediately.
+        if (_tabs.Size() == 0)
+        {
+            CloseWindowRequested.raise(*this, nullptr);
+            co_return;
+        }
+
         if (_ShouldWarnOnClose() &&
             !_displayingCloseDialog)
         {
