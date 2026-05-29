@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Automaticky navrhovat opravy pro neúspěšné příkazy</value>
+    <value>Automatický návrh oprav chyb</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Pokud je tato možnost povolena, agent AI automaticky analyzuje neúspěšné příkazy a navrhuje opravu. Pokud je zakázána, neúspěšné příkazy zobrazí klikatelný tip ve stavovém řádku — stiskněte Ctrl+Alt+. nebo klikněte na tip pro vyžádání opravy.</value>
+    <value>Povolte aplikaci Intelligent Terminal odesílat chyby agentovi pro automatické navrhování oprav.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -289,5 +289,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Automatická detekce chyb</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Povolte aplikaci Intelligent Terminal přístup k prostředí shell a automatickou detekci chyb.</value>
   </data>
 </root>

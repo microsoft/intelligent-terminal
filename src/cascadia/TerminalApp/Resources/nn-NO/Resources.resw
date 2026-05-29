@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Foreslå automatisk reparasjonar for mislukka kommandoar</value>
+    <value>Automatisk feilforslag</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Når aktivert, analyserer KI-agenten automatisk mislukka kommandoar og føreslår ein reparasjon. Når deaktivert, viser mislukka kommandoar eit klikkbart tips i statuslinja — trykk Ctrl+Alt+. eller klikk på tipset for å be om ein reparasjon.</value>
+    <value>Gi Intelligent Terminal løyve til å sende feil til agenten for automatisk å føreslå rettingar.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -290,5 +290,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Automatisk feilregistrering</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Gi Intelligent Terminal løyve til å få tilgang til skalet og automatisk oppdage feil.</value>
   </data>
 </root>

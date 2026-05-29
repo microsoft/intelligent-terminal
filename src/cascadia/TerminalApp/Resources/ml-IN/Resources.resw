@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>പരാജയപ്പെട്ട കമാൻഡുകൾക്ക് സ്വയമേവ പരിഹാരങ്ങൾ നിർദ്ദേശിക്കുക</value>
+    <value>സ്വയമേവയുള്ള പിശക് നിർദ്ദേശം</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>പ്രവർത്തനക്ഷമമാക്കിയാൽ, AI ഏജന്റ് പരാജയപ്പെട്ട കമാൻഡുകൾ സ്വയമേവ വിശകലനം ചെയ്യുകയും ഒരു പരിഹാരം നിർദ്ദേശിക്കുകയും ചെയ്യുന്നു. പ്രവർത്തനരഹിതമാക്കിയാൽ, പരാജയപ്പെട്ട കമാൻഡുകൾ സ്റ്റാറ്റസ് ബാറിൽ ക്ലിക്ക് ചെയ്യാവുന്ന ഒരു സൂചന കാണിക്കും — പരിഹാരം അഭ്യർത്ഥിക്കാൻ Ctrl+Alt+. അമർത്തുക അല്ലെങ്കിൽ സൂചനയിൽ ക്ലിക്ക് ചെയ്യുക.</value>
+    <value>പരിഹാരങ്ങൾ സ്വയമേവ നിർദ്ദേശിക്കാൻ നിങ്ങളുടെ ഏജന്റിലേക്ക് പിശകുകൾ അയയ്ക്കാൻ Intelligent Terminal-നെ അനുവദിക്കുക.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -290,5 +290,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>സ്വയമേവയുള്ള പിശക് കണ്ടെത്തൽ</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>നിങ്ങളുടെ ഷെല്ലിലേക്ക് പ്രവേശിക്കാനും പിശകുകൾ സ്വയമേവ കണ്ടെത്താനും Intelligent Terminal-നെ അനുവദിക്കുക.</value>
   </data>
 </root>

@@ -682,17 +682,50 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
-    // ── AutoFix ──────────────────────────────────────────────────────────
+    // ── Auto error detection ───────────────────────────────────────────────
+
+    bool AIAgentsViewModel::AutoErrorDetectionEnabled() const
+    {
+        return _GlobalSettings.EffectiveAutoErrorDetectionEnabled();
+    }
+
+    void AIAgentsViewModel::AutoErrorDetectionEnabled(bool value)
+    {
+        if (_GlobalSettings.AutoErrorDetectionEnabled() == value) return;
+        _GlobalSettings.AutoErrorDetectionEnabled(value);
+        // Master-detail: detection drives both the suggestion toggle's enabled
+        // state (CanSuggestErrors) and its effective value (EffectiveAutoFix
+        // Enabled flips to false when detection is off), so refresh both. The
+        // stored autoFixEnabled preference is preserved, so re-enabling
+        // detection restores the previous suggestion value rather than forcing
+        // it on.
+        _NotifyChanges(L"HasAutoErrorDetectionEnabled", L"AutoErrorDetectionEnabled",
+                       L"CanSuggestErrors", L"AutoFixEnabled");
+        // Shell integration installation is triggered on Save, not on toggle.
+    }
+
+    bool AIAgentsViewModel::HasAutoErrorDetectionEnabled() const
+    {
+        return _GlobalSettings.HasAutoErrorDetectionEnabled();
+    }
+
+    // ── AutoFix (auto-suggest) ─────────────────────────────────────────────
 
     bool AIAgentsViewModel::AutoFixEnabled() const
     {
+        // Master-detail: suggestion follows detection. EffectiveAutoFixEnabled
+        // returns false whenever detection is off (or GPO blocks autofix), so
+        // the toggle reads Off when the master is off; when detection is on it
+        // reflects the user's stored autoFixEnabled preference.
         return _GlobalSettings.EffectiveAutoFixEnabled();
     }
 
     void AIAgentsViewModel::AutoFixEnabled(bool value)
     {
-        // Reject writes when policy blocks autofix.
-        if (_GlobalSettings.IsAutoFixPolicyLocked())
+        // Reject writes when policy blocks autofix or detection is off (the
+        // toggle is disabled in those cases, but guard against races).
+        if (_GlobalSettings.IsAutoFixPolicyLocked() ||
+            !_GlobalSettings.EffectiveAutoErrorDetectionEnabled())
         {
             return;
         }
@@ -705,6 +738,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     bool AIAgentsViewModel::HasAutoFixEnabled() const
     {
         return _GlobalSettings.HasAutoFixEnabled();
+    }
+
+    bool AIAgentsViewModel::CanSuggestErrors() const
+    {
+        return !_GlobalSettings.IsAutoFixPolicyLocked() &&
+               _GlobalSettings.EffectiveAutoErrorDetectionEnabled();
     }
 
     // ── Pane position ────────────────────────────────────────────────────

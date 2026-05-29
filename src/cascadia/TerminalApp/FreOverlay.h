@@ -43,12 +43,19 @@ namespace winrt::TerminalApp::implementation
                                       const winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs& args);
         void _OnSessionManagementToggled(const winrt::Windows::Foundation::IInspectable& sender,
                                          const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
+        void _OnAutoDetectToggled(const winrt::Windows::Foundation::IInspectable& sender,
+                                  const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
 
         // No-op kept for IDL compatibility.
         void ResetDragOffset();
 
     private:
         winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings _settings{ nullptr };
+
+        // Apply the detection→suggestion master-detail dependency: detection
+        // off turns the suggestion toggle off and disables it; detection on
+        // re-enables it (preserving the stored value).
+        void _UpdateSuggestionEnabledState();
 
         // Detect whether an executable is on PATH.
         static bool _IsAgentInstalled(const wchar_t* name);

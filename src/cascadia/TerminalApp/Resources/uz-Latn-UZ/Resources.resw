@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Bajarilmagan buyruqlar uchun tuzatishlarni avtomatik taklif qilish</value>
+    <value>Xatolarni avtomatik taklif qilish</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Yoqilganda, AI agenti bajarilmagan buyruqlarni avtomatik tahlil qilib, tuzatish taklif qiladi. O'chirilganda, bajarilmagan buyruqlar holat panelida bosish mumkin bo'lgan maslahatni ko'rsatadi — tuzatish so'rash uchun Ctrl+Alt+. tugmasini bosing yoki maslahatga bosing.</value>
+    <value>Intelligent Terminal'ga tuzatishlarni avtomatik taklif qilish uchun xatolarni agentingizga yuborishga ruxsat bering.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -289,5 +289,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Xatolarni avtomatik aniqlash</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal'ga qobig'ingizga kirish va xatolarni avtomatik aniqlashga ruxsat bering.</value>
   </data>
 </root>

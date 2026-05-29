@@ -5028,6 +5028,18 @@ namespace winrt::TerminalApp::implementation
                             }
 
                             // isOsc133 path — forward as vt_sequence.
+                            // Detection gate: when the user turned error
+                            // detection off ("don't access my shell"), drop
+                            // the OSC 133 command marks here — no Detected
+                            // pill, no forwarding to WTA, no background
+                            // analysis. (Scoped to OSC 133 so AgentEvents,
+                            // a separate channel, keep flowing.) Unlike the
+                            // auto-suggest pref — which still wants the
+                            // Detected pill — detection off means we observe
+                            // nothing.
+                            if (!page->_settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled())
+                                return;
+
                             Json::Value evt;
                             evt["type"] = "event";
                             evt["method"] = "vt_sequence";

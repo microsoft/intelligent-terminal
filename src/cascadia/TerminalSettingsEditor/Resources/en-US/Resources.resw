@@ -746,14 +746,22 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Supplementary description for the command palette agent setting. 
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>Auto-suggest fixes for failed commands</value>
-    <comment>Header for the toggle that controls whether the AI agent automatically diagnoses failed commands. When off, errors still show a clickable hint in the status bar but the agent is only invoked on demand.
+  <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
+    <value>Automatic error detection</value>
+    <comment>Title for the master toggle (Expander header) that lets the terminal observe the shell and detect failed commands. The Automatic error suggestion setting is nested under this one.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
+    <value>Give Intelligent Terminal permission to access your shell and automatically detect errors. Available in PowerShell and Windows PowerShell.</value>
+    <comment>{Locked="PowerShell","Windows PowerShell"} "Intelligent Terminal" is the product name. Caption under the automatic-error-detection title.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
+    <value>Automatic error suggestion</value>
+    <comment>Title for the nested toggle that lets the agent automatically suggest fixes for detected errors. Depends on (and is nested under) automatic error detection.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>When enabled, the AI agent automatically analyzes failed commands and proposes a fix. When disabled, failed commands surface a clickable hint in the status bar — press Ctrl+Alt+. or click the hint to request a fix.</value>
-    <comment>Supplementary description for the auto-suggest-fixes setting.
+  <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
+    <value>Give Intelligent Terminal permission to send errors to your agent to automatically suggest fixes.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. Caption under the automatic-error-suggestion title.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">

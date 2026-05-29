@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Automatiškai siūlyti pataisymus nepavykusioms komandoms</value>
+    <value>Automatinis klaidų siūlymas</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Kai įjungta, DI agentas automatiškai analizuoja nepavykusias komandas ir siūlo pataisymą. Kai išjungta, nepavykusios komandos rodo spustelimą užuominą būsenos juostoje — paspauskite Ctrl+Alt+. arba spustelėkite užuominą, kad paprašytumėte pataisymo.</value>
+    <value>Leiskite „Intelligent Terminal“ siųsti klaidas jūsų agentui, kad automatiškai pasiūlytų pataisymus.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -290,5 +290,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Automatinis klaidų aptikimas</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Leiskite „Intelligent Terminal“ pasiekti jūsų apvalkalą ir automatiškai aptikti klaidas.</value>
   </data>
 </root>

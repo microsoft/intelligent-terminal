@@ -93,6 +93,8 @@ namespace winrt::TerminalApp::implementation
         SettingsSubtitleLink().Text(RS_(L"FreOverlay_SettingsSubtitleLink"));
 
         // Set toggle On/Off labels
+        AutoDetectToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
+        AutoDetectToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
         AutoErrorToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
         AutoErrorToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
         SessionManagementToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
@@ -165,17 +167,29 @@ namespace winrt::TerminalApp::implementation
         else if (currentPos == L"top") PanePositionComboBox().SelectedIndex(3);
         else PanePositionComboBox().SelectedIndex(0); // default: bottom
 
-        // Set toggles from current settings, respecting GPO policy
+        // Set toggles from current settings, respecting GPO policy.
+        // Detection drives the suggestion toggle's enabled state (see
+        // _UpdateSuggestionEnabledState), so configure it first.
+        AutoDetectToggle().IsOn(globals.EffectiveAutoErrorDetectionEnabled());
+
+        // Master-detail: EffectiveAutoFixEnabled already returns false when
+        // detection is off, so the suggestion toggle starts consistent with the
+        // master toggle (and reflects the stored preference when detection is
+        // on).
         AutoErrorToggle().IsOn(globals.EffectiveAutoFixEnabled());
         if (globals.IsAutoFixPolicyLocked())
         {
-            AutoErrorToggle().IsEnabled(false);
             const auto policyText = RS_(L"FreOverlay_PolicyLocked");
             AutoErrorPolicyNotice().Text(policyText);
             AutoErrorPolicyNotice().Visibility(Visibility::Visible);
             // Accessibility: explain why the toggle is disabled
             Automation::AutomationProperties::SetHelpText(AutoErrorToggle(), policyText);
         }
+
+        // Apply the detection→suggestion dependency once both toggles are
+        // configured (also covers the GPO-locked case via the policy check
+        // inside the helper).
+        _UpdateSuggestionEnabledState();
 
         // Session management toggle — honour AllowAgentSessionHooks GPO
         if (globals.IsAgentSessionHooksPolicyLocked())
@@ -196,6 +210,8 @@ namespace winrt::TerminalApp::implementation
             WelcomePage(), RS_(L"FreOverlay_WelcomeTitle/Text"));
         Automation::AutomationProperties::SetName(
             SettingsPage(), RS_(L"FreOverlay_SettingsTitle/Text"));
+        Automation::AutomationProperties::SetName(
+            AutoDetectToggle(), RS_(L"FreOverlay_AutoDetectLabel/Text"));
         Automation::AutomationProperties::SetName(
             AutoErrorToggle(), RS_(L"FreOverlay_AutoErrorLabel/Text"));
         Automation::AutomationProperties::SetName(
@@ -233,6 +249,40 @@ namespace winrt::TerminalApp::implementation
         {
             hint.Visibility(toggle.IsOn() ? Visibility::Visible : Visibility::Collapsed);
         }
+    }
+
+    // ── Detection → suggestion dependency ───────────────────────────────
+
+    void FreOverlay::_OnAutoDetectToggled(const IInspectable& /*sender*/,
+                                          const RoutedEventArgs& /*args*/)
+    {
+        _UpdateSuggestionEnabledState();
+    }
+
+    void FreOverlay::_UpdateSuggestionEnabledState()
+    {
+        // Guard: Toggled can fire during InitializeComponent before the
+        // sibling control exists.
+        auto detect = AutoDetectToggle();
+        auto suggest = AutoErrorToggle();
+        if (!detect || !suggest)
+        {
+            return;
+        }
+
+        const bool detectionOn = detect.IsOn();
+        const bool autoFixLocked = _settings && _settings.GlobalSettings().IsAutoFixPolicyLocked();
+
+        // Master-detail: detection off ⇒ turn the suggestion off and disable it
+        // (can't configure a suggestion you can't detect).
+        // Detection on ⇒ re-enable it; its On/Off is the stored preference
+        // (set on init), so re-enabling doesn't force it on. The auto-fix GPO
+        // can still lock it off.
+        if (!detectionOn)
+        {
+            suggest.IsOn(false);
+        }
+        suggest.IsEnabled(detectionOn && !autoFixLocked);
     }
 
     // ── Page navigation ─────────────────────────────────────────────────
@@ -335,6 +385,7 @@ namespace winrt::TerminalApp::implementation
         {
             const auto& globals = _settings.GlobalSettings();
             globals.AcpAgent(agentId);
+            globals.AutoErrorDetectionEnabled(AutoDetectToggle().IsOn());
             globals.AutoFixEnabled(AutoErrorToggle().IsOn());
 
             const auto posIdx = PanePositionComboBox().SelectedIndex();
@@ -399,11 +450,12 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // 5. Install shell integration unconditionally. The Detected pill
-        // (suggest-mode default — toggle off) also needs OSC 133 emitted
-        // by the shell to drive the bottom-bar state machine. The toggle
-        // only controls whether WTA *automatically* invokes the LLM on
-        // failure, not whether errors are detected at all.
+        // 5. Install shell integration only when error detection is enabled.
+        // Detection is driven by the OSC 133 marks emitted by shell
+        // integration; with detection off we honour "don't access my shell"
+        // and skip the install entirely. (The suggestion toggle is a
+        // strict subset — it can't be on unless detection is on.)
+        if (AutoDetectToggle().IsOn())
         {
             auto self = weak.get();
             if (!self) co_return;

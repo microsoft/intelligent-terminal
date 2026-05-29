@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Issuġġerixxi awtomatikament tiswijiet għal kmandi li jfallu</value>
+    <value>Suġġeriment awtomatiku tal-iżbalji</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Meta tkun attivata, l-aġent tal-IA janalizza awtomatikament il-kmandi li jfallu u jipproponi tiswija. Meta tkun diżattivata, il-kmandi li jfallu juru ħjiel li tista' tikklikkja fil-bar tal-istat — agħfas Ctrl+Alt+. jew ikklikkja l-ħjiel biex titlob tiswija.</value>
+    <value>Agħti permess lil Intelligent Terminal biex jibgħat l-iżbalji lill-aġent tiegħek biex jissuġġerixxi soluzzjonijiet awtomatikament.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -176,5 +176,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Identifikazzjoni awtomatika tal-iżbalji</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Agħti permess lil Intelligent Terminal biex jaċċessa l-qoxra tiegħek u jidentifika l-iżbalji awtomatikament.</value>
   </data>
 </root>

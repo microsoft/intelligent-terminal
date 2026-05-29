@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Αυτόματη πρόταση διορθώσεων για αποτυχημένες εντολές</value>
+    <value>Αυτόματη πρόταση σφαλμάτων</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Όταν είναι ενεργοποιημένο, ο πράκτορας τεχνητής νοημοσύνης αναλύει αυτόματα τις αποτυχημένες εντολές και προτείνει μια διόρθωση. Όταν είναι απενεργοποιημένο, οι αποτυχημένες εντολές εμφανίζουν μια υπόδειξη με δυνατότητα κλικ στη γραμμή κατάστασης — πατήστε Ctrl+Alt+. ή κάντε κλικ στην υπόδειξη για να ζητήσετε μια διόρθωση.</value>
+    <value>Επιτρέψτε στο Intelligent Terminal να στέλνει σφάλματα στον agent για αυτόματη πρόταση διορθώσεων.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -176,5 +176,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Αυτόματος εντοπισμός σφαλμάτων</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Επιτρέψτε στο Intelligent Terminal να αποκτήσει πρόσβαση στο κέλυφος και να εντοπίζει αυτόματα σφάλματα.</value>
   </data>
 </root>

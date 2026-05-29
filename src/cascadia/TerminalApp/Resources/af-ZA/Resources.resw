@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Stel outomaties oplossings vir mislukte opdragte voor</value>
+    <value>Outomatiese foutvoorstel</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Wanneer dit geaktiveer is, ontleed die KI-agent outomaties mislukte opdragte en stel 'n oplossing voor. Wanneer dit gedeaktiveer is, wys mislukte opdragte 'n klikbare wenk in die statusbalk — druk Ctrl+Alt+. of klik die wenk om 'n oplossing te versoek.</value>
+    <value>Gee Intelligent Terminal toestemming om foute na jou agent te stuur om outomaties oplossings voor te stel.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -176,5 +176,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Outomatiese foutopsporing</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Gee Intelligent Terminal toestemming om toegang tot jou dop te verkry en foute outomaties op te spoor.</value>
   </data>
 </root>

@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Whakaaroaroa whakatika aunoa mō ngā whakahau kīhai i angitu</value>
+    <value>Te tono hapa aunoa</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Ina whakaahei, ka tātari aunoa te kaihoko AI i ngā whakahau kīhai i angitu, ka tūtohu whakatika. Ina whakakorea, ka whakaaturia e ngā whakahau kīhai i angitu he tohu pāwhiri ki te paewhiri tūnga — pēhi Ctrl+Alt+. mā te pāwhiri rānei i te tohu kia tono whakatika.</value>
+    <value>Tukua a Intelligent Terminal kia tuku hapa ki tō kaihoko hei tono whakatika aunoa.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -176,5 +176,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Te kimi hapa aunoa</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Tukua a Intelligent Terminal kia uru ki tō anga me te kimi hapa aunoa.</value>
   </data>
 </root>

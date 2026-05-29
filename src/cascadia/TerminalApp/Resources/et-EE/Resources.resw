@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Soovita automaatselt parandusi nurjunud käskudele</value>
+    <value>Automaatne vigade soovitamine</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Kui see on lubatud, analüüsib AI-agent automaatselt nurjunud käske ja pakub välja paranduse. Kui see on keelatud, kuvavad nurjunud käsud olekuribal klõpsatava vihje — paranduse taotlemiseks vajutage Ctrl+Alt+. või klõpsake vihjel.</value>
+    <value>Lubage rakendusel Intelligent Terminal saata vead teie agendile, et automaatselt parandusi soovitada.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -290,5 +290,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Automaatne vigade tuvastamine</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Lubage rakendusel Intelligent Terminal pääseda juurde teie kestale ja tuvastada vead automaatselt.</value>
   </data>
 </root>

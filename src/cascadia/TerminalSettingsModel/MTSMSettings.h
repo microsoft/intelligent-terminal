@@ -76,6 +76,7 @@ Author(s):
     X(hstring, AcpModel, "acpModel", L"")                                                                                                                                                               \
     X(hstring, DelegateAgent, "delegateAgent", L"copilot")                                                                                                                                              \
     X(hstring, DelegateModel, "delegateModel", L"")                                                                                                                                                    \
+    X(bool, AutoErrorDetectionEnabled, "autoErrorDetectionEnabled", true)                                                                                                                               \
     X(bool, AutoFixEnabled, "autoFixEnabled", false)                                                                                                                                                    \
     X(hstring, AcpCustomCommand, "acpCustomCommand", L"")                                                                                                                                              \
     X(hstring, DelegateCustomCommand, "delegateCustomCommand", L"")                                                                                                                                    \

@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Automatesch Fixe fir feelgeschloen Befehler proposéieren</value>
+    <value>Automatesche Feelervirschlag</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Wann aktivéiert, analyséiert den AI-Agent automatesch feelgeschloen Befehler an proposéiert e Fix. Wann deaktivéiert, weisen feelgeschloen Befehler en klickbaren Hiweis an der Statusbar — dréckt Ctrl+Alt+. oder klickt den Hiweis fir e Fix unzefroen.</value>
+    <value>Erlaabt Intelligent Terminal Feeler un Ären Agent ze schécken fir automatesch Korrekturen virzeschloen.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -177,5 +177,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Automatesch Feelererkennung</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Erlaabt Intelligent Terminal Zougrëff op Är Shell an d'Feeler automatesch z'erkennen.</value>
   </data>
 </root>

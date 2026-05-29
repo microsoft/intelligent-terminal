@@ -172,10 +172,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>پیشنهاد خودکار رفع‌ها برای فرمان‌های ناموفق</value>
+    <value>پیشنهاد خودکار خطا</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>هنگام فعال بودن، عامل هوش مصنوعی به طور خودکار فرمان‌های ناموفق را تحلیل می‌کند و یک رفع پیشنهاد می‌دهد. هنگام غیرفعال بودن، فرمان‌های ناموفق یک راهنمای قابل کلیک در نوار وضعیت نمایش می‌دهند — برای درخواست رفع، Ctrl+Alt+. را فشار دهید یا روی راهنما کلیک کنید.</value>
+    <value>به Intelligent Terminal اجازه دهید خطاها را برای پیشنهاد خودکار راه‌حل به عامل شما ارسال کند.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -290,5 +290,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>تشخیص خودکار خطا</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>به Intelligent Terminal اجازه دهید به پوسته شما دسترسی پیدا کند و خطاها را به طور خودکار تشخیص دهد.</value>
   </data>
 </root>

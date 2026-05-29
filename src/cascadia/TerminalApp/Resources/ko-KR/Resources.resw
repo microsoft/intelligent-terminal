@@ -1077,10 +1077,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>실패한 명령에 대한 수정 사항 자동 제안</value>
+    <value>자동 오류 제안</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>사용하도록 설정하면 AI 에이전트가 실패한 명령을 자동으로 분석하고 수정 사항을 제안합니다. 사용하지 않도록 설정하면 실패한 명령에 대해 상태 표시줄에 클릭 가능한 힌트가 표시됩니다 — Ctrl+Alt+. 를 누르거나 힌트를 클릭하여 수정을 요청합니다.</value>
+    <value>Intelligent Terminal이 오류를 에이전트로 보내 수정 사항을 자동으로 제안하도록 허용합니다.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -1208,5 +1208,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>자동 오류 검색</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal이 셸에 액세스하여 오류를 자동으로 검색하도록 허용합니다.</value>
   </data>
 </root>

@@ -1010,10 +1010,10 @@
     <comment>{Locked="Node.js","NPX"}</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Suggerisci automaticamente correzioni per i comandi non riusciti</value>
+    <value>Suggerimento automatico degli errori</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Se abilitato, l'agente IA analizza automaticamente i comandi non riusciti e propone una correzione. Se disabilitato, i comandi non riusciti mostrano un suggerimento selezionabile nella barra di stato — premi Ctrl+Alt+. o fai clic sul suggerimento per richiedere una correzione.</value>
+    <value>Consenti a Intelligent Terminal di inviare gli errori all'agente per suggerire automaticamente le correzioni.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -1135,5 +1135,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>{Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Rilevamento automatico degli errori</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Consenti a Intelligent Terminal di accedere alla shell e rilevare automaticamente gli errori.</value>
   </data>
 </root>

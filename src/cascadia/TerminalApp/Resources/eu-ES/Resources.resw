@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Iradoki konponketak automatikoki huts egindako komandoetarako</value>
+    <value>Erroreen iradokizun automatikoa</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Gaituta dagoenean, IA agenteak automatikoki aztertzen ditu huts egindako komandoak eta konponketa bat proposatzen du. Desgaituta dagoenean, huts egindako komandoek egoera-barran klikatu daitekeen aholku bat erakusten dute — sakatu Ctrl+Alt+. edo egin klik aholkuan konponketa eskatzeko.</value>
+    <value>Eman baimena Intelligent Terminal-i erroreak zure agenteari bidaltzeko konponketak automatikoki iradokitzeko.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -121,5 +121,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Desaktibatuta</value>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Erroreen detekzio automatikoa</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Eman baimena Intelligent Terminal-i zure shell-era sartzeko eta erroreak automatikoki detektatzeko.</value>
   </data>
 </root>

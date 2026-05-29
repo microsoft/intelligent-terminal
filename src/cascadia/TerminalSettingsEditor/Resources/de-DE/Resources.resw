@@ -2842,4 +2842,16 @@
     <value>Hooks-Installation fehlgeschlagen. Überprüfen Sie %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log auf Details.</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
+  <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
+    <value>Automatische Fehlererkennung</value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
+    <value>Erlauben Sie Intelligent Terminal, auf Ihre Shell zuzugreifen und Fehler automatisch zu erkennen. Verfügbar in PowerShell und Windows PowerShell.</value>
+  </data>
+  <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
+    <value>Automatischer Fehlervorschlag</value>
+  </data>
+  <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
+    <value>Erlauben Sie Intelligent Terminal, Fehler an Ihren Agent zu senden, um automatisch Korrekturen vorzuschlagen.</value>
+  </data>
 </root>

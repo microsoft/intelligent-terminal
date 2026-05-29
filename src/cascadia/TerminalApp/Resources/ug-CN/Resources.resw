@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>مەغلۇپ بولغان بۇيرۇقلار ئۈچۈن تۈزىتىشلەرنى ئاپتوماتىك تەۋسىيە قىلىش</value>
+    <value>ئاپتوماتىك خاتالىق تەكلىپى</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>قوزغىتىلغاندا، AI ۋاكالەتچىسى مەغلۇپ بولغان بۇيرۇقلارنى ئاپتوماتىك تەھلىل قىلىپ، بىر تۈزىتىش تەكلىپ قىلىدۇ. چەكلەنگەندە، مەغلۇپ بولغان بۇيرۇقلار ھالەت بالداقتا چېكىشكە بولىدىغان كۆرسەتمە كۆرسىتىدۇ — تۈزىتىش تەلەپ قىلىش ئۈچۈن Ctrl+Alt+. نى بېسىڭ ياكى كۆرسەتمىنى چېكىڭ.</value>
+    <value>Intelligent Terminal غا خاتالىقلارنى ۋاكالەتچىڭىزگە ئەۋەتىپ، تۈزىتىشلەرنى ئاپتوماتىك تەكلىپ قىلىشقا رۇخسەت بېرىڭ.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -176,5 +176,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>ئاپتوماتىك خاتالىق بايقاش</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal غا شېلىڭىزنى زىيارەت قىلىش ۋە خاتالىقلارنى ئاپتوماتىك بايقاشقا رۇخسەت بېرىڭ.</value>
   </data>
 </root>

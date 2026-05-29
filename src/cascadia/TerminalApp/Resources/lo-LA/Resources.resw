@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>ແນະນຳການແກ້ໄຂໂດຍອັດຕະໂນມັດສຳລັບຄຳສັ່ງທີ່ລົ້ມເຫລວ</value>
+    <value>ການແນະນຳຂໍ້ຜິດພາດອັດຕະໂນມັດ</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>ເມື່ອເປີດໃຊ້ງານ, ຕົວແທນ AI ຈະວິເຄາະຄຳສັ່ງທີ່ລົ້ມເຫລວໂດຍອັດຕະໂນມັດ ແລະ ສະເໜີການແກ້ໄຂ. ເມື່ອປິດການໃຊ້ງານ, ຄຳສັ່ງທີ່ລົ້ມເຫລວຈະສະແດງຄຳແນະນຳທີ່ສາມາດຄລິກໄດ້ໃນແຖບສະຖານະ — ກົດ Ctrl+Alt+. ຫລື ຄລິກທີ່ຄຳແນະນຳເພື່ອຮ້ອງຂໍການແກ້ໄຂ.</value>
+    <value>ອະນຸຍາດໃຫ້ Intelligent Terminal ສົ່ງຂໍ້ຜິດພາດໄປຫາຕົວແທນຂອງທ່ານເພື່ອແນະນຳການແກ້ໄຂໂດຍອັດຕະໂນມັດ.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -121,5 +121,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>ປິດ</value>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>ການກວດຫາຂໍ້ຜິດພາດອັດຕະໂນມັດ</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>ອະນຸຍາດໃຫ້ Intelligent Terminal ເຂົ້າເຖິງເຊລຂອງທ່ານ ແລະກວດຫາຂໍ້ຜິດພາດໂດຍອັດຕະໂນມັດ.</value>
   </data>
 </root>

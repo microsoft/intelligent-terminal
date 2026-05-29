@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Cadangkan pembetulan secara automatik untuk arahan yang gagal</value>
+    <value>Cadangan ralat automatik</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Apabila diaktifkan, agen AI secara automatik menganalisis arahan yang gagal dan mencadangkan pembetulan. Apabila dinyahaktifkan, arahan yang gagal akan memaparkan petunjuk yang boleh diklik dalam bar status — tekan Ctrl+Alt+. atau klik petunjuk untuk meminta pembetulan.</value>
+    <value>Benarkan Intelligent Terminal menghantar ralat kepada ejen anda untuk mencadangkan pembetulan secara automatik.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -234,5 +234,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Mati</value>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Pengesanan ralat automatik</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Benarkan Intelligent Terminal mengakses shell anda dan mengesan ralat secara automatik.</value>
   </data>
 </root>

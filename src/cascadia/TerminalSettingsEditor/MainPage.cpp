@@ -880,10 +880,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             ShowLoadWarningsDialog.raise(*this, _settingsClone.Warnings());
         }
 
-        // Install shell integration if autofix was enabled.
-        // Only raise once — _InitShellIntegration handles both targets
-        // and shows a single dialog when done.
-        if (_settingsClone.GlobalSettings().AutoFixEnabled())
+        // Install shell integration if error detection was enabled. Detection
+        // is what needs the OSC 133 marks; auto-suggest is a strict subset and
+        // can't be on without it. Only raise once — _InitShellIntegration
+        // handles both targets and shows a single dialog when done.
+        if (_settingsClone.GlobalSettings().AutoErrorDetectionEnabled())
         {
             InitShellIntegrationRequested.raise(*this, ShellIntegrationTarget::Pwsh);
         }

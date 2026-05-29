@@ -172,10 +172,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>הצע אוטומטית תיקונים לפקודות שנכשלו</value>
+    <value>הצעת שגיאות אוטומטית</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>כאשר מופעל, סוכן הבינה המלאכותית מנתח אוטומטית פקודות שנכשלו ומציע תיקון. כאשר מושבת, פקודות שנכשלו מציגות רמז שניתן ללחוץ עליו בשורת המצב — הקש Ctrl+Alt+. או לחץ על הרמז כדי לבקש תיקון.</value>
+    <value>העניק ל-Intelligent Terminal הרשאה לשלוח שגיאות לסוכן שלך כדי להציע תיקונים באופן אוטומטי.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -290,5 +290,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>זיהוי שגיאות אוטומטי</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>העניק ל-Intelligent Terminal הרשאה לגשת למעטפת שלך ולזהות שגיאות באופן אוטומטי.</value>
   </data>
 </root>

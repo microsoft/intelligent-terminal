@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Mol deisithe go huathoibríoch d'orduithe a theip orthu</value>
+    <value>Moladh earráidí uathoibríoch</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Nuair atá sé cumasaithe, déanann an ghníomhaire IS anailís uathoibríoch ar orduithe a theip orthu agus molann sé deisiú. Nuair atá sé díchumasaithe, taispeánann orduithe a theip orthu nod inchliceáilte sa bharra stádais — brúigh Ctrl+Alt+. nó cliceáil ar an nod chun deisiú a iarraidh.</value>
+    <value>Tabhair cead do Intelligent Terminal earráidí a sheoladh chuig do ghníomhaire chun réitigh a mholadh go huathoibríoch.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -176,5 +176,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Brath earráidí uathoibríoch</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Tabhair cead do Intelligent Terminal rochtain a fháil ar do bhlaosc agus earráidí a bhrath go huathoibríoch.</value>
   </data>
 </root>

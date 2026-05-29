@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Ehdota automaattisesti korjauksia epäonnistuneille komennoille</value>
+    <value>Automaattinen virheiden ehdotus</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Kun käytössä, tekoälyagentti analysoi automaattisesti epäonnistuneet komennot ja ehdottaa korjausta. Kun ei käytössä, epäonnistuneet komennot näyttävät napsautettavan vihjeen tilarivillä — paina Ctrl+Alt+. tai napsauta vihjettä pyytääksesi korjausta.</value>
+    <value>Salli Intelligent Terminalin lähettää virheet agentille korjausten ehdottamiseksi automaattisesti.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -290,5 +290,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Automaattinen virheiden tunnistus</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Salli Intelligent Terminalin käyttää komentotulkkia ja tunnistaa virheet automaattisesti.</value>
   </data>
 </root>

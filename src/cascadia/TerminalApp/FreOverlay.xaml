@@ -15,6 +15,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="using:TerminalApp"
+             xmlns:mux="using:Microsoft.UI.Xaml.Controls"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
              TabFocusNavigation="Cycle">
@@ -28,6 +29,7 @@
 
     <!--  Full-screen dark background  -->
     <Grid x:Name="RootGrid" Background="#FF1E1E1E"
+          RequestedTheme="Dark"
           HighContrastAdjustment="Auto">
         <Grid.RowDefinitions>
             <!--  Title bar space  -->
@@ -197,7 +199,11 @@
                                 MaxWidth="{StaticResource StandardControlMaxWidth}"
                                 HorizontalAlignment="Center">
                         <!--  Agent  -->
-                        <Border Background="#19FFFFFF" CornerRadius="4" Padding="16,12">
+                        <Border Background="{ThemeResource ExpanderHeaderBackground}"
+                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                Padding="16,12">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -234,15 +240,48 @@
                             </Grid>
                         </Border>
 
-                        <!--  Auto-error detection  -->
-                        <Border Background="#19FFFFFF" CornerRadius="4" Padding="16,12">
+                        <!--  Automatic error detection (master) + suggestion
+                              (nested), modeled as an Expander to match the
+                              settings editor: detection's toggle lives in the
+                              always-visible header; the suggestion toggle is
+                              nested in the body and is forced off + disabled
+                              when detection is off (see _OnAutoDetectToggled).
+                              RequestedTheme=Dark so the Expander chrome matches
+                              the dark full-screen FRE.  -->
+                        <mux:Expander RequestedTheme="Dark"
+                                      HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Stretch"
+                                      IsExpanded="True">
+                            <mux:Expander.Header>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock x:Uid="FreOverlay_AutoDetectLabel"
+                                                   FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="White" />
+                                        <TextBlock x:Uid="FreOverlay_AutoDetectDescription"
+                                                   FontSize="12" Foreground="#99FFFFFF"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="AutoDetectToggle" Grid.Column="1"
+                                                  IsOn="True" VerticalAlignment="Center"
+                                                  HorizontalAlignment="Right" MinWidth="0"
+                                                  Toggled="_OnAutoDetectToggled" />
+                                </Grid>
+                            </mux:Expander.Header>
+                            <!--  Body: suggestion (nested dependent). Plain rows,
+                                  no separate card — forced off + disabled when
+                                  detection is off.  -->
                             <StackPanel Spacing="4">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Spacing="2">
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
                                         <TextBlock x:Uid="FreOverlay_AutoErrorLabel"
                                                    FontSize="14" FontWeight="SemiBold"
                                                    Foreground="White" />
@@ -260,10 +299,14 @@
                                            Visibility="Collapsed"
                                            AutomationProperties.LiveSetting="Polite" />
                             </StackPanel>
-                        </Border>
+                        </mux:Expander>
 
                         <!--  Session management  -->
-                        <Border Background="#19FFFFFF" CornerRadius="4" Padding="16,12">
+                        <Border Background="{ThemeResource ExpanderHeaderBackground}"
+                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                Padding="16,12">
                             <StackPanel Spacing="4">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -297,7 +340,11 @@
                         </Border>
 
                         <!--  Pane position  -->
-                        <Border Background="#19FFFFFF" CornerRadius="4" Padding="16,12">
+                        <Border Background="{ThemeResource ExpanderHeaderBackground}"
+                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                Padding="16,12">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />

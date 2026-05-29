@@ -86,6 +86,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         // empty. If a feature is blocked by policy, returns false.
         hstring EffectiveAcpAgent() const;
         hstring EffectiveDelegateAgent() const;
+        bool EffectiveAutoErrorDetectionEnabled() const;
         bool EffectiveAutoFixEnabled() const;
 
         // Whether GPO policy is actively restricting these settings.

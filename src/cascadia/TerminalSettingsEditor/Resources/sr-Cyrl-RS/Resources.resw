@@ -2918,4 +2918,16 @@
     <value>Инсталација Hooks није успела. Детаље потражите у %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
+  <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
+    <value>Аутоматско откривање грешака</value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
+    <value>Дозволите да Intelligent Terminal приступи вашој командној линији и аутоматски открива грешке. Доступно у PowerShell и Windows PowerShell.</value>
+  </data>
+  <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
+    <value>Аутоматски предлог исправки</value>
+  </data>
+  <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
+    <value>Дозволите да Intelligent Terminal шаље грешке вашем агенту ради аутоматског предлагања исправки.</value>
+  </data>
 </root>

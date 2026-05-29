@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Javítások automatikus javaslata sikertelen parancsokhoz</value>
+    <value>Automatikus hibajavaslat</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Ha engedélyezve van, az AI ügynök automatikusan elemzi a sikertelen parancsokat, és javaslatot tesz egy javításra. Ha le van tiltva, a sikertelen parancsok kattintható tippet jelenítenek meg az állapotsorban — nyomja meg a Ctrl+Alt+. billentyűkombinációt, vagy kattintson a tippre a javítás kéréséhez.</value>
+    <value>Engedélyezze az Intelligent Terminal számára, hogy hibákat küldjön az ügynöknek a javítások automatikus javaslásához.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -289,5 +289,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Automatikus hibafelismerés</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Engedélyezze az Intelligent Terminal számára, hogy hozzáférjen a parancshéjhoz, és automatikusan felismerje a hibákat.</value>
   </data>
 </root>

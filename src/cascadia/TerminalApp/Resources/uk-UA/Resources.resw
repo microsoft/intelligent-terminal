@@ -1063,10 +1063,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Автоматично пропонувати виправлення для невдалих команд</value>
+    <value>Автоматична пропозиція виправлень</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Якщо ввімкнено, ШІ-агент автоматично аналізує невдалі команди та пропонує виправлення. Якщо вимкнено, невдалі команди показують підказку в рядку стану, на яку можна клацнути — натисніть Ctrl+Alt+. або клацніть підказку, щоб запитати виправлення.</value>
+    <value>Дозвольте Intelligent Terminal надсилати помилки вашому агенту для автоматичної пропозиції виправлень.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -1193,5 +1193,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Автоматичне виявлення помилок</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Дозвольте Intelligent Terminal отримати доступ до оболонки та автоматично виявляти помилки.</value>
   </data>
 </root>

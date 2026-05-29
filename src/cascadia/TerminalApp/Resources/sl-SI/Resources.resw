@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Samodejno predlagaj popravke za neuspele ukaze</value>
+    <value>Samodejno predlaganje napak</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Ko je omogočeno, agent UI samodejno analizira neuspele ukaze in predlaga popravek. Ko je onemogočeno, neuspeli ukazi prikažejo namig, ki ga je mogoče klikniti, v vrstici stanja — pritisnite Ctrl+Alt+. ali kliknite namig, da zahtevate popravek.</value>
+    <value>Dovolite aplikaciji Intelligent Terminal pošiljanje napak vašemu agentu za samodejno predlaganje popravkov.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -289,5 +289,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Samodejno zaznavanje napak</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Dovolite aplikaciji Intelligent Terminal dostop do lupine in samodejno zaznavanje napak.</value>
   </data>
 </root>

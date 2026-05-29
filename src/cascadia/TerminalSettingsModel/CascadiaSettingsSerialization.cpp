@@ -2013,6 +2013,7 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
         };
         if (isJsonLoad)
         {
+            emitIntelligentFeatureConfigured("AutoErrorDetection", _globals->AutoErrorDetectionEnabled() ? L"true" : L"false");
             emitIntelligentFeatureConfigured("AutoFix", _globals->AutoFixEnabled() ? L"true" : L"false");
             if (const auto agentPanePosition = _globals->AgentPanePosition(); !agentPanePosition.empty())
             {

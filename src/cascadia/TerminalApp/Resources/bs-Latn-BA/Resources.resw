@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Automatski predloži popravke za neuspjele komande</value>
+    <value>Automatski prijedlog grešaka</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Kada je omogućeno, AI agent automatski analizira neuspjele komande i predlaže popravku. Kada je onemogućeno, neuspjele komande prikazuju savjet na koji se može kliknuti u traci stanja — pritisnite Ctrl+Alt+. ili kliknite na savjet da zatražite popravku.</value>
+    <value>Dozvolite aplikaciji Intelligent Terminal da šalje greške vašem agentu radi automatskog predlaganja popravki.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -176,5 +176,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Automatsko otkrivanje grešaka</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Dozvolite aplikaciji Intelligent Terminal pristup vašoj ljusci i automatsko otkrivanje grešaka.</value>
   </data>
 </root>

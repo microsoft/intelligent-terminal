@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Sarankan perbaikan secara otomatis untuk perintah yang gagal</value>
+    <value>Saran kesalahan otomatis</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Ketika diaktifkan, agen AI secara otomatis menganalisis perintah yang gagal dan mengusulkan perbaikan. Ketika dinonaktifkan, perintah yang gagal menampilkan petunjuk yang dapat diklik di bilah status — tekan Ctrl+Alt+. atau klik petunjuk untuk meminta perbaikan.</value>
+    <value>Izinkan Intelligent Terminal mengirim kesalahan ke agen Anda untuk menyarankan perbaikan secara otomatis.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -234,5 +234,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Nonaktif</value>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Deteksi kesalahan otomatis</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Izinkan Intelligent Terminal mengakses shell Anda dan mendeteksi kesalahan secara otomatis.</value>
   </data>
 </root>

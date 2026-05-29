@@ -602,9 +602,23 @@ winrt::hstring GlobalAppSettings::EffectiveDelegateAgent() const
     return agent;
 }
 
+bool GlobalAppSettings::EffectiveAutoErrorDetectionEnabled() const
+{
+    return AutoErrorDetectionEnabled();
+}
+
 bool GlobalAppSettings::EffectiveAutoFixEnabled() const
 {
     if (!AgentPolicy::IsAutoFixAllowed())
+    {
+        return false;
+    }
+    // Auto-suggest depends on detection: if errors aren't being detected,
+    // there is nothing to send to the agent, so suggestion is implicitly
+    // off too. This makes the dependency hold everywhere consumers read the
+    // effective value (WTA, bottom bar) regardless of the raw settings.json
+    // value or the FRE / settings-editor UI state.
+    if (!EffectiveAutoErrorDetectionEnabled())
     {
         return false;
     }

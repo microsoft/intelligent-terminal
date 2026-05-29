@@ -142,19 +142,79 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
-            <!--  Auto-error detection  -->
-            <local:SettingContainer x:Name="AutoFixEnabled"
-                                    x:Uid="AIAgents_AutoFix">
-                <StackPanel>
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
-                                  IsEnabled="{x:Bind local:AIAgents.NotBool(ViewModel.IsAutoFixPolicyLocked), Mode=OneWay}"
-                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+            <!--  Automatic error detection (parent) + Automatic error
+                  suggestion (dependent child). Modeled as an Expander so the
+                  hierarchy is explicit: detection's master toggle lives in the
+                  always-visible header; suggestion is nested in the expand body
+                  and stays disabled until detection is on (ViewModel.
+                  CanSuggestErrors). Hand-built header (vs. ExpanderSetting
+                  ContainerStyle) because that style's header-right slot is a
+                  read-only text preview and can't host the master toggle.  -->
+            <muxc:Expander x:Name="AutoErrorDetectionExpander"
+                           Margin="0,4,0,0"
+                           HorizontalAlignment="Stretch"
+                           HorizontalContentAlignment="Stretch"
+                           IsExpanded="True">
+                <muxc:Expander.Header>
+                    <Grid MinHeight="64">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                            <TextBlock x:Uid="AIAgents_AutoErrorDetectionTitle"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap" />
+                            <TextBlock x:Uid="AIAgents_AutoErrorDetectionCaption"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1"
+                                      MinWidth="0"
+                                      VerticalAlignment="Center"
+                                      AutomationProperties.AccessibilityView="Content"
+                                      IsOn="{x:Bind ViewModel.AutoErrorDetectionEnabled, Mode=TwoWay}" />
+                    </Grid>
+                </muxc:Expander.Header>
+                <!--  Nested dependent setting: suggestion. Plain rows (no nested
+                      SettingContainer) so it sits inside the detection Expander
+                      body with no "card-in-card" background. Greyed out
+                      whenever detection is off or auto-fix is GPO-locked
+                      (ViewModel.CanSuggestErrors). Its On/Off reflects the
+                      user's own value and is independent of the detection
+                      toggle.  -->
+                <StackPanel Margin="0,4,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                            <TextBlock x:Uid="AIAgents_AutoErrorSuggestionTitle"
+                                       TextWrapping="Wrap" />
+                            <TextBlock x:Uid="AIAgents_AutoErrorSuggestionCaption"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1"
+                                      MinWidth="0"
+                                      VerticalAlignment="Center"
+                                      AutomationProperties.AccessibilityView="Content"
+                                      IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
+                                      IsEnabled="{x:Bind ViewModel.CanSuggestErrors, Mode=OneWay}" />
+                    </Grid>
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsAutoFixPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
                                Margin="0,4,0,0" />
                 </StackPanel>
-            </local:SettingContainer>
+            </muxc:Expander>
 
             <!--  Agent session tracking (hooks) — last entry in the Agent pane group.
                   Collapsible SettingContainer (Expander style). When expanded:

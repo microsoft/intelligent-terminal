@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Ինքնաբերաբար առաջարկել շտկումներ ձախողված հրամանների համար</value>
+    <value>Սխալների ավտոմատ առաջարկ</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Միացված լինելու դեպքում AI գործակալը ինքնաբերաբար վերլուծում է ձախողված հրամանները և առաջարկում շտկում: Անջատված լինելու դեպքում ձախողված հրամանները կարգավիճակի տողում ցույց են տալիս սեղմելի ակնարկ — սեղմեք Ctrl+Alt+. կամ սեղմեք ակնարկի վրա շտկում խնդրելու համար:</value>
+    <value>Թույլ տվեք Intelligent Terminal-ին սխալներ ուղարկել ձեր գործակալին՝ ավտոմատ կերպով ուղղումներ առաջարկելու համար։</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -176,5 +176,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Սխալների ավտոմատ հայտնաբերում</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Թույլ տվեք Intelligent Terminal-ին մուտք գործել ձեր թաղանթ և ավտոմատ կերպով հայտնաբերել սխալները։</value>
   </data>
 </root>

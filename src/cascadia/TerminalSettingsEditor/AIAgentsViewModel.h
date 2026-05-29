@@ -102,9 +102,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, AcpModel);
         bool ShowDelegateModel();
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, DelegateModel);
+        bool AutoErrorDetectionEnabled() const;
+        void AutoErrorDetectionEnabled(bool value);
+        bool HasAutoErrorDetectionEnabled() const;
         bool AutoFixEnabled() const;
         void AutoFixEnabled(bool value);
         bool HasAutoFixEnabled() const;
+        bool CanSuggestErrors() const;
 
         // GPO policy lock indicators
         bool IsAgentPolicyLocked() const { return _GlobalSettings.IsAgentPolicyLocked(); }

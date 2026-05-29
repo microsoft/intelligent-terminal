@@ -171,10 +171,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>தோல்வியடைந்த கட்டளைகளுக்கு தானாகவே சரிசெய்தலை பரிந்துரைக்கவும்</value>
+    <value>தானியங்கி பிழை பரிந்துரை</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>இயக்கப்பட்டால், AI முகவர் தோல்வியடைந்த கட்டளைகளை தானாகவே பகுப்பாய்வு செய்து சரிசெய்தலை முன்மொழிகிறது. முடக்கப்பட்டால், தோல்வியடைந்த கட்டளைகள் நிலைப்பட்டியில் கிளிக் செய்யக்கூடிய குறிப்பைக் காண்பிக்கின்றன — சரிசெய்தலை கோர Ctrl+Alt+. ஐ அழுத்தவும் அல்லது குறிப்பை கிளிக் செய்யவும்.</value>
+    <value>தீர்வுகளைத் தானாகவே பரிந்துரைக்க உங்கள் முகவருக்குப் பிழைகளை அனுப்ப Intelligent Terminal-ஐ அனுமதிக்கவும்.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -290,5 +290,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>தானியங்கி பிழை கண்டறிதல்</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>உங்கள் ஷெல்லை அணுகவும் பிழைகளைத் தானாகவே கண்டறியவும் Intelligent Terminal-ஐ அனுமதிக்கவும்.</value>
   </data>
 </root>

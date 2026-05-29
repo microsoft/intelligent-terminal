@@ -172,10 +172,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>अयशस्वी आदेशांखातीर आपशींच निवारण सुचोवचें</value>
+    <value>स्वयंचलित त्रुटी सुचोवणी</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>सक्षम केल्यार, AI एजंट अयशस्वी आदेशांचें आपशींच विश्लेषण करता आनी एक निवारण सुचयता. अकार्यान्वीत केल्यार, अयशस्वी आदेश स्थिती पट्ट्येंत क्लीक करपाक मेळपी सुचोवणी दाखयतात — निवारणाक मागणी करपाक Ctrl+Alt+. दामचो वा सुचोवणेर क्लीक करचो.</value>
+    <value>Intelligent Terminal क आपशीच उपाय सुचोवपाक तुमच्या एजंटाक त्रुटी धाडपाक परवानगी दियात.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -291,5 +291,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>स्वयंचलित त्रुटी सोद</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal क तुमच्या शेलांत प्रवेश करपाक आनी त्रुटी आपशीच सोदपाक परवानगी दियात.</value>
   </data>
 </root>

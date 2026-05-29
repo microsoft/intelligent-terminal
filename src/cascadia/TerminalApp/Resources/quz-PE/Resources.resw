@@ -58,10 +58,10 @@
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Mana atisqa kamachiykunapaq allichaykunata kikinmanta yuyaychay</value>
+    <value>Pantasqakunata unaylla yuyaychay</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Kachasqa kaspa, AI yanapaqqa mana atisqa kamachiykunata kikinmanta yachay, hinaspa allichayta yuyaychan. Mana kachasqa kaspa, mana atisqa kamachiykunaqa qhawana siq'ipi ñit'inalla willakuyta rikuchinku — allichayta mañakunapaq Ctrl+Alt+. ñit'iy utaq willakuy patapi ñit'iy.</value>
+    <value>Intelligent Terminal-man saqiy pantasqakunata agente-ykiman apachinanpaq allichaykunata unaylla yuyaychananpaq.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -176,5 +176,11 @@
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Pantasqakunata unaylla tariy</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal-man saqiy shell-niykiman yaykunanpaq hinaspa pantasqakunata unaylla tarinanpaq.</value>
   </data>
 </root>

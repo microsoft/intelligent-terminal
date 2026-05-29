@@ -1069,10 +1069,10 @@
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Автоматически предлагать исправления для команд с ошибками</value>
+    <value>Автоматическое предложение исправлений</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Если включено, ИИ-агент автоматически анализирует команды с ошибками и предлагает исправление. Если отключено, для команд с ошибками в строке состояния отображается подсказка, по которой можно щелкнуть — нажмите Ctrl+Alt+. или щелкните подсказку, чтобы запросить исправление.</value>
+    <value>Разрешите Intelligent Terminal отправлять ошибки агенту для автоматического предложения исправлений.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
@@ -1199,5 +1199,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Автоматическое обнаружение ошибок</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Разрешите Intelligent Terminal доступ к оболочке и автоматическое обнаружение ошибок.</value>
   </data>
 </root>

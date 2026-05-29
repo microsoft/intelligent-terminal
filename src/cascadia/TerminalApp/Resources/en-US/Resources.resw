@@ -1078,12 +1078,21 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="Node.js","NPX"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Automatic error detection</value>
+    <comment>Header for the toggle that lets the terminal observe the shell and detect failed commands.</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Give Intelligent Terminal permission to access your shell and automatically detect errors.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. Description for the automatic-error-detection toggle in the first-run wizard.</comment>
+  </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Auto-suggest fixes for failed commands</value>
+    <value>Automatic error suggestion</value>
+    <comment>Header for the toggle that lets the agent automatically suggest fixes for detected errors. Depends on automatic error detection being on.</comment>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>When enabled, the AI agent automatically analyzes failed commands and proposes a fix. When disabled, failed commands surface a clickable hint in the status bar — press Ctrl+Alt+. or click the hint to request a fix.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} Description for the auto-suggest-fixes toggle in the first-run wizard. "AI agent" is a generic role name (Copilot, Claude, Gemini), not a human.</comment>
+    <value>Give Intelligent Terminal permission to send errors to your agent to automatically suggest fixes.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. Description for the automatic-error-suggestion toggle in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Session management</value>

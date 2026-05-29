@@ -2564,4 +2564,16 @@
     <value>Не вдалося встановити Hooks. Докладні відомості див. у %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
+  <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
+    <value>Автоматичне виявлення помилок</value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
+    <value>Дозвольте Intelligent Terminal отримати доступ до оболонки та автоматично виявляти помилки. Доступно в PowerShell і Windows PowerShell.</value>
+  </data>
+  <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
+    <value>Автоматична пропозиція виправлень</value>
+  </data>
+  <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
+    <value>Дозвольте Intelligent Terminal надсилати помилки вашому агенту для автоматичної пропозиції виправлень.</value>
+  </data>
 </root>

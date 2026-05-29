@@ -2842,4 +2842,16 @@
     <value>Hooks 安裝失敗。請查看 %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log 以取得詳細資料。</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
+  <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
+    <value>自動錯誤偵測</value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
+    <value>允許 Intelligent Terminal 存取您的 shell 並自動偵測錯誤。適用於 PowerShell 和 Windows PowerShell。</value>
+  </data>
+  <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
+    <value>自動錯誤建議</value>
+  </data>
+  <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
+    <value>允許 Intelligent Terminal 將錯誤傳送給您的代理程式以自動建議修正。</value>
+  </data>
 </root>
