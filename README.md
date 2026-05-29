@@ -83,6 +83,12 @@ winget install --id Microsoft.IntelligentTerminal -e
 3. If you aren't already authenticated, the agent pane walks you through sign-in.
 4. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed.
 
+> [!TIP]
+> If you see "running scripts is disabled on this system" or an `UnauthorizedAccess` error in PowerShell, your execution policy is blocking your profile and Intelligent Terminal can't initialize shell integration. Run:
+> ```powershell
+> Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+> ```
+
 ---
 
 ## Keyboard Shortcuts
