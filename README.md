@@ -145,10 +145,6 @@ All shortcuts are customizable through terminal settings.
 
 Everything is configurable through terminal settings, under "Agent" settings.
 
-<p align="center">
-  <img src="./images/intelligent-terminal-settings.png" alt="Screenshot of the Intelligent Terminal settings page showing agent configuration options">
-</p>
-
 | Setting | Options |
 |---------|---------|
 | Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. |
