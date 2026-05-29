@@ -15,14 +15,14 @@
   - [WinGet](#winget)
   - [Downloads](#downloads)
 - [Get Started](#get-started)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Configuration](#configuration)
 - [Features](#features)
   - [Agent Status Bar](#agent-status-bar)
   - [Agent Pane](#agent-pane)
   - [Agent Management](#agent-management)
   - [Error Detection](#error-detection)
   - [Command Palette](#command-palette)
-- [Keyboard Shortcuts](#keyboard-shortcuts)
-- [Configuration](#configuration)
 - [Data & Privacy](#data--privacy)
 - [Building the Code](#building-the-code)
 - [Feedback](#feedback)
@@ -83,6 +83,34 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 ---
 
+## Keyboard Shortcuts
+
+All shortcuts are customizable through terminal settings.
+
+| Shortcut | Action |
+|----------|--------|
+| <kbd>Ctrl+Shift+.</kbd> | Toggle the agent pane |
+| <kbd>Ctrl+Shift+I</kbd> | Switch focus to/from the agent pane |
+| <kbd>Ctrl+Alt+.</kbd> | Open agent pane with error context |
+| <kbd>Ctrl+Shift+/</kbd> | Open agent management |
+| <kbd>Alt+Shift+/</kbd> | Open Command Palette in prompt mode |
+
+---
+
+## Configuration
+
+Everything is configurable through terminal settings, under "Agent" settings.
+
+| Setting | Options |
+|---------|---------|
+| Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. |
+| Pane placement | Top, Bottom (default), Left, Right |
+| Error detection | Allows Intelligent Terminal to automatically detect command failures |
+| Error suggestions | Allows Intelligent Terminal to automatically send detected errors to the agent for fix suggestions |
+| Agent session tracking (hooks) | Allows Intelligent Terminal to track active agent sessions and their status in the session management UI |
+
+---
+
 ## Features
 
 ### Agent Status Bar
@@ -124,34 +152,6 @@ When a command fails, an indicator appears in the agent status bar. Click it or 
 </p>
 
 Type `?` followed by your prompt in the Command Palette to kick off an agent task. Intelligent Terminal injects context from the active pane and starts the agent in a background tab. Use <kbd>Alt+Shift+/</kbd> to jump directly into prompt mode.
-
----
-
-## Keyboard Shortcuts
-
-All shortcuts are customizable through terminal settings.
-
-| Shortcut | Action |
-|----------|--------|
-| <kbd>Ctrl+Shift+.</kbd> | Toggle the agent pane |
-| <kbd>Ctrl+Shift+I</kbd> | Switch focus to/from the agent pane |
-| <kbd>Ctrl+Alt+.</kbd> | Open agent pane with error context |
-| <kbd>Ctrl+Shift+/</kbd> | Open agent management |
-| <kbd>Alt+Shift+/</kbd> | Open Command Palette in prompt mode |
-
----
-
-## Configuration
-
-Everything is configurable through terminal settings, under "Agent" settings.
-
-| Setting | Options |
-|---------|---------|
-| Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. |
-| Pane placement | Top, Bottom (default), Left, Right |
-| Error detection | Allows Intelligent Terminal to automatically detect command failures |
-| Error suggestions | Allows Intelligent Terminal to automatically send detected errors to the agent for fix suggestions |
-| Agent session tracking (hooks) | Allows Intelligent Terminal to track active agent sessions and their status in the session management UI |
 
 ---
 
