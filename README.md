@@ -77,17 +77,10 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 ## Get Started
 
-### Install
-Grab Intelligent Terminal from the [Microsoft Store](#microsoft-store-recommended), [WinGet](#winget), or [Downloads](#downloads).
-
-### Pick your agent
-On first launch, you'll choose your agent. Intelligent Terminal auto-detects [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs already on your machine (GitHub Copilot, Codex, Gemini, and others). If none are found, it defaults to GitHub Copilot CLI and installs it for you.
-
-### Sign in
-If you aren't already authenticated, the agent pane walks you through it.
-
-### Go
-Start asking questions. The agent has context on your shell output, no copy-pasting needed.
+1. Install Intelligent Terminal from the [Microsoft Store](#microsoft-store-recommended), [WinGet](#winget), or [Downloads](#downloads).
+2. On first launch, choose your agent. Intelligent Terminal auto-detects [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (GitHub Copilot, Codex, Gemini, and others). If none are found, it defaults to GitHub Copilot CLI and installs it for you.
+3. If you aren't already authenticated, the agent pane walks you through sign-in.
+4. Start asking questions. The agent has context on your shell output, no copy-pasting needed.
 
 ---
 
@@ -107,9 +100,7 @@ The agent status bar sits at the bottom of the window and gives you quick access
   <img src="./images/intelligent-terminal-agent-pane.gif" alt="GIF of user opening the agent pane and asking a development question">
 </p>
 
-The core interaction in Intelligent Terminal is the agent pane: a context-aware, dedicated, configurable, docked pane with your agent CLI of choice. The pane has context on your shell output so there's no copy-pasting needed. This works across all your favorite shells in Terminal.
-
-Show or hide the agent pane anytime with <kbd>Ctrl+Shift+.</kbd>. It's there when you need it and out of the way when you don't. Ask it to explain an error, then follow up with "try a different flag" and it keeps the thread going. If the agent needs to do multiple or complex tasks, it will spin up background tasks in new tabs so your active shell stays focused.
+A context-aware, docked pane with your agent CLI of choice. The pane has context on your shell output across all your shells. Toggle with <kbd>Ctrl+Shift+.</kbd>, switch focus with <kbd>Ctrl+Shift+I</kbd>. If the agent needs to do multiple or complex tasks, it spins up background tasks in new tabs so your active shell stays focused.
 
 ### Agent Management
 
@@ -117,19 +108,15 @@ Show or hide the agent pane anytime with <kbd>Ctrl+Shift+.</kbd>. It's there whe
   <img src="./images/intelligent-terminal-agent-management.png" alt="Screenshot of agent management panel showing active agents and past sessions">
 </p>
 
-When you're running multiple agents across tabs or kicking off background tasks, you need a way to keep track of everything. The agent management panel gives you that at a glance. Click the agent icon in the status bar or press <kbd>Ctrl+Shift+/</kbd> to open it.
-
-You'll see all your active agents and their current status, plus past sessions you can jump back into. Pick up a workflow where you left off, check on a long-running task, or dismiss completed ones.
+View all active agents, their status, and past sessions. Pick up a workflow where you left off or check on a long-running task. Click the agent management icon in the status bar or press <kbd>Ctrl+Shift+/</kbd> to open it.
 
 ### Error Detection
 
 <p align="center">
-  <img src="./images/intelligent-terminal-error-detection.gif" alt="GIF of a command failing and the user pressing Ctrl+. for a fix">
+  <img src="./images/intelligent-terminal-error-detection.gif" alt="GIF of a command failing and the user pressing Ctrl+Alt+. for a fix">
 </p>
 
-When a command fails, Terminal picks it up. An indicator appears in the agent status bar: "Error detected." That opens the agent pane with the error context already loaded. The agent explains what happened and can suggest or auto-run the best fix.
-
-Intelligent Terminal has a permission model you control: "always ask" (default), "ask once per agent," or "always allow for trusted agents." It's the same suggest-and-confirm approach as VS Code GitHub Copilot.
+When a command fails, an indicator appears in the agent status bar. Click it or press <kbd>Ctrl+Alt+.</kbd> to open the agent pane with the error context already loaded. The agent can explain what happened and suggest or run a fix. Configure your settings to auto-detect errors only, or to also auto-suggest fixes.
 
 ### Command Palette
 
@@ -137,11 +124,7 @@ Intelligent Terminal has a permission model you control: "always ask" (default),
   <img src="./images/intelligent-terminal-command-palette.gif" alt="GIF of user typing a question in Command Palette and an agent task starting">
 </p>
 
-The Command Palette is another quick way to kick off an agent task. Type `?` followed by your prompt and Intelligent Terminal injects context from the active pane and starts the agent in a background tab so your shell isn't blocked.
-
-```
-? why did my build fail
-```
+Type `?` followed by your prompt in the Command Palette to kick off an agent task. Intelligent Terminal injects context from the active pane and starts the agent in a background tab. Use <kbd>Alt+Shift+/</kbd> to jump directly into prompt mode.
 
 ---
 
@@ -152,8 +135,11 @@ All shortcuts are customizable through terminal settings.
 | Shortcut | Action |
 |----------|--------|
 | <kbd>Ctrl+Shift+.</kbd> | Toggle the agent pane |
+| <kbd>Ctrl+Shift+I</kbd> | Switch focus to/from the agent pane |
+| <kbd>Ctrl+Alt+.</kbd> | Open agent pane with error context |
 | <kbd>Ctrl+Shift+/</kbd> | Open agent management |
-| <kbd>Ctrl+Shift+P</kbd> | Open Command Palette (type `?<prompt>` to start an agent task, which will launch the prompt in a new tab with your chosen agent) |
+| <kbd>Alt+Shift+/</kbd> | Open Command Palette in prompt mode |
+| <kbd>Ctrl+Shift+P</kbd> | Open Command Palette |
 
 ---
 
