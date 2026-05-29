@@ -156,12 +156,16 @@
                 </Grid>
             </Button>
 
-            <!-- Button 2: Diagnostics / Warning — clickable once a fix is armed -->
+            <!-- Button 2: Diagnostics / Warning — clickable once a fix is armed.
+                 Starts Collapsed: the group only appears once the active tab's
+                 helper ACP session reaches Connected (gated in
+                 _UpdateBottomBarState off the agent_status event). -->
             <StackPanel x:Name="DiagnosticsGroup"
                         Grid.Column="1"
                         Orientation="Horizontal"
                         VerticalAlignment="Center"
-                        Spacing="6">
+                        Spacing="6"
+                        Visibility="Collapsed">
                 <Button x:Name="DiagnosticsButton"
                         MinWidth="32"
                         Height="32"

@@ -134,8 +134,16 @@
     <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>Սեղմեք {0}՝ սխալը շտկելու համար</value>
+    <value>Սեղմեք կամ հպեք {0}-ին՝ գործակալից առաջարկվող շտկում խնդրելու համար</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Սեղմեք {0}՝ դիտարկելու համար</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Բացեք գործակալի վահանակը՝ առաջարկվող շտկումը դիտարկելու համար</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>Սխալ է հայտնաբերվել։ Սեղմեք կամ հպեք {0}-ին, որպեսզի AI գործակալը ախտորոշի և առաջարկի լուծում։</value>

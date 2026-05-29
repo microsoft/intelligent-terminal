@@ -248,8 +248,16 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>ਗਲਤੀ ਠੀਕ ਕਰਨ ਲਈ {0} 'ਤੇ ਕਲਿੱਕ ਕਰੋ</value>
+    <value>ਸੁਝਾਏ ਗਏ ਹੱਲ ਲਈ ਏਜੰਟ ਨੂੰ ਪੁੱਛਣ ਵਾਸਤੇ {0} 'ਤੇ ਕਲਿੱਕ ਕਰੋ ਜਾਂ ਦਬਾਓ</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>ਸਮੀਖਿਆ ਕਰਨ ਲਈ {0} ਦਬਾਓ</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>ਸੁਝਾਏ ਗਏ ਹੱਲ ਦੀ ਸਮੀਖਿਆ ਕਰਨ ਲਈ ਏਜੰਟ ਪੈਨ ਖੋਲ੍ਹੋ</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>ਗਲਤੀ ਮਿਲੀ। AI ਏਜੰਟ ਨੂੰ ਨਿਦਾਨ ਕਰਨ ਅਤੇ ਹੱਲ ਸੁਝਾਉਣ ਲਈ {0} 'ਤੇ ਕਲਿੱਕ ਕਰੋ ਜਾਂ ਦਬਾਓ।</value>

@@ -41,8 +41,12 @@ namespace winrt::TerminalApp::implementation
             Idle,
             Detected,
             Pending,
-            Armed,
-            Suggested,
+            // Analysis finished; the result (fix or explanation) is waiting
+            // in the agent pane chat. Surfaced only when the pane is closed
+            // — the helper decides via pane_open and sends Idle instead when
+            // it's already open. Replaces the old Armed/Suggested split:
+            // autofix no longer auto-executes, so both surface identically.
+            Review,
         };
         // Update the diagnostics state from an inbound autofix_state event
         // (single-writer for this pane's state). `pane_id` and other fields
@@ -78,6 +82,12 @@ namespace winrt::TerminalApp::implementation
 
         // Accessors for state that the window-level bottom bar projects.
         AutofixState GetAutofixState() const noexcept { return _autofixState; }
+        // True once the helper's ACP session has reached Connected (driven
+        // by the `agent_status` `state` field via UpdateAgentStatus). The
+        // bottom-bar diagnostics group is gated on this: no autofix
+        // capability exists before connect (cold start) or after a
+        // failure/disconnect, so the button must not appear at all.
+        bool IsAgentConnected() const noexcept { return _agentState == L"connected"; }
         winrt::hstring GetLastErrorPaneId() const noexcept { return _lastErrorPaneId; }
         winrt::hstring GetFixPreview() const noexcept { return _fixPreview; }
         winrt::hstring GetHotkeyHint() const noexcept { return _hotkeyHint; }

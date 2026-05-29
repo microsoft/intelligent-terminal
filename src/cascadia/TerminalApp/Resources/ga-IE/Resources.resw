@@ -134,8 +134,16 @@
     <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>Cliceáil {0} chun an earráid a cheartú</value>
+    <value>Cliceáil nó brúigh {0} chun réiteach molta a iarraidh ar an ngníomhaire</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Brúigh {0} chun athbhreithniú a dhéanamh</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Oscail pána an ghníomhaire chun an réiteach molta a athbhreithniú</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>Braitheadh earráid. Cliceáil nó brúigh {0} chun iarraidh ar an ngníomhaire AI anailís a dhéanamh agus réiteach a mholadh.</value>

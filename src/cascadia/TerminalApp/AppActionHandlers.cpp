@@ -1766,13 +1766,27 @@ namespace winrt::TerminalApp::implementation
         }
         using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
         const auto state = impl->GetAutofixState();
-        if (state == AS::Armed)
+        // Open or focus the active tab's agent pane (shared by Detected and
+        // Review). Opening it makes the helper observe pane_open=true and
+        // flip the bar to Idle on its own.
+        const auto openAgentPaneForReview = [&]() {
+            const auto agentPane = activeTab->FindAgentPane();
+            if (agentPane && !agentPane->IsHidden())
+            {
+                if (agentContent.IsSessionsView())
+                {
+                    _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
+                }
+            }
+            else
+            {
+                _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"Autofix");
+            }
+        };
+        if (state == AS::Detected)
         {
-            _TriggerAutofix(activeTab, L"Hotkey");
-            args.Handled(true);
-        }
-        else if (state == AS::Detected)
-        {
+            // "Ask the agent for a fix": open the pane, then fire the LLM.
+            openAgentPaneForReview();
             Json::Value evt;
             evt["type"] = "event";
             evt["method"] = "autofix_execute_from_detected";
@@ -1785,6 +1799,12 @@ namespace winrt::TerminalApp::implementation
             ProtocolVtSequenceReceived.raise(
                 *this,
                 winrt::to_hstring(Json::writeString(wb, evt)));
+            args.Handled(true);
+        }
+        else if (state == AS::Review)
+        {
+            // Result is ready in the pane chat — just open it for review.
+            openAgentPaneForReview();
             args.Handled(true);
         }
     }

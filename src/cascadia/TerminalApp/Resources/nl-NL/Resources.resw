@@ -242,8 +242,16 @@
     <comment>{0} = sneltoets.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>Klik op {0} om de fout op te lossen</value>
+    <value>Klik of druk op {0} om de agent om een voorgestelde oplossing te vragen</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Druk op {0} om te controleren</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Open het agentvenster om de voorgestelde oplossing te controleren</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>Fout gedetecteerd. Klik of druk op {0} om de AI-agent te vragen de fout te analyseren en een oplossing voor te stellen.</value>

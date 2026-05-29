@@ -134,8 +134,16 @@
     <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>{0}ን ጠቅ ያድርጉ ስህተቱን ለማስተካከል</value>
+    <value>የቀረበ ማስተካከያ ከወኪሉ ለመጠየቅ {0}ን ጠቅ ያድርጉ ወይም ይጫኑ</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>ለመገምገም {0}ን ይጫኑ</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>የቀረበውን ማስተካከያ ለመገምገም የወኪሉን ሰሌዳ ይክፈቱ</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>ስህተት ተገኝቷል። ለመመርመር እና መፍትሄ ለመጠቆም AI ወኪልን ለመጠየቅ {0}ን ጠቅ ያድርጉ ወይም ይጫኑ።</value>

@@ -247,8 +247,16 @@
     <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>Xətanı düzəltmək üçün {0} üzərinə klikləyin</value>
+    <value>Agentdən təklif olunan düzəliş istəmək üçün {0} üzərinə klikləyin və ya basın</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Nəzərdən keçirmək üçün {0} basın</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Təklif olunan düzəlişi nəzərdən keçirmək üçün agent panelini açın</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>Xəta aşkar edildi. AI agentindən diaqnostika aparmasını və düzəliş təklif etməsini istəmək üçün {0} üzərinə klikləyin və ya basın.</value>

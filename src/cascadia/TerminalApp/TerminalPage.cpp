@@ -1968,13 +1968,32 @@ namespace winrt::TerminalApp::implementation
         using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
         const auto state = impl->GetAutofixState();
         const auto paneId = impl->GetLastErrorPaneId();
+        // Open or focus the active tab's agent pane so the user can read the
+        // analysis / result in chat. Shared by Detected ("ask") and Review.
+        // Opening the pane makes the helper observe pane_open=true and flip
+        // the bar to Idle on its own — no explicit dismiss needed.
+        const auto openAgentPaneForReview = [&]() {
+            const auto agentPane = activeTab->FindAgentPane();
+            if (agentPane && !agentPane->IsHidden())
+            {
+                if (agentContent.IsSessionsView())
+                {
+                    _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
+                }
+            }
+            else
+            {
+                _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"Autofix");
+            }
+        };
+
         switch (state)
         {
-        case AS::Armed:
-            _TriggerAutofix(activeTab, L"DiagnosticsButton");
-            break;
         case AS::Detected:
         {
+            // "Ask the agent for a fix": open/focus the pane so the user
+            // watches the analysis, then fire the LLM call. No auto-inject.
+            openAgentPaneForReview();
             Json::Value evt;
             evt["type"] = "event";
             evt["method"] = "autofix_execute_from_detected";
@@ -1988,41 +2007,11 @@ namespace winrt::TerminalApp::implementation
                 winrt::to_hstring(Json::writeString(wb, evt)));
             break;
         }
-        case AS::Suggested:
-        {
-            // Suggested has no executable action — the explanation lives in
-            // the chat history. The user's click means "show me what's
-            // wrong", so ensure the pane is visible in chat view. The pane
-            // may be stashed or currently in sessions view, so handle both
-            // before dismissing the bar indicator.
-            const auto agentPane = activeTab->FindAgentPane();
-            if (agentPane && !agentPane->IsHidden())
-            {
-                if (agentContent.IsSessionsView())
-                {
-                    _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
-                }
-            }
-            else
-            {
-                _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"AutofixSuggestion");
-            }
-
-            // Now that the user is reading the explanation in the pane,
-            // drop the bar's Suggested indicator.
-            Json::Value evt;
-            evt["type"] = "event";
-            evt["method"] = "autofix_dismiss_suggestion";
-            Json::Value params;
-            params["pane_id"] = winrt::to_string(paneId);
-            evt["params"] = params;
-            Json::StreamWriterBuilder wb;
-            wb["indentation"] = "";
-            ProtocolVtSequenceReceived.raise(
-                *this,
-                winrt::to_hstring(Json::writeString(wb, evt)));
+        case AS::Review:
+            // Result is ready in the pane chat — just open/focus the pane so
+            // the user can review and act manually. No auto-inject.
+            openAgentPaneForReview();
             break;
-        }
         case AS::Pending:
         case AS::Idle:
         default:
@@ -2158,10 +2147,12 @@ namespace winrt::TerminalApp::implementation
         // (Idle when there's no agent pane).
         using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
         AS autofixState = AS::Idle;
-        winrt::hstring fixPreview;
         winrt::hstring hotkeyHint;
-        winrt::hstring suggestionTitle;
         winrt::hstring detectedSummary;
+        // Whether the active tab's helper ACP session is Connected. Drives
+        // the diagnostics-group connection gate below. No agent pane (or a
+        // not-yet/never-connected one) reads false → group hidden.
+        bool agentConnected = false;
         // Autofix-state read must NOT be gated on pane visibility. The
         // helper keeps running and detecting command failures even when
         // the agent pane is stashed (pre-warm path: helper is spawned
@@ -2178,15 +2169,39 @@ namespace winrt::TerminalApp::implementation
             if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(activeAgent))
             {
                 autofixState = impl->GetAutofixState();
-                fixPreview = impl->GetFixPreview();
                 hotkeyHint = impl->GetHotkeyHint();
-                suggestionTitle = impl->GetSuggestionTitle();
                 detectedSummary = impl->GetDetectedSummary();
+                agentConnected = impl->IsAgentConnected();
             }
         }
 
         if (auto diagBtn = DiagnosticsButton())
         {
+            // Show gate — the diagnostics group appears only when BOTH:
+            //   * error detection is enabled (detect OFF = the user opted
+            //     out of shell observation: no pill, no pipeline), AND
+            //   * the active tab's helper ACP session is Connected (before
+            //     connect / after a failure-disconnect there's no autofix
+            //     capability).
+            // Either false → hide the whole group rather than show a dead,
+            // faded button. Event-driven, not polled: runs from the
+            // AgentPaneContent::StateChanged handler (agent_status flips
+            // connected/disconnected) and on settings changes. Detection is
+            // a pure C++ setting; the autofix business states
+            // (Detected/Pending/Review) all live in the helper and arrive
+            // via `autofix_state`.
+            const bool detectionEnabled =
+                _settings && _settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled();
+            const bool showGroup = detectionEnabled && agentConnected;
+            if (const auto group = DiagnosticsGroup())
+            {
+                group.Visibility(showGroup ? Visibility::Visible : Visibility::Collapsed);
+            }
+            if (!showGroup)
+            {
+                return;
+            }
+
             auto label = DiagnosticsLabel();
             auto icon = DiagnosticsIcon();
 
@@ -2215,16 +2230,18 @@ namespace winrt::TerminalApp::implementation
                 }
                 break;
             }
-            case AS::Armed:
+            case AS::Review:
             {
+                // Analysis finished and a result is waiting in the agent
+                // pane chat, which is currently closed. Invite the user to
+                // open the pane and review. No auto-inject: clicking only
+                // opens the pane (handled in _DiagnosticsButtonOnClick).
                 diagBtn.Opacity(1.0);
                 diagBtn.IsEnabled(true);
 
                 const auto hotkey = hotkeyHint.empty()
                                         ? std::wstring{ L"Ctrl+Alt+." }
                                         : std::wstring{ hotkeyHint };
-                label.Text(winrt::hstring{ RS_fmt(L"Diagnostics_ErrorArmedLabelFormat", hotkey) });
-
                 const auto accent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
                     winrt::Windows::UI::ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
                 };
@@ -2234,65 +2251,13 @@ namespace winrt::TerminalApp::implementation
                 }
                 if (label)
                 {
+                    label.Text(winrt::hstring{ RS_fmt(L"Diagnostics_ReviewLabelFormat", hotkey) });
                     label.Foreground(accent);
                     label.Visibility(Visibility::Visible);
                 }
-
-                std::wstring tooltip;
-                if (!fixPreview.empty())
-                {
-                    std::wstring preview;
-                    std::wstring fp{ fixPreview };
-                    if (fp.size() > 120)
-                    {
-                        preview.append(fp, 0, 120);
-                        preview += L"…";
-                    }
-                    else
-                    {
-                        preview = fp;
-                    }
-                    tooltip = RS_fmt(L"Diagnostics_FixReadyTooltipWithPreviewFormat", hotkey, preview);
-                }
-                else
-                {
-                    tooltip = RS_fmt(L"Diagnostics_FixReadyTooltipFormat", hotkey);
-                }
                 ToolTipService::SetToolTip(
                     diagBtn,
-                    box_value(winrt::hstring{ tooltip }));
-                break;
-            }
-            case AS::Suggested:
-            {
-                diagBtn.Opacity(1.0);
-                diagBtn.IsEnabled(true);
-
-                const auto accent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                    winrt::Windows::UI::ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
-                };
-                if (icon)
-                {
-                    icon.Foreground(accent);
-                }
-                if (label)
-                {
-                    label.Text(RS_(L"Diagnostics_SuggestionReadyLabel"));
-                    label.Foreground(accent);
-                    label.Visibility(Visibility::Visible);
-                }
-
-                std::wstring tooltip{ RS_(L"Diagnostics_SuggestionTooltipIntro") };
-                if (!suggestionTitle.empty())
-                {
-                    tooltip += L"\n";
-                    tooltip += suggestionTitle;
-                    tooltip += L"\n";
-                }
-                tooltip += RS_(L"Diagnostics_SuggestionTooltipInstruction");
-                ToolTipService::SetToolTip(
-                    diagBtn,
-                    box_value(winrt::hstring{ tooltip }));
+                    box_value(RS_(L"Diagnostics_ReviewTooltip")));
                 break;
             }
             case AS::Detected:
@@ -3913,8 +3878,7 @@ namespace winrt::TerminalApp::implementation
                 TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                 TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         }
-        else if (stateStr == "armed") state = AS::Armed;
-        else if (stateStr == "suggested") state = AS::Suggested;
+        else if (stateStr == "review") state = AS::Review;
         else if (stateStr == "detected") state = AS::Detected;
         else if (stateStr == "cleared") state = AS::Idle;
 
@@ -4384,65 +4348,6 @@ namespace winrt::TerminalApp::implementation
         // continuity. Tabs that had a pane but aren't active need to be
         // toggled open again by the user — same UX as _RebuildAgentStack.
         _OpenOrReuseAgentPane(false, L"RestartAgent");
-    }
-
-    // Send {method:"autofix_execute",params:{pane_id}} over the outbound
-    // protocol bus. The agent pane on `ownerTab` must be in the Armed state.
-    void TerminalPage::_TriggerAutofix(const winrt::com_ptr<Tab>& ownerTab, const wchar_t* triggerSource)
-    {
-        if (!ownerTab)
-        {
-            return;
-        }
-        const auto agentContent = ownerTab->FindAgentPaneContent();
-        if (!agentContent)
-        {
-            return;
-        }
-        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
-        if (!impl)
-        {
-            return;
-        }
-        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
-        if (impl->GetAutofixState() != AS::Armed)
-        {
-            return;
-        }
-        const auto paneId = impl->GetLastErrorPaneId();
-
-#if defined(WT_BRANDING_RELEASE)
-        constexpr uint8_t branding = 3;
-#elif defined(WT_BRANDING_PREVIEW)
-        constexpr uint8_t branding = 2;
-#elif defined(WT_BRANDING_CANARY)
-        constexpr uint8_t branding = 1;
-#else
-        constexpr uint8_t branding = 0;
-#endif
-        TraceLoggingWrite(
-            g_hTerminalAppProvider,
-            "ErrorFixAttempted",
-            TraceLoggingDescription("Event emitted when the user attempts an agent-suggested fix"),
-            TraceLoggingWideString(triggerSource, "TriggerSource", "How the fix was triggered"),
-            TraceLoggingValue(branding, "Branding"),
-            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-
-        Json::Value evt;
-        evt["type"] = "event";
-        evt["method"] = "autofix_execute";
-        Json::Value params;
-        params["pane_id"] = winrt::to_string(paneId);
-        params["tab_id"] = winrt::to_string(ownerTab->StableId());
-        evt["params"] = params;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        ProtocolVtSequenceReceived.raise(
-            *this,
-            winrt::to_hstring(Json::writeString(wb, evt)));
-
-        // WTA will emit autofix_state:cleared — OnAutofixStateChanged handles the transition.
     }
 
     // Inbound event from WTA: {method:"set_agent_chip_target",

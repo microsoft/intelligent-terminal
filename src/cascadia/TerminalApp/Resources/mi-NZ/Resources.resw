@@ -134,8 +134,16 @@
     <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>Pāwhiritia {0} hei whakatika i te hapa</value>
+    <value>Pāwhiritia, pēhia rānei {0} hei tono i te pokapū mō tētahi whakatikatika e marohitia ana</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Pēhia {0} hei arotake</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Whakatuwheratia te paewhiri pokapū hei arotake i te whakatikatika e marohitia ana</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>Kua kitea he hapa. Pāwhiri, pēhia rānei i {0} kia tono ai i te kaihoko AI ki te tātari me te taunaki whakatikatika.</value>

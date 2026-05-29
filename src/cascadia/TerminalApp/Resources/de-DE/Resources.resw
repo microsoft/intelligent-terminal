@@ -1096,8 +1096,16 @@
     <comment>Kurze Statusbeschriftung, wenn eine Korrektur bereit ist. {0} ist das Tastenkürzel.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>Klicken Sie auf {0}, um den Fehler zu beheben</value>
+    <value>Klicken oder drücken Sie {0}, um den Agent um einen Lösungsvorschlag zu bitten</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Drücken Sie {0} zum Überprüfen</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Öffnen Sie den Agentbereich, um den Lösungsvorschlag zu überprüfen</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>Fehler erkannt. Klicken oder drücken Sie {0}, um den KI-Agenten zu bitten, den Fehler zu diagnostizieren und eine Lösung vorzuschlagen.</value>

@@ -248,8 +248,16 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>ত্রুটি ঠিক করতে {0}-এ ক্লিক করুন</value>
+    <value>এজেন্টের কাছে একটি প্রস্তাবিত সমাধান চাইতে {0} ক্লিক করুন বা চাপুন</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>পর্যালোচনা করতে {0} চাপুন</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>প্রস্তাবিত সমাধান পর্যালোচনা করতে এজেন্ট প্যানেল খুলুন</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>ত্রুটি শনাক্ত হয়েছে। AI এজেন্টকে নির্ণয় করতে এবং একটি সমাধান প্রস্তাব করতে বলতে {0}-এ ক্লিক করুন বা চাপুন।</value>

@@ -134,8 +134,16 @@
     <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>Κάντε κλικ στο {0} για να διορθώσετε το σφάλμα</value>
+    <value>Κάντε κλικ ή πατήστε {0} για να ζητήσετε από τον πράκτορα μια προτεινόμενη διόρθωση</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Πατήστε {0} για έλεγχο</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Ανοίξτε το παράθυρο του πράκτορα για να ελέγξετε την προτεινόμενη διόρθωση</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>Εντοπίστηκε σφάλμα. Κάντε κλικ ή πατήστε το {0} για να ζητήσετε από τον πράκτορα AI να το διαγνώσει και να προτείνει μια διόρθωση.</value>

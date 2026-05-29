@@ -355,8 +355,6 @@ namespace winrt::TerminalApp::implementation
         void _WireAgentPaneEvents(const winrt::TerminalApp::AgentPaneContent& content,
                                   const winrt::com_ptr<Tab>& ownerTab);
 
-        void _TriggerAutofix(const winrt::com_ptr<Tab>& ownerTab, const wchar_t* triggerSource);
-
         // Hot-reload of agent/model settings. Snapshot is captured on first
         // SetSettings and after every rebuild; a diff drives teardown/rebuild
         // of the agent pane.

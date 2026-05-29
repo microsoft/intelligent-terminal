@@ -247,8 +247,16 @@
     <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>Kattintson a(z) {0} elemre a hiba kijavításához</value>
+    <value>Kattintson vagy nyomja le a(z) {0} billentyűt, hogy az ügynöktől javasolt javítást kérjen</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Nyomja le a(z) {0} billentyűt az áttekintéshez</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Nyissa meg az ügynök ablaktábláját a javasolt javítás áttekintéséhez</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>Hiba észlelve. Kattintson vagy nyomja le a(z) {0} billentyűt, hogy az AI ügynök diagnosztizáljon és javasoljon egy javítást.</value>

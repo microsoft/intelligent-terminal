@@ -248,8 +248,16 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
-    <value>{0} ക്ലിക്ക് ചെയ്ത് പിശക് പരിഹരിക്കുക</value>
+    <value>നിർദ്ദേശിച്ച പരിഹാരത്തിനായി ഏജന്റിനോട് ആവശ്യപ്പെടാൻ {0} ക്ലിക്ക് ചെയ്യുകയോ അമർത്തുകയോ ചെയ്യുക</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>അവലോകനം ചെയ്യാൻ {0} അമർത്തുക</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>നിർദ്ദേശിച്ച പരിഹാരം അവലോകനം ചെയ്യാൻ ഏജന്റ് പെയിൻ തുറക്കുക</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
   </data>
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>പിശക് കണ്ടെത്തി. AI ഏജന്റിനെ പ്രശ്നം നിർണയിച്ച് പരിഹാരം നിർദ്ദേശിക്കാൻ ആവശ്യപ്പെടാൻ {0} ക്ലിക്കുചെയ്യുക അല്ലെങ്കിൽ അമർത്തുക.</value>

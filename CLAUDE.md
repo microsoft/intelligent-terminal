@@ -55,7 +55,7 @@ WindowEmperor (one WT process, N AppHosts/windows)
   +-- AppHost[] → TerminalWindow → TerminalPage
         |-- CommandPalette (? / & prefixes)
         |-- Per-tab agent pane: ConptyConnection ───► wta-helper (conpty child)
-        |                                            (one helper per agent pane)
+        |                                            (one helper per tab, pre-warmed)
         +-- Protocol bridge (TerminalPage.Protocol.cpp)
 
 External: Agent → wtcli → COM (IProtocolServer) → TerminalProtocolComServer → WindowEmperor
@@ -70,6 +70,19 @@ helper events (`agent_state_changed`, `agent_status`, `autofix_state`,
 `close_agent_pane`) carry `tab_id` so C++ can route via
 `_FindTabByStableId` instead of fanning out across every pane / window.
 See `doc/specs/Multi-window-agent-pane.md` §7.
+
+**Helper is pre-warmed per tab.** Every new tab spawns a stashed agent
+pane on creation (`_InitializeTab` → `_AutoCreateHiddenAgentPaneShared`
+with `autoStash=true`, `--start-stashed`), so the helper is running and
+its ACP session connects in the background from the start — even if the
+user never opens the pane. This is what lets autofix work on a tab the
+user hasn't interacted with. The agent CLI itself is spawned once by
+`wta-master` at startup and shared across all helpers (each helper's
+`initialize` is a cached replay; only `session/new` round-trips to the
+CLI). `--start-stashed` only seeds `pane_open=false`; it does not defer
+the handshake. The pre-warm is skipped when wta is unavailable, GPO
+blocks all agents, or the tab arrived with an agent pane via cross-window
+drag-in (`agentLeavesSeen > 0`). See `TabManagement.cpp:366`.
 
 **Agent pane toggle = stash, not destroy.** `Ctrl+Shift+.` /
 `Ctrl+Shift+/` / the bottom-bar button toggle via
@@ -101,7 +114,16 @@ Detects command failures in other panes and auto-suggests fixes via the agent.
 
 **Pipeline**: Shell emits `OSC 133;D;<exit_code>` → `TerminalPage` raises `ProtocolVtSequenceReceived` → COM server forwards to clients → WTA (via `wtcli listen --json`) classifies → `maybe_trigger_autofix()`.
 
-**Requirements**: PowerShell shell integration (OSC 133 marks), agent pane open, `wtcli` on PATH.
+**Requirements**: PowerShell shell integration (OSC 133 marks), a helper
+whose ACP session has reached `Connected`, `wtcli` on PATH. The pane does
+**not** need to be visible — the per-tab pre-warmed helper (see
+Architecture) makes autofix work on a stashed pane. But a failure that
+lands before the helper's session connects (cold start of master/agent
+CLI, in-flight `session/new`, or a `Failed` agent) is **dropped**:
+`trigger_autofix_inner` early-returns when `state != Connected`
+(`app.rs:6820`). The bottom-bar notification banner still shows; only the
+autofix pill / LLM call is skipped, and the failure is not re-triggered
+once the session later connects.
 
 **Key code**: `tools/wta/src/app.rs` (`classify_wt_event`, `maybe_trigger_autofix`), `TerminalPage.cpp:2650-2740` (event handlers), `TerminalProtocolComServer.cpp` (`_ensurePageEventsRegistered`).
 
