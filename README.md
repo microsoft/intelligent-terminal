@@ -25,7 +25,6 @@
 - [Configuration](#configuration)
 - [Data & Privacy](#data--privacy)
 - [Building the Code](#building-the-code)
-- [Additional Notes](#additional-notes)
 - [Feedback](#feedback)
 - [Contributing](#contributing)
 - [Code of Conduct](#code-of-conduct)
@@ -202,21 +201,11 @@ Building Intelligent Terminal is the same as building Windows Terminal. See the 
 
 ---
 
-## Additional Notes
-
-### Why a separate app?
-
-Intelligent Terminal ships as a separate app and installs next to your existing Windows Terminal. If you don't want agents in your terminal, nothing changes for you. With this model, we can learn, experiment, and iterate with you, the community, on what this evolution might look like without breaking your existing Windows Terminal flows.
-
-### Terminal Chat deprecation
-
-Intelligent Terminal is built from your feedback. We are focused on delivering agents based on the way developers actually use agents today. With this release, we are deprecating Terminal Chat in Canary. If you're currently using Terminal Chat, we recommend switching to Intelligent Terminal.
-
----
-
 ## Feedback
 
 Intelligent Terminal is in an experimental stage. If you have a feature request or find a bug, [submit an issue](https://github.com/microsoft/terminal/issues) on the GitHub repository.
+
+Intelligent Terminal ships as a separate app and installs next to your existing Windows Terminal. If you don't want agents in your terminal, nothing changes for you. With this model, we can learn, experiment, and iterate with you, the community, on what this evolution might look like without breaking your existing Windows Terminal flows.
 
 ---
 
