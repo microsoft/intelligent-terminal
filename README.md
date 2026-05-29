@@ -88,6 +88,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 > ```powershell
 > Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 > ```
+> If you run into any other issues or dependency errors, see [installing-dependencies.md](./installing-dependencies.md).
 
 ---
 
