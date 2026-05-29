@@ -96,7 +96,7 @@ The agent status bar sits at the bottom of the window and gives you quick access
 ### Agent Pane
 
 <p align="center">
-  <img src="./images/intelligent-terminal-agent-pane.gif" alt="GIF of user opening the agent pane and asking a development question">
+  <img src="./images/intelligent-terminal-agent-pane.png" alt="Screenshot of the agent pane with a development conversation">
 </p>
 
 A context-aware, docked pane with your agent CLI of choice. The pane has context on your shell output across all your shells. Toggle with <kbd>Ctrl+Shift+.</kbd>, switch focus with <kbd>Ctrl+Shift+I</kbd>. If the agent needs to do multiple or complex tasks, it spins up background tasks in new tabs so your active shell stays focused.
@@ -112,7 +112,7 @@ View all active agents, their status, and past sessions. Pick up a workflow wher
 ### Error Detection
 
 <p align="center">
-  <img src="./images/intelligent-terminal-error-detection.gif" alt="GIF of a command failing and the user pressing Ctrl+Alt+. for a fix">
+  <img src="./images/intelligent-terminal-error-detection.png" alt="Screenshot of automatic error detection with a suggested fix">
 </p>
 
 When a command fails, an indicator appears in the agent status bar. Click it or press <kbd>Ctrl+Alt+.</kbd> to open the agent pane with the error context already loaded. The agent can explain what happened and suggest or run a fix. Configure your settings to auto-detect errors only, or to also auto-suggest fixes.
@@ -120,7 +120,7 @@ When a command fails, an indicator appears in the agent status bar. Click it or 
 ### Command Palette
 
 <p align="center">
-  <img src="./images/intelligent-terminal-command-palette.gif" alt="GIF of user typing a question in Command Palette and an agent task starting">
+  <img src="./images/intelligent-terminal-command-palette.png" alt="Screenshot of Command Palette with an agent prompt">
 </p>
 
 Type `?` followed by your prompt in the Command Palette to kick off an agent task. Intelligent Terminal injects context from the active pane and starts the agent in a background tab. Use <kbd>Alt+Shift+/</kbd> to jump directly into prompt mode.
