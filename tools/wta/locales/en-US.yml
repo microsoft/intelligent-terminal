@@ -51,6 +51,10 @@ auth.hint_footer: "  Press Enter to sign in, Esc to go back"  # {Locked="Enter",
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Thinking…"
 chat.welcome_title: "Welcome to Intelligent Terminal!"
+# AI-usage disclaimer shown beneath the welcome card on agent-pane startup.
+# "Intelligent Terminal" is the product name — translate it consistently with
+# chat.welcome_title / setup.title.first_run in this locale (do NOT keep it
+# verbatim in real locales; the file-level lock only freezes it for pseudo-locales).
 chat.welcome_disclaimer: "Intelligent Terminal uses AI. Check for mistakes."
 # Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Plan:"
