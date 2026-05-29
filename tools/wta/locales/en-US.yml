@@ -1,12 +1,5 @@
 # ── File-level locks ─────────────────────────────────────────────────────────
-# "Intelligent Terminal" is the product name. Follow the per-locale convention
-# already established in src/cascadia/TerminalApp/Resources/<locale>/Resources.resw:
-#   - CJK locales (ja-JP, ko-KR, zh-CN, zh-TW) translate the product name
-#     (e.g. zh-CN: 智能终端, ja-JP: インテリジェント ターミナル).
-#   - All other real locales (de-DE, fr-FR, es-ES, ar-SA, ru-RU, …) keep
-#     "Intelligent Terminal" verbatim — the .resw comment uses {Locked="Intelligent Terminal"}.
-#   - Pseudo-locales (qps-ploc, qps-ploca, qps-plocm) always keep it verbatim.
-# When translating new strings, mirror the same locale's existing rendering in .resw.
+# {Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name
 # "Agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human representative or proxy
 
 # Setup screen titles
@@ -58,9 +51,6 @@ auth.hint_footer: "  Press Enter to sign in, Esc to go back"  # {Locked="Enter",
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Thinking…"
 chat.welcome_title: "Welcome to Intelligent Terminal!"
-# AI-usage disclaimer shown beneath the welcome card on agent-pane startup.
-# Render "Intelligent Terminal" exactly as chat.welcome_title /
-# setup.title.first_run already do in this locale (see file-level note above).
 chat.welcome_disclaimer: "Intelligent Terminal uses AI. Check for mistakes."
 # Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Plan:"
