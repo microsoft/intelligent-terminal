@@ -154,7 +154,9 @@ Everything is configurable through terminal settings, under "Agent" settings.
 |---------|---------|
 | Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. |
 | Pane placement | Top, Bottom (default), Left, Right |
-| Auto error detection | Give the agent pane the ability to catch and suggest fixes to errors automatically |
+| Error detection | Allows Intelligent Terminal to automatically detect command failures |
+| Error suggestions | Allows Intelligent Terminal to automatically send detected errors to the agent for fix suggestions |
+| Agent session tracking (hooks) | Allows Intelligent Terminal to track active agent sessions and their status in the session management UI |
 
 ---
 
