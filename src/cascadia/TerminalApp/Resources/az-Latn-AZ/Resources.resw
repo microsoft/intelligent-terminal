@@ -228,6 +228,15 @@
     <value>⚠ Node.js quraşdırıla bilmədi. Şəbəkənizi yoxlayın və yenidən cəhd edin.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Sessiya hook-larını quraşdırmaq alınmadı. Sessiya idarəetməsi söndürülüb. Onu yenidən aktivləşdirib təkrar cəhd edə bilərsiniz və ya onsuz davam etmək üçün saxlaya bilərsiniz.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Shell inteqrasiyasını quraşdırmaq alınmadı. Xəta aşkarlanması söndürülüb. Onu yenidən aktivləşdirib təkrar cəhd edə bilərsiniz və ya onsuz davam etmək üçün saxlaya bilərsiniz.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Sessiya hook-larını və shell inteqrasiyasını quraşdırmaq alınmadı. Bu funksiyalar söndürülüb. Onları yenidən aktivləşdirib təkrar cəhd edə bilərsiniz və ya onlarsız davam etmək üçün saxlaya bilərsiniz.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Açıq</value>
   </data>

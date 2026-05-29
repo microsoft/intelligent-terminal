@@ -116,6 +116,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ ការតំឡើង Node.js បានបរាជ័យ។ ពិនិត្យម៉ោងការតភ្ជាប់បណ្តាញ និងសាកល្បងឡើងវិញ។</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ បានបរាជ័យក្នុងការតំឡើង session hooks។ ការគ្រប់គ្រងវគ្គត្រូវបានបិទ។ អ្នកអាចបើកវាឡើងវិញ ហើយសាកល្បងម្ដងទៀត ឬរក្សាទុកដើម្បីបន្តដោយគ្មានវា។</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ បានបរាជ័យក្នុងការតំឡើងការរួមបញ្ចូល shell។ ការរកឃើញកំហុសត្រូវបានបិទ។ អ្នកអាចបើកវាឡើងវិញ ហើយសាកល្បងម្ដងទៀត ឬរក្សាទុកដើម្បីបន្តដោយគ្មានវា។</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ បានបរាជ័យក្នុងការតំឡើង session hooks និងការរួមបញ្ចូល shell។ មុខងារទាំងនេះត្រូវបានបិទ។ អ្នកអាចបើកពួកវាឡើងវិញ ហើយសាកល្បងម្ដងទៀត ឬរក្សាទុកដើម្បីបន្តដោយគ្មានពួកវា។</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>បើក</value>
   </data>

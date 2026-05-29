@@ -229,6 +229,15 @@
     <value>⚠ התקנת Node.js נכשלה. בדוק את הרשת שלך ונסה שוב.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ התקנת hooks של הפעלה נכשלה. ניהול ההפעלות כובה. באפשרותך להפעיל מחדש ולנסות שוב, או לשמור כדי להמשיך בלעדיו.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ התקנת שילוב מעטפת נכשלה. זיהוי שגיאות כובה. באפשרותך להפעיל מחדש ולנסות שוב, או לשמור כדי להמשיך בלעדיו.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ התקנת hooks של הפעלה ושילוב מעטפת נכשלה. תכונות אלה כובו. באפשרותך להפעיל אותן מחדש ולנסות שוב, או לשמור כדי להמשיך בלעדיהן.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>פעיל</value>
   </data>

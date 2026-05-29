@@ -115,6 +115,15 @@
     <value>⚠ Methodd gosod Node.js. Gwiriwch eich cysylltiad rhwydwaith a cheisiwch eto.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Methodd gosod bachau sesiwn. Mae rheoli sesiynau wedi'i ddiffodd. Gallwch ei ail-alluogi a rhoi cynnig arall arni, neu gadw i barhau hebddo.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Methodd gosod integreiddio plisgyn. Mae canfod gwallau wedi'i ddiffodd. Gallwch ei ail-alluogi a rhoi cynnig arall arni, neu gadw i barhau hebddo.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Methodd gosod bachau sesiwn ac integreiddio plisgyn. Mae'r nodweddion hyn wedi'u diffodd. Gallwch eu hail-alluogi a rhoi cynnig arall arnynt, neu gadw i barhau hebddynt.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Ymlaen</value>
   </data>

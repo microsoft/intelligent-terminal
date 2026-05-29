@@ -229,6 +229,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Nabigong i-install ang Node.js. Suriin ang iyong network at subukang muli.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Nabigong i-install ang session hooks. Na-off ang pamamahala ng session. Maaari mo itong i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ito.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Nabigong i-install ang shell integration. Na-off ang error detection. Maaari mo itong i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ito.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Nabigong i-install ang session hooks at shell integration. Na-off ang mga feature na ito. Maaari mo silang i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ang mga ito.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Bukas</value>
   </data>

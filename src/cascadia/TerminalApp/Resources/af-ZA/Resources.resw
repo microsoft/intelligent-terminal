@@ -115,6 +115,15 @@
     <value>⚠ Kon nie Node.js installeer nie. Kontroleer jou netwerkverbinding en probeer weer.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Kon nie sessie-hakies installeer nie. Sessiebestuur is afgeskakel. Jy kan dit weer aktiveer en weer probeer, of stoor om sonder dit voort te gaan.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Kon nie dop-integrasie installeer nie. Foutopsporing is afgeskakel. Jy kan dit weer aktiveer en weer probeer, of stoor om sonder dit voort te gaan.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Kon nie sessie-hakies en dop-integrasie installeer nie. Hierdie kenmerke is afgeskakel. Jy kan hulle weer aktiveer en weer probeer, of stoor om sonder hulle voort te gaan.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Aan</value>
   </data>

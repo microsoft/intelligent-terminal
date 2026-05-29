@@ -228,6 +228,15 @@
     <value>⚠ Node.js oʻrnatish amalga oshmadi. Tarmoqingizni tekshiring va qayta urinib koʻring.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Seans ilgaklarini oʻrnatish amalga oshmadi. Seanslarni boshqarish oʻchirildi. Uni qayta yoqish va qayta urinib koʻrishingiz yoki usiz davom etish uchun saqlashingiz mumkin.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Shell integratsiyasini oʻrnatish amalga oshmadi. Xatolarni aniqlash oʻchirildi. Uni qayta yoqish va qayta urinib koʻrishingiz yoki usiz davom etish uchun saqlashingiz mumkin.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Seans ilgaklari va shell integratsiyasini oʻrnatish amalga oshmadi. Bu funksiyalar oʻchirildi. Ularni qayta yoqish va qayta urinib koʻrishingiz yoki ularsiz davom etish uchun saqlashingiz mumkin.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Yoniq</value>
   </data>

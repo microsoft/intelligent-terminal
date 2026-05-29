@@ -1069,6 +1069,15 @@
     <value>⚠ Node.js konnte nicht installiert werden. Überprüfen Sie Ihre Netzwerkverbindung und versuchen Sie es erneut.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Sitzungshooks konnten nicht installiert werden. Die Sitzungsverwaltung wurde deaktiviert. Sie können sie erneut aktivieren und es noch einmal versuchen, oder speichern, um ohne sie fortzufahren.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Die Shell-Integration konnte nicht installiert werden. Die Fehlererkennung wurde deaktiviert. Sie können sie erneut aktivieren und es noch einmal versuchen, oder speichern, um ohne sie fortzufahren.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Sitzungshooks und Shell-Integration konnten nicht installiert werden. Diese Funktionen wurden deaktiviert. Sie können sie erneut aktivieren und es noch einmal versuchen, oder speichern, um ohne sie fortzufahren.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Ein</value>
   </data>

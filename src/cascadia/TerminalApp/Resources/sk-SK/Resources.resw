@@ -228,6 +228,15 @@
     <value>⚠ Nepodarilo sa nainštalovať Node.js. Skontrolujte sieťové pripojenie a skúste to znova.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Nepodarilo sa nainštalovať háky relácie. Správa relácií bola vypnutá. Môžete ju znova zapnúť a skúsiť to znova, alebo uložiť a pokračovať bez nej.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Nepodarilo sa nainštalovať integráciu shellu. Detekcia chýb bola vypnutá. Môžete ju znova zapnúť a skúsiť to znova, alebo uložiť a pokračovať bez nej.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Nepodarilo sa nainštalovať háky relácie a integráciu shellu. Tieto funkcie boli vypnuté. Môžete ich znova zapnúť a skúsiť to znova, alebo uložiť a pokračovať bez nich.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Zapnuté</value>
   </data>

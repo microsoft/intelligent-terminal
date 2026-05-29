@@ -116,6 +116,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Node.js instalatzeak huts egin du. Egiaztatu sare-konexioa eta saiatu berriro.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Saio-kakoak instalatzeak huts egin du. Saio-kudeaketa desaktibatu da. Berriro aktibatu eta berriro saiatu dezakezu, edo gorde hori gabe jarraitzeko.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Shell integrazioa instalatzeak huts egin du. Erroreen detekzioa desaktibatu da. Berriro aktibatu eta berriro saiatu dezakezu, edo gorde hori gabe jarraitzeko.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Saio-kakoak eta shell integrazioa instalatzeak huts egin du. Eginbide hauek desaktibatu dira. Berriro aktibatu eta berriro saiatu ditzakezu, edo gorde horiek gabe jarraitzeko.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Aktibatuta</value>
   </data>

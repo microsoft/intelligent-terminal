@@ -228,6 +228,15 @@
     <value>⚠ A Node.js telepítése sikertelen. Ellenőrizze a hálózati kapcsolatot, és próbálja újra.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ A munkamenet-horogpontok telepítése sikertelen. A munkamenet-kezelés ki lett kapcsolva. Újra engedélyezheti, és megpróbálhatja újra, vagy menthet a folytatáshoz nélküle.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ A shell-integráció telepítése sikertelen. A hibaészlelés ki lett kapcsolva. Újra engedélyezheti, és megpróbálhatja újra, vagy menthet a folytatáshoz nélküle.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ A munkamenet-horogpontok és a shell-integráció telepítése sikertelen. Ezek a funkciók ki lettek kapcsolva. Újra engedélyezheti őket, és megpróbálhatja újra, vagy menthet a folytatáshoz nélkülük.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Be</value>
   </data>

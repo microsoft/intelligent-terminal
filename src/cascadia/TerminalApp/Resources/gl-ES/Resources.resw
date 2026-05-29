@@ -116,6 +116,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Produciuse un erro ao instalar Node.js. Comprobe a súa conexión de rede e ténteo de novo.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Produciuse un erro ao instalar os ganchos de sesión. A xestión de sesións desactivouse. Pode reactivala e tentalo de novo, ou gardar para continuar sen ela.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Produciuse un erro ao instalar a integración do shell. A detección de erros desactivouse. Pode reactivala e tentalo de novo, ou gardar para continuar sen ela.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Produciuse un erro ao instalar os ganchos de sesión e a integración do shell. Estas funcionalidades desactiváronse. Pode reactivalas e tentalo de novo, ou gardar para continuar sen elas.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Activado</value>
   </data>

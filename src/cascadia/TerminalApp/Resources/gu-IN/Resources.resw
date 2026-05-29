@@ -229,6 +229,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Node.js ઇન્સ્ટોલ કરવામાં નિષ્ફળ. તમારું નેટવર્ક તપાસો અને ફરી પ્રયાસ કરો.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ સેશન હૂક્સ ઇન્સ્ટોલ કરવામાં નિષ્ફળ. સેશન મેનેજમેન્ટ બંધ કરવામાં આવ્યું છે. તમે તેને ફરીથી સક્ષમ કરીને ફરી પ્રયાસ કરી શકો છો, અથવા તેના વિના ચાલુ રાખવા માટે સાચવો.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ શેલ ઇન્ટિગ્રેશન ઇન્સ્ટોલ કરવામાં નિષ્ફળ. ભૂલ શોધ બંધ કરવામાં આવી છે. તમે તેને ફરીથી સક્ષમ કરીને ફરી પ્રયાસ કરી શકો છો, અથવા તેના વિના ચાલુ રાખવા માટે સાચવો.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ સેશન હૂક્સ અને શેલ ઇન્ટિગ્રેશન ઇન્સ્ટોલ કરવામાં નિષ્ફળ. આ સુવિધાઓ બંધ કરવામાં આવી છે. તમે તેમને ફરીથી સક્ષમ કરીને ફરી પ્રયાસ કરી શકો છો, અથવા તેમના વિના ચાલુ રાખવા માટે સાચવો.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>ચાલુ</value>
   </data>

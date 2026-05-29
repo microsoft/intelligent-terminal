@@ -115,6 +115,15 @@
     <value>⚠ Node.js መጠቀም አልተሳካም። የመረብዎን ይፈትሩ እና እንደገና ይሞክሩ።</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ የክፍለ ጊዜ መንጠቆዎችን መጫን አልተሳካም። የክፍለ ጊዜ አስተዳደር ጠፍቷል። እንደገና ማንቃት እና መሞከር ይችላሉ፣ ወይም ያለ እሱ ለመቀጠል ያስቀምጡ።</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ የሼል ውህደት መጫን አልተሳካም። የስህተት ማወቂያ ጠፍቷል። እንደገና ማንቃት እና መሞከር ይችላሉ፣ ወይም ያለ እሱ ለመቀጠል ያስቀምጡ።</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ የክፍለ ጊዜ መንጠቆዎችን እና የሼል ውህደትን መጫን አልተሳካም። እነዚህ ባህሪያት ጠፍተዋል። እንደገና ማንቃት እና መሞከር ይችላሉ፣ ወይም ያለ እነሱ ለመቀጠል ያስቀምጡ።</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>እንቅ</value>
   </data>

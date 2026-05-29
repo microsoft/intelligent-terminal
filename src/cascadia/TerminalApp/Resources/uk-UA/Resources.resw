@@ -1120,6 +1120,15 @@
     <value>⚠ Не вдалося встановити Node.js. Перевірте мережеве підключення та спробуйте знову.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Не вдалося встановити хуки сеансів. Керування сеансами вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Не вдалося встановити інтеграцію оболонки. Виявлення помилок вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Не вдалося встановити хуки сеансів та інтеграцію оболонки. Ці функції вимкнено. Ви можете повторно увімкнути їх та спробувати знову, або зберегти, щоб продовжити без них.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Увімк</value>
   </data>

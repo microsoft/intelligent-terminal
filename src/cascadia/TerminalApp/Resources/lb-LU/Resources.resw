@@ -116,6 +116,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Node.js konnt net installéiert ginn. Iwwerpréift Är Netzwierkverbindung a probéiert et nach eng Kéier.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ D'Sessiounshaken konnten net installéiert ginn. D'Sessiounsgestioun gouf ausgeschalt. Dir kënnt se nees aktivéieren a nach eng Kéier probéieren, oder späicheren fir ouni se weiderzefueren.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ D'Shell-Integratioun konnt net installéiert ginn. D'Feelerkennung gouf ausgeschalt. Dir kënnt se nees aktivéieren a nach eng Kéier probéieren, oder späicheren fir ouni se weiderzefueren.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ D'Sessiounshaken an d'Shell-Integratioun konnten net installéiert ginn. Dës Funktiounen goufen ausgeschalt. Dir kënnt se nees aktivéieren a nach eng Kéier probéieren, oder späicheren fir ouni se weiderzefueren.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Un</value>
   </data>

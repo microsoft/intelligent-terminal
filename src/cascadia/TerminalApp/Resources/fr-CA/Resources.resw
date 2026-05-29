@@ -223,6 +223,15 @@
     <value>⚠ Échec de l'installation de Node.js. Vérifiez votre connexion réseau et réessayez.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Échec de l'installation des points d'ancrage de session. La gestion des sessions a été désactivée. Vous pouvez la réactiver et réessayer, ou enregistrer pour continuer sans elle.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Échec de l'installation de l'intégration du shell. La détection des erreurs a été désactivée. Vous pouvez la réactiver et réessayer, ou enregistrer pour continuer sans elle.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Échec de l'installation des points d'ancrage de session et de l'intégration du shell. Ces fonctionnalités ont été désactivées. Vous pouvez les réactiver et réessayer, ou enregistrer pour continuer sans elles.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Activé</value>
   </data>

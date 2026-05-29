@@ -223,6 +223,15 @@
     <value>⚠ Falha ao instalar o Node.js. Verifique a sua ligação de rede e tente novamente.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Falha ao instalar os hooks de sessão. A gestão de sessões foi desativada. Pode reativá-la e tentar novamente, ou guardar para continuar sem ela.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Falha ao instalar a integração da shell. A deteção de erros foi desativada. Pode reativá-la e tentar novamente, ou guardar para continuar sem ela.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Falha ao instalar os hooks de sessão e a integração da shell. Estas funcionalidades foram desativadas. Pode reativá-las e tentar novamente, ou guardar para continuar sem elas.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Ativado</value>
   </data>

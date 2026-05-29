@@ -1066,6 +1066,15 @@
     <value>⚠ Installazione di Node.js non riuscita. Controlla la connessione di rete e riprova.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Installazione degli hook di sessione non riuscita. La gestione delle sessioni è stata disattivata. È possibile riabilitarla e riprovare oppure salvare per continuare senza.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Installazione dell'integrazione della shell non riuscita. Il rilevamento degli errori è stato disattivato. È possibile riabilitarlo e riprovare oppure salvare per continuare senza.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Installazione degli hook di sessione e dell'integrazione della shell non riuscita. Queste funzionalità sono state disattivate. È possibile riabilitarle e riprovare oppure salvare per continuare senza.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Attivato</value>
   </data>

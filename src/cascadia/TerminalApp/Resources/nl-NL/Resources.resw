@@ -223,6 +223,15 @@
     <value>⚠ Installatie van Node.js is mislukt. Controleer uw netwerkverbinding en probeer het opnieuw.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Het installeren van sessiehooks is mislukt. Sessiebeheer is uitgeschakeld. U kunt het opnieuw inschakelen en het opnieuw proberen, of opslaan om verder te gaan zonder.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Het installeren van shellintegratie is mislukt. Foutdetectie is uitgeschakeld. U kunt het opnieuw inschakelen en het opnieuw proberen, of opslaan om verder te gaan zonder.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Het installeren van sessiehooks en shellintegratie is mislukt. Deze functies zijn uitgeschakeld. U kunt ze opnieuw inschakelen en het opnieuw proberen, of opslaan om verder te gaan zonder.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Aan</value>
   </data>

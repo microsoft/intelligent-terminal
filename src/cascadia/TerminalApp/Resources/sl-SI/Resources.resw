@@ -228,6 +228,15 @@
     <value>⚠ Namestitev Node.js ni uspela. Preverite omrežno povezavo in poskusite znova.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Namestitev kavljev seje ni uspela. Upravljanje sej je bilo izklopljeno. Lahko ga znova omogočite in poskusite znova ali shranite, da nadaljujete brez njega.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Namestitev integracije lupine ni uspela. Zaznavanje napak je bilo izklopljeno. Lahko ga znova omogočite in poskusite znova ali shranite, da nadaljujete brez njega.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Namestitev kavljev seje in integracije lupine ni uspela. Te funkcije so bile izklopljene. Lahko jih znova omogočite in poskusite znova ali shranite, da nadaljujete brez njih.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Vklopljeno</value>
   </data>

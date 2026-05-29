@@ -228,6 +228,15 @@
     <value>⚠ Инсталирањето на Node.js не успеа. Проверете ја мрежната врска и обидете се повторно.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Не успеа инсталирањето на куки за сесии. Управувањето со сесии е исклучено. Можете повторно да го вклучите и да се обидете повторно, или да зачувате за да продолжите без него.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Не успеа инсталирањето на интеграција на школка. Детекцијата на грешки е исклучена. Можете повторно да ја вклучите и да се обидете повторно, или да зачувате за да продолжите без неа.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Не успеа инсталирањето на куки за сесии и интеграција на школка. Овие функции се исклучени. Можете повторно да ги вклучите и да се обидете повторно, или да зачувате за да продолжите без нив.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Вкл.</value>
   </data>

@@ -229,6 +229,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Node.js ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ. ನಿಮ್ಮ ನೆಟ್‌ವರ್ಕ್ ಪರಿಶೀಲಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ ಸೆಶನ್ ಹುಕ್‌ಗಳನ್ನು ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ. ಸೆಶನ್ ನಿರ್ವಹಣೆಯನ್ನು ಆಫ್ ಮಾಡಲಾಗಿದೆ. ನೀವು ಅದನ್ನು ಮರು-ಸಕ್ರಿಯಗೊಳಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಬಹುದು, ಅಥವಾ ಅದಿಲ್ಲದೆ ಮುಂದುವರಿಸಲು ಉಳಿಸಿ.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ಶೆಲ್ ಏಕೀಕರಣವನ್ನು ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ. ದೋಷ ಪತ್ತೆಯನ್ನು ಆಫ್ ಮಾಡಲಾಗಿದೆ. ನೀವು ಅದನ್ನು ಮರು-ಸಕ್ರಿಯಗೊಳಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಬಹುದು, ಅಥವಾ ಅದಿಲ್ಲದೆ ಮುಂದುವರಿಸಲು ಉಳಿಸಿ.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ ಸೆಶನ್ ಹುಕ್‌ಗಳು ಮತ್ತು ಶೆಲ್ ಏಕೀಕರಣವನ್ನು ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ. ಈ ವೈಶಿಷ್ಟ್ಯಗಳನ್ನು ಆಫ್ ಮಾಡಲಾಗಿದೆ. ನೀವು ಅವುಗಳನ್ನು ಮರು-ಸಕ್ರಿಯಗೊಳಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಬಹುದು, ಅಥವಾ ಅವುಗಳಿಲ್ಲದೆ ಮುಂದುವರಿಸಲು ಉಳಿಸಿ.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>ಆನ್</value>
   </data>

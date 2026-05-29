@@ -228,6 +228,15 @@
     <value>⚠ Неуспешно инсталиране на Node.js. Проверете мрежовата връзка и опитайте отново.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Неуспешно инсталиране на куки за сесии. Управлението на сесиите е изключено. Можете да го включите отново и да опитате пак, или да запазите, за да продължите без него.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Неуспешно инсталиране на интеграция с обвивката. Откриването на грешки е изключено. Можете да го включите отново и да опитате пак, или да запазите, за да продължите без него.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Неуспешно инсталиране на куки за сесии и интеграция с обвивката. Тези функции са изключени. Можете да ги включите отново и да опитате пак, или да запазите, за да продължите без тях.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Вкл.</value>
   </data>

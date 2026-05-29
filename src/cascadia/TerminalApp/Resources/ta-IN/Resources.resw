@@ -229,6 +229,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Node.js நிறுவல் தோல்வியடைந்தது. உங்கள் நெட்வொர்க்கைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ அமர்வு கொக்கிகளை நிறுவுவதில் தோல்வி. அமர்வு மேலாண்மை முடக்கப்பட்டுள்ளது. நீங்கள் அதை மீண்டும் இயக்கி மீண்டும் முயற்சிக்கலாம், அல்லது அது இல்லாமல் தொடர சேமிக்கலாம்.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ஷெல் ஒருங்கிணைப்பை நிறுவுவதில் தோல்வி. பிழை கண்டறிதல் முடக்கப்பட்டுள்ளது. நீங்கள் அதை மீண்டும் இயக்கி மீண்டும் முயற்சிக்கலாம், அல்லது அது இல்லாமல் தொடர சேமிக்கலாம்.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ அமர்வு கொக்கிகள் மற்றும் ஷெல் ஒருங்கிணைப்பை நிறுவுவதில் தோல்வி. இந்த அம்சங்கள் முடக்கப்பட்டுள்ளன. நீங்கள் அவற்றை மீண்டும் இயக்கி மீண்டும் முயற்சிக்கலாம், அல்லது அவை இல்லாமல் தொடர சேமிக்கலாம்.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>இயக்கு</value>
   </data>

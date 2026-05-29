@@ -115,6 +115,15 @@
     <value>⚠ Node.js-ის ინსტალაცია ვერ მოხერხდა. შეამოწმეთ ქსელის კავშირი და სცადეთ თავიდან.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ სესიის ჰუკების ინსტალაცია ვერ მოხერხდა. სესიების მართვა გამორთულია. შეგიძლიათ ხელახლა ჩართოთ და სცადოთ თავიდან, ან შეინახოთ მის გარეშე გასაგრძელებლად.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ გარსის ინტეგრაციის ინსტალაცია ვერ მოხერხდა. შეცდომების აღმოჩენა გამორთულია. შეგიძლიათ ხელახლა ჩართოთ და სცადოთ თავიდან, ან შეინახოთ მის გარეშე გასაგრძელებლად.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ სესიის ჰუკების და გარსის ინტეგრაციის ინსტალაცია ვერ მოხერხდა. ეს ფუნქციები გამორთულია. შეგიძლიათ ხელახლა ჩართოთ და სცადოთ თავიდან, ან შეინახოთ მათ გარეშე გასაგრძელებლად.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>ჩართ</value>
   </data>

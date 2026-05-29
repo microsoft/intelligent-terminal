@@ -223,6 +223,15 @@
     <value>⚠ Failed to install Node.js. Check your network and try again.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Failed to install session hooks. Session management has been turned off. You can re-enable it and try again, or save to continue without it.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Failed to install shell integration. Error detection has been turned off. You can re-enable it and try again, or save to continue without it.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Failed to install session hooks and shell integration. These features have been turned off. You can re-enable them and try again, or save to continue without them.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>On</value>
   </data>

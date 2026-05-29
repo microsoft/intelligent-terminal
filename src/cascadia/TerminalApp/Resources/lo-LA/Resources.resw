@@ -116,6 +116,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ ການຕິດຕັ້ງ Node.js ລົ້ມເຫລວ. ກວດເບິ່ງການເຊື່ອມຕໍ່ເຄືອຂ່າຍແລະລອງໃຫມ່.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ ການຕິດຕັ້ງ session hooks ລົ້ມເຫລວ. ການຈັດການ session ໄດ້ຖືກປິດແລ້ວ. ທ່ານສາມາດເປີດໃຊ້ງານມັນອີກຄັ້ງແລະລອງໃຫມ່, ຫຼືບັນທຶກເພື່ອສືບຕໍ່ໂດຍບໍ່ມີມັນ.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ການຕິດຕັ້ງ shell integration ລົ້ມເຫລວ. ການກວດຫາຂໍ້ຜິດພາດໄດ້ຖືກປິດແລ້ວ. ທ່ານສາມາດເປີດໃຊ້ງານມັນອີກຄັ້ງແລະລອງໃຫມ່, ຫຼືບັນທຶກເພື່ອສືບຕໍ່ໂດຍບໍ່ມີມັນ.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ ການຕິດຕັ້ງ session hooks ແລະ shell integration ລົ້ມເຫລວ. ຄຸນສົມບັດເຫຼົ່ານີ້ໄດ້ຖືກປິດແລ້ວ. ທ່ານສາມາດເປີດໃຊ້ງານພວກມັນອີກຄັ້ງແລະລອງໃຫມ່, ຫຼືບັນທຶກເພື່ອສືບຕໍ່ໂດຍບໍ່ມີພວກມັນ.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>ເປີດ</value>
   </data>

@@ -115,6 +115,15 @@
     <value>⚠ Инсталација Node.js није успјела. Провјерите мрежну везу и покушајте поново.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Инсталација закачки сесије није успјела. Управљање сесијама је искључено. Можете га поново укључити и покушати поново, или сачувати да наставите без њега.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Инсталација интеграције љуске није успјела. Откривање грешака је искључено. Можете га поново укључити и покушати поново, или сачувати да наставите без њега.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Инсталација закачки сесије и интеграције љуске није успјела. Ове функције су искључене. Можете их поново укључити и покушати поново, или сачувати да наставите без њих.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Укљ</value>
   </data>

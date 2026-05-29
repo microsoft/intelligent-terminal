@@ -229,6 +229,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Node.js-asennus epäonnistui. Tarkista verkkoyhteys ja yritä uudelleen.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Istuntokoukut eivät asentuneet. Istunnonhallinta on poistettu käytöstä. Voit ottaa sen uudelleen käyttöön ja yrittää uudelleen tai tallentaa jatkaaksesi ilman sitä.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Komentotulkin integroinnin asennus epäonnistui. Virheiden tunnistus on poistettu käytöstä. Voit ottaa sen uudelleen käyttöön ja yrittää uudelleen tai tallentaa jatkaaksesi ilman sitä.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Istuntokoukut ja komentotulkin integrointi eivät asentuneet. Nämä ominaisuudet on poistettu käytöstä. Voit ottaa ne uudelleen käyttöön ja yrittää uudelleen tai tallentaa jatkaaksesi ilman niitä.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Päällä</value>
   </data>

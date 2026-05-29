@@ -229,6 +229,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Cài đặt Node.js thất bại. Kiểm tra mạng của bạn và thử lại.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Không thể cài đặt hook phiên. Quản lý phiên đã bị tắt. Bạn có thể bật lại và thử lại, hoặc lưu để tiếp tục mà không có nó.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Không thể cài đặt tích hợp shell. Phát hiện lỗi đã bị tắt. Bạn có thể bật lại và thử lại, hoặc lưu để tiếp tục mà không có nó.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Không thể cài đặt hook phiên và tích hợp shell. Các tính năng này đã bị tắt. Bạn có thể bật lại chúng và thử lại, hoặc lưu để tiếp tục mà không có chúng.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Bật</value>
   </data>

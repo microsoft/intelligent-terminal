@@ -229,6 +229,15 @@
     <value>⚠ نصب Node.js ناموفق بود. شبکه خود را بررسی کنید و دوباره تلاش کنید.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ نصب قلاب‌های نشست ناموفق بود. مدیریت نشست غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ نصب یکپارچه‌سازی پوسته ناموفق بود. تشخیص خطا غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ نصب قلاب‌های نشست و یکپارچه‌سازی پوسته ناموفق بود. این ویژگی‌ها غیرفعال شده‌اند. می‌توانید آن‌ها را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن‌ها ادامه دهید.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>روشن</value>
   </data>

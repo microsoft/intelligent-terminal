@@ -229,6 +229,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Installation af Node.js mislykkedes. Kontroller din netværksforbindelse, og prøv igen.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Installation af sessionshooks mislykkedes. Sessionsstyring er blevet deaktiveret. Du kan genaktivere den og prøve igen, eller gemme for at fortsætte uden den.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Installation af shell-integration mislykkedes. Fejlregistrering er blevet deaktiveret. Du kan genaktivere den og prøve igen, eller gemme for at fortsætte uden den.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Installation af sessionshooks og shell-integration mislykkedes. Disse funktioner er blevet deaktiveret. Du kan genaktivere dem og prøve igen, eller gemme for at fortsætte uden dem.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Til</value>
   </data>

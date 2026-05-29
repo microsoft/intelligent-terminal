@@ -116,6 +116,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ No s'ha pogut instal·lar Node.js. Comproveu la connexió de xarxa i torneu-ho a provar.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ No s'han pogut instal·lar els ganxos de sessió. La gestió de sessions s'ha desactivat. Podeu tornar-la a activar i tornar-ho a provar, o desar per continuar sense ella.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ No s'ha pogut instal·lar la integració de l'intèrpret d'ordres. La detecció d'errors s'ha desactivat. Podeu tornar-la a activar i tornar-ho a provar, o desar per continuar sense ella.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ No s'han pogut instal·lar els ganxos de sessió ni la integració de l'intèrpret d'ordres. Aquestes funcions s'han desactivat. Podeu tornar-les a activar i tornar-ho a provar, o desar per continuar sense elles.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Actiu</value>
   </data>

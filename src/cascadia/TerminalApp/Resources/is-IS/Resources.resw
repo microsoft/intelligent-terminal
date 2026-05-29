@@ -229,6 +229,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Ekki tókst að setja upp Node.js. Athugaðu nettenginguna og reyndu aftur.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Ekki tókst að setja upp lotukróka. Slökkt hefur verið á lotustjórnun. Þú getur virkjað hana aftur og reynt aftur, eða vistað til að halda áfram án hennar.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Ekki tókst að setja upp skeljasamþættingu. Slökkt hefur verið á villuleit. Þú getur virkjað hana aftur og reynt aftur, eða vistað til að halda áfram án hennar.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Ekki tókst að setja upp lotukróka og skeljasamþættingu. Slökkt hefur verið á þessum eiginleikum. Þú getur virkjað þá aftur og reynt aftur, eða vistað til að halda áfram án þeirra.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Kveikt</value>
   </data>

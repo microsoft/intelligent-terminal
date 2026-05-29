@@ -230,6 +230,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Node.js इन्स्टॉल करपाक अपेशी. तुमचें नेटवर्क तपासात आनी परतून यत्न करात.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ सत्र हुक्स इन्स्टॉल करपाक अपेशी. सत्र वेवस्थापन बंद केलां. तुमी तें परतून सक्षम करून परतून यत्न करूं येता, वा ताचे बगर फुडें वचपाक सांबाळात.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ शेल एकीकरण इन्स्टॉल करपाक अपेशी. चूक सोद बंद केल्या. तुमी तें परतून सक्षम करून परतून यत्न करूं येता, वा ताचे बगर फुडें वचपाक सांबाळात.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ सत्र हुक्स आनी शेल एकीकरण इन्स्टॉल करपाक अपेशी. ह्यो वैशिश्ट्यां बंद केल्यात. तुमी त्यो परतून सक्षम करून परतून यत्न करूं येता, वा तांचे बगर फुडें वचपाक सांबाळात.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>चालू</value>
   </data>

@@ -228,6 +228,15 @@
     <value>⚠ Nie udało się zainstalować Node.js. Sprawdź połączenie sieciowe i spróbuj ponownie.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Nie udało się zainstalować haków sesji. Zarządzanie sesjami zostało wyłączone. Możesz je ponownie włączyć i spróbować ponownie lub zapisać, aby kontynuować bez nich.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Nie udało się zainstalować integracji powłoki. Wykrywanie błędów zostało wyłączone. Możesz je ponownie włączyć i spróbować ponownie lub zapisać, aby kontynuować bez nich.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Nie udało się zainstalować haków sesji i integracji powłoki. Te funkcje zostały wyłączone. Możesz je ponownie włączyć i spróbować ponownie lub zapisać, aby kontynuować bez nich.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Wł.</value>
   </data>

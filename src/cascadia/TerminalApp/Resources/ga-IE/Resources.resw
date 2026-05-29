@@ -115,6 +115,15 @@
     <value>⚠ Theip ar Node.js a shuiteáil. Seiceáil do cheangal líonra agus bain triail eile as.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Theip ar na duáin seisiúin a shuiteáil. Tá bainistiú seisiún múchta. Is féidir leat é a athchumasú agus triail eile a bhaint as, nó sábháil chun leanúint ar aghaidh gan é.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Theip ar chomhtháthú blaoisce a shuiteáil. Tá brath earráidí múchta. Is féidir leat é a athchumasú agus triail eile a bhaint as, nó sábháil chun leanúint ar aghaidh gan é.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Theip ar na duáin seisiúin agus comhtháthú blaoisce a shuiteáil. Tá na gnéithe seo múchta. Is féidir leat iad a athchumasú agus triail eile a bhaint as, nó sábháil chun leanúint ar aghaidh gan iad.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Air</value>
   </data>

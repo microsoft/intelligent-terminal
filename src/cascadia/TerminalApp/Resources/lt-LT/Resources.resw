@@ -229,6 +229,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Nepavyko įdiegti Node.js. Patikrinkite tinklo ryšį ir bandykite dar kartą.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Nepavyko įdiegti sesijos kabliukų. Sesijų valdymas buvo išjungtas. Galite jį vėl įjungti ir bandyti dar kartą arba išsaugoti ir tęsti be jo.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Nepavyko įdiegti apvalkalo integracijos. Klaidų aptikimas buvo išjungtas. Galite jį vėl įjungti ir bandyti dar kartą arba išsaugoti ir tęsti be jo.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Nepavyko įdiegti sesijos kabliukų ir apvalkalo integracijos. Šios funkcijos buvo išjungtos. Galite jas vėl įjungti ir bandyti dar kartą arba išsaugoti ir tęsti be jų.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Įjungta</value>
   </data>

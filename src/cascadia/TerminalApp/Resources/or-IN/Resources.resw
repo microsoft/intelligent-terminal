@@ -230,6 +230,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Node.js ଇନ୍‌ଷ୍ଟଲ୍ କରିବାରେ ବିଫଳ। ଆପଣଙ୍କ ନେଟୱର୍କ ଯାଞ୍ଚ କରନ୍ତୁ ଏବଂ ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ ସେସନ୍ ହୁକ୍ସ ଇନ୍‌ଷ୍ଟଲ୍ କରିବାରେ ବିଫଳ। ସେସନ୍ ପରିଚାଳନା ବନ୍ଦ କରାଯାଇଛି। ଆପଣ ଏହାକୁ ପୁଣି ସକ୍ରିୟ କରି ପୁଣି ଚେଷ୍ଟା କରିପାରିବେ, କିମ୍ବା ଏହା ବିନା ଜାରି ରଖିବାକୁ ସେଭ୍ କରନ୍ତୁ।</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ସେଲ୍ ଏକୀକରଣ ଇନ୍‌ଷ୍ଟଲ୍ କରିବାରେ ବିଫଳ। ତ୍ରୁଟି ଚିହ୍ନଟ ବନ୍ଦ କରାଯାଇଛି। ଆପଣ ଏହାକୁ ପୁଣି ସକ୍ରିୟ କରି ପୁଣି ଚେଷ୍ଟା କରିପାରିବେ, କିମ୍ବା ଏହା ବିନା ଜାରି ରଖିବାକୁ ସେଭ୍ କରନ୍ତୁ।</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ ସେସନ୍ ହୁକ୍ସ ଏବଂ ସେଲ୍ ଏକୀକରଣ ଇନ୍‌ଷ୍ଟଲ୍ କରିବାରେ ବିଫଳ। ଏହି ବୈଶିଷ୍ଟ୍ୟଗୁଡ଼ିକ ବନ୍ଦ କରାଯାଇଛି। ଆପଣ ସେଗୁଡ଼ିକୁ ପୁଣି ସକ୍ରିୟ କରି ପୁଣି ଚେଷ୍ଟା କରିପାରିବେ, କିମ୍ବା ସେଗୁଡ଼ିକ ବିନା ଜାରି ରଖିବାକୁ ସେଭ୍ କରନ୍ତୁ।</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>ଚାଲୁ</value>
   </data>

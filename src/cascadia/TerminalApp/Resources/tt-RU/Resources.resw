@@ -228,6 +228,15 @@
     <value>⚠ Node.js урнату уңышсыз булды. Челтәрегезне тикшерегез һәм яңадан тырышыгыз.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Сессия тоткычларын урнату уңышсыз булды. Сессияләрне идарә итү сүндерелде. Аны яңадан кушып тырышырга яки аның бик булмавына карамастан дәвам итәр өчен саклый аласыз.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Кабык интеграциясен урнату уңышсыз булды. Хата ачыклау сүндерелде. Аны яңадан кушып тырышырга яки аның бик булмавына карамастан дәвам итәр өчен саклый аласыз.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Сессия тоткычларын һәм кабык интеграциясен урнату уңышсыз булды. Бу үзенчәлекләр сүндерелде. Аларны яңадан кушып тырышырга яки аларсыз дәвам итәр өчен саклый аласыз.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Кушулган</value>
   </data>

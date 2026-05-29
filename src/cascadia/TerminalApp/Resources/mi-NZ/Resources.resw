@@ -115,6 +115,15 @@
     <value>⚠ I rahua te tāuta i a Node.js. Tirohia tō hononga whatuao ka ngana anō.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ I rahua te tāuta i ngā matau whakatūnga. Kua whakawetohia te whakahaere whakatūnga. Ka taea e koe te whakahoki anō me te ngana anō, te tiaki rānei kia haere tonu i te kore.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ I rahua te tāuta i te whakaurunga anga. Kua whakawetohia te kitenga hapa. Ka taea e koe te whakahoki anō me te ngana anō, te tiaki rānei kia haere tonu i te kore.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ I rahua te tāuta i ngā matau whakatūnga me te whakaurunga anga. Kua whakawetohia ēnei āhuatanga. Ka taea e koe te whakahoki anō me te ngana anō, te tiaki rānei kia haere tonu i te kore o ēnei.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Kā</value>
   </data>

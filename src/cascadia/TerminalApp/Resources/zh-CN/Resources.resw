@@ -1137,6 +1137,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ 安装 Node.js 失败。请检查网络并重试。</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ 安装会话钩子失败。会话管理已关闭。您可以重新启用并重试，或保存以继续而不使用它。</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ 安装 Shell 集成失败。错误检测已关闭。您可以重新启用并重试，或保存以继续而不使用它。</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ 安装会话钩子和 Shell 集成失败。这些功能已关闭。您可以重新启用它们并重试，或保存以继续而不使用它们。</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>开</value>
   </data>

@@ -228,6 +228,15 @@
     <value>⚠ Node.js yüklenemedi. Ağınızı kontrol edin ve tekrar deneyin.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Oturum kancaları yüklenemedi. Oturum yönetimi kapatıldı. Yeniden etkinleştirip tekrar deneyebilir veya bu özellik olmadan devam etmek için kaydedebilirsiniz.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Kabuk tümleştirmesi yüklenemedi. Hata algılama kapatıldı. Yeniden etkinleştirip tekrar deneyebilir veya bu özellik olmadan devam etmek için kaydedebilirsiniz.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Oturum kancaları ve kabuk tümleştirmesi yüklenemedi. Bu özellikler kapatıldı. Yeniden etkinleştirip tekrar deneyebilir veya bu özellikler olmadan devam etmek için kaydedebilirsiniz.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Açık</value>
   </data>

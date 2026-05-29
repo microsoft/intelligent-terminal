@@ -229,6 +229,15 @@
     <value>⚠ فشل تثبيت Node.js. تحقق من شبكتك وأعد المحاولة.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ فشل تثبيت خطافات الجلسة. تم إيقاف إدارة الجلسات. يمكنك إعادة تمكينها والمحاولة مرة أخرى، أو الحفظ للمتابعة بدونها.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ فشل تثبيت تكامل الصدفة. تم إيقاف اكتشاف الأخطاء. يمكنك إعادة تمكينه والمحاولة مرة أخرى، أو الحفظ للمتابعة بدونه.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ فشل تثبيت خطافات الجلسة وتكامل الصدفة. تم إيقاف هذه الميزات. يمكنك إعادة تمكينها والمحاولة مرة أخرى، أو الحفظ للمتابعة بدونها.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>تشغيل</value>
   </data>

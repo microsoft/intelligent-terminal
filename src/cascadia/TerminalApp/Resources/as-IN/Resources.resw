@@ -230,6 +230,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ Node.js ইনষ্টল কৰাত বিফল হ'ল। আপোনাৰ নেটৱৰ্ক পৰীক্ষা কৰক আৰু পুনৰ চেষ্টা কৰক।</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ ছেছন হুক ইনষ্টল কৰাত বিফল হ'ল। ছেছন ব্যৱস্থাপনা বন্ধ কৰা হৈছে। আপুনি ইয়াক পুনৰ সক্ৰিয় কৰি পুনৰ চেষ্টা কৰিব পাৰে, বা ইয়াৰ অবিহনে আগবাঢ়িবলৈ সংৰক্ষণ কৰক।</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ শ্বেল সংহতি ইনষ্টল কৰাত বিফল হ'ল। ত্ৰুটি চিনাক্তকৰণ বন্ধ কৰা হৈছে। আপুনি ইয়াক পুনৰ সক্ৰিয় কৰি পুনৰ চেষ্টা কৰিব পাৰে, বা ইয়াৰ অবিহনে আগবাঢ়িবলৈ সংৰক্ষণ কৰক।</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ ছেছন হুক আৰু শ্বেল সংহতি ইনষ্টল কৰাত বিফল হ'ল। এই বৈশিষ্ট্যসমূহ বন্ধ কৰা হৈছে। আপুনি সেইবোৰ পুনৰ সক্ৰিয় কৰি পুনৰ চেষ্টা কৰিব পাৰে, বা সেইবোৰৰ অবিহনে আগবাঢ়িবলৈ সংৰক্ষণ কৰক।</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>চালু</value>
   </data>

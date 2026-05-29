@@ -228,6 +228,15 @@
     <value>⚠ Instalarea Node.js a eșuat. Verificați conexiunea la rețea și încercați din nou.</value>
     <comment>{Locked="Node.js"}</comment>
   </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Instalarea hook-urilor de sesiune a eșuat. Gestionarea sesiunilor a fost dezactivată. Puteți să o reactivați și să încercați din nou, sau să salvați pentru a continua fără aceasta.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Instalarea integrării shell a eșuat. Detectarea erorilor a fost dezactivată. Puteți să o reactivați și să încercați din nou, sau să salvați pentru a continua fără aceasta.</value>
+  </data>
+  <data name="FreOverlay_InstallErrorBoth" xml:space="preserve">
+    <value>⚠ Instalarea hook-urilor de sesiune și a integrării shell a eșuat. Aceste funcții au fost dezactivate. Puteți să le reactivați și să încercați din nou, sau să salvați pentru a continua fără ele.</value>
+  </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Activat</value>
   </data>
