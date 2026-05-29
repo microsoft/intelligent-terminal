@@ -119,15 +119,15 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Üdvözli az Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Üdvözli az Intelligens Terminál</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Állítsa be a beépített asszisztenst, amely segít a hibák magyarázatában, parancsok létrehozásában és feladatok feloldásában közvetlenül ott, ahol dolgozik. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>További információ az Intelligent Terminal szolgáltatásról</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>További információ az Intelligens Terminál szolgáltatásról</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Maradjon a munka lendületében a beépített AI-ügynökkel</value>
@@ -149,8 +149,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Üdvözli az Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Üdvözli az Intelligens Terminál</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Válassza ki, mit szeretne most beállítani. Ezeket a beállításokat bármikor módosíthatja. </value>
@@ -181,8 +181,8 @@
     <value>Munkamenet-kezelés</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Adjon engedélyt az Intelligent Terminal számára a futó vagy aktív ügynökök állapotának nyomon követéséhez.</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Adjon engedélyt az Intelligens Terminál számára a futó vagy aktív ügynökök állapotának nyomon követéséhez.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ Ennek engedélyezése integrációs hooks telepítését végzi a munkamenetek ügynökök közötti nyomon követéséhez.</value>

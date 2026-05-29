@@ -35,6 +35,46 @@ use autofix::*;
 
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
+// ─── MVP F2 origin filter ────────────────────────────────────────────────────
+//
+// The session-management view (F2 / `/sessions`) currently ships in MVP
+// mode: it only surfaces shell-pane sessions (the user manually ran
+// `copilot` / `claude` / `gemini` in a regular shell). Agent-pane
+// sessions (Class A — created by WTA on behalf of an Intelligent
+// Terminal agent pane) stay in the registry so Enter routing,
+// alive-mirror reconciliation, and `wta sessions list` continue to
+// work; they just don't render in the picker.
+//
+// To bring agent-pane sessions back into the picker once the manage UX
+// is ready, flip this constant to `OriginFilter::All` and delete the
+// `WTA_F2_SHOW_AGENT_PANE` env override below. No other call sites
+// need to change — all consumers go through
+// `App::f2_origin_filter`.
+const MVP_F2_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
+    crate::agent_sessions::OriginFilter::ShellOnly;
+
+/// Resolve the F2 / `/sessions` origin filter for this process.
+///
+/// Defaults to [`MVP_F2_ORIGIN_FILTER`]. The `WTA_F2_SHOW_AGENT_PANE`
+/// env var (set to `1` / `true`) flips a single helper to
+/// `OriginFilter::All` for debugging — matches the existing
+/// `WTA_LOG_AGENT_EVENT` / `WTA_SOURCE_*` convention. Each helper is
+/// a separate process so the override only affects the pane that
+/// launched with the env var set; the rest of the Terminal keeps the
+/// MVP default.
+pub fn resolve_f2_origin_filter() -> crate::agent_sessions::OriginFilter {
+    match std::env::var("WTA_F2_SHOW_AGENT_PANE")
+        .ok()
+        .as_deref()
+        .map(str::trim)
+    {
+        Some("1") | Some("true") | Some("TRUE") | Some("True") | Some("yes") => {
+            crate::agent_sessions::OriginFilter::All
+        }
+        _ => MVP_F2_ORIGIN_FILTER,
+    }
+}
+
 use crate::commands::{self, CommandKind, CommandSpec, ParsedCommand};
 use crate::coordinator::{
     parse_autofix_response, parse_recommendation_set, recommended_choice_index,
@@ -1796,6 +1836,14 @@ pub struct App {
     /// with a clear error before opening a new tab when the agent
     /// can't rehydrate ACP sessions. Set on `AgentConnected`.
     pub agent_supports_load_session: bool,
+    /// Origin filter for the F2 / `/sessions` picker. Captured once at
+    /// `App::new` time via [`resolve_f2_origin_filter`] so the value is
+    /// stable for the lifetime of this helper process. Read by
+    /// [`Self::agents_rows_for_tab`] (the cursor / Enter source of
+    /// truth), the post-history-scan auto-select, the Delete clamp,
+    /// and the `agents_view::render` call in `ui/layout.rs`. See
+    /// [`MVP_F2_ORIGIN_FILTER`] for the gate to flip when un-MVP.
+    pub f2_origin_filter: crate::agent_sessions::OriginFilter,
     // Onboarding: signals main.rs to install agent hook plugins on demand.
     install_request_tx: Option<mpsc::UnboundedSender<()>>,
     /// Posts `AppEvent::AgentSessionEvent` from background callbacks
@@ -2006,6 +2054,7 @@ impl App {
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
             history_load_state: HistoryLoadState::NotStarted,
             agent_supports_load_session: false,
+            f2_origin_filter: resolve_f2_origin_filter(),
             install_request_tx: None,
             agent_event_tx: None,
             session_hook_tx: None,
@@ -2952,6 +3001,7 @@ impl App {
 
     fn agents_rows_for_tab(&self, tab_id: &str) -> Vec<crate::agent_sessions::AgentSession> {
         let filter = self.current_cli_filter();
+        let origin = self.f2_origin_filter;
         if let Some(snapshot) = self
             .tab_sessions
             .get(tab_id)
@@ -2962,10 +3012,17 @@ impl App {
             if let Some(want) = filter.as_ref() {
                 rows.retain(|s| &s.cli_source == want || matches!(&s.cli_source, crate::agent_sessions::CliSource::Unknown(v) if v.is_empty()));
             }
+            // Apply the MVP origin filter on top of the cli filter.
+            // Snapshot rows come from master via SessionInfo where origin
+            // is Option<SessionOrigin>; session_info_to_agent_session
+            // collapses None -> SessionOrigin::Unknown so a registry-style
+            // `matches(&s.origin)` is sufficient and stays consistent
+            // with the registry branch below.
+            rows.retain(|s| origin.matches(&s.origin));
             rows
         } else {
             self.agent_sessions
-                .iter_sorted_filtered(filter.as_ref())
+                .iter_sorted_with_filters(filter.as_ref(), origin)
                 .into_iter()
                 .cloned()
                 .collect()
@@ -4325,7 +4382,10 @@ impl App {
                     && self.current_tab().agents_list_state.selected().is_none()
                     && !self
                         .agent_sessions
-                        .iter_sorted_filtered(self.current_cli_filter().as_ref())
+                        .iter_sorted_with_filters(
+                            self.current_cli_filter().as_ref(),
+                            self.f2_origin_filter,
+                        )
                         .is_empty()
                 {
                     self.current_tab_mut().agents_list_state.select(Some(0));
@@ -5605,11 +5665,15 @@ impl App {
                             if matches!(status, Ended | Historical) {
                                 self.agent_sessions.remove(&key);
                                 // Keep the cursor in-bounds after eviction.
-                                // Re-query through the same filter so the
-                                // selection clamp matches the rendered list.
+                                // Re-query through the same filters so the
+                                // selection clamp matches the rendered list
+                                // (both cli + MVP origin filter).
                                 let new_count = self
                                     .agent_sessions
-                                    .iter_sorted_filtered(self.current_cli_filter().as_ref())
+                                    .iter_sorted_with_filters(
+                                        self.current_cli_filter().as_ref(),
+                                        self.f2_origin_filter,
+                                    )
                                     .len();
                                 let tab = self.current_tab_mut();
                                 if new_count == 0 {
@@ -9780,6 +9844,108 @@ mod tests {
         assert!(master_rx.try_recv().is_err(), "closed UI must not refetch");
     }
 
+    /// MVP F2 origin filter: with `ShellOnly`, agent-pane rows must
+    /// be hidden from `agents_rows_for_tab` (the cursor / Enter
+    /// dispatch source of truth) — *not just* from `agents_view::render`.
+    /// A bug where render filtered but `agents_rows_for_tab` didn't
+    /// would let Enter on visible row N activate hidden row M.
+    #[test]
+    fn shell_only_filter_hides_agent_pane_rows_from_cursor_model() {
+        use crate::agent_sessions::{OriginFilter, SessionOrigin};
+        let mut app = test_app();
+        app.f2_origin_filter = OriginFilter::ShellOnly;
+        // Snapshot path: master pushed two rows — one tagged
+        // AgentPane (Class A, hidden under ShellOnly), one tagged
+        // Unknown (Class B, visible).
+        let mut pane = session_info_for_test("class-a");
+        pane.origin = Some(SessionOrigin::AgentPane);
+        pane.last_activity_at_ms = Some(200);
+        let mut shell = session_info_for_test("class-b");
+        shell.origin = Some(SessionOrigin::Unknown);
+        shell.last_activity_at_ms = Some(100);
+        app.current_tab_mut().agents_view.snapshot = Some(vec![pane, shell]);
+
+        let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
+        assert_eq!(rows.len(), 1, "only the Class B row is visible: {rows:?}");
+        assert_eq!(rows[0].key, "class-b");
+
+        // Flip to All — both rows must reappear so the un-MVP toggle
+        // brings agent-pane rows back without any other code change.
+        app.f2_origin_filter = OriginFilter::All;
+        let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
+        assert_eq!(rows.len(), 2);
+
+        // AgentPaneOnly is the inverse — only Class A surfaces.
+        app.f2_origin_filter = OriginFilter::AgentPaneOnly;
+        let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].key, "class-a");
+    }
+
+    /// Registry path (no snapshot): the same filter must apply when
+    /// `agents_rows_for_tab` falls back to `agent_sessions` directly.
+    /// Without this, helpers that haven't received a master snapshot
+    /// yet would show every row regardless of the MVP filter.
+    #[test]
+    fn shell_only_filter_applies_to_registry_fallback_path() {
+        use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
+        use std::path::PathBuf;
+        let mut app = test_app();
+        app.f2_origin_filter = OriginFilter::ShellOnly;
+        // No snapshot primed — `agents_rows_for_tab` goes through
+        // `iter_sorted_with_filters` on the registry.
+        app.agent_sessions.apply(SessionEvent::SessionStarted {
+            key: "shell-key".into(),
+            cli_source: CliSource::Claude,
+            pane_session_id: "00000000-0000-0000-0000-00000000aaaa".into(),
+            cwd: PathBuf::from("/x"),
+            title: "shell".into(),
+        });
+        app.agent_sessions.apply(SessionEvent::SessionStarted {
+            key: "pane-key".into(),
+            cli_source: CliSource::Claude,
+            pane_session_id: "00000000-0000-0000-0000-00000000bbbb".into(),
+            cwd: PathBuf::from("/x"),
+            title: "pane".into(),
+        });
+        app.agent_sessions.set_origin("pane-key", SessionOrigin::AgentPane);
+
+        let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].key, "shell-key");
+    }
+
+    /// `resolve_f2_origin_filter` reads the `WTA_F2_SHOW_AGENT_PANE`
+    /// env var. With it unset (or 0/false) the MVP default
+    /// (`ShellOnly`) wins; with it set to a truthy value we flip to
+    /// `All` so a single debug helper can see everything without a
+    /// rebuild.
+    ///
+    /// Env vars are process-global, so this test serializes via the
+    /// `WTA_F2_SHOW_AGENT_PANE_TEST_LOCK` mutex shared with any other
+    /// future test that touches the same var.
+    #[test]
+    fn resolve_f2_origin_filter_respects_env_override() {
+        use crate::agent_sessions::OriginFilter;
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        std::env::remove_var("WTA_F2_SHOW_AGENT_PANE");
+        assert_eq!(crate::app::resolve_f2_origin_filter(), MVP_F2_ORIGIN_FILTER);
+        assert_eq!(MVP_F2_ORIGIN_FILTER, OriginFilter::ShellOnly);
+
+        std::env::set_var("WTA_F2_SHOW_AGENT_PANE", "1");
+        assert_eq!(crate::app::resolve_f2_origin_filter(), OriginFilter::All);
+
+        std::env::set_var("WTA_F2_SHOW_AGENT_PANE", "true");
+        assert_eq!(crate::app::resolve_f2_origin_filter(), OriginFilter::All);
+
+        std::env::set_var("WTA_F2_SHOW_AGENT_PANE", "0");
+        assert_eq!(crate::app::resolve_f2_origin_filter(), MVP_F2_ORIGIN_FILTER);
+
+        std::env::remove_var("WTA_F2_SHOW_AGENT_PANE");
+    }
+
     #[test]
     fn snapshot_refetch_preserves_focused_sid() {
         let (mut app, mut master_rx) = test_app_with_master_rx();
@@ -10098,10 +10264,15 @@ mod tests {
     /// Class A dead + Enter ran the CLI --resume flag path.
     #[test]
     fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
-        use crate::agent_sessions::{CliSource, SessionEvent, SessionOrigin};
+        use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         use std::path::PathBuf;
         let mut app = test_app();
+        // This test exercises the Class A (AgentPane) Enter routing,
+        // which the MVP F2 filter hides. Opt out so the row is
+        // visible to the cursor; the dispatch logic under test is
+        // unchanged by the filter.
+        app.f2_origin_filter = OriginFilter::All;
         app.agent_supports_load_session = true;
         app.agent_sessions.apply(SessionEvent::SessionStarted {
             key: "abc-class-a".into(),
@@ -10134,10 +10305,15 @@ mod tests {
     /// Shift flips the default → ResumeCliFlag (new tab CLI --resume).
     #[test]
     fn shift_enter_on_class_a_dead_row_dispatches_cli_resume() {
-        use crate::agent_sessions::{CliSource, SessionEvent, SessionOrigin};
+        use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         use std::path::PathBuf;
         let mut app = test_app();
+        // See enter_on_class_a_dead_row_dispatches_resume_in_agent_pane
+        // for the OriginFilter::All rationale — the MVP filter hides
+        // Class A rows from the cursor model; this test exercises the
+        // routing logic that fires when they ARE visible.
+        app.f2_origin_filter = OriginFilter::All;
         app.agent_supports_load_session = true;
         app.agent_sessions.apply(SessionEvent::SessionStarted {
             key: "abc-class-a-shift".into(),
@@ -10176,10 +10352,14 @@ mod tests {
     /// A origin to confirm origin doesn't matter for Live rows.
     #[test]
     fn shift_enter_on_class_a_live_row_focuses() {
-        use crate::agent_sessions::{CliSource, SessionEvent, SessionOrigin};
+        use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         use std::path::PathBuf;
         let mut app = test_app();
+        // Same rationale as the Class A dead-row tests above:
+        // MVP F2 filter hides AgentPane rows, this test verifies the
+        // dispatch logic for when they are visible.
+        app.f2_origin_filter = OriginFilter::All;
         app.agent_sessions.apply(SessionEvent::SessionStarted {
             key: "live-class-a".into(),
             cli_source: CliSource::Claude,

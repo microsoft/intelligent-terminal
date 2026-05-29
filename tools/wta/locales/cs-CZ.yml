@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Vítejte v Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Vítejte v Inteligentní Terminál!"
 setup.title.agent_missing: "Agenta se nepodařilo najít"
 setup.title.agent_error: "Připojení k agentovi se nezdařilo"
 setup.title.switch_agent: "Přepnout agenta"
@@ -8,13 +8,13 @@ setup.title.not_available: "Agent není k dispozici"
 setup.title.sign_in: "Vyžadováno přihlášení"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Váš agent \"%{agent}\" není nainstalován. Postupujte podle níže uvedených kroků a nainstalujte ho. Chcete-li přepnout agenta, přejděte do Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Váš agent \"%{agent}\" není nainstalován. Přeinstalujte ho ručně a zkuste to znovu. Chcete-li přepnout agenta, přejděte do Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Postupujte podle níže uvedených kroků a přihlaste se. Chcete-li přepnout agenta, přejděte do Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Přihlaste se přes agenta a pak vyberte \"Přihlásil/a jsem se\" níže. Chcete-li přepnout agenta, přejděte do Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Váš agent \"%{agent}\" není nainstalován. Postupujte podle níže uvedených kroků a nainstalujte ho. Chcete-li přepnout agenta, přejděte do Inteligentní Terminál Settings > Agent."
+setup.subtitle.agent_missing: "Váš agent \"%{agent}\" není nainstalován. Přeinstalujte ho ručně a zkuste to znovu. Chcete-li přepnout agenta, přejděte do Inteligentní Terminál Settings > Agent."
+setup.subtitle.copilot_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Postupujte podle níže uvedených kroků a přihlaste se. Chcete-li přepnout agenta, přejděte do Inteligentní Terminál Settings > Agent."
+setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Přihlaste se přes agenta a pak vyberte \"Přihlásil/a jsem se\" níže. Chcete-li přepnout agenta, přejděte do Inteligentní Terminál Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Vyberte výchozího agenta, kterého chcete používat v Intelligent Terminal. Můžete"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Vyberte výchozího agenta, kterého chcete používat v Inteligentní Terminál. Můžete"
 setup.description.fre_line2: "přejít do Settings a nakonfigurovat svůj pracovní prostor."
 
 setup.option.install: "Instalovat %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Stiskněte Enter pro přihlášení, Esc pro návrat"  # {L
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Přemýšlím..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Vítejte v Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal používá AI. Kontrolujte chyby."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Vítejte v Inteligentní Terminál!"
+chat.welcome_disclaimer: "Inteligentní Terminál používá AI. Kontrolujte chyby."
 chat.plan_header: "Plán:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

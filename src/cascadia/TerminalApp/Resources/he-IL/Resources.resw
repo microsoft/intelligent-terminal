@@ -120,15 +120,15 @@
 
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>ברוכים הבאים ל-Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ברוכים הבאים ל-מסוף חכם</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>הגדר את העוזר המובנה שלך כדי לעזור לך להסביר שגיאות, לנסח פקודות ולבטל חסימת משימות ישירות במקום בו אתה עובד. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>למד עוד על Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>למד עוד על מסוף חכם</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>הישאר בזרימה עם סוכן ה-AI המובנה שלך</value>
@@ -150,8 +150,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>ברוכים הבאים ל-Intelligent Terminal</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ברוכים הבאים ל-מסוף חכם</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>בחר מה להגדיר כעת. ניתן לשנות הגדרות אלה בכל עת. </value>
@@ -182,8 +182,8 @@
     <value>ניהול הפעלות</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>תן ל-Intelligent Terminal הרשאה לעקוב אחר מצב הסוכנים הפועלים או הפעילים שלך.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>תן ל-מסוף חכם הרשאה לעקוב אחר מצב הסוכנים הפועלים או הפעילים שלך.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ הפעלת אפשרות זו תתקין hooks לאינטגרציה למעקב אחר הפעלות בכל הסוכנים שלך.</value>

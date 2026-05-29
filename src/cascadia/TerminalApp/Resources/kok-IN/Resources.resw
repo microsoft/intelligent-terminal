@@ -120,15 +120,15 @@
 
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal ंत आपलें स्वागत</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>इंटेलिजंट टर्मिनल ंत आपलें स्वागत</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>चुकी समजावपाक, कमांड तयार करपाक आनी कामां अनब्लॉक करपाक मदत करपा खातीर तुमचो अंतर्निर्मित सहाय्यक सेट अप करात, तुमी जंय काम करतात थंयच. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Intelligent Terminal विशीं अदीक जाणून घ्यात</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>इंटेलिजंट टर्मिनल विशीं अदीक जाणून घ्यात</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>तुमच्या अंतर्निर्मित AI एजेंट वांगडा प्रवाहांत रावात</value>
@@ -150,8 +150,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal ंत आपलें स्वागत</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>इंटेलिजंट टर्मिनल ंत आपलें स्वागत</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>आतां कितें सेट करपाचें ते वेंचून काडात. तुमी हें केन्नाय बदलूं येता. </value>
@@ -182,9 +182,8 @@
     <value>सत्र वेवस्थापन</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal क तुमच्या चालू वा सक्रिय एजेंटांची स्थिती मागोवपाक परवानगी द्यात.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>इंटेलिजंट टर्मिनल क तुमच्या चालू वा सक्रिय एजेंटांची स्थिती मागोवपाक परवानगी द्यात.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ हें सक्षम केल्यार तुमच्या एजेंटां मदीं सत्रांचो मागोवो घेवपाक एकत्रीकरण hooks इन्स्टॉल जातले.</value>

@@ -141,6 +141,61 @@ pub enum SessionOrigin {
     AgentPane,
 }
 
+/// View-layer filter for `SessionOrigin`. Used by the F2 / `/sessions`
+/// picker so an MVP build can restrict the list to shell-pane sessions
+/// (user typed `copilot` in a normal shell) and hide WTA-spawned
+/// agent-pane sessions, without removing the data from the registry.
+///
+/// Set the MVP default in `app.rs::MVP_F2_ORIGIN_FILTER`. Set
+/// `WTA_F2_SHOW_AGENT_PANE=1` to flip a single helper process to
+/// `All` for debugging. The `wta sessions list` CLI also accepts
+/// `--origin <shell|agent-pane|all>` for the same purpose.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OriginFilter {
+    /// Keep rows whose origin is `Unknown` (the user ran the CLI
+    /// directly in a shell pane) and rows with no origin recorded.
+    /// Hide `AgentPane` rows.
+    ShellOnly,
+    /// Keep only `AgentPane` rows (sessions WTA spawned for an
+    /// Intelligent Terminal agent pane). Hide `Unknown` and untagged
+    /// rows. Provided for symmetry / future un-MVP toggle; not used
+    /// by the default UX today.
+    AgentPaneOnly,
+    /// Keep every row regardless of origin. The historical default
+    /// and the right setting for debug tooling that wants to see
+    /// the full registry contents.
+    #[default]
+    All,
+}
+
+impl OriginFilter {
+    /// Predicate for `AgentSession.origin` (always populated).
+    pub fn matches(self, origin: &SessionOrigin) -> bool {
+        match self {
+            OriginFilter::All           => true,
+            OriginFilter::ShellOnly     => matches!(origin, SessionOrigin::Unknown),
+            OriginFilter::AgentPaneOnly => matches!(origin, SessionOrigin::AgentPane),
+        }
+    }
+
+    /// Predicate for `SessionInfo.origin: Option<SessionOrigin>`.
+    ///
+    /// `None` means the row was serialized before the field existed
+    /// (or arrived via a notification path that doesn't carry origin
+    /// — see `agent_sessions.rs::parse_ext_notification`). We treat a
+    /// missing origin as `Unknown` for filtering purposes; this is a
+    /// compatibility fallback, not a positive identification of
+    /// shell origin. The master tags every `session/new` and
+    /// `session/load` with `Some(AgentPane)` for Class A, so in
+    /// practice `None` rows here are legacy / unclassified.
+    pub fn matches_opt(self, origin: Option<&SessionOrigin>) -> bool {
+        match origin {
+            Some(o) => self.matches(o),
+            None    => matches!(self, OriginFilter::All | OriginFilter::ShellOnly),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AgentSession {
     pub key:               AgentKey,
@@ -628,14 +683,29 @@ impl AgentSessionRegistry {
     /// so that, when the agent pane is running a known CLI (copilot /
     /// claude / gemini), the list only shows sessions for that CLI.
     pub fn iter_sorted_filtered(&self, filter: Option<&CliSource>) -> Vec<&AgentSession> {
-        let sorted = self.iter_sorted();
-        match filter {
-            None => sorted,
-            Some(want) => sorted
-                .into_iter()
-                .filter(|s| &s.cli_source == want)
-                .collect(),
-        }
+        self.iter_sorted_with_filters(filter, OriginFilter::All)
+    }
+
+    /// Two-axis variant of [`iter_sorted_filtered`]: filter on both
+    /// `cli_source` (CLI the row belongs to) and `origin` (whether the
+    /// session was started in a shell pane or by WTA's own agent pane).
+    /// Used by the F2 / `/sessions` picker and by `wta sessions list
+    /// --origin`; the registry itself stays complete so other consumers
+    /// (Enter routing, alive-mirror reconciliation, `wta sessions list`
+    /// without `--origin`) see every row.
+    pub fn iter_sorted_with_filters(
+        &self,
+        cli: Option<&CliSource>,
+        origin: OriginFilter,
+    ) -> Vec<&AgentSession> {
+        self.iter_sorted()
+            .into_iter()
+            .filter(|s| match cli {
+                None       => true,
+                Some(want) => &s.cli_source == want,
+            })
+            .filter(|s| origin.matches(&s.origin))
+            .collect()
     }
 
     pub fn take_dirty(&mut self) -> bool {
@@ -2104,6 +2174,109 @@ mod tests {
 
         let all_len = reg.iter_sorted_filtered(None).len();
         assert_eq!(all_len, 2);
+    }
+
+    #[test]
+    fn iter_sorted_with_filters_partitions_by_origin() {
+        // Two rows, identical CLI, different SessionOrigin. ShellOnly
+        // must hide the AgentPane row; AgentPaneOnly is the inverse;
+        // All keeps both. Confirms the MVP F2 filter contract.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("shell-row"),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane("p-shell"),
+            cwd: PathBuf::from("/x"),
+            title: "shell".into(),
+        });
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("pane-row"),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane("p-pane"),
+            cwd: PathBuf::from("/x"),
+            title: "pane".into(),
+        });
+        // Tag one row as AgentPane; the other stays at the default
+        // (Unknown) which represents a shell-pane session.
+        reg.set_origin("pane-row", SessionOrigin::AgentPane);
+
+        let shell_only: Vec<&str> = reg
+            .iter_sorted_with_filters(None, OriginFilter::ShellOnly)
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(shell_only, vec!["shell-row"]);
+
+        let pane_only: Vec<&str> = reg
+            .iter_sorted_with_filters(None, OriginFilter::AgentPaneOnly)
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(pane_only, vec!["pane-row"]);
+
+        let all = reg.iter_sorted_with_filters(None, OriginFilter::All);
+        assert_eq!(all.len(), 2);
+
+        // The legacy single-arg helper must keep returning every row
+        // (origin = All) so existing callers don't silently start
+        // hiding agent-pane rows.
+        assert_eq!(reg.iter_sorted_filtered(None).len(), 2);
+    }
+
+    #[test]
+    fn iter_sorted_with_filters_composes_cli_and_origin() {
+        // Mix of (cli, origin) combos — the two axes must be combined
+        // with a logical AND.
+        let mut reg = AgentSessionRegistry::new();
+        for (key, cli) in [
+            ("cop-shell", CliSource::Copilot),
+            ("cop-pane",  CliSource::Copilot),
+            ("cla-shell", CliSource::Claude),
+            ("cla-pane",  CliSource::Claude),
+        ] {
+            reg.apply(SessionEvent::SessionStarted {
+                key: k(key),
+                cli_source: cli,
+                pane_session_id: pane(&format!("p-{key}")),
+                cwd: PathBuf::from("/x"),
+                title: key.into(),
+            });
+        }
+        reg.set_origin("cop-pane", SessionOrigin::AgentPane);
+        reg.set_origin("cla-pane", SessionOrigin::AgentPane);
+
+        let copilot_shell: Vec<&str> = reg
+            .iter_sorted_with_filters(Some(&CliSource::Copilot), OriginFilter::ShellOnly)
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(copilot_shell, vec!["cop-shell"]);
+
+        let claude_pane: Vec<&str> = reg
+            .iter_sorted_with_filters(Some(&CliSource::Claude), OriginFilter::AgentPaneOnly)
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(claude_pane, vec!["cla-pane"]);
+    }
+
+    #[test]
+    fn origin_filter_matches_opt_treats_none_as_shell() {
+        // SessionInfo.origin is Option<SessionOrigin>; None can mean
+        // "serialized before the field existed" or "arrived via a
+        // notification path that doesn't carry origin". The MVP
+        // contract: treat None as shell so legacy rows stay visible.
+        assert!(OriginFilter::ShellOnly.matches_opt(None));
+        assert!(OriginFilter::ShellOnly.matches_opt(Some(&SessionOrigin::Unknown)));
+        assert!(!OriginFilter::ShellOnly.matches_opt(Some(&SessionOrigin::AgentPane)));
+
+        assert!(!OriginFilter::AgentPaneOnly.matches_opt(None));
+        assert!(!OriginFilter::AgentPaneOnly.matches_opt(Some(&SessionOrigin::Unknown)));
+        assert!(OriginFilter::AgentPaneOnly.matches_opt(Some(&SessionOrigin::AgentPane)));
+
+        assert!(OriginFilter::All.matches_opt(None));
+        assert!(OriginFilter::All.matches_opt(Some(&SessionOrigin::Unknown)));
+        assert!(OriginFilter::All.matches_opt(Some(&SessionOrigin::AgentPane)));
     }
 
     // -------- B-8: liveness/activity 2D + alive-pane snapshot --------

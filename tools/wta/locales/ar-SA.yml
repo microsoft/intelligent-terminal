@@ -1,6 +1,6 @@
 # عناوين شاشة الإعداد
-# {Locked="Intelligent Terminal"} - اسم المنتج، لا تترجمه
-setup.title.first_run: "مرحبًا بك في Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "مرحبًا بك في الوحدة الطرفية الذكية!"
 setup.title.agent_missing: "لم يتم العثور على عامل الذكاء الاصطناعي"
 setup.title.agent_error: "فشل الاتصال بعامل الذكاء الاصطناعي"
 setup.title.switch_agent: "تبديل عامل الذكاء الاصطناعي"
@@ -8,13 +8,13 @@ setup.title.not_available: "عامل الذكاء الاصطناعي غير مت
 setup.title.sign_in: "تسجيل الدخول مطلوب"
 
 # يتم استبدال %{agent} باسم عرض عامل الذكاء الاصطناعي في وقت التشغيل.
-setup.subtitle.copilot_missing: "عامل الذكاء الاصطناعي \"%{agent}\" غير مثبّت. اتبع الخطوات أدناه لتثبيته. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "عامل الذكاء الاصطناعي \"%{agent}\" غير مثبّت. يُرجى إعادة تثبيته يدويًا، ثم أعد المحاولة. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. اتبع الخطوات أدناه لتسجيل الدخول. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. يُرجى تسجيل الدخول عبر عامل الذكاء الاصطناعي، ثم حدد \"لقد سجّلت الدخول\" أدناه. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "عامل الذكاء الاصطناعي \"%{agent}\" غير مثبّت. اتبع الخطوات أدناه لتثبيته. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."
+setup.subtitle.agent_missing: "عامل الذكاء الاصطناعي \"%{agent}\" غير مثبّت. يُرجى إعادة تثبيته يدويًا، ثم أعد المحاولة. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."
+setup.subtitle.copilot_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. اتبع الخطوات أدناه لتسجيل الدخول. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."
+setup.subtitle.agent_auth: "يتطلب عامل الذكاء الاصطناعي \"%{agent}\" المصادقة. يُرجى تسجيل الدخول عبر عامل الذكاء الاصطناعي، ثم حدد \"لقد سجّلت الدخول\" أدناه. لتبديل عوامل الذكاء الاصطناعي، انتقل إلى الوحدة الطرفية الذكية Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "اختر عامل الذكاء الاصطناعي الافتراضي الذي تريد استخدامه في Intelligent Terminal. يمكنك"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "اختر عامل الذكاء الاصطناعي الافتراضي الذي تريد استخدامه في الوحدة الطرفية الذكية. يمكنك"
 setup.description.fre_line2: "الانتقال إلى Settings لتكوين مساحة العمل وإعدادها."
 
 setup.option.install: "تثبيت %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  اضغط Enter لتسجيل الدخول، Esc للرجوع
 
 # ── عرض الدردشة (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "جارٍ التفكير…"
-# {Locked="Intelligent Terminal"} - اسم المنتج، لا تترجمه
-chat.welcome_title: "مرحبًا بك في Intelligent Terminal!"
-chat.welcome_disclaimer: "يستخدم Intelligent Terminal الذكاء الاصطناعي. تحقق من الأخطاء."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "مرحبًا بك في الوحدة الطرفية الذكية!"
+chat.welcome_disclaimer: "يستخدم الوحدة الطرفية الذكية الذكاء الاصطناعي. تحقق من الأخطاء."
 chat.plan_header: "الخطة:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

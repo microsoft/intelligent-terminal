@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Tere tulemast Intelligent Terminali!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Tere tulemast Nutikas Terminali!"
 setup.title.agent_missing: "Agenti ei leitud"
 setup.title.agent_error: "Agendiga ühenduse loomine nurjus"
 setup.title.switch_agent: "Vaheta agenti"
@@ -8,13 +8,13 @@ setup.title.not_available: "Agent pole saadaval"
 setup.title.sign_in: "Sisselogimine nõutav"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Teie agent \"%{agent}\" pole installitud. Järgige allolevaid juhiseid selle installimiseks. Agendi vahetamiseks avage Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Teie agent \"%{agent}\" pole installitud. Installige see käsitsi uuesti ja proovige seejärel uuesti. Agendi vahetamiseks avage Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Teie agent \"%{agent}\" nõuab autentimist. Järgige allolevaid juhiseid sisselogimiseks. Agendi vahetamiseks avage Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi kaudu ja valige seejärel allpool \"Olen sisse loginud\". Agendi vahetamiseks avage Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Teie agent \"%{agent}\" pole installitud. Järgige allolevaid juhiseid selle installimiseks. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Teie agent \"%{agent}\" pole installitud. Installige see käsitsi uuesti ja proovige seejärel uuesti. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Teie agent \"%{agent}\" nõuab autentimist. Järgige allolevaid juhiseid sisselogimiseks. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi kaudu ja valige seejärel allpool \"Olen sisse loginud\". Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Valige vaikeagent, mida soovite kasutada Intelligent Terminalis. Saate"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Valige vaikeagent, mida soovite kasutada Nutikas Terminalis. Saate"
 setup.description.fre_line2: "avada Settings, et oma tööruumi seadistada ja konfigureerida."
 
 setup.option.install: "Installi %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Vajutage Enter sisselogimiseks, Esc tagasi minemiseks"  # {
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Mõtleb..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Tere tulemast Intelligent Terminali!"
-chat.welcome_disclaimer: "Intelligent Terminal kasutab AI-d. Kontrollige vigu."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Tere tulemast Nutikas Terminali!"
+chat.welcome_disclaimer: "Nutikas Terminal kasutab AI-d. Kontrollige vigu."
 chat.plan_header: "Plaan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

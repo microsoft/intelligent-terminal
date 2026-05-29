@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - pangalan ng produkto, huwag isalin
-setup.title.first_run: "Maligayang pagdating sa Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Maligayang pagdating sa Matalinong Terminal!"
 setup.title.agent_missing: "Hindi nahanap ang agent"
 setup.title.agent_error: "Nabigo ang koneksyon sa agent"
 setup.title.switch_agent: "Palitan ang agent"
@@ -8,13 +8,13 @@ setup.title.not_available: "Hindi available ang agent"
 setup.title.sign_in: "Kailangang mag-sign in"
 
 # %{agent} ay pinapalitan ng display name ng agent sa runtime.
-setup.subtitle.copilot_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-install. Sundin ang mga hakbang sa ibaba para i-install ito. Para magpalit ng agent, pumunta sa Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-install. Mangyaring i-install nang manu-mano, pagkatapos ay subukang muli. Para magpalit ng agent, pumunta sa Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Sundin ang mga hakbang sa ibaba para mag-sign in. Para magpalit ng agent, pumunta sa Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Mangyaring mag-sign in sa pamamagitan ng agent, pagkatapos ay piliin ang \"Naka-sign in na ako\" sa ibaba. Para magpalit ng agent, pumunta sa Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-install. Sundin ang mga hakbang sa ibaba para i-install ito. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Ang agent mong \"%{agent}\" ay hindi pa naka-install. Mangyaring i-install nang manu-mano, pagkatapos ay subukang muli. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Sundin ang mga hakbang sa ibaba para mag-sign in. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Mangyaring mag-sign in sa pamamagitan ng agent, pagkatapos ay piliin ang \"Naka-sign in na ako\" sa ibaba. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Pumili ng default na agent CLI na gusto mong gamitin sa Intelligent Terminal. Maaari kang"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Pumili ng default na agent CLI na gusto mong gamitin sa Matalinong Terminal. Maaari kang"
 setup.description.fre_line2: "pumunta sa Settings para i-configure at i-set up ang iyong workspace."
 
 setup.option.install: "I-install ang %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Pindutin ang Enter para mag-sign in, Esc para bumalik"  # {
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Nag-iisip…"
-# {Locked="Intelligent Terminal"} - pangalan ng produkto, huwag isalin
-chat.welcome_title: "Maligayang pagdating sa Intelligent Terminal!"
-chat.welcome_disclaimer: "Gumagamit ang Intelligent Terminal ng AI. Suriin ang mga pagkakamali."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Maligayang pagdating sa Matalinong Terminal!"
+chat.welcome_disclaimer: "Gumagamit ang Matalinong Terminal ng AI. Suriin ang mga pagkakamali."
 chat.plan_header: "Plano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

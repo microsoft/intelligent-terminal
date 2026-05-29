@@ -1,5 +1,5 @@
 # 設定畫面標題
-setup.title.first_run: "歡迎使用智慧型終端機！"
+setup.title.first_run: "歡迎使用智慧終端機！"
 setup.title.agent_missing: "找不到智能體"
 setup.title.agent_error: "智能體連線失敗"
 setup.title.switch_agent: "切換智能體"
@@ -7,11 +7,11 @@ setup.title.not_available: "智能體無法使用"
 setup.title.sign_in: "需要登入"
 
 # %{agent} 會在執行階段替換為智能體的顯示名稱。
-setup.subtitle.copilot_missing: "您的智能體 \"%{agent}\" 尚未安裝。請依照下列步驟進行安裝。若要切換智能體，請前往Intelligent Terminal Settings > Agent。"
-setup.subtitle.agent_missing: "您的智能體 \"%{agent}\" 尚未安裝。請手動重新安裝，然後重試。若要切換智能體，請前往Intelligent Terminal Settings > Agent。"
-setup.subtitle.copilot_auth: "您的智能體 \"%{agent}\" 需要驗證。請依照下列步驟登入。若要切換智能體，請前往Intelligent Terminal Settings > Agent。"
-setup.subtitle.agent_auth: "您的智能體 \"%{agent}\" 需要驗證。請透過智能體登入，然後選擇下方的 \"我已登入\"。若要切換智能體，請前往Intelligent Terminal Settings > Agent。"
-setup.description.fre_line1: "選擇您要在智慧型終端機中使用的預設智能體。您可以"
+setup.subtitle.copilot_missing: "您的智能體 \"%{agent}\" 尚未安裝。請依照下列步驟進行安裝。若要切換智能體，請前往智慧終端機 Settings > Agent。"
+setup.subtitle.agent_missing: "您的智能體 \"%{agent}\" 尚未安裝。請手動重新安裝，然後重試。若要切換智能體，請前往智慧終端機 Settings > Agent。"
+setup.subtitle.copilot_auth: "您的智能體 \"%{agent}\" 需要驗證。請依照下列步驟登入。若要切換智能體，請前往智慧終端機 Settings > Agent。"
+setup.subtitle.agent_auth: "您的智能體 \"%{agent}\" 需要驗證。請透過智能體登入，然後選擇下方的 \"我已登入\"。若要切換智能體，請前往智慧終端機 Settings > Agent。"
+setup.description.fre_line1: "選擇您要在智慧終端機中使用的預設智能體。您可以"
 setup.description.fre_line2: "前往設定來配置及設定您的工作區。"
 
 setup.option.install: "安裝 %{agent}"
@@ -40,8 +40,8 @@ auth.hint_footer: "  按 Enter 登入，按 Esc 返回"  # {Locked="Enter","Esc"
 
 # ── 聊天檢視 (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "思考中…"
-chat.welcome_title: "歡迎使用智慧型終端機！"
-chat.welcome_disclaimer: "Intelligent Terminal 使用 AI。請檢查是否有誤。"
+chat.welcome_title: "歡迎使用智慧終端機！"
+chat.welcome_disclaimer: "智慧終端機使用 AI。請檢查是否有誤。"
 chat.plan_header: "計畫："
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

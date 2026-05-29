@@ -7,10 +7,10 @@ setup.title.not_available: "에이전트를 사용할 수 없음"
 setup.title.sign_in: "로그인 필요"
 
 # %{agent}는 런타임에 에이전트 표시 이름으로 대체됩니다.
-setup.subtitle.copilot_missing: "에이전트 \"%{agent}\"이(가) 설치되어 있지 않습니다. 아래 단계에 따라 설치하세요. 에이전트를 전환하려면 Intelligent Terminal Settings > Agent로 이동하세요."
-setup.subtitle.agent_missing: "에이전트 \"%{agent}\"이(가) 설치되어 있지 않습니다. 수동으로 다시 설치한 후 재시도하세요. 에이전트를 전환하려면 Intelligent Terminal Settings > Agent로 이동하세요."
-setup.subtitle.copilot_auth: "에이전트 \"%{agent}\"에 인증이 필요합니다. 아래 단계에 따라 로그인하세요. 에이전트를 전환하려면 Intelligent Terminal Settings > Agent로 이동하세요."
-setup.subtitle.agent_auth: "에이전트 \"%{agent}\"에 인증이 필요합니다. 에이전트를 통해 로그인한 후 아래에서 \"로그인 완료\"를 선택하세요. 에이전트를 전환하려면 Intelligent Terminal Settings > Agent로 이동하세요."
+setup.subtitle.copilot_missing: "에이전트 \"%{agent}\"이(가) 설치되어 있지 않습니다. 아래 단계에 따라 설치하세요. 에이전트를 전환하려면 지능형 터미널 Settings > Agent로 이동하세요."
+setup.subtitle.agent_missing: "에이전트 \"%{agent}\"이(가) 설치되어 있지 않습니다. 수동으로 다시 설치한 후 재시도하세요. 에이전트를 전환하려면 지능형 터미널 Settings > Agent로 이동하세요."
+setup.subtitle.copilot_auth: "에이전트 \"%{agent}\"에 인증이 필요합니다. 아래 단계에 따라 로그인하세요. 에이전트를 전환하려면 지능형 터미널 Settings > Agent로 이동하세요."
+setup.subtitle.agent_auth: "에이전트 \"%{agent}\"에 인증이 필요합니다. 에이전트를 통해 로그인한 후 아래에서 \"로그인 완료\"를 선택하세요. 에이전트를 전환하려면 지능형 터미널 Settings > Agent로 이동하세요."
 setup.description.fre_line1: "지능형 터미널에서 사용할 기본 에이전트를 선택하세요."
 setup.description.fre_line2: "설정으로 이동하여 작업 영역을 구성하고 설정할 수 있습니다."
 
@@ -41,7 +41,7 @@ auth.hint_footer: "  Enter를 눌러 로그인, Esc를 눌러 뒤로 가기"  # 
 # ── 채팅 보기 (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "생각 중…"
 chat.welcome_title: "지능형 터미널에 오신 것을 환영합니다!"
-chat.welcome_disclaimer: "Intelligent Terminal은 AI를 사용합니다. 실수가 있는지 확인하세요."
+chat.welcome_disclaimer: "지능형 터미널은 AI를 사용합니다. 실수가 있는지 확인하세요."
 chat.plan_header: "계획:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

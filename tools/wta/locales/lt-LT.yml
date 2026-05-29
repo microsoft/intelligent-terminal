@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Sveiki atvykę į Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Sveiki atvykę į Išmanusis Terminalas!"
 setup.title.agent_missing: "Agentas nerastas"
 setup.title.agent_error: "Nepavyko prisijungti prie agento"
 setup.title.switch_agent: "Pakeisti agentą"
@@ -8,13 +8,13 @@ setup.title.not_available: "Agentas nepasiekiamas"
 setup.title.sign_in: "Reikia prisijungti"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Norėdami jį įdiegti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Įdiekite jį iš naujo rankiniu būdu, tada bandykite dar kartą. Norėdami pakeisti agentą, eikite į Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Norėdami prisijungti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Prisijunkite per agentą, tada pasirinkite \"Prisijungiau\" žemiau. Norėdami pakeisti agentą, eikite į Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Norėdami jį įdiegti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
+setup.subtitle.agent_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Įdiekite jį iš naujo rankiniu būdu, tada bandykite dar kartą. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
+setup.subtitle.copilot_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Norėdami prisijungti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
+setup.subtitle.agent_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Prisijunkite per agentą, tada pasirinkite \"Prisijungiau\" žemiau. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Pasirinkite numatytąjį agentą, kurį norite naudoti Intelligent Terminal. Galite"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Pasirinkite numatytąjį agentą, kurį norite naudoti Išmanusis Terminalas. Galite"
 setup.description.fre_line2: "eiti į Settings, kad sukonfigūruotumėte ir nustatytumėte savo darbo sritį."
 
 setup.option.install: "Įdiegti %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Paspauskite Enter, kad prisijungtumėte, Esc, kad grįžtum
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Mąsto..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Sveiki atvykę į Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal naudoja AI. Tikrinkite klaidas."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Sveiki atvykę į Išmanusis Terminalas!"
+chat.welcome_disclaimer: "Išmanusis Terminalas naudoja AI. Tikrinkite klaidas."
 chat.plan_header: "Planas:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

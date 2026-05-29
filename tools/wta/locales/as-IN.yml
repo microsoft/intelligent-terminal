@@ -1,6 +1,6 @@
 # ছেটআপ স্ক্ৰীণ শিৰোনাম
-# {Locked="Intelligent Terminal"} - প্ৰডাক্টৰ নাম, অনুবাদ নকৰিব
-setup.title.first_run: "Intelligent Terminal লৈ স্বাগতম!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "ইন্টেলিজেন্ট টাৰ্মিনেল লৈ স্বাগতম!"
 setup.title.agent_missing: "এজেণ্ট পোৱা নগল"
 setup.title.agent_error: "এজেণ্ট সংযোগ বিফল হল"
 setup.title.switch_agent: "এজেণ্ট সলনি কৰক"
@@ -8,13 +8,13 @@ setup.title.not_available: "এজেণ্ট উপলব্ধ নহয়"
 setup.title.sign_in: "চাইন ইন প্ৰয়োজন"
 
 # %{agent} ৰানটাইমত এজেণ্টৰ প্ৰদৰ্শন নামেৰে সলনি হয়।
-setup.subtitle.copilot_missing: "আপোনাৰ এজেণ্ট \"%{agent}\" ইনষ্টল কৰা হোৱা নাই। ইয়াক ইনষ্টল কৰিবলৈ তলৰ পদক্ষেপসমূহ অনুসৰণ কৰক। এজেণ্ট সলনি কৰিবলৈ Intelligent Terminal Settings > Agent লৈ যাওক।"
-setup.subtitle.agent_missing: "আপোনাৰ এজেণ্ট \"%{agent}\" ইনষ্টল কৰা হোৱা নাই। অনুগ্ৰহ কৰি ইয়াক হাতেৰে পুনৰ ইনষ্টল কৰক, তাৰ পিছত পুনৰ চেষ্টা কৰক। এজেণ্ট সলনি কৰিবলৈ Intelligent Terminal Settings > Agent লৈ যাওক।"
-setup.subtitle.copilot_auth: "আপোনাৰ এজেণ্ট \"%{agent}\" ৰ প্ৰমাণীকৰণ প্ৰয়োজন। চাইন ইন কৰিবলৈ তলৰ পদক্ষেপসমূহ অনুসৰণ কৰক। এজেণ্ট সলনি কৰিবলৈ Intelligent Terminal Settings > Agent লৈ যাওক।"
-setup.subtitle.agent_auth: "আপোনাৰ এজেণ্ট \"%{agent}\"-ৰ প্ৰমাণীকৰণৰ প্ৰয়োজন। অনুগ্ৰহ কৰি এজেণ্টৰ জৰিয়তে ছাইন ইন কৰক, তাৰ পিছত তলত \"মই চাইন ইন কৰিলোঁ\" নিৰ্বাচন কৰক। এজেণ্ট সলাবলৈ Intelligent Terminal Settings > Agent লৈ যাওক।"
+setup.subtitle.copilot_missing: "আপোনাৰ এজেণ্ট \"%{agent}\" ইনষ্টল কৰা হোৱা নাই। ইয়াক ইনষ্টল কৰিবলৈ তলৰ পদক্ষেপসমূহ অনুসৰণ কৰক। এজেণ্ট সলনি কৰিবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"
+setup.subtitle.agent_missing: "আপোনাৰ এজেণ্ট \"%{agent}\" ইনষ্টল কৰা হোৱা নাই। অনুগ্ৰহ কৰি ইয়াক হাতেৰে পুনৰ ইনষ্টল কৰক, তাৰ পিছত পুনৰ চেষ্টা কৰক। এজেণ্ট সলনি কৰিবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"
+setup.subtitle.copilot_auth: "আপোনাৰ এজেণ্ট \"%{agent}\" ৰ প্ৰমাণীকৰণ প্ৰয়োজন। চাইন ইন কৰিবলৈ তলৰ পদক্ষেপসমূহ অনুসৰণ কৰক। এজেণ্ট সলনি কৰিবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"
+setup.subtitle.agent_auth: "আপোনাৰ এজেণ্ট \"%{agent}\"-ৰ প্ৰমাণীকৰণৰ প্ৰয়োজন। অনুগ্ৰহ কৰি এজেণ্টৰ জৰিয়তে ছাইন ইন কৰক, তাৰ পিছত তলত \"মই চাইন ইন কৰিলোঁ\" নিৰ্বাচন কৰক। এজেণ্ট সলাবলৈ ইন্টেলিজেন্ট টাৰ্মিনেল Settings > Agent লৈ যাওক।"
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Intelligent Terminal-ত ব্যৱহাৰ কৰিব বিচৰা ডিফল্ট এজেণ্ট বাছনি কৰক। আপুনি"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "ইন্টেলিজেন্ট টাৰ্মিনেল-ত ব্যৱহাৰ কৰিব বিচৰা ডিফল্ট এজেণ্ট বাছনি কৰক। আপুনি"
 setup.description.fre_line2: "আপোনাৰ ৱৰ্কস্পেচ কনফিগাৰ আৰু ছেটআপ কৰিবলৈ Settings লৈ যাব পাৰে।"
 
 setup.option.install: "%{agent} ইনষ্টল কৰক"
@@ -43,9 +43,9 @@ auth.hint_footer: "  চাইন ইনৰ বাবে Enter টিপক, উ
 
 # ── চাট দৃশ্য (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "চিন্তা কৰি আছে…"
-# {Locked="Intelligent Terminal"} - প্ৰডাক্টৰ নাম, অনুবাদ নকৰিব
-chat.welcome_title: "Intelligent Terminal লৈ স্বাগতম!"
-chat.welcome_disclaimer: "Intelligent Terminal-এ AI ব্যৱহাৰ কৰে। ভুলৰ বাবে পৰীক্ষা কৰক।"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "ইন্টেলিজেন্ট টাৰ্মিনেল লৈ স্বাগতম!"
+chat.welcome_disclaimer: "ইন্টেলিজেন্ট টাৰ্মিনেল-এ AI ব্যৱহাৰ কৰে। ভুলৰ বাবে পৰীক্ষা কৰক।"
 chat.plan_header: "পৰিকল্পনা:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

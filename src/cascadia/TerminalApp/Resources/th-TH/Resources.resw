@@ -119,15 +119,15 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>ยินดีต้อนรับสู่ Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name. Keep it in English.</comment>
+    <value>ยินดีต้อนรับสู่ เทอร์มินัลอัจฉริยะ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>ตั้งค่าผู้ช่วยในตัวเพื่อช่วยอธิบายข้อผิดพลาด ร่างคำสั่ง และแก้ไขปัญหาที่ติดขัดได้ทันทีในที่ที่คุณทำงาน </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>เรียนรู้เพิ่มเติมเกี่ยวกับ Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name. Keep it in English.</comment>
+    <value>เรียนรู้เพิ่มเติมเกี่ยวกับ เทอร์มินัลอัจฉริยะ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>ทำงานลื่นไหลด้วยเอเจนต์ AI ในตัว</value>
@@ -149,8 +149,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>ยินดีต้อนรับสู่ Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name. Keep it in English.</comment>
+    <value>ยินดีต้อนรับสู่ เทอร์มินัลอัจฉริยะ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>เลือกสิ่งที่ต้องการตั้งค่าตอนนี้ คุณสามารถเปลี่ยนแปลงการตั้งค่าเหล่านี้ได้ตลอดเวลา </value>
@@ -181,9 +181,8 @@
     <value>การจัดการเซสชัน</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>อนุญาตให้ Intelligent Terminal ติดตามสถานะของเอเจนต์ที่กำลังทำงานหรือใช้งานอยู่</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name. Keep it in English.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>อนุญาตให้ เทอร์มินัลอัจฉริยะ ติดตามสถานะของเอเจนต์ที่กำลังทำงานหรือใช้งานอยู่</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ การเปิดใช้งานนี้จะติดตั้ง hooks การรวมเพื่อติดตามเซสชันข้ามเอเจนต์ของคุณ</value>

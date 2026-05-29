@@ -1,6 +1,6 @@
 # Opstellingskerm titels
-# {Locked="Intelligent Terminal"} - produknaam, moenie vertaal nie
-setup.title.first_run: "Welkom by Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Welkom by Intelligente Terminaal!"
 setup.title.agent_missing: "Agent nie gevind nie"
 setup.title.agent_error: "Agentverbinding het misluk"
 setup.title.switch_agent: "Wissel agent"
@@ -8,13 +8,13 @@ setup.title.not_available: "Agent is nie beskikbaar nie"
 setup.title.sign_in: "Aanmelding vereis"
 
 # %{agent} word tydens uitvoering vervang met die agent se vertoonnaam.
-setup.subtitle.copilot_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Volg die stappe hieronder om dit te installeer. Om van agent te wissel, gaan na Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Herinstalleer dit handmatig en probeer weer. Om van agent te wissel, gaan na Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Jou agent \"%{agent}\" vereis stawing. Volg die stappe hieronder om aan te meld. Om van agent te wissel, gaan na Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Jou agent \"%{agent}\" vereis stawing. Meld aan via die agent en kies dan \"Ek het aangemeld\" hieronder. Om van agent te wissel, gaan na Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Volg die stappe hieronder om dit te installeer. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
+setup.subtitle.agent_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Herinstalleer dit handmatig en probeer weer. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
+setup.subtitle.copilot_auth: "Jou agent \"%{agent}\" vereis stawing. Volg die stappe hieronder om aan te meld. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
+setup.subtitle.agent_auth: "Jou agent \"%{agent}\" vereis stawing. Meld aan via die agent en kies dan \"Ek het aangemeld\" hieronder. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
 
-# {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Kies die verstek agent wat jy in Intelligent Terminal wil gebruik. Jy kan"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
+setup.description.fre_line1: "Kies die verstek agent wat jy in Intelligente Terminaal wil gebruik. Jy kan"
 setup.description.fre_line2: "na Settings navigeer om jou werkspasie op te stel en te konfigureer."
 
 setup.option.install: "Installeer %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Druk Enter om aan te meld, Esc om terug te gaan"  # {Locked
 
 # ── Kletsaansig (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Dink na…"
-# {Locked="Intelligent Terminal"} - produknaam, moenie vertaal nie
-chat.welcome_title: "Welkom by Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal gebruik AI. Kyk vir foute."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Welkom by Intelligente Terminaal!"
+chat.welcome_disclaimer: "Intelligente Terminaal gebruik AI. Kyk vir foute."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

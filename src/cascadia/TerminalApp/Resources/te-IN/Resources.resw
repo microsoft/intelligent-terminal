@@ -119,15 +119,15 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal-కు స్వాగతం</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ఇంటెలిజెంట్ టెర్మినల్-కు స్వాగతం</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>లోపాలను వివరించడానికి, కమాండ్‌లను డ్రాఫ్ట్ చేయడానికి మరియు టాస్క్‌లను అన్‌బ్లాక్ చేయడానికి సహాయం చేయడానికి మీ అంతర్నిర్మిత సహాయకుడిని సెటప్ చేయండి, మీరు పని చేసే చోటే. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Intelligent Terminal గురించి మరింత తెలుసుకోండి</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ఇంటెలిజెంట్ టెర్మినల్ గురించి మరింత తెలుసుకోండి</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>మీ అంతర్నిర్మిత AI ఏజెంట్‌తో ప్రవాహంలో ఉండండి</value>
@@ -149,8 +149,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal-కు స్వాగతం</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ఇంటెలిజెంట్ టెర్మినల్-కు స్వాగతం</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>ఇప్పుడు ఏమి సెటప్ చేయాలో ఎంచుకోండి. మీరు వీటిని ఎప్పుడైనా మార్చవచ్చు. </value>
@@ -181,9 +181,8 @@
     <value>సెషన్ నిర్వహణ</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal కు మీ రన్ అవుతున్న లేదా సక్రియ ఏజెంట్‌ల స్థితిని ట్రాక్ చేయడానికి అనుమతి ఇవ్వండి.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ఇంటెలిజెంట్ టెర్మినల్ కు మీ రన్ అవుతున్న లేదా సక్రియ ఏజెంట్‌ల స్థితిని ట్రాక్ చేయడానికి అనుమతి ఇవ్వండి.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ దీన్ని ఎనేబుల్ చేయడం వలన మీ ఏజెంట్‌లలో సెషన్‌లను ట్రాక్ చేయడానికి ఇంటిగ్రేషన్ hooks ఇన్‌స్టాల్ చేయబడతాయి.</value>

@@ -1,6 +1,6 @@
 # Titli tal-iskrin tas-setup
-# {Locked="Intelligent Terminal"} - isem il-prodott, tittradux
-setup.title.first_run: "Merħba fl-Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Merħba fl-Terminal Intelliġenti!"
 setup.title.agent_missing: "L-aġent ma nstabx"
 setup.title.agent_error: "Il-konnessjoni mal-aġent falliet"
 setup.title.switch_agent: "Ibdel l-aġent"
@@ -8,13 +8,13 @@ setup.title.not_available: "L-aġent mhuwiex disponibbli"
 setup.title.sign_in: "Hemm bżonn li tidħol"
 
 # %{agent} jiġi sostitwit bl-isem tal-aġent waqt l-eżekuzzjoni.
-setup.subtitle.copilot_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Segwi l-passi t'hawn taħt biex tinstallaw. Biex tibdel l-aġenti, mur għal Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Erġa' installah manwalment, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Segwi l-passi t'hawn taħt biex tidħol. Biex tibdel l-aġenti, mur għal Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Idħol permezz tal-aġent, imbagħad agħżel \"Dħalt\" hawn taħt. Biex tibdel l-aġenti, mur għal Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Segwi l-passi t'hawn taħt biex tinstallaw. Biex tibdel l-aġenti, mur għal Terminal Intelliġenti Settings > Agent."
+setup.subtitle.agent_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Erġa' installah manwalment, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Terminal Intelliġenti Settings > Agent."
+setup.subtitle.copilot_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Segwi l-passi t'hawn taħt biex tidħol. Biex tibdel l-aġenti, mur għal Terminal Intelliġenti Settings > Agent."
+setup.subtitle.agent_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Idħol permezz tal-aġent, imbagħad agħżel \"Dħalt\" hawn taħt. Biex tibdel l-aġenti, mur għal Terminal Intelliġenti Settings > Agent."
 
-# {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Agħżel l-aġent awtomatiku li tixtieq tuża fl-Intelligent Terminal. Tista'"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
+setup.description.fre_line1: "Agħżel l-aġent awtomatiku li tixtieq tuża fl-Terminal Intelliġenti. Tista'"
 setup.description.fre_line2: "tmur għal Settings biex tikkonfigura u twaqqaf l-ispazju tax-xogħol tiegħek."
 
 setup.option.install: "Installa %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Agħfas Enter biex tidħol, Esc biex tmur lura"  # {Locked=
 
 # ── Vista taċ-ċatt (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Qed jaħseb…"
-# {Locked="Intelligent Terminal"} - isem il-prodott, tittradux
-chat.welcome_title: "Merħba fl-Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal juża l-AI. Iċċekkja għall-iżbalji."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Merħba fl-Terminal Intelliġenti!"
+chat.welcome_disclaimer: "Terminal Intelliġenti juża l-AI. Iċċekkja għall-iżbalji."
 chat.plan_header: "Pjan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

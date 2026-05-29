@@ -958,8 +958,8 @@
   <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>No se ha encontrado ningún agente de IA. Instale un agente (p. ej., copilot, gemini) y asegúrese de que esté en PATH, o configure uno en Configuración &gt; Agentes de IA.</value><comment>{Locked="PATH","copilot","gemini"}</comment></data>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Bienvenido a Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Bienvenido a Terminal Inteligente</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Configura tu asistente integrado para ayudarte a explicar errores, redactar comandos y desbloquear tareas justo donde trabajas. </value>
@@ -969,8 +969,8 @@
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Más información sobre Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Más información sobre Terminal Inteligente</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Mantén tu flujo de trabajo con tu agente de IA integrado</value>
@@ -989,8 +989,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Bienvenido a Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Bienvenido a Terminal Inteligente</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Elige qué configurar ahora. Puedes cambiar estos ajustes en cualquier momento. </value>
@@ -1020,8 +1020,8 @@
     <value>Gestión de sesiones</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Otorga permiso a Intelligent Terminal para rastrear el estado de tus agentes en ejecución o activos.</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Otorga permiso a Terminal Inteligente para rastrear el estado de tus agentes en ejecución o activos.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ Habilitar esto instalará hooks de integración para rastrear sesiones en tus agentes.</value>

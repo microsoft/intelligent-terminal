@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Intelligent Terminal-ға қош келдіңіз!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Зияткер терминал-ға қош келдіңіз!"
 setup.title.agent_missing: "Агент табылмады"
 setup.title.agent_error: "Агентке қосылу сәтсіз аяқталды"
 setup.title.switch_agent: "Агентті ауыстыру"
@@ -8,13 +8,13 @@ setup.title.not_available: "Агент қолжетімсіз"
 setup.title.sign_in: "Жүйеге кіру қажет"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Сіздің \"%{agent}\" агентіңіз орнатылмаған. Орнату үшін төмендегі қадамдарды орындаңыз. Агентті ауыстыру үшін Intelligent Terminal Settings > Agent бөліміне өтіңіз."
-setup.subtitle.agent_missing: "Сіздің \"%{agent}\" агентіңіз орнатылмаған. Қолмен қайта орнатып, қайталап көріңіз. Агентті ауыстыру үшін Intelligent Terminal Settings > Agent бөліміне өтіңіз."
-setup.subtitle.copilot_auth: "Сіздің \"%{agent}\" агентіңіз аутентификацияны талап етеді. Жүйеге кіру үшін төмендегі қадамдарды орындаңыз. Агентті ауыстыру үшін Intelligent Terminal Settings > Agent бөліміне өтіңіз."
-setup.subtitle.agent_auth: "Сіздің \"%{agent}\" агентіңіз аутентификацияны талап етеді. Агент арқылы жүйеге кіріп, төменде \"Мен кірдім\" таңдаңыз. Агентті ауыстыру үшін Intelligent Terminal Settings > Agent бөліміне өтіңіз."
+setup.subtitle.copilot_missing: "Сіздің \"%{agent}\" агентіңіз орнатылмаған. Орнату үшін төмендегі қадамдарды орындаңыз. Агентті ауыстыру үшін Зияткер терминал Settings > Agent бөліміне өтіңіз."
+setup.subtitle.agent_missing: "Сіздің \"%{agent}\" агентіңіз орнатылмаған. Қолмен қайта орнатып, қайталап көріңіз. Агентті ауыстыру үшін Зияткер терминал Settings > Agent бөліміне өтіңіз."
+setup.subtitle.copilot_auth: "Сіздің \"%{agent}\" агентіңіз аутентификацияны талап етеді. Жүйеге кіру үшін төмендегі қадамдарды орындаңыз. Агентті ауыстыру үшін Зияткер терминал Settings > Agent бөліміне өтіңіз."
+setup.subtitle.agent_auth: "Сіздің \"%{agent}\" агентіңіз аутентификацияны талап етеді. Агент арқылы жүйеге кіріп, төменде \"Мен кірдім\" таңдаңыз. Агентті ауыстыру үшін Зияткер терминал Settings > Agent бөліміне өтіңіз."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Intelligent Terminal-да қолданғыңыз келетін әдепкі агентті таңдаңыз. Жұмыс кеңістігіңізді"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Зияткер терминал-да қолданғыңыз келетін әдепкі агентті таңдаңыз. Жұмыс кеңістігіңізді"
 setup.description.fre_line2: "баптау және реттеу үшін Settings бөліміне өтуіңізге болады."
 
 setup.option.install: "%{agent} орнату"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Жүйеге кіру үшін Enter, артқа қайту
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Ойланып жатырмын…"
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Intelligent Terminal-ға қош келдіңіз!"
-chat.welcome_disclaimer: "Intelligent Terminal AI пайдаланады. Қателерді тексеріңіз."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Зияткер терминал-ға қош келдіңіз!"
+chat.welcome_disclaimer: "Зияткер терминал AI пайдаланады. Қателерді тексеріңіз."
 chat.plan_header: "Жоспар:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -7,10 +7,10 @@ setup.title.not_available: "エージェントを利用できません"
 setup.title.sign_in: "サインインが必要です"
 
 # %{agent} は実行時にエージェントの表示名に置換されます。
-setup.subtitle.copilot_missing: "エージェント \"%{agent}\" がインストールされていません。以下の手順に従ってインストールしてください。エージェントを切り替えるにはIntelligent Terminal Settings > Agent に移動してください。"
-setup.subtitle.agent_missing: "エージェント \"%{agent}\" がインストールされていません。手動で再インストールしてから再試行してください。エージェントを切り替えるにはIntelligent Terminal Settings > Agent に移動してください。"
-setup.subtitle.copilot_auth: "エージェント \"%{agent}\" には認証が必要です。以下の手順に従ってサインインしてください。エージェントを切り替えるにはIntelligent Terminal Settings > Agent に移動してください。"
-setup.subtitle.agent_auth: "エージェント \"%{agent}\" には認証が必要です。エージェントからサインインし、下の \"サインイン済み\" を選択してください。エージェントを切り替えるにはIntelligent Terminal Settings > Agent に移動してください。"
+setup.subtitle.copilot_missing: "エージェント \"%{agent}\" がインストールされていません。以下の手順に従ってインストールしてください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
+setup.subtitle.agent_missing: "エージェント \"%{agent}\" がインストールされていません。手動で再インストールしてから再試行してください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
+setup.subtitle.copilot_auth: "エージェント \"%{agent}\" には認証が必要です。以下の手順に従ってサインインしてください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
+setup.subtitle.agent_auth: "エージェント \"%{agent}\" には認証が必要です。エージェントからサインインし、下の \"サインイン済み\" を選択してください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
 setup.description.fre_line1: "インテリジェント ターミナルで使用する既定のエージェントを選択してください。"
 setup.description.fre_line2: "設定に移動してワークスペースを構成およびセットアップできます。"
 
@@ -41,7 +41,7 @@ auth.hint_footer: "  Enter でサインイン、Esc で戻る"  # {Locked="Enter
 # ── チャット ビュー (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "考え中…"
 chat.welcome_title: "インテリジェント ターミナルへようこそ！"
-chat.welcome_disclaimer: "Intelligent Terminal は AI を使用しています。誤りがないか確認してください。"
+chat.welcome_disclaimer: "インテリジェント ターミナルは AI を使用しています。誤りがないか確認してください。"
 chat.plan_header: "プラン:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Добре дошли в Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Добре дошли в Интелигентен Терминал!"
 setup.title.agent_missing: "Агентът не е намерен"
 setup.title.agent_error: "Връзката с агента е неуспешна"
 setup.title.switch_agent: "Смяна на агента"
@@ -8,13 +8,13 @@ setup.title.not_available: "Агентът не е наличен"
 setup.title.sign_in: "Изисква се влизане"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Вашият агент \"%{agent}\" не е инсталиран. Следвайте стъпките по-долу, за да го инсталирате. За да смените агента, отидете в Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Вашият агент \"%{agent}\" не е инсталиран. Преинсталирайте го ръчно и опитайте отново. За да смените агента, отидете в Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Следвайте стъпките по-долу, за да влезете. За да смените агента, отидете в Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Влезте чрез агента и изберете \"Влязох\" по-долу. За да смените агента, отидете в Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Вашият агент \"%{agent}\" не е инсталиран. Следвайте стъпките по-долу, за да го инсталирате. За да смените агента, отидете в Интелигентен Терминал Settings > Agent."
+setup.subtitle.agent_missing: "Вашият агент \"%{agent}\" не е инсталиран. Преинсталирайте го ръчно и опитайте отново. За да смените агента, отидете в Интелигентен Терминал Settings > Agent."
+setup.subtitle.copilot_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Следвайте стъпките по-долу, за да влезете. За да смените агента, отидете в Интелигентен Терминал Settings > Agent."
+setup.subtitle.agent_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Влезте чрез агента и изберете \"Влязох\" по-долу. За да смените агента, отидете в Интелигентен Терминал Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Изберете агента по подразбиране, който искате да използвате в Intelligent Terminal. Можете"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Изберете агента по подразбиране, който искате да използвате в Интелигентен Терминал. Можете"
 setup.description.fre_line2: "да отидете в Settings, за да конфигурирате работното си пространство."
 
 setup.option.install: "Инсталиране на %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Натиснете Enter за влизане, Esc за вр
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Мисля..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Добре дошли в Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal използва AI. Проверявайте за грешки."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Добре дошли в Интелигентен Терминал!"
+chat.welcome_disclaimer: "Интелигентен Терминал използва AI. Проверявайте за грешки."
 chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -1,6 +1,6 @@
 # സെറ്റപ്പ് സ്ക്രീന്‍ ശീര്‍ഷകങ്ങള്‍
-# {Locked="Intelligent Terminal"} - ഉല്‍പ്പന്ന നാമം, വിവര്‍ത്തനം ചെയ്യരുത്
-setup.title.first_run: "Intelligent Terminal-ലേക്ക് സ്വാഗതം!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "ഇന്റലിജന്റ് ടെർമിനൽ-ലേക്ക് സ്വാഗതം!"
 setup.title.agent_missing: "ഏജന്റ് കണ്ടെത്തിയില്ല"
 setup.title.agent_error: "ഏജന്റ് കണക്ഷന്‍ പരാജയപ്പെട്ടു"
 setup.title.switch_agent: "ഏജന്റ് മാറ്റുക"
@@ -8,13 +8,13 @@ setup.title.not_available: "ഏജന്റ് ലഭ്യമല്ല"
 setup.title.sign_in: "സൈന്‍ ഇന്‍ ആവശ്യമാണ്"
 
 # %{agent} റണ്‍ടൈമില്‍ ഏജന്റ് പ്രദര്‍ശന നാമം ഉപയോഗിച്ച് മാറ്റിസ്ഥാപിക്കപ്പെടുന്നു.
-setup.subtitle.copilot_missing: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\" ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടില്ല. ഇന്‍സ്റ്റാള്‍ ചെയ്യാന്‍ താഴെയുള്ള ഘട്ടങ്ങള്‍ പിന്തുടരുക. ഏജന്റ് മാറ്റാന്‍ Intelligent Terminal Settings > Agent-ലേക്ക് പോകുക."
-setup.subtitle.agent_missing: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\" ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടില്ല. ദയവായി സ്വമേധയാ വീണ്ടും ഇന്‍സ്റ്റാള്‍ ചെയ്ത്, വീണ്ടും ശ്രമിക്കുക. ഏജന്റ് മാറ്റാന്‍ Intelligent Terminal Settings > Agent-ലേക്ക് പോകുക."
-setup.subtitle.copilot_auth: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\"-ന് പ്രമാണീകരണം ആവശ്യമാണ്. സൈന്‍ ഇന്‍ ചെയ്യാന്‍ താഴെയുള്ള ഘട്ടങ്ങള്‍ പിന്തുടരുക. ഏജന്റ് മാറ്റാന്‍ Intelligent Terminal Settings > Agent-ലേക്ക് പോകുക."
-setup.subtitle.agent_auth: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\"-ന് പ്രാമാണീകരണം ആവശ്യമാണ്. ദയവായി ഏജന്റ് വഴി സൈൻ ഇൻ ചെയ്ത് താഴെ \"ഞാൻ സൈൻ ഇൻ ചെയ്‌തു\" തിരഞ്ഞെടുക്കുക. ഏജന്റുകൾ മാറ്റാൻ Intelligent Terminal Settings > Agent-ലേക്ക് പോകുക."
+setup.subtitle.copilot_missing: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\" ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടില്ല. ഇന്‍സ്റ്റാള്‍ ചെയ്യാന്‍ താഴെയുള്ള ഘട്ടങ്ങള്‍ പിന്തുടരുക. ഏജന്റ് മാറ്റാന്‍ ഇന്റലിജന്റ് ടെർമിനൽ Settings > Agent-ലേക്ക് പോകുക."
+setup.subtitle.agent_missing: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\" ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടില്ല. ദയവായി സ്വമേധയാ വീണ്ടും ഇന്‍സ്റ്റാള്‍ ചെയ്ത്, വീണ്ടും ശ്രമിക്കുക. ഏജന്റ് മാറ്റാന്‍ ഇന്റലിജന്റ് ടെർമിനൽ Settings > Agent-ലേക്ക് പോകുക."
+setup.subtitle.copilot_auth: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\"-ന് പ്രമാണീകരണം ആവശ്യമാണ്. സൈന്‍ ഇന്‍ ചെയ്യാന്‍ താഴെയുള്ള ഘട്ടങ്ങള്‍ പിന്തുടരുക. ഏജന്റ് മാറ്റാന്‍ ഇന്റലിജന്റ് ടെർമിനൽ Settings > Agent-ലേക്ക് പോകുക."
+setup.subtitle.agent_auth: "നിങ്ങളുടെ ഏജന്റ് \"%{agent}\"-ന് പ്രാമാണീകരണം ആവശ്യമാണ്. ദയവായി ഏജന്റ് വഴി സൈൻ ഇൻ ചെയ്ത് താഴെ \"ഞാൻ സൈൻ ഇൻ ചെയ്‌തു\" തിരഞ്ഞെടുക്കുക. ഏജന്റുകൾ മാറ്റാൻ ഇന്റലിജന്റ് ടെർമിനൽ Settings > Agent-ലേക്ക് പോകുക."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Intelligent Terminal-ൽ ഉപയോഗിക്കാൻ ആഗ്രഹിക്കുന്ന ഡിഫോൾട്ട് ഏജന്റ് തിരഞ്ഞെടുക്കുക. നിങ്ങൾക്ക്"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "ഇന്റലിജന്റ് ടെർമിനൽ-ൽ ഉപയോഗിക്കാൻ ആഗ്രഹിക്കുന്ന ഡിഫോൾട്ട് ഏജന്റ് തിരഞ്ഞെടുക്കുക. നിങ്ങൾക്ക്"
 setup.description.fre_line2: "നിങ്ങളുടെ വര്‍ക്ക്‌സ്‌പേസ് കോണ്‍ഫിഗര്‍ ചെയ്ത് സജ്ജീകരിക്കാന്‍ Settings-ലേക്ക് നാവിഗേറ്റ് ചെയ്യാം."
 
 setup.option.install: "%{agent} വീണ്ടും ഇന്‍സ്റ്റാള്‍ ചെയ്യുക"
@@ -43,9 +43,9 @@ auth.hint_footer: "  സൈന്‍ ഇന്‍ ചെയ്യാന്‍ En
 
 # ── ചാറ്റ് വ്യൂ (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "ചിന്തിക്കുന്നു…"
-# {Locked="Intelligent Terminal"} - ഉല്‍പ്പന്ന നാമം, വിവര്‍ത്തനം ചെയ്യരുത്
-chat.welcome_title: "Intelligent Terminal-ലേക്ക് സ്വാഗതം!"
-chat.welcome_disclaimer: "Intelligent Terminal AI ഉപയോഗിക്കുന്നു. തെറ്റുകൾ പരിശോധിക്കുക."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "ഇന്റലിജന്റ് ടെർമിനൽ-ലേക്ക് സ്വാഗതം!"
+chat.welcome_disclaimer: "ഇന്റലിജന്റ് ടെർമിനൽ AI ഉപയോഗിക്കുന്നു. തെറ്റുകൾ പരിശോധിക്കുക."
 chat.plan_header: "പദ്ധതി:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

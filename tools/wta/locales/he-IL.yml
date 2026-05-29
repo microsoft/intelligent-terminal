@@ -1,6 +1,6 @@
 # כותרות מסך הגדרה
-# {Locked="Intelligent Terminal"} - שם המוצר, אין לתרגם
-setup.title.first_run: "ברוכים הבאים ל-Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "ברוכים הבאים ל-מסוף חכם!"
 setup.title.agent_missing: "הסוכן לא נמצא"
 setup.title.agent_error: "החיבור לסוכן נכשל"
 setup.title.switch_agent: "החלף סוכן"
@@ -8,13 +8,13 @@ setup.title.not_available: "הסוכן אינו זמין"
 setup.title.sign_in: "נדרשת כניסה"
 
 # %{agent} מוחלף בשם התצוגה של הסוכן בזמן ריצה.
-setup.subtitle.copilot_missing: "הסוכן \"%{agent}\" אינו מותקן. בצע את השלבים שלהלן כדי להתקין אותו. כדי להחליף סוכנים, עבור אל Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "הסוכן \"%{agent}\" אינו מותקן. התקן אותו מחדש באופן ידני ולאחר מכן נסה שוב. כדי להחליף סוכנים, עבור אל Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "הסוכן \"%{agent}\" דורש אימות. בצע את השלבים שלהלן כדי להיכנס. כדי להחליף סוכנים, עבור אל Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "הסוכן \"%{agent}\" דורש אימות. היכנס דרך הסוכן ולאחר מכן בחר \"נכנסתי\" למטה. כדי להחליף סוכנים, עבור אל Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "הסוכן \"%{agent}\" אינו מותקן. בצע את השלבים שלהלן כדי להתקין אותו. כדי להחליף סוכנים, עבור אל מסוף חכם Settings > Agent."
+setup.subtitle.agent_missing: "הסוכן \"%{agent}\" אינו מותקן. התקן אותו מחדש באופן ידני ולאחר מכן נסה שוב. כדי להחליף סוכנים, עבור אל מסוף חכם Settings > Agent."
+setup.subtitle.copilot_auth: "הסוכן \"%{agent}\" דורש אימות. בצע את השלבים שלהלן כדי להיכנס. כדי להחליף סוכנים, עבור אל מסוף חכם Settings > Agent."
+setup.subtitle.agent_auth: "הסוכן \"%{agent}\" דורש אימות. היכנס דרך הסוכן ולאחר מכן בחר \"נכנסתי\" למטה. כדי להחליף סוכנים, עבור אל מסוף חכם Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "בחר את הסוכן שברצונך להשתמש בו כברירת מחדל ב-Intelligent Terminal. ניתן"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "בחר את הסוכן שברצונך להשתמש בו כברירת מחדל ב-מסוף חכם. ניתן"
 setup.description.fre_line2: "לנווט אל Settings כדי להגדיר את סביבת העבודה שלך."
 
 setup.option.install: "התקן את %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  לחץ Enter כדי להיכנס, Esc כדי לחזור"  #
 
 # ── תצוגת צ'אט (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "חושב…"
-# {Locked="Intelligent Terminal"} - שם המוצר, אין לתרגם
-chat.welcome_title: "ברוכים הבאים ל-Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal משתמש ב-AI. בדוק אם יש שגיאות."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "ברוכים הבאים ל-מסוף חכם!"
+chat.welcome_disclaimer: "מסוף חכם משתמש ב-AI. בדוק אם יש שגיאות."
 chat.plan_header: "תוכנית:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

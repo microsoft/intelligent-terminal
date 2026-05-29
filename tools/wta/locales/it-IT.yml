@@ -1,6 +1,6 @@
 # Titoli della schermata di configurazione
-# {Locked="Intelligent Terminal"} - nome del prodotto, non tradurre
-setup.title.first_run: "Benvenuto in Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Benvenuto in Terminale Intelligente!"
 setup.title.agent_missing: "Agente non trovato"
 setup.title.agent_error: "Connessione all'agente non riuscita"
 setup.title.switch_agent: "Cambia agente"
@@ -8,13 +8,13 @@ setup.title.not_available: "Agente non disponibile"
 setup.title.sign_in: "Accesso richiesto"
 
 # %{agent} viene sostituito con il nome visualizzato dell'agente in fase di esecuzione.
-setup.subtitle.copilot_missing: "L'agente \"%{agent}\" non è installato. Segui i passaggi seguenti per installarlo. Per cambiare agente, vai a Impostazioni di Intelligent Terminal > Agente."
-setup.subtitle.agent_missing: "L'agente \"%{agent}\" non è installato. Reinstallalo manualmente, quindi riprova. Per cambiare agente, vai a Impostazioni di Intelligent Terminal > Agente."
-setup.subtitle.copilot_auth: "L'agente \"%{agent}\" richiede l'autenticazione. Segui i passaggi seguenti per accedere. Per cambiare agente, vai a Impostazioni di Intelligent Terminal > Agente."
-setup.subtitle.agent_auth: "L'agente \"%{agent}\" richiede l'autenticazione. Accedi tramite l'agente, quindi seleziona \"Ho effettuato l'accesso\" di seguito. Per cambiare agente, vai a Impostazioni di Intelligent Terminal > Agente."
+setup.subtitle.copilot_missing: "L'agente \"%{agent}\" non è installato. Segui i passaggi seguenti per installarlo. Per cambiare agente, vai a Impostazioni di Terminale Intelligente > Agente."
+setup.subtitle.agent_missing: "L'agente \"%{agent}\" non è installato. Reinstallalo manualmente, quindi riprova. Per cambiare agente, vai a Impostazioni di Terminale Intelligente > Agente."
+setup.subtitle.copilot_auth: "L'agente \"%{agent}\" richiede l'autenticazione. Segui i passaggi seguenti per accedere. Per cambiare agente, vai a Impostazioni di Terminale Intelligente > Agente."
+setup.subtitle.agent_auth: "L'agente \"%{agent}\" richiede l'autenticazione. Accedi tramite l'agente, quindi seleziona \"Ho effettuato l'accesso\" di seguito. Per cambiare agente, vai a Impostazioni di Terminale Intelligente > Agente."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Scegli la CLI dell'agente predefinita da utilizzare in Intelligent Terminal. Puoi"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Scegli la CLI dell'agente predefinita da utilizzare in Terminale Intelligente. Puoi"
 setup.description.fre_line2: "accedere alle impostazioni per configurare e impostare il tuo spazio di lavoro."
 
 setup.option.install: "Installa %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Premi Enter per accedere, Esc per tornare indietro"  # {Loc
 
 # ── Vista chat (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Elaborazione in corso…"
-# {Locked="Intelligent Terminal"} - nome del prodotto, non tradurre
-chat.welcome_title: "Benvenuto in Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal usa l'IA. Verifica la presenza di errori."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Benvenuto in Terminale Intelligente!"
+chat.welcome_disclaimer: "Terminale Intelligente usa l'IA. Verifica la presenza di errori."
 chat.plan_header: "Piano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -6,15 +6,15 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Καλώς ήρθατε στο Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Καλώς ήρθατε στο Έξυπνο Τερματικό</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Ρυθμίστε τον ενσωματωμένο βοηθό σας για να σας βοηθά να εξηγείτε σφάλματα, να συντάσσετε εντολές και να ξεμπλοκάρετε εργασίες ακριβώς εκεί που εργάζεστε. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Μάθετε περισσότερα για το Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Μάθετε περισσότερα για το Έξυπνο Τερματικό</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Μείνετε στη ροή σας με τον ενσωματωμένο πράκτορα AI</value>
@@ -36,8 +36,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Καλώς ήρθατε στο Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Καλώς ήρθατε στο Έξυπνο Τερματικό</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Επιλέξτε τι θέλετε να ρυθμίσετε τώρα. Μπορείτε να αλλάξετε αυτές τις ρυθμίσεις ανά πάσα στιγμή. </value>
@@ -68,8 +68,8 @@
     <value>Διαχείριση συνεδριών</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Δώστε στο Intelligent Terminal δικαίωμα παρακολούθησης της κατάστασης των ενεργών πρακτόρων σας.</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Δώστε στο Έξυπνο Τερματικό δικαίωμα παρακολούθησης της κατάστασης των ενεργών πρακτόρων σας.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ Η ενεργοποίηση αυτής της λειτουργίας θα εγκαταστήσει hooks ενσωμάτωσης για την παρακολούθηση συνεδριών σε όλους τους πράκτορές σας.</value>

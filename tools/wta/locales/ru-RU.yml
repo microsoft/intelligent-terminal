@@ -1,6 +1,6 @@
 # Заголовки экрана настройки
-# {Locked="Intelligent Terminal"} - название продукта, не переводить
-setup.title.first_run: "Добро пожаловать в Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Добро пожаловать в Интеллектуальный Терминал!"
 setup.title.agent_missing: "Агент не найден"
 setup.title.agent_error: "Сбой подключения к агенту"
 setup.title.switch_agent: "Сменить агента"
@@ -8,13 +8,13 @@ setup.title.not_available: "Агент недоступен"
 setup.title.sign_in: "Требуется вход"
 
 # %{agent} заменяется отображаемым именем агента во время выполнения.
-setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" не установлен. Выполните указанные ниже шаги для его установки. Чтобы сменить агента, перейдите в Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" не установлен. Переустановите его вручную и повторите попытку. Чтобы сменить агента, перейдите в Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" требует аутентификации. Выполните указанные ниже шаги для входа. Чтобы сменить агента, перейдите в Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" требует аутентификации. Войдите через агента, затем выберите \"Я вошёл\" ниже. Чтобы сменить агента, перейдите в Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" не установлен. Выполните указанные ниже шаги для его установки. Чтобы сменить агента, перейдите в Интеллектуальный Терминал Settings > Agent."
+setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" не установлен. Переустановите его вручную и повторите попытку. Чтобы сменить агента, перейдите в Интеллектуальный Терминал Settings > Agent."
+setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" требует аутентификации. Выполните указанные ниже шаги для входа. Чтобы сменить агента, перейдите в Интеллектуальный Терминал Settings > Agent."
+setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" требует аутентификации. Войдите через агента, затем выберите \"Я вошёл\" ниже. Чтобы сменить агента, перейдите в Интеллектуальный Терминал Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Выберите агента по умолчанию для использования в Intelligent Terminal. Вы можете"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Выберите агента по умолчанию для использования в Интеллектуальный Терминал. Вы можете"
 setup.description.fre_line2: "перейти в настройки для настройки рабочей области."
 
 setup.option.install: "Установить %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Нажмите Enter для входа, Esc для возв
 
 # ── Представление чата (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Думаю…"
-# {Locked="Intelligent Terminal"} - название продукта, не переводить
-chat.welcome_title: "Добро пожаловать в Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal использует AI. Проверяйте ошибки."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Добро пожаловать в Интеллектуальный Терминал!"
+chat.welcome_disclaimer: "Интеллектуальный Терминал использует AI. Проверяйте ошибки."
 chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

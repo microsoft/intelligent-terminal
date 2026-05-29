@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Laipni lūdzam Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Laipni lūdzam Viedais Terminālis!"
 setup.title.agent_missing: "Aģents nav atrasts"
 setup.title.agent_error: "Neizdevās izveidot savienojumu ar aģentu"
 setup.title.switch_agent: "Mainīt aģentu"
@@ -8,13 +8,13 @@ setup.title.not_available: "Aģents nav pieejams"
 setup.title.sign_in: "Nepieciešama pierakstīšanās"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Izpildiet tālāk norādītās darbības, lai to instalētu. Lai mainītu aģentu, dodieties uz Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Pārinstalējiet to manuāli un mēģiniet vēlreiz. Lai mainītu aģentu, dodieties uz Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Izpildiet tālāk norādītās darbības, lai pierakstītos. Lai mainītu aģentu, dodieties uz Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Pierakstieties, izmantojot aģentu, un izvēlieties \"Esmu pierakstījies\" zemāk. Lai mainītu aģentu, dodieties uz Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Izpildiet tālāk norādītās darbības, lai to instalētu. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
+setup.subtitle.agent_missing: "Jūsu aģents \"%{agent}\" nav instalēts. Pārinstalējiet to manuāli un mēģiniet vēlreiz. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
+setup.subtitle.copilot_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Izpildiet tālāk norādītās darbības, lai pierakstītos. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
+setup.subtitle.agent_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Pierakstieties, izmantojot aģentu, un izvēlieties \"Esmu pierakstījies\" zemāk. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Izvēlieties noklusējuma aģentu, ko vēlaties izmantot Intelligent Terminal. Varat"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Izvēlieties noklusējuma aģentu, ko vēlaties izmantot Viedais Terminālis. Varat"
 setup.description.fre_line2: "doties uz Settings, lai konfigurētu un iestatītu savu darbvietu."
 
 setup.option.install: "Instalēt %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Nospiediet Enter, lai pierakstītos, Esc, lai atgrieztos"  
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Domā..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Laipni lūdzam Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal izmanto AI. Pārbaudiet kļūdas."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Laipni lūdzam Viedais Terminālis!"
+chat.welcome_disclaimer: "Viedais Terminālis izmanto AI. Pārbaudiet kļūdas."
 chat.plan_header: "Plāns:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

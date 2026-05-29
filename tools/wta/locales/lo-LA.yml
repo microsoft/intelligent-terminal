@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "ຍິນດີຕ້ອນຮັບສູ່ Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "ຍິນດີຕ້ອນຮັບສູ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ!"
 setup.title.agent_missing: "ບໍ່ພົບ agent"
 setup.title.agent_error: "ການເຊື່ອມຕໍ່ agent ລົ້ມເຫລວ"
 setup.title.switch_agent: "ປ່ຽນ agent"
@@ -8,13 +8,13 @@ setup.title.not_available: "Agent ບໍ່ພ້ອມໃຊ້ງານ"
 setup.title.sign_in: "ຕ້ອງການເຂົ້າສູ່ລະບົບ"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອຕິດຕັ້ງ། ເພື່ອປ່ຽນ agent, ໄປທີ່ Intelligent Terminal Settings > Agent།"
-setup.subtitle.agent_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ກະລຸນາຕິດຕັ້ງໃໝ່ດ້ວຍມື ແລ້ວລອງໃໝ່། ເພື່ອປ່ຽນ agent, ໄປທີ່ Intelligent Terminal Settings > Agent།"
-setup.subtitle.copilot_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອເຂົ້າສູ່ລະບົບ། ເພື່ອປ່ຽນ agent, ໄປທີ່ Intelligent Terminal Settings > Agent།"
-setup.subtitle.agent_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ກະລຸນາເຂົ້າສູ່ລະບົບຜ່ານ agent, ຈາກນັ້ນເລືອກ \"ຂ້ອຍໄດ້ເຂົ້າສູ່ລະບົບແລ້ວ\" ຂ້າງລຸ່ມ། ເພື່ອປ່ຽນ agent, ໄປທີ່ Intelligent Terminal Settings > Agent།"
+setup.subtitle.copilot_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອຕິດຕັ້ງ། ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent།"
+setup.subtitle.agent_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ກະລຸນາຕິດຕັ້ງໃໝ່ດ້ວຍມື ແລ້ວລອງໃໝ່། ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent།"
+setup.subtitle.copilot_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອເຂົ້າສູ່ລະບົບ། ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent།"
+setup.subtitle.agent_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ກະລຸນາເຂົ້າສູ່ລະບົບຜ່ານ agent, ຈາກນັ້ນເລືອກ \"ຂ້ອຍໄດ້ເຂົ້າສູ່ລະບົບແລ້ວ\" ຂ້າງລຸ່ມ། ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent།"
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "ເລືອກ agent CLI ເລີ່ມຕົ້ນທີ່ທ່ານຕ້ອງການໃຊ້ໃນ Intelligent Terminal། ທ່ານສາມາດ"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "ເລືອກ agent CLI ເລີ່ມຕົ້ນທີ່ທ່ານຕ້ອງການໃຊ້ໃນ ເທອຮ໌ມິນັລອັດຊະລິຍະ། ທ່ານສາມາດ"
 setup.description.fre_line2: "ໄປທີ່ Settings ເພື່ອຕັ້ງຄ່າ ແລະຕັ້ງຄ່າພື້ນທີ່ເຮັດວຽກຂອງທ່ານ།"
 
 setup.option.install: "ຕິດຕັ້ງ %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "ກົດ Enter ເພື່ອເຂົ້າສູ່ລະ
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "ກຳລັງຄິດ…"
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "ຍິນດີຕ້ອນຮັບສູ່ Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal ໃຊ້ AI. ກວດເບິ່ງຂໍ້ຜິດພາດ."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "ຍິນດີຕ້ອນຮັບສູ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ!"
+chat.welcome_disclaimer: "ເທອຮ໌ມິນັລອັດຊະລິຍະ ໃຊ້ AI. ກວດເບິ່ງຂໍ້ຜິດພາດ."
 chat.plan_header: "ແຜນການ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

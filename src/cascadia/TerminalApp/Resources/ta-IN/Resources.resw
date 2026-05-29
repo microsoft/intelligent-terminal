@@ -119,15 +119,15 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal-க்கு வரவேற்கிறோம்</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>அறிவாண் முனையம்-க்கு வரவேற்கிறோம்</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>பிழைகளை விளக்கவும், கட்டளைகளை வரையவும், பணிகளை முடக்கம் நீக்கவும் உதவ உங்கள் உள்ளிணைந்த உதவியாளரை அமைக்கவும், நீங்கள் பணிபுரியும் இடத்திலேயே. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Intelligent Terminal பற்றி மேலும் அறிக</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>அறிவாண் முனையம் பற்றி மேலும் அறிக</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>உங்கள் உள்ளிணைந்த AI முகவருடன் பணிப்பாய்வில் இருங்கள்</value>
@@ -149,8 +149,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal-க்கு வரவேற்கிறோம்</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>அறிவாண் முனையம்-க்கு வரவேற்கிறோம்</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>இப்போது என்ன அமைக்க வேண்டும் என்பதைத் தேர்வு செய்யுங்கள். இவற்றை எப்போது வேண்டுமானாலும் மாற்றலாம். </value>
@@ -181,9 +181,8 @@
     <value>அமர்வு மேலாண்மை</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal-க்கு உங்கள் இயங்கும் அல்லது செயலில் உள்ள முகவர்களின் நிலையைக் கண்காணிக்க அனுமதி வழங்கவும்.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>அறிவாண் முனையம்-க்கு உங்கள் இயங்கும் அல்லது செயலில் உள்ள முகவர்களின் நிலையைக் கண்காணிக்க அனுமதி வழங்கவும்.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ இதை இயக்குவது உங்கள் முகவர்களெங்கும் அமர்வுகளைக் கண்காணிக்க ஒருங்கிணைப்பு hooks-ஐ நிறுவும்.</value>

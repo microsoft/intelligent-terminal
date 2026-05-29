@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Καλώς ήρθατε στο Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Καλώς ήρθατε στο Έξυπνο Τερματικό!"
 setup.title.agent_missing: "Δεν βρέθηκε ο παράγοντας"
 setup.title.agent_error: "Η σύνδεση με τον παράγοντα απέτυχε"
 setup.title.switch_agent: "Αλλαγή παράγοντα"
@@ -8,13 +8,13 @@ setup.title.not_available: "Ο παράγοντας δεν είναι διαθέ
 setup.title.sign_in: "Απαιτείται σύνδεση"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Ακολουθήστε τα παρακάτω βήματα για να τον εγκαταστήσετε. Για αλλαγή παράγοντα, μεταβείτε στο Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Εγκαταστήστε τον ξανά χειροκίνητα και δοκιμάστε ξανά. Για αλλαγή παράγοντα, μεταβείτε στο Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Ακολουθήστε τα παρακάτω βήματα για να συνδεθείτε. Για αλλαγή παράγοντα, μεταβείτε στο Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Συνδεθείτε μέσω του παράγοντα και επιλέξτε \"Έχω συνδεθεί\" παρακάτω. Για αλλαγή παράγοντα, μεταβείτε στο Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Ακολουθήστε τα παρακάτω βήματα για να τον εγκαταστήσετε. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
+setup.subtitle.agent_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Εγκαταστήστε τον ξανά χειροκίνητα και δοκιμάστε ξανά. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
+setup.subtitle.copilot_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Ακολουθήστε τα παρακάτω βήματα για να συνδεθείτε. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
+setup.subtitle.agent_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Συνδεθείτε μέσω του παράγοντα και επιλέξτε \"Έχω συνδεθεί\" παρακάτω. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Επιλέξτε τον προεπιλεγμένο παράγοντα που θέλετε να χρησιμοποιήσετε στο Intelligent Terminal. Μπορείτε να"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Επιλέξτε τον προεπιλεγμένο παράγοντα που θέλετε να χρησιμοποιήσετε στο Έξυπνο Τερματικό. Μπορείτε να"
 setup.description.fre_line2: "μεταβείτε στο Settings για ρύθμιση παραμέτρων του χώρου εργασίας σας."
 
 setup.option.install: "Εγκατάσταση %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Πατήστε Enter για σύνδεση, Esc για επ
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Σκέφτομαι…"
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Καλώς ήρθατε στο Intelligent Terminal!"
-chat.welcome_disclaimer: "Το Intelligent Terminal χρησιμοποιεί AI. Ελέγξτε για σφάλματα."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Καλώς ήρθατε στο Έξυπνο Τερματικό!"
+chat.welcome_disclaimer: "Το Έξυπνο Τερματικό χρησιμοποιεί AI. Ελέγξτε για σφάλματα."
 chat.plan_header: "Σχέδιο:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

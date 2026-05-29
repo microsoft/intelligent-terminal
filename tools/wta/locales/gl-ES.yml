@@ -1,6 +1,6 @@
 # Títulos da pantalla de configuración
-# {Locked="Intelligent Terminal"} - nome do produto, non traducir
-setup.title.first_run: "Benvido a Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Benvido a Terminal Intelixente!"
 setup.title.agent_missing: "Non se atopou o axente"
 setup.title.agent_error: "Non se puido conectar co axente"
 setup.title.switch_agent: "Cambiar de axente"
@@ -8,13 +8,13 @@ setup.title.not_available: "O axente non está dispoñible"
 setup.title.sign_in: "Cómpre iniciar sesión"
 
 # %{agent} substitúese polo nome de visualización do axente en tempo de execución.
-setup.subtitle.copilot_missing: "O seu axente \"%{agent}\" non está instalado. Siga os pasos seguintes para instalalo. Para cambiar de axente, vaia a Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "O seu axente \"%{agent}\" non está instalado. Reinstáleo manualmente e volva tentalo. Para cambiar de axente, vaia a Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "O seu axente \"%{agent}\" require autenticación. Siga os pasos seguintes para iniciar sesión. Para cambiar de axente, vaia a Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "O seu axente \"%{agent}\" require autenticación. Inicie sesión a través do axente e seleccione \"Xa iniciei sesión\" a continuación. Para cambiar de axente, vaia a Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "O seu axente \"%{agent}\" non está instalado. Siga os pasos seguintes para instalalo. Para cambiar de axente, vaia a Terminal Intelixente Settings > Agent."
+setup.subtitle.agent_missing: "O seu axente \"%{agent}\" non está instalado. Reinstáleo manualmente e volva tentalo. Para cambiar de axente, vaia a Terminal Intelixente Settings > Agent."
+setup.subtitle.copilot_auth: "O seu axente \"%{agent}\" require autenticación. Siga os pasos seguintes para iniciar sesión. Para cambiar de axente, vaia a Terminal Intelixente Settings > Agent."
+setup.subtitle.agent_auth: "O seu axente \"%{agent}\" require autenticación. Inicie sesión a través do axente e seleccione \"Xa iniciei sesión\" a continuación. Para cambiar de axente, vaia a Terminal Intelixente Settings > Agent."
 
-# {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Escolla o CLI de axente predeterminado que desexa usar en Intelligent Terminal. Pode"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
+setup.description.fre_line1: "Escolla o CLI de axente predeterminado que desexa usar en Terminal Intelixente. Pode"
 setup.description.fre_line2: "ir a Settings para configurar o seu espazo de traballo."
 
 setup.option.install: "Instalar %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Prema Intro para iniciar sesión, Esc para volver atrás"  
 
 # ── Vista de conversa (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Pensando…"
-# {Locked="Intelligent Terminal"} - nome do produto, non traducir
-chat.welcome_title: "Benvido a Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal usa IA. Comprobe se hai erros."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Benvido a Terminal Intelixente!"
+chat.welcome_disclaimer: "Terminal Intelixente usa IA. Comprobe se hai erros."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

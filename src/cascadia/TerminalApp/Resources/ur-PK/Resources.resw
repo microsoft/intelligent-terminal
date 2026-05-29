@@ -120,15 +120,15 @@
 
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal میں خوش آمدید</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ذہین ٹرمینل میں خوش آمدید</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>غلطیوں کی وضاحت، کمانڈز تیار کرنے اور کاموں کو ان بلاک کرنے میں مدد کے لیے اپنا بلٹ ان اسسٹنٹ سیٹ اپ کریں، بالکل وہیں جہاں آپ کام کرتے ہیں۔ </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Intelligent Terminal کے بارے میں مزید جانیں</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ذہین ٹرمینل کے بارے میں مزید جانیں</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>اپنے بلٹ ان AI ایجنٹ کے ساتھ فلو میں رہیں</value>
@@ -150,8 +150,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal میں خوش آمدید</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ذہین ٹرمینل میں خوش آمدید</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>منتخب کریں کہ ابھی کیا ترتیب دینا ہے۔ آپ انہیں کسی بھی وقت تبدیل کر سکتے ہیں۔ </value>
@@ -182,9 +182,8 @@
     <value>سیشن کا انتظام</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal کو اپنے چل رہے یا فعال ایجنٹس کی حالت ٹریک کرنے کی اجازت دیں۔</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ذہین ٹرمینل کو اپنے چل رہے یا فعال ایجنٹس کی حالت ٹریک کرنے کی اجازت دیں۔</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ اسے فعال کرنے سے آپ کے ایجنٹس میں سیشنز ٹریک کرنے کے لیے انٹیگریشن hooks انسٹال ہوں گے۔</value>

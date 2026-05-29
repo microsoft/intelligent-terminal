@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthStr;
 
 use crate::agent_sessions::{
-    AgentSession, AgentSessionRegistry, AgentStatus, CliSource, SessionOrigin,
+    AgentSession, AgentSessionRegistry, AgentStatus, CliSource, OriginFilter, SessionOrigin,
 };
 use crate::app::HistoryLoadState;
 use crate::session_registry::SessionInfo;
@@ -33,6 +33,12 @@ pub fn render(
     history_load_state: HistoryLoadState,
     activity_frame: usize,
     cli_filter: Option<&CliSource>,
+    // MVP origin filter — `ShellOnly` by default, see
+    // `app.rs::MVP_F2_ORIGIN_FILTER`. Must match whatever filter
+    // `App::agents_rows_for_tab` applies so the rendered rows line
+    // up with the cursor / Enter dispatch model. Caller threads the
+    // stored `app.f2_origin_filter`.
+    origin_filter: OriginFilter,
     // True iff the F2 view is waiting on its first `session/list`
     // snapshot from master (snapshot is currently empty AND a refetch
     // request is in flight). Without this signal we have no way to
@@ -99,36 +105,61 @@ pub fn render(
     };
 
     let using_snapshot = snapshot.is_some();
-    let sorted: Vec<AgentSession> = if let Some(snapshot) = snapshot {
+    let filter_start = std::time::Instant::now();
+    let (sorted, pre_filter_total): (Vec<AgentSession>, usize) = if let Some(snapshot) = snapshot {
         let mut rows: Vec<_> = snapshot
             .iter()
             .map(crate::app::session_info_to_agent_session)
             .collect();
         rows.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+        let total = rows.len();
         if let Some(want) = cli_filter {
             rows.retain(|s| {
                 &s.cli_source == want
                     || matches!(&s.cli_source, CliSource::Unknown(v) if v.is_empty())
             });
         }
-        rows
+        // MVP origin filter. Stays in sync with the same retain inside
+        // `App::agents_rows_for_tab` (which feeds the cursor / Enter
+        // dispatch); both call sites read `app.f2_origin_filter`.
+        // `session_info_to_agent_session` collapses None origin to
+        // SessionOrigin::Unknown so `matches(&s.origin)` is correct
+        // for the snapshot path too.
+        rows.retain(|s| origin_filter.matches(&s.origin));
+        (rows, total)
     } else {
-        reg.iter_sorted_filtered(cli_filter)
+        let total = reg.iter_sorted().len();
+        let rows: Vec<AgentSession> = reg
+            .iter_sorted_with_filters(cli_filter, origin_filter)
             .into_iter()
             .cloned()
-            .collect()
+            .collect();
+        (rows, total)
     };
+    let filter_elapsed_us = filter_start.elapsed().as_micros() as u64;
+    tracing::debug!(
+        target: "f2_filter_perf",
+        total      = pre_filter_total,
+        kept       = sorted.len(),
+        cli_filter = ?cli_filter,
+        origin     = ?origin_filter,
+        elapsed_us = filter_elapsed_us,
+        source     = if using_snapshot { "snapshot" } else { "registry" },
+        "f2 origin/cli filter applied"
+    );
     tracing::info!(
         target: "agents_view_filter",
         filter = ?cli_filter,
+        origin = ?origin_filter,
         visible = sorted.len(),
-        total = if using_snapshot { sorted.len() } else { reg.iter_sorted().len() },
+        total = pre_filter_total,
         "rendering agent sessions list"
     );
     tracing::debug!(
         target: "agents_render",
         total = sorted.len(),
         filter = ?cli_filter,
+        origin = ?origin_filter,
         first_three = ?sorted.iter().take(3).map(|s| (
             s.key.clone(),
             format!("{:?}", s.status),

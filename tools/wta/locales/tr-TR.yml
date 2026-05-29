@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Intelligent Terminal'e hoş geldiniz!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Akıllı Terminal'e hoş geldiniz!"
 setup.title.agent_missing: "Aracı bulunamadı"
 setup.title.agent_error: "Aracı bağlantısı başarısız oldu"
 setup.title.switch_agent: "Aracı değiştir"
@@ -8,13 +8,13 @@ setup.title.not_available: "Aracı kullanılamıyor"
 setup.title.sign_in: "Oturum açma gerekli"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Aracınız \"%{agent}\" yüklü değil. Yüklemek için aşağıdaki adımları izleyin. Aracı değiştirmek için Intelligent Terminal Settings > Agent'e gidin."
-setup.subtitle.agent_missing: "Aracınız \"%{agent}\" yüklü değil. Lütfen elle yeniden yükleyin, ardından tekrar deneyin. Aracı değiştirmek için Intelligent Terminal Settings > Agent'e gidin."
-setup.subtitle.copilot_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Oturum açmak için aşağıdaki adımları izleyin. Aracı değiştirmek için Intelligent Terminal Settings > Agent'e gidin."
-setup.subtitle.agent_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Lütfen aracı üzerinden oturum açın, ardından aşağıda \"Oturum açtım\" seçeneğini belirleyin. Aracı değiştirmek için Intelligent Terminal Settings > Agent'e gidin."
+setup.subtitle.copilot_missing: "Aracınız \"%{agent}\" yüklü değil. Yüklemek için aşağıdaki adımları izleyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
+setup.subtitle.agent_missing: "Aracınız \"%{agent}\" yüklü değil. Lütfen elle yeniden yükleyin, ardından tekrar deneyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
+setup.subtitle.copilot_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Oturum açmak için aşağıdaki adımları izleyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
+setup.subtitle.agent_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Lütfen aracı üzerinden oturum açın, ardından aşağıda \"Oturum açtım\" seçeneğini belirleyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Intelligent Terminal'de kullanmak istediğiniz varsayılan aracı seçin. Çalışma alanınızı"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Akıllı Terminal'de kullanmak istediğiniz varsayılan aracı seçin. Çalışma alanınızı"
 setup.description.fre_line2: "yapılandırmak ve ayarlamak için Settings'e gidebilirsiniz."
 
 setup.option.install: "%{agent} yükle"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Oturum açmak için Enter, geri dönmek için Esc tuşuna b
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Düşünüyor…"
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Intelligent Terminal'e hoş geldiniz!"
-chat.welcome_disclaimer: "Intelligent Terminal, AI kullanır. Hataları kontrol edin."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Akıllı Terminal'e hoş geldiniz!"
+chat.welcome_disclaimer: "Akıllı Terminal, AI kullanır. Hataları kontrol edin."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

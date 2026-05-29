@@ -1,6 +1,6 @@
 # સેટઅપ સ્ક્રીન શીર્ષકો
-# {Locked="Intelligent Terminal"} - ઉત્પાદન નામ, અનુવાદ કરશો નહીં
-setup.title.first_run: "Intelligent Terminal માં આપનું સ્વાગત છે!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "ઇન્ટેલિજન્ટ ટર્મિનલ માં આપનું સ્વાગત છે!"
 setup.title.agent_missing: "એજન્ટ મળ્યો નથી"
 setup.title.agent_error: "એજન્ટ જોડાણ નિષ્ફળ થયું"
 setup.title.switch_agent: "એજન્ટ બદલો"
@@ -8,13 +8,13 @@ setup.title.not_available: "એજન્ટ ઉપલબ્ધ નથી"
 setup.title.sign_in: "સાઇન ઇન જરૂરી છે"
 
 # %{agent} રનટાઇમ પર એજન્ટ પ્રદર્શન નામથી બદલાય છે.
-setup.subtitle.copilot_missing: "તમારો એજન્ટ \"%{agent}\" ઇન્સ્ટોલ થયેલો નથી. ઇન્સ્ટોલ કરવા નીચેના પગલાં અનુસરો. એજન્ટ બદલવા Intelligent Terminal Settings > Agent પર જાઓ."
-setup.subtitle.agent_missing: "તમારો એજન્ટ \"%{agent}\" ઇન્સ્ટોલ થયેલો નથી. કૃપા કરીને જાતે ફરીથી ઇન્સ્ટોલ કરો, પછી ફરી પ્રયાસ કરો. એજન્ટ બદલવા Intelligent Terminal Settings > Agent પર જાઓ."
-setup.subtitle.copilot_auth: "તમારા એજન્ટ \"%{agent}\" ને પ્રમાણીકરણ જરૂરી છે. સાઇન ઇન કરવા નીચેના પગલાં અનુસરો. એજન્ટ બદલવા Intelligent Terminal Settings > Agent પર જાઓ."
-setup.subtitle.agent_auth: "તમારા એજન્ટ \"%{agent}\" ને પ્રમાણીકરણની જરૂર છે. કૃપા કરીને એજન્ટ દ્વારા સાઇન ઇન કરો, પછી નીચે \"મેં સાઇન ઇન કર્યું\" પસંદ કરો. એજન્ટ બદલવા માટે Intelligent Terminal Settings > Agent પર જાઓ."
+setup.subtitle.copilot_missing: "તમારો એજન્ટ \"%{agent}\" ઇન્સ્ટોલ થયેલો નથી. ઇન્સ્ટોલ કરવા નીચેના પગલાં અનુસરો. એજન્ટ બદલવા ઇન્ટેલિજન્ટ ટર્મિનલ Settings > Agent પર જાઓ."
+setup.subtitle.agent_missing: "તમારો એજન્ટ \"%{agent}\" ઇન્સ્ટોલ થયેલો નથી. કૃપા કરીને જાતે ફરીથી ઇન્સ્ટોલ કરો, પછી ફરી પ્રયાસ કરો. એજન્ટ બદલવા ઇન્ટેલિજન્ટ ટર્મિનલ Settings > Agent પર જાઓ."
+setup.subtitle.copilot_auth: "તમારા એજન્ટ \"%{agent}\" ને પ્રમાણીકરણ જરૂરી છે. સાઇન ઇન કરવા નીચેના પગલાં અનુસરો. એજન્ટ બદલવા ઇન્ટેલિજન્ટ ટર્મિનલ Settings > Agent પર જાઓ."
+setup.subtitle.agent_auth: "તમારા એજન્ટ \"%{agent}\" ને પ્રમાણીકરણની જરૂર છે. કૃપા કરીને એજન્ટ દ્વારા સાઇન ઇન કરો, પછી નીચે \"મેં સાઇન ઇન કર્યું\" પસંદ કરો. એજન્ટ બદલવા માટે ઇન્ટેલિજન્ટ ટર્મિનલ Settings > Agent પર જાઓ."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Intelligent Terminal માં ઉપયોગ કરવા માંગતા ડિફોલ્ટ એજન્ટ પસંદ કરો. તમે"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "ઇન્ટેલિજન્ટ ટર્મિનલ માં ઉપયોગ કરવા માંગતા ડિફોલ્ટ એજન્ટ પસંદ કરો. તમે"
 setup.description.fre_line2: "તમારા કાર્યક્ષેત્રને ગોઠવવા અને સેટઅપ કરવા Settings પર નેવિગેટ કરી શકો છો."
 
 setup.option.install: "%{agent} ફરીથી ઇન્સ્ટોલ કરો"
@@ -43,9 +43,9 @@ auth.hint_footer: "  સાઇન ઇન કરવા Enter દબાવો, પ
 
 # ── ચૅટ દૃશ્ય (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "વિચારી રહ્યું છે…"
-# {Locked="Intelligent Terminal"} - ઉત્પાદન નામ, અનુવાદ કરશો નહીં
-chat.welcome_title: "Intelligent Terminal માં આપનું સ્વાગત છે!"
-chat.welcome_disclaimer: "Intelligent Terminal AI નો ઉપયોગ કરે છે. ભૂલો માટે તપાસો."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "ઇન્ટેલિજન્ટ ટર્મિનલ માં આપનું સ્વાગત છે!"
+chat.welcome_disclaimer: "ઇન્ટેલિજન્ટ ટર્મિનલ AI નો ઉપયોગ કરે છે. ભૂલો માટે તપાસો."
 chat.plan_header: "યોજના:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

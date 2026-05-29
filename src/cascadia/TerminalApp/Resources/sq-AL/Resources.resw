@@ -119,15 +119,15 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Mirë se vini në Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Mirë se vini në Terminali inteligjent</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Konfiguroni asistentin tuaj të integruar për t'ju ndihmuar të shpjegoni gabimet, të hartoni komanda dhe të zhbllokoni detyra pikërisht aty ku punoni. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Mësoni më shumë rreth Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Mësoni më shumë rreth Terminali inteligjent</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Qëndroni në rrjedhë me agjentin tuaj të integruar AI</value>
@@ -149,8 +149,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Mirë se vini në Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Mirë se vini në Terminali inteligjent</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Zgjidhni çfarë dëshiron të konfigurosh tani. Mund t'i ndryshosh këto në çdo kohë. </value>
@@ -181,8 +181,8 @@
     <value>Menaxhimi i seancave</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Jepini Intelligent Terminal leje për të ndjekur statusin e agjentëve tuaj në ekzekutim ose aktiv.</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Jepini Terminali inteligjent leje për të ndjekur statusin e agjentëve tuaj në ekzekutim ose aktiv.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ Aktivizimi i kësaj do të instalojë hooks integrimi për ndjekjen e seancave midis agjentëve tuaj.</value>

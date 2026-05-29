@@ -6,15 +6,15 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Merħba fl-Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Merħba fl-Terminal Intelliġenti</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Issettja l-assistent integrat tiegħek biex jgħinek tispjega l-iżbalji, tfassal kmandijiet, u tħoll it-taskijiet eżatt fejn taħdem. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Sir iktar dwar Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Sir iktar dwar Terminal Intelliġenti</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>Ibqa' fil-flussu mal-aġent AI integrat tiegħek</value>
@@ -36,8 +36,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Merħba fl-Intelligent Terminal</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Merħba fl-Terminal Intelliġenti</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Agħżel x'trid tissettja issa. Tista' tibdel dawn fi kwalunkwe ħin. </value>
@@ -68,8 +68,8 @@
     <value>Ġestjoni tas-sessjonijiet</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Agħti lill-Intelligent Terminal permess biex isegwi l-istatus tal-aġenti tiegħek li qegħdin jaħdmu jew attivi.</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Agħti lill-Terminal Intelliġenti permess biex isegwi l-istatus tal-aġenti tiegħek li qegħdin jaħdmu jew attivi.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ L-attivazzjoni ta' dan se tinstalla hooks ta' integrazzjoni biex isegwu s-sessjonijiet madwar l-aġenti tiegħek.</value>

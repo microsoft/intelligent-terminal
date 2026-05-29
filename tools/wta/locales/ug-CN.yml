@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Intelligent Terminal ھە خوش كەلدىڭىز!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "ئەقلىي تېرمىنال ھە خوش كەلدىڭىز!"
 setup.title.agent_missing: "AI ئاگېنتى تېپىلمىدى"
 setup.title.agent_error: "AI ئاگېنتى بىلەن باغلىنىش مەغلۇب بولدى"
 setup.title.switch_agent: "AI ئاگېنتىنى الماشتۇرۇش"
@@ -8,13 +8,13 @@ setup.title.not_available: "AI ئاگېنتى ئىشلەتكىلى ئەمەس"
 setup.title.sign_in: "كىرىش تەلەپ قىلىنىدۇ"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" ئورنىتىلمىغان. ئورنىتىش ئۈچۈن تۆۋەندىكى قەدەملەرنى بېسىڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن Intelligent Terminal Settings > Agent قا كىرىڭ."
-setup.subtitle.agent_missing: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" ئورنىتىلمىغان. قولدا قايتا ئورنىتىپ سىناڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن Intelligent Terminal Settings > Agent قا كىرىڭ."
-setup.subtitle.copilot_auth: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. كىرىش ئۈچۈن تۆۋەندىكى قەدەملەرنى بېسىڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن Intelligent Terminal Settings > Agent قا كىرىڭ."
-setup.subtitle.agent_auth: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. AI ئاگېنتى ئارقىلىق كىرىپ تۆۋەندە \"كىردىم\" نى تاللاڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن Intelligent Terminal Settings > Agent قا كىرىڭ."
+setup.subtitle.copilot_missing: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" ئورنىتىلمىغان. ئورنىتىش ئۈچۈن تۆۋەندىكى قەدەملەرنى بېسىڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن ئەقلىي تېرمىنال Settings > Agent قا كىرىڭ."
+setup.subtitle.agent_missing: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" ئورنىتىلمىغان. قولدا قايتا ئورنىتىپ سىناڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن ئەقلىي تېرمىنال Settings > Agent قا كىرىڭ."
+setup.subtitle.copilot_auth: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. كىرىش ئۈچۈن تۆۋەندىكى قەدەملەرنى بېسىڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن ئەقلىي تېرمىنال Settings > Agent قا كىرىڭ."
+setup.subtitle.agent_auth: "سىزنىڭ AI ئاگېنتىڭىز \"%{agent}\" تونۇقتۇرۇش تەلەپ قىلىدۇ. AI ئاگېنتى ئارقىلىق كىرىپ تۆۋەندە \"كىردىم\" نى تاللاڭ. AI ئاگېنتىنى الماشتۇرۇش ئۈچۈن ئەقلىي تېرمىنال Settings > Agent قا كىرىڭ."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Intelligent Terminal دا ئىشلەتمەكچى بولغان كۆڭۈلدىكى AI ئاگېنتىنى تاللاڭ. سىز"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "ئەقلىي تېرمىنال دا ئىشلەتمەكچى بولغان كۆڭۈلدىكى AI ئاگېنتىنى تاللاڭ. سىز"
 setup.description.fre_line2: "Settings قا كىرىپ ئىش بوشلۇقىڭىزنى تەڭشىيەلەيسىز."
 
 setup.option.install: "%{agent} نى ئورنىتىش"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Enter كىرىش ئۈچۈن, Esc قايتىش ئۈچۈن ب
 
 # ── Chat view (src/ui/chat.rs) ────────────────────────────────────────────────────────────────────────
 chat.activity_thinking: "ئويلىنىۋاتىدۇ…"
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Intelligent Terminal ھە خوش كەلدىڭىز!"
-chat.welcome_disclaimer: "Intelligent Terminal AI ئىشلىتىدۇ. خاتالىقلارنى تەكشۈرۈڭ."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "ئەقلىي تېرمىنال ھە خوش كەلدىڭىز!"
+chat.welcome_disclaimer: "ئەقلىي تېرمىنال AI ئىشلىتىدۇ. خاتالىقلارنى تەكشۈرۈڭ."
 chat.plan_header: "پىلان:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

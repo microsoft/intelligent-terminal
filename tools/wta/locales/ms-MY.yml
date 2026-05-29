@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - nama produk, jangan diterjemahkan
-setup.title.first_run: "Selamat datang ke Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Selamat datang ke Terminal Pintar!"
 setup.title.agent_missing: "Ejen AI tidak ditemui"
 setup.title.agent_error: "Sambungan ejen AI gagal"
 setup.title.switch_agent: "Tukar ejen AI"
@@ -8,13 +8,13 @@ setup.title.not_available: "Ejen AI tidak tersedia"
 setup.title.sign_in: "Log masuk diperlukan"
 
 # %{agent} digantikan dengan nama paparan ejen AI semasa masa jalan.
-setup.subtitle.copilot_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Ikuti langkah di bawah untuk memasangnya. Untuk menukar ejen AI, pergi ke Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Sila pasang semula secara manual, kemudian cuba lagi. Untuk menukar ejen AI, pergi ke Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Ikuti langkah di bawah untuk log masuk. Untuk menukar ejen AI, pergi ke Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Sila log masuk melalui ejen AI, kemudian pilih \"Saya telah log masuk\" di bawah. Untuk menukar ejen AI, pergi ke Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Ikuti langkah di bawah untuk memasangnya. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
+setup.subtitle.agent_missing: "Ejen AI \"%{agent}\" anda belum dipasang. Sila pasang semula secara manual, kemudian cuba lagi. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
+setup.subtitle.copilot_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Ikuti langkah di bawah untuk log masuk. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
+setup.subtitle.agent_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Sila log masuk melalui ejen AI, kemudian pilih \"Saya telah log masuk\" di bawah. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Pilih CLI ejen AI lalai yang ingin anda gunakan dalam Intelligent Terminal. Anda boleh"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Pilih CLI ejen AI lalai yang ingin anda gunakan dalam Terminal Pintar. Anda boleh"
 setup.description.fre_line2: "pergi ke Settings untuk mengkonfigurasi dan menyediakan ruang kerja anda."
 
 setup.option.install: "Pasang %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Tekan Enter untuk log masuk, Esc untuk kembali"  # {Locked=
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Sedang berfikir…"
-# {Locked="Intelligent Terminal"} - nama produk, jangan diterjemahkan
-chat.welcome_title: "Selamat datang ke Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal menggunakan AI. Semak kesilapan."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Selamat datang ke Terminal Pintar!"
+chat.welcome_disclaimer: "Terminal Pintar menggunakan AI. Semak kesilapan."
 chat.plan_header: "Pelan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

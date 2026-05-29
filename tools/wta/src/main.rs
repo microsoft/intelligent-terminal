@@ -470,7 +470,40 @@ enum SessionsAction {
         /// Override the wta-master named pipe path.
         #[arg(long, value_name = "PIPE_NAME")]
         master: Option<String>,
+
+        /// Restrict the list to a session origin. `all` (default) shows
+        /// every row — that matches the historical debug behavior.
+        /// `shell` shows only user-started shell-pane sessions (the
+        /// MVP F2 default). `agent-pane` shows only sessions that
+        /// WTA spawned for an Intelligent Terminal agent pane.
+        #[arg(long, value_enum, default_value_t = SessionsOriginArg::All)]
+        origin: SessionsOriginArg,
     },
+}
+
+/// CLI value for `wta sessions list --origin`. Mirrors
+/// [`agent_sessions::OriginFilter`] but lives in `main.rs` so the
+/// clap derive can attach `ValueEnum` without polluting the library
+/// crate with clap as a dependency.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum SessionsOriginArg {
+    /// Shell-pane sessions only (Class B). Matches the MVP F2 picker.
+    Shell,
+    /// Agent-pane sessions only (Class A). Hidden from the MVP F2
+    /// picker; surfaced here for debugging.
+    AgentPane,
+    /// Every row in the registry — historical debug default.
+    All,
+}
+
+impl SessionsOriginArg {
+    fn to_filter(self) -> agent_sessions::OriginFilter {
+        match self {
+            SessionsOriginArg::Shell     => agent_sessions::OriginFilter::ShellOnly,
+            SessionsOriginArg::AgentPane => agent_sessions::OriginFilter::AgentPaneOnly,
+            SessionsOriginArg::All       => agent_sessions::OriginFilter::All,
+        }
+    }
 }
 
 /// Subcommands for `wta hooks`.
@@ -784,7 +817,9 @@ async fn main() -> Result<()> {
 
         // ── Master session registry CLI ──
         Some(Command::Sessions { action }) => match action {
-            SessionsAction::List { master } => run_sessions_list(master, json_mode).await,
+            SessionsAction::List { master, origin } => {
+                run_sessions_list(master, origin.to_filter(), json_mode).await
+            }
         },
 
         // ── Manage agent hooks (install/status/uninstall) ──
@@ -1064,15 +1099,28 @@ impl acp::Client for SessionsCliClient {
     }
 }
 
-async fn run_sessions_list(master_override: Option<String>, json_mode: bool) -> Result<()> {
+async fn run_sessions_list(
+    master_override: Option<String>,
+    origin_filter: agent_sessions::OriginFilter,
+    json_mode: bool,
+) -> Result<()> {
     let local = tokio::task::LocalSet::new();
     let sessions = local
         .run_until(fetch_sessions_from_master(master_override))
         .await?;
+    // Origin filter is applied client-side: master always returns the
+    // full registry so this command can act as the debug eye-of-god
+    // view (default `--origin all`). `--origin shell` matches what
+    // the MVP F2 picker shows; `--origin agent-pane` surfaces the
+    // rows MVP F2 hides.
+    let filtered: Vec<session_registry::SessionInfo> = sessions
+        .into_iter()
+        .filter(|s| origin_filter.matches_opt(s.origin.as_ref()))
+        .collect();
     if json_mode {
-        print!("{}", format_sessions_json_lines(&sessions)?);
+        print!("{}", format_sessions_json_lines(&filtered)?);
     } else {
-        print!("{}", format_sessions_table(&sessions));
+        print!("{}", format_sessions_table(&filtered));
     }
     Ok(())
 }
@@ -1165,17 +1213,18 @@ fn format_sessions_table(sessions: &[session_registry::SessionInfo]) -> String {
         return out;
     }
     out.push_str(&format!(
-        "{:<24} {:<10} {:<10} {:<20} {:<20} {}\n",
-        "SESSION", "STATUS", "CLI", "PANE", "UPDATED", "TITLE"
+        "{:<24} {:<10} {:<10} {:<10} {:<20} {:<20} {}\n",
+        "SESSION", "STATUS", "CLI", "ORIGIN", "PANE", "UPDATED", "TITLE"
     ));
     for session in sessions {
         let sid = session.session_id.to_string();
         let short_sid = if sid.len() > 24 { &sid[..24] } else { sid.as_str() };
         out.push_str(&format!(
-            "{:<24} {:<10} {:<10} {:<20} {:<20} {}\n",
+            "{:<24} {:<10} {:<10} {:<10} {:<20} {:<20} {}\n",
             short_sid,
             status_label(session.status.as_ref()),
             cli_source_label(session.cli_source.as_ref()),
+            origin_label(session.origin.as_ref()),
             session.pane_session_id.as_deref().unwrap_or("-"),
             session.updated_at.as_deref().unwrap_or("-"),
             session.title.as_deref().unwrap_or("-"),
@@ -1195,6 +1244,19 @@ fn cli_source_label(source: Option<&agent_sessions::CliSource>) -> String {
         Some(agent_sessions::CliSource::Gemini) => "Gemini".to_string(),
         Some(agent_sessions::CliSource::Unknown(s)) if !s.is_empty() => s.clone(),
         _ => "-".to_string(),
+    }
+}
+
+/// Render a `SessionOrigin` for the `wta sessions list` table. `None`
+/// is the on-the-wire representation for "field absent" (legacy rows
+/// or notification paths that don't carry origin) — we print `-`
+/// rather than fabricating an origin so the operator can tell
+/// "untagged" from "shell".
+fn origin_label(origin: Option<&agent_sessions::SessionOrigin>) -> &'static str {
+    match origin {
+        Some(agent_sessions::SessionOrigin::AgentPane) => "AgentPane",
+        Some(agent_sessions::SessionOrigin::Unknown)   => "Shell",
+        None                                           => "-",
     }
 }
 
@@ -2613,8 +2675,46 @@ mod cli_tests {
 
         assert!(cli.json);
         match cli.command {
-            Some(Command::Sessions { action: SessionsAction::List { master } }) => {
+            Some(Command::Sessions { action: SessionsAction::List { master, origin } }) => {
                 assert_eq!(master.as_deref(), Some(r"\\.\pipe\wta-master-test"));
+                // Default keeps the historical debug behavior — show
+                // every origin. MVP F2 picker has its own default in
+                // `app::resolve_f2_origin_filter`; this CLI default is
+                // intentionally divergent so `wta sessions list` is
+                // the "see everything" debug tool.
+                assert_eq!(origin, SessionsOriginArg::All);
+            }
+            other => panic!("expected sessions list command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sessions_list_cli_parses_origin_shell() {
+        let cli = Cli::try_parse_from(["wta", "sessions", "list", "--origin", "shell"])
+            .expect("sessions list --origin shell parses");
+        match cli.command {
+            Some(Command::Sessions { action: SessionsAction::List { origin, .. } }) => {
+                assert_eq!(origin, SessionsOriginArg::Shell);
+                assert_eq!(
+                    origin.to_filter(),
+                    agent_sessions::OriginFilter::ShellOnly,
+                );
+            }
+            other => panic!("expected sessions list command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sessions_list_cli_parses_origin_agent_pane() {
+        let cli = Cli::try_parse_from(["wta", "sessions", "list", "--origin", "agent-pane"])
+            .expect("sessions list --origin agent-pane parses");
+        match cli.command {
+            Some(Command::Sessions { action: SessionsAction::List { origin, .. } }) => {
+                assert_eq!(origin, SessionsOriginArg::AgentPane);
+                assert_eq!(
+                    origin.to_filter(),
+                    agent_sessions::OriginFilter::AgentPaneOnly,
+                );
             }
             other => panic!("expected sessions list command, got {other:?}"),
         }
@@ -2657,5 +2757,28 @@ mod cli_tests {
         assert!(out.contains("Idle"));
         assert!(out.contains("Claude"));
         assert!(out.contains("pane-table"));
+        // ORIGIN column exists and untagged rows render as "-" so the
+        // operator can tell "legacy / unclassified" from "shell".
+        assert!(out.contains("ORIGIN"));
+        let body = out.lines().nth(1).expect("body row present");
+        assert!(body.contains(" - "), "untagged origin renders as '-' got: {body}");
+    }
+
+    #[test]
+    fn sessions_table_renders_origin_labels() {
+        let mut shell = session_registry::SessionInfo::new(
+            agent_client_protocol::SessionId::new("sid-shell"),
+            std::path::PathBuf::from("C:\\repo"),
+        );
+        shell.origin = Some(agent_sessions::SessionOrigin::Unknown);
+        let mut pane = session_registry::SessionInfo::new(
+            agent_client_protocol::SessionId::new("sid-pane"),
+            std::path::PathBuf::from("C:\\repo"),
+        );
+        pane.origin = Some(agent_sessions::SessionOrigin::AgentPane);
+
+        let out = format_sessions_table(&[shell, pane]);
+        assert!(out.contains("Shell"), "shell origin label present: {out}");
+        assert!(out.contains("AgentPane"), "agent-pane origin label present: {out}");
     }
 }

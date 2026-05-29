@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Intelligent Terminal-a xoş gəlmisiniz!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Ağıllı Terminal-a xoş gəlmisiniz!"
 setup.title.agent_missing: "Agent tapılmadı"
 setup.title.agent_error: "Agent bağlantısı uğursuz oldu"
 setup.title.switch_agent: "Agenti dəyiş"
@@ -8,13 +8,13 @@ setup.title.not_available: "Agent əlçatan deyil"
 setup.title.sign_in: "Daxil olma tələb olunur"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Agentiniz \"%{agent}\" quraşdırılmayıb. Quraşdırmaq üçün aşağıdakı addımları izləyin. Agenti dəyişmək üçün Intelligent Terminal Settings > Agent-ə keçin."
-setup.subtitle.agent_missing: "Agentiniz \"%{agent}\" quraşdırılmayıb. Lütfən əllə yenidən quraşdırın, sonra yenidən cəhd edin. Agenti dəyişmək üçün Intelligent Terminal Settings > Agent-ə keçin."
-setup.subtitle.copilot_auth: "Agentiniz \"%{agent}\" kimlik doğrulaması tələb edir. Daxil olmaq üçün aşağıdakı addımları izləyin. Agenti dəyişmək üçün Intelligent Terminal Settings > Agent-ə keçin."
-setup.subtitle.agent_auth: "Agentiniz \"%{agent}\" kimlik doğrulaması tələb edir. Lütfən agent vasitəsilə daxil olun, sonra aşağıda \"Daxil oldum\" seçin. Agenti dəyişmək üçün Intelligent Terminal Settings > Agent-ə keçin."
+setup.subtitle.copilot_missing: "Agentiniz \"%{agent}\" quraşdırılmayıb. Quraşdırmaq üçün aşağıdakı addımları izləyin. Agenti dəyişmək üçün Ağıllı Terminal Settings > Agent-ə keçin."
+setup.subtitle.agent_missing: "Agentiniz \"%{agent}\" quraşdırılmayıb. Lütfən əllə yenidən quraşdırın, sonra yenidən cəhd edin. Agenti dəyişmək üçün Ağıllı Terminal Settings > Agent-ə keçin."
+setup.subtitle.copilot_auth: "Agentiniz \"%{agent}\" kimlik doğrulaması tələb edir. Daxil olmaq üçün aşağıdakı addımları izləyin. Agenti dəyişmək üçün Ağıllı Terminal Settings > Agent-ə keçin."
+setup.subtitle.agent_auth: "Agentiniz \"%{agent}\" kimlik doğrulaması tələb edir. Lütfən agent vasitəsilə daxil olun, sonra aşağıda \"Daxil oldum\" seçin. Agenti dəyişmək üçün Ağıllı Terminal Settings > Agent-ə keçin."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Intelligent Terminal-da istifadə etmək istədiyiniz standart agenti seçin. İş sahənizi"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Ağıllı Terminal-da istifadə etmək istədiyiniz standart agenti seçin. İş sahənizi"
 setup.description.fre_line2: "konfiqurasiya etmək və qurmaq üçün Settings-ə keçə bilərsiniz."
 
 setup.option.install: "%{agent} quraşdır"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Daxil olmaq üçün Enter, geri qayıtmaq üçün Esc bası
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Düşünür…"
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Intelligent Terminal-a xoş gəlmisiniz!"
-chat.welcome_disclaimer: "Intelligent Terminal AI istifadə edir. Səhvləri yoxlayın."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Ağıllı Terminal-a xoş gəlmisiniz!"
+chat.welcome_disclaimer: "Ağıllı Terminal AI istifadə edir. Səhvləri yoxlayın."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

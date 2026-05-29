@@ -326,3 +326,52 @@ all the side effects:
   a new tab + reconcile the agent pane),
 * on-failure `PaneClosed` rebroadcast (so a stuck Live row
   transitions to Ended after `wtcli focus-pane` returns NotFound).
+
+### MVP origin filter (F2 picker shows shell-pane sessions only)
+
+The F2 picker currently ships in MVP mode: it only surfaces
+**Class B** (shell-pane) sessions — the user manually ran `copilot`
+/ `claude` / `gemini` in a regular shell. **Class A** (agent-pane)
+sessions stay in the registry so Enter routing, alive-mirror
+reconciliation, `intellterm.wta/session_added|removed`, and
+`wta sessions list` all keep seeing every row; they just don't
+render in the picker and aren't reachable by the cursor.
+
+The gate is a single constant — `app.rs::MVP_F2_ORIGIN_FILTER` —
+threaded through `App::f2_origin_filter` so that the three places
+that have to stay in sync read the same value:
+
+1. `App::agents_rows_for_tab` (cursor / Enter dispatch source of
+   truth) — applies the filter to both the snapshot path and the
+   registry-fallback path.
+2. The post-history-scan auto-select and the Delete clamp (same
+   file) — `iter_sorted_with_filters(cli, self.f2_origin_filter)`.
+3. `ui/agents_view::render` — applies the same retain to keep the
+   rendered rows lined up with the cursor model.
+
+`agent_sessions::OriginFilter` (`ShellOnly | AgentPaneOnly | All`)
+is the public surface; `iter_sorted_with_filters` is the registry
+API. `iter_sorted_filtered` is preserved as a thin wrapper
+(`origin = All`) so existing call sites keep their behavior.
+
+**Debug overrides** (no rebuild required):
+
+| Surface | How to see everything |
+|---|---|
+| F2 picker, single helper | `WTA_F2_SHOW_AGENT_PANE=1` in that helper's env |
+| Out-of-band debug list | `wta sessions list` (defaults to `--origin all`) |
+| Slice to shell only | `wta sessions list --origin shell` |
+| Slice to agent-pane only | `wta sessions list --origin agent-pane` |
+
+`wta sessions list` always asks master for the full registry and
+filters client-side, so it can act as the eye-of-god view even
+while every helper's F2 picker stays in `ShellOnly`. The table
+output gains an `ORIGIN` column (`Shell` / `AgentPane` / `-` for
+untagged legacy rows); JSON output is unchanged because the field
+was already serialized.
+
+**Removing MVP gate.** When agent-pane session management is
+ready, flip `MVP_F2_ORIGIN_FILTER` to `OriginFilter::All` and
+delete `WTA_F2_SHOW_AGENT_PANE` handling in
+`resolve_f2_origin_filter`. No other call site needs to change.
+

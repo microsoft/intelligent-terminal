@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Dobrodošli u Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Dobrodošli u Inteligentni Terminal!"
 setup.title.agent_missing: "Agent nije pronađen"
 setup.title.agent_error: "Povezivanje sa agentom nije uspelo"
 setup.title.switch_agent: "Promeni agenta"
@@ -8,13 +8,13 @@ setup.title.not_available: "Agent nije dostupan"
 setup.title.sign_in: "Potrebna je prijava"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Vaš agent \"%{agent}\" nije instaliran. Pratite korake ispod da biste ga instalirali. Za promenu agenta idite u Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Vaš agent \"%{agent}\" nije instaliran. Ponovo ga ručno instalirajte, pa pokušajte ponovo. Za promenu agenta idite u Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Pratite korake ispod da biste se prijavili. Za promenu agenta idite u Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Prijavite se preko agenta, pa izaberite \"Prijavio/la sam se\" ispod. Za promenu agenta idite u Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Vaš agent \"%{agent}\" nije instaliran. Pratite korake ispod da biste ga instalirali. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Vaš agent \"%{agent}\" nije instaliran. Ponovo ga ručno instalirajte, pa pokušajte ponovo. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Pratite korake ispod da biste se prijavili. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Prijavite se preko agenta, pa izaberite \"Prijavio/la sam se\" ispod. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Izaberite podrazumevanog agenta koji želite da koristite u Intelligent Terminal. Možete"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Izaberite podrazumevanog agenta koji želite da koristite u Inteligentni Terminal. Možete"
 setup.description.fre_line2: "otići u Settings da konfigurišete i podesite svoj radni prostor."
 
 setup.option.install: "Instaliraj %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Pritisnite Enter za prijavu, Esc za povratak"  # {Locked="E
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Razmišljam…"
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Dobrodošli u Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal koristi AI. Proverite greške."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Dobrodošli u Inteligentni Terminal!"
+chat.welcome_disclaimer: "Inteligentni Terminal koristi AI. Proverite greške."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

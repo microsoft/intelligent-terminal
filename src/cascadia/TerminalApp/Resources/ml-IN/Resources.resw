@@ -119,15 +119,15 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal-ലേക്ക് സ്വാഗതം</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ഇന്റലിജന്റ് ടെർമിനൽ-ലേക്ക് സ്വാഗതം</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>പിശകുകൾ വിശദീകരിക്കാനും, കമാൻഡുകൾ ഡ്രാഫ്റ്റ് ചെയ്യാനും, ടാസ്ക്കുകൾ അൺബ്ലോക്ക് ചെയ്യാനും സഹായിക്കുന്നതിനായി നിങ്ങളുടെ ബിൽറ്റ്-ഇൻ അസിസ്റ്റന്റ് സജ്ജമാക്കുക, നിങ്ങൾ ജോലി ചെയ്യുന്നിടത്ത് തന്നെ. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Intelligent Terminal-നെ കുറിച്ച് കൂടുതലറിയുക</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ഇന്റലിജന്റ് ടെർമിനൽ-നെ കുറിച്ച് കൂടുതലറിയുക</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>നിങ്ങളുടെ ബിൽറ്റ്-ഇൻ AI ഏജന്റുമായി ഫ്ലോയിൽ തുടരുക</value>
@@ -149,8 +149,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal-ലേക്ക് സ്വാഗതം</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ഇന്റലിജന്റ് ടെർമിനൽ-ലേക്ക് സ്വാഗതം</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>ഇപ്പോൾ എന്ത് സജ്ജമാക്കണമെന്ന് തിരഞ്ഞെടുക്കുക. നിങ്ങൾക്ക് ഇവ എപ്പോൾ വേണമെങ്കിലും മാറ്റാം. </value>
@@ -181,9 +181,8 @@
     <value>സെഷൻ മാനേജ്മെന്റ്</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal-ന് നിങ്ങളുടെ പ്രവർത്തിക്കുന്ന അല്ലെങ്കിൽ സജീവ ഏജന്റുമാരുടെ സ്ഥിതി ട്രാക്ക് ചെയ്യാൻ അനുമതി നൽകുക.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ഇന്റലിജന്റ് ടെർമിനൽ-ന് നിങ്ങളുടെ പ്രവർത്തിക്കുന്ന അല്ലെങ്കിൽ സജീവ ഏജന്റുമാരുടെ സ്ഥിതി ട്രാക്ക് ചെയ്യാൻ അനുമതി നൽകുക.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ ഇത് പ്രവർത്തനക്ഷമമാക്കുന്നത് നിങ്ങളുടെ ഏജന്റുകളിലുടനീളം സെഷനുകൾ ട്രാക്ക് ചെയ്യാൻ ഇന്റഗ്രേഷൻ hooks ഇൻസ്റ്റാൾ ചെയ്യും.</value>

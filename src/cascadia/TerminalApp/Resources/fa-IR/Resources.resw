@@ -120,15 +120,15 @@
 
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>به Intelligent Terminal خوش آمدید</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>به پایانه هوشمند خوش آمدید</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>دستیار داخلی خود را برای کمک به توضیح خطاها، پیش‌نویس دستورات و رفع انسداد وظایف درست در محل کارتان تنظیم کنید. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>درباره Intelligent Terminal بیشتر بدانید</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>درباره پایانه هوشمند بیشتر بدانید</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>با عامل AI داخلی خود در جریان کار بمانید</value>
@@ -150,8 +150,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>به Intelligent Terminal خوش آمدید</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>به پایانه هوشمند خوش آمدید</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>انتخاب کنید که الان چه چیزی را تنظیم کنید. می‌توانید اینها را در هر زمان تغییر دهید. </value>
@@ -182,8 +182,8 @@
     <value>مدیریت جلسات</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>به Intelligent Terminal اجازه پیگیری وضعیت عامل‌های در حال اجرا یا فعال شما را بدهید.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} {Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>به پایانه هوشمند اجازه پیگیری وضعیت عامل‌های در حال اجرا یا فعال شما را بدهید.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ فعال‌سازی این گزینه hooks یکپارچه‌سازی را برای پیگیری جلسات در عامل‌های شما نصب خواهد کرد.</value>

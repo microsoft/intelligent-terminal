@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Mirë se vini në Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Mirë se vini në Terminali inteligjent!"
 setup.title.agent_missing: "Agjenti nuk u gjet"
 setup.title.agent_error: "Lidhja me agjentin dështoi"
 setup.title.switch_agent: "Ndrysho agjentin"
@@ -8,13 +8,13 @@ setup.title.not_available: "Agjenti nuk është i disponueshëm"
 setup.title.sign_in: "Kërkohet identifikimi"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Ndiqni hapat më poshtë për ta instaluar. Për të ndryshuar agjentin, shkoni te Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Riinstalojeni manualisht dhe provoni përsëri. Për të ndryshuar agjentin, shkoni te Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Ndiqni hapat më poshtë për t'u identifikuar. Për të ndryshuar agjentin, shkoni te Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Identifikohuni përmes agjentit dhe zgjidhni \"U identifikova\" më poshtë. Për të ndryshuar agjentin, shkoni te Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Ndiqni hapat më poshtë për ta instaluar. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
+setup.subtitle.agent_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Riinstalojeni manualisht dhe provoni përsëri. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
+setup.subtitle.copilot_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Ndiqni hapat më poshtë për t'u identifikuar. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
+setup.subtitle.agent_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Identifikohuni përmes agjentit dhe zgjidhni \"U identifikova\" më poshtë. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Zgjidhni agjentin e paracaktuar që dëshironi të përdorni në Intelligent Terminal. Mund të"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Zgjidhni agjentin e paracaktuar që dëshironi të përdorni në Terminali inteligjent. Mund të"
 setup.description.fre_line2: "shkoni te Settings për të konfiguruar hapësirën tuaj të punës."
 
 setup.option.install: "Instalo %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Shtypni Enter për t'u identifikuar, Esc për t'u kthyer"  
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Po mendoj..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Mirë se vini në Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal përdor AI. Kontrolloni për gabime."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Mirë se vini në Terminali inteligjent!"
+chat.welcome_disclaimer: "Terminali inteligjent përdor AI. Kontrolloni për gabime."
 chat.plan_header: "Plani:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

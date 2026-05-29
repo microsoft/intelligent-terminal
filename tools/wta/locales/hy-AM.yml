@@ -3,7 +3,7 @@
 # "Agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human representative or proxy
 
 # Setup screen titles
-setup.title.first_run: "Բարի գալուստ Intelligent Terminal!"
+setup.title.first_run: "Բարի գալուստ Խելացի տերմինալ!"
 setup.title.agent_missing: "Ագենտը չի գտնվել"
 setup.title.agent_error: "Ագենտին միանալը ձախողվել է"
 # Button label — verb command to change which AI agent is active
@@ -14,11 +14,11 @@ setup.title.not_available: "Ագենտը հասանելի չէ"
 setup.title.sign_in: "Պահանջվում է մուտք գործել"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Ձեր \"%{agent}\" ագենտը տեղադրված չէ։ Տեղադրելու համար հետեվեք ստորեվ նշված քայլերին։ Ագենտը փոխելու համար անցեք Intelligent Terminal Settings > Agent։"
-setup.subtitle.agent_missing: "Ձեր \"%{agent}\" ագենտը տեղադրված չէ։ Խնդրում ենք ձեռքով վերատեղադրել և կրկին փորձել։ Ագենտը փոխելու համար անցեք Intelligent Terminal Settings > Agent։"
-setup.subtitle.copilot_auth: "Ձեր \"%{agent}\" ագենտը պահանջում է նույնականացում։ Մուտք գործելու համար հետեվեք ստորեվ նշված քայլերին։ Ագենտը փոխելու համար անցեք Intelligent Terminal Settings > Agent։"
-setup.subtitle.agent_auth: "Ձեր \"%{agent}\" ագենտը պահանջում է նույնականացում։ Մուտք գործեք ագենտի միջոցով, ապա ընտրեք ստորև \"Մուտք եմ գործել\"։ Ագենտը փոխելու համար անցեք Intelligent Terminal Settings > Agent։"
-setup.description.fre_line1: "Ընտրեք լռելյայն ագենտը, որը ցանկանում եք օգտագործել Intelligent Terminal-ում։ Դուք կարող եք"
+setup.subtitle.copilot_missing: "Ձեր \"%{agent}\" ագենտը տեղադրված չէ։ Տեղադրելու համար հետեվեք ստորեվ նշված քայլերին։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
+setup.subtitle.agent_missing: "Ձեր \"%{agent}\" ագենտը տեղադրված չէ։ Խնդրում ենք ձեռքով վերատեղադրել և կրկին փորձել։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
+setup.subtitle.copilot_auth: "Ձեր \"%{agent}\" ագենտը պահանջում է նույնականացում։ Մուտք գործելու համար հետեվեք ստորեվ նշված քայլերին։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
+setup.subtitle.agent_auth: "Ձեր \"%{agent}\" ագենտը պահանջում է նույնականացում։ Մուտք գործեք ագենտի միջոցով, ապա ընտրեք ստորև \"Մուտք եմ գործել\"։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
+setup.description.fre_line1: "Ընտրեք լռելյայն ագենտը, որը ցանկանում եք օգտագործել Խելացի տերմինալ-ում։ Դուք կարող եք"
 setup.description.fre_line2: "անցնել Settings՝ ձեր աշխատական տարածքը կարգավորելու համար։"
 
 setup.option.install: "Տեղադրել %{agent}"
@@ -47,8 +47,8 @@ auth.hint_footer: "  Սեղմեք Enter մուտք գործելու համար, 
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────────────────────────────
 chat.activity_thinking: "Մտածում եմ…"
-chat.welcome_title: "Բարի գալուստ Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal-ը օգտագործում է AI: Ստուգեք սխալները."
+chat.welcome_title: "Բարի գալուստ Խելացի տերմինալ!"
+chat.welcome_disclaimer: "Խելացի տերմինալ-ը օգտագործում է AI: Ստուգեք սխալները."
 # Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Պլան՝"
 chat.plan_marker_completed: "[x]"  # {Locked}

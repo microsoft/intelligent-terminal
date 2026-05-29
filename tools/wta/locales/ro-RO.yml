@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Bun venit la Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Bun venit la Terminal Inteligent!"
 setup.title.agent_missing: "Agentul nu a fost găsit"
 setup.title.agent_error: "Conectarea la agent a eșuat"
 setup.title.switch_agent: "Schimbă agentul"
@@ -8,13 +8,13 @@ setup.title.not_available: "Agentul nu este disponibil"
 setup.title.sign_in: "Autentificare necesară"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Agentul \"%{agent}\" nu este instalat. Urmați pașii de mai jos pentru a-l instala. Pentru a schimba agentul, accesați Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Agentul \"%{agent}\" nu este instalat. Reinstalați-l manual, apoi reîncercați. Pentru a schimba agentul, accesați Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Agentul \"%{agent}\" necesită autentificare. Urmați pașii de mai jos pentru a vă conecta. Pentru a schimba agentul, accesați Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Agentul \"%{agent}\" necesită autentificare. Conectați-vă prin agent, apoi selectați \"M-am conectat\" mai jos. Pentru a schimba agentul, accesați Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Agentul \"%{agent}\" nu este instalat. Urmați pașii de mai jos pentru a-l instala. Pentru a schimba agentul, accesați Terminal Inteligent Settings > Agent."
+setup.subtitle.agent_missing: "Agentul \"%{agent}\" nu este instalat. Reinstalați-l manual, apoi reîncercați. Pentru a schimba agentul, accesați Terminal Inteligent Settings > Agent."
+setup.subtitle.copilot_auth: "Agentul \"%{agent}\" necesită autentificare. Urmați pașii de mai jos pentru a vă conecta. Pentru a schimba agentul, accesați Terminal Inteligent Settings > Agent."
+setup.subtitle.agent_auth: "Agentul \"%{agent}\" necesită autentificare. Conectați-vă prin agent, apoi selectați \"M-am conectat\" mai jos. Pentru a schimba agentul, accesați Terminal Inteligent Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Alegeți agentul implicit pe care doriți să îl utilizați în Intelligent Terminal. Puteți"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Alegeți agentul implicit pe care doriți să îl utilizați în Terminal Inteligent. Puteți"
 setup.description.fre_line2: "naviga la Settings pentru a configura spațiul de lucru."
 
 setup.option.install: "Instalare %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Apăsați Enter pentru conectare, Esc pentru a reveni"  # {
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Se gândește..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Bun venit la Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal folosește AI. Verificați erorile."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Bun venit la Terminal Inteligent!"
+chat.welcome_disclaimer: "Terminal Inteligent folosește AI. Verificați erorile."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

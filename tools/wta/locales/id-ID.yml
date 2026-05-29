@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - nama produk, jangan diterjemahkan
-setup.title.first_run: "Selamat datang di Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Selamat datang di Terminal Cerdas!"
 setup.title.agent_missing: "Agen AI tidak ditemukan"
 setup.title.agent_error: "Koneksi agen AI gagal"
 setup.title.switch_agent: "Ganti agen AI"
@@ -8,13 +8,13 @@ setup.title.not_available: "Agen AI tidak tersedia"
 setup.title.sign_in: "Perlu masuk"
 
 # %{agent} diganti dengan nama tampilan agen AI saat runtime.
-setup.subtitle.copilot_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Ikuti langkah-langkah di bawah untuk menginstalnya. Untuk mengganti agen AI, buka Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Silakan instal ulang secara manual, lalu coba lagi. Untuk mengganti agen AI, buka Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Ikuti langkah-langkah di bawah untuk masuk. Untuk mengganti agen AI, buka Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Silakan masuk melalui agen AI, lalu pilih \"Saya sudah masuk\" di bawah. Untuk mengganti agen AI, buka Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Ikuti langkah-langkah di bawah untuk menginstalnya. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
+setup.subtitle.agent_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Silakan instal ulang secara manual, lalu coba lagi. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
+setup.subtitle.copilot_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Ikuti langkah-langkah di bawah untuk masuk. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
+setup.subtitle.agent_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Silakan masuk melalui agen AI, lalu pilih \"Saya sudah masuk\" di bawah. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Pilih CLI agen AI default yang ingin Anda gunakan di Intelligent Terminal. Anda dapat"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Pilih CLI agen AI default yang ingin Anda gunakan di Terminal Cerdas. Anda dapat"
 setup.description.fre_line2: "membuka Settings untuk mengonfigurasi dan menyiapkan ruang kerja Anda."
 
 setup.option.install: "Instal %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Tekan Enter untuk masuk, Esc untuk kembali"  # {Locked="Ent
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Berpikir…"
-# {Locked="Intelligent Terminal"} - nama produk, jangan diterjemahkan
-chat.welcome_title: "Selamat datang di Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal menggunakan AI. Periksa kesalahan."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Selamat datang di Terminal Cerdas!"
+chat.welcome_disclaimer: "Terminal Cerdas menggunakan AI. Periksa kesalahan."
 chat.plan_header: "Rencana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

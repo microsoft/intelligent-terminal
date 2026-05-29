@@ -49,6 +49,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         let load_state = app.history_load_state;
         let activity_frame = app.activity_frame as usize;
         let cli_filter = app.current_cli_filter();
+        let origin_filter = app.f2_origin_filter;
         let tab = app.tab_sessions.entry(tab_id).or_default();
         // Show the loading shimmer while we're waiting on the very first
         // `session/list` response from master. `open_agents_view_for_tab`
@@ -73,6 +74,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             load_state,
             activity_frame,
             cli_filter.as_ref(),
+            origin_filter,
             awaiting_first_snapshot,
         );
         return;

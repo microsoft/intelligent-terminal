@@ -1,6 +1,6 @@
 # Teidil scáileán socraithe
-# {Locked="Intelligent Terminal"} - ainm an táirge, ná haistrigh
-setup.title.first_run: "Fáilte go Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Fáilte go Teirminéal Cliste!"
 setup.title.agent_missing: "Nír aimsíodh an gníomhaire"
 setup.title.agent_error: "Theip ar cheangal an ghníomhaire"
 setup.title.switch_agent: "Athraigh gníomhaire"
@@ -8,13 +8,13 @@ setup.title.not_available: "Níl an gníomhaire ar fáil"
 setup.title.sign_in: "Sínigh isteach riachtanach"
 
 # Cuirtear %{agent} in ionad ainm taispeána an ghníomhaire ag am rite.
-setup.subtitle.copilot_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Lean na céimeanna thíos chun é a shuiteáil. Chun gníomhairí a athrú, téigh go Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Athshuiteáil de láimh é, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Intelligent Terminal Settings > Agent."
-setup.subtitle.copilot_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Lean na céimeanna thíos chun síniú isteach. Chun gníomhairí a athrú, téigh go Intelligent Terminal Settings > Agent."
-setup.subtitle.agent_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Sínigh isteach tríd an ngníomhaire, ansin roghnaigh \"Tá mé sínithe isteach\" thíos. Chun gníomhairí a athrú, téigh go Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Lean na céimeanna thíos chun é a shuiteáil. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
+setup.subtitle.agent_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Athshuiteáil de láimh é, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
+setup.subtitle.copilot_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Lean na céimeanna thíos chun síniú isteach. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
+setup.subtitle.agent_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Sínigh isteach tríd an ngníomhaire, ansin roghnaigh \"Tá mé sínithe isteach\" thíos. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Roghnaigh an gníomhaire réamhshocraithe ba mhaith leat a úsáid in Intelligent Terminal. Is féidir leat"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Roghnaigh an gníomhaire réamhshocraithe ba mhaith leat a úsáid in Teirminéal Cliste. Is féidir leat"
 setup.description.fre_line2: "dul go Settings chun do spás oibre a chumrú agus a shocrú."
 
 setup.option.install: "Suiteáil %{agent}"
@@ -43,9 +43,9 @@ auth.hint_footer: "  Brúigh Enter chun síniú isteach, Esc chun dul ar ais"  #
 
 # ── Amharc comhrá (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Ag smaoineamh…"
-# {Locked="Intelligent Terminal"} - ainm an táirge, ná haistrigh
-chat.welcome_title: "Fáilte go Intelligent Terminal!"
-chat.welcome_disclaimer: "Úsáideann Intelligent Terminal AI. Seiceáil le haghaidh botúin."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Fáilte go Teirminéal Cliste!"
+chat.welcome_disclaimer: "Úsáideann Teirminéal Cliste AI. Seiceáil le haghaidh botúin."
 chat.plan_header: "Plean:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

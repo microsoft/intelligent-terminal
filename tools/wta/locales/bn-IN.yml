@@ -1,6 +1,6 @@
 # সেটআপ স্ক্রীন শিরোনাম
-# {Locked="Intelligent Terminal"} - পণ্যের নাম, অনুবাদ করবেন না
-setup.title.first_run: "Intelligent Terminal-এ স্বাগতম!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "ইন্টেলিজেন্ট টার্মিনাল-এ স্বাগতম!"
 setup.title.agent_missing: "এজেন্ট খুঁজে পাওয়া যায়নি"
 setup.title.agent_error: "এজেন্ট সংযোগ ব্যর্থ হয়েছে"
 setup.title.switch_agent: "এজেন্ট পরিবর্তন করুন"
@@ -8,13 +8,13 @@ setup.title.not_available: "এজেন্ট উপলব্ধ নয়"
 setup.title.sign_in: "সাইন ইন প্রয়োজন"
 
 # %{agent} রানটাইমে এজেন্ট প্রদর্শন নামে প্রতিস্থাপিত হয়।
-setup.subtitle.copilot_missing: "আপনার এজেন্ট \"%{agent}\" ইনস্টল করা নেই। ইনস্টল করতে নিচের ধাপগুলি অনুসরণ করুন। এজেন্ট পরিবর্তন করতে Intelligent Terminal Settings > Agent-এ যান।"
-setup.subtitle.agent_missing: "আপনার এজেন্ট \"%{agent}\" ইনস্টল করা নেই। অনুগ্রহ করে নিজে পুনরায় ইনস্টল করুন, তারপর পুনরায় চেষ্টা করুন। এজেন্ট পরিবর্তন করতে Intelligent Terminal Settings > Agent-এ যান।"
-setup.subtitle.copilot_auth: "আপনার এজেন্ট \"%{agent}\"-এর প্রমাণীকরণ প্রয়োজন। সাইন ইন করতে নিচের ধাপগুলি অনুসরণ করুন। এজেন্ট পরিবর্তন করতে Intelligent Terminal Settings > Agent-এ যান।"
-setup.subtitle.agent_auth: "আপনার এজেন্ট \"%{agent}\"-এর প্রমাণীকরণ প্রয়োজন। অনুগ্রহ করে এজেন্ট দিয়ে সাইন ইন করুন, তারপর নীচে \"আমি সাইন ইন করেছি\" নির্বাচন করুন। এজেন্ট পরিবর্তন করতে Intelligent Terminal Settings > Agent-এ যান।"
+setup.subtitle.copilot_missing: "আপনার এজেন্ট \"%{agent}\" ইনস্টল করা নেই। ইনস্টল করতে নিচের ধাপগুলি অনুসরণ করুন। এজেন্ট পরিবর্তন করতে ইন্টেলিজেন্ট টার্মিনাল Settings > Agent-এ যান।"
+setup.subtitle.agent_missing: "আপনার এজেন্ট \"%{agent}\" ইনস্টল করা নেই। অনুগ্রহ করে নিজে পুনরায় ইনস্টল করুন, তারপর পুনরায় চেষ্টা করুন। এজেন্ট পরিবর্তন করতে ইন্টেলিজেন্ট টার্মিনাল Settings > Agent-এ যান।"
+setup.subtitle.copilot_auth: "আপনার এজেন্ট \"%{agent}\"-এর প্রমাণীকরণ প্রয়োজন। সাইন ইন করতে নিচের ধাপগুলি অনুসরণ করুন। এজেন্ট পরিবর্তন করতে ইন্টেলিজেন্ট টার্মিনাল Settings > Agent-এ যান।"
+setup.subtitle.agent_auth: "আপনার এজেন্ট \"%{agent}\"-এর প্রমাণীকরণ প্রয়োজন। অনুগ্রহ করে এজেন্ট দিয়ে সাইন ইন করুন, তারপর নীচে \"আমি সাইন ইন করেছি\" নির্বাচন করুন। এজেন্ট পরিবর্তন করতে ইন্টেলিজেন্ট টার্মিনাল Settings > Agent-এ যান।"
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Intelligent Terminal-এ ব্যবহারের জন্য ডিফল্ট এজেন্ট নির্বাচন করুন। আপনি"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "ইন্টেলিজেন্ট টার্মিনাল-এ ব্যবহারের জন্য ডিফল্ট এজেন্ট নির্বাচন করুন। আপনি"
 setup.description.fre_line2: "আপনার কর্মক্ষেত্র কনফিগার ও সেটআপ করতে Settings-এ যেতে পারেন।"
 
 setup.option.install: "%{agent} ইনস্টল করুন"
@@ -43,9 +43,9 @@ auth.hint_footer: "  সাইন ইন করতে Enter চাপুন, ফ
 
 # ── চ্যাট দৃশ্য (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "ভাবছে…"
-# {Locked="Intelligent Terminal"} - পণ্যের নাম, অনুবাদ করবেন না
-chat.welcome_title: "Intelligent Terminal-এ স্বাগতম!"
-chat.welcome_disclaimer: "Intelligent Terminal AI ব্যবহার করে। ভুলের জন্য পরীক্ষা করুন।"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "ইন্টেলিজেন্ট টার্মিনাল-এ স্বাগতম!"
+chat.welcome_disclaimer: "ইন্টেলিজেন্ট টার্মিনাল AI ব্যবহার করে। ভুলের জন্য পরীক্ষা করুন।"
 chat.plan_header: "পরিকল্পনা:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -1,6 +1,6 @@
 # सेटअप स्क्रीन शीर्षकां
-# {Locked="Intelligent Terminal"} - उत्पाद नाम, अणकार करूं नाका
-setup.title.first_run: "Intelligent Terminal ंत आपलें स्वागत!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "इंटेलिजंट टर्मिनल ंत आपलें स्वागत!"
 setup.title.agent_missing: "एजेंट मेळलो ना"
 setup.title.agent_error: "एजेंट कनेक्शन अपेशी जालें"
 setup.title.switch_agent: "एजेंट बदल"
@@ -8,13 +8,13 @@ setup.title.not_available: "एजेंट उपलब्ध ना"
 setup.title.sign_in: "साइन इन आवश्यक"
 
 # %{agent} रनटायमाक एजेंटाचें डिस्प्ले नांव घालतात.
-setup.subtitle.copilot_missing: "तुमचो एजेंट \"%{agent}\" इन्स्टॉल जावंक ना. ताका इन्स्टॉल करपाक सकयल दिल्ल्या पावलांक अनुसरण करात. एजेंट बदलपाक Intelligent Terminal Settings > Agent कडेन वचात."
-setup.subtitle.agent_missing: "तुमचो एजेंट \"%{agent}\" इन्स्टॉल जावंक ना. उपकार करून ताका हातान परतून इन्स्टॉल करात, मागीर परतून यत्न करात. एजेंट बदलपाक Intelligent Terminal Settings > Agent कडेन वचात."
-setup.subtitle.copilot_auth: "तुमच्या एजेंट \"%{agent}\" क प्रमाणीकरण जाय. साइन इन करपाक सकयल दिल्ल्या पावलांक अनुसरण करात. एजेंट बदलपाक Intelligent Terminal Settings > Agent कडेन वचात."
-setup.subtitle.agent_auth: "तुमच्या एजंट \"%{agent}\" खातीर प्रमाणीकरण जाय. उपकार करून एजंट वरवीं सायन इन करात, मागीर सकल \"म्हणें सायन इन केलां\" वेंचात. एजंट बदलपाक Intelligent Terminal Settings > Agent कडेन वचात."
+setup.subtitle.copilot_missing: "तुमचो एजेंट \"%{agent}\" इन्स्टॉल जावंक ना. ताका इन्स्टॉल करपाक सकयल दिल्ल्या पावलांक अनुसरण करात. एजेंट बदलपाक इंटेलिजंट टर्मिनल Settings > Agent कडेन वचात."
+setup.subtitle.agent_missing: "तुमचो एजेंट \"%{agent}\" इन्स्टॉल जावंक ना. उपकार करून ताका हातान परतून इन्स्टॉल करात, मागीर परतून यत्न करात. एजेंट बदलपाक इंटेलिजंट टर्मिनल Settings > Agent कडेन वचात."
+setup.subtitle.copilot_auth: "तुमच्या एजेंट \"%{agent}\" क प्रमाणीकरण जाय. साइन इन करपाक सकयल दिल्ल्या पावलांक अनुसरण करात. एजेंट बदलपाक इंटेलिजंट टर्मिनल Settings > Agent कडेन वचात."
+setup.subtitle.agent_auth: "तुमच्या एजंट \"%{agent}\" खातीर प्रमाणीकरण जाय. उपकार करून एजंट वरवीं सायन इन करात, मागीर सकल \"म्हणें सायन इन केलां\" वेंचात. एजंट बदलपाक इंटेलिजंट टर्मिनल Settings > Agent कडेन वचात."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Intelligent Terminal भितर वापरपाक जाय आशिल्लो डीफॉल्ट एजंट निवडात. तुमी"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "इंटेलिजंट टर्मिनल भितर वापरपाक जाय आशिल्लो डीफॉल्ट एजंट निवडात. तुमी"
 setup.description.fre_line2: "तुमचें वर्कस्पेस कॉन्फिगर आनी सेटअप करपाक Settings कडेन वचूंक शकतात."
 
 setup.option.install: "%{agent} परतून इन्स्टॉल करात"
@@ -43,9 +43,9 @@ auth.hint_footer: "  साइन इन करपाक Enter दामात, 
 
 # ── चॅट दृश्य (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "विचार करता…"
-# {Locked="Intelligent Terminal"} - उत्पाद नाम, अणकार करूं नाका
-chat.welcome_title: "Intelligent Terminal ंत आपलें स्वागत!"
-chat.welcome_disclaimer: "Intelligent Terminal AI वापरता. चुकांची तपासणी करात."
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "इंटेलिजंट टर्मिनल ंत आपलें स्वागत!"
+chat.welcome_disclaimer: "इंटेलिजंट टर्मिनल AI वापरता. चुकांची तपासणी करात."
 chat.plan_header: "योजना:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

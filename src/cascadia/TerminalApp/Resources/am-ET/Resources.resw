@@ -6,15 +6,15 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>እንኣን ወደ Intelligent Terminal በደህና መጡ</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>እንኣን ወደ ብልህ ተርሚናል በደህና መጡ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>የብት ውስጥ አገልጋይዎን ያቅኑ ስህተቶችን ለማብራራት፣ ትዕዛዞችን ለመድመቅ እና መጣርሆችን ለማንሳት መስሪያ በሚሰሩበት ያግዙዎት። </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>ስለ Intelligent Terminal ተጨማሪ ለማወቅ</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ስለ ብልህ ተርሚናል ተጨማሪ ለማወቅ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
     <value>ከብት ውስጥ AI ኤጅንትዎ ጋር በፍስፍስ ይቀጡ</value>
@@ -36,8 +36,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>እንኣን ወደ Intelligent Terminal በደህና መጡ</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>እንኣን ወደ ብልህ ተርሚናል በደህና መጡ</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>አሁን ምን ማዋቀር እንደሚፈልጉ ይምረጡ። እነዚህን በማንኛውም ጊዜ መቀየር ይችላሉ። </value>
@@ -68,8 +68,8 @@
     <value>የክፍለጣ አስተዳደር</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ለ Intelligent Terminal የኤጅንቶችዎን ሁኔታ ለመከታተል ፍቃድ ይስጡ።</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>ለ ብልህ ተርሚናል የኤጅንቶችዎን ሁኔታ ለመከታተል ፍቃድ ይስጡ።</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ℹ ይህን ማንቃት በኤጅንቶችዎ ውስጥ ክፍለጊዜዎችን ለመከታተል የውህደት hooks ይጭናል።</value>
