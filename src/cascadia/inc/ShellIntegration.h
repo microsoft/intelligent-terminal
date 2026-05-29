@@ -84,7 +84,14 @@ namespace Microsoft::Terminal::ShellIntegration
     //   • is a silent no-op (via Test-Path guard) on other machines
     //     that received the OneDrive-synced profile but don't have
     //     Intelligent Terminal installed;
-    //   • respects Group Policy folder redirection to a network share.
+    //   • respects Group Policy folder redirection to a network share;
+    //   • degrades gracefully when PowerShell's ExecutionPolicy blocks
+    //     the dot-sourced script (AllSigned, RemoteSigned + unsigned
+    //     script, etc.) — the dot-source is wrapped in a try/catch for
+    //     System.Management.Automation.PSSecurityException so the user
+    //     gets ONE sanitized Write-Warning with the fix command, instead
+    //     of PowerShell's multi-line stack-trace (which would also
+    //     leak the full profile path / username on every prompt).
     //
     // Markers are intentionally NOT versioned — the script version is
     // carried inside the block (in the filename). This lets us detect
@@ -121,7 +128,12 @@ namespace Microsoft::Terminal::ShellIntegration
         block += "\\";
         block += fileName;
         block += "'";                                                                       block += eol;
-        block += "if (Test-Path -LiteralPath $__it_si) { . $__it_si }";                     block += eol;
+        block += "if (Test-Path -LiteralPath $__it_si) {";                                  block += eol;
+        block += "    try { . $__it_si }";                                                  block += eol;
+        block += "    catch [System.Management.Automation.PSSecurityException] {";          block += eol;
+        block += "        Write-Warning 'Intelligent Terminal shell integration could not load (PowerShell execution policy). Fix: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned'"; block += eol;
+        block += "    }";                                                                   block += eol;
+        block += "}";                                                                       block += eol;
         block += "Remove-Variable __it_si -ErrorAction SilentlyContinue";                   block += eol;
         block += kShellIntegrationBlockCloseMarker;
         return block;
