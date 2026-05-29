@@ -120,7 +120,7 @@
 
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>ברוכים הבאים ל-מסוף חכם</value>
+    <value>ברוכים הבאים למסוף החכם</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
@@ -150,7 +150,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>ברוכים הבאים ל-מסוף חכם</value>
+    <value>ברוכים הבאים למסוף החכם</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -182,7 +182,7 @@
     <value>ניהול הפעלות</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>תן ל-מסוף חכם הרשאה לעקוב אחר מצב הסוכנים הפועלים או הפעילים שלך.</value>
+    <value>תן למסוף החכם הרשאה לעקוב אחר מצב הסוכנים הפועלים או הפעילים שלך.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">

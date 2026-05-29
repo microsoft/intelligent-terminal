@@ -119,14 +119,14 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Tervetuloa Älykäs Pääteiin</value>
+    <value>Tervetuloa Älykkääseen Päätteeseen</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Määritä sisäänrakennettu avustajasi auttamaan sinua selittämään virheitä, laatimaan komentoja ja ratkaisemaan tehtäviä suoraan siellä, missä työskentelet. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Lue lisää Älykäs Pääteista</value>
+    <value>Lue lisää Älykkäästä Päätteestä</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -149,7 +149,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Tervetuloa Älykäs Pääteiin</value>
+    <value>Tervetuloa Älykkääseen Päätteeseen</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -181,7 +181,7 @@
     <value>Istunnonhallinta</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Anna Älykäs Pääteille oikeus seurata käynnissä olevien tai aktiivisten agenttiesi tilaa.</value>
+    <value>Anna Älykkäälle Päätteelle oikeus seurata käynnissä olevien tai aktiivisten agenttiesi tilaa.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
