@@ -2225,7 +2225,8 @@ mod tests {
 
     #[test]
     fn iter_sorted_with_filters_composes_cli_and_origin() {
-        // Mix of (cli, origin) combos — the two axes must be ANDed.
+        // Mix of (cli, origin) combos — the two axes must be combined
+        // with a logical AND.
         let mut reg = AgentSessionRegistry::new();
         for (key, cli) in [
             ("cop-shell", CliSource::Copilot),
