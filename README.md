@@ -43,6 +43,8 @@ Intelligent Terminal works with any [Agent Client Protocol (ACP)-compatible](htt
 
 Intelligent Terminal takes all the features you love in Windows Terminal such as:  tabs, profiles, themes, settings, shells, and keyboard shortcuts, which all work the way you expect.
 
+Read the [announcement blog post](https://devblogs.microsoft.com/commandline/announcing-intelligent-terminal-version-0-1/) for more details.
+
 ---
 
 ## Installing and running Intelligent Terminal
