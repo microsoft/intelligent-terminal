@@ -1418,6 +1418,62 @@ namespace winrt::TerminalApp::implementation
             winrt::to_hstring(Json::writeString(wb, tabEvt)));
     }
 
+    // Explicitly emit `connection_state:closed` for every terminal leaf
+    // under `rootPane`. Needed because UI-initiated pane/tab close goes
+    // through `ControlCore::_closeConnection` which revokes the
+    // `ConnectionStateChanged` listener BEFORE the connection transitions
+    // to Closed — so the normal `TermControl::ConnectionStateChanged ->
+    // ProtocolVtSequenceReceived` bridge installed in
+    // `_RegisterTerminalEvents` never fires for these paths. Without an
+    // explicit emit, wta's session-list rows bound to those pane GUIDs
+    // stay stuck at their last live status (Idle / Working /
+    // "waiting for input") forever.
+    //
+    // Process-initiated close (agent typed `/exit`, conpty closes
+    // naturally) still goes through the normal bridge because the
+    // connection's own state machine drives the transition before the
+    // revoker runs.
+    //
+    // Must be called BEFORE the destructive op (`pane->Close()`,
+    // `tab.Shutdown()`) — once content is destroyed,
+    // `GetTerminalControl()` returns null and the SessionId is
+    // unresolvable.
+    void TerminalPage::_NotifyPanesClosing(const std::shared_ptr<Pane>& rootPane)
+    {
+        if (!rootPane)
+        {
+            return;
+        }
+        rootPane->WalkTree([this](const std::shared_ptr<Pane>& p) -> void {
+            if (!p)
+            {
+                return;
+            }
+            const auto control = p->GetTerminalControl();
+            if (!control)
+            {
+                return;
+            }
+            const auto paneIdStr = _FindSessionIdForControl(control);
+            if (paneIdStr.empty())
+            {
+                return;
+            }
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "connection_state";
+            Json::Value params;
+            params["pane_id"] = paneIdStr;
+            params["state"] = "closed";
+            evt["params"] = params;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            ProtocolVtSequenceReceived.raise(
+                *this,
+                winrt::to_hstring(Json::writeString(wb, evt)));
+        });
+    }
+
     // Tells wta that the focused tab changed so it can re-project per-tab
     // agent-pane state (view, pane_open, autofix snapshot). wta echoes the
     // authoritative state via `agent_state_changed`, which `OnAgentStateChanged`

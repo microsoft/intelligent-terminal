@@ -1348,18 +1348,50 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     //    `None` and `handle_focus_session` returns a structured
     //    "focus channel unavailable" error instead of crashing the
     //    helper's ext_method call.
-    let wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>> =
+    //
+    //    We also take this opportunity to subscribe to WT events so
+    //    master can demote rows to Ended on pane-close even when no
+    //    wta-helper publishes a `PaneClosed` session_hook. Two
+    //    real-world cases this protects against:
+    //
+    //      * Gemini shell-pane sessions on Ctrl+Shift+W / close-tab:
+    //        Gemini's `SessionEnd` hook does not run reliably on hard
+    //        kill (confirmed via `hook-trace.log`), and the helper in
+    //        the closing pane (if any) dies before its connection_state
+    //        handler runs. Without master subscribing directly, the F2
+    //        row stays stuck at Idle indefinitely.
+    //      * Helper crash / kill: any path that prevents the helper
+    //        from observing-then-publishing the event.
+    //
+    //    Copilot / Claude work today because their Stop / SessionEnd
+    //    hooks fire fast enough during the CTRL_CLOSE grace window;
+    //    Gemini does not. Subscribing here makes the demotion path
+    //    agnostic to hook behavior across all three CLIs.
+    let wt_cli: Option<Arc<crate::shell::wt_channel::CliChannel>> =
         match crate::shell::wt_channel::CliChannel::connect().await {
             Ok(ch) => Some(Arc::new(ch)),
             Err(err) => {
                 tracing::warn!(
                     target: "master",
                     error = %err,
-                    "CliChannel unavailable; intellterm.wta/focus_session will error"
+                    "CliChannel unavailable; intellterm.wta/focus_session will error, \
+                     and master will not bridge WT connection_state -> PaneClosed"
                 );
                 None
             }
         };
+    // Subscribe + start_reader BEFORE wrapping as `dyn WtChannel` (the
+    // trait surface doesn't expose event subscription). Single-consumer
+    // model — focus_session uses the same channel via `run_wtcli`
+    // request/response, which doesn't touch the event sender, so there
+    // is no contention.
+    let wt_event_rx = wt_cli.as_ref().map(|c| c.subscribe_events());
+    if let Some(ref cli) = wt_cli {
+        cli.start_reader().await;
+    }
+    let wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>> = wt_cli
+        .clone()
+        .map(|c| c as Arc<dyn crate::shell::wt_channel::WtChannel>);
     let resolved_agent_id = crate::agent_registry::resolve_agent_id_from_cmd(&cli.agent);
     let cli_source = crate::agent_sessions::CliSource::from_agent_id(resolved_agent_id);
     tracing::info!(
@@ -1425,6 +1457,28 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
             .await;
         }
     });
+
+    // WT event subscriber: drive PaneClosed / ConnectionFailed into the
+    // master registry directly off WT's `connection_state` events. This
+    // is the fallback for cases where no helper publishes the event —
+    // see the `wt_cli` setup above for the Gemini hard-close motivation.
+    if let Some(mut rx) = wt_event_rx {
+        let inner_for_wt = Arc::clone(&inner);
+        tokio::task::spawn_local(async move {
+            tracing::info!(
+                target: "master_wt_event",
+                "master WT event subscriber task started"
+            );
+            while let Some(event_json) = rx.recv().await {
+                handle_master_wt_event(&inner_for_wt, event_json).await;
+            }
+            tracing::warn!(
+                target: "master_wt_event",
+                "master WT event subscriber channel closed"
+            );
+        });
+    }
+
     let client = MasterClient {
         state: Arc::clone(&inner),
     };
@@ -1879,6 +1933,101 @@ async fn handle_session_hook(
     }
 
     Ok(crate::session_registry::build_session_hook_response(applied))
+}
+
+/// Master-side WT event subscriber. Bridges `connection_state`
+/// notifications from the COM channel into the master's session
+/// registry so that closing a pane (Ctrl+Shift+W, close-tab, hard kill)
+/// reliably demotes any session bound to that pane — even when no
+/// `wta-helper` publishes a `session_hook` for it. Two cases this
+/// covers in practice:
+///
+///   * Helper in the closing pane dies before its
+///     `connection_state` handler runs.
+///   * Shell-pane Gemini sessions on hard close: Gemini's `SessionEnd`
+///     hook is unreliable on `CTRL_CLOSE_EVENT` (confirmed via
+///     `hook-trace.log`), and the helper observation path may not
+///     publish for reasons we have not finished isolating.
+///
+/// Copilot / Claude's Stop / SessionEnd hooks fire fast enough that
+/// the publish-from-helper path works for them today; this subscriber
+/// makes the behavior uniform across CLIs and resilient to helper
+/// teardown order.
+async fn handle_master_wt_event(
+    state: &MasterStateInner,
+    event_json: serde_json::Value,
+) {
+    let method = event_json
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if method != "connection_state" {
+        return;
+    }
+    let params = event_json
+        .get("params")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    // Match the helper-side fallback in `main.rs` (line ~2048): prefer
+    // `pane_id`; fall back to legacy `session_id` so a hypothetical
+    // older WT build still works.
+    let pane_id = params
+        .get("pane_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .or_else(|| params.get("session_id").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .to_string();
+    if pane_id.is_empty() {
+        return;
+    }
+    let pane_state = params
+        .get("state")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let event = match pane_state {
+        "closed" => crate::agent_sessions::SessionEvent::PaneClosed {
+            pane_session_id: pane_id.clone(),
+        },
+        "failed" => {
+            let reason = params
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("connection failed")
+                .to_string();
+            crate::agent_sessions::SessionEvent::ConnectionFailed {
+                pane_session_id: pane_id.clone(),
+                reason,
+            }
+        }
+        _ => return,
+    };
+    tracing::info!(
+        target: "master_wt_event",
+        pane_id = %pane_id,
+        state = %pane_state,
+        event = ?event,
+        "applying WT connection_state event to master registry"
+    );
+    let applied = state.registry.apply_event(event).await;
+    if applied {
+        tracing::info!(
+            target: "master_wt_event",
+            pane_id = %pane_id,
+            "broadcasting sessions/changed after WT-driven demotion"
+        );
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
+    } else {
+        tracing::debug!(
+            target: "master_wt_event",
+            pane_id = %pane_id,
+            "WT connection_state event was a no-op (pane not bound to any session)"
+        );
+    }
 }
 
 /// Extract the session key from event variants that carry one. Returns

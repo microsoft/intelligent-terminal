@@ -5029,6 +5029,13 @@ impl App {
                 // safe to apply unconditionally for non-own panes.
                 if method == "connection_state" {
                     let state = params.get("state").and_then(|v| v.as_str()).unwrap_or("");
+                    tracing::info!(
+                        target: "helper_wt_event",
+                        pane_id = %pane_id,
+                        state,
+                        self_pane = ?self.pane_id,
+                        "helper observed WT connection_state event"
+                    );
                     match state {
                         "closed" => {
                             // Capture the key BEFORE PaneClosed clears
@@ -5042,6 +5049,12 @@ impl App {
                             };
                             self.agent_sessions.apply(event.clone());
                             self.publish_session_hook(event);
+                            tracing::info!(
+                                target: "helper_wt_event",
+                                pane_id = %pane_id,
+                                key_before = ?key_before,
+                                "helper applied PaneClosed locally + published to master"
+                            );
                             if let Some(k) = key_before {
                                 crate::app::prune_phantom_session_if_ended(
                                     &mut self.agent_sessions,
