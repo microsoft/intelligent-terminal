@@ -9,8 +9,12 @@
 #include <cwctype>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
+#include <winrt/Windows.UI.Xaml.Media.h>
 
+using namespace winrt::Windows::UI;
 using namespace winrt::Windows::UI::Xaml;
+using namespace winrt::Windows::UI::Xaml::Controls;
+using namespace winrt::Windows::UI::Xaml::Media;
 using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 
@@ -32,6 +36,7 @@ namespace winrt::TerminalApp::implementation
             if (lower.find(L"gemini") != std::wstring::npos) return L"gemini.svg";
             return L"copilot.svg";
         }
+
     }
 
     AgentPaneContent::AgentPaneContent(const winrt::TerminalApp::TerminalPaneContent& inner) :
@@ -82,6 +87,18 @@ namespace winrt::TerminalApp::implementation
         {
             _refreshLogo();
         }
+        // Match `SetSessionsView` and `ApplyAutofixState`: any bottom-bar-
+        // affecting state mutation on AgentPaneContent must raise
+        // `StateChanged` so subscribers (TerminalPage's bar-refresh
+        // handler) can pick up the change without polling. The bar does
+        // not currently render the agent name itself, but the cross-
+        // window-drag fix path in `TabManagement.cpp` relies on
+        // `_UpdateBottomBarState` running once after the wire-up to
+        // reflect any cached state the helper pushed before the wire
+        // was in place — without the raise here, that catch-up wouldn't
+        // observe agent_status arriving in the same race window. Also
+        // future-proofs the bar against ever displaying agent name.
+        StateChanged.raise(*this, nullptr);
     }
 
     // Swap the bar between two modes:
@@ -97,6 +114,63 @@ namespace winrt::TerminalApp::implementation
         _isSessionsView = active;
         _refreshLabel();
         _refreshLogo();
+        StateChanged.raise(*this, nullptr);
+    }
+
+    void AgentPaneContent::ApplyAutofixState(AutofixState state,
+                                             const winrt::hstring& paneId,
+                                             const winrt::hstring& summary,
+                                             const winrt::hstring& fixPreview,
+                                             const winrt::hstring& hotkeyHint,
+                                             const winrt::hstring& suggestionTitle)
+    {
+        _autofixState = state;
+        if (state == AutofixState::Idle)
+        {
+            // Clear ALL cached fields on idle, including `_hotkeyHint`.
+            // The bottom bar reads these directly, so a leftover hint
+            // from a prior Detected/Pending transition would otherwise
+            // hang around after the bar should have gone quiet.
+            _lastErrorPaneId = {};
+            _fixPreview = {};
+            _suggestionTitle = {};
+            _detectedSummary = {};
+            _hotkeyHint = {};
+        }
+        else
+        {
+            if (!paneId.empty())
+            {
+                _lastErrorPaneId = paneId;
+            }
+            if (!summary.empty())
+            {
+                _detectedSummary = summary;
+            }
+            if (!fixPreview.empty())
+            {
+                _fixPreview = fixPreview;
+            }
+            if (!hotkeyHint.empty())
+            {
+                _hotkeyHint = hotkeyHint;
+            }
+            if (!suggestionTitle.empty())
+            {
+                _suggestionTitle = suggestionTitle;
+            }
+        }
+        StateChanged.raise(*this, nullptr);
+    }
+
+    void AgentPaneContent::SetAgentPanePosition(const winrt::hstring& position)
+    {
+        if (_agentPanePosition == position)
+        {
+            return;
+        }
+        _agentPanePosition = position;
+        StateChanged.raise(*this, nullptr);
     }
 
     void AgentPaneContent::_refreshLabel()
@@ -106,15 +180,13 @@ namespace winrt::TerminalApp::implementation
         // that title lives.
         if (_isSessionsView)
         {
-            AgentLabelText().Text(L"Agent sessions");
+            const auto text = _agentName.empty() ?
+                                  std::wstring{ RS_(L"AgentPane_SessionsTitle") } :
+                                  RS_fmt(L"AgentPane_SessionsTitleFormat", std::wstring{ _agentName });
+            AgentLabelText().Text(winrt::hstring{ text });
             return;
         }
 
-        // Composition rule:
-        //     "<name> <version>"   if version present (version may already include "v" prefix)
-        //     "<name> <model>"     else if model present
-        //     "<name>"             otherwise
-        //     "Agent"              if name absent
         std::wstring text;
         if (_agentName.empty())
         {
@@ -139,18 +211,17 @@ namespace winrt::TerminalApp::implementation
 
     void AgentPaneContent::_refreshLogo()
     {
-        // Sessions view: the bar shows only the "Agent sessions" title
-        // (Figma node 912:70364 — no per-agent logo on the session list).
         if (_isSessionsView)
         {
             AgentLogo().Source(nullptr);
+            AgentLogo().Visibility(Visibility::Collapsed);
             return;
         }
 
-        // No agent name yet → hide logo entirely (don't default to Copilot).
         if (_agentName.empty())
         {
             AgentLogo().Source(nullptr);
+            AgentLogo().Visibility(Visibility::Collapsed);
             return;
         }
 
@@ -158,12 +229,10 @@ namespace winrt::TerminalApp::implementation
         uri.append(_logoFileForAgent(_agentName));
         const winrt::Windows::Foundation::Uri parsed{ winrt::hstring{ uri } };
         winrt::Windows::UI::Xaml::Media::Imaging::SvgImageSource source{ parsed };
-        // Without an explicit raster size, SvgImageSource can render to a
-        // tiny fallback bitmap that shows up as a fuzzy/grey square. The
-        // bar gives us a 14-DIP slot, so 28px @ 2x DPI is plenty.
         source.RasterizePixelWidth(28.0);
         source.RasterizePixelHeight(28.0);
         AgentLogo().Source(source);
+        AgentLogo().Visibility(Visibility::Visible);
     }
 
 #pragma region IPaneContent forwarding
@@ -178,17 +247,21 @@ namespace winrt::TerminalApp::implementation
         {
             impl->UpdateSettings(settings);
         }
+        // Re-pick up the pane position in case settings changed it.
+        SetAgentPanePosition(settings.GlobalSettings().AgentPanePosition());
     }
 
     winrt::Windows::Foundation::Size AgentPaneContent::MinimumSize()
     {
-        // Reserve 36px for the bar on top of the inner control's minimum.
+        // Reserve 36px (top bar) on top of the inner control's minimum.
+        // The bottom bar is window-level chrome now, so it isn't part of
+        // this pane's minimum size.
         if (const auto& impl = winrt::get_self<implementation::TerminalPaneContent>(_inner))
         {
             const auto inner = impl->MinimumSize();
             return { inner.Width, inner.Height + 36.0f };
         }
-        return { 1, 36 };
+        return { 1, 36.0f };
     }
 
     void AgentPaneContent::Focus(winrt::Windows::UI::Xaml::FocusState reason)

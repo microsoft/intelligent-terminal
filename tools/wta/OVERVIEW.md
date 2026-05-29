@@ -71,12 +71,11 @@ One-shot commands that talk directly to Windows Terminal. Useful for both humans
        |                             |                          |
        +-----------------+-----------+                          |
                          |                                      |
-                   ShellManager                          PipeChannel
-                    |         |                          (direct)
-              local child   WtChannel (COM via wtcli)         |
-                                  |                            |
-                                  +----------------------------+
+                   ShellManager                                 |
+                    |         |                                 |
+              local child   WtChannel (COM via wtcli) <---------+
                                   |
+                                  v
                          Windows Terminal
                         (TerminalProtocolComServer)
 ```
@@ -91,8 +90,7 @@ One-shot commands that talk directly to Windows Terminal. Useful for both humans
 | **ACP Client** | `src/protocol/acp/client.rs` | ACP client; spawns the AI subprocess; handles JSON-RPC messages |
 | **MCP Server** | `src/protocol/mcp/server.rs` | MCP server; exposes 15 tools via rmcp |
 | **ShellManager** | `src/shell/shell_manager.rs` | Terminal process manager: local child or WT pane |
-| **CliChannel** | `src/shell/wt_channel/cli_channel.rs` | Shells out to `wtcli.exe` to talk to WT's COM server |
-| **PipeChannel** | `src/shell/wt_channel/pipe_channel.rs` | Inherited duplex pipe pair (used only for `send_input`) |
+| **CliChannel** | `src/shell/wt_channel/cli_channel.rs` | Shells out to `wtcli.exe` to talk to WT's COM server (the only WT transport) |
 | **TUI** | `src/ui/*.rs` | ratatui chat UI: message rendering, input box, permission prompts, status bar |
 | **App** | `src/app.rs` | TUI state machine and event loop |
 
@@ -105,11 +103,9 @@ One-shot commands that talk directly to Windows Terminal. Useful for both humans
 - **MCP (Model Context Protocol)**: JSON-RPC 2.0 over stdio; WTA is the server
 
 ### WTA ↔ Windows Terminal
-- **Protocol**: COM (`IProtocolServer`) for the bulk of methods; an inherited duplex anonymous-pipe pair for `send_input` only
+- **Protocol**: COM (`IProtocolServer`) for all methods, including `SendInput` (direct shell input)
 - **Discovery**: `WT_COM_CLSID` environment variable, set by WT at startup and inherited by every conpty child (so wta and wtcli see it automatically)
-- **Authorization**:
-  - COM is gated by Windows packaged-COM / terminal activation policy
-  - The inherited pipe is gated by kernel handle inheritance (only the wta WT itself spawned receives the handles)
+- **Authorization**: COM is gated by Windows packaged-COM / terminal activation policy
 
 ---
 
@@ -158,14 +154,14 @@ WTA lives under the `tools/wta/` subdirectory of the Windows Terminal source tre
 
 - The C++ side ships `TerminalProtocolComServer`, exposing `IProtocolServer` via local COM activation
 - The Rust side (WTA) talks to it indirectly by shelling out to `wtcli.exe`, which is the COM client
-- Current state: COM is the primary control plane; the inherited duplex pipe is reserved for `send_input` only
-- Future plans: deeper in-pane integration may extend WT's VT parser or grow the pipe protocol's method set
+- Current state: COM is the sole control plane for all WT operations, including direct shell input
+- Future plans: deeper in-pane integration may extend WT's VT parser or grow the protocol's method set
 
 ---
 
 ## Process model in detail
 
-The system involves **4 kinds of processes** and **3 IPC channels**. Each scenario is broken down below.
+The system involves **4 kinds of processes** and a small number of IPC channels. Each scenario is broken down below.
 
 ---
 
@@ -209,7 +205,7 @@ process A: Windows Terminal       process B: wta.exe            process C: copil
 (WindowsTerminal.exe)             (chat TUI)                    (AI agent child)
       │                                │                            │
       │◄── COM (via wtcli) ───────────►│◄── stdio (ACP JSON-RPC) ──►│
-      │  + inherited pipe (send_input) │    stdin/stdout             │
+      │  (all methods, incl. SendInput)│    stdin/stdout             │
       │                                │                            │
       │                                │  B is C's parent           │
       │                                │  B spawns C                │
@@ -336,8 +332,7 @@ When an AI agent needs to run a command, ShellManager picks one of two routes:
 |------|--------|------|------|------|
 | **WTA ↔ Agent (ACP)** | stdio (stdin/stdout pipes) | JSON-RPC 2.0 (ACP) | bidirectional | WTA sends prompts; agent streams messages and requests command execution |
 | **WTA ↔ Agent (MCP)** | stdio (stdin/stdout pipes) | JSON-RPC 2.0 (MCP) | bidirectional | Agent calls tools; WTA returns results |
-| **WTA ↔ WT (COM)** | `wtcli.exe` subprocess → `CoCreateInstance(WT_COM_CLSID)` → `IProtocolServer` | WinRT IDL methods | bidirectional (push events via subscribed callback) | Tab/pane management, output reads, settings, events |
-| **WTA ↔ WT (pipe)** | Inherited duplex anonymous pipe pair (handle list via `STARTUPINFOEX`) | Length-framed JSON-RPC | bidirectional | `send_input` only (keystroke injection); high-frequency latency-sensitive path |
+| **WTA ↔ WT (COM)** | `wtcli.exe` subprocess → `CoCreateInstance(WT_COM_CLSID)` → `IProtocolServer` | WinRT IDL methods | bidirectional (push events via subscribed callback) | Tab/pane management, output reads, settings, events, direct shell input (`SendInput`) |
 
 ---
 

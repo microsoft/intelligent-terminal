@@ -137,11 +137,12 @@ namespace TerminalApp
         // The page tears down the shared agent pane; wta dies with its ConPty.
         void OnCloseAgentPaneRequested(String eventJson);
 
-        // Inbound event from WTA carrying {method:"view_changed",params:{view}}.
-        // Emitted when the wta TUI flips its internal view (Esc out of Agents,
-        // `/sessions` slash command). Mirrors the new view onto C++ state so
-        // the agent bar title + bottom bar highlight stay in sync.
-        void OnAgentViewChanged(String eventJson);
+        // Inbound event from WTA carrying
+        // {method:"agent_state_changed",params:{tab_id,view,pane_open}}.
+        // Per-tab agent-pane UI snapshot — the page-side handler routes by
+        // `tab_id` to the matching AgentPaneContent (creating or tearing
+        // down the pane on that tab as needed).
+        void OnAgentStateChanged(String eventJson);
 
         // Inbound event from WTA carrying
         // {method:"resume_in_new_agent_tab",params:{session_id,cwd}}.
@@ -150,5 +151,20 @@ namespace TerminalApp
         // publishes a `load_session` event back to wta carrying the new
         // tab's StableId so wta calls ACP `session/load` for that tab.
         void OnResumeInNewAgentTabRequested(String eventJson);
+
+        // Inbound event from WTA carrying
+        // {method:"set_agent_chip_target",params:{tab_id, pane_session_id?}}.
+        // Helper override for which pane in the tab gets the blue "Agent"
+        // chip. A missing or null pane_session_id reverts that tab to the
+        // default chip behavior (driven by the source-of-agent flag).
+        void OnAgentChipTargetChanged(String eventJson);
+
+        // Inbound event from WTA carrying {method:"restart_agent_stack"}.
+        // Emitted by the `/restart` slash command. The page tears down
+        // every agent pane, force-restarts the wta-master process via
+        // `SharedWta::Restart()` (bypassing the AcquirePane refcount),
+        // and re-toggles the active tab's pane so the user lands on a
+        // fresh agent CLI session under the same stable master pipe.
+        void OnRestartAgentStackRequested(String eventJson);
     }
 }

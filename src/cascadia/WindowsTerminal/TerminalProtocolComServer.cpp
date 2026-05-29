@@ -11,7 +11,9 @@
 #include <til/io.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
 
+#include <algorithm>
 #include <thread>
+#include <vector>
 
 namespace ProtocolParsing = Microsoft::Terminal::Protocol::Parsing;
 
@@ -145,33 +147,71 @@ void TerminalProtocolComServer::_ensurePageEventsRegistered()
     if (!s_emperor)
         return;
 
-    // Use a retryable pattern instead of call_once: if no page is found on
-    // the first Subscribe() call (e.g. during early startup), we allow retry
-    // on subsequent calls rather than permanently giving up.
-    static std::atomic<bool> s_registered{ false };
+    // Per-TerminalPage registration tracking. Each window gets its
+    // ProtocolVtSequenceReceived wired exactly once, so events from any
+    // window — not just the lexically-first one — reach the COM fan-out.
+    //
+    // Key on `winrt::weak_ref<TerminalPage>` rather than `AppHost*`:
+    // - A closed window's AppHost is destructed and the same memory
+    //   address may later be reused by a freshly-created AppHost. With a
+    //   raw-pointer key the new window would be misidentified as
+    //   "already registered" and silently skipped (ABA bug).
+    // - `weak_ref` tracks the WinRT object's actual identity; dead
+    //   entries surface as `weak_ref::get()` returning null, and new
+    //   pages are recognized as distinct even if they share an address
+    //   with a defunct one.
+    //
+    // Membership is O(n) over a small N (window count), so a vector is
+    // simpler than a hash structure and avoids the hashing/equality
+    // contortions weak_ref would otherwise need.
     static std::mutex s_regMutex;
-
-    if (s_registered.load(std::memory_order_acquire))
-        return;
+    static std::vector<winrt::weak_ref<winrt::TerminalApp::TerminalPage>> s_registered;
 
     std::lock_guard lock{ s_regMutex };
-    if (s_registered.load(std::memory_order_relaxed))
-        return;
 
+    // Prune dead entries (page destructed → weak_ref returns null).
+    std::erase_if(s_registered, [](const auto& w) { return !w.get(); });
+
+    // Register any TerminalPage we haven't seen before. If the page
+    // isn't ready yet (early startup race), skip silently — the next
+    // Subscribe() or s_OnWindowAdded() call will retry.
     for (const auto& host : s_emperor->GetWindows())
     {
         const auto page = _getPage(host.get());
         if (!page)
+        {
             continue;
+        }
+
+        // Compare strong refs by WinRT identity (`operator==` on a
+        // projected type checks IUnknown ABI equality).
+        const bool alreadyRegistered = std::any_of(
+            s_registered.begin(),
+            s_registered.end(),
+            [&page](const auto& w) {
+                const auto p = w.get();
+                return p && p == page;
+            });
+        if (alreadyRegistered)
+        {
+            continue;
+        }
 
         page.ProtocolVtSequenceReceived(
             [](auto&&, const winrt::hstring& eventJson) {
                 s_NotifyEventToComClients(winrt::to_string(eventJson));
             });
-        s_registered.store(true, std::memory_order_release);
-        return;
+        s_registered.push_back(winrt::make_weak(page));
     }
-    // No page found — don't mark registered, allow retry on next Subscribe().
+}
+
+void TerminalProtocolComServer::s_OnWindowAdded(AppHost* /*host*/)
+{
+    // We could use the AppHost* parameter to wire only the new window,
+    // but `_ensurePageEventsRegistered` is already cheap (small window
+    // counts, O(n) prune + O(n) register, deduped per AppHost). Re-using
+    // it keeps the registration logic in exactly one place.
+    _ensurePageEventsRegistered();
 }
 
 void TerminalProtocolComServer::s_NotifyEventToComClients(const std::string& eventJson)
@@ -283,10 +323,8 @@ Protocol::AuthResult TerminalProtocolComServer::Authenticate(winrt::hstring cons
 
     Protocol::AuthResult result{};
     result.Authenticated = _authenticated;
-    // 2.1 — IProtocolServer no longer exposes SendInput. Keystroke injection
-    // is restricted to per-wta secure pipes (TerminalProtocolPipeServer).
-    // Pane identifiers are GUIDs (WT_SESSION) instead of UInt32 pane ids.
-    result.ProtocolVersion = L"2.1";
+    // 2.2 — SendInput restored on the COM surface; pane identifiers remain GUIDs.
+    result.ProtocolVersion = L"2.2";
     return result;
 }
 
@@ -306,6 +344,7 @@ winrt::hstring TerminalProtocolComServer::GetCapabilities()
         "create_tab",
         "split_pane",
         "close_pane",
+        "send_input",
         "set_session_variable",
         "subscribe",
         "unsubscribe",
@@ -576,6 +615,31 @@ void TerminalProtocolComServer::ClosePane(winrt::guid sessionId)
     winrt::throw_hresult(E_FAIL);
 }
 
+void TerminalProtocolComServer::SendInput(winrt::guid sessionId, winrt::hstring const& text)
+{
+    THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    THROW_HR_IF(E_INVALIDARG, sessionId == winrt::guid{});
+
+    // Empty input is a no-op, matching ControlCore::SendInput semantics so
+    // COM clients that send "" don't see surprising E_INVALIDARG failures.
+    if (text.empty())
+    {
+        return;
+    }
+
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+            continue;
+
+        if (page.SendProtocolInput(sessionId, text).get())
+            return;
+    }
+
+    winrt::throw_hresult(E_FAIL);
+}
+
 void TerminalProtocolComServer::FocusPane(winrt::guid sessionId)
 {
     THROW_HR_IF(E_NOT_VALID_STATE, !s_emperor);
@@ -659,23 +723,31 @@ void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
         return;
     case ProtocolParsing::SendEventRoute::CloseAgentPane:
         // User pressed Ctrl+C twice in the wta TUI. Marshal to the UI
-        // thread and tell TerminalPage to tear down the shared agent pane.
+        // thread; the page-side handler resolves the tab via `tab_id`
+        // and tears down that tab's agent pane.
         _dispatchCloseAgentPaneToPage(eventJson);
         return;
-    case ProtocolParsing::SendEventRoute::ViewChanged:
-        // wta TUI flipped its internal view (Esc out of session view,
-        // `/sessions` slash command). C++ mirrors the new view onto the
-        // agent bar title + the bottom bar's sessions/chat highlight.
-        _dispatchViewChangedToPage(eventJson);
+    case ProtocolParsing::SendEventRoute::AgentState:
+        // Per-tab agent-pane UI snapshot from wta. Page-side handler
+        // routes by `tab_id` to the matching AgentPaneContent (creating
+        // or tearing down the pane on that tab as needed).
+        _dispatchAgentStateChangedToPage(eventJson);
         return;
     case ProtocolParsing::SendEventRoute::ResumeInNewAgentTab:
-        // Session view's Shift+Enter handler in the wta TUI. Carries
-        // {session_id, cwd} for a historical session. WT creates a new
-        // tab, reconciles the shared agent pane onto it, then publishes
-        // a `load_session` event back to wta with the new tab's StableId
-        // so the existing ACP connection calls `session/load` for that
-        // tab. See TerminalPage::OnResumeInNewAgentTabRequested.
+        // Session view's Shift+Enter handler in the wta TUI. WT creates
+        // a new tab and asks wta to open an agent pane in it.
         _dispatchResumeInNewAgentTabToPage(eventJson);
+        return;
+    case ProtocolParsing::SendEventRoute::AgentChipTarget:
+        // Helper override for which pane gets the "Agent" chip; null
+        // pane_session_id reverts the tab to source-flag-driven chip.
+        _dispatchAgentChipTargetToPage(eventJson);
+        return;
+    case ProtocolParsing::SendEventRoute::RestartAgentStack:
+        // `/restart` from any agent pane TUI. Page-side handler tears
+        // down every agent pane in its window and force-restarts the
+        // wta-master process via SharedWta.
+        _dispatchRestartAgentStackToPage(eventJson);
         return;
     case ProtocolParsing::SendEventRoute::Broadcast:
     {
@@ -768,9 +840,9 @@ void TerminalProtocolComServer::_dispatchCloseAgentPaneToPage(const winrt::hstri
     {
         return;
     }
-    // Fan out to every window; the wta that emitted this event lives in one of
-    // them and only that window's TerminalPage has the matching _agentPane.
-    // Pages with no agent pane no-op the call (see OnCloseAgentPaneRequested).
+    // Fan out to every window; the wta-master process is shared across all
+    // windows, and the page-side handler resolves the right tab via tab_id.
+    // Pages without a matching tab no-op the call (see OnCloseAgentPaneRequested).
     for (const auto& host : s_emperor->GetWindows())
     {
         auto page = _getPage(host.get());
@@ -798,15 +870,17 @@ void TerminalProtocolComServer::_dispatchCloseAgentPaneToPage(const winrt::hstri
     }
 }
 
-void TerminalProtocolComServer::_dispatchViewChangedToPage(const winrt::hstring& eventJson)
+void TerminalProtocolComServer::_dispatchRestartAgentStackToPage(const winrt::hstring& eventJson)
 {
     if (!s_emperor)
     {
         return;
     }
-    // Same fan-out shape as the other dispatchers: the agent pane lives in
-    // exactly one window, but we don't know which from here, and pages with
-    // no agent pane no-op the call (see OnAgentViewChanged).
+    // Fan out to every window so each page tears down its own agent panes.
+    // The actual `SharedWta::Restart()` call inside each page-side handler
+    // takes the shared lock and is safe to invoke multiple times — only the
+    // first one in flight does work; the others observe `_process` invalid
+    // (or already-respawned by the winning thread) and no-op.
     for (const auto& host : s_emperor->GetWindows())
     {
         auto page = _getPage(host.get());
@@ -824,7 +898,43 @@ void TerminalProtocolComServer::_dispatchViewChangedToPage(const winrt::hstring&
             [page, eventJson]() {
                 try
                 {
-                    page.OnAgentViewChanged(eventJson);
+                    page.OnRestartAgentStackRequested(eventJson);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchAgentStateChangedToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // Same fan-out shape as the other dispatchers: the agent pane lives in
+    // exactly one window, but we don't know which from here, and pages with
+    // no agent pane no-op the call (see OnAgentStateChanged).
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnAgentStateChanged(eventJson);
                 }
                 catch (...)
                 {
@@ -861,6 +971,42 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
                 try
                 {
                     page.OnResumeInNewAgentTabRequested(eventJson);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchAgentChipTargetToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // Tab StableIds are unique across windows; fan out to every window's
+    // page and let _FindTabByStableId pick the right one (pages without
+    // a matching tab no-op the call). Same shape as the other dispatchers.
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnAgentChipTargetChanged(eventJson);
                 }
                 catch (...)
                 {

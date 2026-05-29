@@ -124,6 +124,7 @@ branchconfig
 brandings
 Browsable
 Bspace
+bspace
 BTNFACE
 bufferout
 buffersize
@@ -528,6 +529,7 @@ ETW
 EUDC
 eventing
 evflags
+EOFs
 execd
 executionengine
 exemain
@@ -1641,6 +1643,7 @@ tdbuild
 TDP
 Teb
 Techo
+taskkill
 tellp
 teraflop
 terminalcore
@@ -1907,6 +1910,7 @@ WNDCLASSW
 Wndproc
 wordiswrapped
 workarea
+worktree
 WOWARM
 WOWx
 wparam
@@ -1925,9 +1929,13 @@ wrkstr
 wrl
 wrp
 WSLENV
+wlen
 wstr
 wstrings
 wsz
+wta
+WTCLI
+wtai
 wtd
 WTEXT
 WTo
@@ -2013,6 +2021,7 @@ testname
 transitioning
 unk
 unparseable
+unregisters
 Virt
 VMs
 webpage
@@ -2023,3 +2032,9 @@ inbox
 prioritization
 sourced
 IME
+CLDR
+doy
+Hinnant
+LONGDATE
+MRT
+Uninstalls

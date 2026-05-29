@@ -1,28 +1,79 @@
-# send-event.ps1 — Forward Copilot CLI hook events to WTA via wtcli
+# send-event.ps1 — Telemetry hook for WTA agent session tracking.
 #
-# CLI-source identification:
-#   The installer hard-codes which CLI invokes this script via the
-#   `-CliSource` parameter (claude / copilot / gemini). That is the
-#   ONLY reliable signal — env-var heuristics are unreliable because
-#   Copilot CLI inherits Claude's plugin shape and sets CLAUDE_PLUGIN_ROOT,
-#   making it indistinguishable from a real Claude run by env vars alone.
+# ── EXIT-CODE CONTRACT ──────────────────────────────────────────────────
+# This script MUST exit 0 unconditionally. It is wired to Claude / Copilot
+# PreToolUse, UserPromptSubmit, Stop, SubagentStop, and other lifecycle
+# events where a non-zero exit has *semantic* consequences:
+#   * Exit 2  → blocks the tool call / erases the user prompt /
+#               forces Claude to keep going past Stop
+#   * Other   → shows "<hook> hook error" + first line of stderr in the
+#               transcript on every fire
+# Two guarantees defend the contract:
+#   1. `trap { exit 0 }` at the top — catches any terminating error that
+#      escapes the outer try/catch (script init, throws from inside the
+#      catch handler itself, etc).
+#   2. The single outer try/catch wraps every action and broadly swallows
+#      anything that fails inside it.
+# Do NOT add `exit N` for non-zero N anywhere. Do NOT remove the trap.
+#
+# ── STDIO DISCIPLINE ────────────────────────────────────────────────────
+# Write nothing to stdout or stderr. On UserPromptSubmit / SessionStart,
+# stdout is added to the model's context — every byte leaks tokens and
+# can be a prompt-injection vector. Diagnostics go to
+# %LOCALAPPDATA%\IntelligentTerminal\logs\hook-trace.log only.
+#
+# ── CLI-source identification ───────────────────────────────────────────
+# The installer hard-codes which CLI invokes this script via the
+# `-CliSource` parameter (claude / copilot / gemini). That is the
+# ONLY reliable signal — env-var heuristics are unreliable because
+# Copilot CLI inherits Claude's plugin shape and sets CLAUDE_PLUGIN_ROOT,
+# making it indistinguishable from a real Claude run by env vars alone.
 param(
     [string]$EventType = "agent.hook",
     [string]$CliSource = ""
 )
 
-# ─── diagnostic trace (round 13) ────────────────────────────────────────
-# Every hook invocation appends one line so we can diagnose missing
-# SessionEnd events on Ctrl+C without relying on wta seeing the message.
-# Writes to %LOCALAPPDATA%\IntelligentTerminal\logs\hook-trace.log.
-# Best-effort; never throws.
-$traceWritten = $false
+# Failsafe: see CONTRACT above. Last line of defense behind the outer
+# try/catch. Triggers on any terminating error (including ones thrown
+# from inside the catch handler itself).
+trap { exit 0 }
+
+# Skip if not running inside Windows Terminal.
+# (Checked before the diagnostic trace so we don't spam hook-trace.log
+# with ENTER lines on every tool event when WTA isn't in play — the
+# hook has nothing useful to do without WT_COM_CLSID anyway.)
+if (-not $env:WT_COM_CLSID) { exit 0 }
+
+# Single outer try/catch wraps every action this script takes. Catch is
+# intentionally broad — see CONTRACT above. We deliberately do NOT
+# narrow exception types here: this script must never propagate any
+# failure to the parent agent CLI.
+$tracePath = $null
 try {
+    # ── diagnostic trace + 5 MB rotation ────────────────────────────────
+    # Appends one ENTER line per invocation so we can diagnose missing
+    # SessionEnd events on Ctrl+C. Soft 5 MB rotation: the check fires
+    # at the start of the NEXT hook after the threshold, so both the
+    # active log and the `.1` backup can briefly exceed 5 MB.
+    #
+    # `-ErrorAction SilentlyContinue` on every filesystem cmdlet: the
+    # hook CONTRACT forbids writing anything to stdout/stderr, and
+    # New-Item / Get-Item / Move-Item emit non-terminating errors
+    # (AV-locked file, ACL denied, hooks racing) that bypass the outer
+    # try/catch and would otherwise leak into the parent CLI transcript.
+    # A persistent failure (read-only / no disk) surfaces via unbounded
+    # log growth, which is a visible signal.
     $traceDir = Join-Path $env:LOCALAPPDATA 'IntelligentTerminal\logs'
     if (-not (Test-Path -LiteralPath $traceDir)) {
-        New-Item -ItemType Directory -Path $traceDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $traceDir -Force -ErrorAction SilentlyContinue | Out-Null
     }
     $tracePath = Join-Path $traceDir 'hook-trace.log'
+
+    $traceItem = Get-Item -LiteralPath $tracePath -ErrorAction SilentlyContinue
+    if (($traceItem -is [System.IO.FileInfo]) -and $traceItem.Length -ge 5MB) {
+        Move-Item -LiteralPath $tracePath -Destination "$tracePath.1" -Force -ErrorAction SilentlyContinue
+    }
+
     $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
     $cliEnvHint =
         if ($env:COPILOT_SESSION_ID) { 'copilot' }
@@ -33,54 +84,41 @@ try {
         elseif ($env:CLAUDE_PLUGIN_ROOT) { 'claude' }
         else { '<unknown>' }
     $wtSess = if ($env:WT_SESSION) { $env:WT_SESSION } else { '<no-WT_SESSION>' }
-    $line = "$stamp | ENTER cli=$CliSource event=$EventType envHint=$cliEnvHint wt=$wtSess pid=$PID"
-    Add-Content -LiteralPath $tracePath -Value $line -ErrorAction SilentlyContinue
-    $traceWritten = $true
-} catch { }
-# ────────────────────────────────────────────────────────────────────────
+    Add-Content -LiteralPath $tracePath -Value "$stamp | ENTER cli=$CliSource event=$EventType envHint=$cliEnvHint wt=$wtSess pid=$PID" -ErrorAction SilentlyContinue
 
-# Skip if not running inside Windows Terminal
-if (-not $env:WT_COM_CLSID) {
-    if ($traceWritten) {
-        try {
-            $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
-            Add-Content -LiteralPath $tracePath -Value "$stamp | SKIP no WT_COM_CLSID (cli=$CliSource event=$EventType)" -ErrorAction SilentlyContinue
-        } catch { }
+    # ── Locate wtcli.exe ────────────────────────────────────────────────
+    # Order: PATH (works if the package registers a wtcli AppExecutionAlias),
+    # then $env:WTCLI_PATH override (escape hatch for dev builds /
+    # debugging), then the Windows Terminal package InstallLocation
+    # (where the build drops it).
+    $wtcliPath = (Get-Command wtcli -ErrorAction SilentlyContinue).Source
+    if (-not $wtcliPath -and $env:WTCLI_PATH -and (Test-Path $env:WTCLI_PATH)) {
+        $wtcliPath = $env:WTCLI_PATH
     }
-    exit 0
-}
-
-# Locate wtcli.exe. Order:
-#   1. PATH (works if the package registers a wtcli AppExecutionAlias).
-#   2. $env:WTCLI_PATH override (escape hatch for dev builds / debugging).
-#   3. The Windows Terminal package InstallLocation (where the build drops it).
-$wtcliPath = (Get-Command wtcli -ErrorAction SilentlyContinue).Source
-if (-not $wtcliPath -and $env:WTCLI_PATH -and (Test-Path $env:WTCLI_PATH)) {
-    $wtcliPath = $env:WTCLI_PATH
-}
-if (-not $wtcliPath) {
-    try {
+    if (-not $wtcliPath) {
         $pkgs = Get-AppxPackage -Name "*Terminal*" -ErrorAction SilentlyContinue
         foreach ($pkg in $pkgs) {
             $candidate = Join-Path $pkg.InstallLocation "wtcli.exe"
             if (Test-Path $candidate) { $wtcliPath = $candidate; break }
         }
-    } catch { }
-}
-if (-not $wtcliPath) { exit 0 }
+    }
+    if (-not $wtcliPath) { exit 0 }
 
-# Read hook JSON from stdin (may be empty for events that don't carry a
-# payload, e.g. some CLIs' AfterTool / SessionEnd. We still want those to
-# reach WTA so the state can transition out of Working/Working back to Idle.)
-$hookData = [Console]::In.ReadToEnd()
-if (-not $hookData) { $hookData = "" }
+    # ── Read hook JSON from stdin ───────────────────────────────────────
+    # May be empty for events that don't carry a payload, e.g. some CLIs'
+    # AfterTool / SessionEnd. We still want those to reach WTA so the
+    # state can transition out of Working back to Idle.
+    $hookData = [Console]::In.ReadToEnd()
+    if (-not $hookData) { $hookData = "" }
 
-# Wrap payload and send via ProcessStartInfo to avoid PowerShell argument mangling
-try {
-    # ConvertFrom-Json on empty/whitespace input throws; treat as no payload.
+    # ConvertFrom-Json on empty/whitespace input throws; skip the call so
+    # the outer catch isn't triggered for a benign empty payload.
+    # Malformed (non-empty) JSON is rare in practice and will fall through
+    # to the outer catch, dropping the event entirely — that's acceptable
+    # given the single-try-catch design.
     $parsed = $null
     if ($hookData.Trim()) {
-        try { $parsed = $hookData | ConvertFrom-Json } catch { $parsed = $null }
+        $parsed = $hookData | ConvertFrom-Json
     }
 
     # Extract agent_session_id from stdin JSON (Claude/Gemini), env (Copilot), or empty.
@@ -116,6 +154,16 @@ try {
         else { $CliSource = "copilot" }
     }
     $cliSource = $CliSource
+
+    # Drop large model-bound fields wta never reads, so multi-KB tool output
+    # doesn't ride the hook -> wtcli -> COM -> wta pipeline for nothing.
+    if ($parsed -is [System.Management.Automation.PSCustomObject]) {
+        foreach ($key in @('tool_result', 'tool_response', 'tool_output', 'toolResult', 'toolResponse', 'toolOutput')) {
+            if ($parsed.PSObject.Properties[$key]) {
+                $parsed.PSObject.Properties.Remove($key)
+            }
+        }
+    }
 
     $wrapper = @{
         cli_source       = $cliSource
@@ -157,32 +205,39 @@ try {
     if ($env:WT_SESSION) {
         $paneArg = " -p `"$($env:WT_SESSION)`""
     }
+    # Async dispatch: launch wtcli via ShellExecuteEx so the parent PowerShell
+    # process can exit immediately without waiting for wtcli's COM round-trip.
+    # The hook contract is "exit 0 quickly"; WTA is a fire-and-observe
+    # listener, so we don't need wtcli's exit code or stderr.
+    #
+    # Why UseShellExecute=$true:
+    #   - Child gets its own console (no inherited stdio handles), so this
+    #     PowerShell can exit without waiting for the child's pipes to drain.
+    #   - WindowStyle=Hidden -> wtcli runs invisibly (no flashing console).
+    #   - No cmd.exe wrapper, no handle juggling, no WaitForExit timeout.
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $wtcliPath
     $psi.Arguments = "send-event -e $EventType$paneArg `"$escaped`""
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-    $psi.RedirectStandardError = $true
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $exited = $proc.WaitForExit(5000)
-    if ($traceWritten) {
-        try {
-            $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
-            $exitInfo = if ($exited) { "exit=$($proc.ExitCode)" } else { 'TIMEOUT_5s' }
-            $stderrSnippet = ''
-            try { $stderrSnippet = ($proc.StandardError.ReadToEnd() -replace "[\r\n]+", ' ').Trim() } catch { }
-            if ($stderrSnippet.Length -gt 200) { $stderrSnippet = $stderrSnippet.Substring(0, 200) + '...' }
-            $sessIdShort = if ($agentSessionId) { $agentSessionId.Substring(0, [Math]::Min(8, $agentSessionId.Length)) } else { '<none>' }
-            Add-Content -LiteralPath $tracePath -Value "$stamp | OK cli=$cliSource event=$EventType $exitInfo sessId=$sessIdShort wtcli=$wtcliPath stderr=`"$stderrSnippet`"" -ErrorAction SilentlyContinue
-        } catch { }
-    }
+    $psi.UseShellExecute = $true
+    $psi.WindowStyle = 'Hidden'
+    [void][System.Diagnostics.Process]::Start($psi)
+    $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
+    $sessIdShort = if ($agentSessionId) { $agentSessionId.Substring(0, [Math]::Min(8, $agentSessionId.Length)) } else { '<none>' }
+    Add-Content -LiteralPath $tracePath -Value "$stamp | DISPATCHED cli=$cliSource event=$EventType sessId=$sessIdShort wtcli=$wtcliPath" -ErrorAction SilentlyContinue
 } catch {
-    if ($traceWritten) {
-        try {
-            $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
-            $msg = ($_.Exception.Message -replace "[\r\n]+", ' ').Trim()
-            Add-Content -LiteralPath $tracePath -Value "$stamp | ERROR cli=$CliSource event=$EventType ex=`"$msg`"" -ErrorAction SilentlyContinue
-        } catch { }
+    # Single error sink. Best-effort ERROR breadcrumb; if Add-Content
+    # itself throws, the `trap { exit 0 }` at the top catches it.
+    # $tracePath may be unset if we crashed before reaching the trace
+    # dir setup — guard before touching it.
+    if ($tracePath) {
+        $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
+        $msg = ($_.Exception.Message -replace "[\r\n]+", ' ').Trim()
+        Add-Content -LiteralPath $tracePath -Value "$stamp | ERROR cli=$CliSource event=$EventType ex=`"$msg`"" -ErrorAction SilentlyContinue
     }
-    # Silently ignore errors — hooks must not block the agent.
 }
+
+# Explicit exit 0 per CONTRACT above. Without this, PowerShell's default
+# exit code reflects whatever $LASTEXITCODE was set to by the most recent
+# native command (e.g. wtcli's own exit code) — which we do NOT want to
+# propagate to the parent CLI.
+exit 0

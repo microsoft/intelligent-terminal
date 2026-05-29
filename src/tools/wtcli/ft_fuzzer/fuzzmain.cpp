@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 //
 // Fuzzing harness for wtcli CLI utility functions.
-// Targets: TranslateKeys, BuildSendEventJson, MatchesEventFilter.
+// Targets: BuildSendEventJson, MatchesEventFilter.
 //
 // Built under the Fuzzing MSBuild configuration with LibFuzzer
 // instrumentation; submittable to OneFuzz via the CI pipeline.
@@ -43,66 +43,44 @@ static int FuzzOneInput(const uint8_t* data, size_t size)
     }
 
     // Split the entire input into segments for use across all targets.
-    // We need at least 5 segments: [keys...] [eventType] [paramsJson]
-    // [paneId] [eventTypeFilter]
-    auto parts = SplitInput(data, size, 5);
+    // We need at least 4 segments: [eventType] [paramsJson]
+    // [sessionId] [eventTypeFilter]
+    auto parts = SplitInput(data, size, 4);
 
-    // ── Target 1: TranslateKeys ──
-    // Split the first segment on tab bytes to create multiple key entries,
-    // exercising the key-name matching and multi-key path.
-    {
-        std::vector<std::string> keys;
-        const auto& keyData = parts[0];
-        size_t start = 0;
-        for (size_t i = 0; i < keyData.size(); ++i)
-        {
-            if (keyData[i] == '\t')
-            {
-                keys.emplace_back(keyData.data() + start, i - start);
-                start = i + 1;
-            }
-        }
-        if (start < keyData.size())
-        {
-            keys.emplace_back(keyData.data() + start, keyData.size() - start);
-        }
-        if (keys.empty())
-        {
-            keys.push_back(keyData);
-        }
-
-        wtcli::TranslateKeys(keys);
-    }
-
-    // ── Target 2: BuildSendEventJson ──
-    // Fuzz all three input parameters: eventType, paramsJson, and paneId.
+    // ── Target 1: BuildSendEventJson ──
+    // Fuzz all three input parameters: eventType, paramsJson, and sessionId.
     {
         Json::Value evt;
-        wtcli::BuildSendEventJson(parts[1], parts[2], parts[3], evt);
+        wtcli::BuildSendEventJson(parts[0], parts[1], parts[2], evt);
     }
 
-    // ── Target 3: MatchesEventFilter ──
-    // Construct semi-valid JSON from fuzzed fields so the parser succeeds
-    // and the deep matching logic (pane_id, wildcard) is actually reached.
+    // ── Target 2: MatchesEventFilter ──
+    // Construct valid JSON from fuzzed fields using Json::Value so the parser
+    // succeeds and the deep matching logic (session_id, wildcard) is reached
+    // even when fuzzed strings contain quotes/backslashes/control chars.
     {
-        // 3a: Fuzzed event structure with fuzzed filter.
-        const auto& fuzzedPaneId = parts[3];
-        const auto& fuzzedEvent = parts[1];
-        const auto& fuzzedFilter = parts[4];
+        // 2a: Fuzzed event structure with fuzzed filter.
+        const auto& fuzzedSessionId = parts[2];
+        const auto& fuzzedEvent = parts[0];
+        const auto& fuzzedFilter = parts[3];
 
-        std::string syntheticJson =
-            R"({"params":{"pane_id":")" + fuzzedPaneId +
-            R"(","event":")" + fuzzedEvent +
-            R"("}})";
+        Json::Value params;
+        params["session_id"] = fuzzedSessionId;
+        params["event"] = fuzzedEvent;
+        Json::Value ev;
+        ev["params"] = params;
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        auto syntheticJson = Json::writeString(wb, ev);
 
-        wtcli::MatchesEventFilter(syntheticJson, fuzzedPaneId, fuzzedFilter);
+        wtcli::MatchesEventFilter(syntheticJson, fuzzedSessionId, fuzzedFilter);
 
-        // 3b: Mismatched pane_id — exercises the rejection path.
+        // 2b: Mismatched session_id — exercises the rejection path.
         wtcli::MatchesEventFilter(syntheticJson, "999", fuzzedFilter);
 
-        // 3c: Raw fuzzed bytes as event JSON — exercises parse-failure path.
+        // 2c: Raw fuzzed bytes as event JSON — exercises parse-failure path.
         const std::string raw(reinterpret_cast<const char*>(data), size);
-        wtcli::MatchesEventFilter(raw, fuzzedPaneId, fuzzedFilter);
+        wtcli::MatchesEventFilter(raw, fuzzedSessionId, fuzzedFilter);
     }
 
     return 0;

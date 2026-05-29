@@ -91,9 +91,9 @@ stages:
           buildPlatforms: ${{ parameters.buildPlatforms }}
           generateSbom: ${{ parameters.generateSbom }}
           codeSign: ${{ parameters.codeSign }}
-          beforeBuildSteps: # Right before we build, lay down the universal package and localizations
+          beforeRustBuildSteps:
             - template: ./build/pipelines/templates-v2/steps-setup-versioning.yml@self
-
+          beforeBuildSteps: # Right before we build, lay down the universal package and localizations
             - task: UniversalPackages@0
               displayName: Download terminal-internal Universal Package
               inputs:
@@ -115,9 +115,9 @@ stages:
               - Any CPU
             generateSbom: ${{ parameters.generateSbom }}
             codeSign: ${{ parameters.codeSign }}
-            beforeBuildSteps:
+            beforeRustBuildSteps:
               - template: ./build/pipelines/templates-v2/steps-setup-versioning.yml@self
-              # WPF doesn't need the localizations or the universal package, but if it does... put them here.
+            # WPF doesn't need the localizations or the universal package, but if it does... put them here.
 
   - stage: Package
     displayName: Package

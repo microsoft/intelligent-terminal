@@ -154,6 +154,16 @@
        the loose copy is present. Excludes hook-debug/ (dev utility, not
        part of the install bundle) and *.md (developer docs). -->
   <ItemGroup>
+    <Content Include="$(SolutionDir)res\fre\FRE_Asset1.png">
+      <Link>FREAssets\FRE_Asset1.png</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(SolutionDir)res\fre\FRE_Asset2.png">
+      <Link>FREAssets\FRE_Asset2.png</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
     <Content Include="$(SolutionDir)tools\wta\wt-agent-hooks\**"
              Exclude="$(SolutionDir)tools\wta\wt-agent-hooks\hook-debug\**;$(SolutionDir)tools\wta\wt-agent-hooks\**\*.md">
       <Link>wt-agent-hooks\%(RecursiveDir)%(Filename)%(Extension)</Link>

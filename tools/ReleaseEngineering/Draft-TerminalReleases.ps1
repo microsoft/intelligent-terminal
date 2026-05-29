@@ -133,6 +133,7 @@ Class Asset {
 		$this.VersionMoniker = "{0}.{1}" -f ($v.Major, $v.Minor)
 
 		$this.Branding = Switch($this.Name) {
+			"Microsoft.IntelligentTerminal" { [Branding]::Release }
 			"Microsoft.WindowsTerminal" { [Branding]::Release }
 			"Microsoft.WindowsTerminalPreview" { [Branding]::Preview }
 			"Microsoft.WindowsTerminalCanary" { [Branding]::Canary }

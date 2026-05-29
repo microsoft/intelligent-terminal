@@ -53,7 +53,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         .map(|spec| {
             let line = Line::from(vec![
                 Span::styled(format!(" /{:<8} ", spec.name), theme::INPUT_TEXT),
-                Span::styled(spec.summary.to_string(), theme::DIM),
+                Span::styled(spec.summary(), theme::DIM),
             ]);
             ListItem::new(line)
         })
@@ -63,7 +63,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         .borders(Borders::ALL)
         .border_style(theme::INPUT_BORDER)
         .style(Style::default().bg(theme::INPUT_BG))
-        .title(" / commands ");
+        .title(t!("commands.popup_title").into_owned());
 
     let list = List::new(items)
         .block(block)
@@ -84,23 +84,23 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     let lines: Vec<Line> = std::iter::once(Line::from(Span::styled(
-        "Slash commands — type / in the input box.".to_string(),
+        t!("commands.help_header").into_owned(),
         theme::DIM,
     )))
     .chain(std::iter::once(Line::default()))
     .chain(REGISTRY.iter().map(|spec| {
         Line::from(vec![
             Span::styled(format!("  /{:<8}  ", spec.name), theme::INPUT_TEXT),
-            Span::styled(spec.summary.to_string(), theme::DIM),
+            Span::styled(spec.summary(), theme::DIM),
         ])
     }))
     .chain(std::iter::once(Line::default()))
     .chain(std::iter::once(Line::from(Span::styled(
-        "  //text     Send a literal '/' (escapes the command parser)".to_string(),
+        t!("commands.help_escape_hint").into_owned(),
         theme::DIM,
     ))))
     .chain(std::iter::once(Line::from(Span::styled(
-        "  Esc        Close this help".to_string(),
+        t!("commands.help_close_hint").into_owned(),
         theme::DIM,
     ))))
     .collect();
@@ -117,7 +117,7 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
         .borders(Borders::ALL)
         .border_style(theme::INPUT_BORDER)
         .style(Style::default().bg(theme::INPUT_BG))
-        .title(" Help ");
+        .title(t!("commands.help_title").into_owned());
 
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, modal);

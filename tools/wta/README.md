@@ -163,9 +163,7 @@ tools/wta/src/
 |   +-- shell_manager.rs       Terminal abstraction (local subprocess or WT pane)
 |   +-- wt_channel/
 |       +-- mod.rs             WtChannel trait definition
-|       +-- cli_channel.rs     wtcli subprocess (CoCreateInstance via wtcli.exe)
-|       +-- pipe_channel.rs    Inherited duplex pipe pair (send_input only)
-|       +-- routed_channel.rs  Routes per-method between Pipe and Cli channels
+|       +-- cli_channel.rs     wtcli subprocess (CoCreateInstance via wtcli.exe) — all methods
 +-- ui/
     +-- layout.rs              Main layout (+ debug panel split)
     +-- chat.rs                Message rendering
@@ -217,9 +215,7 @@ target/debug/wta.exe
 ## Architecture Notes
 
 - **ShellManager** owns local terminals and the active `WtChannel`
-- **CliChannel** shells out to `wtcli.exe` per call; `wtcli` does `CoCreateInstance` to reach WT's COM server
-- **PipeChannel** uses the inherited duplex anonymous-pipe pair (handed off via `STARTUPINFOEX`) for `send_input` only
-- **RoutedChannel** picks per method: `send_input` → pipe, everything else → COM
+- **CliChannel** shells out to `wtcli.exe` per call; `wtcli` does `CoCreateInstance` to reach WT's COM server. All methods, including `send_input` (via `wtcli send-keys`), go through this path.
 - **Protocol discovery**: `WT_COM_CLSID` env var, inherited from the WT-spawned conpty
 - **CLI subcommands** call `CliChannel::connect()` directly; no ShellManager needed
 - **Pane identity** is discovered at startup via PID matching (list all panes, find ours)

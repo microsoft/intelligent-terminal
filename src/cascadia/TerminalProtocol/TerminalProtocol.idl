@@ -114,9 +114,7 @@ namespace Microsoft.Terminal.Protocol
         TabCreationResult CreateTab(UInt64 windowId, String profile, String commandline, String title, String startingDirectory, Boolean suppressAppTitle, Boolean background);
         TabCreationResult SplitPane(Guid sessionId, String direction, Single size, String profile, String commandline, Boolean background);
         void ClosePane(Guid sessionId);
-        // SendInput is exposed via TerminalProtocolPipeServer only; it is not
-        // available over COM. Only the wta processes WT itself launches (with
-        // an inherited pipe pair) can drive it.
+        void SendInput(Guid sessionId, String text);
         void FocusPane(Guid sessionId);
         void SetSessionVariable(Guid sessionId, String name, String value);
 

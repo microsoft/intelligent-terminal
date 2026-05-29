@@ -91,7 +91,7 @@ impl acp::Client for ProbeClient {
 /// pane (e.g. `"copilot --acp --stdio"`,
 /// `"npx -y @zed-industries/claude-code-acp"`).
 pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
-    let mut spawned = spawn_agent_process(agent_cmd)?;
+    let mut spawned = spawn_agent_process(agent_cmd, None)?;
     tracing::debug!(
         "probe spawned: program={} is_npx={} pid={:?}",
         spawned.resolved_program,

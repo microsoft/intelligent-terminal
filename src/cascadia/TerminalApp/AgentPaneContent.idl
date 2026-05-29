@@ -23,5 +23,20 @@ namespace TerminalApp
         // label (and hide the agent logo) while wta's session-management view is
         // active. Driven by TerminalPage whenever the wta view changes.
         void SetSessionsView(Boolean active);
+
+        // True iff the pane is in sessions view (last value passed to
+        // SetSessionsView). Used by the page to decide toggle direction.
+        Boolean IsSessionsView { get; };
+
+        // Update the cached pane-position string (bottom vs right). Affects
+        // the icon shown on the window-level bottom bar; the page queries
+        // this back via the active tab when refreshing the bar.
+        void SetAgentPanePosition(String position);
+
+        // Raised whenever cached bottom-bar-affecting state changes (autofix
+        // state, sessions-view flag, agent-position). The outer page
+        // subscribes to refresh the window-level bottom bar when the firing
+        // pane belongs to the active tab.
+        event Windows.Foundation.TypedEventHandler<AgentPaneContent, Object> StateChanged;
     }
 }

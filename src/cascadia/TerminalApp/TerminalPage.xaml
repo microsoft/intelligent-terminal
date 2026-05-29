@@ -76,15 +76,20 @@
             </Grid.Background>
         </Grid>
 
-        <!-- Bottom Bar: AI agent toolbar. Wrapped in a Border so we can draw
-             a 1-pixel divider between the terminal pane and the bar.
-             The divider is a child Border (not BorderThickness) because
-             XAML's BorderBrush paints the thickness strip OUTSIDE the
-             Background fill — so a semi-transparent BorderBrush would
-             alpha-blend against the transparent window underneath instead
-             of the bar's black. Stacking a 1px Border on top of the
-             solid-black outer Border makes the alpha blend correctly. -->
-        <Border Grid.Row="3"
+        <!-- Bottom Bar: window-level AI agent toolbar. Always visible as
+             window chrome, but its state reflects the *active tab*'s agent
+             pane (toggle lit when active tab has an AgentPaneContent,
+             diagnostics from the active tab's autofix state, etc.).
+             Wrapped in a Border so we can draw a 1-pixel divider between
+             the terminal pane and the bar. The divider is a child Border
+             (not BorderThickness) because XAML's BorderBrush paints the
+             thickness strip OUTSIDE the Background fill — so a
+             semi-transparent BorderBrush would alpha-blend against the
+             transparent window underneath instead of the bar's black.
+             Stacking a 1px Border on top of the solid-black outer Border
+             makes the alpha blend correctly. -->
+        <Border x:Name="BottomBarRoot"
+                Grid.Row="3"
                 Background="#000000"
                 VerticalAlignment="Top">
         <Grid>
@@ -158,9 +163,9 @@
                         VerticalAlignment="Center"
                         Spacing="6">
                 <Button x:Name="DiagnosticsButton"
-                        Width="32"
+                        MinWidth="32"
                         Height="32"
-                        Padding="0"
+                        Padding="6,0"
                         Background="Transparent"
                         BorderBrush="Transparent"
                         Opacity="0.5"
@@ -175,15 +180,23 @@
                         <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
                         <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
                     </Button.Resources>
-                    <FontIcon x:Name="DiagnosticsIcon"
-                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                              FontSize="16"
-                              Glyph="&#xE7BA;" />
+                    <!-- Icon + label inside the same Button so clicking
+                         the label has the same effect as clicking the
+                         triangle (one hover/focus region, one hit
+                         target). The label toggles its own Visibility
+                         per state via _UpdateBottomBarState. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                VerticalAlignment="Center">
+                        <FontIcon x:Name="DiagnosticsIcon"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  FontSize="16"
+                                  Glyph="&#xE7BA;" />
+                        <TextBlock x:Name="DiagnosticsLabel"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Visibility="Collapsed" />
+                    </StackPanel>
                 </Button>
-                <TextBlock x:Name="DiagnosticsLabel"
-                           FontSize="12"
-                           VerticalAlignment="Center"
-                           Visibility="Collapsed" />
             </StackPanel>
 
             <!-- Button 3: Session list toggle — opens the agent pane (if needed)
@@ -217,7 +230,6 @@
                 </ToolTipService.ToolTip>
                 <Image Width="16"
                        Height="16"
-                       Opacity="0.7"
                        Stretch="Uniform">
                     <Image.Source>
                         <SvgImageSource UriSource="ms-appx:///AgentIcons/session.svg"

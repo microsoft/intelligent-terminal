@@ -3,8 +3,13 @@
 
 #pragma once
 
-constexpr std::wstring_view WtExe{ L"wt.exe" };
-constexpr std::wstring_view WtdExe{ L"wtd.exe" };
+// The packaging step (CascadiaPackage.wapproj) renames both wt.exe and wtd.exe
+// to wtai.exe inside the appx, and the appExecutionAlias registered in
+// Package*.appxmanifest is wtai.exe. So the alias dropped in
+// %LOCALAPPDATA%\Microsoft\WindowsApps\<pfn>\ is always wtai.exe regardless of
+// dev/preview/release flavor.
+constexpr std::wstring_view WtExe{ L"wtai.exe" };
+constexpr std::wstring_view WtdExe{ L"wtai.exe" };
 constexpr std::wstring_view WindowsTerminalExe{ L"WindowsTerminal.exe" };
 constexpr std::wstring_view LocalAppDataAppsPath{ L"%LOCALAPPDATA%\\Microsoft\\WindowsApps\\" };
 constexpr std::wstring_view ElevateShimExe{ L"elevate-shim.exe" };

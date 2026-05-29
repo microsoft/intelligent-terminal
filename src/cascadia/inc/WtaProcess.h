@@ -130,28 +130,44 @@ namespace Microsoft::Terminal::WtaProcess
         wil::unique_handle proc{ pi.hProcess };
         wil::unique_handle thread{ pi.hThread };
 
-        // Close write end so read pipe sees EOF when child exits.
+        // Close write end so pipe sees EOF when child exits (if no grandchildren).
         writeHandle.reset();
 
+        // Poll loop: drain available data, then wait for process exit.
+        // A plain blocking ReadFile-until-EOF would hang if grandchildren
+        // (e.g. npx → node) inherit the pipe write end and outlive the child.
         std::string captured;
         captured.reserve(4096);
         char buf[4096];
+
+        const auto drainAvailable = [&]() {
+            for (;;)
+            {
+                DWORD available = 0;
+                if (!PeekNamedPipe(readHandle.get(), nullptr, 0, nullptr, &available, nullptr) || available == 0)
+                    break;
+                DWORD bytesRead = 0;
+                if (!ReadFile(readHandle.get(), buf, (std::min)(available, (DWORD)sizeof(buf)), &bytesRead, nullptr) || bytesRead == 0)
+                    break;
+                captured.append(buf, bytesRead);
+            }
+        };
+
+        const DWORD startTick = GetTickCount();
         for (;;)
         {
-            DWORD bytesRead = 0;
-            const BOOL ok = ReadFile(readHandle.get(), buf, sizeof(buf), &bytesRead, nullptr);
-            if (!ok || bytesRead == 0)
+            drainAvailable();
+            if (WaitForSingleObject(proc.get(), 50) == WAIT_OBJECT_0)
             {
+                drainAvailable();
                 break;
             }
-            captured.append(buf, bytesRead);
-        }
-
-        if (WaitForSingleObject(proc.get(), timeoutMs) != WAIT_OBJECT_0)
-        {
-            TerminateProcess(proc.get(), 1);
-            WaitForSingleObject(proc.get(), 1000);
-            return {};
+            if (GetTickCount() - startTick > timeoutMs)
+            {
+                TerminateProcess(proc.get(), 1);
+                WaitForSingleObject(proc.get(), 1000);
+                return {};
+            }
         }
         DWORD exitCode = 1;
         GetExitCodeProcess(proc.get(), &exitCode);

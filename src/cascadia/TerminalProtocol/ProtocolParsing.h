@@ -34,8 +34,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
         AutofixState,         // Direct to TerminalPage, no broadcast
         AgentStatus,          // Direct to TerminalPage, no broadcast
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
-        ViewChanged,          // Direct to TerminalPage, no broadcast
+        AgentState,           // Direct to TerminalPage, no broadcast — unified per-tab agent-pane UI snapshot (view + pane_open + ...)
         ResumeInNewAgentTab,  // Direct to TerminalPage, no broadcast
+        AgentChipTarget,      // Direct to TerminalPage, no broadcast — "draw the Agent chip on this pane (or hide override)"
+        RestartAgentStack,    // Direct to TerminalPage, no broadcast — `/restart` from any agent pane TUI
         Broadcast,            // Normalize envelope + broadcast to all subscribers
         Invalid               // Failed validation
     };
@@ -61,45 +63,38 @@ namespace Microsoft::Terminal::Protocol::Parsing
             return SendEventRoute::Invalid;
         }
 
-        // autofix_state — direct dispatch, no broadcast
-        if (outEvt.isMember("method") && outEvt["method"].isString() &&
-            outEvt["method"].asString() == "autofix_state")
+        // Check method-based direct dispatch routes
+        if (outEvt.isMember("method") && outEvt["method"].isString())
         {
-            return SendEventRoute::AutofixState;
-        }
-
-        // agent_status — direct dispatch, no broadcast
-        if (outEvt.isMember("method") && outEvt["method"].isString() &&
-            outEvt["method"].asString() == "agent_status")
-        {
-            return SendEventRoute::AgentStatus;
-        }
-
-        // close_agent_pane — direct dispatch, no broadcast.
-        // Emitted by the wta TUI when the user presses Ctrl+C twice.
-        if (outEvt.isMember("method") && outEvt["method"].isString() &&
-            outEvt["method"].asString() == "close_agent_pane")
-        {
-            return SendEventRoute::CloseAgentPane;
-        }
-
-        // view_changed — direct dispatch, no broadcast.
-        // Emitted by the wta TUI when its internal view flips
-        // (Esc out of session view, `/sessions` slash command).
-        if (outEvt.isMember("method") && outEvt["method"].isString() &&
-            outEvt["method"].asString() == "view_changed")
-        {
-            return SendEventRoute::ViewChanged;
-        }
-
-        // resume_in_new_agent_tab — direct dispatch, no broadcast.
-        // Emitted by the wta TUI's session management view on Shift+Enter
-        // over a historical session row. Carries {session_id, cwd}; WT
-        // creates a new tab + agent pane and calls back with `load_session`.
-        if (outEvt.isMember("method") && outEvt["method"].isString() &&
-            outEvt["method"].asString() == "resume_in_new_agent_tab")
-        {
-            return SendEventRoute::ResumeInNewAgentTab;
+            const auto method = outEvt["method"].asString();
+            if (method == "autofix_state")
+            {
+                return SendEventRoute::AutofixState;
+            }
+            if (method == "agent_status")
+            {
+                return SendEventRoute::AgentStatus;
+            }
+            if (method == "close_agent_pane")
+            {
+                return SendEventRoute::CloseAgentPane;
+            }
+            if (method == "agent_state_changed")
+            {
+                return SendEventRoute::AgentState;
+            }
+            if (method == "resume_in_new_agent_tab")
+            {
+                return SendEventRoute::ResumeInNewAgentTab;
+            }
+            if (method == "set_agent_chip_target")
+            {
+                return SendEventRoute::AgentChipTarget;
+            }
+            if (method == "restart_agent_stack")
+            {
+                return SendEventRoute::RestartAgentStack;
+            }
         }
 
         // Broadcast path: params.event is required
@@ -194,31 +189,5 @@ namespace Microsoft::Terminal::Protocol::Parsing
             return PaneOutputSource::Screen;
         }
         return PaneOutputSource::Scrollback;
-    }
-
-    // ── QuickPick choices validation ──
-
-    // Validate that a JSON string is a valid array (for QuickPick choices).
-    // On success, |outChoices| contains the parsed array.
-    inline bool ValidateQuickPickChoices(const std::string& choicesJson, Json::Value& outChoices)
-    {
-        if (!ParseJson(choicesJson, outChoices))
-        {
-            return false;
-        }
-        return outChoices.isArray();
-    }
-
-    // ── SetSettings validation ──
-
-    // Validate that a string is non-empty valid JSON (for SetSettings).
-    inline bool ValidateSettingsJson(const std::string& settingsJson)
-    {
-        if (settingsJson.empty())
-        {
-            return false;
-        }
-        Json::Value parsed;
-        return ParseJson(settingsJson, parsed);
     }
 }

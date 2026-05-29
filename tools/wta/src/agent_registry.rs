@@ -191,6 +191,47 @@ pub fn lookup_profile_by_id(id: &str) -> &'static AgentProfile {
         .unwrap_or(&DEFAULT_PROFILE)
 }
 
+/// Resolve a full agent command line (e.g. the value of `--agent`) into the
+/// canonical agent id known to [`KNOWN_AGENTS`] — `"copilot"`, `"claude"`,
+/// `"codex"`, `"gemini"` — or `"unknown"` if nothing matches.
+///
+/// This is the right thing to use whenever we need to *identify* the agent
+/// from a launch command rather than execute it. It handles three input
+/// shapes:
+///
+///   1. Bare names with flags:  `"copilot --acp --stdio"` → `"copilot"`.
+///   2. Adapter launches:        `"npx -y @zed-industries/claude-code-acp"`
+///      → `"claude"` (matched against each profile's `acp_launch_command`).
+///   3. Full executable paths:   `"C:\\Tools\\copilot.exe --acp --stdio"`
+///      → `"copilot"` (via [`lookup_profile`] which strips path and
+///      extension before matching).
+///
+/// Empty / whitespace-only input returns `"unknown"`.
+pub fn resolve_agent_id_from_cmd(agent_cmd: &str) -> &'static str {
+    let trimmed = agent_cmd.trim();
+    if trimmed.is_empty() {
+        return DEFAULT_PROFILE.id;
+    }
+
+    // Adapter-style: the whole command equals a known profile's
+    // `acp_launch_command` (e.g. `"npx -y @zed-industries/claude-code-acp"`).
+    // Match exact first; fall back to prefix match so trailing flags don't
+    // hide the adapter (e.g. someone appending `--debug`).
+    if let Some(profile) = KNOWN_AGENTS
+        .iter()
+        .find(|p| !p.acp_launch_command.is_empty()
+                  && (p.acp_launch_command == trimmed
+                      || trimmed.starts_with(&format!("{} ", p.acp_launch_command))))
+    {
+        return profile.id;
+    }
+
+    // Bare / path form: take the first whitespace-delimited token and let
+    // `lookup_profile` strip path and extension before matching.
+    let first = trimmed.split_whitespace().next().unwrap_or(trimmed);
+    lookup_profile(first).id
+}
+
 // ─── ACP Command Building ────────────────────────────────────────────────────
 
 /// Build the full ACP agent command from an agent id and optional model.
@@ -414,5 +455,51 @@ mod tests {
     fn is_cli_available_returns_false_for_obviously_bogus_name() {
         // A 64-char random-looking name will not exist on any sane PATH.
         assert!(!is_cli_available("zzzzz_does_not_exist_anywhere_qqqqq_82h3kf9"));
+    }
+
+    #[test]
+    fn resolve_agent_id_from_cmd_recognises_bare_names_with_flags() {
+        assert_eq!(resolve_agent_id_from_cmd("copilot --acp --stdio"), "copilot");
+        assert_eq!(resolve_agent_id_from_cmd("gemini --experimental-acp"), "gemini");
+        assert_eq!(resolve_agent_id_from_cmd("claude --resume foo"), "claude");
+    }
+
+    #[test]
+    fn resolve_agent_id_from_cmd_recognises_adapter_launches() {
+        // Exact match against the known adapter command.
+        assert_eq!(
+            resolve_agent_id_from_cmd("npx -y @zed-industries/claude-code-acp"),
+            "claude",
+        );
+        assert_eq!(
+            resolve_agent_id_from_cmd("npx -y @zed-industries/codex-acp"),
+            "codex",
+        );
+        // Adapter prefix with extra trailing args still resolves.
+        assert_eq!(
+            resolve_agent_id_from_cmd("npx -y @zed-industries/claude-code-acp --debug"),
+            "claude",
+        );
+    }
+
+    #[test]
+    fn resolve_agent_id_from_cmd_strips_path_and_extension() {
+        assert_eq!(
+            resolve_agent_id_from_cmd(r"C:\Tools\copilot.exe --acp --stdio"),
+            "copilot",
+        );
+        assert_eq!(
+            resolve_agent_id_from_cmd("/usr/local/bin/gemini --experimental-acp"),
+            "gemini",
+        );
+        assert_eq!(resolve_agent_id_from_cmd("copilot.cmd"), "copilot");
+    }
+
+    #[test]
+    fn resolve_agent_id_from_cmd_falls_back_to_unknown() {
+        assert_eq!(resolve_agent_id_from_cmd(""),           "unknown");
+        assert_eq!(resolve_agent_id_from_cmd("   "),        "unknown");
+        assert_eq!(resolve_agent_id_from_cmd("npx"),        "unknown");
+        assert_eq!(resolve_agent_id_from_cmd("my-bot --x"), "unknown");
     }
 }

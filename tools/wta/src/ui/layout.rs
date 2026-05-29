@@ -1,7 +1,9 @@
-use ratatui::prelude::*;
 use crate::app::{App, AppMode, View, DEFAULT_TAB_ID};
+use ratatui::prelude::*;
 
-use super::{auth, agents_view, chat, command_popup, debug_panel, input, permission, recommendations, setup};
+use super::{
+    agents_view, auth, chat, command_popup, debug_panel, input, permission, recommendations, setup,
+};
 
 pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
@@ -14,10 +16,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(1),
-                Constraint::Length(input_height),
-            ])
+            .constraints([Constraint::Min(1), Constraint::Length(input_height)])
             .split(area);
         auth::render(frame, app, chunks[0]);
         input::render(frame, app, chunks[1]);
@@ -32,10 +31,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(1),
-                Constraint::Length(input_height),
-            ])
+            .constraints([Constraint::Min(1), Constraint::Length(input_height)])
             .split(area);
         setup::render(frame, app, chunks[0]);
         input::render(frame, app, chunks[1]);
@@ -52,14 +48,32 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         let tab_id = app.tab_id.as_deref().unwrap_or(DEFAULT_TAB_ID).to_string();
         let load_state = app.history_load_state;
         let activity_frame = app.activity_frame as usize;
+        let cli_filter = app.current_cli_filter();
         let tab = app.tab_sessions.entry(tab_id).or_default();
+        // Show the loading shimmer while we're waiting on the very first
+        // `session/list` response from master. `open_agents_view_for_tab`
+        // primes snapshot to `Some(Vec::new())` *and* sets
+        // `refetch_in_flight = true`, so this flag is true exactly until
+        // master returns either a populated list (clears refetch_in_flight,
+        // shimmer turns into rows) or an empty list (clears
+        // refetch_in_flight, shimmer turns into the genuine empty state).
+        let awaiting_first_snapshot = tab.agents_view.refetch_in_flight
+            && tab
+                .agents_view
+                .snapshot
+                .as_deref()
+                .map(|s| s.is_empty())
+                .unwrap_or(false);
         agents_view::render(
             frame,
             area,
             &app.agent_sessions,
+            tab.agents_view.snapshot.as_deref(),
             &mut tab.agents_list_state,
             load_state,
             activity_frame,
+            cli_filter.as_ref(),
+            awaiting_first_snapshot,
         );
         return;
     }
@@ -75,32 +89,36 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     };
 
     let rec_panel_h = if app.current_tab().turn.recommendations().is_some() {
-        app.rec_panel_height()
+        app.rec_panel_height(main_area.width)
     } else {
         0
     };
+    let perm_panel_h = app.permission_panel_height(main_area.width);
     let input_height = {
         let tab = app.current_tab();
         input::input_height(&tab.input, tab.cursor_pos, main_area.width)
     };
 
-    // Expire the transient hint before deciding whether to reserve a row.
-    // Cheap and keeps the layout in lockstep with the rest of the draw.
-    // Also show welcome hint as a transient hint on first-ever connect.
+    // Expire the transient hint independently, then decide whether to
+    // reserve a row for either the transient hint or the welcome hint.
     let now = std::time::Instant::now();
-    let welcome_visible = app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected;
-    let hint_visible = welcome_visible
-        || app
-            .transient_hint
-            .as_ref()
-            .map(|(_, deadline)| now < *deadline)
-            .unwrap_or(false);
-    if !hint_visible {
+    let transient_visible = app
+        .transient_hint
+        .as_ref()
+        .map(|(_, deadline)| now < *deadline)
+        .unwrap_or(false);
+    if !transient_visible {
         app.transient_hint = None;
     }
+    let welcome_visible =
+        app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected;
+    let hint_visible = welcome_visible || transient_visible;
     let hint_h: u16 = if hint_visible { 1 } else { 0 };
-    let rec_hint_h: u16 = if app.current_tab().turn.recommendations().is_some() { 1 } else { 0 };
+    let rec_hint_h: u16 = if app.current_tab().turn.recommendations().is_some() {
+        1
+    } else {
+        0
+    };
 
     // The host (Windows Terminal) renders the agent bar in XAML above this
     // pane, so wta uses the full pane area for chat / recommendations / input.
@@ -114,6 +132,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     let chat_content_width = main_area.width.saturating_sub(2); // h_chat 1+1 padding
     let chat_estimate = chat::estimated_block_height(app, chat_content_width);
     let reserved_below = rec_panel_h
+        .saturating_add(perm_panel_h)
         .saturating_add(input_height)
         .saturating_add(hint_h)
         .saturating_add(rec_hint_h);
@@ -124,6 +143,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         .constraints([
             Constraint::Length(chat_height),
             Constraint::Length(rec_panel_h),
+            Constraint::Length(perm_panel_h),
             Constraint::Min(0),
             Constraint::Length(hint_h),
             Constraint::Length(rec_hint_h),
@@ -131,58 +151,71 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         ])
         .split(main_area);
 
-    // Horizontal padding for chat and recommendations only
+    // Horizontal padding for chat, recommendations, and permission
     let h_chat = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
         .split(chunks[0]);
     let h_rec = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
         .split(chunks[1]);
+    let h_perm = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .split(chunks[2]);
 
     chat::render(frame, app, h_chat[1]);
-    app.sync_rec_scroll_max();
+    app.sync_rec_scroll_max(main_area.width);
     recommendations::render(frame, app, h_rec[1]);
+    if !app.current_tab().permission.is_empty() {
+        permission::render(frame, app, h_perm[1]);
+    }
 
     if hint_visible {
         if welcome_visible {
-            // First-run shortcut hint
             let line = Line::from(Span::styled(
-                "  (Ctrl+Shift+. to show/hide agent pane \u{2022} Ctrl+Alt+/ to show/hide agent session)",
+                t!("layout.welcome_hint").into_owned(),
                 Style::default().fg(Color::DarkGray),
             ));
-            frame.render_widget(line, chunks[3]);
+            frame.render_widget(line, chunks[4]);
         } else if let Some((text, _)) = app.transient_hint.as_ref() {
             let line = Line::from(Span::styled(
                 format!("  {}", text),
                 Style::default().fg(Color::DarkGray),
             ));
-            frame.render_widget(line, chunks[3]);
+            frame.render_widget(line, chunks[4]);
         }
     }
     if app.current_tab().turn.recommendations().is_some() {
-        recommendations::render_hint(frame, chunks[4]);
+        recommendations::render_hint(frame, chunks[5]);
     }
-    input::render(frame, app, chunks[5]);
+    input::render(frame, app, chunks[6]);
 
     if let Some(debug_area) = debug_area {
         debug_panel::render(frame, app, debug_area);
     }
 
-    // Slash-command autocomplete: anchored above the input box. Drawn
-    // before permission/help so those overlays still cover it if they
-    // happen to be visible at the same time.
+    // Slash-command autocomplete: anchored above the input box. Drawn into
+    // the filler row between the perm panel and the hint row.
     if let Some(popup_state) = app.command_popup_state() {
-        command_popup::render_popup(frame, popup_state, chunks[2]);
+        command_popup::render_popup(frame, popup_state, chunks[3]);
     }
 
-    if app.current_tab().permission.is_some() {
-        permission::render(frame, app, area);
-    }
-
-    // `/help` overlay sits on top of everything (including permission) so
-    // the user can always dismiss it with Esc.
+    // `/help` overlay sits on top of everything so the user can always
+    // dismiss it with Esc.
     command_popup::render_help_overlay(frame, app, area);
 }
 
@@ -213,19 +246,19 @@ pub fn input_cursor_position(app: &App, area: Rect) -> Option<Position> {
     };
 
     let rec_height = if app.current_tab().turn.recommendations().is_some() {
-        Constraint::Length(app.rec_panel_height())
+        Constraint::Length(app.rec_panel_height(main_area.width))
     } else {
         Constraint::Length(0)
     };
+    let perm_height = Constraint::Length(app.permission_panel_height(main_area.width));
     let input_height = {
         let tab = app.current_tab();
         input::input_height(&tab.input, tab.cursor_pos, main_area.width)
     };
 
-    // Match the constraint layout in `render` — the hint rows sit between
-    // filler and input, so the input chunk is at index 5. Keep both in
-    // lockstep or the cursor lands on
-    // the wrong line.
+    // Match the constraint layout in `render` — chat / rec / perm / filler /
+    // hint / rec_hint / input, so the input chunk is at index 6. Keep both
+    // in lockstep or the cursor lands on the wrong line.
     let now = std::time::Instant::now();
     let hint_visible = app
         .transient_hint
@@ -250,6 +283,7 @@ pub fn input_cursor_position(app: &App, area: Rect) -> Option<Position> {
         .constraints([
             Constraint::Length(chat_height),
             rec_height,
+            perm_height,
             Constraint::Min(0),
             hint_height,
             rec_hint_height,
@@ -257,5 +291,5 @@ pub fn input_cursor_position(app: &App, area: Rect) -> Option<Position> {
         ])
         .split(main_area);
 
-    input::cursor_position(app, chunks[5])
+    input::cursor_position(app, chunks[6])
 }

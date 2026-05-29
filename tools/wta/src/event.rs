@@ -1,4 +1,4 @@
-use crossterm::event::{Event, EventStream, MouseEventKind};
+use crossterm::event::{Event, EventStream};
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration, MissedTickBehavior};
@@ -74,30 +74,17 @@ pub async fn read_crossterm_events(tx: mpsc::UnboundedSender<AppEvent>) {
                         AppEvent::Key(key)
                     }
                     Event::Resize(w, h) => AppEvent::Resize(w, h),
-                    Event::Mouse(mouse) => {
-                        // Trace mouse activity so we can diagnose "frozen pane"
-                        // reports — e.g. shift+drag in WT triggers native text
-                        // selection (xterm convention: shift overrides app
-                        // mouse capture so users can still copy text), and
-                        // until that selection is dismissed (Esc / unmodified
-                        // click) WT may swallow keystrokes before they reach
-                        // crossterm. If you see drag events in the log but no
-                        // subsequent key events, that's the selection-mode
-                        // signature.
-                        tracing::trace!(
-                            target: "input",
-                            kind = ?mouse.kind,
-                            mods = ?mouse.modifiers,
-                            row = mouse.row,
-                            col = mouse.column,
-                            "mouse event",
-                        );
-                        match mouse.kind {
-                            MouseEventKind::ScrollUp => AppEvent::MouseScroll { delta: -3, row: mouse.row },
-                            MouseEventKind::ScrollDown => AppEvent::MouseScroll { delta: 3, row: mouse.row },
-                            _ => continue,
-                        }
-                    }
+                    // WT/conpty forwards xterm focus-in/out (CSI I / CSI O)
+                    // to the child unconditionally when the hosting TermControl
+                    // gains/loses XAML focus — one event per pane, not per
+                    // window. Used to hide the input cursor when the agent
+                    // pane is not the focused pane.
+                    Event::FocusGained => AppEvent::FocusChanged(true),
+                    Event::FocusLost => AppEvent::FocusChanged(false),
+                    // We do not enable mouse capture (see main.rs run_acp_tui_mode).
+                    // The terminal emulator translates wheel into Up/Down arrow
+                    // keystrokes in alt-screen mode, so we never observe raw
+                    // Event::Mouse here. Drop anything else (Paste, etc.).
                     _ => continue,
                 };
                 if tx.send(app_event).is_err() {

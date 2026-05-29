@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -119,7 +119,7 @@
   </resheader>
   <data name="AppName" xml:space="preserve">
     <value>Intelligent Terminal</value>
-    <comment>{Locked} Product name — do not translate.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
   </data>
   <data name="AppNameDev" xml:space="preserve">
     <value>Intelligent Terminal</value>
@@ -135,7 +135,7 @@
   </data>
   <data name="AppStoreName" xml:space="preserve">
     <value>Intelligent Terminal</value>
-    <comment>{Locked} Product name — do not translate.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
   </data>
   <data name="AppStoreNameDev" xml:space="preserve">
     <value>Intelligent Terminal</value>
@@ -151,7 +151,7 @@
   </data>
   <data name="AppShortName" xml:space="preserve">
     <value>Intelligent Terminal</value>
-    <comment>{Locked} Product name — do not translate.</comment>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
   </data>
   <data name="AppShortNameDev" xml:space="preserve">
     <value>Intelligent Terminal</value>
@@ -167,6 +167,7 @@
   </data>
   <data name="AppDescription" xml:space="preserve">
     <value>AI-native terminal — agents can understand, fix, and automate terminal workflows</value>
+    <comment>"agents" here means AI agents (Copilot, Claude, Gemini), not human representatives. "terminal" means a command-line terminal application, not an airport terminal. This is the app store description shown to users.</comment>
   </data>
   <data name="AppDescriptionDev" xml:space="preserve">
     <value>AI-native terminal — agents can understand, fix, and automate terminal workflows</value>
@@ -178,6 +179,7 @@
   </data>
   <data name="AppDescriptionPre" xml:space="preserve">
     <value>Windows Terminal with a preview of upcoming features</value>
+    <comment>"Terminal" means a command-line terminal application. "Preview" means a pre-release version with upcoming features. This is the app store description for the Preview build.</comment>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem_Dev" xml:space="preserve">
     <value>Open in Intelligent Terminal</value>
@@ -185,14 +187,14 @@
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem_Canary" xml:space="preserve">
     <value>Open in Terminal (&amp;Canary)</value>
-    <comment>This is a menu item that will be displayed in the Windows File Explorer that launches the Canary version of Windows Terminal. Please mark one of the characters to be an accelerator key.</comment>
+    <comment>"Canary" means an unstable or nightly build of the software, not the bird. This is a menu item in Windows File Explorer that launches the Canary version of Windows Terminal. Please mark one of the characters to be an accelerator key.</comment>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem_Preview" xml:space="preserve">
     <value>Open in Terminal &amp;Preview</value>
     <comment>This is a menu item that will be displayed in the Windows File Explorer that launches the Preview version of Windows Terminal. Please mark one of the characters to be an accelerator key.</comment>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem" xml:space="preserve">
-    <value>Open in Intelligent &amp;Terminal</value>
+    <value>Open in &amp;Intelligent Terminal</value>
     <comment>This is a menu item that will be displayed in the Windows File Explorer that launches Intelligent Terminal. Please mark one of the characters to be an accelerator key.</comment>
   </data>
 </root>

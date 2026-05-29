@@ -25,6 +25,7 @@ Imms
 italo
 jantari
 jerrysh
+kaitao
 Kaiyu
 leonardder
 lhecker
@@ -56,6 +57,7 @@ sonpham
 stakx
 thereses
 Thysell
+vanzue
 WDX
 Wellons
 Westerman
@@ -66,3 +68,4 @@ Zamora
 zljubisic
 Zoey
 zorio
+Figma

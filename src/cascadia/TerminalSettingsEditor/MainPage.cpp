@@ -313,6 +313,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
+    static constexpr std::wstring_view AIAgentsPageId{ L"page.aiagents" };
+
     void MainPage::SetHostingWindow(uint64_t hostingWindow) noexcept
     {
         _hostingHwnd.emplace(reinterpret_cast<HWND>(hostingWindow));
@@ -642,6 +644,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 });
                 contentFrame().Navigate(xaml_typename<Editor::AIAgents>(), winrt::make<NavigateToPageArgs>(aiAgentsVm, *this, elementToFocus));
                 _breadcrumbs.Append(winrt::make<Breadcrumb>(vm, RS_(L"Nav_AIAgents/Content"), BreadcrumbSubPage::None));
+
+                // Dismiss the "NEW" badge after the user visits the page
+                Model::ApplicationState::SharedInstance().DismissBadge(AIAgentsPageId);
+                if (auto badge = AIAgentsBadge())
+                {
+                    badge.Visibility(winrt::Windows::UI::Xaml::Visibility::Collapsed);
+                }
             }
             else if (*clickedItemTag == globalProfileTag)
             {
@@ -870,6 +879,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             ShowLoadWarningsDialog.raise(*this, _settingsClone.Warnings());
         }
+
+        // Install shell integration if autofix was enabled.
+        // Only raise once — _InitShellIntegration handles both targets
+        // and shows a single dialog when done.
+        if (_settingsClone.GlobalSettings().AutoFixEnabled())
+        {
+            InitShellIntegrationRequested.raise(*this, ShellIntegrationTarget::Pwsh);
+        }
     }
 
     void MainPage::ResetButton_Click(const IInspectable& /*sender*/, const RoutedEventArgs& /*args*/)
@@ -897,6 +914,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             // entries from XAML into our runtime menu item source. Do that now.
 
             _MoveXamlParsedNavItemsIntoItemSource();
+        }
+
+        // Hide the AI Agents "NEW" badge if the user has already visited the page
+        if (Model::ApplicationState::SharedInstance().BadgeDismissed(AIAgentsPageId))
+        {
+            if (auto badge = AIAgentsBadge())
+            {
+                badge.Visibility(winrt::Windows::UI::Xaml::Visibility::Collapsed);
+            }
         }
 
         // Manually create a NavigationViewItem and view model for each profile

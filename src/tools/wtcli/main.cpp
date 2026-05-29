@@ -6,6 +6,7 @@
 #include <winrt/Microsoft.Terminal.Protocol.h>
 
 #include "Formatting.h"
+#include "wtcli_functions.h"
 
 #include <CLI/CLI.hpp>
 
@@ -426,6 +427,42 @@ int main()
         }
     });
 
+    // ── send-keys ──
+    std::string sendKeysTarget;
+    std::vector<std::string> sendKeysArgs;
+    bool sendKeysRaw = false;
+    auto* sendKeysCmd = app.add_subcommand("send-keys", "Send keys to a pane")->alias("send");
+    sendKeysCmd->add_option("-t,--target", sendKeysTarget, "Session ID (GUID)");
+    sendKeysCmd->add_flag("--raw", sendKeysRaw,
+                          "Treat the payload as literal UTF-8 text — skip tmux-style "
+                          "token translation (Enter/Tab/Escape/BSpace/C-x). Use this when "
+                          "forwarding arbitrary agent-supplied text.");
+    sendKeysCmd->add_option("keys", sendKeysArgs, "Keys to send")->required();
+    sendKeysCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        try
+        {
+            auto sessionId = ResolveSessionId(server, sendKeysTarget);
+            auto text = sendKeysRaw
+                ? wtcli::JoinAsUtf16(sendKeysArgs)
+                : wtcli::TranslateKeys(sendKeysArgs);
+            server.SendInput(sessionId, text);
+            if (jsonMode)
+            {
+                Json::Value v;
+                v["ok"] = true;
+                v["session_id"] = GuidToString(sessionId);
+                PrintJson(v);
+            }
+        }
+        catch (const winrt::hresult_error& e)
+        {
+            fprintf(stderr, "SendInput failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
+            exitCode = 1;
+        }
+    });
+
     // ── focus-pane ──
     std::string focusPaneTarget;
     auto* focusPaneCmd = app.add_subcommand("focus-pane", "Switch focus to a pane")->alias("focusp");
@@ -688,30 +725,15 @@ int main()
         try
         {
             Json::Value evt;
-            evt["type"] = "event";
-            evt["method"] = "agent_event";
-
-            Json::Value params;
-            if (!sendEventJson.empty())
+            auto resolvedSessionId = !sendEventPaneTarget.empty()
+                ? sendEventPaneTarget
+                : GuidToString(ResolveSessionId(server, ""));
+            if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, evt))
             {
-                Json::CharReaderBuilder rb;
-                std::string errs;
-                std::istringstream ss(sendEventJson);
-                if (!Json::parseFromStream(rb, ss, &params, &errs) || !params.isObject())
-                {
-                    fprintf(stderr, "Invalid JSON: expected an object\n");
-                    exitCode = 1;
-                    return;
-                }
+                fprintf(stderr, "Invalid JSON for --json: value must be a JSON object (e.g. '{\"key\":\"val\"}')\n");
+                exitCode = 1;
+                return;
             }
-
-            params["event"] = sendEventType;
-            if (!sendEventPaneTarget.empty())
-                params["session_id"] = sendEventPaneTarget;
-            else
-                params["session_id"] = GuidToString(ResolveSessionId(server, ""));
-
-            evt["params"] = params;
 
             Json::StreamWriterBuilder wb;
             wb["indentation"] = "";
@@ -747,38 +769,10 @@ int main()
         auto callback = winrt::make<EventCallback>([&](winrt::hstring const& eventJson) {
             auto eventUtf8 = winrt::to_string(eventJson);
 
-            // Optionally filter by pane_id and/or event type
-            if (!listenTarget.empty() || !listenEventFilter.empty())
+            // Optionally filter by session_id and/or event type
+            if (!wtcli::MatchesEventFilter(eventUtf8, listenTarget, listenEventFilter))
             {
-                Json::Value ev;
-                Json::CharReaderBuilder rb;
-                std::string errs;
-                std::istringstream ss(eventUtf8);
-                if (Json::parseFromStream(rb, ss, &ev, &errs))
-                {
-                    if (!listenTarget.empty())
-                    {
-                        auto sessionId = ev["params"].get("session_id", "").asString();
-                        if (sessionId != listenTarget)
-                            return;
-                    }
-
-                    if (!listenEventFilter.empty())
-                    {
-                        auto eventType = ev["params"].get("event", "").asString();
-                        // Support trailing wildcard: "agent.*" matches "agent.task.started"
-                        if (listenEventFilter.back() == '*')
-                        {
-                            auto prefix = listenEventFilter.substr(0, listenEventFilter.size() - 1);
-                            if (eventType.substr(0, prefix.size()) != prefix)
-                                return;
-                        }
-                        else if (eventType != listenEventFilter)
-                        {
-                            return;
-                        }
-                    }
-                }
+                return;
             }
 
             printf("%s\n", eventUtf8.c_str());

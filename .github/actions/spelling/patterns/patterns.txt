@@ -30,6 +30,12 @@ D2D
 # Compiler flags
 \s-D(?=[A-Z])
 
+# tools/wta/build.rs: external Microsoft privacy-tag constants
+\bPDT_[A-Z][A-Za-z0-9_]*\b
+
+# tools/wta/build.rs: Rust stdlib char predicate
+\bis_ascii_hexdigit\b
+
 # Automatically suggested patterns
 
 # hit-count: 26 file-count: 12
@@ -236,6 +242,9 @@ ROY\sG\.\sBIV
 # ARM NEON intrinsics like "vsubq_u16"
 \bv\w+_[fsu](?:8|16|32|64)\b
 
+# Win32 SDK LOCALE_* constants (locale-info field identifiers from winnls.h)
+\bLOCALE_[A-Z][A-Z0-9_]+\b
+
 # AppX package
 _\d[0-9a-z]{12}['\.]
 
@@ -299,3 +308,6 @@ equals_insensitive_ascii\("\w+", "\w+"
 
 # ignore long runs of a single character:
 \b([A-Za-z])\g{-1}{3,}\b
+
+# tools/wta/src/protocol/acp/spawn.rs - external env var name passed as string literal
+env_remove\("[A-Z_]+"\)

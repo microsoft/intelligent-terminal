@@ -544,6 +544,7 @@
         { "command": "renameTab", "id": "Terminal.RenameTab" },
         { "command": "openTabRenamer", "id": "Terminal.OpenTabRenamer" },
         { "command": "commandPalette", "id": "Terminal.ToggleCommandPalette" },
+        { "command": { "action": "commandPalette", "launchMode": "agentDelegation" }, "id": "Terminal.OpenAgentDelegation" },
         { "command": "showProtocolInfo", "id": "Terminal.ShowProtocolInfo" },
         { "command": "identifyWindow", "id": "Terminal.IdentifyWindow" },
         { "command": "openWindowRenamer", "id": "Terminal.OpenWindowRenamer" },
@@ -560,6 +561,7 @@
         { "command": "focusAgentPane", "id": "Terminal.FocusAgentPane" },
         { "command": "openAgentSessions", "id": "Terminal.OpenAgentSessions" },
         { "command": "triggerAutofix", "id": "Terminal.TriggerAutofix" },
+        { "command": "bugReport", "id": "Terminal.BugReport" },
         // Tab Management
         // "command": "closeTab" is unbound by default.
         //   The closeTab command closes a tab without confirmation, even if it has multiple panes.
@@ -747,6 +749,7 @@
         { "keys": "ctrl+alt+,", "id": "Terminal.OpenDefaultSettingsFile" },
         { "keys": "ctrl+shift+f", "id": "Terminal.FindText" },
         { "keys": "ctrl+shift+p", "id": "Terminal.ToggleCommandPalette" },
+        { "keys": "alt+shift+/", "id": "Terminal.OpenAgentDelegation" },
         { "keys": "win+sc(41)", "id": "Terminal.QuakeMode" },
         { "keys": "alt+space", "id": "Terminal.OpenSystemMenu" },
         { "keys": "ctrl+shift+period", "id": "Terminal.OpenAgentPane" },
