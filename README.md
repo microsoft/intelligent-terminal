@@ -77,7 +77,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 ## Get Started
 
 1. Install Intelligent Terminal from the [Microsoft Store](#microsoft-store-recommended), [WinGet](#winget), or [Downloads](#downloads).
-2. On first launch, choose your agent. Intelligent Terminal auto-detects [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (GitHub Copilot, Codex, Gemini, and others). If none are found, it defaults to GitHub Copilot CLI and installs it for you.
+2. On first launch, choose your agent. Intelligent Terminal auto-detects [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine. If none are found, it defaults to GitHub Copilot CLI and installs it for you.
 3. If you aren't already authenticated, the agent pane walks you through sign-in.
 4. Start asking questions. The agent has context on your shell output, no copy-pasting needed.
 
