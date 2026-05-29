@@ -39,9 +39,9 @@
 
 Intelligent Terminal is an experimental fork of [Windows Terminal](https://github.com/microsoft/terminal) with native agent integration.
 
-[GitHub Copilot](https://github.com/features/copilot/cli/) is the default agent CLI, but it works with any [Agent Client Protocol (ACP)-compatible](https://agentclientprotocol.com/get-started/agents) agent CLI. All you need is to install your preferred agent CLI on your PC, and Intelligent Terminal should detect it.
+Intelligent Terminal works with any [Agent Client Protocol (ACP)-compatible](https://agentclientprotocol.com/get-started/agents) agent CLI. All you need is to install your preferred agent CLI on your PC. If you don't have a preferred agent, we'll get you setup with [GitHub Copilot CLI](https://github.com/features/copilot/cli/).
 
-Everything else about Intelligent Terminal is the same as Windows Terminal: tabs, profiles, themes, settings, shells, and keyboard shortcuts all work the way you expect.
+Intelligent Terminal takes all the features you love in Windows Terminal such as:  tabs, profiles, themes, settings, shells, and keyboard shortcuts, which all work the way you expect.
 
 ---
 
@@ -79,7 +79,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (Copilot/Claude/Codex/Gemini). If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
 3. If you aren't already authenticated, the agent pane walks you through sign-in.
-4. Start asking questions. The agent has context on your shell output, no copy-pasting needed.
+4. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed.
 
 ---
 
@@ -119,7 +119,7 @@ Everything is configurable through terminal settings, under "Agent" settings.
   <img src="./images/intelligent-terminal-status-bar.png" alt="Screenshot of the agent status bar at the bottom of the terminal window">
 </p>
 
-The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle and the error detection icon, which lights up when a fixable error is detected. On the right: the agent management icon that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents.
+The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle (hotkey: <kbd>Ctrl+Shift+.</kbd>) and the error detection icon (hotkey: <kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected. On the right: the agent management icon (hotkey: <kbd>Ctrl+Shift+/</kbd>) that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents.
 
 ### Agent Pane
 
