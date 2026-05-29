@@ -1510,9 +1510,18 @@ fn parse_codex_marketplace_list(stdout: &str) -> (bool, Option<String>) {
 /// for `wt-agent-hooks` exists AND its STATUS column starts with
 /// "installed" (not "not installed", "available", etc.).
 fn parse_codex_plugin_list(stdout: &str) -> bool {
+    // Real Codex output lists the plugin as "wt-agent-hooks@wt-local".
+    // We accept either the qualified or bare form (forward-compat).
+    let qualified = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
     for line in stdout.lines() {
        let line = line.trim_end();
-       if line.is_empty() || line.starts_with("PLUGIN") {
+       if line.is_empty()
+           || line.starts_with("PLUGIN")
+           || line.starts_with("Marketplace ")
+           || line.starts_with("C:\\")
+           || line.starts_with('/')
+           || line.starts_with('.')
+       {
            continue;
        }
        let mut cols = line.split_whitespace();
@@ -1520,14 +1529,17 @@ fn parse_codex_plugin_list(stdout: &str) -> bool {
            Some(s) => s,
            None => continue,
        };
-       if name != PLUGIN_NAME {
+       let matches = name == PLUGIN_NAME || name == qualified;
+       if !matches {
            continue;
        }
        let rest: Vec<&str> = cols.collect();
        if rest.is_empty() {
            return false;
        }
-       // Status starts at rest[0]. "not installed" → not installed.
+       // Status column starts here. "not installed" → not installed.
+       // Any "installed*" status (installed / installed, enabled /
+       // installed, disabled) counts as installed.
        return rest[0] != "not";
     }
     false
@@ -2401,8 +2413,8 @@ fn paths_equivalent(a: &Path, b: &Path) -> bool {
 // safe between slice-B Rust commits.
 // ---------------------------------------------------------------------------
 
-fn codex_status(on_path: bool, bin_path: Option<String>, _home: Option<&Path>) -> CliStatus {
-    CliStatus {
+fn codex_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -> CliStatus {
+    let mut out = CliStatus {
         name: CliKind::Codex.name(),
         binary_on_path: on_path,
         binary_path: bin_path,
@@ -2412,14 +2424,78 @@ fn codex_status(on_path: bool, bin_path: Option<String>, _home: Option<&Path>) -
         plugin_installed: false,
         plugin_enabled: false,
         detection_fallback: None,
+    };
+    if !on_path {
+        codex_fs_fallback(&mut out, home);
+        populate_marketplace_path(&mut out, CliKind::Codex, home);
+        return out;
+    }
+
+    let mkt = match run_plugin_cli_capture("codex", &["plugin", "marketplace", "list"]) {
+        Ok(o) if o.success => Some(parse_codex_marketplace_list(&o.stdout)),
+        Ok(_) | Err(_) => None,
+    };
+    let plugin = match run_plugin_cli_capture("codex", &["plugin", "list"]) {
+        Ok(o) if o.success => Some(parse_codex_plugin_list(&o.stdout)),
+        Ok(_) | Err(_) => None,
+    };
+
+    match (mkt, plugin) {
+        (Some((registered, path)), Some(installed)) => {
+            out.marketplace_registered = registered;
+            if path.is_some() {
+                out.marketplace_path = path;
+            }
+            out.plugin_installed = installed;
+            out.plugin_enabled = installed;
+        }
+        _ => {
+            codex_fs_fallback(&mut out, home);
+        }
+    }
+    populate_marketplace_path(&mut out, CliKind::Codex, home);
+    out
+}
+
+fn codex_fs_fallback(out: &mut CliStatus, home: Option<&Path>) {
+    out.detection_fallback = Some("fs");
+    let Some(home) = home else { return };
+    let cache_root = home
+        .join(".codex")
+        .join("plugins")
+        .join("cache")
+        .join(MARKETPLACE_NAME);
+
+    // Marketplace is "registered" if Codex created the per-marketplace
+    // cache dir AND something is inside it. An empty leftover dir from
+    // a prior remove should not count.
+    out.marketplace_registered = dir_has_entries(&cache_root);
+
+    let plugin_root = cache_root.join(PLUGIN_NAME);
+    let installed = dir_has_entries(&plugin_root);
+    out.plugin_installed = installed;
+    out.plugin_enabled = installed; // Codex has no separate enable flag.
+}
+
+fn dir_has_entries(p: &Path) -> bool {
+    match fs::read_dir(p) {
+        Ok(mut it) => it.next().is_some(),
+        Err(_) => false,
     }
 }
 
-fn codex_marketplace_info(_home: &Path) -> MarketplaceInfo {
-    MarketplaceInfo {
-        path: None,
-        valid: false,
+fn codex_marketplace_info(home: &Path) -> MarketplaceInfo {
+    let mut info = MarketplaceInfo { path: None, valid: false };
+    let marketplace_path = home
+        .join(".codex")
+        .join("plugins")
+        .join("cache")
+        .join(MARKETPLACE_NAME);
+    if marketplace_path.is_dir() {
+        info.path = Some(marketplace_path.to_string_lossy().into_owned());
+        info.valid = true;
     }
+    info
 }
 
 fn codex_uninstall(_home: Option<&Path>) -> CliUninstallResult {
@@ -3852,6 +3928,44 @@ Registered marketplaces:
     }
 
     #[test]
+    fn codex_status_falls_back_when_binary_missing() {
+        let tmp_root = unique_dir("codex_status_fallback");
+        std::fs::create_dir_all(&tmp_root).unwrap();
+        let s = codex_status(false, None, Some(&tmp_root));
+        assert_eq!(s.name, "codex");
+        assert!(!s.binary_on_path);
+        assert_eq!(s.detection_fallback, Some("fs"));
+        let _ = std::fs::remove_dir_all(&tmp_root);
+    }
+
+    #[test]
+    fn codex_fs_fallback_detects_install_dirs() {
+        let tmp_root = unique_dir("codex_fs_fallback");
+        let codex_dir = tmp_root.join(".codex");
+        let cache_root = codex_dir.join("plugins").join("cache").join(MARKETPLACE_NAME);
+        let plugin_dir = cache_root.join(PLUGIN_NAME).join("0.1.0");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+
+        let mut s = CliStatus {
+            name: CliKind::Codex.name(),
+            binary_on_path: false,
+            binary_path: None,
+            marketplace_registered: false,
+            marketplace_path: None,
+            marketplace_path_valid: false,
+            plugin_installed: false,
+            plugin_enabled: false,
+            detection_fallback: None,
+        };
+        codex_fs_fallback(&mut s, Some(&tmp_root));
+        assert!(s.marketplace_registered);
+        assert!(s.plugin_installed);
+        assert!(s.plugin_enabled);
+        assert_eq!(s.detection_fallback, Some("fs"));
+        let _ = std::fs::remove_dir_all(&tmp_root);
+    }
+
+    #[test]
     fn parse_codex_marketplace_list_finds_wt_local() {
         let sample = "MARKETPLACE      ROOT\n\
                       openai-curated   https://github.com/openai/codex-marketplace\n\
@@ -3872,23 +3986,48 @@ Registered marketplaces:
 
     #[test]
     fn parse_codex_plugin_list_finds_wt_agent_hooks() {
-        let sample = "PLUGIN            STATUS         VERSION   PATH\n\
-                      github            not installed  -         -\n\
-                      wt-agent-hooks    installed      0.1.0     C:\\some\\path\n";
+        let sample = "Marketplace `openai-curated`\n\
+                      C:\\Users\\x\\.codex\\.tmp\\plugins\\.agents\\plugins\\marketplace.json\n\
+                      \n\
+                      PLUGIN                   STATUS              VERSION  PATH\n\
+                      linear@openai-curated    not installed       -        -\n\
+                      \n\
+                      Marketplace `wt-local`\n\
+                      C:\\path\\to\\bundle\\.agents\\plugins\\marketplace.json\n\
+                      \n\
+                      PLUGIN                   STATUS              VERSION  PATH\n\
+                      wt-agent-hooks@wt-local  installed, enabled  0.1.0    C:\\path\n";
         assert!(parse_codex_plugin_list(sample));
     }
 
     #[test]
     fn parse_codex_plugin_list_not_installed() {
-        let sample = "PLUGIN            STATUS         VERSION   PATH\n\
-                      wt-agent-hooks    not installed  -         -\n";
+        let sample = "Marketplace `wt-local`\n\
+                      C:\\path\\.agents\\plugins\\marketplace.json\n\
+                      \n\
+                      PLUGIN                   STATUS         VERSION  PATH\n\
+                      wt-agent-hooks@wt-local  not installed  -        -\n";
         assert!(!parse_codex_plugin_list(sample));
     }
 
     #[test]
     fn parse_codex_plugin_list_absent_row() {
-        let sample = "PLUGIN            STATUS         VERSION   PATH\n\
-                      github            not installed  -         -\n";
+        let sample = "Marketplace `openai-curated`\n\
+                      C:\\path\\marketplace.json\n\
+                      \n\
+                      PLUGIN                   STATUS         VERSION  PATH\n\
+                      linear@openai-curated    not installed  -        -\n";
         assert!(!parse_codex_plugin_list(sample));
+    }
+
+    #[test]
+    fn parse_codex_plugin_list_treats_disabled_as_installed() {
+        let sample = "Marketplace `wt-local`\n\
+                      \n\
+                      PLUGIN                   STATUS      VERSION  PATH\n\
+                      wt-agent-hooks@wt-local  installed   0.1.0    C:\\path\n";
+        // Plugin is present even if not currently enabled; we still treat
+        // it as installed so that we know there's something to clean up.
+        assert!(parse_codex_plugin_list(sample));
     }
 }
