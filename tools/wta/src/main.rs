@@ -409,9 +409,10 @@ enum Command {
 
     /// Delegate a prompt to a new tab with a configured agent (fire-and-forget)
     Delegate {
-        /// The prompt to send to the delegate agent
+        /// The prompt to send to the delegate agent. Omit to open the agent
+        /// interactively in a new tab with no startup prompt.
         #[arg(value_name = "PROMPT")]
-        prompt: String,
+        prompt: Option<String>,
 
         /// Agent CLI command (used to derive delegate agent commandline)
         #[arg(long, default_value = agent_registry::DEFAULT_ACP_COMMAND)]
@@ -770,7 +771,7 @@ async fn main() -> Result<()> {
             cwd,
         }) => {
             run_delegate(
-                &prompt,
+                prompt.as_deref(),
                 &agent,
                 delegate_agent.as_deref(),
                 delegate_model.as_deref(),
@@ -1451,14 +1452,14 @@ async fn run_listen(pane_filter: Option<&str>) -> Result<()> {
 // ─── Delegate prompt to new tab agent ────────────────────────────────────────
 
 async fn run_delegate(
-    prompt: &str,
+    prompt: Option<&str>,
     agent_cmd: &str,
     delegate_agent_cmd: Option<&str>,
     delegate_model: Option<&str>,
     cwd: Option<&str>,
 ) -> Result<()> {
     let _guard = logging::init("delegate");
-    tracing::info!(prompt, agent = agent_cmd, cwd, "run_delegate started");
+    tracing::info!(prompt = ?prompt, agent = agent_cmd, cwd, "run_delegate started");
 
     let (debug_tx, _) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
     let channel = match connect_to_wt_protocol(debug_tx).await {
@@ -1501,42 +1502,12 @@ async fn run_delegate(
 /// the user's working pane, so a single query is enough.
 async fn delegate_with_context(
     shell_mgr: &ShellManager,
-    prompt: &str,
+    prompt: Option<&str>,
     agent_cmd: &str,
     delegate_agent_cmd: Option<&str>,
     delegate_model: Option<&str>,
     cwd: Option<&str>,
 ) -> Result<()> {
-    let active = shell_mgr.wt_get_active_pane().await.ok();
-    let active_pane_id = active
-        .as_ref()
-        .and_then(|v| v.get("session_id"))
-        .and_then(|v| match v {
-            serde_json::Value::String(s) => Some(s.clone()),
-            serde_json::Value::Number(n) => Some(n.to_string()),
-            _ => None,
-        });
-
-    let pane_context = if let Some(ref pane_id) = active_pane_id {
-        match shell_mgr.wt_read_pane_output(pane_id, Some(30)).await {
-            Ok(value) => value
-                .get("content")
-                .and_then(|c| c.as_str())
-                .map(|s| s.to_string()),
-            Err(_) => None,
-        }
-    } else {
-        None
-    };
-
-    let full_prompt = match (pane_context, active_pane_id) {
-        (Some(context), Some(pane_id)) => format!(
-            "{}\n\n## Terminal Context (pane {})\n```\n{}\n```",
-            prompt, pane_id, context
-        ),
-        _ => prompt.to_string(),
-    };
-
     let delegate_agents = crate::coordinator::default_delegate_agent_runtimes(
         delegate_agent_cmd,
         Some(agent_cmd),
@@ -1546,7 +1517,45 @@ async fn delegate_with_context(
         .first()
         .ok_or_else(|| anyhow::anyhow!("no delegate agent configured"))?;
 
-    let commandline = crate::coordinator::build_delegate_commandline(runtime, &full_prompt)?;
+    let commandline = match prompt {
+        // Prompt present → enrich it with the active pane's recent output and
+        // bake it into the new tab's agent CLI (the `?<prompt>` path).
+        Some(prompt) if !prompt.trim().is_empty() => {
+            let active = shell_mgr.wt_get_active_pane().await.ok();
+            let active_pane_id = active
+                .as_ref()
+                .and_then(|v| v.get("session_id"))
+                .and_then(|v| match v {
+                    serde_json::Value::String(s) => Some(s.clone()),
+                    serde_json::Value::Number(n) => Some(n.to_string()),
+                    _ => None,
+                });
+
+            let pane_context = if let Some(ref pane_id) = active_pane_id {
+                match shell_mgr.wt_read_pane_output(pane_id, Some(30)).await {
+                    Ok(value) => value
+                        .get("content")
+                        .and_then(|c| c.as_str())
+                        .map(|s| s.to_string()),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
+            let full_prompt = match (pane_context, active_pane_id) {
+                (Some(context), Some(pane_id)) => format!(
+                    "{}\n\n## Terminal Context (pane {})\n```\n{}\n```",
+                    prompt, pane_id, context
+                ),
+                _ => prompt.to_string(),
+            };
+
+            crate::coordinator::build_delegate_commandline(runtime, &full_prompt)?
+        }
+        // No prompt → open the delegate agent interactively in the new tab.
+        _ => crate::coordinator::build_delegate_interactive_commandline(runtime)?,
+    };
 
     tracing::debug!(commandline, cwd, "delegate_with_context: launching");
 

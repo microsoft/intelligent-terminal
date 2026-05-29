@@ -677,6 +677,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _DetectWtaPath() const;
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
+        void _OpenBackgroundAgentTab();
+        void _LaunchDelegate(const std::optional<winrt::hstring>& prompt);
 
         // Note (Phase 5): the per-pane wta-process watch + Job Object members
         // and their setup/teardown methods were removed when the legacy

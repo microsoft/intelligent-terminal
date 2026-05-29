@@ -1153,7 +1153,29 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_DelegatePromptToAgent(const winrt::hstring& prompt)
     {
-        _agentPaneLog("_DelegatePromptToAgent called, prompt='" + winrt::to_string(prompt) + "'");
+        _LaunchDelegate(prompt);
+    }
+
+    // Open the delegate agent interactively in a brand-new tab with no
+    // startup prompt — the "background agent" hotkey (Alt+Shift+B). This is
+    // the no-prompt sibling of the `?<prompt>` delegation: `wta delegate`
+    // (invoked with no PROMPT positional) connects to WT over COM and spawns
+    // a new tab whose commandline is the delegate agent's own interactive CLI.
+    void TerminalPage::_OpenBackgroundAgentTab()
+    {
+        _LaunchDelegate(std::nullopt);
+    }
+
+    // Launch a hidden `wta delegate` process. With a prompt this is the
+    // `?<prompt>` foreground delegation (one-shot; the prompt is baked into
+    // the new tab's agent CLI). Without a prompt the agent opens interactively
+    // in a new tab. Either way wta itself creates the tab via the WT COM
+    // protocol; this launched process exits once the tab is spawned.
+    void TerminalPage::_LaunchDelegate(const std::optional<winrt::hstring>& prompt)
+    {
+        _agentPaneLog(prompt.has_value() ?
+                          "_LaunchDelegate called, prompt='" + winrt::to_string(*prompt) + "'" :
+                          "_LaunchDelegate called (interactive, no prompt)");
 
         // Find the WTA executable.
         const auto wtaPath = _DetectWtaPath();
@@ -1245,13 +1267,18 @@ namespace winrt::TerminalApp::implementation
             cmdline += L" --cwd " + quoteArg(std::wstring_view{ activeCwd });
         }
 
-        // Append the prompt as a positional argument.
-        std::wstring escapedPrompt{ prompt };
-        for (size_t pos = 0; (pos = escapedPrompt.find(L'"', pos)) != std::wstring::npos; pos += 2)
+        // Append the prompt as a positional argument — only for the
+        // foreground `?<prompt>` path. With no prompt, `wta delegate` opens
+        // the agent interactively (no PROMPT positional).
+        if (prompt.has_value() && !prompt->empty())
         {
-            escapedPrompt.replace(pos, 1, L"\"\"");
+            std::wstring escapedPrompt{ *prompt };
+            for (size_t pos = 0; (pos = escapedPrompt.find(L'"', pos)) != std::wstring::npos; pos += 2)
+            {
+                escapedPrompt.replace(pos, 1, L"\"\"");
+            }
+            cmdline += fmt::format(FMT_COMPILE(L" \"{}\""), escapedPrompt);
         }
-        cmdline += fmt::format(FMT_COMPILE(L" \"{}\""), escapedPrompt);
 
         _agentPaneLog("launching: " + winrt::to_string(winrt::hstring{ cmdline }));
 

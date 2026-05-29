@@ -1707,6 +1707,14 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
+    void TerminalPage::_HandleOpenBackgroundAgent(const IInspectable& /*sender*/,
+                                                  const ActionEventArgs& args)
+    {
+        OutputDebugStringW(L"[AgentPane] _HandleOpenBackgroundAgent called\n");
+        _OpenBackgroundAgentTab();
+        args.Handled(true);
+    }
+
     void TerminalPage::_HandleOpenAgentSessions(const IInspectable& /*sender*/,
                                                 const ActionEventArgs& args)
     {

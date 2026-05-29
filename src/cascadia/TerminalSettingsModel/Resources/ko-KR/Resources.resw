@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -1001,4 +1001,7 @@
   <data name="BugReportCommandKey" xml:space="preserve">
     <value>버그 보고(로그 수집)</value>
   </data>
+  <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
+    <value>새 탭에서 백그라운드 에이전트 열기</value>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
 </root>
