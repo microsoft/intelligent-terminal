@@ -63,10 +63,10 @@ pub fn init(process: &str) {
     let logs_root = logs_root();
 
     // Per-version subdirectory: each build's logs are stored separately so an
-    // upgrade keeps the last few versions and drops older ones wholesale. This
-    // is also what makes cleanup lock-free — the live (current-version) dir is
-    // never a deletion target, so no process can delete a file another is
-    // still writing.
+    // upgrade can drop the prior version's logs wholesale — we keep only the
+    // current version's dir (see `prune_old_version_dirs`). This is also what
+    // makes cleanup lock-free: the live (current-version) dir is never a
+    // deletion target, so no process can delete a file another is still writing.
     //
     // The version key is the *package* version (GetCurrentPackageId), shared at
     // runtime with the C++ agent-pane logger and the PowerShell hooks so all

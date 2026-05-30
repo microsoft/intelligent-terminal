@@ -69,10 +69,14 @@ namespace IntelligentTerminal
         UINT32 length = 0;
         if (GetCurrentPackageId(&length, nullptr) == ERROR_INSUFFICIENT_BUFFER && length != 0)
         {
-            std::vector<BYTE> buffer(length);
-            if (GetCurrentPackageId(&length, buffer.data()) == ERROR_SUCCESS)
+            // PACKAGE_ID contains a UINT64 + pointers, so back the buffer with
+            // UINT64 storage to guarantee 8-byte alignment — a `vector<BYTE>`
+            // is only byte-aligned and reinterpreting it as PACKAGE_ID* is UB.
+            std::vector<UINT64> buffer((length + sizeof(UINT64) - 1) / sizeof(UINT64));
+            const auto bytes = reinterpret_cast<BYTE*>(buffer.data());
+            if (GetCurrentPackageId(&length, bytes) == ERROR_SUCCESS)
             {
-                const auto id = reinterpret_cast<const PACKAGE_ID*>(buffer.data());
+                const auto id = reinterpret_cast<const PACKAGE_ID*>(bytes);
                 return std::to_wstring(id->version.Major) + L"." +
                        std::to_wstring(id->version.Minor) + L"." +
                        std::to_wstring(id->version.Build) + L"." +
