@@ -1568,7 +1568,9 @@ async fn run_delegate(
     delegate_model: Option<&str>,
     cwd: Option<&str>,
 ) -> Result<()> {
-    tracing::info!(prompt = ?prompt, agent = agent_cmd, cwd, "run_delegate started");
+    // Log the prompt length, not the text — the prompt is user content.
+    tracing::info!(prompt_chars = prompt.map(|p| p.chars().count()), agent = agent_cmd, cwd, "run_delegate started");
+    tracing::trace!(target: "delegate.content", prompt = ?prompt, "run_delegate prompt");
 
     let (debug_tx, _) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
     let channel = match connect_to_wt_protocol(debug_tx).await {
@@ -1666,7 +1668,10 @@ async fn delegate_with_context(
         _ => crate::coordinator::build_delegate_interactive_commandline(runtime)?,
     };
 
-    tracing::debug!(commandline, cwd, "delegate_with_context: launching");
+    // The commandline bakes in the user prompt (`-i "<prompt>"`); keep it out
+    // of the debug log and only emit it at trace.
+    tracing::debug!(cwd, "delegate_with_context: launching");
+    tracing::trace!(target: "delegate.content", commandline, cwd, "delegate_with_context commandline");
 
     shell_mgr
         .wt_create_tab(Some(&commandline), cwd, None)
@@ -2077,12 +2082,16 @@ async fn run_acp_app(
                 let wt_event_tx = event_tx.clone();
                 tokio::task::spawn_local(async move {
                     while let Some(event_json) = wt_rx.recv().await {
-                        tracing::debug!(event = %event_json, "wt_event_rx: received event");
                         let method = event_json
                             .get("method")
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
+                        // The full event envelope carries `vt_sequence` (raw
+                        // terminal output/scrollback) — keep it out of debug;
+                        // log only the method there, full JSON at trace.
+                        tracing::debug!(method = %method, "wt_event_rx: received event");
+                        tracing::trace!(target: "wt_event.content", event = %event_json, "wt_event_rx: full event");
 
                         let params = event_json
                             .get("params")

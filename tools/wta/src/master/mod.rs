@@ -500,9 +500,16 @@ impl acp::Client for MasterClient {
             op = "create_terminal",
             helper_id = ?helper_id,
             session_id = ?sid,
-            command = %args.command,
             args_len = args.args.len(),
             "forwarding terminal/create to helper"
+        );
+        // Command line can carry user/file content — trace only.
+        tracing::trace!(
+            target: "master.content",
+            session_id = ?sid,
+            command = %args.command,
+            args = ?args.args,
+            "create_terminal command"
         );
         forwarder.create_terminal(args).await
     }
@@ -1277,13 +1284,16 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         .ok_or_else(|| anyhow!("agent CLI child has no stdout"))?;
     let is_npx = spawn_result.is_npx;
 
-    // Drain agent stderr to logs so failures are diagnosable.
+    // Drain agent stderr to logs so failures are diagnosable. At debug, not
+    // warn: most lines are routine adapter chatter (and can echo prompt/file
+    // content), so they shouldn't pollute shipping logs or fire as warnings.
+    // The agent's actual exit/crash is logged separately at error.
     if let Some(stderr) = spawn_result.child.stderr.take() {
         tokio::task::spawn_local(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                tracing::warn!(target: "agent_stderr", "{line}");
+                tracing::debug!(target: "agent_stderr", "{line}");
             }
         });
     }

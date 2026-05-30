@@ -160,10 +160,11 @@ pub fn render(
         total = sorted.len(),
         filter = ?cli_filter,
         origin = ?origin_filter,
+        // Session titles are agent-generated from conversation content — log
+        // only key + status here, not the title.
         first_three = ?sorted.iter().take(3).map(|s| (
             s.key.clone(),
             format!("{:?}", s.status),
-            s.title.clone(),
         )).collect::<Vec<_>>(),
         area_w = area.width,
         area_h = area.height,

@@ -190,6 +190,47 @@ master 仍是单例,保持单文件 `wta-main_master.log`。
 `elapsed_ms=` 等),保证即便默认级别下也可见(release 默认已抬到 `info`,
 warn/error 必然落盘)。
 
+### 改动 G:隐私与级别审计(全量 `tracing::` 复查)
+
+原则:**用户实际内容(prompt / agent 回复 / 终端输出 / 输入 / 标题 / 键入)
+最多只在 `trace`;`warn`/`error` 这类 critical 必须落盘。** info(release 默认)
+和 debug(一个环境变量即开)都不放原文。
+
+**统一约定**:新增 `acp_trace_content()`(`target=*.content`,trace 级)承载敏感
+内容;各处保留「长度/计数/枚举/id」在 debug/info,原文挪到 trace。
+
+**内容下沉到 trace(原 info/debug → trace 或改记长度):**
+
+| 位置 | 原级别 | 内容 | 处理 |
+|---|---|---|---|
+| `app.rs` handle_key | info | 每次按键 `KeyCode`(可重建 prompt) | → trace |
+| `client.rs` log_turn_trace | info | prompt body_head/body_tail | info 只留 `prompt_len`,原文 → trace |
+| `client.rs` acp_log_built_prompt | debug | 完整拼装 prompt(含终端 buffer) | → trace |
+| `client.rs` session_notification | debug | 完整 SessionUpdate(agent 消息/思考/计划) | debug 只留 `kind`,原文 → trace |
+| `client.rs` request_permission / create_terminal | debug | 工具标题 / 命令行+args | debug 留面包屑+计数,原文 → trace |
+| `client.rs` prompt_timing(prompt_received/first_tool_call/permission/complete) | debug | prompt/标题/描述 preview | timing 留 debug,preview → trace |
+| `main.rs` run_delegate | info | `?prompt` 全文 | → `prompt_chars` 计数,原文 → trace |
+| `main.rs` delegate_with_context / wt_event_rx | debug | commandline(含 prompt)/ 完整 WT 事件(含 `vt_sequence` 终端输出) | debug 留 method/cwd,原文 → trace |
+| `coordinator.rs` send/open_and_send/send_input | debug | `input_preview` / commandline | 删 preview 留 `input_chars`;commandline → trace |
+| `ui/agents_view.rs` | debug | 会话 `title`(由对话生成) | 从 tuple 删除,只留 key+status |
+| `app.rs` copilot login std | debug | 登录子进程原文(含 device code) | → trace |
+| `master.rs` create_terminal | info | agent 命令行 | info 留 `args_len`,原文 → trace |
+
+**级别上修(critical 落盘):**
+
+| 位置 | 原 | 新 |
+|---|---|---|
+| `client.rs` ACP I/O loop 失败(pipe + child 两路) | `*_probe.log`(debug)+ `eprintln!` | `tracing::warn`(去掉 eprintln) |
+| `client.rs` agent kill 失败 / wait 失败 | debug | warn |
+| `client.rs` agent 进程退出 | debug | info |
+| `master.rs` agent_stderr | warn(噪声+可能含内容) | debug(真正的退出/崩溃另在 error) |
+
+**保留(评估后认定可接受):** master 端 fs 读写的 `path`(操作元数据,非内容);
+`agent_stderr` / probe 的 agent 自身 stderr 行(诊断必需,留 debug)。
+
+审计覆盖 ~15k 行;`telemetry.rs`(ETW 只发字节数/id)、`osc52.rs`(剪贴板从不落日志)
+经确认本就 privacy-clean。`cargo build` 通过,562 测试全绿。
+
 ## 改动文件清单
 
 | 文件 | 改动 |

@@ -349,11 +349,10 @@ async fn execute_choice(
                 ensure_non_empty("parent", parent)?;
                 ensure_non_empty("input", input)?;
                 coordinator_log(&format!(
-                    "send begin parent={} insert_only={} input_chars={} input_preview={:?}",
+                    "send begin parent={} insert_only={} input_chars={}",
                     parent,
                     insert_only,
                     input.chars().count(),
-                    truncate_for_log(input, 120)
                 ));
                 let action_label = if insert_only { "Inserting" } else { "Sending" };
                 let _ = event_tx.send(AppEvent::ExecutionInfo(format!(
@@ -415,7 +414,7 @@ async fn execute_choice(
                     .unwrap_or(DelegatePromptDelivery::LaunchThenSend);
                 let target_label = open_target_label(target);
                 coordinator_log(&format!(
-                    "open_and_send begin target={} parent={:?} agent={:?} cwd={:?} title={:?} direction={:?} delivery_mode={} input_chars={} input_preview={:?}",
+                    "open_and_send begin target={} parent={:?} agent={:?} cwd={:?} title={:?} direction={:?} delivery_mode={} input_chars={}",
                     target_label,
                     parent,
                     agent,
@@ -424,7 +423,6 @@ async fn execute_choice(
                     direction,
                     delegate_prompt_delivery_label(delivery_mode),
                     input.chars().count(),
-                    truncate_for_log(input, 120)
                 ));
                 let _ = event_tx.send(AppEvent::ExecutionInfo(match runtime_name {
                     Some(name) => format!("Opening {} for {}.", target_label, name),
@@ -483,11 +481,11 @@ async fn execute_choice(
                     send_input_to_new_pane(shell_mgr, &pane_id, input, event_tx).await?;
                 } else {
                     coordinator_log(&format!(
-                        "open_and_send startup_prompt_delivery target={} pane_id={} commandline={:?}",
-                        target_label,
-                        pane_id,
-                        commandline
+                        "open_and_send startup_prompt_delivery target={} pane_id={}",
+                        target_label, pane_id
                     ));
+                    // commandline bakes in the user prompt — trace only.
+                    tracing::trace!(target: "coordinator.content", commandline = ?commandline, "open_and_send commandline");
                     let _ = event_tx.send(AppEvent::ExecutionInfo(format!(
                         "Passed startup prompt to pane {} on launch.",
                         pane_id
@@ -846,10 +844,9 @@ async fn send_input_to_new_pane(
     ensure_non_empty("session_id", pane_id)?;
     ensure_non_empty("input", input)?;
     coordinator_log(&format!(
-        "open_and_send send_input_begin pane_id={} wait_ms=700 input_chars={} input_preview={:?}",
+        "open_and_send send_input_begin pane_id={} wait_ms=700 input_chars={}",
         pane_id,
         input.chars().count(),
-        truncate_for_log(input, 120)
     ));
     let _ = event_tx.send(AppEvent::ExecutionInfo(format!(
         "Sending input to pane {}.",

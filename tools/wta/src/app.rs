@@ -3186,7 +3186,8 @@ impl App {
                         if let Some(stderr) = stderr {
                             let reader = std::io::BufReader::new(stderr);
                             for line in reader.lines().map_while(Result::ok) {
-                                tracing::debug!("login stderr: {}", line);
+                                // Raw auth-flow output carries the device code — trace only.
+                                tracing::trace!(target: "login.content", "login stderr: {}", line);
                                 if line.contains("enter code") {
                                     if let Some(code) = line.split("enter code ").nth(1) {
                                         let code = code.trim_end_matches('.');
@@ -3212,7 +3213,8 @@ impl App {
                     if let Some(stdout) = stdout {
                         let reader = std::io::BufReader::new(stdout);
                         for line in reader.lines().map_while(Result::ok) {
-                            tracing::debug!("login stdout: {}", line);
+                            // Raw auth-flow output carries the device code — trace only.
+                            tracing::trace!(target: "login.content", "login stdout: {}", line);
                             if line.contains("enter code") {
                                 if let Some(code) = line.split("enter code ").nth(1) {
                                     let code = code.trim_end_matches('.');
@@ -5460,7 +5462,11 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) {
-        tracing::info!(
+        // Per-keystroke and carries the raw `KeyCode` (the typed character for
+        // `Char` keys) — the user's prompt is reconstructable from this stream.
+        // Trace only so it never persists in shipping (info) or default-debug
+        // logs.
+        tracing::trace!(
             target: "input",
             code = ?key.code,
             modifiers = ?key.modifiers,

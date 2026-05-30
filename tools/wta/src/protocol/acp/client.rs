@@ -385,11 +385,12 @@ impl PromptTimingState {
             prompt.submitted_at_unix_s,
             "prompt_received",
             &format!(
-                "queue_delay={} preview={:?}",
+                "queue_delay={}",
                 format_elapsed(Some(prompt.submitted_at_unix_s), Some(now)),
-                preview
             ),
         );
+        // User prompt preview — trace only.
+        acp_trace_content(&format!("turn {} preview={:?}", prompt.id, preview));
     }
 
     fn mark_context_ready(&self, session_id: &str, prompt_len: usize) {
@@ -565,12 +566,13 @@ impl PromptTimingState {
                 let submitted_at_unix_s = active.submitted_at_unix_s;
                 let title_preview = title.map(prompt_preview).unwrap_or_default();
                 let details = format!(
-                    "title={:?} since_prompt_sent={}",
-                    title_preview,
+                    "since_prompt_sent={}",
                     format_elapsed(active.prompt_sent_at_unix_s, Some(now))
                 );
                 drop(guard);
                 prompt_timing_log(turn_id, submitted_at_unix_s, "first_tool_call", &details);
+                // Tool-call title is agent-generated content — trace only.
+                acp_trace_content(&format!("turn {turn_id} first_tool_call title={title_preview:?}"));
             }
         }
     }
@@ -586,8 +588,7 @@ impl PromptTimingState {
             let turn_id = active.id;
             let submitted_at_unix_s = active.submitted_at_unix_s;
             let details = format!(
-                "description={:?} since_prompt_sent={}",
-                prompt_preview(description),
+                "since_prompt_sent={}",
                 format_elapsed(active.prompt_sent_at_unix_s, Some(now))
             );
             drop(guard);
@@ -597,6 +598,11 @@ impl PromptTimingState {
                 "permission_requested",
                 &details,
             );
+            // Permission description is agent-generated content — trace only.
+            acp_trace_content(&format!(
+                "turn {turn_id} permission_requested description={:?}",
+                prompt_preview(description)
+            ));
         }
     }
 
@@ -733,7 +739,6 @@ impl PromptTimingState {
                 format_elapsed(Some(active_prompt.submitted_at_unix_s), Some(now))
             ),
             format!("event_count={}", active_prompt.event_count),
-            format!("preview={:?}", active_prompt.preview),
         ];
 
         if let Some(error) = error {
@@ -746,6 +751,11 @@ impl PromptTimingState {
             "prompt_complete",
             &details.join(" "),
         );
+        // User prompt preview — trace only.
+        acp_trace_content(&format!(
+            "turn {} complete preview={:?}",
+            active_prompt.id, active_prompt.preview
+        ));
 
         // Telemetry: emit the prompt-complete signal with aggregate metrics.
         // Use the monotonic `Instant` (captured alongside `prompt_sent_at_unix_s`
@@ -1303,6 +1313,14 @@ fn acp_log(msg: &str) {
     tracing::debug!(target: "acp", "{}", msg);
 }
 
+/// Log potentially-sensitive content (user prompt / agent message text,
+/// previews, full ACP payloads) at **trace only**, so it never lands in
+/// shipping (`info`) or default-troubleshooting (`debug`) logs. Enable with
+/// `WTA_LOG=trace` when a human is deliberately deep-debugging.
+fn acp_trace_content(msg: &str) {
+    tracing::trace!(target: "acp.content", "{}", msg);
+}
+
 fn acp_log_built_prompt(
     user_text: &str,
     pane_context: Option<&PaneContext>,
@@ -1316,7 +1334,9 @@ fn acp_log_built_prompt(
         prompt_source,
         "planner_prompt_begin"
     );
-    tracing::debug!(target: "acp", "planner_prompt_text:\n{}", prompt_text);
+    // Full assembled prompt = user text + captured terminal buffer + cwd.
+    // Sensitive — trace only.
+    acp_trace_content(&format!("planner_prompt_text:\n{}", prompt_text));
     tracing::debug!(target: "acp", "planner_prompt_end");
 }
 
@@ -1351,10 +1371,13 @@ fn log_turn_trace(
         kind = %kind,
         include_template,
         prompt_len = prompt_text.len(),
-        body_head = %head,
-        body_tail = %tail,
         "turn_sent"
     );
+    // The prompt body snippets carry user text / template content — trace only.
+    acp_trace_content(&format!(
+        "turn {turn} body_head={head:?} body_tail={tail:?}",
+        turn = prompt_id
+    ));
 }
 
 /// Take `max_chars` from either end of `text` and inline newlines as
@@ -1522,8 +1545,10 @@ impl acp::Client for WtaClient {
         &self,
         args: acp::RequestPermissionRequest,
     ) -> acp::Result<acp::RequestPermissionResponse> {
-        acp_log(&format!(
-            "request_permission: {:?}",
+        acp_log("request_permission received");
+        // Tool-call title is agent-generated content — trace only.
+        acp_trace_content(&format!(
+            "request_permission title: {:?}",
             args.tool_call.fields.title
         ));
         let session_id = args.session_id.0.to_string();
@@ -1580,11 +1605,15 @@ impl acp::Client for WtaClient {
     }
 
     async fn session_notification(&self, args: acp::SessionNotification) -> acp::Result<()> {
-        acp_log(&format!("session_notification: {:?}", args.update));
+        let kind = session_update_kind(&args.update);
+        acp_log(&format!("session_notification: kind={}", kind));
+        // The full update carries agent message/thought text, tool-call
+        // content, plan bodies, and replayed user-message chunks — trace only.
+        acp_trace_content(&format!("session_notification update: {:?}", args.update));
         let sid = args.session_id.0.to_string();
         self.state
             .prompt_timing
-            .observe_session_update(&sid, session_update_kind(&args.update));
+            .observe_session_update(&sid, kind);
         match args.update {
             acp::SessionUpdate::UserMessageChunk(chunk) => {
                 // Replayed historical user prompt from `session/load`.
@@ -1686,7 +1715,12 @@ impl acp::Client for WtaClient {
         args: acp::CreateTerminalRequest,
     ) -> acp::Result<acp::CreateTerminalResponse> {
         acp_log(&format!(
-            "create_terminal called: cmd={} args={:?}",
+            "create_terminal called: arg_count={}",
+            args.args.len()
+        ));
+        // Agent-requested command line can carry user/file content — trace only.
+        acp_trace_content(&format!(
+            "create_terminal cmd={} args={:?}",
             args.command, args.args
         ));
         let env: Vec<(String, String)> = args
@@ -2130,8 +2164,9 @@ pub async fn run_acp_client_over_pipe(
     tokio::task::spawn_local(async move {
         io_probe.log("ACP handle_io task started (over pipe)");
         if let Err(e) = handle_io.await {
-            io_probe.log(&format!("ACP handle_io failed: {:#}", e));
-            eprintln!("helper ACP I/O failed: {:#}", e);
+            // I/O loop ending with an error means the pipe to wta-master is
+            // dead — connection-fatal, log at warn (ships).
+            tracing::warn!(target: "helper", error = %format!("{:#}", e), "ACP I/O loop to master failed");
         } else {
             io_probe.log("ACP handle_io completed (over pipe)");
         }
@@ -3025,23 +3060,22 @@ async fn run_inner(
     // process without orphaning the old one.
     let (kill_req_tx, kill_req_rx) = tokio::sync::oneshot::channel::<()>();
     let mut kill_req_tx = Some(kill_req_tx);
-    let child_probe = startup_probe.clone();
     tokio::task::spawn_local(async move {
         let mut kill_req_rx = kill_req_rx;
         tokio::select! {
             _ = &mut kill_req_rx => {
                 if let Err(e) = child.kill().await {
-                    child_probe.log(&format!("Agent kill failed: {}", e));
+                    tracing::warn!(target: "acp", error = %e, "agent kill failed (restart)");
                 } else {
-                    child_probe.log("Agent process killed (restart)");
+                    tracing::info!(target: "acp", "agent process killed (restart)");
                 }
                 // Reap to avoid zombies on Unix; on Windows it's a no-op.
                 let _ = child.wait().await;
             }
             status = child.wait() => {
                 match status {
-                    Ok(s) => child_probe.log(&format!("Agent process exited: {}", s)),
-                    Err(e) => child_probe.log(&format!("Agent wait failed: {}", e)),
+                    Ok(s) => tracing::info!(target: "acp", ?s, "agent process exited"),
+                    Err(e) => tracing::warn!(target: "acp", error = %e, "agent wait failed"),
                 }
             }
         }
@@ -3066,8 +3100,9 @@ async fn run_inner(
     tokio::task::spawn_local(async move {
         io_probe.log("ACP handle_io task started");
         if let Err(e) = handle_io.await {
-            io_probe.log(&format!("ACP handle_io failed: {:#}", e));
-            eprintln!("ACP I/O error: {:#}", e);
+            // I/O loop ending with an error means the ACP connection to the
+            // agent CLI is dead — connection-fatal, log at warn (ships).
+            tracing::warn!(target: "acp", error = %format!("{:#}", e), "ACP I/O loop failed");
         } else {
             io_probe.log("ACP handle_io completed");
         }
