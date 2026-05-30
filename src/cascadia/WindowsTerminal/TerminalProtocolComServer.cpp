@@ -749,6 +749,13 @@ void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
         // wta-master process via SharedWta.
         _dispatchRestartAgentStackToPage(eventJson);
         return;
+    case ProtocolParsing::SendEventRoute::RestartAgentPane:
+        // Master detected a helper's pipe disconnect (crash or clean
+        // exit). Page-side handler resolves the tab via `tab_id` and
+        // re-warms a fresh helper, resuming `session_id`. Suppressed when
+        // the pane was torn down deliberately (Ctrl+C×2, tab close).
+        _dispatchRestartAgentPaneToPage(eventJson);
+        return;
     case ProtocolParsing::SendEventRoute::Broadcast:
     {
         Json::StreamWriterBuilder wb;
@@ -899,6 +906,42 @@ void TerminalProtocolComServer::_dispatchRestartAgentStackToPage(const winrt::hs
                 try
                 {
                     page.OnRestartAgentStackRequested(eventJson);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchRestartAgentPaneToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // Fan out to every window; the wta-master is shared across all windows
+    // and the page-side handler resolves the right tab via `tab_id`. Pages
+    // without a matching tab no-op (see OnAgentPaneRestartRequested).
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnAgentPaneRestartRequested(eventJson);
                 }
                 catch (...)
                 {

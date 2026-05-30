@@ -1896,36 +1896,65 @@ impl acp::Client for WtaClient {
 /// See doc/specs/Multi-window-agent-pane.md for the helper+master
 /// architecture, and `tools/wta/src/master/mod.rs` for the peer.
 
+/// Process-wide owner tab StableId for this helper, seeded once at
+/// startup from `--owner-tab-id`. A helper process owns exactly one WT
+/// tab for its lifetime, so a `OnceLock` is the right shape: set once in
+/// `main()`, read by [`inject_wta_pane_meta`] on every `session/new` /
+/// `session/load` so master can record `owner_tab_id` on the routing
+/// entry and address `restart_agent_pane` recovery events by StableId.
+static HELPER_OWNER_TAB_ID: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// Seed the process-wide owner tab StableId. Idempotent — only the first
+/// call wins (subsequent calls are ignored), matching the "one tab per
+/// helper for its whole life" invariant. Empty/blank ids are stored as
+/// `None`.
+pub fn set_helper_owner_tab_id(owner_tab_id: Option<&str>) {
+    let normalized = owner_tab_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let _ = HELPER_OWNER_TAB_ID.set(normalized);
+}
+
+fn helper_owner_tab_id() -> Option<String> {
+    HELPER_OWNER_TAB_ID.get().cloned().flatten()
+}
+
 /// Inject `_meta.wta.pane_session_id = $WT_SESSION` (lowercased, no
-/// braces) into an outbound ACP `session/new` or `session/load`
-/// request, when this helper is running inside a Windows Terminal pane.
+/// braces) and `_meta.wta.owner_tab_id = <this helper's StableId>` into
+/// an outbound ACP `session/new` or `session/load` request, when this
+/// helper is running inside a Windows Terminal pane.
 ///
 /// Used by the helper-over-master path to tell `wta-master` which WT
-/// pane owns the session it's about to create or rehydrate. Master
-/// records this in `SessionRegistry`, surfaces it via `session/list`
-/// `_meta.wta.pane_session_id`, and broadcasts it via
-/// `intellterm.wta/session_added` notifications. Other helpers
-/// listening on those broadcasts use it to populate `alive_mirror`
-/// pane bindings so cross-helper Focus actions (session management Enter on a row
-/// owned by a sibling helper) have a real WT pane GUID to target.
+/// pane owns the session it's about to create or rehydrate (so focus /
+/// session-list resolution works) and which WT tab owns it (so master
+/// can drive `restart_agent_pane` recovery). Master records both in
+/// `SessionRegistry` / its per-helper recovery map.
 ///
-/// No-op when `WT_SESSION` is unset/empty (e.g. when running outside
-/// a WT pane in tests).
+/// No-op for whichever fields are unavailable: `pane_session_id` when
+/// `WT_SESSION` is unset/empty (e.g. running outside a WT pane in
+/// tests), `owner_tab_id` when `--owner-tab-id` wasn't supplied.
 fn inject_wta_pane_meta(meta: &mut Option<acp::Meta>) {
     let wt_session = std::env::var("WT_SESSION").unwrap_or_default();
-    if wt_session.is_empty() {
-        return;
-    }
-    let normalized = wt_session
-        .trim_matches(|c| c == '{' || c == '}')
-        .to_ascii_lowercase();
-    if normalized.is_empty() {
+    let pane_session_id = {
+        let normalized = wt_session
+            .trim_matches(|c| c == '{' || c == '}')
+            .to_ascii_lowercase();
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized)
+        }
+    };
+    let owner_tab_id = helper_owner_tab_id();
+    if pane_session_id.is_none() && owner_tab_id.is_none() {
         return;
     }
     crate::session_registry::inject_wta_meta(
         meta,
         &crate::session_registry::WtaMeta {
-            pane_session_id: Some(normalized),
+            pane_session_id,
+            owner_tab_id,
         },
     );
 }

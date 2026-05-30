@@ -201,6 +201,34 @@ struct MasterStateInner {
     /// don't recognize (e.g. `--agent codex` — tracked in CliSource::Unknown
     /// but not surfaced as a known session management filter).
     pub(crate) cli_source: Option<crate::agent_sessions::CliSource>,
+    /// Per-helper crash-recovery metadata, keyed by `HelperId`.
+    ///
+    /// Populated/refreshed by the `new_session` + `load_session`
+    /// handlers (which see the helper-supplied `_meta.wta.owner_tab_id`
+    /// and the resulting `SessionId`), and consumed by `serve_helper`
+    /// when a helper's pipe disconnects: if the entry carries an
+    /// `owner_tab_id`, master emits a `restart_agent_pane` event so C++
+    /// re-warms a fresh helper for that tab (resuming the recorded
+    /// `last_session_id`). One entry per helper — `last_session_id` is
+    /// the most recently created/loaded session, i.e. the one the user
+    /// was last looking at, which is the right one to resume.
+    ///
+    /// Independent lock from `session_to_helper` so the per-session
+    /// routing hot path never contends on it.
+    pub(crate) helper_meta: Mutex<HashMap<HelperId, HelperRecoveryMeta>>,
+}
+
+/// Per-helper recovery metadata stashed in
+/// [`MasterStateInner::helper_meta`]. See the field doc for lifecycle.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct HelperRecoveryMeta {
+    /// The WT tab StableId that owns this helper's agent pane, from
+    /// `_meta.wta.owner_tab_id`. `None` for non-agent-pane helpers — in
+    /// which case no `restart_agent_pane` is emitted on disconnect.
+    pub(crate) owner_tab_id: Option<String>,
+    /// The most recently created/loaded session for this helper — the
+    /// one to resume via `--initial-load-session-id` on recovery.
+    pub(crate) last_session_id: Option<acp::SessionId>,
 }
 
 /// Master's `acp::Client` impl: handles inbound from the agent CLI.
@@ -794,7 +822,18 @@ impl acp::Agent for HelperHandler {
             .ok()
             .map(|d| d.as_millis() as u64);
         self.state.registry.upsert(info.clone()).await;
-        // Fan a `session_added` ExtNotification out to every other
+        // Record crash-recovery metadata for this helper: the owning
+        // WT tab StableId (so master can address a `restart_agent_pane`
+        // event on disconnect) and the just-created session as the
+        // resume target. See `MasterStateInner::helper_meta`.
+        {
+            let mut meta = self.state.helper_meta.lock().await;
+            let entry = meta.entry(self.helper_id).or_default();
+            if wta_meta.owner_tab_id.is_some() {
+                entry.owner_tab_id = wta_meta.owner_tab_id.clone();
+            }
+            entry.last_session_id = Some(resp.session_id.clone());
+        }
         // helper so their mirrors learn about this new row without
         // having to re-run `session/list`. The disconnecting-helper
         // race is benign: if a peer disconnects between us picking it
@@ -905,22 +944,16 @@ impl acp::Agent for HelperHandler {
                     }
                 }
                 self.state.registry.upsert(info.clone()).await;
-                crate::master::broadcast_ext_to_helpers(
-                    &self.state,
-                    crate::session_registry::build_session_added_notification(&info),
-                )
-                .await;
-                crate::master::broadcast_ext_to_helpers(
-                    &self.state,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
-                tracing::info!(
-                    target: "master",
-                    helper_id = ?self.helper_id,
-                    session_id = ?session_id,
-                    "loaded session bound to helper"
-                );
+                // Mirror new_session: refresh crash-recovery metadata so
+                // a resume targets the session the user is now looking at.
+                {
+                    let mut meta = self.state.helper_meta.lock().await;
+                    let entry = meta.entry(self.helper_id).or_default();
+                    if wta_meta.owner_tab_id.is_some() {
+                        entry.owner_tab_id = wta_meta.owner_tab_id.clone();
+                    }
+                    entry.last_session_id = Some(session_id.clone());
+                }
                 Ok(resp)
             }
             Err(err) => {
@@ -1429,6 +1462,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         wt,
         cached_init_resp: OnceLock::new(),
         cli_source,
+        helper_meta: Mutex::new(HashMap::new()),
     });
 
     // Seed the registry with historical sessions scanned from
@@ -1782,7 +1816,58 @@ async fn serve_helper(
         "helper disconnected"
     );
 
+    // Crash-recovery: if this helper owned an agent pane (we recorded an
+    // `owner_tab_id` from its `_meta.wta` at session/new|load), tell C++
+    // to re-warm a fresh helper for that tab. A clean helper EXIT also
+    // takes this path, but C++ suppresses the restart when the pane was
+    // torn down deliberately (Ctrl+C×2, tab close) — see
+    // `OnAgentPaneRestartRequested`. The pipe-disconnect that brings us
+    // here is the same signal for both crash and clean exit, which is
+    // exactly what we want: respawn unless C++ knows it was intentional.
+    let recovery = {
+        let mut meta = state.helper_meta.lock().await;
+        meta.remove(&helper_id)
+    };
+    if let Some(recovery) = recovery {
+        if let Some(tab_id) = recovery.owner_tab_id {
+            emit_restart_agent_pane(&tab_id, recovery.last_session_id.as_ref());
+        }
+    }
+
     result
+}
+
+/// Emit a `restart_agent_pane` WT-protocol event so C++ re-warms a fresh
+/// helper for `tab_id`, resuming `session_id` (when known) via
+/// `--initial-load-session-id`. Routed per-tab by StableId, mirroring
+/// `close_agent_pane`. See `doc/specs/connection-resilience.md` §8.
+fn emit_restart_agent_pane(tab_id: &str, session_id: Option<&acp::SessionId>) {
+    let evt = build_restart_agent_pane_event(tab_id, session_id);
+    tracing::info!(
+        target: "master",
+        tab_id = %tab_id,
+        session_id = ?session_id,
+        "emitting restart_agent_pane (helper disconnected)"
+    );
+    crate::app::send_wt_protocol_event(evt.to_string());
+}
+
+/// Pure builder for the `restart_agent_pane` WT-protocol event payload.
+/// Split out from [`emit_restart_agent_pane`] so the envelope shape is
+/// unit-testable without the `wtcli publish` side effect.
+fn build_restart_agent_pane_event(
+    tab_id: &str,
+    session_id: Option<&acp::SessionId>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "type": "event",
+        "method": "restart_agent_pane",
+        "params": {
+            "tab_id": tab_id,
+            "session_id": session_id.map(|s| s.0.as_ref()),
+            "reason": "helper_disconnect",
+        }
+    })
 }
 
 /// Remove every `session_to_helper` entry owned by `helper_id`.
@@ -2285,7 +2370,26 @@ mod tests {
             wt: None,
             cached_init_resp: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+            helper_meta: Mutex::new(HashMap::new()),
         })
+    }
+
+    #[test]
+    fn restart_agent_pane_event_shape_carries_tab_and_session() {
+        let sid = SessionId::from("sess-abc");
+        let evt = build_restart_agent_pane_event("tab-42", Some(&sid));
+        assert_eq!(evt["type"], "event");
+        assert_eq!(evt["method"], "restart_agent_pane");
+        assert_eq!(evt["params"]["tab_id"], "tab-42");
+        assert_eq!(evt["params"]["session_id"], "sess-abc");
+        assert_eq!(evt["params"]["reason"], "helper_disconnect");
+    }
+
+    #[test]
+    fn restart_agent_pane_event_null_session_when_none() {
+        let evt = build_restart_agent_pane_event("tab-7", None);
+        assert!(evt["params"]["session_id"].is_null());
+        assert_eq!(evt["params"]["tab_id"], "tab-7");
     }
 
     fn make_notif(sid: &SessionId) -> SessionNotification {
@@ -3071,6 +3175,7 @@ mod tests {
             wt: Some(wt),
             cached_init_resp: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+            helper_meta: Mutex::new(HashMap::new()),
         })
     }
 

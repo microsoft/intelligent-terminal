@@ -59,7 +59,7 @@ chat.turn_executed: "[→ éẋéçûţéð: %{title}!!]"
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "[Àśķ åñÿţĥïñğ, / ƒöŕ çöḿḿåñďś..!!!! !!!!]"  # {Locked="/"}
 input.placeholder.connecting: "[çöññéçţïñğ...!!]"
-input.placeholder.disconnected: "[ďïśçöññéçţ!!]"
+input.placeholder.disconnected: "[ďïśçöññéçţéď!!]"
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII

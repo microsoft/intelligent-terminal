@@ -57,7 +57,7 @@ chat.turn_executed: "[!!_→ executed: %{title}_!!]"
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "[!!_Ask anything, / for commands.._!!]"  # {Locked="/"}
 input.placeholder.connecting: "[!!_connecting..._!!]"
-input.placeholder.disconnected: "[!!_disconnect_!!]"
+input.placeholder.disconnected: "[!!_disconnected_!!]"
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII

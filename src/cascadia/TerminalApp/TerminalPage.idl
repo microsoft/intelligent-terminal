@@ -166,5 +166,13 @@ namespace TerminalApp
         // and re-toggles the active tab's pane so the user lands on a
         // fresh agent CLI session under the same stable master pipe.
         void OnRestartAgentStackRequested(String eventJson);
+
+        // Inbound event from WTA carrying
+        // {method:"restart_agent_pane",params:{tab_id, session_id?, reason}}.
+        // Emitted by wta-master when a helper's pipe disconnects (crash or
+        // clean exit). The page resolves the owning tab by StableId and
+        // re-warms a fresh helper, resuming `session_id`. Suppressed when
+        // the pane was torn down deliberately (Ctrl+C×2, tab close).
+        void OnAgentPaneRestartRequested(String eventJson);
     }
 }

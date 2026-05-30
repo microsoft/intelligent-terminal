@@ -2211,6 +2211,12 @@ async fn run_acp_app(
             };
             let (master_ext_tx, master_ext_rx) = tokio::sync::mpsc::unbounded_channel();
 
+            // Seed the process-wide owner tab StableId so `inject_wta_pane_meta`
+            // stamps `_meta.wta.owner_tab_id` on every session/new + session/load.
+            // Master needs it to address `restart_agent_pane` crash-recovery
+            // events by the same StableId C++ routes per-tab events with.
+            protocol::acp::client::set_helper_owner_tab_id(cli.owner_tab_id.as_deref());
+
             // Spawn the ACP client -- but not in setup mode, where the user
             // hasn't chosen an agent yet. Store params for deferred start.
             //

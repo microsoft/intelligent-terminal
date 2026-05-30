@@ -210,6 +210,7 @@ namespace winrt::TerminalApp::implementation
         void OnResumeInNewAgentTabRequested(hstring eventJson);
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
+        void OnAgentPaneRestartRequested(hstring eventJson);
 
         til::property_changed_event PropertyChanged;
 
@@ -404,9 +405,18 @@ namespace winrt::TerminalApp::implementation
             std::string cwd;
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
+        // Short-lived marks keyed by tab StableId: set whenever an agent
+        // pane is torn down deliberately (Ctrl+C×2, settings rebuild,
+        // /restart, recovery re-warm). `OnAgentPaneRestartRequested`
+        // consumes a mark to skip respawning a pane the user/we just
+        // closed — the master's `restart_agent_pane` event fires for both
+        // deliberate teardown and genuine crash, so this is how C++
+        // distinguishes them. Entries are consumed on read and otherwise
+        // expire after a few seconds.
+        std::unordered_map<winrt::hstring, std::chrono::steady_clock::time_point> _agentPaneRestartSuppression;
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
-        void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab);
+        void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab, bool suppressMasterRestart = true);
         void _RebuildAgentStack();
         void _FlushPendingAgentRebuild();
         // Build the per-process flag/value pairs that the wta-master

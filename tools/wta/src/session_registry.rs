@@ -37,11 +37,17 @@ pub const WTA_META_NAMESPACE: &str = "wta";
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WtaMeta {
     pub pane_session_id: Option<String>,
+    /// The WT tab StableId (`--owner-tab-id`) of the agent pane that
+    /// owns this session. Carried so master can address per-tab events
+    /// (notably `restart_agent_pane` on helper crash recovery) by the
+    /// same StableId C++ routes every other per-tab event with. `None`
+    /// for non-agent-pane helpers / legacy callers.
+    pub owner_tab_id: Option<String>,
 }
 
 impl WtaMeta {
     pub fn is_empty(&self) -> bool {
-        self.pane_session_id.is_none()
+        self.pane_session_id.is_none() && self.owner_tab_id.is_none()
     }
 }
 
@@ -73,6 +79,11 @@ pub fn extract_wta_meta(meta: &mut Option<acp::Meta>) -> WtaMeta {
             .get("pane_session_id")
             .and_then(|v| v.as_str())
             .map(String::from),
+        owner_tab_id: obj
+            .get("owner_tab_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from),
     }
 }
 
@@ -97,6 +108,12 @@ pub fn inject_wta_meta(meta: &mut Option<acp::Meta>, wta: &WtaMeta) {
             serde_json::Value::String(pid.clone()),
         );
     }
+    if let Some(tab) = &wta.owner_tab_id {
+        wta_obj.insert(
+            "owner_tab_id".to_string(),
+            serde_json::Value::String(tab.clone()),
+        );
+    }
     map.insert(
         WTA_META_NAMESPACE.to_string(),
         serde_json::Value::Object(wta_obj),
@@ -118,6 +135,7 @@ pub fn to_acp_session_info(info: &SessionInfo) -> acp::SessionInfo {
         &mut out.meta,
         &WtaMeta {
             pane_session_id: info.pane_session_id.clone(),
+            ..Default::default()
         },
     );
     out
@@ -2382,6 +2400,7 @@ mod tests {
             &mut meta,
             &WtaMeta {
                 pane_session_id: Some("pane-A".to_string()),
+                ..Default::default()
             },
         );
         let map = meta.expect("meta created");
@@ -2399,6 +2418,7 @@ mod tests {
             &mut meta,
             &WtaMeta {
                 pane_session_id: Some("pane-A".to_string()),
+                ..Default::default()
             },
         );
         let map = meta.unwrap();
@@ -2414,6 +2434,7 @@ mod tests {
     fn inject_then_extract_is_identity() {
         let original = WtaMeta {
             pane_session_id: Some("pane-X".to_string()),
+            owner_tab_id: Some("{tab-owner-X}".to_string()),
         };
         let mut meta: Option<acp::Meta> = None;
         inject_wta_meta(&mut meta, &original);

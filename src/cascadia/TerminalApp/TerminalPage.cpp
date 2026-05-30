@@ -1349,7 +1349,7 @@ namespace winrt::TerminalApp::implementation
     // ordinary conpty children of TermControl — the standard pane teardown
     // path (Pane::Close → ConptyConnection::Close → conpty pipes closed →
     // helper exits) is enough. Each tab has at most one agent pane.
-    void TerminalPage::_TeardownAgentPane(const winrt::com_ptr<Tab>& tab)
+    void TerminalPage::_TeardownAgentPane(const winrt::com_ptr<Tab>& tab, bool suppressMasterRestart)
     {
         if (!tab)
         {
@@ -1357,6 +1357,16 @@ namespace winrt::TerminalApp::implementation
         }
         if (const auto pane = tab->FindAgentPane())
         {
+            if (suppressMasterRestart)
+            {
+                // Closing the pane kills its conpty child → the wta-helper
+                // exits → its master pipe goes EOF → master emits
+                // `restart_agent_pane`. Record a mark so the resulting
+                // event is recognized as a deliberate teardown and skipped
+                // by `OnAgentPaneRestartRequested` rather than respawning a
+                // pane we just intentionally closed.
+                _agentPaneRestartSuppression[tab->StableId()] = std::chrono::steady_clock::now();
+            }
             _agentPaneLog("_TeardownAgentPane: closing agent pane on tab");
             pane->Close();
         }
@@ -4375,6 +4385,85 @@ namespace winrt::TerminalApp::implementation
         // continuity. Tabs that had a pane but aren't active need to be
         // toggled open again by the user — same UX as _RebuildAgentStack.
         _OpenOrReuseAgentPane(false, L"RestartAgent");
+    }
+
+    // Inbound event from WTA: {method:"restart_agent_pane",
+    //                          params:{tab_id, session_id?, reason}}.
+    // Emitted by wta-master when a helper's master pipe disconnects — both
+    // genuine crash and clean exit take this path. We resolve the owning
+    // tab by StableId and re-warm a fresh helper, resuming `session_id` so
+    // the chat history survives. Deliberate teardowns (Ctrl+C×2, settings
+    // rebuild, /restart) also trip the master's emit, so we first consume
+    // any suppression mark and bail when present — that's how we tell a
+    // crash apart from an intentional close.
+    void TerminalPage::OnAgentPaneRestartRequested(hstring eventJson)
+    {
+        Json::Value evt;
+        Json::CharReaderBuilder rb;
+        std::istringstream ss(winrt::to_string(eventJson));
+        std::string errs;
+        if (!Json::parseFromStream(rb, ss, &evt, &errs))
+        {
+            return;
+        }
+        const auto& params = evt["params"];
+        if (!params.isObject())
+        {
+            return;
+        }
+        winrt::hstring tabId;
+        if (params.isMember("tab_id") && params["tab_id"].isString())
+        {
+            tabId = winrt::to_hstring(params["tab_id"].asString());
+        }
+        if (tabId.empty())
+        {
+            return;
+        }
+
+        // Suppression check (consume on read). A mark within the last few
+        // seconds means this tab's helper died because we deliberately tore
+        // the pane down — don't respawn it.
+        if (const auto it = _agentPaneRestartSuppression.find(tabId); it != _agentPaneRestartSuppression.end())
+        {
+            const auto age = std::chrono::steady_clock::now() - it->second;
+            _agentPaneRestartSuppression.erase(it);
+            if (age < std::chrono::seconds(5))
+            {
+                _agentPaneLog("OnAgentPaneRestartRequested: suppressed (deliberate teardown)");
+                return;
+            }
+        }
+
+        const auto ownerTab = _FindTabByStableId(tabId);
+        if (!ownerTab)
+        {
+            // Tab closed, or belongs to another window — the fan-out will
+            // reach the right page (or there's nothing left to recover).
+            return;
+        }
+
+        std::string sessionId;
+        if (params.isMember("session_id") && params["session_id"].isString())
+        {
+            sessionId = params["session_id"].asString();
+        }
+
+        // If a (wedged) pane is still present, restore it visible after the
+        // re-warm; otherwise a clean exit already removed it (closeOnExit),
+        // so keep the fresh helper stashed.
+        const bool wasOpen = ownerTab->FindAgentPane() != nullptr;
+
+        // Tear down any leftover dead/wedged pane first. Suppress so that
+        // killing a wedged helper here doesn't loop back into yet another
+        // restart event.
+        _TeardownAgentPane(ownerTab, /*suppressMasterRestart*/ true);
+
+        _agentPaneLog("OnAgentPaneRestartRequested: re-warming helper after disconnect");
+        _AutoCreateHiddenAgentPaneShared(ownerTab,
+                                         /*intoSessionsView*/ false,
+                                         /*autoStash*/ !wasOpen,
+                                         sessionId);
     }
 
     // Inbound event from WTA: {method:"set_agent_chip_target",

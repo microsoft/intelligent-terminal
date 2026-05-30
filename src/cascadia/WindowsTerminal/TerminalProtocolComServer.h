@@ -166,5 +166,11 @@ private:
     // across windows.
     static void _dispatchRestartAgentStackToPage(const winrt::hstring& eventJson);
 
+    // Same shape, for {method:"restart_agent_pane"} — emitted by wta-master
+    // when a helper's pipe disconnects (crash or clean exit). Fans out to
+    // every window; the page-side handler resolves the owning tab via
+    // `tab_id` and re-warms a fresh helper, resuming `session_id`.
+    static void _dispatchRestartAgentPaneToPage(const winrt::hstring& eventJson);
+
     static WindowEmperor* s_emperor;
 };
