@@ -3140,6 +3140,13 @@ async fn run_inner(
     )
     .await
     .map_err(|_| {
+        tracing::error!(
+            target: "acp",
+            step = "acp_initialize",
+            timeout_secs = init_timeout_secs,
+            agent = %agent_label,
+            "ACP initialize timed out — agent CLI did not respond"
+        );
         anyhow::anyhow!(
             "ACP initialize timed out after {} s — '{}' did not respond. \
              First-run npx adapters download ~5MB; check network. \
@@ -3149,7 +3156,10 @@ async fn run_inner(
             agent_label
         )
     })?
-    .map_err(|e| anyhow::anyhow!("initialize failed: {}", e))?;
+    .map_err(|e| {
+        tracing::error!(target: "acp", step = "acp_initialize", error = %e, "ACP initialize failed");
+        anyhow::anyhow!("initialize failed: {}", e)
+    })?;
 
     // Log the agent's initialize response for debugging
     startup_probe.log(&format!("Agent init response received: {:?}", init_resp));
