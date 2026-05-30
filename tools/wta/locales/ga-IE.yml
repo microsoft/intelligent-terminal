@@ -127,6 +127,9 @@ system.cancelled: "Cealaithe."
 system.no_prompt_in_flight: "Níl aon leid ar siúl."
 system.authentication_failed: "Theip ar fhíordheimhniú"
 system.command_copied_retry: "Ordú cóipeáilte — rith i dteirminéal eile é, ansin brúigh Enter chun triail eile a bhaint as"  # {Locked="Enter"}
+system.stopped_max_tokens: "Gearradh an freagra tar éis teorainn aschuir an mhúnla a bhaint amach."
+system.stopped_max_turn_requests: "Stop an gníomhaire tar éis a theorainn iarratas don seal seo a bhaint amach."
+system.stopped_refusal: "Dhiúltaigh an gníomhaire leanúint ar aghaidh leis an iarratas seo."
 
 # ── Aschur CLI ag am rite (src/main.rs) ────────────────────────────────────
 output.no_windows: "Níor aimsíodh aon fhuinneoga."

@@ -154,6 +154,9 @@ system.cancelled: "Չեղարկված է։"
 system.no_prompt_in_flight: "Գործընթացում գտնվող հարցում չկա։"
 system.authentication_failed: "Նույնականացումը ձախողվեց"
 system.command_copied_retry: "Հրամանը պատճենվեց — գործարկեք այն մեկ այլ տերմինալում, ապա սեղմեք Enter կրկին փորձելու համար"  # {Locked="Enter"}
+system.stopped_max_tokens: "Պատասխանը կտրվեց՝ հասնելով մոդելի ելքի սահմանաչափին։"
+system.stopped_max_turn_requests: "Գործակալը կանգ առավ՝ հասնելով այս հերթի հարցումների սահմանաչափին։"
+system.stopped_refusal: "Գործակալը հրաժարվեց շարունակել այս հարցումը։"
 
 # ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────────
 output.no_windows: "Պատուհաններ չեն գտնվել։"

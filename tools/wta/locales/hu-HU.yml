@@ -127,6 +127,9 @@ system.cancelled: "Megszakítva."
 system.no_prompt_in_flight: "Nincs folyamatban lévő kérés."
 system.authentication_failed: "A hitelesítés sikertelen"
 system.command_copied_retry: "Parancs másolva — futtassa egy másik terminálban, majd nyomja meg az Entert az újrapróbálkozáshoz"  # {Locked="Enter"}
+system.stopped_max_tokens: "A válasz megszakadt, miután elérte a modell kimeneti korlátját."
+system.stopped_max_turn_requests: "Az ügynök leállt, miután elérte a kérési korlátját ehhez a fordulóhoz."
+system.stopped_refusal: "Az ügynök elutasította a kérés folytatását."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nem találhatók ablakok."

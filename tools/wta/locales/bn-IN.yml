@@ -138,6 +138,9 @@ system.cancelled: "বাতিল করা হয়েছে।"
 system.no_prompt_in_flight: "কোনো প্রম্পট চলমান নেই।"
 system.authentication_failed: "প্রমাণীকরণ ব্যর্থ"
 system.command_copied_retry: "কমান্ড কপি করা হয়েছে — অন্য একটি টার্মিনালে চালান, তারপর পুনরায় চেষ্টা করতে Enter চাপুন"  # {Locked="Enter"}
+system.stopped_max_tokens: "মডেলের আউটপুট সীমায় পৌঁছানোর পর প্রতিক্রিয়াটি কেটে দেওয়া হয়েছে।"
+system.stopped_max_turn_requests: "এই দফার জন্য অনুরোধের সীমায় পৌঁছানোর পর এজেন্ট থেমে গেছে।"
+system.stopped_refusal: "এজেন্ট এই অনুরোধটি চালিয়ে যেতে অস্বীকার করেছে।"
 
 # ── রানটাইম CLI আউটপুট (src/main.rs) ────────────────────────────────────────
 output.no_windows: "কোনো উইন্ডো পাওয়া যায়নি।"

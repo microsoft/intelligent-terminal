@@ -127,6 +127,9 @@ system.cancelled: "Đã hủy."
 system.no_prompt_in_flight: "Không có lệnh nào đang chạy."
 system.authentication_failed: "Xác thực thất bại"
 system.command_copied_retry: "Đã sao chép lệnh — chạy trong terminal khác, sau đó nhấn Enter để thử lại"  # {Locked="Enter"}
+system.stopped_max_tokens: "Phản hồi đã bị cắt sau khi đạt đến giới hạn đầu ra của mô hình."
+system.stopped_max_turn_requests: "Tác nhân đã dừng sau khi đạt đến giới hạn yêu cầu cho lượt này."
+system.stopped_refusal: "Tác nhân đã từ chối tiếp tục với yêu cầu này."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Không tìm thấy cửa sổ nào."

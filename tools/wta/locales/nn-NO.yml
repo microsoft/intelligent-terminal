@@ -127,6 +127,9 @@ system.cancelled: "Avbrote."
 system.no_prompt_in_flight: "Ingen førespurnad pågår."
 system.authentication_failed: "Autentisering mislukkast"
 system.command_copied_retry: "Kommando kopiert — køyr han i ein annan terminal og trykk Enter for å prøve igjen"  # {Locked="Enter"}
+system.stopped_max_tokens: "Svaret blei avkorta etter at utdatagrensa til modellen blei nådd."
+system.stopped_max_turn_requests: "Agenten stoppa etter at førespurnadsgrensa for denne runden blei nådd."
+system.stopped_refusal: "Agenten avviste å halde fram med denne førespurnaden."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Ingen vindauge funne."

@@ -127,6 +127,9 @@ system.cancelled: "Annulé."
 system.no_prompt_in_flight: "Aucune invite en cours."
 system.authentication_failed: "Échec de l'authentification"
 system.command_copied_retry: "Commande copiée — exécutez-la dans un autre terminal, puis appuyez sur Enter pour réessayer"  # {Locked="Enter"}
+system.stopped_max_tokens: "La réponse a été tronquée après avoir atteint la limite de sortie du modèle."
+system.stopped_max_turn_requests: "L'agent s'est arrêté après avoir atteint sa limite de requêtes pour ce tour."
+system.stopped_refusal: "L'agent a refusé de poursuivre cette requête."
 
 # ── Sortie CLI d'exécution (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Aucune fenêtre trouvée."

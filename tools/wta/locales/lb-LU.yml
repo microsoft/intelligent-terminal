@@ -127,6 +127,9 @@ system.cancelled: "Ofgebrach."
 system.no_prompt_in_flight: "Keen Prompt ënnerwee."
 system.authentication_failed: "Authentifizéierung gescheitert"
 system.command_copied_retry: "Kommando kopéiert — féiert et an engem aneren Terminal aus, da dréckt Enter fir nach eng Kéier ze probéieren"  # {Locked="Enter"}
+system.stopped_max_tokens: "D'Äntwert gouf ofgeschnidden nodeems d'Ausgab-Limit vum Modell erreecht gouf."
+system.stopped_max_turn_requests: "Den Agent huet gestoppt nodeems seng Ufro-Limit fir dës Ronn erreecht gouf."
+system.stopped_refusal: "Den Agent huet refuséiert mat dëser Ufro weiderzemaachen."
 
 # ── CLI-Ausgang zur Laufzäit (src/main.rs) ────────────────────────────────────
 output.no_windows: "Keng Fënsteren fonnt."

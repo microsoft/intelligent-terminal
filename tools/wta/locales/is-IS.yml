@@ -127,6 +127,9 @@ system.cancelled: "Hætt við."
 system.no_prompt_in_flight: "Engin fyrirspurn í gangi."
 system.authentication_failed: "Auðkenning mistókst"
 system.command_copied_retry: "Skipun afrituð — keyrðu hana í öðrum terminal og ýttu á Enter til að reyna aftur"  # {Locked="Enter"}
+system.stopped_max_tokens: "Svarið var skorið af eftir að úttaksmörkum líkansins var náð."
+system.stopped_max_turn_requests: "Umboðsmaðurinn stöðvaðist eftir að beiðnamörkum hans fyrir þessa umferð var náð."
+system.stopped_refusal: "Umboðsmaðurinn neitaði að halda áfram með þessa beiðni."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Engir gluggar fundust."

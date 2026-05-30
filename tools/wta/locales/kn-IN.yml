@@ -138,6 +138,9 @@ system.cancelled: "ರದ್ದುಮಾಡಲಾಗಿದೆ."
 system.no_prompt_in_flight: "ಪ್ರಗತಿಯಲ್ಲಿ ಯಾವುದೇ ಪ್ರಾಂಪ್ಟ್ ಇಲ್ಲ."
 system.authentication_failed: "ದೃಢೀಕರಣ ವಿಫಲವಾಗಿದೆ"
 system.command_copied_retry: "ಕಮಾಂಡ್ ನಕಲಿಸಲಾಗಿದೆ — ಅದನ್ನು ಇನ್ನೊಂದು ಟರ್ಮಿನಲ್‌ನಲ್ಲಿ ಚಲಾಯಿಸಿ, ನಂತರ ಮರುಪ್ರಯತ್ನಿಸಲು Enter ಒತ್ತಿ"  # {Locked="Enter"}
+system.stopped_max_tokens: "ಮಾದರಿಯ ಔಟ್‌ಪುಟ್ ಮಿತಿಯನ್ನು ತಲುಪಿದ ನಂತರ ಪ್ರತಿಕ್ರಿಯೆಯನ್ನು ಕತ್ತರಿಸಲಾಗಿದೆ."
+system.stopped_max_turn_requests: "ಈ ಸರದಿಗೆ ತನ್ನ ವಿನಂತಿ ಮಿತಿಯನ್ನು ತಲುಪಿದ ನಂತರ ಏಜೆಂಟ್ ನಿಂತಿತು."
+system.stopped_refusal: "ಏಜೆಂಟ್ ಈ ವಿನಂತಿಯನ್ನು ಮುಂದುವರಿಸಲು ನಿರಾಕರಿಸಿತು."
 
 # ── ರನ್‌ಟೈಮ್ CLI ಔಟ್‌ಪುಟ್ (src/main.rs) ────────────────────────────────────────
 output.no_windows: "ಯಾವುದೇ ವಿಂಡೋಗಳು ಕಂಡುಬಂದಿಲ್ಲ."

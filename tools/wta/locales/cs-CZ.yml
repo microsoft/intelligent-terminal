@@ -134,6 +134,9 @@ system.cancelled: "Zrušeno."
 system.no_prompt_in_flight: "Žádný dotaz neprobíhá."
 system.authentication_failed: "Ověření se nezdařilo"
 system.command_copied_retry: "Příkaz zkopírován — spusťte ho v jiném terminálu a stiskněte Enter pro opakování"  # {Locked="Enter"}
+system.stopped_max_tokens: "Odpověď byla oříznuta po dosažení výstupního limitu modelu."
+system.stopped_max_turn_requests: "Agent se zastavil po dosažení limitu požadavků pro toto kolo."
+system.stopped_refusal: "Agent odmítl pokračovat v tomto požadavku."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nebyla nalezena žádná okna."

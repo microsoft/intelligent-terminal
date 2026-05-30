@@ -138,6 +138,9 @@ system.cancelled: "İptal edildi."
 system.no_prompt_in_flight: "Devam eden istem yok."
 system.authentication_failed: "Kimlik doğrulama başarısız"
 system.command_copied_retry: "Komut kopyalandı — başka bir terminalde çalıştırın, ardından tekrar denemek için Enter tuşuna basın"  # {Locked="Enter"}
+system.stopped_max_tokens: "Modelin çıktı sınırına ulaşıldıktan sonra yanıt kesildi."
+system.stopped_max_turn_requests: "Aracı, bu tur için istek sınırına ulaştıktan sonra durdu."
+system.stopped_refusal: "Aracı, bu isteği sürdürmeyi reddetti."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Pencere bulunamadı."

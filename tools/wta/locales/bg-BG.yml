@@ -134,6 +134,9 @@ system.cancelled: "Отменено."
 system.no_prompt_in_flight: "Няма активна заявка."
 system.authentication_failed: "Удостоверяването е неуспешно"
 system.command_copied_retry: "Командата е копирана — изпълнете я в друг терминал, след което натиснете Enter за повторен опит"  # {Locked="Enter"}
+system.stopped_max_tokens: "Отговорът беше отрязан след достигане на изходния лимит на модела."
+system.stopped_max_turn_requests: "Агентът спря след достигане на лимита си от заявки за този ход."
+system.stopped_refusal: "Агентът отказа да продължи с тази заявка."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Не са намерени прозорци."

@@ -127,6 +127,9 @@ system.cancelled: "Abgebrochen."
 system.no_prompt_in_flight: "Kein Prompt aktiv."
 system.authentication_failed: "Authentifizierung fehlgeschlagen"
 system.command_copied_retry: "Befehl kopiert — führen Sie ihn in einem anderen Terminal aus und drücken Sie Enter zum Wiederholen"  # {Locked="Enter"}
+system.stopped_max_tokens: "Die Antwort wurde abgeschnitten, nachdem das Ausgabelimit des Modells erreicht wurde."
+system.stopped_max_turn_requests: "Der Agent hat angehalten, nachdem sein Anfragelimit für diesen Zug erreicht wurde."
+system.stopped_refusal: "Der Agent hat es abgelehnt, mit dieser Anfrage fortzufahren."
 
 # ── Laufzeit-CLI-Ausgabe (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Keine Fenster gefunden."

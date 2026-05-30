@@ -138,6 +138,9 @@ system.cancelled: "રદ કરવામાં આવ્યું."
 system.no_prompt_in_flight: "પ્રગતિમાં કોઈ પ્રોમ્પ્ટ નથી."
 system.authentication_failed: "પ્રમાણીકરણ નિષ્ફળ"
 system.command_copied_retry: "કમાન્ડ કૉપિ કરવામાં આવ્યો — તેને બીજા ટર્મિનલમાં ચલાવો, પછી ફરી પ્રયાસ કરવા Enter દબાવો"  # {Locked="Enter"}
+system.stopped_max_tokens: "મોડેલની આઉટપુટ મર્યાદા સુધી પહોંચ્યા પછી પ્રતિસાદ કાપી નાખવામાં આવ્યો."
+system.stopped_max_turn_requests: "આ વારા માટેની વિનંતી મર્યાદા સુધી પહોંચ્યા પછી એજન્ટ અટકી ગયો."
+system.stopped_refusal: "એજન્ટે આ વિનંતી ચાલુ રાખવાનો ઇનકાર કર્યો."
 
 # ── રનટાઇમ CLI આઉટપુટ (src/main.rs) ────────────────────────────────────────
 output.no_windows: "કોઈ વિન્ડો મળી નથી."

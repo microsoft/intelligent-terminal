@@ -123,6 +123,9 @@ system.cancelled: "취소되었습니다."
 system.no_prompt_in_flight: "진행 중인 프롬프트가 없습니다."
 system.authentication_failed: "인증 실패"
 system.command_copied_retry: "명령이 복사되었습니다 — 다른 터미널에서 실행한 후 Enter를 눌러 재시도하세요"  # {Locked="Enter"}
+system.stopped_max_tokens: "모델의 출력 한도에 도달하여 응답이 잘렸습니다."
+system.stopped_max_turn_requests: "이 턴의 요청 한도에 도달하여 에이전트가 중지되었습니다."
+system.stopped_refusal: "에이전트가 이 요청을 계속하기를 거부했습니다."
 
 # ── 런타임 CLI 출력 (src/main.rs) ────────────────────────────────────────
 output.no_windows: "창을 찾을 수 없습니다."

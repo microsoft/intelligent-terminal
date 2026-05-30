@@ -138,6 +138,9 @@ system.cancelled: "გაუქმებულია."
 system.no_prompt_in_flight: "მიმდინარე მოთხოვნა არ არის."
 system.authentication_failed: "ავთენტიფიკაცია ვერ მოხერხდა"
 system.command_copied_retry: "ბრძანება კოპირებულია — გაუშვით სხვა ტერმინალში, შემდეგ დააჭირეთ Enter ხელახლა საცდელად"  # {Locked="Enter"}
+system.stopped_max_tokens: "პასუხი შეწყდა მოდელის გამოსავლის ლიმიტის მიღწევის შემდეგ."
+system.stopped_max_turn_requests: "აგენტი გაჩერდა ამ რაუნდის მოთხოვნების ლიმიტის მიღწევის შემდეგ."
+system.stopped_refusal: "აგენტმა უარი თქვა ამ მოთხოვნის გაგრძელებაზე."
 
 # ── CLI გამოსავალი რანტაიმში (src/main.rs) ────────────────────────────────────
 output.no_windows: "ფანჯრები ვერ მოიძებნა."

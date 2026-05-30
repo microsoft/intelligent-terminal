@@ -138,6 +138,9 @@ system.cancelled: "Ləğv edildi."
 system.no_prompt_in_flight: "İcra olunan sorğu yoxdur."
 system.authentication_failed: "Kimlik doğrulaması uğursuz oldu"
 system.command_copied_retry: "Əmr kopyalandı — başqa terminalda icra edin, sonra yenidən sınamaq üçün Enter basın"  # {Locked="Enter"}
+system.stopped_max_tokens: "Cavab modelin çıxış həddinə çatdıqdan sonra kəsildi."
+system.stopped_max_turn_requests: "Agent bu növbə üçün sorğu həddinə çatdıqdan sonra dayandı."
+system.stopped_refusal: "Agent bu sorğunu davam etdirməkdən imtina etdi."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Pəncərə tapılmadı."

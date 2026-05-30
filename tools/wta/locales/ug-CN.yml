@@ -147,6 +147,9 @@ system.cancelled: "بېكىت قىلىندى."
 system.no_prompt_in_flight: "ئېۋەتىلىۋاتقان سوراق يوق."
 system.authentication_failed: "تونۇقتۇرۇش مەغلۇب بولدى"
 system.command_copied_retry: "بۇيرۇق كۆچۈرۈلدى — باشقا تېرمىنالدا ئىجرا قىلىڭ، اندىن Enter بېسىپ قايتا سىناڭ"  # {Locked="Enter"}
+system.stopped_max_tokens: "ئىنكاس مودېلنىڭ چىقىرىش چېكىگە يەتكەندىن كېيىن ئۈزۈلدى."
+system.stopped_max_turn_requests: "ۋاكالەتچى بۇ نۆۋەتتىكى ئىلتىماس چېكىگە يەتكەندىن كېيىن توختىدى."
+system.stopped_refusal: "ۋاكالەتچى بۇ ئىلتىماسنى داۋاملاشتۇرۇشنى رەت قىلدى."
 
 # ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────
 output.no_windows: "كۆزنەك تېپىلمىدى."

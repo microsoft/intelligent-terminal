@@ -138,6 +138,9 @@ system.cancelled: "ବାତିଲ ହୋଇଛି।"
 system.no_prompt_in_flight: "ପ୍ରଗତିରେ କୌଣସି ପ୍ରମ୍ପ୍ଟ ନାହିଁ।"
 system.authentication_failed: "ପ୍ରମାଣୀକରଣ ବିଫଳ"
 system.command_copied_retry: "କମାଣ୍ଡ କପି ହୋଇଛି — ଏହାକୁ ଅନ୍ୟ ଏକ ଟର୍ମିନାଲରେ ଚଳାନ୍ତୁ, ତାପରେ ପୁଣି ଚେଷ୍ଟା ପାଇଁ Enter ଦବାନ୍ତୁ"  # {Locked="Enter"}
+system.stopped_max_tokens: "ମଡେଲର ଆଉଟପୁଟ୍ ସୀମାରେ ପହଞ୍ଚିବା ପରେ ପ୍ରତିକ୍ରିୟା କଟାଯାଇଛି।"
+system.stopped_max_turn_requests: "ଏହି ପାଳି ପାଇଁ ଅନୁରୋଧ ସୀମାରେ ପହଞ୍ଚିବା ପରେ ଏଜେଣ୍ଟ ବନ୍ଦ ହୋଇଗଲା।"
+system.stopped_refusal: "ଏଜେଣ୍ଟ ଏହି ଅନୁରୋଧ ଜାରି ରଖିବାକୁ ମନା କଲା।"
 
 # ── ରନ୍‌ଟାଇମ୍ CLI ଆଉଟପୁଟ୍ (src/main.rs) ────────────────────────────────────────
 output.no_windows: "କୌଣସି ୱିଣ୍ଡୋ ମିଳିଲା ନାହିଁ।"

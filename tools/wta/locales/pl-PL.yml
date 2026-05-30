@@ -134,6 +134,9 @@ system.cancelled: "Anulowano."
 system.no_prompt_in_flight: "Brak aktywnego zapytania."
 system.authentication_failed: "Uwierzytelnianie nie powiodło się"
 system.command_copied_retry: "Polecenie skopiowane — uruchom je w innym terminalu, a następnie naciśnij Enter, aby ponowić próbę"  # {Locked="Enter"}
+system.stopped_max_tokens: "Odpowiedź została obcięta po osiągnięciu limitu danych wyjściowych modelu."
+system.stopped_max_turn_requests: "Agent zatrzymał się po osiągnięciu limitu żądań dla tej tury."
+system.stopped_refusal: "Agent odmówił kontynuowania tego żądania."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nie znaleziono okien."

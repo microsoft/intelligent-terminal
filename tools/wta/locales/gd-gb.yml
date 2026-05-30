@@ -127,6 +127,9 @@ system.cancelled: "Air a sgur dheth."
 system.no_prompt_in_flight: "Chan eil brodadh air an t-slighe."
 system.authentication_failed: "Dh'fhàillig an dearbhadh"
 system.command_copied_retry: "Àithne air a chopaigeadh — ruith e ann an teirmineal eile, an uair sin brùth Enter gus feuchainn a-rithist"  # {Locked="Enter"}
+system.stopped_max_tokens: "Chaidh am freagairt a ghearradh às dèidh crìoch toraidh a' mhodail a ruighinn."
+system.stopped_max_turn_requests: "Stad an riochdaire às dèidh a chrìoch iarrtais airson a' chuairt seo a ruighinn."
+system.stopped_refusal: "Dhiùlt an riochdaire leantainn air adhart leis an iarrtas seo."
 
 # ── Toradh CLI àm-ruith (src/main.rs) ────────────────────────────────────
 output.no_windows: "Cha deach uinneagan a lorg."

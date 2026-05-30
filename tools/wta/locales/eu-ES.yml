@@ -127,6 +127,9 @@ system.cancelled: "Bertan behera utzia."
 system.no_prompt_in_flight: "Ez dago gonbidapenik abian."
 system.authentication_failed: "Autentifikazioak huts egin du"
 system.command_copied_retry: "Komandoa kopiatu da — exekutatu beste terminal batean, eta sakatu Enter berriro saiatzeko"  # {Locked="Enter"}
+system.stopped_max_tokens: "Erantzuna eten egin da modeloaren irteera-muga gainditu ondoren."
+system.stopped_max_turn_requests: "Agentea gelditu egin da txanda honetako eskaera-muga gainditu ondoren."
+system.stopped_refusal: "Agenteak eskaera honekin jarraitzeari uko egin dio."
 
 # ── CLI irteera exekuzio-unean (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ez da leihorik aurkitu."

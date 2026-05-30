@@ -173,6 +173,11 @@ system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"
 system.command_copied_retry: "Command copied — run it in another terminal, then press Enter to retry"  # {Locked="Enter"}
+# Soft stops: the prompt turn succeeded at the protocol level but ended for a
+# reason worth telling the user about. Shown as a system line after the reply.
+system.stopped_max_tokens: "The response was cut off after reaching the model's output limit."
+system.stopped_max_turn_requests: "The agent stopped after reaching its request limit for this turn."
+system.stopped_refusal: "The agent declined to continue with this request."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "No windows found."

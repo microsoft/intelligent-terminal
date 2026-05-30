@@ -127,6 +127,9 @@ system.cancelled: "Geannuleerd."
 system.no_prompt_in_flight: "Geen prompt actief."
 system.authentication_failed: "Verificatie mislukt"
 system.command_copied_retry: "Opdracht gekopieerd — voer deze uit in een andere terminal en druk op Enter om opnieuw te proberen"  # {Locked="Enter"}
+system.stopped_max_tokens: "Het antwoord is afgekapt nadat de uitvoerlimiet van het model was bereikt."
+system.stopped_max_turn_requests: "De agent is gestopt nadat de aanvraaglimiet voor deze beurt was bereikt."
+system.stopped_refusal: "De agent heeft geweigerd door te gaan met deze aanvraag."
 
 # ── Runtime CLI-uitvoer (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Geen vensters gevonden."

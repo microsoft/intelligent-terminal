@@ -127,6 +127,9 @@ system.cancelled: "Cancelado."
 system.no_prompt_in_flight: "Non hai ningún aviso en curso."
 system.authentication_failed: "A autenticación fallou"
 system.command_copied_retry: "Comando copiado — execúteo noutro terminal e prema Intro para reintentar"  # {Locked="Enter"}
+system.stopped_max_tokens: "A resposta cortouse ao acadar o límite de saída do modelo."
+system.stopped_max_turn_requests: "O axente detívose ao acadar o seu límite de solicitudes para esta quenda."
+system.stopped_refusal: "O axente negouse a continuar con esta solicitude."
 
 # ── Saída de CLI en tempo de execución (src/main.rs) ────────────────────────────────────
 output.no_windows: "Non se atoparon fiestras."

@@ -127,6 +127,9 @@ system.cancelled: "Cancelado."
 system.no_prompt_in_flight: "No hay ningún indicador en curso."
 system.authentication_failed: "Error de autenticación"
 system.command_copied_retry: "Comando copiado — ejecútelo en otro terminal y pulse Enter para reintentar"  # {Locked="Enter"}
+system.stopped_max_tokens: "La respuesta se interrumpió al alcanzar el límite de salida del modelo."
+system.stopped_max_turn_requests: "El agente se detuvo al alcanzar su límite de solicitudes para este turno."
+system.stopped_refusal: "El agente se negó a continuar con esta solicitud."
 
 # ── Salida de CLI en tiempo de ejecución (src/main.rs) ────────────────────────────────────────
 output.no_windows: "No se encontraron ventanas."

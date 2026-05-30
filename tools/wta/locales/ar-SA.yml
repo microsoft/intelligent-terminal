@@ -138,6 +138,9 @@ system.cancelled: "تم الإلغاء."
 system.no_prompt_in_flight: "لا يوجد أمر قيد التنفيذ."
 system.authentication_failed: "فشلت المصادقة"
 system.command_copied_retry: "تم نسخ الأمر — شغّله في طرفية أخرى، ثم اضغط Enter لإعادة المحاولة"  # {Locked="Enter"}
+system.stopped_max_tokens: "تم اقتطاع الرد بعد بلوغ حد إخراج النموذج."
+system.stopped_max_turn_requests: "توقف الوكيل بعد بلوغ حد الطلبات لهذه الجولة."
+system.stopped_refusal: "رفض الوكيل متابعة هذا الطلب."
 
 # ── مخرجات CLI في وقت التشغيل (src/main.rs) ────────────────────────────────────────
 output.no_windows: "لم يتم العثور على نوافذ."

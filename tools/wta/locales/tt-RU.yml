@@ -138,6 +138,9 @@ system.cancelled: "Баш тартылды."
 system.no_prompt_in_flight: "Башкарылучы сорау юк."
 system.authentication_failed: "Аутентификация уңышсыз булды"
 system.command_copied_retry: "Боерык күчерелде — башка терминалда башкарыгыз, аннан яңадан сынау өчен Enter басыгыз"  # {Locked="Enter"}
+system.stopped_max_tokens: "Җавап модельнең чыгару чикләвенә җиткәч киселде."
+system.stopped_max_turn_requests: "Агент бу чират өчен сорау чикләвенә җиткәч туктады."
+system.stopped_refusal: "Агент бу сорауны дәвам итүдән баш тартты."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Тәрәзәләр табылмады."

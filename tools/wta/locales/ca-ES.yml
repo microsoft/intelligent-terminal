@@ -127,6 +127,9 @@ system.cancelled: "Cancel·lat."
 system.no_prompt_in_flight: "No hi ha cap indicació en curs."
 system.authentication_failed: "L'autenticació ha fallat"
 system.command_copied_retry: "Ordre copiada — executeu-la en un altre terminal i premeu Enter per tornar-ho a provar"  # {Locked="Enter"}
+system.stopped_max_tokens: "La resposta s'ha tallat en arribar al límit de sortida del model."
+system.stopped_max_turn_requests: "L'agent s'ha aturat en arribar al seu límit de sol·licituds per a aquest torn."
+system.stopped_refusal: "L'agent ha rebutjat continuar amb aquesta sol·licitud."
 
 # ── Sortida de CLI en temps d'execució (src/main.rs) ────────────────────────────────────
 output.no_windows: "No s'han trobat finestres."

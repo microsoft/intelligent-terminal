@@ -127,6 +127,9 @@ system.cancelled: "Annulleret."
 system.no_prompt_in_flight: "Ingen forespørgsel i gang."
 system.authentication_failed: "Godkendelse mislykkedes"
 system.command_copied_retry: "Kommando kopieret — kør den i en anden terminal, og tryk derefter Enter for at prøve igen"  # {Locked="Enter"}
+system.stopped_max_tokens: "Svaret blev afkortet, da modellens outputgrænse blev nået."
+system.stopped_max_turn_requests: "Agenten stoppede, da dens anmodningsgrænse for denne tur blev nået."
+system.stopped_refusal: "Agenten afviste at fortsætte med denne anmodning."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Ingen vinduer fundet."

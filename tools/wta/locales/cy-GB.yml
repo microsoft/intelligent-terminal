@@ -127,6 +127,9 @@ system.cancelled: "Wedi'i ganslo."
 system.no_prompt_in_flight: "Dim anogaeth ar y gweill."
 system.authentication_failed: "Methwyd â dilysu"
 system.command_copied_retry: "Gorchymyn wedi'i gopïo — rhedwch ef mewn terfynell arall, yna pwyswch Enter i ailgeisio"  # {Locked="Enter"}
+system.stopped_max_tokens: "Cafodd yr ymateb ei dorri ar ôl cyrraedd terfyn allbwn y model."
+system.stopped_max_turn_requests: "Stopiodd yr asiant ar ôl cyrraedd ei derfyn ceisiadau ar gyfer y tro hwn."
+system.stopped_refusal: "Gwrthododd yr asiant barhau â'r cais hwn."
 
 # ── Allbwn CLI amser rhedeg (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ni chanfuwyd unrhyw ffenestri."

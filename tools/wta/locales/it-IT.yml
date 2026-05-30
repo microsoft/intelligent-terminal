@@ -127,6 +127,9 @@ system.cancelled: "Annullato."
 system.no_prompt_in_flight: "Nessun prompt in corso."
 system.authentication_failed: "Autenticazione non riuscita"
 system.command_copied_retry: "Comando copiato — eseguilo in un altro terminale, quindi premi Enter per riprovare"  # {Locked="Enter"}
+system.stopped_max_tokens: "La risposta è stata troncata dopo aver raggiunto il limite di output del modello."
+system.stopped_max_turn_requests: "L'agente si è fermato dopo aver raggiunto il limite di richieste per questo turno."
+system.stopped_refusal: "L'agente ha rifiutato di continuare con questa richiesta."
 
 # ── Output CLI di runtime (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nessuna finestra trovata."

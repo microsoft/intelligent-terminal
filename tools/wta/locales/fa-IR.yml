@@ -138,6 +138,9 @@ system.cancelled: "لغو شد."
 system.no_prompt_in_flight: "هیچ درخواستی در حال اجرا نیست."
 system.authentication_failed: "احراز هویت ناموفق بود"
 system.command_copied_retry: "دستور کپی شد — آن را در ترمینال دیگری اجرا کنید، سپس Enter را برای تلاش مجدد فشار دهید"  # {Locked="Enter"}
+system.stopped_max_tokens: "پاسخ پس از رسیدن به حد خروجی مدل قطع شد."
+system.stopped_max_turn_requests: "عامل پس از رسیدن به حد درخواست خود برای این نوبت متوقف شد."
+system.stopped_refusal: "عامل از ادامه‌دادن این درخواست خودداری کرد."
 
 # ── خروجی CLI در زمان اجرا (src/main.rs) ────────────────────────────────────────
 output.no_windows: "هیچ پنجره‌ای یافت نشد."

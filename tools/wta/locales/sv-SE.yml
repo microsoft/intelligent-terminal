@@ -127,6 +127,9 @@ system.cancelled: "Avbröts."
 system.no_prompt_in_flight: "Ingen fråga pågår."
 system.authentication_failed: "Autentisering misslyckades"
 system.command_copied_retry: "Kommandot kopierat — kör det i en annan terminal och tryck sedan Enter för att försöka igen"  # {Locked="Enter"}
+system.stopped_max_tokens: "Svaret avbröts efter att modellens utdatagräns nåtts."
+system.stopped_max_turn_requests: "Agenten stoppade efter att ha nått sin begäransgräns för den här omgången."
+system.stopped_refusal: "Agenten avböjde att fortsätta med den här begäran."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Inga fönster hittades."

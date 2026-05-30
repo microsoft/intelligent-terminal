@@ -127,6 +127,9 @@ system.cancelled: "Peruutettu."
 system.no_prompt_in_flight: "Ei käynnissä olevaa kehotetta."
 system.authentication_failed: "Todennus epäonnistui"
 system.command_copied_retry: "Komento kopioitu — suorita se toisessa terminaalissa ja paina sitten Enter yrittääksesi uudelleen"  # {Locked="Enter"}
+system.stopped_max_tokens: "Vastaus katkaistiin mallin tulostusrajan saavuttamisen jälkeen."
+system.stopped_max_turn_requests: "Agentti pysähtyi saavutettuaan tämän vuoron pyyntörajan."
+system.stopped_refusal: "Agentti kieltäytyi jatkamasta tätä pyyntöä."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Ikkunoita ei löytynyt."

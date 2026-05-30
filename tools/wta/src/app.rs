@@ -1052,10 +1052,22 @@ pub enum AppEvent {
     },
     /// Errors raised before a session exists carry None for `session_id`
     /// and route to the active tab; in-flight failures route to the
-    /// session's tab.
+    /// session's tab. `failure` is the typed classification that drives
+    /// recovery (sign-in / `/restart` / show-and-stay); `message` is the
+    /// human-readable line to display.
     AgentError {
         session_id: Option<String>,
+        failure: crate::protocol::acp::failure::AgentFailure,
         message: String,
+    },
+    /// A turn that completed successfully at the protocol level but ended on a
+    /// soft stop (output-token limit, request budget, or refusal). NOT a
+    /// connection failure — the session stays `Connected`; this only appends an
+    /// informational line to the session's chat. Emitted *after*
+    /// `AgentMessageEnd` so the notice follows the agent's streamed content.
+    AgentSoftStop {
+        session_id: String,
+        reason: crate::protocol::acp::softstop::SoftStopReason,
     },
     /// Same-tab single-flight guard rejection. The user submitted a new
     /// prompt while the previous one is still in flight on the same tab.
@@ -3825,6 +3837,7 @@ impl App {
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
             AppEvent::AgentError { .. } => "agent_error",
+            AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
             AppEvent::AgentBusy { .. } => "agent_busy",
             AppEvent::TabRenamed { .. } => "tab_renamed",
             AppEvent::ExecutionInfo(_) => "execution_info",
@@ -4075,25 +4088,29 @@ impl App {
             }
             AppEvent::AgentError {
                 session_id,
+                failure,
                 message,
             } => {
-                // No substring classification of the error text here — keyword
-                // matching is fragile. The message is passed through as-is; the
-                // clean "connection lost" line comes from a real signal (the
-                // `handle_io` watchdog emitting connection.lost on pipe death),
-                // not from pattern-matching jargon. Auth errors flow through with
-                // their marker intact so the fallback below routes them to
-                // sign-in.
-                // Optimistic-connect fallback: if we have stashed auth info
-                // and the error is auth-related, show the auth screen instead
-                // of a dead error state.
-                let lower = message.to_lowercase();
-                let is_auth_error = lower.contains("authentication required")
-                    || lower.contains("not logged in")
-                    || lower.contains("unauthorized")
-                    || lower.contains("401")
-                    || lower.contains("apikey is missing")
-                    || lower.contains("api key");
+                // Classification is typed (`AgentFailure`), done once at the
+                // helper boundary where the `acp::Error` code / transport
+                // signal is still available. No substring matching here — the
+                // discriminant decides the recovery path. `message` is only the
+                // human-readable line to display.
+                tracing::info!(
+                    target: "failure",
+                    class = failure.class(),
+                    session_id = ?session_id,
+                    "agent failure"
+                );
+
+                // A user-initiated cancel surfaced as an error is not a
+                // failure — the turn already ended via the cancel path, so
+                // show nothing and leave the state untouched.
+                if failure.is_cancelled() {
+                    return;
+                }
+
+                let is_auth_error = failure.is_auth();
                 if is_auth_error && !self.preflight_setup_active {
                     tracing::info!("AgentError auth fallback: showing setup screen");
                     // Use current_agent_id — set at preflight or agent selection time.
@@ -4171,6 +4188,28 @@ impl App {
                         tab.messages.push(ChatMessage::Error(message));
                     }
                 }
+            }
+            AppEvent::AgentSoftStop { session_id, reason } => {
+                use crate::protocol::acp::softstop::SoftStopReason;
+                // A soft stop is an *outcome*, not a connection failure — the
+                // session stays Connected and the turn already closed via
+                // AgentMessageEnd. We only append an informational line so the
+                // user knows why the reply ended (truncation / budget / refusal)
+                // instead of silently trailing off.
+                tracing::info!(
+                    target: "soft_stop",
+                    class = reason.class(),
+                    session_id = %session_id,
+                    "agent turn ended on a soft stop"
+                );
+                let msg = match reason {
+                    SoftStopReason::MaxTokens => t!("system.stopped_max_tokens"),
+                    SoftStopReason::MaxTurnRequests => t!("system.stopped_max_turn_requests"),
+                    SoftStopReason::Refusal => t!("system.stopped_refusal"),
+                };
+                let tab = self.session_tab_mut(&session_id);
+                tab.messages.push(ChatMessage::System(msg.into_owned()));
+                tab.scroll_to_bottom();
             }
             AppEvent::ExecutionInfo(message) => {
                 self.push_execution_info(message);
@@ -11172,10 +11211,15 @@ mod tests {
         // In-flight prompt fails first (raw), then the watchdog's connection.lost.
         app.handle_event(AppEvent::AgentError {
             session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::Protocol {
+                code: -32603,
+                message: "pipe closed".to_string(),
+            },
             message: "prompt error: pipe closed".to_string(),
         });
         app.handle_event(AppEvent::AgentError {
             session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
             message: lost.clone(),
         });
         assert!(
@@ -11192,6 +11236,7 @@ mod tests {
         // An identical connection.lost arriving again must not stack a duplicate.
         app.handle_event(AppEvent::AgentError {
             session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
             message: lost.clone(),
         });
         let n = app
@@ -11204,15 +11249,18 @@ mod tests {
     }
 
     /// Auth failures must reach the sign-in screen, not get flattened to a dead
-    /// `connection.lost`. The over-pipe startup path passes errors through
-    /// verbatim (main.rs does no substring classification), so the auth marker
-    /// survives to this handler's auth check.
+    /// `connection.lost`. Classification is typed (`AgentFailure::AuthRequired`),
+    /// done once at the helper boundary, so the handler routes purely on the
+    /// discriminant — no substring matching of the message text.
     #[test]
     fn auth_error_routes_to_signin_not_connection_lost() {
         let mut app = test_app();
         app.state = ConnectionState::Connected;
         app.handle_event(AppEvent::AgentError {
             session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+                message: "authentication required".to_string(),
+            },
             message: "new_session over master pipe failed: authentication required"
                 .to_string(),
         });
@@ -11225,6 +11273,77 @@ mod tests {
             !matches!(app.state, ConnectionState::Failed(_)),
             "an auth failure must not become a Failed connection-lost state"
         );
+    }
+
+    /// A soft stop is an *outcome*, not a connection failure: the handler must
+    /// append an informational System line carrying the localized reason text,
+    /// while leaving the connection `Connected` and never routing to the
+    /// sign-in screen. This is what keeps soft stops off the `AgentFailure`
+    /// axis — the gap the client-level emit test cannot cover.
+    #[test]
+    fn soft_stop_appends_system_line_without_changing_state() {
+        use crate::protocol::acp::softstop::SoftStopReason;
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+
+        app.handle_event(AppEvent::AgentSoftStop {
+            session_id: "0".to_string(),
+            reason: SoftStopReason::Refusal,
+        });
+
+        let expected = t!("system.stopped_refusal").into_owned();
+        assert!(
+            app.current_tab()
+                .messages
+                .iter()
+                .any(|m| matches!(m, ChatMessage::System(s) if *s == expected)),
+            "a soft stop must append its localized System line"
+        );
+        assert!(
+            matches!(app.state, ConnectionState::Connected),
+            "a soft stop must not change the connection state"
+        );
+        assert_ne!(
+            app.mode,
+            AppMode::Setup,
+            "a soft stop is not a failure — it must never route to sign-in"
+        );
+        assert!(
+            !app.current_tab()
+                .messages
+                .iter()
+                .any(|m| matches!(m, ChatMessage::Error(_))),
+            "a soft stop must not surface an Error line"
+        );
+    }
+
+    /// Each `SoftStopReason` must resolve to its own distinct localized line so
+    /// the user can tell truncation from a request-budget stop from a refusal.
+    #[test]
+    fn soft_stop_reasons_map_to_distinct_localized_lines() {
+        use crate::protocol::acp::softstop::SoftStopReason;
+        for (reason, key) in [
+            (SoftStopReason::MaxTokens, "system.stopped_max_tokens"),
+            (
+                SoftStopReason::MaxTurnRequests,
+                "system.stopped_max_turn_requests",
+            ),
+            (SoftStopReason::Refusal, "system.stopped_refusal"),
+        ] {
+            let mut app = test_app();
+            app.handle_event(AppEvent::AgentSoftStop {
+                session_id: "0".to_string(),
+                reason,
+            });
+            let expected = t!(key).into_owned();
+            assert!(
+                app.current_tab()
+                    .messages
+                    .iter()
+                    .any(|m| matches!(m, ChatMessage::System(s) if *s == expected)),
+                "reason {reason:?} must render the {key} line"
+            );
+        }
     }
 
     /// F7: while `Connecting`, the activity frame must keep advancing on Tick so

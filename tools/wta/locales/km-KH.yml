@@ -143,6 +143,9 @@ system.cancelled: "បានបោះបង់។"
 system.no_prompt_in_flight: "គ្មានសំណើកំពុងដំណើរការ។"
 system.authentication_failed: "ការផ្ទៀងផ្ទាត់បរាជ័យ"
 system.command_copied_retry: "ពាក្យបញ្ជាត្រូវបានចម្លង — ដំណើរការវានៅក្នុង terminal មួយទៀត រួចចុច Enter ដើម្បីសាកល្បង"  # {Locked="Enter"}
+system.stopped_max_tokens: "ការឆ្លើយតបត្រូវបានកាត់ផ្តាច់ បន្ទាប់ពីឈានដល់ដែនកំណត់លទ្ធផលរបស់ម៉ូដែល។"
+system.stopped_max_turn_requests: "ភ្នាក់ងារបានឈប់ បន្ទាប់ពីឈានដល់ដែនកំណត់សំណើសម្រាប់វេននេះ។"
+system.stopped_refusal: "ភ្នាក់ងារបានបដិសេធមិនបន្តសំណើនេះ។"
 
 # ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────────
 output.no_windows: "រកមិនឃើញបង្អូច។"

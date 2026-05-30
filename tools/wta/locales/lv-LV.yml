@@ -127,6 +127,9 @@ system.cancelled: "Atcelts."
 system.no_prompt_in_flight: "Nav aktīvu pieprasījumu."
 system.authentication_failed: "Autentifikācija neizdevās"
 system.command_copied_retry: "Komanda nokopēta — palaidiet to citā terminālī, pēc tam nospiediet Enter, lai mēģinātu vēlreiz"  # {Locked="Enter"}
+system.stopped_max_tokens: "Atbilde tika apcirsta pēc modeļa izvades ierobežojuma sasniegšanas."
+system.stopped_max_turn_requests: "Aģents apstājās pēc tā pieprasījumu ierobežojuma sasniegšanas šim gājienam."
+system.stopped_refusal: "Aģents atteicās turpināt šo pieprasījumu."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Logi nav atrasti."

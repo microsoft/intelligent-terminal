@@ -127,6 +127,9 @@ system.cancelled: "Dibatalkan."
 system.no_prompt_in_flight: "Tiada prompt sedang berjalan."
 system.authentication_failed: "Pengesahan gagal"
 system.command_copied_retry: "Arahan disalin — jalankan dalam terminal lain, kemudian tekan Enter untuk cuba semula"  # {Locked="Enter"}
+system.stopped_max_tokens: "Respons telah dipotong selepas mencapai had output model."
+system.stopped_max_turn_requests: "Ejen berhenti selepas mencapai had permintaannya untuk giliran ini."
+system.stopped_refusal: "Ejen enggan meneruskan permintaan ini."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Tiada tetingkap ditemui."

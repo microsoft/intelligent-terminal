@@ -127,6 +127,9 @@ system.cancelled: "ยกเลิกแล้ว"
 system.no_prompt_in_flight: "ไม่มีพร้อมท์ที่กำลังดำเนินการ"
 system.authentication_failed: "การยืนยันตัวตนล้มเหลว"
 system.command_copied_retry: "คัดลอกคำสั่งแล้ว — เรียกใช้ในเทอร์มินัลอื่น แล้วกด Enter เพื่อลองอีกครั้ง"  # {Locked="Enter"}
+system.stopped_max_tokens: "การตอบกลับถูกตัดออกหลังจากถึงขีดจำกัดเอาต์พุตของโมเดล"
+system.stopped_max_turn_requests: "เอเจนต์หยุดลงหลังจากถึงขีดจำกัดคำขอสำหรับเทิร์นนี้"
+system.stopped_refusal: "เอเจนต์ปฏิเสธที่จะดำเนินการคำขอนี้ต่อ"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "ไม่พบหน้าต่าง"

@@ -134,6 +134,9 @@ system.cancelled: "Preklicano."
 system.no_prompt_in_flight: "Nobena zahteva ni v teku."
 system.authentication_failed: "Preverjanje pristnosti ni uspelo"
 system.command_copied_retry: "Ukaz kopiran — zaženite ga v drugem terminalu, nato pritisnite Enter za ponovni poskus"  # {Locked="Enter"}
+system.stopped_max_tokens: "Odgovor je bil odrezan po dosegu izhodne omejitve modela."
+system.stopped_max_turn_requests: "Agent se je ustavil po dosegu omejitve zahtev za to potezo."
+system.stopped_refusal: "Agent je zavrnil nadaljevanje te zahteve."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Ni najdenih oken."

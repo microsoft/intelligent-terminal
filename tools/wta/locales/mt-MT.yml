@@ -127,6 +127,9 @@ system.cancelled: "Ikkanċellat."
 system.no_prompt_in_flight: "L-ebda prompt fl-arja."
 system.authentication_failed: "L-awtentikazzjoni falliet"
 system.command_copied_retry: "Kmand ikkupjat — ħaddmu f'terminal ieħor, imbagħad agħfas Enter biex terġa' tipprova"  # {Locked="Enter"}
+system.stopped_max_tokens: "It-tweġiba nqatgħet wara li ntlaħaq il-limitu tal-output tal-mudell."
+system.stopped_max_turn_requests: "L-aġent waqaf wara li laħaq il-limitu tat-talbiet tiegħu għal din id-dawra."
+system.stopped_refusal: "L-aġent irrifjuta li jkompli b'din it-talba."
 
 # ── Output CLI waqt l-eżekuzzjoni (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ma nstabet l-ebda tieqa."

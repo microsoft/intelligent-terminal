@@ -138,6 +138,9 @@ system.cancelled: "منسوخ کیا گیا۔"
 system.no_prompt_in_flight: "کوئی پرامپٹ زیر عمل نہیں ہے۔"
 system.authentication_failed: "تصدیق ناکام"
 system.command_copied_retry: "کمانڈ کاپی ہو گئی — اسے دوسرے ٹرمینل میں چلائیں، پھر دوبارہ کوشش کے لیے Enter دبائیں"  # {Locked="Enter"}
+system.stopped_max_tokens: "ماڈل کی آؤٹ پٹ حد تک پہنچنے کے بعد جواب کاٹ دیا گیا۔"
+system.stopped_max_turn_requests: "اس باری کے لیے اپنی درخواست کی حد تک پہنچنے کے بعد ایجنٹ رک گیا۔"
+system.stopped_refusal: "ایجنٹ نے اس درخواست کو جاری رکھنے سے انکار کر دیا۔"
 
 # ── رن ٹائم CLI آؤٹ پٹ (src/main.rs) ────────────────────────────────────────
 output.no_windows: "کوئی ونڈو نہیں ملی۔"

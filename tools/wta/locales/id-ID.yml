@@ -127,6 +127,9 @@ system.cancelled: "Dibatalkan."
 system.no_prompt_in_flight: "Tidak ada prompt yang sedang berjalan."
 system.authentication_failed: "Autentikasi gagal"
 system.command_copied_retry: "Perintah disalin — jalankan di terminal lain, lalu tekan Enter untuk mencoba lagi"  # {Locked="Enter"}
+system.stopped_max_tokens: "Respons terpotong setelah mencapai batas keluaran model."
+system.stopped_max_turn_requests: "Agen berhenti setelah mencapai batas permintaannya untuk giliran ini."
+system.stopped_refusal: "Agen menolak untuk melanjutkan permintaan ini."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Tidak ada jendela ditemukan."

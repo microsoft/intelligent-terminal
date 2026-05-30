@@ -127,6 +127,9 @@ system.cancelled: "Gekanselleer."
 system.no_prompt_in_flight: "Geen opdrag onderweg nie."
 system.authentication_failed: "Stawing het misluk"
 system.command_copied_retry: "Opdrag gekopieer — voer dit in 'n ander terminaal uit, druk dan Enter om weer te probeer"  # {Locked="Enter"}
+system.stopped_max_tokens: "Die antwoord is afgekap nadat die model se afvoerlimiet bereik is."
+system.stopped_max_turn_requests: "Die agent het gestop nadat sy versoeklimiet vir hierdie beurt bereik is."
+system.stopped_refusal: "Die agent het geweier om met hierdie versoek voort te gaan."
 
 # ── CLI-uitvoer tydens uitvoering (src/main.rs) ────────────────────────────────────
 output.no_windows: "Geen vensters gevind nie."

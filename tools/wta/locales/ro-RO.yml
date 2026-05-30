@@ -127,6 +127,9 @@ system.cancelled: "Anulat."
 system.no_prompt_in_flight: "Nicio solicitare în curs."
 system.authentication_failed: "Autentificarea a eșuat"
 system.command_copied_retry: "Comandă copiată — rulați-o într-un alt terminal, apoi apăsați Enter pentru a reîncerca"  # {Locked="Enter"}
+system.stopped_max_tokens: "Răspunsul a fost întrerupt după atingerea limitei de ieșire a modelului."
+system.stopped_max_turn_requests: "Agentul s-a oprit după atingerea limitei de solicitări pentru această tură."
+system.stopped_refusal: "Agentul a refuzat să continue cu această solicitare."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nu au fost găsite ferestre."

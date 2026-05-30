@@ -138,6 +138,9 @@ system.cancelled: "ਰੱਦ ਕੀਤਾ ਗਿਆ।"
 system.no_prompt_in_flight: "ਕੋਈ ਪ੍ਰੋਮਪਟ ਚੱਲ ਨਹੀਂ ਰਿਹਾ।"
 system.authentication_failed: "ਪ੍ਰਮਾਣਿਕਤਾ ਅਸਫਲ"
 system.command_copied_retry: "ਕਮਾਂਡ ਕਾਪੀ ਕੀਤੀ ਗਈ — ਇਸ ਨੂੰ ਕਿਸੇ ਹੋਰ ਟਰਮੀਨਲ ਵਿੱਚ ਚਲਾਓ, ਫਿਰ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਲਈ Enter ਦਬਾਓ"  # {Locked="Enter"}
+system.stopped_max_tokens: "ਮਾਡਲ ਦੀ ਆਉਟਪੁੱਟ ਸੀਮਾ 'ਤੇ ਪਹੁੰਚਣ ਤੋਂ ਬਾਅਦ ਜਵਾਬ ਕੱਟ ਦਿੱਤਾ ਗਿਆ।"
+system.stopped_max_turn_requests: "ਇਸ ਵਾਰੀ ਲਈ ਆਪਣੀ ਬੇਨਤੀ ਸੀਮਾ 'ਤੇ ਪਹੁੰਚਣ ਤੋਂ ਬਾਅਦ ਏਜੰਟ ਰੁਕ ਗਿਆ।"
+system.stopped_refusal: "ਏਜੰਟ ਨੇ ਇਸ ਬੇਨਤੀ ਨੂੰ ਜਾਰੀ ਰੱਖਣ ਤੋਂ ਇਨਕਾਰ ਕਰ ਦਿੱਤਾ।"
 
 # ── ਰਨਟਾਈਮ CLI ਆਉਟਪੁੱਟ (src/main.rs) ────────────────────────────────────────
 output.no_windows: "ਕੋਈ ਵਿੰਡੋ ਨਹੀਂ ਮਿਲੀ।"

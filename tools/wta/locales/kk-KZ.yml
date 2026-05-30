@@ -138,6 +138,9 @@ system.cancelled: "Бас тартылды."
 system.no_prompt_in_flight: "Орындалып жатқан сұрау жоқ."
 system.authentication_failed: "Аутентификация сәтсіз аяқталды"
 system.command_copied_retry: "Команда көшірілді — басқа терминалда іске қосыңыз, содан кейін қайталау үшін Enter басыңыз"  # {Locked="Enter"}
+system.stopped_max_tokens: "Жауап модельдің шығыс шегіне жеткеннен кейін қиылды."
+system.stopped_max_turn_requests: "Агент осы кезек үшін сұраныс шегіне жеткеннен кейін тоқтады."
+system.stopped_refusal: "Агент бұл сұранысты жалғастырудан бас тартты."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Терезелер табылмады."

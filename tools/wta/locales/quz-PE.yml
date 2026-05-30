@@ -127,6 +127,9 @@ system.cancelled: "Chinkachisqa."
 system.no_prompt_in_flight: "Mana tapukuy purichkanchu."
 system.authentication_failed: "Yaykuy mana allinchu"
 system.command_copied_retry: "Kamachiy apasqa — huk terminal nisqapi purichiy, chaymanta Enter nit'iy watiqmanta qallarinapaq"  # {Locked="Enter"}
+system.stopped_max_tokens: "Kutichiyqa kuchurqakun modelopa lluqsiynin sayaynin chayasqan qhipata."
+system.stopped_max_turn_requests: "Agenteqa sayarqan kay kutipi mañakuy sayaynin chayasqan qhipata."
+system.stopped_refusal: "Agenteqa kay mañakuyta qatiyta mana munarqanchu."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Mana ventana tarikusqachu."

@@ -127,6 +127,9 @@ system.cancelled: "Kua whakakorea."
 system.no_prompt_in_flight: "Karekau he tohutohu e rere ana."
 system.authentication_failed: "I rahua te whakamanatu"
 system.command_copied_retry: "Kua tarua te whakahau — whakahautia i tetahi atu teirminara, katahi ka pehi Enter ki te ngana ano"  # {Locked="Enter"}
+system.stopped_max_tokens: "I tapahia te whakautu i muri i te tutukinga o te tepe putanga o te tauira."
+system.stopped_max_turn_requests: "I mutu te kaihoko i muri i te tutukinga o tana tepe tono mō tēnei huri."
+system.stopped_refusal: "I whakakāhore te kaihoko ki te haere tonu me tēnei tono."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Karekau he matapihi i kitea."

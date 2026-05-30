@@ -134,6 +134,9 @@ system.cancelled: "Отменено."
 system.no_prompt_in_flight: "Нет активного запроса."
 system.authentication_failed: "Ошибка аутентификации"
 system.command_copied_retry: "Команда скопирована — выполните её в другом терминале, затем нажмите Enter для повтора"  # {Locked="Enter"}
+system.stopped_max_tokens: "Ответ был обрезан после достижения предела вывода модели."
+system.stopped_max_turn_requests: "Агент остановился после достижения лимита запросов для этого хода."
+system.stopped_refusal: "Агент отказался продолжать выполнение этого запроса."
 
 # ── Вывод CLI времени выполнения (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Окна не найдены."

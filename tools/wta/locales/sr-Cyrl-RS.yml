@@ -134,6 +134,9 @@ system.cancelled: "Отказано."
 system.no_prompt_in_flight: "Нема активног захтева."
 system.authentication_failed: "Аутентификација није успела"
 system.command_copied_retry: "Команда је копирана — покрените је у другом терминалу, затим притисните Enter за поновни покушај"  # {Locked="Enter"}
+system.stopped_max_tokens: "Одговор је одсечен након достизања излазног ограничења модела."
+system.stopped_max_turn_requests: "Агент се зауставио након достизања ограничења захтева за овај потез."
+system.stopped_refusal: "Агент је одбио да настави са овим захтевом."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Нису пронађени прозори."

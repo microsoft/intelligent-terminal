@@ -127,6 +127,9 @@ system.cancelled: "[!!_Cancelled._!!]"
 system.no_prompt_in_flight: "[!!_No prompt in flight._!!]"
 system.authentication_failed: "[!!_Authentication failed_!!]"
 system.command_copied_retry: "[!!_Command copied — run it in another terminal, then press Enter to retry_!!]"  # {Locked="Enter"}
+system.stopped_max_tokens: "[!!_The response was cut off after reaching the model's output limit._!!]"
+system.stopped_max_turn_requests: "[!!_The agent stopped after reaching its request limit for this turn._!!]"
+system.stopped_refusal: "[!!_The agent declined to continue with this request._!!]"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "[!!_No windows found._!!]"

@@ -123,6 +123,9 @@ system.cancelled: "已取消。"
 system.no_prompt_in_flight: "沒有進行中的提示。"
 system.authentication_failed: "驗證失敗"
 system.command_copied_retry: "命令已複製 — 在另一個終端機中執行，然後按 Enter 重試"  # {Locked="Enter"}
+system.stopped_max_tokens: "達到模型的輸出上限後，回覆遭到截斷。"
+system.stopped_max_turn_requests: "達到本回合的要求上限後，代理程式已停止。"
+system.stopped_refusal: "代理程式拒絕繼續處理此要求。"
 
 # ── 執行階段 CLI 輸出 (src/main.rs) ────────────────────────────────────────
 output.no_windows: "找不到視窗。"

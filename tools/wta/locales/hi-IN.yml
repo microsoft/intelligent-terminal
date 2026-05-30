@@ -138,6 +138,9 @@ system.cancelled: "रद्द किया गया।"
 system.no_prompt_in_flight: "कोई प्रॉम्प्ट प्रगति में नहीं है।"
 system.authentication_failed: "प्रमाणीकरण विफल"
 system.command_copied_retry: "कमांड कॉपी किया गया — इसे किसी अन्य टर्मिनल में चलाएँ, फिर पुनः प्रयास के लिए Enter दबाएँ"  # {Locked="Enter"}
+system.stopped_max_tokens: "मॉडल की आउटपुट सीमा तक पहुँचने के बाद प्रतिक्रिया काट दी गई।"
+system.stopped_max_turn_requests: "इस बारी के लिए अपनी अनुरोध सीमा तक पहुँचने के बाद एजेंट रुक गया।"
+system.stopped_refusal: "एजेंट ने इस अनुरोध को जारी रखने से इनकार कर दिया।"
 
 # ── रनटाइम CLI आउटपुट (src/main.rs) ────────────────────────────────────────
 output.no_windows: "कोई विंडो नहीं मिली।"

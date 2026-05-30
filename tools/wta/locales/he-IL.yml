@@ -138,6 +138,9 @@ system.cancelled: "בוטל."
 system.no_prompt_in_flight: "אין בקשה בתהליך."
 system.authentication_failed: "האימות נכשל"
 system.command_copied_retry: "הפקודה הועתקה — הפעל אותה במסוף אחר, ואז לחץ Enter לניסיון חוזר"  # {Locked="Enter"}
+system.stopped_max_tokens: "התגובה נקטעה לאחר שהגיעה למגבלת הפלט של המודל."
+system.stopped_max_turn_requests: "הסוכן נעצר לאחר שהגיע למגבלת הבקשות שלו לתור זה."
+system.stopped_refusal: "הסוכן סירב להמשיך בבקשה זו."
 
 # ── פלט CLI בזמן ריצה (src/main.rs) ────────────────────────────────────────
 output.no_windows: "לא נמצאו חלונות."

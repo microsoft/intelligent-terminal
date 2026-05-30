@@ -138,6 +138,9 @@ system.cancelled: "रद्द केलें."
 system.no_prompt_in_flight: "प्रगतींत कसलोच प्रॉम्प्ट ना."
 system.authentication_failed: "प्रमाणीकरण अपेशी"
 system.command_copied_retry: "कमांड कॉपी जालो — ताका दुसऱ्या टर्मिनलांत चलयात, मागीर परतून यत्न करपाक Enter दामात"  # {Locked="Enter"}
+system.stopped_max_tokens: "मॉडेलाची आउटपूट मर्यादा गाठल्या उपरांत प्रतिसाद कापून उडयलो."
+system.stopped_max_turn_requests: "ह्या फेऱ्याखातीर आपली विनवणी मर्यादा गाठल्या उपरांत एजंट थांबलो."
+system.stopped_refusal: "एजंटान ही विनवणी फुडें व्हरपाक न्हयकार दिलो."
 
 # ── रनटायम CLI आउटपुट (src/main.rs) ────────────────────────────────────────
 output.no_windows: "कसलीच विंडो मेळ्ळी ना."

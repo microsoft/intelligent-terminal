@@ -127,6 +127,9 @@ system.cancelled: "Kinansela."
 system.no_prompt_in_flight: "Walang prompt na kasalukuyang pinapatakbo."
 system.authentication_failed: "Nabigo ang authentication"
 system.command_copied_retry: "Nakopya ang command — patakbuhin sa ibang terminal, pagkatapos ay pindutin ang Enter para subukang muli"  # {Locked="Enter"}
+system.stopped_max_tokens: "Naputol ang tugon pagkatapos maabot ang limitasyon sa output ng modelo."
+system.stopped_max_turn_requests: "Huminto ang ahente pagkatapos maabot ang limitasyon nito sa kahilingan para sa pagliko na ito."
+system.stopped_refusal: "Tumanggi ang ahente na ipagpatuloy ang kahilingang ito."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Walang nahanap na window."

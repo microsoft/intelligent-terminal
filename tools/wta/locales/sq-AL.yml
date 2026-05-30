@@ -127,6 +127,9 @@ system.cancelled: "U anulua."
 system.no_prompt_in_flight: "Asnjë kërkesë nuk është në proces."
 system.authentication_failed: "Vërtetimi dështoi"
 system.command_copied_retry: "Komanda u kopjua — ekzekutojeni në një terminal tjetër, pastaj shtypni Enter për të riprovuar"  # {Locked="Enter"}
+system.stopped_max_tokens: "Përgjigja u ndërpre pasi u arrit kufiri i daljes së modelit."
+system.stopped_max_turn_requests: "Agjenti ndaloi pasi arriti kufirin e kërkesave për këtë radhë."
+system.stopped_refusal: "Agjenti refuzoi të vazhdojë me këtë kërkesë."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nuk u gjetën dritare."

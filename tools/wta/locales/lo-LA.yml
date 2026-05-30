@@ -127,6 +127,9 @@ system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"
 system.command_copied_retry: "Command copied — run it in another terminal, then press Enter to retry"  # {Locked="Enter"}
+system.stopped_max_tokens: "ການຕອບໄດ້ຖືກຕັດອອກຫຼັງຈາກບັນລຸຂີດຈຳກັດຜົນຜະລິດຂອງແບບຈຳລອງ."
+system.stopped_max_turn_requests: "ຕົວແທນໄດ້ຢຸດຫຼັງຈາກບັນລຸຂີດຈຳກັດການຮ້ອງຂໍສຳລັບຮອບນີ້."
+system.stopped_refusal: "ຕົວແທນໄດ້ປະຕິເສດທີ່ຈະດຳເນີນການຮ້ອງຂໍນີ້ຕໍ່."
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "No windows found."
