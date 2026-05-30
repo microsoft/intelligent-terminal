@@ -131,18 +131,18 @@ namespace SettingsModelUnitTests
         // The whole point of PR #123: a custom agent must survive load
         // with its "custom:" prefix intact. If this regresses, the
         // settings page reverts to the default agent on next load.
-        const auto settings = MakeSettings(R"("acpAgent": "custom:qwen", "acpCustomCommand": "qwen.cmd --acp")");
+        const auto settings = MakeSettings(R"("acpAgent": "custom:mybot", "acpCustomCommand": "mybot.cmd --acp")");
         const auto& globals = settings->GlobalSettings();
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:qwen" }, globals.AcpAgent());
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"qwen.cmd --acp" }, globals.AcpCustomCommand());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:mybot" }, globals.AcpAgent());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"mybot.cmd --acp" }, globals.AcpCustomCommand());
     }
 
     void CustomAgentAndPolicyTests::CustomDelegateAgentRoundtrips()
     {
-        const auto settings = MakeSettings(R"("delegateAgent": "custom:qwen", "delegateCustomCommand": "qwen.cmd --acp")");
+        const auto settings = MakeSettings(R"("delegateAgent": "custom:mybot", "delegateCustomCommand": "mybot.cmd --acp")");
         const auto& globals = settings->GlobalSettings();
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:qwen" }, globals.DelegateAgent());
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"qwen.cmd --acp" }, globals.DelegateCustomCommand());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:mybot" }, globals.DelegateAgent());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"mybot.cmd --acp" }, globals.DelegateCustomCommand());
     }
 
     void CustomAgentAndPolicyTests::QuotedPathCustomCommandRoundtrips()
@@ -151,10 +151,10 @@ namespace SettingsModelUnitTests
         // are common for users on the Windows installer paths. Make sure
         // the parser preserves them verbatim.
         const auto settings = MakeSettings(
-            R"("acpAgent": "custom:qwen", "acpCustomCommand": "\"C:\\Program Files\\qwen\\qwen.cmd\" --acp")");
+            R"("acpAgent": "custom:mybot", "acpCustomCommand": "\"C:\\Program Files\\mybot\\mybot.cmd\" --acp")");
         const auto& globals = settings->GlobalSettings();
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:qwen" }, globals.AcpAgent());
-        VERIFY_ARE_EQUAL(winrt::hstring{ LR"("C:\Program Files\qwen\qwen.cmd" --acp)" },
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:mybot" }, globals.AcpAgent());
+        VERIFY_ARE_EQUAL(winrt::hstring{ LR"("C:\Program Files\mybot\mybot.cmd" --acp)" },
                          globals.AcpCustomCommand());
     }
 
@@ -215,14 +215,14 @@ namespace SettingsModelUnitTests
 
     void CustomAgentAndPolicyTests::EffectiveAcpAgentCustomPassesWhenNoCustomPolicy()
     {
-        const auto settings = MakeSettings(R"("acpAgent": "custom:qwen", "acpCustomCommand": "qwen.cmd")");
+        const auto settings = MakeSettings(R"("acpAgent": "custom:mybot", "acpCustomCommand": "mybot.cmd")");
         SetPolicy(MakePolicy(/*allowedAgents*/ std::nullopt, AgentPolicy::PolicyState::NotConfigured));
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:qwen" }, settings->GlobalSettings().EffectiveAcpAgent());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:mybot" }, settings->GlobalSettings().EffectiveAcpAgent());
     }
 
     void CustomAgentAndPolicyTests::EffectiveAcpAgentCustomBlockedByCustomPolicy()
     {
-        const auto settings = MakeSettings(R"("acpAgent": "custom:qwen", "acpCustomCommand": "qwen.cmd")");
+        const auto settings = MakeSettings(R"("acpAgent": "custom:mybot", "acpCustomCommand": "mybot.cmd")");
         SetPolicy(MakePolicy(/*allowedAgents*/ std::nullopt, AgentPolicy::PolicyState::Blocked));
         VERIFY_ARE_EQUAL(winrt::hstring{}, settings->GlobalSettings().EffectiveAcpAgent());
     }
@@ -235,10 +235,10 @@ namespace SettingsModelUnitTests
         // Admin allowlist with only "gemini" — would block built-in
         // copilot. But a custom: agent passes through unchanged because
         // customAgents policy is NotConfigured / Allowed.
-        const auto settings = MakeSettings(R"("acpAgent": "custom:qwen", "acpCustomCommand": "qwen.cmd")");
+        const auto settings = MakeSettings(R"("acpAgent": "custom:mybot", "acpCustomCommand": "mybot.cmd")");
         SetPolicy(MakePolicy(std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>{ L"gemini" },
                              AgentPolicy::PolicyState::NotConfigured));
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:qwen" }, settings->GlobalSettings().EffectiveAcpAgent());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:mybot" }, settings->GlobalSettings().EffectiveAcpAgent());
     }
 
     // ── EffectiveDelegateAgent ──────────────────────────────────────────
@@ -266,17 +266,17 @@ namespace SettingsModelUnitTests
 
     void CustomAgentAndPolicyTests::EffectiveDelegateAgentCustomBlockedByCustomPolicy()
     {
-        const auto settings = MakeSettings(R"("delegateAgent": "custom:qwen", "delegateCustomCommand": "qwen.cmd")");
+        const auto settings = MakeSettings(R"("delegateAgent": "custom:mybot", "delegateCustomCommand": "mybot.cmd")");
         SetPolicy(MakePolicy(/*allowedAgents*/ std::nullopt, AgentPolicy::PolicyState::Blocked));
         VERIFY_ARE_EQUAL(winrt::hstring{}, settings->GlobalSettings().EffectiveDelegateAgent());
     }
 
     void CustomAgentAndPolicyTests::EffectiveDelegateAgentCustomIgnoresAllowedAgentsAllowlist()
     {
-        const auto settings = MakeSettings(R"("delegateAgent": "custom:qwen", "delegateCustomCommand": "qwen.cmd")");
+        const auto settings = MakeSettings(R"("delegateAgent": "custom:mybot", "delegateCustomCommand": "mybot.cmd")");
         SetPolicy(MakePolicy(std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>{ L"gemini" },
                              AgentPolicy::PolicyState::NotConfigured));
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:qwen" }, settings->GlobalSettings().EffectiveDelegateAgent());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:mybot" }, settings->GlobalSettings().EffectiveDelegateAgent());
     }
 
     // ── Lock-state ──────────────────────────────────────────────────────

@@ -552,13 +552,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (_GlobalSettings.IsCustomAgentPolicyLocked()) return;
         if (_customAcpCommand.empty()) return;
         const auto bareId = _DeriveId(_customAcpCommand);
+        // Whitespace-only / quote-only commands derive to an empty id and
+        // would otherwise be saved as a bare "custom:" entry, leaving the
+        // UI with a blank, unusable custom agent. Reject before persisting.
+        if (bareId.empty()) return;
         _GlobalSettings.AcpCustomCommand(_customAcpCommand);
 
         // Custom agents always carry the "custom:" discriminator — every
         // downstream consumer (EffectiveAcpAgent policy gate, command-line
-        // resolver, custom-edit/delete UI gates, telemetry) keys on this
-        // prefix. Storing a bare id silently breaks all of them and makes
-        // the page revert to the default agent on next load.
+        // resolver, custom-edit/delete UI gates) keys on this prefix.
+        // Storing a bare id silently breaks all of them and makes the page
+        // revert to the default agent on next load.
         const bool isBuiltIn = _IsKnownAgent(bareId);
         const auto settingsId = winrt::hstring{ L"custom:" + std::wstring_view{ bareId } };
         const auto displayName = isBuiltIn
@@ -592,6 +596,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (_GlobalSettings.IsCustomAgentPolicyLocked()) return;
         if (_customDelegateCommand.empty()) return;
         const auto bareId = _DeriveId(_customDelegateCommand);
+        // See SaveCustomAcpAgent — reject empty derivations before persisting.
+        if (bareId.empty()) return;
         _GlobalSettings.DelegateCustomCommand(_customDelegateCommand);
 
         // See SaveCustomAcpAgent — always carry the "custom:" prefix.
