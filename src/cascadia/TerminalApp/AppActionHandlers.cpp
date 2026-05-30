@@ -1963,25 +1963,35 @@ namespace winrt::TerminalApp::implementation
 
         namespace SI = ::Microsoft::Terminal::ShellIntegration;
 
-        // Serialize against in-flight _ReconcileShellIntegration writes
-        // so the explicit dialog-driven install can't interleave its
-        // $PROFILE write with a concurrent reconcile uninstall and leave
-        // the file half-written. The explicit install path intentionally
-        // does NOT re-check _shellIntegrationDesiredEnabled: the user
-        // clicked an "Install" button, so the install must run; a later
-        // toggle-off reconcile will undo it cleanly under the same lock.
+        // Publish "user clicked Install -> desired = true" BEFORE attempting
+        // to acquire the mutex. Combined with the post-acquire re-check
+        // below, this gives us a "latest expressed intent wins" semantic
+        // even when an explicit install and a toggle-off reconcile race
+        // for the mutex.
+        _shellIntegrationDesiredEnabled.store(true, std::memory_order_release);
+
+        bool desiredAtRun = true;
         bool pwshAlready = false;
         bool wpAlready = false;
         bool pwshOk = false;
         bool wpOk = false;
         {
             std::lock_guard<std::mutex> guard{ _shellIntegrationReconcileMutex };
-            const auto pwshResult = SI::InstallForTarget(SI::Target::Pwsh);
-            const auto wpResult = SI::InstallForTarget(SI::Target::WindowsPowerShell);
-            pwshAlready = pwshResult.alreadyInstalled;
-            wpAlready = wpResult.alreadyInstalled;
-            pwshOk = pwshResult.success;
-            wpOk = wpResult.success;
+            // Re-check after acquiring the lock. If a settings reload (toggle
+            // off) raced ahead and published `false`, that is a newer
+            // expression of intent than the Install button click; skip the
+            // install so we don't reinstall on top of the just-completed
+            // uninstall and leave the profile out of sync with the toggle.
+            desiredAtRun = _shellIntegrationDesiredEnabled.load(std::memory_order_acquire);
+            if (desiredAtRun)
+            {
+                const auto pwshResult = SI::InstallForTarget(SI::Target::Pwsh);
+                const auto wpResult = SI::InstallForTarget(SI::Target::WindowsPowerShell);
+                pwshAlready = pwshResult.alreadyInstalled;
+                wpAlready = wpResult.alreadyInstalled;
+                pwshOk = pwshResult.success;
+                wpOk = wpResult.success;
+            }
         }
 
         const bool allAlreadyInstalled = pwshAlready && wpAlready;
@@ -1990,7 +2000,12 @@ namespace winrt::TerminalApp::implementation
         co_await wil::resume_foreground(dispatcher);
         if (auto strong = weak.get())
         {
-            if (allAlreadyInstalled)
+            if (!desiredAtRun)
+            {
+                // Auto-detection was disabled between the click and the lock.
+                // No dialog: a reconcile has already brought $PROFILE in line.
+            }
+            else if (allAlreadyInstalled)
             {
                 // Already configured — no dialog needed
             }

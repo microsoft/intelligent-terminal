@@ -383,6 +383,7 @@ namespace winrt::TerminalApp::implementation
         // settings.json arriving on a fresh machine (which previously
         // never ran the install).
         bool _lastAutoErrorDetectionEnabled{ false };
+        bool _lastAutoErrorDetectionHasExplicit{ false };
         bool _autoErrorDetectionSnapshotInitialized{ false };
         // Cross-thread "latest desired state" for the shell-integration
         // reconcile. SetSettings (UI thread) stores the current value

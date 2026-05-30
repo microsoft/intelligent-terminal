@@ -338,11 +338,16 @@ namespace winrt::TerminalApp::implementation
             //     the default is true. The FRE / Settings Save flow is the explicit consent
             //     path for first-time PowerShell profile mutation.
             // Subsequent reloads: fire on any change (so explicit toggle in Settings works
-            // even when transitioning back to the default value).
+            // even when transitioning back to the default value) AND on the false->true
+            // transition of explicit-ness (covers a user/sync adding the explicit key while
+            // the effective value happens to match the previously-defaulted value).
+            const bool effectiveChanged = (_lastAutoErrorDetectionEnabled != currentDetection);
+            const bool explicitTurnedOn = (!_lastAutoErrorDetectionHasExplicit && hasExplicit);
             const bool shouldReconcile = isFirstLoad
                                              ? hasExplicit
-                                             : (_lastAutoErrorDetectionEnabled != currentDetection);
+                                             : (effectiveChanged || explicitTurnedOn);
             _lastAutoErrorDetectionEnabled = currentDetection;
+            _lastAutoErrorDetectionHasExplicit = hasExplicit;
             _autoErrorDetectionSnapshotInitialized = true;
             if (shouldReconcile)
             {
