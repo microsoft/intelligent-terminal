@@ -126,6 +126,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. — показать/скрыть пане
 # ── Состояние подключения ────────────────────────────────────────────────────────────
 connection.starting: "Запуск агента..."
 connection.reconnecting: "Переподключение..."
+connection.connecting_activity: "Подключение к агенту…"
+connection.lost: "Подключение к агенту потеряно. Введите /restart, чтобы подключиться снова."  # {Locked="/restart"}
 
 # ── Системные сообщения (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Отменено."

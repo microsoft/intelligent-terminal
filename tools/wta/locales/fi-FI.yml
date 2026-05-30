@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. näyttää/piilottaa agenttipaneelin • C
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Käynnistetään agenttia..."
 connection.reconnecting: "Yhdistetään uudelleen..."
+connection.connecting_activity: "Yhdistetään agenttiin…"
+connection.lost: "Yhteys agenttiin katkesi. Muodosta yhteys uudelleen kirjoittamalla /restart."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Peruutettu."

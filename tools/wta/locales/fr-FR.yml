@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. pour afficher/masquer le volet de l'agent 
 # ── État de la connexion ────────────────────────────────────────────────────────────
 connection.starting: "Démarrage de l'agent..."
 connection.reconnecting: "Reconnexion..."
+connection.connecting_activity: "Connexion à l'agent…"
+connection.lost: "La connexion à l'agent a été perdue. Tapez /restart pour vous reconnecter."  # {Locked="/restart"}
 
 # ── Messages système (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Annulé."

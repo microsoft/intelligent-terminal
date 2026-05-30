@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. shfaq/fshih panelin e agjentit • Ctrl+Sh
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Po niset agjenti..."
 connection.reconnecting: "Po rilidhet..."
+connection.connecting_activity: "Po lidhet me agjentin…"
+connection.lost: "Lidhja me agjentin u humb. Shkruani /restart për t'u rilidhur."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "U anulua."

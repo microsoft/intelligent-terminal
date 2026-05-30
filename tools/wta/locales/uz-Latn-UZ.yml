@@ -130,6 +130,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. agent panelini koʻrsatish/yashirish • C
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agent ishga tushirilmoqda..."
 connection.reconnecting: "Qayta ulanilmoqda..."
+connection.connecting_activity: "Agentga ulanilmoqda…"
+connection.lost: "Agent bilan ulanish uzildi. Qayta ulanish uchun /restart deb yozing."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Bekor qilindi."

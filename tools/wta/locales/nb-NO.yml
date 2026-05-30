@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. for å vise/skjule agentpanelet • Ctrl+S
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Starter agenten..."
 connection.reconnecting: "Kobler til på nytt..."
+connection.connecting_activity: "Kobler til agenten…"
+connection.lost: "Tilkoblingen til agenten gikk tapt. Skriv /restart for å koble til på nytt."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Avbrutt."

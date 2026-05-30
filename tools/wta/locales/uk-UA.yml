@@ -126,6 +126,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. — показати/сховати пан
 # ── Стан підключення ────────────────────────────────────────────────────────────
 connection.starting: "Запуск агента..."
 connection.reconnecting: "Перепідключення..."
+connection.connecting_activity: "Підключення до агента…"
+connection.lost: "Підключення до агента втрачено. Введіть /restart, щоб підключитися знову."  # {Locked="/restart"}
 
 # ── Системні повідомлення (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Скасовано."

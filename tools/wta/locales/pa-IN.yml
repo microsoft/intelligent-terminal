@@ -130,6 +130,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. ਏਜੰਟ ਪੈਨ ਦਿਖਾਓ/ਲ
 # ── ਕਨੈਕਸ਼ਨ ਸਥਿਤੀ ────────────────────────────────────────────────────────
 connection.starting: "ਏਜੰਟ ਸ਼ੁਰੂ ਹੋ ਰਿਹਾ ਹੈ..."
 connection.reconnecting: "ਮੁੜ-ਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ..."
+connection.connecting_activity: "ਏਜੰਟ ਨਾਲ ਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ…"
+connection.lost: "ਏਜੰਟ ਨਾਲ ਕਨੈਕਸ਼ਨ ਟੁੱਟ ਗਿਆ। ਮੁੜ ਕਨੈਕਟ ਕਰਨ ਲਈ /restart ਟਾਈਪ ਕਰੋ।"  # {Locked="/restart"}
 
 # ── ਸਿਸਟਮ ਸੁਨੇਹੇ (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "ਰੱਦ ਕੀਤਾ ਗਿਆ।"

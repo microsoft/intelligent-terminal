@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. om agentpaneel te wys/verberg • Ctrl+Shi
 # ── Verbindingstoestand ────────────────────────────────────────────────────────
 connection.starting: "Agent word begin..."
 connection.reconnecting: "Herkoppel tans..."
+connection.connecting_activity: "Koppel tans aan agent…"
+connection.lost: "Verbinding met die agent is verloor. Tik /restart om weer te koppel."  # {Locked="/restart"}
 
 # ── Stelselboodskappe (src/app.rs) ────────────────────────────────────────
 system.cancelled: "Gekanselleer."

@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. untuk tunjuk/sembunyikan anak tetingkap ej
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Memulakan ejen AI..."
 connection.reconnecting: "Menyambung semula..."
+connection.connecting_activity: "Menyambung kepada ejen AI…"
+connection.lost: "Sambungan kepada ejen AI terputus. Taip /restart untuk menyambung semula."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Dibatalkan."

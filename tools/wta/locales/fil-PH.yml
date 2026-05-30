@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. para ipakita/itago ang agent pane • Ctrl
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Sinisimulan ang agent..."
 connection.reconnecting: "Kumokonekta muli..."
+connection.connecting_activity: "Kumokonekta sa agent…"
+connection.lost: "Nawala ang koneksyon sa agent. I-type ang /restart para kumonektang muli."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Kinansela."

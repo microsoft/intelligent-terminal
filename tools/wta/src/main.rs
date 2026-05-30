@@ -2252,6 +2252,13 @@ async fn run_acp_app(
                             error = %e,
                             "run_acp_client_over_pipe failed"
                         );
+                        // Pass the error through verbatim. Don't classify on
+                        // substrings here — keyword matching is fragile and (as a
+                        // reviewer caught) would swallow auth failures like
+                        // `new_session over master pipe failed: authentication
+                        // required`, which must reach AgentError with its marker
+                        // intact so the handler routes it to the sign-in screen.
+                        // The raw `{e:#}` is also in the log above for diagnosis.
                         let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
                             session_id: None,
                             message: format!("helper ACP transport failed: {e:#}"),

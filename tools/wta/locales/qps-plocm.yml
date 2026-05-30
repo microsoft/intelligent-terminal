@@ -119,6 +119,8 @@ layout.welcome_hint: "[!!   (C_trl+Shift+. to show/hide agent pane • Ctrl+Shif
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "[!! Sta_rting agent... !!]"
 connection.reconnecting: "[!! Rec_onnecting... !!]"
+connection.connecting_activity: "[!! Conn_ecting to agent… !!]"
+connection.lost: "[!! Conn_ection to the agent was lost. Type /restart to reconnect. !!]"  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "[!! Can_celled. !!]"

@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. om het agentdeelvenster te tonen/verbergen
 # ── Verbindingsstatus ────────────────────────────────────────────────────────────
 connection.starting: "Agent starten..."
 connection.reconnecting: "Opnieuw verbinden..."
+connection.connecting_activity: "Verbinding maken met agent…"
+connection.lost: "De verbinding met de agent is verbroken. Typ /restart om opnieuw verbinding te maken."  # {Locked="/restart"}
 
 # ── Systeemberichten (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Geannuleerd."

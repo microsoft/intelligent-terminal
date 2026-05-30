@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. per mostrare/nascondere il riquadro agente
 # ── Stato della connessione ────────────────────────────────────────────────────────────
 connection.starting: "Avvio dell'agente..."
 connection.reconnecting: "Riconnessione..."
+connection.connecting_activity: "Connessione all'agente…"
+connection.lost: "La connessione all'agente è stata persa. Digita /restart per riconnetterti."  # {Locked="/restart"}
 
 # ── Messaggi di sistema (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Annullato."

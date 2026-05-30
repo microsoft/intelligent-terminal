@@ -159,6 +159,14 @@ layout.welcome_hint: "  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Shift+/ t
 connection.starting: "Starting agent..."
 # Status text shown while re-establishing agent connection
 connection.reconnecting: "Reconnecting..."
+# Animated activity line shown in the chat while the helper is still
+# establishing its connection to the agent (pipe connect → ACP init → session).
+# First agent launch can pull the npx adapter, so this can sit for tens of
+# seconds — the animation is what tells the user it isn't frozen.
+connection.connecting_activity: "Connecting to agent…"
+# Error line: the connection to the agent was lost after it had been working
+# (e.g. the agent CLI exited and took wta-master down). /restart is a slash command.
+connection.lost: "Connection to the agent was lost. Type /restart to reconnect."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Cancelled."

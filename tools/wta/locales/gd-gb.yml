@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. gus panail àidseant a shealltainn/fhalach
 # ── Staid ceangail ────────────────────────────────────────────────────────
 connection.starting: "A' tòiseachadh an àidseant..."
 connection.reconnecting: "Ag ath-cheangal..."
+connection.connecting_activity: "A' ceangal ris an àidseant…"
+connection.lost: "Chaidh an ceangal ris an àidseant a chall. Sgrìobh /restart gus ath-cheangal."  # {Locked="/restart"}
 
 # ── Teachdaireachdan siostam (src/app.rs) ────────────────────────────────────
 system.cancelled: "Air a sgur dheth."

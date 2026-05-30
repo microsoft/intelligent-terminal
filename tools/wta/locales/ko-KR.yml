@@ -115,6 +115,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. 에이전트 창 표시/숨기기 • Ctrl
 # ── 연결 상태 ────────────────────────────────────────────────────────────
 connection.starting: "에이전트 시작 중..."
 connection.reconnecting: "다시 연결 중..."
+connection.connecting_activity: "에이전트에 연결 중…"
+connection.lost: "에이전트와의 연결이 끊어졌습니다. 다시 연결하려면 /restart 명령을 입력하세요."  # {Locked="/restart"}
 
 # ── 시스템 메시지 (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "취소되었습니다."

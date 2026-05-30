@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. agente-panela erakusteko/ezkutatzeko • C
 # ── Konexio-egoera ────────────────────────────────────────────────────────
 connection.starting: "Agentea abiarazten..."
 connection.reconnecting: "Birkonektatzen..."
+connection.connecting_activity: "Agentearekin konektatzen…"
+connection.lost: "Agentearekiko konexioa galdu da. Idatzi /restart berriro konektatzeko."  # {Locked="/restart"}
 
 # ── Sistema-mezuak (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Bertan behera utzia."

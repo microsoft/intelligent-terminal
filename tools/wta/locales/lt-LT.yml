@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. rodyti / slėpti agento skydelį • Ctrl+
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Paleidžiamas agentas..."
 connection.reconnecting: "Jungiamasi iš naujo..."
+connection.connecting_activity: "Jungiamasi prie agento…"
+connection.lost: "Ryšys su agentu nutrūko. Įveskite /restart, kad prisijungtumėte iš naujo."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Atšaukta."

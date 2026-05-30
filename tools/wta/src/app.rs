@@ -3894,6 +3894,11 @@ impl App {
                 if self.mode == AppMode::Setup
                     || self.mode == AppMode::Auth
                     || self.history_load_state == HistoryLoadState::Loading
+                    // Keep the connecting indicator animating during the
+                    // pipe-connect → ACP init → session/new handshake so a cold
+                    // start (which can run tens of seconds) doesn't look frozen
+                    // (F7). Without this the chat sat static with no progress.
+                    || matches!(self.state, ConnectionState::Connecting(_))
                 {
                     self.activity_frame = self.activity_frame.wrapping_add(1);
                 }
@@ -4072,6 +4077,13 @@ impl App {
                 session_id,
                 message,
             } => {
+                // No substring classification of the error text here — keyword
+                // matching is fragile. The message is passed through as-is; the
+                // clean "connection lost" line comes from a real signal (the
+                // `handle_io` watchdog emitting connection.lost on pipe death),
+                // not from pattern-matching jargon. Auth errors flow through with
+                // their marker intact so the fallback below routes them to
+                // sign-in.
                 // Optimistic-connect fallback: if we have stashed auth info
                 // and the error is auth-related, show the auth screen instead
                 // of a dead error state.
@@ -4141,7 +4153,23 @@ impl App {
                     tab.activity_frame = 0;
                     tab.timing_note = None;
                     tab.turn = TurnState::Idle;
-                    tab.messages.push(ChatMessage::Error(message));
+                    // Suppress only an *identical* consecutive error, not any
+                    // trailing error. When the master/agent dies, two errors can
+                    // arrive: the raw transport error (returned as-is) and the
+                    // `handle_io` watchdog's connection.lost ("/restart") line.
+                    // Those are different messages and BOTH should show — the raw
+                    // one says what broke, the connection.lost one says how to
+                    // recover. Collapsing every consecutive error (the previous
+                    // behavior) could hide the /restart hint behind an unrelated
+                    // or in-flight error. Dedup only true duplicates so the same
+                    // line never stacks.
+                    let is_duplicate = matches!(
+                        tab.messages.last(),
+                        Some(ChatMessage::Error(prev)) if prev == &message
+                    );
+                    if !is_duplicate {
+                        tab.messages.push(ChatMessage::Error(message));
+                    }
                 }
             }
             AppEvent::ExecutionInfo(message) => {
@@ -11128,6 +11156,88 @@ mod tests {
         assert!(
             !app.tab_mut("test-tab").turn.is_idle(),
             "autofix prompt should be in-flight on the target tab"
+        );
+    }
+
+    /// F3: a transport death (helper `handle_io` watchdog) moves the UI out of
+    /// `Connected`, and its connection.lost ("/restart") line must survive even
+    /// when a different error (e.g. the in-flight prompt failure, "returned as
+    /// is") is already shown — only identical consecutive errors collapse, so
+    /// the recovery hint is never hidden.
+    #[test]
+    fn transport_loss_surfaces_restart_hint_even_behind_another_error() {
+        let lost = t!("connection.lost").into_owned();
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        // In-flight prompt fails first (raw), then the watchdog's connection.lost.
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            message: "prompt error: pipe closed".to_string(),
+        });
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            message: lost.clone(),
+        });
+        assert!(
+            matches!(app.state, ConnectionState::Failed(_)),
+            "a transport loss must move the UI out of Connected (F3)"
+        );
+        assert!(
+            app.current_tab()
+                .messages
+                .iter()
+                .any(|m| matches!(m, ChatMessage::Error(s) if *s == lost)),
+            "the connection.lost /restart hint must be shown, not hidden behind the raw error"
+        );
+        // An identical connection.lost arriving again must not stack a duplicate.
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            message: lost.clone(),
+        });
+        let n = app
+            .current_tab()
+            .messages
+            .iter()
+            .filter(|m| matches!(m, ChatMessage::Error(s) if *s == lost))
+            .count();
+        assert_eq!(n, 1, "identical connection.lost must not duplicate");
+    }
+
+    /// Auth failures must reach the sign-in screen, not get flattened to a dead
+    /// `connection.lost`. The over-pipe startup path passes errors through
+    /// verbatim (main.rs does no substring classification), so the auth marker
+    /// survives to this handler's auth check.
+    #[test]
+    fn auth_error_routes_to_signin_not_connection_lost() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            message: "new_session over master pipe failed: authentication required"
+                .to_string(),
+        });
+        assert_eq!(
+            app.mode,
+            AppMode::Setup,
+            "an auth failure must route to the sign-in screen"
+        );
+        assert!(
+            !matches!(app.state, ConnectionState::Failed(_)),
+            "an auth failure must not become a Failed connection-lost state"
+        );
+    }
+
+    /// F7: while `Connecting`, the activity frame must keep advancing on Tick so
+    /// the indicator animates and a cold start doesn't look frozen.
+    #[test]
+    fn connecting_state_advances_activity_frame_on_tick() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connecting("Initializing ACP...".to_string());
+        let before = app.activity_frame;
+        app.handle_event(AppEvent::Tick);
+        assert_ne!(
+            app.activity_frame, before,
+            "the connecting indicator must keep animating (F7)"
         );
     }
 

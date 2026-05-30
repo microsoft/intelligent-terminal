@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. per a mostrar/amagar el panell d'agent •
 # ── Estat de la connexió ────────────────────────────────────────────────────────
 connection.starting: "S'està iniciant l'agent..."
 connection.reconnecting: "S'està reconnectant..."
+connection.connecting_activity: "S'està connectant a l'agent…"
+connection.lost: "S'ha perdut la connexió amb l'agent. Escriviu /restart per tornar-vos a connectar."  # {Locked="/restart"}
 
 # ── Missatges del sistema (src/app.rs) ────────────────────────────────────────
 system.cancelled: "Cancel·lat."

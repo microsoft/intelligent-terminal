@@ -130,6 +130,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. להצגה/הסתרה של חלונית ה
 # ── מצב חיבור ────────────────────────────────────────────────────────
 connection.starting: "מפעיל את הסוכן..."
 connection.reconnecting: "מתחבר מחדש..."
+connection.connecting_activity: "מתחבר לסוכן…"
+connection.lost: "החיבור לסוכן אבד. הקלד /restart כדי להתחבר מחדש."  # {Locked="/restart"}
 
 # ── הודעות מערכת (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "בוטל."

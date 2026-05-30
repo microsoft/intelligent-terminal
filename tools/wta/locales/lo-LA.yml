@@ -119,6 +119,8 @@ layout.welcome_hint: "(Ctrl+Shift+. ສະແດງ/ເຊື່ອງແຜງ 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "ກຳລັງເລີ່ມ agent..."
 connection.reconnecting: "ກຳລັງເຊື່ອມຕໍ່ໃໝ່..."
+connection.connecting_activity: "ກຳລັງເຊື່ອມຕໍ່ຫາ agent…"
+connection.lost: "ການເຊື່ອມຕໍ່ຫາ agent ຂາດຫາຍໄປ. ພິມ /restart ເພື່ອເຊື່ອມຕໍ່ໃໝ່."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Cancelled."

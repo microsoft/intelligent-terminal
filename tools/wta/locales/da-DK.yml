@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. for at vise/skjule agentpanelet • Ctrl+S
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Starter agenten..."
 connection.reconnecting: "Genopretter forbindelse..."
+connection.connecting_activity: "Opretter forbindelse til agenten…"
+connection.lost: "Forbindelsen til agenten gik tabt. Skriv /restart for at oprette forbindelse igen."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Annulleret."

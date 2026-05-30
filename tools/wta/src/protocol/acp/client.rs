@@ -2161,15 +2161,35 @@ pub async fn run_acp_client_over_pipe(
     startup_probe.log("ACP client connection created (over pipe)");
 
     let io_probe = startup_probe.clone();
+    let io_event_tx = event_tx.clone();
     tokio::task::spawn_local(async move {
         io_probe.log("ACP handle_io task started (over pipe)");
-        if let Err(e) = handle_io.await {
-            // I/O loop ending with an error means the pipe to wta-master is
-            // dead — connection-fatal, log at warn (ships).
-            tracing::warn!(target: "helper", error = %format!("{:#}", e), "ACP I/O loop to master failed");
-        } else {
-            io_probe.log("ACP handle_io completed (over pipe)");
+        // The I/O loop only ends when the pipe to wta-master is gone. Crucially,
+        // a *killed* master resolves this as **Ok(())** (clean EOF on the pipe),
+        // not Err — confirmed from a real trace where `taskkill` on wta-master
+        // produced "ACP handle_io completed", after which the UI sat on
+        // `Connected` until the next prompt failed with "server shut down
+        // unexpectedly". So BOTH arms must signal connection loss; keying only on
+        // Err (the original F3 fix) would miss the common case.
+        match handle_io.await {
+            Err(e) => {
+                tracing::warn!(target: "helper", error = %format!("{:#}", e), "ACP I/O loop to master failed");
+            }
+            Ok(()) => {
+                io_probe.log("ACP handle_io completed (over pipe)");
+                tracing::warn!(target: "helper", "ACP I/O loop to master ended — pipe closed (master gone)");
+            }
         }
+        // Either way the transport is dead. Emit an AgentError so the state
+        // machine leaves `Connected`, the user sees a clear "connection lost —
+        // /restart" line, and autofix stops firing into a dead transport (F3).
+        // `session_id: None` → current (only) tab. A near-simultaneous in-flight
+        // prompt error is collapsed by the AgentError handler's dedup. On normal
+        // shutdown the helper process is being torn down, so this event is moot.
+        let _ = io_event_tx.send(AppEvent::AgentError {
+            session_id: None,
+            message: t!("connection.lost").into_owned(),
+        });
     });
 
     // Initialize — same as the child-process path. We use a 60s timeout

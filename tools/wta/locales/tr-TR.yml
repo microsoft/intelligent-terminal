@@ -130,6 +130,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. aracı panelini göster/gizle • Ctrl+Shi
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Aracı başlatılıyor..."
 connection.reconnecting: "Yeniden bağlanılıyor..."
+connection.connecting_activity: "Aracıya bağlanılıyor…"
+connection.lost: "Aracı bağlantısı kesildi. Yeniden bağlanmak için /restart yazın."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "İptal edildi."

@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. afișare/ascundere panou agent • Ctrl+Sh
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Se pornește agentul..."
 connection.reconnecting: "Reconectare..."
+connection.connecting_activity: "Se conectează la agent…"
+connection.lost: "Conexiunea la agent s-a pierdut. Tastați /restart pentru reconectare."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Anulat."

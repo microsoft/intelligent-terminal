@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. til að sýna/fela agentspjald • Ctrl+Sh
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Ræsi agent..."
 connection.reconnecting: "Endurtengi..."
+connection.connecting_activity: "Tengist agent…"
+connection.lost: "Tengingin við agent rofnaði. Sláðu inn /restart til að tengjast aftur."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Hætt við."

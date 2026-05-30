@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. para mostrar/ocultar o painel do agente �
 # ── Estado da conexão ────────────────────────────────────────────────────────────
 connection.starting: "Iniciando agente..."
 connection.reconnecting: "Reconectando..."
+connection.connecting_activity: "Conectando ao agente…"
+connection.lost: "A conexão com o agente foi perdida. Digite /restart para reconectar."  # {Locked="/restart"}
 
 # ── Mensagens do sistema (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Cancelado."

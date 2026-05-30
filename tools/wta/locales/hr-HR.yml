@@ -126,6 +126,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. prikaži/sakrij okno agenta • Ctrl+Shift
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Pokretanje agenta..."
 connection.reconnecting: "Ponovno povezivanje..."
+connection.connecting_activity: "Povezivanje s agentom…"
+connection.lost: "Veza s agentom je izgubljena. Upišite /restart za ponovno povezivanje."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Otkazano."

@@ -126,6 +126,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. zobraziť/skryť panel agenta • Ctrl+Shi
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Spúšťanie agenta..."
 connection.reconnecting: "Opätovné pripájanie..."
+connection.connecting_activity: "Pripájanie k agentovi…"
+connection.lost: "Pripojenie k agentovi sa stratilo. Zadaním /restart sa znova pripojíte."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Zrušené."

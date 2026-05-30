@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. i ddangos/cuddio'r paen asiant • Ctrl+Sh
 # ── Cyflwr cysylltiad ────────────────────────────────────────────────────────
 connection.starting: "Yn cychwyn yr asiant..."
 connection.reconnecting: "Yn ailgysylltu..."
+connection.connecting_activity: "Yn cysylltu â'r asiant…"
+connection.lost: "Collwyd y cysylltiad â'r asiant. Teipiwch /restart i ailgysylltu."  # {Locked="/restart"}
 
 # ── Negeseuon system (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Wedi'i ganslo."

@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. ki te whakaatu/huna i te papa agent • Ct
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "E timata ana i te agent..."
 connection.reconnecting: "E hono ano ana..."
+connection.connecting_activity: "E hono ana ki te agent…"
+connection.lost: "Kua ngaro te hononga ki te agent. Patohia /restart kia hono anō."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Kua whakakorea."

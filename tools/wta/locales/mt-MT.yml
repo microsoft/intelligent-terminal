@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. biex turi/taħbi l-pannell tal-aġent • 
 # ── Stat tal-konnessjoni ────────────────────────────────────────────────────────
 connection.starting: "L-aġent qed jibda..."
 connection.reconnecting: "Qed jerġa' jikkonnettja..."
+connection.connecting_activity: "Qed tikkonnettja mal-aġent…"
+connection.lost: "Il-konnessjoni mal-aġent intilfet. Ittajpja /restart biex terġa' tikkonnettja."  # {Locked="/restart"}
 
 # ── Messaġġi tas-sistema (src/app.rs) ────────────────────────────────────────
 system.cancelled: "Ikkanċellat."

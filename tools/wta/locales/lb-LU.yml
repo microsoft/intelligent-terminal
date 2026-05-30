@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. fir den Agent-Panell ze weisen/verstoppen 
 # ── Verbindungszoustand ────────────────────────────────────────────────────────
 connection.starting: "Agent gëtt gestart..."
 connection.reconnecting: "Gëtt nei verbonnen..."
+connection.connecting_activity: "Verbindung mam Agent gëtt hiergestallt…"
+connection.lost: "D'Verbindung mam Agent ass verluer gaangen. Tippt /restart fir nei ze verbannen."  # {Locked="/restart"}
 
 # ── System-Messagen (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Ofgebrach."

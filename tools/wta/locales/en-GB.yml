@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Shift+/ t
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Starting agent..."
 connection.reconnecting: "Reconnecting..."
+connection.connecting_activity: "Connecting to agent…"
+connection.lost: "Connection to the agent was lost. Type /restart to reconnect."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Cancelled."

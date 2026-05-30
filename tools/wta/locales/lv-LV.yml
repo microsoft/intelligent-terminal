@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. lai rādītu/paslēptu aģenta paneli • 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Startē aģentu..."
 connection.reconnecting: "Atkārtoti savienojas..."
+connection.connecting_activity: "Savienojas ar aģentu…"
+connection.lost: "Savienojums ar aģentu tika zaudēts. Ierakstiet /restart, lai izveidotu savienojumu atkārtoti."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Atcelts."

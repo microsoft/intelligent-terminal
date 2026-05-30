@@ -130,6 +130,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. एजंट पेन दाखवा/ल
 # ── कनेक्शन स्थिती ────────────────────────────────────────────────────────
 connection.starting: "एजंट सुरू होत आहे..."
 connection.reconnecting: "पुन्हा कनेक्ट होत आहे..."
+connection.connecting_activity: "एजंटशी कनेक्ट होत आहे…"
+connection.lost: "एजंटशी कनेक्शन तुटले. पुन्हा कनेक्ट करण्यासाठी /restart टाइप करा."  # {Locked="/restart"}
 
 # ── सिस्टम संदेश (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "रद्द केले."

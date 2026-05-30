@@ -121,6 +121,8 @@ layout.welcome_hint: "[(Ctrl+Shift+. ţö śĥöŵ/ĥïďé åğéñţ ṗåñé
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "[Ŝţåŕţïñğ åğéñţ...!!]"
 connection.reconnecting: "[Ŕéçöññéçţïñğ...!!]"
+connection.connecting_activity: "[Çöññéçţïñğ ţö åğéñţ…!!]"
+connection.lost: "[Çöññéçţïöñ ţö ţĥé åğéñţ ŵåś ĺöśţ. Ţýṗé /restart ţö ŕéçöññéçţ.!!]"  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "[Çåñçéĺĺéď.!!]"

@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. för att visa/dölja agentpanelen • Ctrl
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Startar agenten..."
 connection.reconnecting: "Återansluter..."
+connection.connecting_activity: "Ansluter till agenten…"
+connection.lost: "Anslutningen till agenten bröts. Skriv /restart för att återansluta."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Avbröts."

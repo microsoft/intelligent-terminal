@@ -115,6 +115,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. 顯示/隱藏智能體窗格 • Ctrl+Shif
 # ── 連線狀態 ────────────────────────────────────────────────────────────
 connection.starting: "正在啟動智能體..."
 connection.reconnecting: "正在重新連線..."
+connection.connecting_activity: "正在連線到智能體…"
+connection.lost: "與智能體的連線已中斷。輸入 /restart 以重新連線。"  # {Locked="/restart"}
 
 # ── 系統訊息 (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "已取消。"

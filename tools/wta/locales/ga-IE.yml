@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. chun pána gníomhaire a thaispeáint/a ch
 # ── Staid ceangail ────────────────────────────────────────────────────────
 connection.starting: "Gníomhaire á thosú..."
 connection.reconnecting: "Ag athcheangal..."
+connection.connecting_activity: "Ag ceangal leis an ngníomhaire…"
+connection.lost: "Cailleadh an ceangal leis an ngníomhaire. Clóscríobh /restart chun athcheangal."  # {Locked="/restart"}
 
 # ── Teachtaireachtaí córais (src/app.rs) ────────────────────────────────────
 system.cancelled: "Cealaithe."

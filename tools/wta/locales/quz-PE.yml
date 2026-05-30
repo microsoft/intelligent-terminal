@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. agente k'itita rikuchiy/pakay • Ctrl+Shi
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agente qallarichkan..."
 connection.reconnecting: "Watiqmanta t'inkichkan..."
+connection.connecting_activity: "Agente-man t'inkichkan…"
+connection.lost: "Agente-man t'inkiy chinkarun. Watiqmanta t'inkinapaq /restart qillqay."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Chinkachisqa."

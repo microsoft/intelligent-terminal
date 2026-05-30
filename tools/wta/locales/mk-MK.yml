@@ -126,6 +126,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. прикажи/скриј панел на 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Стартување на агентот..."
 connection.reconnecting: "Повторно поврзување..."
+connection.connecting_activity: "Поврзување со агентот…"
+connection.lost: "Врската со агентот беше изгубена. Внесете /restart за повторно поврзување."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Откажано."

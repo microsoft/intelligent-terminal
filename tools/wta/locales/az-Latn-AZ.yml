@@ -130,6 +130,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. agent panelini göstər/gizlə • Ctrl+Sh
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agent başladılır..."
 connection.reconnecting: "Yenidən qoşulur..."
+connection.connecting_activity: "Agentə qoşulur…"
+connection.lost: "Agentlə bağlantı itdi. Yenidən qoşulmaq üçün /restart yazın."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Ləğv edildi."

@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. para mostrar/ocultar o panel de axente •
 # ── Estado da conexión ────────────────────────────────────────────────────────
 connection.starting: "Iniciando o axente..."
 connection.reconnecting: "Reconectando..."
+connection.connecting_activity: "Conectando co axente…"
+connection.lost: "Perdeuse a conexión co axente. Escribe /restart para volver conectar."  # {Locked="/restart"}
 
 # ── Mensaxes do sistema (src/app.rs) ────────────────────────────────────────
 system.cancelled: "Cancelado."

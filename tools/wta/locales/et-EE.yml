@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. agendipaneeli kuvamiseks/peitmiseks • Ct
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agendi käivitamine..."
 connection.reconnecting: "Taasühendamine..."
+connection.connecting_activity: "Agendiga ühenduse loomine…"
+connection.lost: "Ühendus agendiga katkes. Uuesti ühendamiseks tippige /restart."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Tühistatud."

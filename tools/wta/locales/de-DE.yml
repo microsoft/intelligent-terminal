@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. zum Ein-/Ausblenden des Agentbereichs • 
 # ── Verbindungsstatus ────────────────────────────────────────────────────────────
 connection.starting: "Agent wird gestartet..."
 connection.reconnecting: "Verbindung wird wiederhergestellt..."
+connection.connecting_activity: "Verbindung mit dem Agenten wird hergestellt…"
+connection.lost: "Die Verbindung mit dem Agenten wurde getrennt. Geben Sie /restart ein, um die Verbindung wiederherzustellen."  # {Locked="/restart"}
 
 # ── Systemnachrichten (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Abgebrochen."

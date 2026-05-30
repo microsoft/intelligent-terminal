@@ -130,6 +130,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. نمایش/پنهان کردن پنل عا
 # ── وضعیت اتصال ────────────────────────────────────────────────────────
 connection.starting: "در حال راه‌اندازی عامل هوش مصنوعی..."
 connection.reconnecting: "در حال اتصال مجدد..."
+connection.connecting_activity: "در حال اتصال به عامل هوش مصنوعی…"
+connection.lost: "اتصال به عامل هوش مصنوعی قطع شد. برای اتصال مجدد، /restart را تایپ کنید."  # {Locked="/restart"}
 
 # ── پیام‌های سیستم (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "لغو شد."

@@ -119,6 +119,8 @@ layout.welcome_hint: "  (Ctrl+Shift+. để hiện/ẩn bảng tác nhân AI •
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Đang khởi động tác nhân AI..."
 connection.reconnecting: "Đang kết nối lại..."
+connection.connecting_activity: "Đang kết nối với tác nhân AI…"
+connection.lost: "Đã mất kết nối với tác nhân AI. Nhập /restart để kết nối lại."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Đã hủy."
