@@ -85,7 +85,9 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             // here for the same reason as WT_COM_CLSID: regenerate() builds
             // _initialEnv from the registry, not the process environment block.
             {
-                const auto wtaLogDir = ::IntelligentTerminal::LogDir();
+                // Versioned dir so hook-trace.log lands in `logs\<pkgver>\`
+                // alongside the Rust and C++ logs (not the flat root).
+                const auto wtaLogDir = ::IntelligentTerminal::LogDirVersioned();
                 if (!wtaLogDir.empty())
                     environment.as_map().insert_or_assign(L"WTA_HOOK_LOG_DIR", wtaLogDir.wstring());
             }

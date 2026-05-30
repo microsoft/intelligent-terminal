@@ -21,6 +21,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace IntelligentTerminal
 {
@@ -55,5 +56,44 @@ namespace IntelligentTerminal
             }
         }
         return base / L"IntelligentTerminal" / L"logs";
+    }
+
+    // The current process's package version as `"Major.Minor.Build.Revision"`
+    // (e.g. `"0.8.0.2"`), or an empty string when unpackaged. This is the
+    // shared per-version key — wta's Rust `logging::package_version()` reads
+    // the same value via `GetCurrentPackageId`, so the Rust processes, this
+    // C++ logger, and (through `WTA_HOOK_LOG_DIR`) the PowerShell hooks all
+    // resolve to the same `logs\<pkgver>\` folder.
+    inline std::wstring PackageVersionDir()
+    {
+        UINT32 length = 0;
+        if (GetCurrentPackageId(&length, nullptr) == ERROR_INSUFFICIENT_BUFFER && length != 0)
+        {
+            std::vector<BYTE> buffer(length);
+            if (GetCurrentPackageId(&length, buffer.data()) == ERROR_SUCCESS)
+            {
+                const auto id = reinterpret_cast<const PACKAGE_ID*>(buffer.data());
+                return std::to_wstring(id->version.Major) + L"." +
+                       std::to_wstring(id->version.Minor) + L"." +
+                       std::to_wstring(id->version.Build) + L"." +
+                       std::to_wstring(id->version.Revision);
+            }
+        }
+        return {};
+    }
+
+    // The per-version log directory: `LogDir()\<pkgver>` when packaged, or the
+    // bare `LogDir()` when unpackaged. Use this for the actual log writers
+    // (agent-pane logger, hook env injection). `LogDir()` itself stays the
+    // root so the bug-report zip can archive every version's logs at once.
+    inline std::filesystem::path LogDirVersioned()
+    {
+        auto root = LogDir();
+        if (root.empty())
+        {
+            return root;
+        }
+        const auto version = PackageVersionDir();
+        return version.empty() ? root : (root / version);
     }
 }

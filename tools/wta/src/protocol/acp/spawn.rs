@@ -84,9 +84,9 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     // package family name), so we hand it the already-resolved path. The hook
     // falls back to bare `%LOCALAPPDATA%\IntelligentTerminal\logs` when this
     // is unset (unpackaged dev runs, or an older wta that didn't set it).
-    if let Some(local_root) = crate::runtime_paths::intelligent_terminal_local_root() {
-        cmd.env("WTA_HOOK_LOG_DIR", local_root.join("logs"));
-    }
+    // Versioned dir (`logs\<pkgver>\`) via the shared resolver so the hooks'
+    // `hook-trace.log` lands alongside this build's Rust + C++ logs.
+    cmd.env("WTA_HOOK_LOG_DIR", crate::logging::log_dir());
 
     // Forward the user's locale to the agent process via standard POSIX
     // environment variables. Many agent CLIs (and the large language models

@@ -213,6 +213,35 @@ PowerShell `hook-trace.log`)不在删除范围。
 
 拼写:`reconstructable` → `can be reconstructed`(过 check-spelling)。
 
+### 改动 I:三方日志统一进 `logs\<pkgver>\` + C++ 日志改名(B + C)
+
+把 Rust / C++ / PowerShell 三方诊断日志统一收进**同一个按版本分的目录**,并给
+C++ 侧日志正名。
+
+**统一版本号来源 = 包版本(`GetCurrentPackageId`)。** Rust 和 C++ 在运行时各自
+调同一个 Win32 API 拿到完全相同的 `Major.Minor.Build.Revision`(如 `0.8.0.2`),
+无需 build 期同步;PS 不算版本,直接通过 `WTA_HOOK_LOG_DIR` 收到已解析好的版本目录。
+之前用的是 `CARGO_PKG_VERSION`(`0.1.0`,只 Rust 有),无法与 C++ 共享,故改用包版本。
+unpackaged(dev 裸跑 / 测试)无包标识 → 三方都回退到扁平目录。
+
+**落点:**
+- Rust:`logging::log_dir()`(新公开,`init` 与 `spawn.rs` 共用)→ `logs\<pkgver>\`。
+  `package_version()` 用 `GetCurrentPackageId`(windows-sys,已有 Appx feature);
+  `prune_old_version_dirs` 改为接收「当前版本目录名」而非硬编码 crate 版本。
+- C++ `IntelligentTerminalPaths.h`:新增 `PackageVersionDir()` + `LogDirVersioned()`;
+  `LogDir()`(根 `…\logs`)保持不变,仅供 bug-report 打包(递归收全部版本)。
+- C++ `AgentPaneLog.h`:写到 `LogDirVersioned()`,文件名 **`wta-agent-pane.log`
+  → `terminal-agent-pane.log`**(标明是 C++ Terminal 侧,不再挂误导性的 `wta-` 前缀)。
+- C++ `ConptyConnection.cpp`:`WTA_HOOK_LOG_DIR = LogDirVersioned()` → PS
+  `hook-trace.log` 自动进版本目录(PS 脚本无改动)。
+- C++ `AppActionHandlers.cpp`:bug-report 改用根 `LogDir()`,zip 整个 `logs\`
+  (全版本 + 扁平),`tar -C <logs.parent> logs` 行为不变。
+- 文档:CLAUDE.md / README / security-model 的文件名与路径更新。
+
+> 影响:日志目录名从 `logs\0.1.0\`(crate 版本)变为 `logs\<包版本>\`;
+> dev sideload 当前是 `0.8.0.2`。Rust 侧 `cargo build` + `logging::` 5 测全绿;
+> C++ 侧需 F5 验证(本环境无法编译 C++)。
+
 ### 改动 G:隐私与级别审计(全量 `tracing::` 复查)
 
 原则:**用户实际内容(prompt / agent 回复 / 终端输出 / 输入 / 标题 / 键入)

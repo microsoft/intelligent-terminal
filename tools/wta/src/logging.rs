@@ -41,21 +41,49 @@ pub(crate) fn default_filter_directive(debug_assertions: bool) -> &'static str {
     }
 }
 
-pub fn init(process: &str) {
-    let logs_root = crate::runtime_paths::intelligent_terminal_local_root()
+/// Root of the WTA log tree: `<local_root>/logs` (or a temp-dir fallback).
+fn logs_root() -> std::path::PathBuf {
+    crate::runtime_paths::intelligent_terminal_local_root()
         .map(|r| r.join("logs"))
-        .unwrap_or_else(|| std::env::temp_dir().join("IntelligentTerminal").join("logs"));
+        .unwrap_or_else(|| std::env::temp_dir().join("IntelligentTerminal").join("logs"))
+}
+
+/// The directory log files are written to: `<root>/logs/<pkgver>` when
+/// packaged, `<root>/logs` when unpackaged.
+///
+/// Shared so every writer agrees: `init` (this process's appender) and
+/// `spawn.rs` (which hands it to agent-CLI PowerShell hooks via
+/// `WTA_HOOK_LOG_DIR`) both resolve through here.
+pub(crate) fn log_dir() -> std::path::PathBuf {
+    let root = logs_root();
+    match package_version() {
+        Some(v) => root.join(v),
+        None => root,
+    }
+}
+
+pub fn init(process: &str) {
+    let logs_root = logs_root();
 
     // Per-version subdirectory: each build's logs are stored separately so an
     // upgrade keeps the last few versions and drops older ones wholesale. This
     // is also what makes cleanup lock-free — the live (current-version) dir is
     // never a deletion target, so no process can delete a file another is
     // still writing.
-    let log_dir = logs_root.join(env!("CARGO_PKG_VERSION"));
+    //
+    // The version key is the *package* version (GetCurrentPackageId), shared at
+    // runtime with the C++ agent-pane logger and the PowerShell hooks so all
+    // three writers land in the same `logs\<pkgver>\` folder. Unpackaged
+    // (dev-from-cargo / tests) has no package identity → logs go flat.
+    let version_dir = package_version();
+    let log_dir = match &version_dir {
+        Some(v) => logs_root.join(v),
+        None => logs_root.clone(),
+    };
     let _ = std::fs::create_dir_all(&log_dir);
 
     // Reclaim disk BEFORE opening our own appender.
-    housekeeping(&logs_root, &log_dir, process);
+    housekeeping(&logs_root, &log_dir, version_dir.as_deref(), process);
 
     // The short-lived `cli` process is the only high-frequency writer, so it
     // gets daily rotation with native retention; every other process writes a
@@ -97,6 +125,42 @@ pub fn init(process: &str) {
     let _ = GUARD.set(Mutex::new(Some(guard)));
 }
 
+/// The current process's package version as `"Major.Minor.Build.Revision"`
+/// (e.g. `"0.8.0.2"`), or `None` when the process has no package identity
+/// (unpackaged dev runs / tests).
+///
+/// This is the shared per-version-dir key: the C++ side reads the same value
+/// via `GetCurrentPackageId` in `IntelligentTerminalPaths.h`, so the Rust
+/// processes, the C++ agent-pane logger, and (through `WTA_HOOK_LOG_DIR`) the
+/// PowerShell hooks all resolve to the same `logs\<pkgver>\` folder.
+pub(crate) fn package_version() -> Option<String> {
+    use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+    use windows_sys::Win32::Storage::Packaging::Appx::{GetCurrentPackageId, PACKAGE_ID};
+
+    unsafe {
+        // First call sizes the buffer. A packaged process returns
+        // ERROR_INSUFFICIENT_BUFFER and fills `len`; unpackaged returns
+        // APPMODEL_ERROR_NO_PACKAGE (any other rc means "no usable identity").
+        let mut len: u32 = 0;
+        if GetCurrentPackageId(&mut len, std::ptr::null_mut()) != ERROR_INSUFFICIENT_BUFFER
+            || len == 0
+        {
+            return None;
+        }
+        // PACKAGE_ID holds a u64 + pointers, so back it with `u64` storage to
+        // guarantee 8-byte alignment (a `Vec<u8>` is only 1-aligned).
+        let words = (len as usize + 7) / 8;
+        let mut buf = vec![0u64; words.max(1)];
+        if GetCurrentPackageId(&mut len, buf.as_mut_ptr() as *mut u8) != 0 {
+            return None; // not ERROR_SUCCESS
+        }
+        let id = &*(buf.as_ptr() as *const PACKAGE_ID);
+        // PACKAGE_VERSION { Anonymous: union { Version: u64, Anonymous: { Revision, Build, Minor, Major } } }
+        let v = id.version.Anonymous.Anonymous;
+        Some(format!("{}.{}.{}.{}", v.Major, v.Minor, v.Build, v.Revision))
+    }
+}
+
 /// Flush and release the file appender. Must be called once before any
 /// `std::process::exit` and at the end of `main()`.
 ///
@@ -121,8 +185,12 @@ pub fn shutdown_flush() {
 ///    logs after an upgrade).
 /// 2. Reclaim per-PID helper logs older than [`HELPER_RETENTION_DAYS`] within
 ///    the current version's dir.
-fn housekeeping(logs_root: &Path, log_dir: &Path, process: &str) {
-    prune_old_version_dirs(logs_root);
+fn housekeeping(logs_root: &Path, log_dir: &Path, current_version: Option<&str>, process: &str) {
+    // Only meaningful when packaged (there are per-version subdirs to cap);
+    // unpackaged dev/tests write flat and have nothing to prune here.
+    if let Some(current) = current_version {
+        prune_old_version_dirs(logs_root, current);
+    }
     // Only long-lived / relevant processes scan for stale helper files; the
     // high-frequency `cli` path must not pay a directory scan on every call.
     if process == "main_master" || process.starts_with("main_helper") {
@@ -138,8 +206,7 @@ fn housekeeping(logs_root: &Path, log_dir: &Path, process: &str) {
 /// which is why this needs no inter-process lock even when several upgraded
 /// processes start at once: they only ever race to delete the same *dead*
 /// (old-version) dirs, and `remove_dir_all` is idempotent.
-fn prune_old_version_dirs(logs_root: &Path) {
-    let current = env!("CARGO_PKG_VERSION");
+fn prune_old_version_dirs(logs_root: &Path, current: &str) {
     let Ok(entries) = std::fs::read_dir(logs_root) else {
         return;
     };
@@ -149,8 +216,9 @@ fn prune_old_version_dirs(logs_root: &Path) {
     let mut others: Vec<(std::time::SystemTime, std::path::PathBuf)> = Vec::new();
     for entry in entries.flatten() {
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            // Leave flat files (e.g. the C++ `wta-agent-pane.log`, PowerShell
-            // `hook-trace.log`) alone — they're not ours and not versioned.
+            // Leave any flat files alone — only version subdirs are pruned.
+            // (Post-unification all writers use the versioned dir, but a stray
+            // pre-upgrade flat log must never be a deletion target here.)
             continue;
         }
         if entry.file_name().to_string_lossy() == current {
@@ -237,7 +305,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
-        let current = env!("CARGO_PKG_VERSION");
+        let current = "9.9.9.9";
         std::fs::create_dir_all(root.join(current)).unwrap();
         // Several older version dirs, each with a log file inside.
         for v in ["0.0.1", "0.0.2", "0.0.3", "0.0.4", "0.0.5"] {
@@ -246,14 +314,14 @@ mod tests {
             std::fs::write(d.join("wta-main.log"), "x").unwrap();
         }
         // A flat non-dir file must be left untouched.
-        std::fs::write(root.join("wta-agent-pane.log"), "cpp").unwrap();
+        std::fs::write(root.join("terminal-agent-pane.log"), "cpp").unwrap();
 
-        prune_old_version_dirs(&root);
+        prune_old_version_dirs(&root, current);
 
         // Current version always survives.
         assert!(root.join(current).exists());
         // Flat file untouched.
-        assert!(root.join("wta-agent-pane.log").exists());
+        assert!(root.join("terminal-agent-pane.log").exists());
         // Total retained version dirs capped at MAX_VERSION_DIRS.
         let dir_count = std::fs::read_dir(&root)
             .unwrap()

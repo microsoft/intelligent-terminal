@@ -1831,10 +1831,10 @@ namespace winrt::TerminalApp::implementation
             co_return;
         }
         const std::filesystem::path desktop{ desktopRaw.get() };
-        // Resolve the WTA log dir the same way the Rust side and the agent-pane
-        // logger do (package LocalCache\Local when packaged) so the bug report
-        // captures the logs that are actually being written.
-        const std::filesystem::path logsDir = _intelligentTerminalLogDir();
+        // Archive the WTA log *root* (`...\logs`), not the per-version subdir,
+        // so the bug report captures every version's logs plus the flat
+        // hook-trace.log — the whole `logs\` tree is tarred recursively below.
+        const std::filesystem::path logsDir = ::IntelligentTerminal::LogDir();
         if (logsDir.empty())
         {
             co_return;
