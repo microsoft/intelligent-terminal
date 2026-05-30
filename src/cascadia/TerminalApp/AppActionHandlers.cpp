@@ -1963,12 +1963,29 @@ namespace winrt::TerminalApp::implementation
 
         namespace SI = ::Microsoft::Terminal::ShellIntegration;
 
-        // Install for both PowerShell 7 and Windows PowerShell 5.1
-        const auto pwshResult = SI::InstallForTarget(SI::Target::Pwsh);
-        const auto wpResult = SI::InstallForTarget(SI::Target::WindowsPowerShell);
+        // Serialize against in-flight _ReconcileShellIntegration writes
+        // so the explicit dialog-driven install can't interleave its
+        // $PROFILE write with a concurrent reconcile uninstall and leave
+        // the file half-written. The explicit install path intentionally
+        // does NOT re-check _shellIntegrationDesiredEnabled: the user
+        // clicked an "Install" button, so the install must run; a later
+        // toggle-off reconcile will undo it cleanly under the same lock.
+        bool pwshAlready = false;
+        bool wpAlready = false;
+        bool pwshOk = false;
+        bool wpOk = false;
+        {
+            std::lock_guard<std::mutex> guard{ _shellIntegrationReconcileMutex };
+            const auto pwshResult = SI::InstallForTarget(SI::Target::Pwsh);
+            const auto wpResult = SI::InstallForTarget(SI::Target::WindowsPowerShell);
+            pwshAlready = pwshResult.alreadyInstalled;
+            wpAlready = wpResult.alreadyInstalled;
+            pwshOk = pwshResult.success;
+            wpOk = wpResult.success;
+        }
 
-        const bool allAlreadyInstalled = pwshResult.alreadyInstalled && wpResult.alreadyInstalled;
-        const bool anyFailure = !pwshResult.success || !wpResult.success;
+        const bool allAlreadyInstalled = pwshAlready && wpAlready;
+        const bool anyFailure = !pwshOk || !wpOk;
 
         co_await wil::resume_foreground(dispatcher);
         if (auto strong = weak.get())
