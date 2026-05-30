@@ -66,7 +66,7 @@ error text.* An earlier version classified errors into
 `connection.timeout`/`start_failed`/`lost` and even matched auth markers; that
 was removed because keyword matching on error strings is brittle (it silently
 swallowed auth failures). The clean signal (pipe state) drives the notification;
-the only remaining string match is the **pre-existing** `is_auth_error` (see
+the only remaining string match is the **preexisting** `is_auth_error` (see
 gaps below).
 
 ## 3. Verified live (dev build)
@@ -130,7 +130,7 @@ explicitly left for later:
   mid-turn (hop-2 protocol hang, not a process death), the helper spins until the
   user presses Esc. Distinct from a disconnect (which is detected) — this is a
   silent hang. Hard to inject (would need to SIGSTOP the agent process).
-- **F1 — agent CLI death = whole-master death (single-agent SPOF).** Master does
+- **F1 — agent CLI death = whole-master death (single-agent single point of failure).** Master does
   not respawn the agent CLI; it exits and takes every multiplexed helper down
   (`master/mod.rs` ~1335–1357, ~1565). Blast radius grows with tab count. → an
   in-master agent respawn + `cached_init_resp` replay would downgrade "agent
@@ -140,7 +140,7 @@ explicitly left for later:
   tell the agent CLI to release those sessions (no `session/cancel`). They linger
   in the agent CLI, unreachable.
 - **Residual `is_auth_error` string match.** Auth routing still relies on
-  substring-matching the error text (`app.rs` ~4064). It is **pre-existing**, not
+  substring-matching the error text (`app.rs` ~4064). It is **preexisting**, not
   added by this work, but it is the same fragility we removed elsewhere. The
   clean fix is for the ACP layer to surface a **typed** auth error rather than a
   string, so neither side has to pattern-match.
@@ -157,7 +157,7 @@ of PR #141:
 
 | # | Failure point | Status |
 |---|---|---|
-| F1 | agent CLI death → whole master down (SPOF) | **deferred** (§6) |
+| F1 | agent CLI death → whole master down (single point of failure) | **deferred** (§6) |
 | F2 | master crash → C++ lazy respawn, open panes zombie | **deferred** (§5) |
 | F3 | idle master death silently stayed `Connected` | **fixed** — watchdog both-arm emit |
 | F4 | in-flight prompt death | **fixed** — surfaces error + `connection.lost`, not verified live (§4) |

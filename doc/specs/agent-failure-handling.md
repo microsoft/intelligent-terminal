@@ -255,7 +255,7 @@ before dropping them.
 | Phase | Scope | Closes | Risk |
 |---|---|---|---|
 | **1** ✅ | Typed `AgentFailure` + classifier; replace `is_auth_error`; structured logging (`target=failure`). *Input-preservation split to Phase 1.5 — restoring the composer only when empty/per-tab has UX subtleties best done deliberately.* | §6 string-match, principle 4/7 | low — pure refactor, no new async |
-| **1.B** ✅ | Soft-stop axis: classify a *successful* turn's `StopReason` (`MaxTokens` / `MaxTurnRequests` / `Refusal`) into `SoftStopReason` and surface a `ChatMessage::System` line via the separate `AppEvent::AgentSoftStop` event — **off** the `AgentFailure` axis, session stays `Connected`. `EndTurn`/`Cancelled` classify to `None`. (`protocol/acp/softstop.rs`, `target=soft_stop` log, 89-locale strings.) | silent truncation/refusal | low — pure additive, no new async |
+| **1.B** ✅ | Soft-stop axis: classify a *successful* turn's `StopReason` (`MaxTokens` / `MaxTurnRequests` / `Refusal`) into `SoftStopReason` and surface a `ChatMessage::System` line via the separate `AppEvent::AgentSoftStop` event — **off** the `AgentFailure` axis, session stays `Connected`. `EndTurn`/`Cancelled` classify to `None`. (`protocol/acp/soft_stop.rs`, `target=soft_stop` log, 89-locale strings.) | silent truncation/refusal | low — pure additive, no new async |
 | **1.5** | Preserve in-flight prompt text on non-`Cancelled` failure (restore to composer only if empty) | principle 1 | low |
 | **2** | Prompt inactivity watchdog | §6 hung-agent | low — reuses cancel path |
 | **3** | Helper auto-reconnect + `Reconnecting` state/UI | §5 helper reconnect | med — new state machine, needs §5.3 to fully heal |
@@ -272,7 +272,7 @@ state:
 
 | # | Failure point | Target |
 |---|---|---|
-| F1 | agent CLI death → whole master down (SPOF) | mitigated via §5.3 respawn + Phase 3 reconnect (full in-master agent respawn still future) |
+| F1 | agent CLI death → whole master down (single point of failure) | mitigated via §5.3 respawn + Phase 3 reconnect (full in-master agent respawn still future) |
 | F2 | master crash → C++ lazy respawn, zombie panes | **fixed** §5.3 |
 | F3 | idle master death stayed `Connected` | **fixed** (existing watchdog) + typed `TransportLost` |
 | F4 | in-flight prompt death | **fixed** typed `TransportLost`, input preserved |

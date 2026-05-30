@@ -1,6 +1,6 @@
 use super::failure::{classify_anyhow, AgentFailure, HandshakeStage};
 use super::prompt;
-use super::softstop::SoftStopReason;
+use super::soft_stop::SoftStopReason;
 use acp::Agent as _;
 use agent_client_protocol as acp;
 use anyhow::Result;

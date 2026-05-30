@@ -1067,7 +1067,7 @@ pub enum AppEvent {
     /// `AgentMessageEnd` so the notice follows the agent's streamed content.
     AgentSoftStop {
         session_id: String,
-        reason: crate::protocol::acp::softstop::SoftStopReason,
+        reason: crate::protocol::acp::soft_stop::SoftStopReason,
     },
     /// Same-tab single-flight guard rejection. The user submitted a new
     /// prompt while the previous one is still in flight on the same tab.
@@ -4190,7 +4190,7 @@ impl App {
                 }
             }
             AppEvent::AgentSoftStop { session_id, reason } => {
-                use crate::protocol::acp::softstop::SoftStopReason;
+                use crate::protocol::acp::soft_stop::SoftStopReason;
                 // A soft stop is an *outcome*, not a connection failure — the
                 // session stays Connected and the turn already closed via
                 // AgentMessageEnd. We only append an informational line so the
@@ -11282,7 +11282,7 @@ mod tests {
     /// axis — the gap the client-level emit test cannot cover.
     #[test]
     fn soft_stop_appends_system_line_without_changing_state() {
-        use crate::protocol::acp::softstop::SoftStopReason;
+        use crate::protocol::acp::soft_stop::SoftStopReason;
         let mut app = test_app();
         app.state = ConnectionState::Connected;
 
@@ -11321,7 +11321,7 @@ mod tests {
     /// the user can tell truncation from a request-budget stop from a refusal.
     #[test]
     fn soft_stop_reasons_map_to_distinct_localized_lines() {
-        use crate::protocol::acp::softstop::SoftStopReason;
+        use crate::protocol::acp::soft_stop::SoftStopReason;
         for (reason, key) in [
             (SoftStopReason::MaxTokens, "system.stopped_max_tokens"),
             (
