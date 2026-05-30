@@ -206,9 +206,9 @@ entry points did).
 
 **Per-version storage + retention** (`logging::housekeeping`): each build's
 logs live in their own subdir, `logs\<pkgver>\` (the package version — see
-above). On the next start after an upgrade, `prune_old_version_dirs` keeps the
-**3** most-recently-used version dirs and deletes older ones wholesale. The
-current version's dir is never a deletion target, so cleanup is **lock-free and
+above). On every start, `prune_old_version_dirs` keeps **only the current
+version's dir** and deletes all other version dirs wholesale. The current
+version's dir is never a deletion target, so cleanup is **lock-free and
 concurrency-safe** (no process can delete a file another is writing). Within the
 current version's dir, per-PID helper logs older than **3 days** are pruned and
 `wta-cli.log` rotates daily keeping 3 days (`max_log_files`).

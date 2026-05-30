@@ -12,9 +12,6 @@ const HELPER_RETENTION_DAYS: u64 = 3;
 /// Daily-rotated `wta-cli.log` files kept by the appender; older ones are
 /// deleted natively by `tracing_appender` (`Builder::max_log_files`).
 const CLI_MAX_LOG_FILES: usize = 3;
-/// Keep the current build's per-version log dir plus this many older versions';
-/// anything beyond is deleted wholesale on the next start after an upgrade.
-const MAX_VERSION_DIRS: usize = 3;
 
 /// Holds the non-blocking appender's `WorkerGuard` for the whole process.
 ///
@@ -198,22 +195,18 @@ fn housekeeping(logs_root: &Path, log_dir: &Path, current_version: Option<&str>,
     }
 }
 
-/// Keep the most-recently-modified [`MAX_VERSION_DIRS`] per-version subdirs
-/// under `logs/`, deleting older ones whole.
+/// Delete every per-version log subdir under `logs/` except the current
+/// build's — we keep only the current version's logs, so on any start after an
+/// upgrade the prior versions' dirs are removed wholesale.
 ///
-/// The current build's dir is *always* kept (it was just created and is about
-/// to be written), so no live process's logs are ever a deletion target —
-/// which is why this needs no inter-process lock even when several upgraded
-/// processes start at once: they only ever race to delete the same *dead*
-/// (old-version) dirs, and `remove_dir_all` is idempotent.
+/// The current dir is never a deletion target, so this needs no inter-process
+/// lock even when several upgraded processes start at once: they only ever race
+/// to delete the same *dead* (old-version) dirs, and `remove_dir_all` is
+/// idempotent.
 fn prune_old_version_dirs(logs_root: &Path, current: &str) {
     let Ok(entries) = std::fs::read_dir(logs_root) else {
         return;
     };
-
-    let mut current_present = false;
-    // (mtime, path) for every non-current version subdir.
-    let mut others: Vec<(std::time::SystemTime, std::path::PathBuf)> = Vec::new();
     for entry in entries.flatten() {
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             // Leave any flat files alone — only version subdirs are pruned.
@@ -222,21 +215,9 @@ fn prune_old_version_dirs(logs_root: &Path, current: &str) {
             continue;
         }
         if entry.file_name().to_string_lossy() == current {
-            current_present = true;
-            continue;
+            continue; // never delete the live dir
         }
-        let mtime = entry
-            .metadata()
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::UNIX_EPOCH);
-        others.push((mtime, entry.path()));
-    }
-
-    // Budget the current dir as one of the kept slots.
-    let keep_others = MAX_VERSION_DIRS.saturating_sub(usize::from(current_present));
-    others.sort_by(|a, b| b.0.cmp(&a.0)); // newest first
-    for (_, path) in others.into_iter().skip(keep_others) {
-        let _ = std::fs::remove_dir_all(path);
+        let _ = std::fs::remove_dir_all(entry.path());
     }
 }
 
@@ -300,8 +281,8 @@ mod tests {
     }
 
     #[test]
-    fn prune_keeps_current_and_caps_version_dirs() {
-        let root = std::env::temp_dir().join(format!("wta-logdirs-{}", std::process::id()));
+    fn prune_keeps_only_current_version() {
+        let root = std::env::temp_dir().join(format!("wta-version-prune-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -318,17 +299,18 @@ mod tests {
 
         prune_old_version_dirs(&root, current);
 
-        // Current version always survives.
+        // Current version survives; flat file untouched; every older version gone.
         assert!(root.join(current).exists());
-        // Flat file untouched.
         assert!(root.join("terminal-agent-pane.log").exists());
-        // Total retained version dirs capped at MAX_VERSION_DIRS.
+        for v in ["0.0.1", "0.0.2", "0.0.3", "0.0.4", "0.0.5"] {
+            assert!(!root.join(v).exists(), "old version dir {v} must be deleted");
+        }
         let dir_count = std::fs::read_dir(&root)
             .unwrap()
             .flatten()
             .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
             .count();
-        assert_eq!(dir_count, MAX_VERSION_DIRS);
+        assert_eq!(dir_count, 1);
 
         let _ = std::fs::remove_dir_all(&root);
     }

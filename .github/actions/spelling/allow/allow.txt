@@ -152,6 +152,7 @@ parallelizable
 passthrough
 peekable
 perlw
+pkgver
 postmodern
 Powerline
 Prereq

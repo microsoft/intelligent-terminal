@@ -603,11 +603,17 @@ async fn main() -> Result<()> {
     // Legacy flags first (backward compat)
     if cli.test_pipe {
         let r = run_test_pipe().await;
+        if let Err(err) = &r {
+            tracing::error!(error = ?err, "wta exiting with error");
+        }
         logging::shutdown_flush();
         return r;
     }
     if cli.info {
         let r = run_info_mode().await;
+        if let Err(err) = &r {
+            tracing::error!(error = ?err, "wta exiting with error");
+        }
         logging::shutdown_flush();
         return r;
     }
@@ -1779,7 +1785,11 @@ pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Re
         None
     };
 
-    let result = run_acp_tui_mode(
+    // Connection failures to wta-master (pipe connect give-up, ACP initialize
+    // timeout/failure) are logged at their source (target=helper) and again in
+    // `run_acp_tui_mode`'s exit branch, which `process::exit`s rather than
+    // returning Err — so there's no point wrapping the result here.
+    run_acp_tui_mode(
         cli,
         shell_mgr,
         wt_connected,
@@ -1789,16 +1799,7 @@ pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Re
         wt_protocol_channel,
         Some(pipe_name),
     )
-    .await;
-
-    // Connection failures to wta-master (pipe connect give-up, ACP initialize
-    // timeout/failure) propagate up through here. Log with target=helper so
-    // the failure is greppable in wta-main_helper-{pid}.log, not just surfaced
-    // as the process's final Err.
-    if let Err(err) = &result {
-        tracing::error!(target: "helper", error = ?err, "wta-helper exiting with error");
-    }
-    result
+    .await
 }
 
 // ─── Existing functions (preserved) ─────────────────────────────────────────
@@ -1893,6 +1894,12 @@ async fn run_acp_tui_mode(
     terminal.show_cursor()?;
 
     if let Err(e) = result {
+        // This is the real exit point for a TUI/helper failure (connection
+        // failures to wta-master propagate up to here). `process::exit` below
+        // bypasses both `main()`'s catch-all and any caller's wrapper, so log
+        // it here before exiting — it lands in this process's log file
+        // (wta-main_helper-{pid}.log in helper mode).
+        tracing::error!(error = ?e, "wta TUI exiting with error");
         eprintln!("Error: {e:?}");
         // Flush the file appender — process::exit skips the guard drop.
         logging::shutdown_flush();
