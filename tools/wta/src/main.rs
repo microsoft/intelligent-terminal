@@ -9,6 +9,7 @@ mod agent_sessions;
 mod app;
 mod commands;
 mod coordinator;
+mod cwd_util;
 mod event;
 mod helper;
 mod history_loader;
@@ -2464,7 +2465,24 @@ async fn run_acp_app(
                                 .initial_load_cwd
                                 .as_deref()
                                 .map(str::to_string)
-                                .filter(|s| !s.is_empty());
+                                .filter(|s| !s.is_empty())
+                                .and_then(|s| {
+                                    // See cwd_util::validate_starting_directory:
+                                    // a stale --initial-load-cwd ultimately
+                                    // becomes a broken pane via WT's
+                                    // ConptyConnection. Drop it on failure
+                                    // and let the consumer fall back to the
+                                    // profile default.
+                                    let v = crate::cwd_util::validate_starting_directory(&s);
+                                    if v.is_none() {
+                                        tracing::warn!(
+                                            target: "acp_load_session",
+                                            cwd = %s,
+                                            "--initial-load-cwd refers to a missing directory; dropping from load_session params",
+                                        );
+                                    }
+                                    v
+                                });
                             tracing::info!(
                                 target: "acp_load_session",
                                 session_id = sid,
