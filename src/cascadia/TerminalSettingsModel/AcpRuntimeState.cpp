@@ -61,7 +61,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             _models = std::move(copy);
             _currentId = currentId;
         }
-        // Fire outside the lock to avoid re-entrant deadlocks if a handler
+        // Fire outside the lock to avoid reentrant deadlocks if a handler
         // calls back into AvailableModels()/CurrentModelId().
         _changedEvent(*this, nullptr);
     }

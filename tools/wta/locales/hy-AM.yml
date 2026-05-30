@@ -157,6 +157,18 @@ system.command_copied_retry: "Հրամանը պատճենվեց — գործար
 system.stopped_max_tokens: "Պատասխանը կտրվեց՝ հասնելով մոդելի ելքի սահմանաչափին։"
 system.stopped_max_turn_requests: "Գործակալը կանգ առավ՝ հասնելով այս հերթի հարցումների սահմանաչափին։"
 system.stopped_refusal: "Գործակալը հրաժարվեց շարունակել այս հարցումը։"
+system.agent_busy: "Agent-ը զբաղված է այս ներդիրում — սպասեք, մինչև ընթացիկ հուշումն ավարտվի։"
+system.resuming_session: "Վերսկսվում է աշխատաշրջանը %{session_id}..."
+system.unknown_command: "Անհայտ հրաման \"%{command}\" — ուղարկվել է որպես հուշում։ Ցանկի համար մուտքագրեք /help։"  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "Սպասեք, մինչև ընթացիկ հուշումն ավարտվի, կամ նախ օգտագործեք /stop։"  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "Չհաջողվեց կենտրոնանալ աշխատաշրջանի %{session_id} վրա. այն կարծես live է, բայց դեռ որևէ pane GUID կապված չէ։ Փորձեք մի փոքր հետո։"
+system.cannot_resume_no_load_session: "Չի կարող վերսկսվել agent pane-ում. %{agent}-ը չի հայտարարել ACP `loadSession` հնարավորության մասին։ Փոխարենը նոր terminal pane-ում վերսկսելու համար սեղմեք Enter (առանց Shift)։"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը. այս agent-ը չունի `--resume` ոճի flag։ Փոխարենը ACP-ի միջոցով agent pane-ի ներսում վերսկսելու համար սեղմեք Shift+Enter։"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "Չի կարող վերսկսվել աշխատաշրջանը %{session_id}. դրա աղբյուր agent-ը անհայտ է WTA-ի այս build-ին։"
+system.cannot_resume_phantom_via_flag: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը %{session_id}. այն սկսվել էր, բայց որևէ զրույց չէր կուտակել, ուստի %{agent}-ն ինքը կմերժեր վերսկսումը։ Հեռացվում է տողը։"
+system.cannot_resume_phantom_via_load: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը %{session_id}. այն սկսվել էր, բայց որևէ զրույց չէր կուտակել, ուստի %{agent}-ը կմերժեր բեռնումը։ Հեռացվում է տողը։"
+system.fallback.this_agent: "այս agent-ը"
+system.fallback.connected_agent: "միացված agent-ը"
 
 # ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────────
 output.no_windows: "Պատուհաններ չեն գտնվել։"
@@ -188,13 +200,11 @@ error.wtcli_wait_for_failed: "wtcli wait-for ձախողվեց՝ %{stderr}"
 # {Locked="CLI","PATH","wt-agent-hooks","wta","wta hooks status","%LOCALAPPDATA%","IntelligentTerminal","wta-install-hooks.log"} - tool/CLI names, env vars, log file names
 hooks.bundle_source: "փաթեթի աղբյուր՝ %{source}%{path_suffix}"
 hooks.cli_not_on_path: "✗ CLI-ն PATH-ում չէ"
-# Shown when a shell hook is successfully installed
 hooks.installed: "✓ տեղադրված է"
 # Badge in hooks-status table when the extension install path is outdated
 hooks.marketplace_path_stale: "⚠ marketplace ճանապարհը հնացած է"
 # Badge when the shell hook extension is installed but the user has disabled it
 hooks.installed_but_disabled: "⚠ տեղադրված է, բայց անջատված է"
-# Shown when a shell hook is not yet installed
 hooks.not_installed: "✗ տեղադրված չէ"
 hooks.uninstall_skipped: "բաց թողվեց (CLI-ն PATH-ում չէ)"
 hooks.install_attempted: "wt-agent-hooks տեղադրման փորձ կատարվեց (իդեմպոտենտ)։ Գործարկեք `wta hooks status` արդյունքը ստուգելու համար։ Հետագծման մատյան՝ %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
@@ -206,3 +216,6 @@ time.hour_singular: "1 ժամ առաջ"
 time.hours_other: "%{count} ժամ առաջ"
 time.day_singular: "1 օր առաջ"
 time.days_other: "%{count} օր առաջ"
+
+# ── Խորհրդատվության կատարում (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Ընտրությունը %{choice} ձախողվեց. %{error}"

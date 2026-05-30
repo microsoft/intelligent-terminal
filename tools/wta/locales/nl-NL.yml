@@ -130,6 +130,18 @@ system.command_copied_retry: "Opdracht gekopieerd — voer deze uit in een ander
 system.stopped_max_tokens: "Het antwoord is afgekapt nadat de uitvoerlimiet van het model was bereikt."
 system.stopped_max_turn_requests: "De agent is gestopt nadat de aanvraaglimiet voor deze beurt was bereikt."
 system.stopped_refusal: "De agent heeft geweigerd door te gaan met deze aanvraag."
+system.agent_busy: "De agent is bezig op dit tabblad — wacht tot de huidige prompt is voltooid."
+system.resuming_session: "Sessie %{session_id} wordt hervat..."
+system.unknown_command: "Onbekende opdracht \"%{command}\" — verzonden als prompt. Typ /help voor de lijst."
+system.busy_use_stop: "Wacht tot de huidige prompt is voltooid, of gebruik eerst /stop."
+system.cannot_focus_session: "Kan sessie %{session_id} niet focussen: deze lijkt live, maar er is nog geen deelvenster-GUID gekoppeld. Probeer het zo opnieuw."
+system.cannot_resume_no_load_session: "Kan niet hervatten in agentdeelvenster: %{agent} heeft de ACP `loadSession`-mogelijkheid niet aangekondigd. Druk op Enter (zonder Shift) om in plaats daarvan te hervatten in een nieuw terminaldeelvenster."
+system.cannot_resume_no_resume_flag: "Kan %{agent}-sessie niet hervatten: deze agent heeft geen vlag in de stijl `--resume`. Druk op Shift+Enter om in plaats daarvan via ACP te proberen te hervatten binnen het agentdeelvenster."
+system.cannot_resume_unknown_agent: "Kan sessie %{session_id} niet hervatten: de bronagent is onbekend voor deze build."
+system.cannot_resume_phantom_via_flag: "Kan %{agent}-sessie %{session_id} niet hervatten: deze is gestart maar heeft nooit een gesprek opgebouwd, waardoor %{agent} zelf het hervatten zou weigeren. Rij wordt verwijderd."
+system.cannot_resume_phantom_via_load: "Kan %{agent}-sessie %{session_id} niet hervatten: deze is gestart maar heeft nooit een gesprek opgebouwd, waardoor %{agent} het laden zou weigeren. Rij wordt verwijderd."
+system.fallback.this_agent: "deze agent"
+system.fallback.connected_agent: "de verbonden agent"
 
 # ── Runtime CLI-uitvoer (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Geen vensters gevonden."
@@ -186,3 +198,6 @@ commands.new.summary: "Een nieuwe ACP-sessie starten (geschiedenis verwijderen)"
 commands.restart.summary: "Agent opnieuw starten"
 commands.stop.summary: "De actieve prompt annuleren"
 commands.sessions.summary: "De selector voor eerdere sessies openen (Ctrl+Shift+/)"
+
+# ── Aanbeveling uitvoeren (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Keuze %{choice} is mislukt: %{error}"

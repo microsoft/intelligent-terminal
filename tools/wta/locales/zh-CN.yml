@@ -126,6 +126,18 @@ system.command_copied_retry: "命令已复制 — 在另一个终端中运行，
 system.stopped_max_tokens: "达到模型的输出上限后，回复被截断。"
 system.stopped_max_turn_requests: "达到本轮的请求上限后，代理已停止。"
 system.stopped_refusal: "代理拒绝继续处理此请求。"
+system.agent_busy: "智能体正忙于此标签页 — 请等待当前提示完成。"
+system.resuming_session: "正在恢复会话 %{session_id}..."
+system.unknown_command: "未知命令 \"%{command}\" — 已作为提示发送。键入 /help 查看列表。"  # {Locked="/help"}
+system.busy_use_stop: "请等待当前提示完成，或先执行 /stop。"  # {Locked="/stop"}
+system.cannot_focus_session: "无法聚焦会话 %{session_id}：它看起来处于活动状态，但尚未绑定窗格 GUID。请稍后重试。"
+system.cannot_resume_no_load_session: "无法在智能体窗格中恢复：%{agent} 未公布 ACP `loadSession` 功能。请改按 Enter（不按 Shift）以在新的终端窗格中恢复。"  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "无法恢复 %{agent} 会话：此智能体没有 `--resume` 样式的标志。请按 Shift+Enter，改为尝试通过 ACP 在智能体窗格内恢复。"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "无法恢复会话 %{session_id}：此版本无法识别其源智能体。"
+system.cannot_resume_phantom_via_flag: "无法恢复 %{agent} 会话 %{session_id}：它已启动但从未积累任何对话，因此 %{agent} 本身会拒绝恢复。正在移除此行。"
+system.cannot_resume_phantom_via_load: "无法恢复 %{agent} 会话 %{session_id}：它已启动但从未积累任何对话，因此 %{agent} 会拒绝加载。正在移除此行。"
+system.fallback.this_agent: "此智能体"
+system.fallback.connected_agent: "已连接的智能体"
 
 # ── 运行时 CLI 输出 (src/main.rs) ────────────────────────────────────────
 output.no_windows: "未找到窗口。"
@@ -181,3 +193,6 @@ commands.new.summary: "启动新的 ACP 会话（清空历史记录）"
 commands.restart.summary: "重启智能体"
 commands.stop.summary: "取消进行中的提示"
 commands.sessions.summary: "打开历史会话选择器（Ctrl+Shift+/）"
+
+# ── 建议执行 (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "选项 %{choice} 执行失败：%{error}"

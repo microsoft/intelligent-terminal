@@ -137,6 +137,18 @@ system.command_copied_retry: "Naredba je kopirana — pokrenite je u drugom term
 system.stopped_max_tokens: "Odgovor je prekinut nakon dostizanja izlaznog ograničenja modela."
 system.stopped_max_turn_requests: "Agent se zaustavio nakon dostizanja ograničenja zahtjeva za ovaj potez."
 system.stopped_refusal: "Agent je odbio nastaviti s ovim zahtjevom."
+system.agent_busy: "Agent je zauzet na ovoj kartici — sačekajte da se trenutni upit završi."
+system.resuming_session: "Nastavlja se sesija %{session_id}..."
+system.unknown_command: "Nepoznata naredba \"%{command}\" — poslana kao upit. Upišite /help za spisak."  # {Locked="/help"}
+system.busy_use_stop: "Sačekajte da se trenutni upit završi ili prvo upotrijebite /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nije moguće fokusirati sesiju %{session_id}: izgleda aktivna, ali još nije povezan GUID panela. Pokušajte ponovo za trenutak."
+system.cannot_resume_no_load_session: "Nije moguće nastaviti u agentskom panelu: %{agent} nije oglasio mogućnost ACP `loadSession`. Pritisnite Enter (bez Shift) da umjesto toga nastavite u novom terminalskom panelu."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nije moguće nastaviti sesiju agenta %{agent}: ovaj agent nema zastavicu u stilu `--resume`. Pritisnite Shift+Enter da pokušate nastaviti unutar agentskog panela putem ACP-a."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nije moguće nastaviti sesiju %{session_id}: njen izvorni agent nije poznat ovoj verziji WTA."
+system.cannot_resume_phantom_via_flag: "Nije moguće nastaviti sesiju agenta %{agent} %{session_id}: pokrenuta je, ali nikada nije prikupila razgovor, pa bi sam %{agent} odbio nastavak. Red se uklanja."
+system.cannot_resume_phantom_via_load: "Nije moguće nastaviti sesiju agenta %{agent} %{session_id}: pokrenuta je, ali nikada nije prikupila razgovor, pa bi %{agent} odbio učitavanje. Red se uklanja."
+system.fallback.this_agent: "ovaj agent"
+system.fallback.connected_agent: "povezani agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nisu pronađeni prozori."
@@ -186,3 +198,6 @@ time.hour_singular: "prije 1 sat"
 time.hours_other: "prije %{count} sati"
 time.day_singular: "prije 1 dan"
 time.days_other: "prije %{count} dana"
+
+# ── Izvršavanje preporuke (src/coordinator.rs) ──────────────────────────────
+system.choice_execution_failed: "Izbor %{choice} nije uspio: %{error}"

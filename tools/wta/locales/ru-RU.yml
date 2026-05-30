@@ -137,6 +137,18 @@ system.command_copied_retry: "Команда скопирована — выпо
 system.stopped_max_tokens: "Ответ был обрезан после достижения предела вывода модели."
 system.stopped_max_turn_requests: "Агент остановился после достижения лимита запросов для этого хода."
 system.stopped_refusal: "Агент отказался продолжать выполнение этого запроса."
+system.agent_busy: "Агент занят на этой вкладке — дождитесь завершения текущего запроса."
+system.resuming_session: "Возобновление сеанса %{session_id}..."
+system.unknown_command: "Неизвестная команда \"%{command}\" — отправлена как запрос. Введите /help, чтобы увидеть список."  # {Locked="/help"}
+system.busy_use_stop: "Дождитесь завершения текущего запроса или сначала используйте /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Не удается сфокусировать сеанс %{session_id}: он выглядит активным, но GUID панели еще не привязан. Повторите попытку через несколько секунд."
+system.cannot_resume_no_load_session: "Не удается возобновить в панели агента: %{agent} не объявил возможность ACP `loadSession`. Нажмите Enter (без Shift), чтобы вместо этого возобновить в новой панели терминала."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Не удается возобновить сеанс %{agent}: у этого агента нет флага в стиле `--resume`. Нажмите Shift+Enter, чтобы попробовать возобновить внутри панели агента через ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Не удается возобновить сеанс %{session_id}: его исходный агент неизвестен этой сборке WTA."
+system.cannot_resume_phantom_via_flag: "Не удается возобновить сеанс %{agent} %{session_id}: он был запущен, но в нем не накопилось ни одного разговора, поэтому сам %{agent} отклонил бы возобновление. Строка удаляется."
+system.cannot_resume_phantom_via_load: "Не удается возобновить сеанс %{agent} %{session_id}: он был запущен, но в нем не накопилось ни одного разговора, поэтому %{agent} отклонил бы загрузку. Строка удаляется."
+system.fallback.this_agent: "этот агент"
+system.fallback.connected_agent: "подключенный агент"
 
 # ── Вывод CLI времени выполнения (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Окна не найдены."
@@ -186,3 +198,6 @@ time.hour_singular: "1 час назад"
 time.hours_other: "%{count} часов назад"
 time.day_singular: "1 день назад"
 time.days_other: "%{count} дней назад"
+
+# ── Выполнение рекомендации (src/coordinator.rs) ────────────────────────────
+system.choice_execution_failed: "Не удалось выполнить выбор %{choice}: %{error}"

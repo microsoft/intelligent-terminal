@@ -1956,7 +1956,7 @@ fn maybe_stage_bundle_for_claude(source: &Path) -> Option<PathBuf> {
 }
 
 /// Recreate `dst` as a fresh, byte-identical copy of `src`. Removes any
-/// pre-existing `dst` first.
+/// preexisting `dst` first.
 fn restage_bundle_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
     if dst.exists() {
         fs::remove_dir_all(dst)?;
@@ -3184,7 +3184,7 @@ mod tests {
         );
     }
 
-    /// `restage_bundle_dir` removes a pre-existing staging directory
+    /// `restage_bundle_dir` removes a preexisting staging directory
     /// before re-mirroring `src`. Verifies that stale files from a prior
     /// MSIX version (e.g. an old plugin.json) don't survive the
     /// re-staging.
@@ -3950,7 +3950,7 @@ Registered marketplaces:
         // because the dev tree IS resolvable — we just check that the
         // env path didn't trip the false-positive).
         let info = bundle::resolve_source();
-        assert_ne!(info.kind, "env", "non-existent env path must not match");
+        assert_ne!(info.kind, "env", "nonexistent env path must not match");
 
         // Restore.
         unsafe {

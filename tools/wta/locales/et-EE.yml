@@ -130,6 +130,18 @@ system.command_copied_retry: "Käsk kopeeritud — käivitage see teises termina
 system.stopped_max_tokens: "Vastus katkestati pärast mudeli väljundpiiri saavutamist."
 system.stopped_max_turn_requests: "Agent peatus pärast selle vooru päringupiiri saavutamist."
 system.stopped_refusal: "Agent keeldus selle päringuga jätkamast."
+system.agent_busy: "Agent on sellel vahekaardil hõivatud — oodake, kuni praegune viip lõpeb."
+system.resuming_session: "Seansi %{session_id} jätkamine..."
+system.unknown_command: "Tundmatu käsk \"%{command}\" — saadeti viibana. Loendi jaoks tippige /help."  # {Locked="/help"}
+system.busy_use_stop: "Oodake, kuni praegune viip lõpeb, või kasutage esmalt /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Seanssi %{session_id} ei saa fookusesse võtta: see näib olevat aktiivne, kuid ühtegi paani GUID-i pole veel seotud. Proovige hetke pärast uuesti."
+system.cannot_resume_no_load_session: "Agendipaanil ei saa jätkata: %{agent} ei reklaaminud ACP `loadSession` võimekust. Vajutage Enter (ilma Shiftita), et jätkata selle asemel uuel terminalipaanil."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "%{agent} seanssi ei saa jätkata: sellel agendil pole `--resume`-stiilis lippu. Vajutage Shift+Enter, et proovida jätkamist agendipaani sees ACP kaudu."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Seanssi %{session_id} ei saa jätkata: selle lähteagent on sellele WTA järgule tundmatu."
+system.cannot_resume_phantom_via_flag: "%{agent} seanssi %{session_id} ei saa jätkata: see käivitati, kuid vestlust ei kogunenud, seega lükkaks %{agent} ise jätkamise tagasi. Rida eemaldatakse."
+system.cannot_resume_phantom_via_load: "%{agent} seanssi %{session_id} ei saa jätkata: see käivitati, kuid vestlust ei kogunenud, seega lükkaks %{agent} laadimise tagasi. Rida eemaldatakse."
+system.fallback.this_agent: "see agent"
+system.fallback.connected_agent: "ühendatud agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Aknaid ei leitud."
@@ -176,3 +188,6 @@ time.hour_singular: "%{count} tund tagasi"
 time.hours_other: "%{count} tundi tagasi"
 time.day_singular: "%{count} päev tagasi"
 time.days_other: "%{count} päeva tagasi"
+
+# ── Soovituse täitmine (src/coordinator.rs) ─────────────────────────────────
+system.choice_execution_failed: "Valik %{choice} nurjus: %{error}"

@@ -141,6 +141,18 @@ system.command_copied_retry: "कमाण्ड प्रतिलिपि ग
 system.stopped_max_tokens: "मोडेलको आउटपुट सीमामा पुगेपछि प्रतिक्रिया काटियो।"
 system.stopped_max_turn_requests: "यस पटकको अनुरोध सीमामा पुगेपछि एजेन्ट रोकियो।"
 system.stopped_refusal: "एजेन्टले यो अनुरोध जारी राख्न अस्वीकार गर्‍यो।"
+system.agent_busy: "यो ट्याबमा Agent व्यस्त छ — हालको प्रम्प्ट समाप्त नभएसम्म पर्खनुहोस्।"
+system.resuming_session: "सत्र %{session_id} पुनः सुरु गर्दै..."
+system.unknown_command: "अज्ञात आदेश \"%{command}\" — प्रम्प्टका रूपमा पठाइयो। सूचीका लागि /help टाइप गर्नुहोस्।"  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "हालको प्रम्प्ट समाप्त नभएसम्म पर्खनुहोस्, वा पहिले /stop गर्नुहोस्।"  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "सत्र %{session_id} मा फोकस गर्न सकिँदैन: यो live देखिन्छ तर अझै कुनै pane GUID बाइन्ड भएको छैन। केही बेरमा फेरि प्रयास गर्नुहोस्।"
+system.cannot_resume_no_load_session: "agent pane मा पुनः सुरु गर्न सकिँदैन: %{agent} ले ACP `loadSession` क्षमता घोषणा गरेको छैन। यसको सट्टा नयाँ terminal pane मा पुनः सुरु गर्न Enter (Shift बिना) थिच्नुहोस्।"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} सत्र पुनः सुरु गर्न सकिँदैन: यो agent सँग `--resume` शैलीको flag छैन। यसको सट्टा ACP मार्फत agent pane भित्र पुनः सुरु गर्ने प्रयास गर्न Shift+Enter थिच्नुहोस्।"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "सत्र %{session_id} पुनः सुरु गर्न सकिँदैन: यसको स्रोत agent यो WTA build लाई अज्ञात छ।"
+system.cannot_resume_phantom_via_flag: "%{agent} सत्र %{session_id} पुनः सुरु गर्न सकिँदैन: यो सुरु भएको थियो तर कुनै कुराकानी संकलन भएको थिएन, त्यसैले %{agent} स्वयंले resume अस्वीकार गर्नेछ। पङ्क्ति हटाइँदैछ।"
+system.cannot_resume_phantom_via_load: "%{agent} सत्र %{session_id} पुनः सुरु गर्न सकिँदैन: यो सुरु भएको थियो तर कुनै कुराकानी संकलन भएको थिएन, त्यसैले %{agent} ले load अस्वीकार गर्नेछ। पङ्क्ति हटाइँदैछ।"
+system.fallback.this_agent: "यो agent"
+system.fallback.connected_agent: "जोडिएको agent"
 
 # ── रनटाइम CLI आउटपुट (src/main.rs) ────────────────────────────────────────
 output.no_windows: "कुनै विन्डो भेटिएन।"
@@ -187,3 +199,6 @@ time.hour_singular: "%{count} घण्टाअघि"
 time.hours_other: "%{count} घण्टाअघि"
 time.day_singular: "%{count} दिनअघि"
 time.days_other: "%{count} दिनअघि"
+
+# ── सिफारिस कार्यान्वयन (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "छनोट %{choice} असफल भयो: %{error}"

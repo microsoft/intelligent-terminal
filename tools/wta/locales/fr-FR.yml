@@ -130,6 +130,18 @@ system.command_copied_retry: "Commande copiée — exécutez-la dans un autre te
 system.stopped_max_tokens: "La réponse a été tronquée après avoir atteint la limite de sortie du modèle."
 system.stopped_max_turn_requests: "L'agent s'est arrêté après avoir atteint sa limite de requêtes pour ce tour."
 system.stopped_refusal: "L'agent a refusé de poursuivre cette demande."
+system.agent_busy: "L’agent est occupé dans cet onglet — attendez que l’invite actuelle se termine."
+system.resuming_session: "Reprise de la session %{session_id}..."
+system.unknown_command: "Commande inconnue \"%{command}\" — envoyée comme invite. Tapez /help pour afficher la liste."
+system.busy_use_stop: "Attendez que l’invite actuelle se termine, ou utilisez d’abord /stop."
+system.cannot_focus_session: "Impossible de cibler la session %{session_id} : elle semble active, mais aucun GUID de volet n’est encore lié. Réessayez dans un instant."
+system.cannot_resume_no_load_session: "Impossible de reprendre dans le volet d’agent : %{agent} n’a pas annoncé la capacité ACP `loadSession`. Appuyez sur Enter (sans Shift) pour reprendre plutôt dans un nouveau volet de terminal."
+system.cannot_resume_no_resume_flag: "Impossible de reprendre la session %{agent} : cet agent n’a pas d’indicateur de type `--resume`. Appuyez sur Shift+Enter pour tenter une reprise dans le volet d’agent via ACP."
+system.cannot_resume_unknown_agent: "Impossible de reprendre la session %{session_id} : son agent source est inconnu de cette version."
+system.cannot_resume_phantom_via_flag: "Impossible de reprendre la session %{agent} %{session_id} : elle a été démarrée, mais n’a jamais accumulé de conversation ; %{agent} rejetterait donc lui-même la reprise. Suppression de la ligne."
+system.cannot_resume_phantom_via_load: "Impossible de reprendre la session %{agent} %{session_id} : elle a été démarrée, mais n’a jamais accumulé de conversation ; %{agent} rejetterait donc le chargement. Suppression de la ligne."
+system.fallback.this_agent: "cet agent"
+system.fallback.connected_agent: "l’agent connecté"
 
 # ── Sortie CLI d'exécution (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Aucune fenêtre trouvée."
@@ -186,3 +198,6 @@ commands.new.summary: "Démarrer une nouvelle session ACP (efface l’historique
 commands.restart.summary: "Redémarrer l’agent"
 commands.stop.summary: "Annuler la requête en cours"
 commands.sessions.summary: "Ouvrir le sélecteur de sessions précédentes (Ctrl+Shift+/)"
+
+# ── Exécution des recommandations (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Le choix %{choice} a échoué : %{error}"

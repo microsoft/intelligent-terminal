@@ -3,6 +3,14 @@
 
 # Rust build output (including parallel CARGO_TARGET_DIR variants like target-hotfix/)
 tools/wta/target*/
+installer/bootstrap/target/
+
+# .NET SDK cache (e.g. from a local dotnet-install bootstrap that should not ship in the repo)
+/.dotnet/
+
+# Copilot CLI version-probe scratch output
+/copilot-version.err
+/copilot-version.out
 
 # WTA diagram / rendered-image artifacts (regeneratable, not needed for build)
 tools/wta/*.excalidraw

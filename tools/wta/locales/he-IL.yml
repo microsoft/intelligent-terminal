@@ -141,6 +141,18 @@ system.command_copied_retry: "הפקודה הועתקה — הפעל אותה ב
 system.stopped_max_tokens: "התגובה נקטעה לאחר שהגיעה למגבלת הפלט של המודל."
 system.stopped_max_turn_requests: "הסוכן נעצר לאחר שהגיע למגבלת הבקשות שלו לתור זה."
 system.stopped_refusal: "הסוכן סירב להמשיך בבקשה זו."
+system.agent_busy: "הסוכן עסוק בכרטיסיה זו — המתן עד שההנחיה הנוכחית תסתיים."
+system.resuming_session: "מחדש את ההפעלה %{session_id}..."
+system.unknown_command: "פקודה לא ידועה \"%{command}\" — נשלחה כהנחיה. הקלד /help לקבלת הרשימה."  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "המתן עד שההנחיה הנוכחית תסתיים, או הפעל תחילה /stop."  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "לא ניתן להתמקד בהפעלה %{session_id}: היא נראית פעילה, אך עדיין לא משויך GUID של חלונית. נסה שוב בעוד רגע."
+system.cannot_resume_no_load_session: "לא ניתן לחדש בחלונית הסוכן: %{agent} לא פרסם את יכולת ACP `loadSession`. הקש Enter (ללא Shift) כדי לחדש בחלונית מסוף חדשה במקום זאת."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "לא ניתן לחדש את ההפעלה של %{agent}: לסוכן זה אין דגל בסגנון `--resume`. הקש Shift+Enter כדי לנסות לחדש בתוך חלונית הסוכן דרך ACP במקום זאת."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "לא ניתן לחדש את ההפעלה %{session_id}: סוכן המקור שלה אינו מוכר לבנייה זו של WTA."
+system.cannot_resume_phantom_via_flag: "לא ניתן לחדש את ההפעלה %{agent} %{session_id}: היא הופעלה אך מעולם לא צברה שיחה כלשהי, ולכן %{agent} עצמו ידחה את החידוש. מסיר את השורה."
+system.cannot_resume_phantom_via_load: "לא ניתן לחדש את ההפעלה %{agent} %{session_id}: היא הופעלה אך מעולם לא צברה שיחה כלשהי, ולכן %{agent} ידחה את הטעינה. מסיר את השורה."
+system.fallback.this_agent: "סוכן זה"
+system.fallback.connected_agent: "הסוכן המחובר"
 
 # ── פלט CLI בזמן ריצה (src/main.rs) ────────────────────────────────────────
 output.no_windows: "לא נמצאו חלונות."
@@ -186,3 +198,6 @@ time.hour_singular: "לפני שעה אחת"
 time.hours_other: "לפני %{count} שעות"
 time.day_singular: "לפני יום אחד"
 time.days_other: "לפני %{count} ימים"
+
+# ── ביצוע המלצה (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "הבחירה %{choice} נכשלה: %{error}"

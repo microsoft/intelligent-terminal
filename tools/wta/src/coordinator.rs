@@ -327,10 +327,15 @@ pub async fn run_recommendation_executor(
         match execute_choice(&exec.choice, exec.insert_only, &shell_mgr, &delegate_agents, &event_tx).await {
             Ok(()) => {}
             Err(err) => {
-                let _ = event_tx.send(AppEvent::SystemMessage(format!(
-                    "Choice {} failed: {:#}",
-                    exec.choice.choice, err
-                )));
+                let err_str = format!("{:#}", err);
+                let _ = event_tx.send(AppEvent::SystemMessage(
+                    t!(
+                        "system.choice_execution_failed",
+                        choice = exec.choice.choice,
+                        error = err_str.as_str()
+                    )
+                    .into_owned(),
+                ));
             }
         }
     }

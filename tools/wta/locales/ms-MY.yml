@@ -130,6 +130,18 @@ system.command_copied_retry: "Arahan disalin — jalankan dalam terminal lain, k
 system.stopped_max_tokens: "Respons telah dipotong selepas mencapai had output model."
 system.stopped_max_turn_requests: "Ejen berhenti selepas mencapai had permintaannya untuk giliran ini."
 system.stopped_refusal: "Ejen enggan meneruskan permintaan ini."
+system.agent_busy: "Ejen sedang sibuk pada tab ini — tunggu prompt semasa selesai."
+system.resuming_session: "Menyambung semula sesi %{session_id}..."
+system.unknown_command: "Arahan tidak diketahui \"%{command}\" — dihantar sebagai prompt. Taip /help untuk senarai."  # {Locked="/help"}
+system.busy_use_stop: "Tunggu prompt semasa selesai, atau jalankan /stop dahulu."  # {Locked="/stop"}
+system.cannot_focus_session: "Tidak dapat memfokuskan sesi %{session_id}: sesi kelihatan aktif tetapi GUID anak tetingkap belum diikat lagi. Cuba lagi sebentar lagi."
+system.cannot_resume_no_load_session: "Tidak dapat menyambung semula dalam anak tetingkap ejen: %{agent} tidak mengiklankan keupayaan ACP `loadSession`. Tekan Enter (tanpa Shift) untuk menyambung semula dalam anak tetingkap terminal baharu sebaliknya."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Tidak dapat menyambung semula sesi %{agent}: ejen ini tiada bendera gaya `--resume`. Tekan Shift+Enter untuk cuba menyambung semula dalam anak tetingkap ejen melalui ACP sebaliknya."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Tidak dapat menyambung semula sesi %{session_id}: ejen sumbernya tidak dikenali oleh binaan ini."
+system.cannot_resume_phantom_via_flag: "Tidak dapat menyambung semula sesi %{agent} %{session_id}: sesi ini telah dimulakan tetapi tidak pernah mengumpulkan sebarang perbualan, jadi %{agent} sendiri akan menolak sambungan semula. Mengalih keluar baris."
+system.cannot_resume_phantom_via_load: "Tidak dapat menyambung semula sesi %{agent} %{session_id}: sesi ini telah dimulakan tetapi tidak pernah mengumpulkan sebarang perbualan, jadi %{agent} akan menolak pemuatan. Mengalih keluar baris."
+system.fallback.this_agent: "ejen ini"
+system.fallback.connected_agent: "ejen yang disambungkan"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Tiada tetingkap ditemui."
@@ -176,3 +188,6 @@ time.hour_singular: "%{count} jam yang lalu"
 time.hours_other: "%{count} jam yang lalu"
 time.day_singular: "%{count} hari yang lalu"
 time.days_other: "%{count} hari yang lalu"
+
+# ── Pelaksanaan cadangan (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Pilihan %{choice} gagal: %{error}"

@@ -141,6 +141,18 @@ system.command_copied_retry: "Əmr kopyalandı — başqa terminalda icra edin, 
 system.stopped_max_tokens: "Cavab modelin çıxış həddinə çatdıqdan sonra kəsildi."
 system.stopped_max_turn_requests: "Agent bu növbə üçün sorğu həddinə çatdıqdan sonra dayandı."
 system.stopped_refusal: "Agent bu sorğunu davam etdirməkdən imtina etdi."
+system.agent_busy: "Agent bu tabda məşğuldur — cari sorğunun tamamlanmasını gözləyin."
+system.resuming_session: "Sessiya %{session_id} bərpa olunur..."
+system.unknown_command: "Naməlum əmr \"%{command}\" — sorğu kimi göndərildi. Siyahı üçün /help yazın."  # {Locked="/help"}
+system.busy_use_stop: "Cari sorğunun tamamlanmasını gözləyin və ya əvvəlcə /stop istifadə edin."  # {Locked="/stop"}
+system.cannot_focus_session: "Sessiya %{session_id} fokuslana bilmir: canlı görünür, amma hələ heç bir panel GUID-i bağlanmayıb. Bir az sonra yenidən cəhd edin."
+system.cannot_resume_no_load_session: "Agent panelində bərpa etmək mümkün deyil: %{agent} ACP `loadSession` imkanını elan etməyib. Bunun əvəzinə yeni terminal panelində bərpa etmək üçün Enter (Shift olmadan) basın."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "%{agent} sessiyasını bərpa etmək mümkün deyil: bu agentdə `--resume` üslublu bayraq yoxdur. Əvəzində ACP vasitəsilə agent panelində bərpa etməyi sınamaq üçün Shift+Enter basın."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Sessiya %{session_id} bərpa edilə bilmir: onun mənbə agenti bu WTA quruluşuna məlum deyil."
+system.cannot_resume_phantom_via_flag: "%{agent} sessiyası %{session_id} bərpa edilə bilmir: o başladılıb, amma heç bir söhbət toplanmayıb, buna görə %{agent} özü bərpanı rədd edəcək. Sətir silinir."
+system.cannot_resume_phantom_via_load: "%{agent} sessiyası %{session_id} bərpa edilə bilmir: o başladılıb, amma heç bir söhbət toplanmayıb, buna görə %{agent} yükləməni rədd edəcək. Sətir silinir."
+system.fallback.this_agent: "bu agent"
+system.fallback.connected_agent: "qoşulmuş agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Pəncərə tapılmadı."
@@ -186,3 +198,6 @@ time.hour_singular: "%{count} saat əvvəl"
 time.hours_other: "%{count} saat əvvəl"
 time.day_singular: "%{count} gün əvvəl"
 time.days_other: "%{count} gün əvvəl"
+
+# ── Tövsiyənin icrası (src/coordinator.rs) ──────────────────────────────────
+system.choice_execution_failed: "Seçim %{choice} uğursuz oldu: %{error}"

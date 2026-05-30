@@ -130,6 +130,18 @@ system.command_copied_retry: "Kommandot kopierat — kör det i en annan termina
 system.stopped_max_tokens: "Svaret avbröts efter att modellens utdatagräns nåtts."
 system.stopped_max_turn_requests: "Agenten stoppade efter att ha nått sin begäransgräns för den här omgången."
 system.stopped_refusal: "Agenten avböjde att fortsätta med den här begäran."
+system.agent_busy: "Agenten är upptagen på den här fliken — vänta tills den aktuella prompten är klar."
+system.resuming_session: "Återupptar session %{session_id}..."
+system.unknown_command: "Okänt kommando \"%{command}\" — skickades som prompt. Skriv /help för listan."
+system.busy_use_stop: "Vänta tills den aktuella prompten är klar, eller använd /stop först."
+system.cannot_focus_session: "Det går inte att fokusera på session %{session_id}: den verkar vara aktiv men inget fönster-GUID är bundet ännu. Försök igen om en stund."
+system.cannot_resume_no_load_session: "Det går inte att återuppta i agentfönstret: %{agent} annonserade inte ACP `loadSession`-funktionen. Tryck på Enter (utan Shift) för att i stället återuppta i ett nytt terminalfönster."
+system.cannot_resume_no_resume_flag: "Det går inte att återuppta %{agent}-sessionen: den här agenten har ingen `--resume`-liknande flagga. Tryck på Shift+Enter för att i stället försöka återuppta inne i agentfönstret via ACP."
+system.cannot_resume_unknown_agent: "Det går inte att återuppta session %{session_id}: dess källagent är okänd för den här versionen."
+system.cannot_resume_phantom_via_flag: "Det går inte att återuppta %{agent}-sessionen %{session_id}: den startades men samlade aldrig någon konversation, så %{agent} skulle själv avvisa återupptagningen. Tar bort raden."
+system.cannot_resume_phantom_via_load: "Det går inte att återuppta %{agent}-sessionen %{session_id}: den startades men samlade aldrig någon konversation, så %{agent} skulle avvisa inläsningen. Tar bort raden."
+system.fallback.this_agent: "den här agenten"
+system.fallback.connected_agent: "den anslutna agenten"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Inga fönster hittades."
@@ -176,3 +188,6 @@ time.hour_singular: "%{count} timme sedan"
 time.hours_other: "%{count} timmar sedan"
 time.day_singular: "%{count} dag sedan"
 time.days_other: "%{count} dagar sedan"
+
+# ── Körning av rekommendation (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Val %{choice} misslyckades: %{error}"

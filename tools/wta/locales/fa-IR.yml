@@ -141,6 +141,18 @@ system.command_copied_retry: "دستور کپی شد — آن را در ترمی
 system.stopped_max_tokens: "پاسخ پس از رسیدن به حد خروجی مدل قطع شد."
 system.stopped_max_turn_requests: "عامل پس از رسیدن به حد درخواست خود برای این نوبت متوقف شد."
 system.stopped_refusal: "عامل از ادامه‌دادن این درخواست خودداری کرد."
+system.agent_busy: "عامل در این زبانه مشغول است — منتظر بمانید تا درخواست فعلی تمام شود."
+system.resuming_session: "در حال ازسرگیری جلسه %{session_id}..."
+system.unknown_command: "فرمان ناشناخته \"%{command}\" — به‌عنوان درخواست ارسال شد. برای فهرست، /help را تایپ کنید."  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "منتظر بمانید درخواست فعلی تمام شود، یا ابتدا /stop را اجرا کنید."  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "نمی‌توان روی جلسه %{session_id} تمرکز کرد: به نظر زنده است اما هنوز هیچ GUID صفحه‌ای به آن متصل نشده است. چند لحظه دیگر دوباره امتحان کنید."
+system.cannot_resume_no_load_session: "نمی‌توان در صفحه عامل ازسر گرفت: %{agent} قابلیت ACP `loadSession` را اعلام نکرده است. برای ازسرگیری در یک صفحه پایانه جدید، Enter (بدون Shift) را فشار دهید."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "نمی‌توان جلسه %{agent} را ازسر گرفت: این عامل هیچ پرچمی به سبک `--resume` ندارد. برای تلاش جهت ازسرگیری داخل صفحه عامل از طریق ACP، Shift+Enter را فشار دهید."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "نمی‌توان جلسه %{session_id} را ازسر گرفت: عامل مبدأ آن برای این ساخت WTA ناشناخته است."
+system.cannot_resume_phantom_via_flag: "نمی‌توان جلسه %{agent} %{session_id} را ازسر گرفت: شروع شده بود اما هیچ گفت‌وگویی جمع نکرد، بنابراین خود %{agent} ازسرگیری را رد می‌کند. در حال حذف ردیف."
+system.cannot_resume_phantom_via_load: "نمی‌توان جلسه %{agent} %{session_id} را ازسر گرفت: شروع شده بود اما هیچ گفت‌وگویی جمع نکرد، بنابراین %{agent} بارگذاری را رد می‌کند. در حال حذف ردیف."
+system.fallback.this_agent: "این عامل"
+system.fallback.connected_agent: "عامل متصل"
 
 # ── خروجی CLI در زمان اجرا (src/main.rs) ────────────────────────────────────────
 output.no_windows: "هیچ پنجره‌ای یافت نشد."
@@ -186,3 +198,6 @@ time.hour_singular: "1 ساعت پیش"
 time.hours_other: "%{count} ساعت پیش"
 time.day_singular: "1 روز پیش"
 time.days_other: "%{count} روز پیش"
+
+# ── اجرای توصیه (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "انتخاب %{choice} ناموفق بود: %{error}"

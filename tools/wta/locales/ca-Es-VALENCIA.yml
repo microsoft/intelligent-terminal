@@ -130,6 +130,18 @@ system.command_copied_retry: "Orde copiada — executeu-la en un altre terminal 
 system.stopped_max_tokens: "La resposta s'ha tallat en arribar al límit d'eixida del model."
 system.stopped_max_turn_requests: "L'agent s'ha parat en arribar al seu límit de sol·licituds per a este torn."
 system.stopped_refusal: "L'agent ha rebutjat continuar amb esta sol·licitud."
+system.agent_busy: "L’agent està ocupat en esta pestanya — espereu que acabe la indicació actual."
+system.resuming_session: "S’està reprenent la sessió %{session_id}..."
+system.unknown_command: "Orde desconeguda \"%{command}\" — s’ha enviat com a indicació. Escriviu /help per a vore la llista."
+system.busy_use_stop: "Espereu que acabe la indicació actual, o feu /stop primer."
+system.cannot_focus_session: "No es pot enfocar la sessió %{session_id}: pareix activa, però encara no hi ha cap GUID de panell vinculat. Torneu-ho a provar d’ací a un moment."
+system.cannot_resume_no_load_session: "No es pot reprendre al panell d’agent: %{agent} no ha anunciat la capacitat ACP `loadSession`. Premeu Enter (sense Shift) per a reprendre-la en un panell de terminal nou."
+system.cannot_resume_no_resume_flag: "No es pot reprendre la sessió de %{agent}: este agent no té cap indicador d’estil `--resume`. Premeu Shift+Enter per a provar de reprendre-la dins del panell d’agent mitjançant ACP."
+system.cannot_resume_unknown_agent: "No es pot reprendre la sessió %{session_id}: l’agent d’origen és desconegut per a esta compilació."
+system.cannot_resume_phantom_via_flag: "No es pot reprendre la sessió de %{agent} %{session_id}: es va iniciar però no va acumular cap conversa, de manera que %{agent} rebutjaria la represa. S’elimina la fila."
+system.cannot_resume_phantom_via_load: "No es pot reprendre la sessió de %{agent} %{session_id}: es va iniciar però no va acumular cap conversa, de manera que %{agent} rebutjaria la càrrega. S’elimina la fila."
+system.fallback.this_agent: "este agent"
+system.fallback.connected_agent: "l’agent connectat"
 
 # ── Eixida de CLI en temps d'execució (src/main.rs) ────────────────────────────────────
 output.no_windows: "No s'han trobat finestres."
@@ -176,3 +188,6 @@ time.hour_singular: "fa %{count} hora"
 time.hours_other: "fa %{count} hores"
 time.day_singular: "fa %{count} dia"
 time.days_other: "fa %{count} dies"
+
+# ── Execució de recomanacions (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "L’opció %{choice} ha fallat: %{error}"

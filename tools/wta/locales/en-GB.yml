@@ -130,6 +130,18 @@ system.command_copied_retry: "Command copied — run it in another terminal, the
 system.stopped_max_tokens: "The response was cut off after reaching the model's output limit."
 system.stopped_max_turn_requests: "The agent stopped after reaching its request limit for this turn."
 system.stopped_refusal: "The agent declined to continue with this request."
+system.agent_busy: "Agent is busy on this tab — wait for the current prompt to finish."
+system.resuming_session: "Resuming session %{session_id}..."
+system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."
+system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."
+system.cannot_focus_session: "Cannot focus session %{session_id}: it appears live but no pane GUID is bound yet. Try again in a moment."
+system.cannot_resume_no_load_session: "Cannot resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability. Press Enter (without Shift) to resume in a new terminal pane instead."
+system.cannot_resume_no_resume_flag: "Cannot resume %{agent} session: this agent has no `--resume`-style flag. Press Shift+Enter to try resuming inside the agent pane via ACP instead."
+system.cannot_resume_unknown_agent: "Cannot resume session %{session_id}: its source agent is unknown to this build."
+system.cannot_resume_phantom_via_flag: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} itself would reject the resume. Removing the row."
+system.cannot_resume_phantom_via_load: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row."
+system.fallback.this_agent: "this agent"
+system.fallback.connected_agent: "the connected agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "No windows found."
@@ -176,3 +188,6 @@ time.hour_singular: "%{count} hour ago"
 time.hours_other: "%{count} hours ago"
 time.day_singular: "%{count} day ago"
 time.days_other: "%{count} days ago"
+
+# ── Recommendation execution (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Choice %{choice} failed: %{error}"

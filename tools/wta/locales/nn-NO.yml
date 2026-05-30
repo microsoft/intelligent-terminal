@@ -130,6 +130,18 @@ system.command_copied_retry: "Kommando kopiert — køyr han i ein annan termina
 system.stopped_max_tokens: "Svaret blei avkorta etter at utdatagrensa til modellen blei nådd."
 system.stopped_max_turn_requests: "Agenten stoppa etter at førespurnadsgrensa for denne runden blei nådd."
 system.stopped_refusal: "Agenten avviste å halde fram med denne førespurnaden."
+system.agent_busy: "Agenten er oppteken i denne fana — vent til gjeldande ledetekst er ferdig."
+system.resuming_session: "Held fram med økta %{session_id}..."
+system.unknown_command: "Ukjend kommando \"%{command}\" — send som ledetekst. Skriv /help for lista."
+system.busy_use_stop: "Vent til gjeldande ledetekst er ferdig, eller bruk /stop først."
+system.cannot_focus_session: "Kan ikkje fokusera økta %{session_id}: ho ser ut til å vera aktiv, men ingen rute-GUID er bunden enno. Prøv igjen om ein augneblink."
+system.cannot_resume_no_load_session: "Kan ikkje halda fram i agentruta: %{agent} annonserte ikkje ACP `loadSession`-funksjonen. Trykk Enter (utan Shift) for å halda fram i ei ny terminalrute i staden."
+system.cannot_resume_no_resume_flag: "Kan ikkje halda fram %{agent}-økta: denne agenten har ikkje noko `--resume`-liknande flagg. Trykk Shift+Enter for å prøva å halda fram inne i agentruta via ACP i staden."
+system.cannot_resume_unknown_agent: "Kan ikkje halda fram økta %{session_id}: kjeldeagenten er ukjend for denne bygginga."
+system.cannot_resume_phantom_via_flag: "Kan ikkje halda fram %{agent}-økta %{session_id}: ho vart starta, men samla aldri opp nokon samtale, så %{agent} ville sjølv avvisa framhaldet. Fjernar rada."
+system.cannot_resume_phantom_via_load: "Kan ikkje halda fram %{agent}-økta %{session_id}: ho vart starta, men samla aldri opp nokon samtale, så %{agent} ville avvisa innlastinga. Fjernar rada."
+system.fallback.this_agent: "denne agenten"
+system.fallback.connected_agent: "den tilkopla agenten"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Ingen vindauge funne."
@@ -176,3 +188,6 @@ time.hour_singular: "%{count} time sidan"
 time.hours_other: "%{count} timar sidan"
 time.day_singular: "%{count} dag sidan"
 time.days_other: "%{count} dagar sidan"
+
+# ── Utføring av tilråding (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Val %{choice} mislukkast: %{error}"

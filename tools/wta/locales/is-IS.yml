@@ -130,6 +130,18 @@ system.command_copied_retry: "Skipun afrituð — keyrðu hana í öðrum termin
 system.stopped_max_tokens: "Svarið var skorið af eftir að úttaksmörkum líkansins var náð."
 system.stopped_max_turn_requests: "Umboðsmaðurinn stöðvaðist eftir að beiðnamörkum hans fyrir þessa umferð var náð."
 system.stopped_refusal: "Umboðsmaðurinn neitaði að halda áfram með þessa beiðni."
+system.agent_busy: "Agentinn er upptekinn á þessum flipa — bíddu þar til núverandi kvaðning lýkur."
+system.resuming_session: "Held áfram með setu %{session_id}..."
+system.unknown_command: "Óþekkt skipun \"%{command}\" — send sem kvaðning. Sláðu inn /help til að sjá listann."
+system.busy_use_stop: "Bíddu þar til núverandi kvaðning lýkur, eða notaðu /stop fyrst."
+system.cannot_focus_session: "Ekki er hægt að færa fókus á setu %{session_id}: hún virðist virk en ekkert GUID rúðu er enn bundið. Reyndu aftur eftir augnablik."
+system.cannot_resume_no_load_session: "Ekki er hægt að halda áfram í agent-rúðu: %{agent} auglýsti ekki ACP `loadSession`-getuna. Ýttu á Enter (án Shift) til að halda áfram í nýrri terminal-rúðu í staðinn."
+system.cannot_resume_no_resume_flag: "Ekki er hægt að halda áfram með %{agent}-setu: þessi agent er ekki með `--resume`-líkt flagg. Ýttu á Shift+Enter til að reyna að halda áfram inni í agent-rúðunni í gegnum ACP í staðinn."
+system.cannot_resume_unknown_agent: "Ekki er hægt að halda áfram með setu %{session_id}: uppruna-agent hennar er óþekktur í þessari smíði."
+system.cannot_resume_phantom_via_flag: "Ekki er hægt að halda áfram með %{agent}-setu %{session_id}: hún var ræst en safnaði aldrei neinu samtali, þannig að %{agent} myndi sjálfur hafna áframhaldi. Fjarlægi röðina."
+system.cannot_resume_phantom_via_load: "Ekki er hægt að halda áfram með %{agent}-setu %{session_id}: hún var ræst en safnaði aldrei neinu samtali, þannig að %{agent} myndi hafna hleðslunni. Fjarlægi röðina."
+system.fallback.this_agent: "þessi agent"
+system.fallback.connected_agent: "tengdi agentinn"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Engir gluggar fundust."
@@ -176,3 +188,6 @@ time.hour_singular: "fyrir %{count} klukkustund síðan"
 time.hours_other: "fyrir %{count} klukkustundum síðan"
 time.day_singular: "fyrir %{count} degi síðan"
 time.days_other: "fyrir %{count} dögum síðan"
+
+# ── Framkvæmd ráðleggingar (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Val %{choice} mistókst: %{error}"

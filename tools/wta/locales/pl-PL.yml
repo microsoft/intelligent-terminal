@@ -137,6 +137,18 @@ system.command_copied_retry: "Polecenie skopiowane — uruchom je w innym termin
 system.stopped_max_tokens: "Odpowiedź została obcięta po osiągnięciu limitu danych wyjściowych modelu."
 system.stopped_max_turn_requests: "Agent zatrzymał się po osiągnięciu limitu żądań dla tej tury."
 system.stopped_refusal: "Agent odmówił kontynuowania tego żądania."
+system.agent_busy: "Agent jest zajęty na tej karcie — poczekaj, aż bieżący monit się zakończy."
+system.resuming_session: "Wznawianie sesji %{session_id}..."
+system.unknown_command: "Nieznane polecenie \"%{command}\" — wysłano jako monit. Wpisz /help, aby wyświetlić listę."  # {Locked="/help"}
+system.busy_use_stop: "Poczekaj, aż bieżący monit się zakończy, albo najpierw użyj /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nie można ustawić fokusu na sesji %{session_id}: wygląda na aktywną, ale nie powiązano jeszcze żadnego identyfikatora GUID panelu. Spróbuj ponownie za chwilę."
+system.cannot_resume_no_load_session: "Nie można wznowić w panelu agenta: %{agent} nie ogłosił możliwości ACP `loadSession`. Naciśnij Enter (bez Shift), aby zamiast tego wznowić w nowym panelu terminala."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nie można wznowić sesji %{agent}: ten agent nie ma flagi w stylu `--resume`. Naciśnij Shift+Enter, aby spróbować wznowić wewnątrz panelu agenta przez ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nie można wznowić sesji %{session_id}: jej agent źródłowy jest nieznany tej kompilacji WTA."
+system.cannot_resume_phantom_via_flag: "Nie można wznowić sesji %{agent} %{session_id}: została uruchomiona, ale nigdy nie zgromadziła żadnej konwersacji, więc sam %{agent} odrzuciłby wznowienie. Usuwanie wiersza."
+system.cannot_resume_phantom_via_load: "Nie można wznowić sesji %{agent} %{session_id}: została uruchomiona, ale nigdy nie zgromadziła żadnej konwersacji, więc %{agent} odrzuciłby załadowanie. Usuwanie wiersza."
+system.fallback.this_agent: "ten agent"
+system.fallback.connected_agent: "połączony agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nie znaleziono okien."
@@ -186,3 +198,6 @@ time.hour_singular: "1 godzinę temu"
 time.hours_other: "%{count} godzin temu"
 time.day_singular: "1 dzień temu"
 time.days_other: "%{count} dni temu"
+
+# ── Wykonywanie rekomendacji (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Wybór %{choice} nie powiódł się: %{error}"

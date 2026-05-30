@@ -130,6 +130,18 @@ system.command_copied_retry: "Comando copiado — ejecútalo en otra terminal y 
 system.stopped_max_tokens: "La respuesta se cortó al alcanzar el límite de salida del modelo."
 system.stopped_max_turn_requests: "El agente se detuvo al alcanzar su límite de solicitudes para este turno."
 system.stopped_refusal: "El agente se negó a continuar con esta solicitud."
+system.agent_busy: "El agente está ocupado en esta pestaña — espere a que termine el prompt actual."
+system.resuming_session: "Reanudando la sesión %{session_id}..."
+system.unknown_command: "Comando desconocido \"%{command}\" — enviado como prompt. Escriba /help para ver la lista."
+system.busy_use_stop: "Espere a que termine el prompt actual, o use /stop primero."
+system.cannot_focus_session: "No se puede enfocar la sesión %{session_id}: parece activa, pero aún no hay ningún GUID de panel enlazado. Vuelva a intentarlo en un momento."
+system.cannot_resume_no_load_session: "No se puede reanudar en el panel de agente: %{agent} no anunció la funcionalidad ACP `loadSession`. Presione Enter (sin Shift) para reanudar en un nuevo panel de terminal."
+system.cannot_resume_no_resume_flag: "No se puede reanudar la sesión de %{agent}: este agente no tiene una marca de estilo `--resume`. Presione Shift+Enter para intentar reanudar dentro del panel de agente mediante ACP."
+system.cannot_resume_unknown_agent: "No se puede reanudar la sesión %{session_id}: su agente de origen es desconocido para esta compilación."
+system.cannot_resume_phantom_via_flag: "No se puede reanudar la sesión de %{agent} %{session_id}: se inició, pero nunca acumuló ninguna conversación, por lo que %{agent} rechazaría la reanudación. Quitando la fila."
+system.cannot_resume_phantom_via_load: "No se puede reanudar la sesión de %{agent} %{session_id}: se inició, pero nunca acumuló ninguna conversación, por lo que %{agent} rechazaría la carga. Quitando la fila."
+system.fallback.this_agent: "este agente"
+system.fallback.connected_agent: "el agente conectado"
 
 # ── Salida de CLI en tiempo de ejecución (src/main.rs) ────────────────────────────────────────
 output.no_windows: "No se encontraron ventanas."
@@ -186,3 +198,6 @@ commands.new.summary: "Iniciar una nueva sesión de ACP (descarta el historial)"
 commands.restart.summary: "Reiniciar agente"
 commands.stop.summary: "Cancelar la petición en curso"
 commands.sessions.summary: "Abrir el selector de sesiones anteriores (Ctrl+Shift+/)"
+
+# ── Ejecución de recomendaciones (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Error en la opción %{choice}: %{error}"

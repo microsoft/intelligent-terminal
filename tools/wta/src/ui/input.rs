@@ -51,7 +51,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let lines: Vec<Line> = if tab.input.is_empty() {
         // Show a placeholder reflecting connection state. The "> " is its
         // own span so the placeholder/typed text/cursor all sit in the same
-        // column whether the input is empty or not.
+        // column regardless of whether the input is empty.
         let placeholder = match &app.state {
             ConnectionState::Connected => t!("input.placeholder.connected").into_owned(),
             ConnectionState::Connecting(_) => t!("input.placeholder.connecting").into_owned(),

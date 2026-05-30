@@ -126,6 +126,18 @@ system.command_copied_retry: "命令已複製 — 在另一個終端機中執行
 system.stopped_max_tokens: "達到模型的輸出上限後，回覆遭到截斷。"
 system.stopped_max_turn_requests: "達到本回合的要求上限後，代理程式已停止。"
 system.stopped_refusal: "代理程式拒絕繼續處理此要求。"
+system.agent_busy: "智能體正在此索引標籤上忙碌 — 請等待目前提示完成。"
+system.resuming_session: "正在恢復工作階段 %{session_id}..."
+system.unknown_command: "未知命令 \"%{command}\" — 已作為提示傳送。輸入 /help 查看清單。"  # {Locked="/help"}
+system.busy_use_stop: "請等待目前提示完成，或先執行 /stop。"  # {Locked="/stop"}
+system.cannot_focus_session: "無法聚焦工作階段 %{session_id}：它似乎處於即時狀態，但尚未繫結窗格 GUID。請稍後再試。"
+system.cannot_resume_no_load_session: "無法在智能體窗格中恢復：%{agent} 未公布 ACP `loadSession` 功能。請改按 Enter（不按 Shift）以在新的終端機窗格中恢復。"  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "無法恢復 %{agent} 工作階段：此智能體沒有 `--resume` 樣式旗標。請按 Shift+Enter，改為嘗試透過 ACP 在智能體窗格內恢復。"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "無法恢復工作階段 %{session_id}：此版本無法識別其來源智能體。"
+system.cannot_resume_phantom_via_flag: "無法恢復 %{agent} 工作階段 %{session_id}：它已啟動但從未累積任何對話，因此 %{agent} 本身會拒絕恢復。正在移除此列。"
+system.cannot_resume_phantom_via_load: "無法恢復 %{agent} 工作階段 %{session_id}：它已啟動但從未累積任何對話，因此 %{agent} 會拒絕載入。正在移除此列。"
+system.fallback.this_agent: "此智能體"
+system.fallback.connected_agent: "已連線的智能體"
 
 # ── 執行階段 CLI 輸出 (src/main.rs) ────────────────────────────────────────
 output.no_windows: "找不到視窗。"
@@ -181,3 +193,6 @@ commands.new.summary: "啟動新的 ACP 工作階段（清空歷史記錄）"
 commands.restart.summary: "重新啟動智能體"
 commands.stop.summary: "取消進行中的提示"
 commands.sessions.summary: "開啟歷史工作階段選擇器（Ctrl+Shift+/）"
+
+# ── 建議執行 (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "選項 %{choice} 執行失敗：%{error}"

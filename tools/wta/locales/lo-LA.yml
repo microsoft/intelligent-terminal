@@ -130,6 +130,18 @@ system.command_copied_retry: "Command copied — run it in another terminal, the
 system.stopped_max_tokens: "ການຕອບໄດ້ຖືກຕັດອອກຫຼັງຈາກບັນລຸຂີດຈຳກັດຜົນຜະລິດຂອງແບບຈຳລອງ."
 system.stopped_max_turn_requests: "ຕົວແທນໄດ້ຢຸດຫຼັງຈາກບັນລຸຂີດຈຳກັດການຮ້ອງຂໍສຳລັບຮອບນີ້."
 system.stopped_refusal: "ຕົວແທນໄດ້ປະຕິເສດທີ່ຈະດຳເນີນການຮ້ອງຂໍນີ້ຕໍ່."
+system.agent_busy: "Agent ກຳລັງບໍ່ວ່າງໃນແຖບນີ້ — ລໍຖ້າໃຫ້ prompt ປັດຈຸບັນສຳເລັດ."
+system.resuming_session: "ກຳລັງສືບຕໍ່ session %{session_id}..."
+system.unknown_command: "ບໍ່ຮູ້ຈັກຄຳສັ່ງ \"%{command}\" — ສົ່ງເປັນ prompt ແລ້ວ. ພິມ /help ເພື່ອເບິ່ງລາຍການ."  # {Locked="/help"}
+system.busy_use_stop: "ລໍຖ້າໃຫ້ prompt ປັດຈຸບັນສຳເລັດ ຫຼືໃຊ້ /stop ກ່ອນ."  # {Locked="/stop"}
+system.cannot_focus_session: "ບໍ່ສາມາດໂຟກັສ session %{session_id}: ມັນເບິ່ງຄືວ່າ live ແຕ່ຍັງບໍ່ມີ GUID ຂອງ pane ຖືກຜູກໄວ້. ລອງອີກຄັ້ງອີກສັກຄູ່."
+system.cannot_resume_no_load_session: "ບໍ່ສາມາດສືບຕໍ່ໃນ agent pane: %{agent} ບໍ່ໄດ້ແຈ້ງຄວາມສາມາດ ACP `loadSession`. ກົດ Enter (ໂດຍບໍ່ກົດ Shift) ເພື່ອສືບຕໍ່ໃນ terminal pane ໃໝ່ແທນ."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "ບໍ່ສາມາດສືບຕໍ່ session %{agent}: agent ນີ້ບໍ່ມີ flag ແບບ `--resume`. ກົດ Shift+Enter ເພື່ອລອງສືບຕໍ່ພາຍໃນ agent pane ຜ່ານ ACP ແທນ."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "ບໍ່ສາມາດສືບຕໍ່ session %{session_id}: agent ຕົ້ນທາງຂອງມັນບໍ່ຖືກຮູ້ຈັກໃນ build ນີ້."
+system.cannot_resume_phantom_via_flag: "ບໍ່ສາມາດສືບຕໍ່ session %{agent} %{session_id}: ມັນເລີ່ມແລ້ວ ແຕ່ບໍ່ເຄີຍມີການສົນທະນາໃດໆສະສົມ, ດັ່ງນັ້ນ %{agent} ເອງຈະປະຕິເສດການສືບຕໍ່. ກຳລັງລຶບແຖວ."
+system.cannot_resume_phantom_via_load: "ບໍ່ສາມາດສືບຕໍ່ session %{agent} %{session_id}: ມັນເລີ່ມແລ້ວ ແຕ່ບໍ່ເຄີຍມີການສົນທະນາໃດໆສະສົມ, ດັ່ງນັ້ນ %{agent} ຈະປະຕິເສດການໂຫຼດ. ກຳລັງລຶບແຖວ."
+system.fallback.this_agent: "agent ນີ້"
+system.fallback.connected_agent: "agent ທີ່ເຊື່ອມຕໍ່ແລ້ວ"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "No windows found."
@@ -176,3 +188,6 @@ time.hour_singular: "%{count} ຊົ່ວໂມງກ່ອນ"
 time.hours_other: "%{count} ຊົ່ວໂມງກ່ອນ"
 time.day_singular: "%{count} ມື້ກ່ອນ"
 time.days_other: "%{count} ມື້ກ່ອນ"
+
+# ── ການດຳເນີນການຄຳແນະນຳ (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "ຕົວເລືອກ %{choice} ລົ້ມເຫຼວ: %{error}"

@@ -58,7 +58,7 @@ The driver scripts ([`_build_msix_x64.cmd`](../_build_msix_x64.cmd), [`_build_ms
    ```
 2. [`_sign_msix.cmd`](../_sign_msix.cmd) — the version is hardcoded in two signtool path lines. Search-replace the old version → new.
 
-> The script doesn't read the manifest. If you forget to bump it, signtool will look for a non-existent MSIX path and fail.
+> The script doesn't read the manifest. If you forget to bump it, signtool will look for a nonexistent MSIX path and fail.
 
 ### Step 1: Dev signing certificate
 
@@ -107,7 +107,7 @@ Use the wrapper scripts — **not** the bare MSBuild command:
 
 1. **Wipe `obj\<Platform>\Release\` and `bin\<Platform>\Release\AppX\`** before building. The wapproj has a glob-based `<Content Include="...\wt-agent-hooks\**">` rule (for the agent hook bundle); incremental MSBuild caches the resolved file list and silently drops freshly-added files. 0.7.0.5 and 0.7.0.6 shipped without `wt-agent-hooks\` because of this — every "Install hooks" click failed until we figured it out.
 2. **Pre-build `Microsoft.Terminal.Settings.ModelLib.vcxproj`** so its `Microsoft.Terminal.Settings.Model.winmd` is the source of truth before any consumer (`TerminalSettingsAppAdapterLib`, etc.) calls `cppwinrt` to regenerate its WinRT projection headers. Without this, `cppwinrt` can scan a stale winmd from `bin\<Platform>\Release\<OtherProject>\` and emit projections missing newer members (e.g. `DragDropDelimiter` → `C2039` in `TerminalSettings.cpp`).
-3. **Pre-build `Microsoft.Terminal.Settings.Editor.vcxproj`** to generate XBF files. Otherwise `TerminalAppLib` starts before `AIAgents.xaml.g.h` exists and fails with `MSB3030: file not found`.
+3. **Pre-build `Microsoft.Terminal.Settings.Editor.vcxproj`** to generate XBF files. Otherwise, `TerminalAppLib` starts before `AIAgents.xaml.g.h` exists and fails with `MSB3030: file not found`.
 4. **`exit /b %BUILD_EXIT%`** at the end. The previous `echo Exit code: %ERRORLEVEL%` made the shell return 0 even when MSBuild failed, masking real errors as silent "successful" runs. 0.7.0.10 wasted a round on this.
 
 #### ARM64 quirks
@@ -134,7 +134,7 @@ If you ever need to skip the wrapper:
 
 ```powershell
 $env:MSBUILD = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe"
-$env:REPO = (Resolve-Path .).Path
+$env:REPO = (Get-Location).Path
 
 & $env:MSBUILD src\cascadia\CascadiaPackage\CascadiaPackage.wapproj `
     /p:Platform=x64 /p:Configuration=Release /p:WindowsTerminalBranding=Dev `

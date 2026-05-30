@@ -91,7 +91,7 @@ fn render_card(
     // The key handlers already gate Up/Down/Left/Right/Tab/Enter on
     // `input.is_empty()` — i.e. you can navigate cards only when no text is
     // in the prompt box. Mirror that here so the focus highlight matches:
-    // typing should visibly take focus away from the cards, otherwise the
+    // typing should visibly take focus away from the cards; otherwise the
     // user sees "two focuses" and can't tell whether Enter will activate
     // the card or submit the prompt.
     let nav_mode = app.current_tab().input.is_empty();

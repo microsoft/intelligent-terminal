@@ -130,6 +130,18 @@ system.command_copied_retry: "Comando copiado — execúteo noutro terminal e pr
 system.stopped_max_tokens: "A resposta cortouse ao acadar o límite de saída do modelo."
 system.stopped_max_turn_requests: "O axente detívose ao acadar o seu límite de solicitudes para esta quenda."
 system.stopped_refusal: "O axente negouse a continuar con esta solicitude."
+system.agent_busy: "O axente está ocupado nesta lapela — agarde a que remate a solicitude actual."
+system.resuming_session: "Retomando a sesión %{session_id}..."
+system.unknown_command: "Comando descoñecido \"%{command}\" — enviado como solicitude. Escriba /help para ver a lista."
+system.busy_use_stop: "Agarde a que remate a solicitude actual, ou use /stop primeiro."
+system.cannot_focus_session: "Non se pode enfocar a sesión %{session_id}: semella activa, pero aínda non hai ningún GUID de panel vinculado. Ténteo de novo nun momento."
+system.cannot_resume_no_load_session: "Non se pode retomar no panel de axente: %{agent} non anunciou a capacidade ACP `loadSession`. Prema Enter (sen Shift) para retomala nun novo panel de terminal."
+system.cannot_resume_no_resume_flag: "Non se pode retomar a sesión de %{agent}: este axente non ten unha marca de estilo `--resume`. Prema Shift+Enter para tentar retomala dentro do panel de axente mediante ACP."
+system.cannot_resume_unknown_agent: "Non se pode retomar a sesión %{session_id}: o seu axente de orixe é descoñecido para esta compilación."
+system.cannot_resume_phantom_via_flag: "Non se pode retomar a sesión de %{agent} %{session_id}: iniciouse pero nunca acumulou ningunha conversa, polo que %{agent} rexeitaría a continuación. Eliminando a fila."
+system.cannot_resume_phantom_via_load: "Non se pode retomar a sesión de %{agent} %{session_id}: iniciouse pero nunca acumulou ningunha conversa, polo que %{agent} rexeitaría a carga. Eliminando a fila."
+system.fallback.this_agent: "este axente"
+system.fallback.connected_agent: "o axente conectado"
 
 # ── Saída de CLI en tempo de execución (src/main.rs) ────────────────────────────────────
 output.no_windows: "Non se atoparon fiestras."
@@ -176,3 +188,6 @@ time.hour_singular: "hai %{count} hora"
 time.hours_other: "hai %{count} horas"
 time.day_singular: "hai %{count} día"
 time.days_other: "hai %{count} días"
+
+# ── Execución de recomendacións (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Fallou a opción %{choice}: %{error}"

@@ -2383,42 +2383,53 @@ impl App {
                 // Surface a user-visible system message scoped to the
                 // current tab so the user can read it from the
                 // agent session view (which is rendered in-tab).
-                let cli_id = match s.cli_source {
-                    crate::agent_sessions::CliSource::Claude => "claude",
-                    crate::agent_sessions::CliSource::Copilot => "copilot",
-                    crate::agent_sessions::CliSource::Gemini => "gemini",
-                    crate::agent_sessions::CliSource::Unknown(_) => "this CLI",
+                let agent_display: String = match s.cli_source {
+                    crate::agent_sessions::CliSource::Claude => {
+                        crate::agent_registry::lookup_profile_by_id("claude")
+                            .display_name
+                            .to_string()
+                    }
+                    crate::agent_sessions::CliSource::Copilot => {
+                        crate::agent_registry::lookup_profile_by_id("copilot")
+                            .display_name
+                            .to_string()
+                    }
+                    crate::agent_sessions::CliSource::Gemini => {
+                        crate::agent_registry::lookup_profile_by_id("gemini")
+                            .display_name
+                            .to_string()
+                    }
+                    crate::agent_sessions::CliSource::Unknown(_) => {
+                        t!("system.fallback.this_agent").into_owned()
+                    }
                 };
                 let msg = match reason {
-                    NotResumableReason::LiveWithoutPane => format!(
-                        "Cannot focus session {}: it appears live but no \
-                         pane GUID is bound yet. Try again in a moment.",
-                        s.key
-                    ),
-                    NotResumableReason::LoadSessionNotSupported => {
-                        let agent = if self.agent_name.is_empty() {
-                            "the connected agent"
-                        } else {
-                            self.agent_name.as_str()
-                        };
-                        format!(
-                            "Cannot resume in agent pane: {} did not advertise \
-                             the ACP `loadSession` capability. Press Enter \
-                             (without Shift) to resume in a new terminal pane instead.",
-                            agent
-                        )
+                    NotResumableReason::LiveWithoutPane => {
+                        t!("system.cannot_focus_session", session_id = s.key.as_str())
+                            .into_owned()
                     }
-                    NotResumableReason::CliHasNoResumeFlag => format!(
-                        "Cannot resume {} session: this CLI has no \
-                         `--resume`-style flag. Press Shift+Enter to try \
-                         resuming inside the agent pane via ACP instead.",
-                        cli_id
-                    ),
-                    NotResumableReason::UnknownCli => format!(
-                        "Cannot resume session {}: its source CLI is unknown \
-                         to this WTA build.",
-                        s.key
-                    ),
+                    NotResumableReason::LoadSessionNotSupported => {
+                        let agent: String = if self.agent_name.is_empty() {
+                            t!("system.fallback.connected_agent").into_owned()
+                        } else {
+                            self.agent_name.clone()
+                        };
+                        t!(
+                            "system.cannot_resume_no_load_session",
+                            agent = agent.as_str()
+                        )
+                        .into_owned()
+                    }
+                    NotResumableReason::CliHasNoResumeFlag => t!(
+                        "system.cannot_resume_no_resume_flag",
+                        agent = agent_display.as_str()
+                    )
+                    .into_owned(),
+                    NotResumableReason::UnknownCli => t!(
+                        "system.cannot_resume_unknown_agent",
+                        session_id = s.key.as_str()
+                    )
+                    .into_owned(),
                 };
                 tracing::warn!(
                     target: "agents_view",
@@ -2573,11 +2584,12 @@ impl App {
                 "dispatch_resume: refusing to resume phantom session (no on-disk content); pruning row",
             );
             let short_key: String = s.key.chars().take(8).collect();
-            let msg = format!(
-                "Cannot resume {} session {}: it was started but never accumulated any \
-                 conversation, so {} itself would reject the resume. Removing the row.",
-                cli_id, short_key, cli_id
-            );
+            let msg = t!(
+                "system.cannot_resume_phantom_via_flag",
+                agent = profile.display_name,
+                session_id = short_key.as_str()
+            )
+            .into_owned();
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::System(msg));
             tab.scroll_to_bottom();
@@ -2750,17 +2762,16 @@ impl App {
         // keep the session management view focused so the user can
         // press plain Enter to fall back to the split-pane resume path.
         if !self.agent_supports_load_session {
-            let agent = if self.agent_name.is_empty() {
-                "the connected agent"
+            let agent: String = if self.agent_name.is_empty() {
+                t!("system.fallback.connected_agent").into_owned()
             } else {
-                self.agent_name.as_str()
+                self.agent_name.clone()
             };
-            let msg = format!(
-                "Cannot resume in agent pane: {} did not advertise the ACP \
-                 `loadSession` capability. Press Enter (without Shift) to \
-                 resume in a new terminal pane instead.",
-                agent
-            );
+            let msg = t!(
+                "system.cannot_resume_no_load_session",
+                agent = agent.as_str()
+            )
+            .into_owned();
             tracing::warn!(
                 target: "agents_view",
                 key = %s.key,
@@ -2799,17 +2810,32 @@ impl App {
                 "dispatch_resume_in_agent_pane: refusing to load phantom session; pruning row",
             );
             let short_key: String = s.key.chars().take(8).collect();
-            let cli_id = match s.cli_source {
-                crate::agent_sessions::CliSource::Claude => "claude",
-                crate::agent_sessions::CliSource::Copilot => "copilot",
-                crate::agent_sessions::CliSource::Gemini => "gemini",
-                crate::agent_sessions::CliSource::Unknown(_) => "this CLI",
+            let agent_display: String = match s.cli_source {
+                crate::agent_sessions::CliSource::Claude => {
+                    crate::agent_registry::lookup_profile_by_id("claude")
+                        .display_name
+                        .to_string()
+                }
+                crate::agent_sessions::CliSource::Copilot => {
+                    crate::agent_registry::lookup_profile_by_id("copilot")
+                        .display_name
+                        .to_string()
+                }
+                crate::agent_sessions::CliSource::Gemini => {
+                    crate::agent_registry::lookup_profile_by_id("gemini")
+                        .display_name
+                        .to_string()
+                }
+                crate::agent_sessions::CliSource::Unknown(_) => {
+                    t!("system.fallback.this_agent").into_owned()
+                }
             };
-            let msg = format!(
-                "Cannot resume {} session {}: it was started but never accumulated any \
-                 conversation, so {} would reject the load. Removing the row.",
-                cli_id, short_key, cli_id
-            );
+            let msg = t!(
+                "system.cannot_resume_phantom_via_load",
+                agent = agent_display.as_str(),
+                session_id = short_key.as_str()
+            )
+            .into_owned();
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::System(msg));
             tab.scroll_to_bottom();
@@ -4073,10 +4099,8 @@ impl App {
             }
             AppEvent::AgentBusy { tab_id } => {
                 let tab = self.tab_mut(&tab_id);
-                tab.messages.push(ChatMessage::System(
-                    "Agent is busy on this tab — wait for the current prompt to finish."
-                        .to_string(),
-                ));
+                tab.messages
+                    .push(ChatMessage::System(t!("system.agent_busy").into_owned()));
                 tab.scroll_to_bottom();
             }
             AppEvent::TabRenamed {
@@ -4904,10 +4928,13 @@ impl App {
                         // close it).
                         tab.loading_session = true;
                         tab.loading_target_session_id = Some(session_id.to_string());
-                        tab.messages.push(ChatMessage::System(format!(
-                            "Resuming session {}...",
-                            session_id
-                        )));
+                        tab.messages.push(ChatMessage::System(
+                            t!(
+                                "system.resuming_session",
+                                session_id = session_id
+                            )
+                            .into_owned(),
+                        ));
                         tab.scroll_to_bottom();
                     }
                     // If the load_session target IS the active tab, push the
@@ -6162,10 +6189,13 @@ impl App {
                             .unwrap_or("/")
                             .to_string();
                         let tab = self.current_tab_mut();
-                        tab.messages.push(ChatMessage::System(format!(
-                            "Unknown command \"{}\" — sent as prompt. Type /help for the list.",
-                            unknown
-                        )));
+                        tab.messages.push(ChatMessage::System(
+                            t!(
+                                "system.unknown_command",
+                                command = unknown.as_str()
+                            )
+                            .into_owned(),
+                        ));
                         // Fall through to the prompt path below.
                     }
                 }
@@ -6211,10 +6241,8 @@ impl App {
                     // too, but bouncing here keeps the user's input intact.
                     if !self.current_tab().turn.accepts_new_prompt() {
                         let tab = self.current_tab_mut();
-                        tab.messages.push(ChatMessage::System(
-                            "Agent is busy on this tab — wait for the current prompt to finish."
-                                .to_string(),
-                        ));
+                        tab.messages
+                            .push(ChatMessage::System(t!("system.agent_busy").into_owned()));
                         tab.scroll_to_bottom();
                         return;
                     }
@@ -6416,7 +6444,7 @@ impl App {
                 if in_flight {
                     let tab = self.current_tab_mut();
                     tab.messages.push(ChatMessage::System(
-                        "Wait for the current prompt to finish, or /stop first.".to_string(),
+                        t!("system.busy_use_stop").into_owned(),
                     ));
                     tab.scroll_to_bottom();
                     return;

@@ -130,6 +130,18 @@ system.command_copied_retry: "Comandă copiată — rulați-o într-un alt termi
 system.stopped_max_tokens: "Răspunsul a fost întrerupt după atingerea limitei de ieșire a modelului."
 system.stopped_max_turn_requests: "Agentul s-a oprit după atingerea limitei de solicitări pentru această tură."
 system.stopped_refusal: "Agentul a refuzat să continue cu această solicitare."
+system.agent_busy: "Agentul este ocupat în această filă — așteptați finalizarea solicitării curente."
+system.resuming_session: "Se reia sesiunea %{session_id}..."
+system.unknown_command: "Comandă necunoscută \"%{command}\" — trimisă ca solicitare. Tastați /help pentru listă."  # {Locked="/help"}
+system.busy_use_stop: "Așteptați finalizarea solicitării curente sau folosiți mai întâi /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nu se poate focaliza sesiunea %{session_id}: pare activă, dar încă nu este legat niciun GUID de panou. Încercați din nou în câteva momente."
+system.cannot_resume_no_load_session: "Nu se poate relua în panoul agentului: %{agent} nu a anunțat capacitatea ACP `loadSession`. Apăsați Enter (fără Shift) pentru a relua în schimb într-un panou de terminal nou."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nu se poate relua sesiunea %{agent}: acest agent nu are un semnalizator de tip `--resume`. Apăsați Shift+Enter pentru a încerca reluarea în panoul agentului prin ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nu se poate relua sesiunea %{session_id}: agentul său sursă este necunoscut acestei compilări WTA."
+system.cannot_resume_phantom_via_flag: "Nu se poate relua sesiunea %{agent} %{session_id}: a fost pornită, dar nu a acumulat nicio conversație, așa că %{agent} însuși ar respinge reluarea. Se elimină rândul."
+system.cannot_resume_phantom_via_load: "Nu se poate relua sesiunea %{agent} %{session_id}: a fost pornită, dar nu a acumulat nicio conversație, așa că %{agent} ar respinge încărcarea. Se elimină rândul."
+system.fallback.this_agent: "acest agent"
+system.fallback.connected_agent: "agentul conectat"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nu au fost găsite ferestre."
@@ -175,3 +187,6 @@ time.hour_singular: "acum %{count} oră"
 time.hours_other: "acum %{count} de ore"
 time.day_singular: "acum %{count} zi"
 time.days_other: "acum %{count} de zile"
+
+# ── Executarea recomandării (src/coordinator.rs) ────────────────────────────
+system.choice_execution_failed: "Alegerea %{choice} a eșuat: %{error}"

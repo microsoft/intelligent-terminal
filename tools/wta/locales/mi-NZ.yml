@@ -130,6 +130,18 @@ system.command_copied_retry: "Kua tarua te whakahau — whakahautia i tetahi atu
 system.stopped_max_tokens: "I tapahia te whakautu i muri i te tutukinga o te tepe putanga o te tauira."
 system.stopped_max_turn_requests: "I mutu te kaihoko i muri i te tutukinga o tana tepe tono mō tēnei huri."
 system.stopped_refusal: "I whakakāhore te kaihoko ki te haere tonu me tēnei tono."
+system.agent_busy: "Kei te pukumahi te agent i tēnei ripa — tatari kia mutu te prompt onāianei."
+system.resuming_session: "Kei te tīmata anō te wāhanga %{session_id}..."
+system.unknown_command: "He command kāore e mōhiotia \"%{command}\" — kua tukuna hei prompt. Patohia /help mō te rārangi."  # {Locked="/help"}
+system.busy_use_stop: "Tatari kia mutu te prompt onāianei, me whakamahi rānei i te /stop i te tuatahi."  # {Locked="/stop"}
+system.cannot_focus_session: "Kāore e taea te arotahi ki te wāhanga %{session_id}: te āhua nei e ora ana, engari kāore anō kia herea he GUID papa. Ngana anō ākuanei."
+system.cannot_resume_no_load_session: "Kāore e taea te tīmata anō i te papa agent: kāore a %{agent} i pānui i te āheinga ACP `loadSession`. Pēhia Enter (kaua ko Shift) kia tīmata anō ki tētahi papa terminal hōu kē."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Kāore e taea te tīmata anō i te wāhanga %{agent}: kāore he haki ā-`--resume` tō tēnei agent. Pēhia Shift+Enter kia whakamātau ki te tīmata anō i roto i te papa agent mā ACP kē."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Kāore e taea te tīmata anō i te wāhanga %{session_id}: kāore tōna agent pūtake e mōhiotia e tēnei build."
+system.cannot_resume_phantom_via_flag: "Kāore e taea te tīmata anō i te wāhanga %{agent} %{session_id}: i tīmata, engari kāore rawa he kōrerorero i kohikohia, nō reira mā %{agent} tonu e whakakore te resume. E tango ana i te rārangi."
+system.cannot_resume_phantom_via_load: "Kāore e taea te tīmata anō i te wāhanga %{agent} %{session_id}: i tīmata, engari kāore rawa he kōrerorero i kohikohia, nō reira mā %{agent} e whakakore te load. E tango ana i te rārangi."
+system.fallback.this_agent: "tēnei agent"
+system.fallback.connected_agent: "te agent kua hono"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Karekau he matapihi i kitea."
@@ -175,3 +187,6 @@ time.hour_singular: "%{count} hāora ki muri"
 time.hours_other: "%{count} hāora ki muri"
 time.day_singular: "%{count} rā ki muri"
 time.days_other: "%{count} rā ki muri"
+
+# ── Whakahaere tūtohutanga (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "I rahua te kōwhiringa %{choice}: %{error}"

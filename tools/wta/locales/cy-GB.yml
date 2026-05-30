@@ -130,6 +130,18 @@ system.command_copied_retry: "Gorchymyn wedi'i gopïo — rhedwch ef mewn terfyn
 system.stopped_max_tokens: "Cafodd yr ymateb ei dorri ar ôl cyrraedd terfyn allbwn y model."
 system.stopped_max_turn_requests: "Stopiodd yr asiant ar ôl cyrraedd ei derfyn ceisiadau ar gyfer y tro hwn."
 system.stopped_refusal: "Gwrthododd yr asiant barhau â'r cais hwn."
+system.agent_busy: "Mae’r asiant yn brysur ar y tab hwn — arhoswch i’r anogiad presennol orffen."
+system.resuming_session: "Yn ailddechrau sesiwn %{session_id}..."
+system.unknown_command: "Gorchymyn anhysbys \"%{command}\" — anfonwyd fel anogiad. Teipiwch /help am y rhestr."
+system.busy_use_stop: "Arhoswch i’r anogiad presennol orffen, neu defnyddiwch /stop yn gyntaf."
+system.cannot_focus_session: "Methu canolbwyntio ar sesiwn %{session_id}: mae’n ymddangos yn fyw ond nid oes GUID cwarel wedi’i rwymo eto. Rhowch gynnig arall arni mewn eiliad."
+system.cannot_resume_no_load_session: "Methu ailddechrau mewn cwarel asiant: ni hysbysebodd %{agent} y gallu ACP `loadSession`. Pwyswch Enter (heb Shift) i ailddechrau mewn cwarel terfynell newydd yn lle hynny."
+system.cannot_resume_no_resume_flag: "Methu ailddechrau sesiwn %{agent}: nid oes gan yr asiant hwn faner arddull `--resume`. Pwyswch Shift+Enter i geisio ailddechrau y tu mewn i’r cwarel asiant drwy ACP yn lle hynny."
+system.cannot_resume_unknown_agent: "Methu ailddechrau sesiwn %{session_id}: mae ei asiant ffynhonnell yn anhysbys i’r adeilad hwn."
+system.cannot_resume_phantom_via_flag: "Methu ailddechrau sesiwn %{agent} %{session_id}: cafodd ei dechrau ond ni chasglodd unrhyw sgwrs erioed, felly byddai %{agent} ei hun yn gwrthod yr ailddechrau. Yn tynnu’r rhes."
+system.cannot_resume_phantom_via_load: "Methu ailddechrau sesiwn %{agent} %{session_id}: cafodd ei dechrau ond ni chasglodd unrhyw sgwrs erioed, felly byddai %{agent} yn gwrthod y llwytho. Yn tynnu’r rhes."
+system.fallback.this_agent: "yr asiant hwn"
+system.fallback.connected_agent: "yr asiant cysylltiedig"
 
 # ── Allbwn CLI amser rhedeg (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ni chanfuwyd unrhyw ffenestri."
@@ -175,3 +187,6 @@ time.hour_singular: "%{count} awr yn ôl"
 time.hours_other: "%{count} awr yn ôl"
 time.day_singular: "%{count} diwrnod yn ôl"
 time.days_other: "%{count} diwrnod yn ôl"
+
+# ── Gweithredu argymhelliad (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Methodd dewis %{choice}: %{error}"

@@ -137,6 +137,18 @@ system.command_copied_retry: "Příkaz zkopírován — spusťte ho v jiném ter
 system.stopped_max_tokens: "Odpověď byla oříznuta po dosažení výstupního limitu modelu."
 system.stopped_max_turn_requests: "Agent se zastavil po dosažení limitu požadavků pro toto kolo."
 system.stopped_refusal: "Agent odmítl pokračovat v tomto požadavku."
+system.agent_busy: "Agent je na této kartě zaneprázdněn — počkejte, až aktuální výzva skončí."
+system.resuming_session: "Obnovuje se relace %{session_id}..."
+system.unknown_command: "Neznámý příkaz \"%{command}\" — odeslán jako výzva. Seznam zobrazíte zadáním /help."  # {Locked="/help"}
+system.busy_use_stop: "Počkejte, až aktuální výzva skončí, nebo nejdřív použijte /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nelze zaměřit relaci %{session_id}: vypadá jako živá, ale zatím není navázán žádný GUID podokna. Zkuste to znovu za chvíli."
+system.cannot_resume_no_load_session: "Nelze obnovit v podokně agenta: %{agent} neohlásil schopnost ACP `loadSession`. Stisknutím Enter (bez Shift) místo toho obnovíte relaci v novém terminálovém podokně."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nelze obnovit relaci %{agent}: tento agent nemá příznak ve stylu `--resume`. Stiskněte Shift+Enter a zkuste obnovit uvnitř podokna agenta přes ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nelze obnovit relaci %{session_id}: její zdrojový agent není této verzi WTA známý."
+system.cannot_resume_phantom_via_flag: "Nelze obnovit relaci %{agent} %{session_id}: byla spuštěna, ale nikdy neshromáždila žádnou konverzaci, takže samotný %{agent} by obnovení odmítl. Řádek se odebírá."
+system.cannot_resume_phantom_via_load: "Nelze obnovit relaci %{agent} %{session_id}: byla spuštěna, ale nikdy neshromáždila žádnou konverzaci, takže %{agent} by načtení odmítl. Řádek se odebírá."
+system.fallback.this_agent: "tento agent"
+system.fallback.connected_agent: "připojený agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nebyla nalezena žádná okna."
@@ -186,3 +198,6 @@ time.hour_singular: "před 1 hodinou"
 time.hours_other: "před %{count} hodinami"
 time.day_singular: "před 1 dnem"
 time.days_other: "před %{count} dny"
+
+# ── Provedení doporučení (src/coordinator.rs) ───────────────────────────────
+system.choice_execution_failed: "Volba %{choice} selhala: %{error}"

@@ -130,6 +130,18 @@ system.command_copied_retry: "Opdrag gekopieer — voer dit in 'n ander terminaa
 system.stopped_max_tokens: "Die antwoord is afgekap nadat die model se afvoerlimiet bereik is."
 system.stopped_max_turn_requests: "Die agent het gestop nadat sy versoeklimiet vir hierdie beurt bereik is."
 system.stopped_refusal: "Die agent het geweier om met hierdie versoek voort te gaan."
+system.agent_busy: "Agent is besig op hierdie oortjie — wag totdat die huidige opdrag klaar is."
+system.resuming_session: "Hervat sessie %{session_id}..."
+system.unknown_command: "Onbekende opdrag \"%{command}\" — as opdrag gestuur. Tik /help vir die lys."
+system.busy_use_stop: "Wag totdat die huidige opdrag klaar is, of gebruik eers /stop."
+system.cannot_focus_session: "Kan nie op sessie %{session_id} fokus nie: dit lyk aktief, maar geen paneel-GUID is nog gebind nie. Probeer oor ’n oomblik weer."
+system.cannot_resume_no_load_session: "Kan nie in agentpaneel hervat nie: %{agent} het nie die ACP `loadSession`-vermoë aangekondig nie. Druk Enter (sonder Shift) om eerder in ’n nuwe terminaalpaneel te hervat."
+system.cannot_resume_no_resume_flag: "Kan nie %{agent}-sessie hervat nie: hierdie agent het geen `--resume`-styl vlag nie. Druk Shift+Enter om eerder via ACP binne die agentpaneel te probeer hervat."
+system.cannot_resume_unknown_agent: "Kan nie sessie %{session_id} hervat nie: die bronagent is onbekend aan hierdie bouweergawe."
+system.cannot_resume_phantom_via_flag: "Kan nie %{agent}-sessie %{session_id} hervat nie: dit is begin maar het nooit enige gesprek opgebou nie, dus sou %{agent} self die hervat verwerp. Verwyder die ry."
+system.cannot_resume_phantom_via_load: "Kan nie %{agent}-sessie %{session_id} hervat nie: dit is begin maar het nooit enige gesprek opgebou nie, dus sou %{agent} die laai verwerp. Verwyder die ry."
+system.fallback.this_agent: "hierdie agent"
+system.fallback.connected_agent: "die gekoppelde agent"
 
 # ── CLI-uitvoer tydens uitvoering (src/main.rs) ────────────────────────────────────
 output.no_windows: "Geen vensters gevind nie."
@@ -175,3 +187,6 @@ time.hour_singular: "%{count} uur gelede"
 time.hours_other: "%{count} uur gelede"
 time.day_singular: "%{count} dag gelede"
 time.days_other: "%{count} dae gelede"
+
+# ── Aanbevelingsuitvoering (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Keuse %{choice} het misluk: %{error}"

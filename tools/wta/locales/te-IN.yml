@@ -141,6 +141,18 @@ system.command_copied_retry: "కమాండ్ కాపీ చేయబడి
 system.stopped_max_tokens: "మోడల్ అవుట్‌పుట్ పరిమితిని చేరుకున్న తర్వాత ప్రతిస్పందన కత్తిరించబడింది."
 system.stopped_max_turn_requests: "ఈ వంతు కోసం దాని అభ్యర్థన పరిమితిని చేరుకున్న తర్వాత ఏజెంట్ ఆగిపోయింది."
 system.stopped_refusal: "ఈ అభ్యర్థనను కొనసాగించడానికి ఏజెంట్ నిరాకరించింది."
+system.agent_busy: "ఈ ట్యాబ్‌లో Agent బిజీగా ఉంది — ప్రస్తుత ప్రాంప్ట్ పూర్తయ్యే వరకు వేచి ఉండండి."
+system.resuming_session: "సెషన్ %{session_id} మళ్లీ ప్రారంభిస్తోంది..."
+system.unknown_command: "తెలియని ఆదేశం \"%{command}\" — ప్రాంప్ట్‌గా పంపబడింది. జాబితా కోసం /help టైప్ చేయండి."  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "ప్రస్తుత ప్రాంప్ట్ పూర్తయ్యే వరకు వేచి ఉండండి, లేదా ముందుగా /stop చేయండి."  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "సెషన్ %{session_id} పై ఫోకస్ చేయలేరు: అది live గా కనిపిస్తోంది కానీ ఇంకా ఏ pane GUID బైండ్ కాలేదు. కొద్దిసేపట్లో మళ్లీ ప్రయత్నించండి."
+system.cannot_resume_no_load_session: "agent pane లో మళ్లీ ప్రారంభించలేరు: %{agent} ACP `loadSession` సామర్థ్యాన్ని ప్రకటించలేదు. బదులుగా కొత్త terminal pane లో మళ్లీ ప్రారంభించడానికి Enter (Shift లేకుండా) నొక్కండి."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} సెషన్‌ను మళ్లీ ప్రారంభించలేరు: ఈ agent కు `--resume` శైలి flag లేదు. బదులుగా ACP ద్వారా agent pane లోపల మళ్లీ ప్రారంభించడానికి Shift+Enter నొక్కి ప్రయత్నించండి."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "సెషన్ %{session_id} మళ్లీ ప్రారంభించలేరు: దాని మూల agent ఈ WTA build కు తెలియదు."
+system.cannot_resume_phantom_via_flag: "%{agent} సెషన్ %{session_id} మళ్లీ ప్రారంభించలేరు: అది ప్రారంభమైంది కానీ ఏ సంభాషణను కూడగట్టలేదు, కాబట్టి %{agent} స్వయంగా resume ను తిరస్కరిస్తుంది. వరుసను తీసివేస్తోంది."
+system.cannot_resume_phantom_via_load: "%{agent} సెషన్ %{session_id} మళ్లీ ప్రారంభించలేరు: అది ప్రారంభమైంది కానీ ఏ సంభాషణను కూడగట్టలేదు, కాబట్టి %{agent} load ను తిరస్కరిస్తుంది. వరుసను తీసివేస్తోంది."
+system.fallback.this_agent: "ఈ agent"
+system.fallback.connected_agent: "కనెక్ట్ అయిన agent"
 
 # ── రన్‌టైమ్ CLI అవుట్‌పుట్ (src/main.rs) ────────────────────────────────────────
 output.no_windows: "విండోలు కనుగొనబడలేదు."
@@ -187,3 +199,6 @@ time.hour_singular: "%{count} గంట క్రితం"
 time.hours_other: "%{count} గంటల క్రితం"
 time.day_singular: "%{count} రోజు క్రితం"
 time.days_other: "%{count} రోజుల క్రితం"
+
+# ── సిఫార్సు అమలు (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "ఎంపిక %{choice} విఫలమైంది: %{error}"

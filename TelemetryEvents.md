@@ -229,7 +229,7 @@ Conventions used in the field tables below:
   | Name | Type | Source expression | Description |
   |---|---|---|---|
   | `Type` | Value (string) | `"EmptyProfile"` / `"Duplicate"` | The type of the creation method (i.e. empty profile, duplicate). |
-  | `SourceProfileHasSource` | Value (bool) | `!selectedProfile.Source().empty()` (only for the `"Duplicate"` variant at line 62) | True if the source profile has a `source` (i.e. dynamic profile generator namespace, fragment). Otherwise false, indicating it's based on a custom profile. |
+  | `SourceProfileHasSource` | Value (bool) | `!selectedProfile.Source().empty()` (only for the `"Duplicate"` variant at line 62) | True if the source profile has a `source` (i.e. dynamic profile generator namespace, fragment). Otherwise, false, indicating it's based on a custom profile. |
 
 ### `CreateUnfocusedAppearance`
 - **Description:** Event emitted when the user creates an unfocused appearance for a profile.

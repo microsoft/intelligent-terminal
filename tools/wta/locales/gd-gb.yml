@@ -130,6 +130,18 @@ system.command_copied_retry: "Àithne air a chopaigeadh — ruith e ann an teirm
 system.stopped_max_tokens: "Chaidh am freagairt a ghearradh às dèidh crìoch toraidh a' mhodail a ruighinn."
 system.stopped_max_turn_requests: "Stad an riochdaire às dèidh a chrìoch iarrtais airson a' chuairt seo a ruighinn."
 system.stopped_refusal: "Dhiùlt an riochdaire leantainn air adhart leis an iarrtas seo."
+system.agent_busy: "Tha an t-àidseant trang air an taba seo — fuirich gus an crìochnaich am brosnachadh làithreach."
+system.resuming_session: "Ag ath-thòiseachadh seisean %{session_id}..."
+system.unknown_command: "Àithne neo-aithnichte \"%{command}\" — air a cur mar bhrosnachadh. Taidhp /help airson an liosta."
+system.busy_use_stop: "Fuirich gus an crìochnaich am brosnachadh làithreach, no cleachd /stop an toiseach."
+system.cannot_focus_session: "Cha ghabh fòcas a chur air seisean %{session_id}: tha e a’ coimhead beò ach chan eil GUID pana ceangailte fhathast. Feuch ris a-rithist an ceann tiota."
+system.cannot_resume_no_load_session: "Cha ghabh ath-thòiseachadh ann am pana àidseint: cha do dh’ainmich %{agent} comas ACP `loadSession`. Brùth Enter (gun Shift) gus ath-thòiseachadh ann am pana teirmineil ùr na àite."
+system.cannot_resume_no_resume_flag: "Cha ghabh seisean %{agent} ath-thòiseachadh: chan eil bratach stoidhle `--resume` aig an àidseant seo. Brùth Shift+Enter gus feuchainn ri ath-thòiseachadh taobh a-staigh pana an àidseint tro ACP na àite."
+system.cannot_resume_unknown_agent: "Cha ghabh seisean %{session_id} ath-thòiseachadh: chan eil an t-àidseant tùsail aithnichte dhan togail seo."
+system.cannot_resume_phantom_via_flag: "Cha ghabh seisean %{agent} %{session_id} ath-thòiseachadh: chaidh a thòiseachadh ach cha do chruinnich e còmhradh sam bith, mar sin dhiùltadh %{agent} fhèin an ath-thòiseachadh. A’ toirt air falbh an ràigh."
+system.cannot_resume_phantom_via_load: "Cha ghabh seisean %{agent} %{session_id} ath-thòiseachadh: chaidh a thòiseachadh ach cha do chruinnich e còmhradh sam bith, mar sin dhiùltadh %{agent} an luchdadh. A’ toirt air falbh an ràigh."
+system.fallback.this_agent: "an t-àidseant seo"
+system.fallback.connected_agent: "an t-àidseant ceangailte"
 
 # ── Toradh CLI àm-ruith (src/main.rs) ────────────────────────────────────
 output.no_windows: "Cha deach uinneagan a lorg."
@@ -175,3 +187,6 @@ time.hour_singular: "%{count} uair a thìde air ais"
 time.hours_other: "%{count} uairean a thìde air ais"
 time.day_singular: "%{count} latha air ais"
 time.days_other: "%{count} làithean air ais"
+
+# ── Cur an gnìomh molaidh (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Dh’fhàillig roghainn %{choice}: %{error}"

@@ -303,7 +303,7 @@ namespace winrt::TerminalApp::implementation
             });
     }
 
-    // ── Winget install helper ───────────────────────────────────────────
+    // ── WinGet install helper ───────────────────────────────────────────
 
     IAsyncOperation<bool> FreOverlay::_WingetInstallAsync(winrt::hstring packageId)
     {

@@ -130,6 +130,18 @@ system.command_copied_retry: "Komanda u kopjua — ekzekutojeni në një termina
 system.stopped_max_tokens: "Përgjigja u ndërpre pasi u arrit kufiri i daljes së modelit."
 system.stopped_max_turn_requests: "Agjenti ndaloi pasi arriti kufirin e kërkesave për këtë radhë."
 system.stopped_refusal: "Agjenti refuzoi të vazhdojë me këtë kërkesë."
+system.agent_busy: "Agjenti është i zënë në këtë skedë — prisni që kërkesa aktuale të përfundojë."
+system.resuming_session: "Po rifillon sesioni %{session_id}..."
+system.unknown_command: "Komandë e panjohur \"%{command}\" — u dërgua si kërkesë. Shkruani /help për listën."  # {Locked="/help"}
+system.busy_use_stop: "Prisni që kërkesa aktuale të përfundojë, ose përdorni më parë /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nuk mund të fokusohet sesioni %{session_id}: duket aktiv, por ende nuk është lidhur asnjë GUID paneli. Provojeni përsëri pas pak."
+system.cannot_resume_no_load_session: "Nuk mund të rifillohet në panelin e agjentit: %{agent} nuk shpalli aftësinë ACP `loadSession`. Shtypni Enter (pa Shift) për ta rifilluar në një panel të ri terminali në vend të kësaj."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nuk mund të rifillohet sesioni %{agent}: ky agjent nuk ka flamur të stilit `--resume`. Shtypni Shift+Enter për të provuar rifillimin brenda panelit të agjentit përmes ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nuk mund të rifillohet sesioni %{session_id}: agjenti i tij burimor është i panjohur për këtë ndërtim të WTA."
+system.cannot_resume_phantom_via_flag: "Nuk mund të rifillohet sesioni %{agent} %{session_id}: ai u nis, por nuk grumbulloi kurrë asnjë bisedë, prandaj vetë %{agent} do ta refuzonte rifillimin. Po hiqet rreshti."
+system.cannot_resume_phantom_via_load: "Nuk mund të rifillohet sesioni %{agent} %{session_id}: ai u nis, por nuk grumbulloi kurrë asnjë bisedë, prandaj %{agent} do ta refuzonte ngarkimin. Po hiqet rreshti."
+system.fallback.this_agent: "ky agjent"
+system.fallback.connected_agent: "agjenti i lidhur"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nuk u gjetën dritare."
@@ -175,3 +187,6 @@ time.hour_singular: "%{count} orë më parë"
 time.hours_other: "%{count} orë më parë"
 time.day_singular: "%{count} ditë më parë"
 time.days_other: "%{count} ditë më parë"
+
+# ── Ekzekutimi i rekomandimit (src/coordinator.rs) ──────────────────────────
+system.choice_execution_failed: "Zgjedhja %{choice} dështoi: %{error}"

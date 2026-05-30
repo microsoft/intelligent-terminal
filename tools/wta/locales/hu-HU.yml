@@ -130,6 +130,18 @@ system.command_copied_retry: "Parancs másolva — futtassa egy másik terminál
 system.stopped_max_tokens: "A válasz megszakadt, miután elérte a modell kimeneti korlátját."
 system.stopped_max_turn_requests: "Az ügynök leállt, miután elérte a kérési korlátját ehhez a fordulóhoz."
 system.stopped_refusal: "Az ügynök elutasította a kérés folytatását."
+system.agent_busy: "Az ügynök elfoglalt ezen a lapon — várja meg, amíg az aktuális kérés befejeződik."
+system.resuming_session: "A(z) %{session_id} munkamenet folytatása..."
+system.unknown_command: "Ismeretlen parancs: \"%{command}\" — kérésként elküldve. A listához írja be: /help."  # {Locked="/help"}
+system.busy_use_stop: "Várja meg, amíg az aktuális kérés befejeződik, vagy előbb használja a /stop parancsot."  # {Locked="/stop"}
+system.cannot_focus_session: "Nem lehet fókuszba helyezni a(z) %{session_id} munkamenetet: élőnek tűnik, de még nincs hozzárendelve panel-GUID. Próbálja újra egy pillanat múlva."
+system.cannot_resume_no_load_session: "Nem lehet folytatni az ügynökpanelben: %{agent} nem hirdette meg az ACP `loadSession` képességet. Nyomja meg az Enter billentyűt (Shift nélkül), ha inkább új terminálpanelben szeretné folytatni."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nem lehet folytatni a(z) %{agent} munkamenetet: ennek az ügynöknek nincs `--resume` stílusú jelzője. Nyomja meg a Shift+Enter billentyűt, hogy ACP-n keresztül próbálja folytatni az ügynökpanelen belül."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nem lehet folytatni a(z) %{session_id} munkamenetet: a forrásügynök ismeretlen ennek a WTA-buildnek."
+system.cannot_resume_phantom_via_flag: "Nem lehet folytatni a(z) %{agent} %{session_id} munkamenetet: elindult, de nem gyűlt benne beszélgetés, ezért maga a(z) %{agent} elutasítaná a folytatást. A sor eltávolítása."
+system.cannot_resume_phantom_via_load: "Nem lehet folytatni a(z) %{agent} %{session_id} munkamenetet: elindult, de nem gyűlt benne beszélgetés, ezért a(z) %{agent} elutasítaná a betöltést. A sor eltávolítása."
+system.fallback.this_agent: "ez az ügynök"
+system.fallback.connected_agent: "a csatlakoztatott ügynök"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nem találhatók ablakok."
@@ -175,3 +187,6 @@ time.hour_singular: "%{count} órája"
 time.hours_other: "%{count} órája"
 time.day_singular: "%{count} napja"
 time.days_other: "%{count} napja"
+
+# ── Javaslat végrehajtása (src/coordinator.rs) ──────────────────────────────
+system.choice_execution_failed: "A(z) %{choice}. választás sikertelen: %{error}"

@@ -130,6 +130,18 @@ system.command_copied_retry: "Komandoa kopiatu da — exekutatu beste terminal b
 system.stopped_max_tokens: "Erantzuna eten egin da modeloaren irteera-muga gainditu ondoren."
 system.stopped_max_turn_requests: "Agentea gelditu egin da txanda honetako eskaera-muga gainditu ondoren."
 system.stopped_refusal: "Agenteak eskaera honekin jarraitzeari uko egin dio."
+system.agent_busy: "Agentea lanpetuta dago fitxa honetan — itxaron uneko gonbita amaitu arte."
+system.resuming_session: "%{session_id} saioa berrekiten..."
+system.unknown_command: "Komando ezezaguna \"%{command}\" — gonbita gisa bidali da. Idatzi /help zerrenda ikusteko."
+system.busy_use_stop: "Itxaron uneko gonbita amaitu arte, edo erabili /stop lehenik."
+system.cannot_focus_session: "Ezin da %{session_id} saioa fokuratu: aktibo dagoela dirudi, baina oraindik ez dago panelaren GUIDik lotuta. Saiatu berriro une batean."
+system.cannot_resume_no_load_session: "Ezin da agente-panelean berrekin: %{agent} agenteak ez du ACP `loadSession` gaitasuna iragarri. Sakatu Enter (Shift gabe) terminal-panel berri batean berrekiteko."
+system.cannot_resume_no_resume_flag: "Ezin da %{agent} saioa berrekin: agente honek ez du `--resume` estiloko banderarik. Sakatu Shift+Enter ACP bidez agente-panelaren barruan berrekiten saiatzeko."
+system.cannot_resume_unknown_agent: "Ezin da %{session_id} saioa berrekin: bere jatorrizko agentea ezezaguna da eraikuntza honentzat."
+system.cannot_resume_phantom_via_flag: "Ezin da %{agent} saioa %{session_id} berrekin: hasi zen, baina ez zuen inoiz elkarrizketarik metatu; beraz, %{agent} agenteak berak berrekitea baztertuko luke. Errenkada kentzen."
+system.cannot_resume_phantom_via_load: "Ezin da %{agent} saioa %{session_id} berrekin: hasi zen, baina ez zuen inoiz elkarrizketarik metatu; beraz, %{agent} agenteak karga baztertuko luke. Errenkada kentzen."
+system.fallback.this_agent: "agente hau"
+system.fallback.connected_agent: "konektatutako agentea"
 
 # ── CLI irteera exekuzio-unean (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ez da leihorik aurkitu."
@@ -176,3 +188,6 @@ time.hour_singular: "duela %{count} ordu"
 time.hours_other: "duela %{count} ordu"
 time.day_singular: "duela %{count} egun"
 time.days_other: "duela %{count} egun"
+
+# ── Gomendioaren exekuzioa (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "%{choice} aukera huts egin du: %{error}"

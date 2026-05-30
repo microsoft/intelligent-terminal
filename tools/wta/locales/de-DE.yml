@@ -130,6 +130,18 @@ system.command_copied_retry: "Befehl kopiert — führen Sie ihn in einem andere
 system.stopped_max_tokens: "Die Antwort wurde abgeschnitten, nachdem das Ausgabelimit des Modells erreicht wurde."
 system.stopped_max_turn_requests: "Der Agent hat angehalten, nachdem sein Anfragelimit für diesen Zug erreicht wurde."
 system.stopped_refusal: "Der Agent hat es abgelehnt, mit dieser Anfrage fortzufahren."
+system.agent_busy: "Der Agent ist auf dieser Registerkarte beschäftigt — warten Sie, bis der aktuelle Prompt abgeschlossen ist."
+system.resuming_session: "Sitzung %{session_id} wird fortgesetzt..."
+system.unknown_command: "Unbekannter Befehl \"%{command}\" — als Prompt gesendet. Geben Sie /help ein, um die Liste anzuzeigen."
+system.busy_use_stop: "Warten Sie, bis der aktuelle Prompt abgeschlossen ist, oder verwenden Sie zuerst /stop."
+system.cannot_focus_session: "Sitzung %{session_id} kann nicht fokussiert werden: Sie scheint aktiv zu sein, aber es ist noch keine Bereichs-GUID gebunden. Versuchen Sie es gleich erneut."
+system.cannot_resume_no_load_session: "Fortsetzen im Agentbereich nicht möglich: %{agent} hat die ACP-`loadSession`-Funktion nicht angekündigt. Drücken Sie Enter (ohne Shift), um stattdessen in einem neuen Terminalbereich fortzusetzen."
+system.cannot_resume_no_resume_flag: "%{agent}-Sitzung kann nicht fortgesetzt werden: Dieser Agent verfügt über kein `--resume`-ähnliches Flag. Drücken Sie Shift+Enter, um stattdessen das Fortsetzen im Agentbereich über ACP zu versuchen."
+system.cannot_resume_unknown_agent: "Sitzung %{session_id} kann nicht fortgesetzt werden: Der Quellagent ist diesem Build unbekannt."
+system.cannot_resume_phantom_via_flag: "%{agent}-Sitzung %{session_id} kann nicht fortgesetzt werden: Sie wurde gestartet, hat aber nie eine Unterhaltung angesammelt, sodass %{agent} selbst das Fortsetzen ablehnen würde. Zeile wird entfernt."
+system.cannot_resume_phantom_via_load: "%{agent}-Sitzung %{session_id} kann nicht fortgesetzt werden: Sie wurde gestartet, hat aber nie eine Unterhaltung angesammelt, sodass %{agent} das Laden ablehnen würde. Zeile wird entfernt."
+system.fallback.this_agent: "dieser Agent"
+system.fallback.connected_agent: "der verbundene Agent"
 
 # ── Laufzeit-CLI-Ausgabe (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Keine Fenster gefunden."
@@ -186,3 +198,6 @@ commands.new.summary: "Eine neue ACP-Sitzung starten (Verlauf verwerfen)"
 commands.restart.summary: "Agent neu starten"
 commands.stop.summary: "Laufende Eingabe abbrechen"
 commands.sessions.summary: "Auswahl historischer Sitzungen öffnen (Ctrl+Shift+/)"
+
+# ── Empfehlungsausführung (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Auswahl %{choice} fehlgeschlagen: %{error}"

@@ -130,6 +130,18 @@ system.command_copied_retry: "Nakopya ang command — patakbuhin sa ibang termin
 system.stopped_max_tokens: "Naputol ang tugon pagkatapos maabot ang limitasyon sa output ng modelo."
 system.stopped_max_turn_requests: "Huminto ang ahente pagkatapos maabot ang limitasyon nito sa kahilingan para sa pagliko na ito."
 system.stopped_refusal: "Tumanggi ang ahente na ipagpatuloy ang kahilingang ito."
+system.agent_busy: "Abala ang agent sa tab na ito — hintaying matapos ang kasalukuyang prompt."
+system.resuming_session: "Ipinagpapatuloy ang session %{session_id}..."
+system.unknown_command: "Hindi kilalang command \"%{command}\" — ipinadala bilang prompt. I-type ang /help para sa listahan."  # {Locked="/help"}
+system.busy_use_stop: "Hintaying matapos ang kasalukuyang prompt, o mag-/stop muna."  # {Locked="/stop"}
+system.cannot_focus_session: "Hindi ma-focus ang session %{session_id}: mukhang live ito pero wala pang naka-bind na pane GUID. Subukan muli pagkalipas ng ilang sandali."
+system.cannot_resume_no_load_session: "Hindi maipagpatuloy sa agent pane: hindi in-advertise ng %{agent} ang ACP `loadSession` capability. Pindutin ang Enter (nang walang Shift) para ipagpatuloy na lang sa bagong terminal pane."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Hindi maipagpatuloy ang %{agent} session: walang `--resume`-style flag ang agent na ito. Pindutin ang Shift+Enter para subukang ipagpatuloy sa loob ng agent pane sa pamamagitan ng ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Hindi maipagpatuloy ang session %{session_id}: hindi kilala ng build na ito ang source agent nito."
+system.cannot_resume_phantom_via_flag: "Hindi maipagpatuloy ang %{agent} session %{session_id}: nagsimula ito pero hindi kailanman nakaipon ng anumang pag-uusap, kaya tatanggihan ng %{agent} mismo ang resume. Inaalis ang row."
+system.cannot_resume_phantom_via_load: "Hindi maipagpatuloy ang %{agent} session %{session_id}: nagsimula ito pero hindi kailanman nakaipon ng anumang pag-uusap, kaya tatanggihan ng %{agent} ang load. Inaalis ang row."
+system.fallback.this_agent: "ang agent na ito"
+system.fallback.connected_agent: "ang nakakonektang agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Walang nahanap na window."
@@ -176,3 +188,6 @@ time.hour_singular: "%{count} oras ang nakalipas"
 time.hours_other: "%{count} oras ang nakalipas"
 time.day_singular: "%{count} araw ang nakalipas"
 time.days_other: "%{count} araw ang nakalipas"
+
+# ── Pagpapatupad ng rekomendasyon (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Nabigo ang pagpipiliang %{choice}: %{error}"

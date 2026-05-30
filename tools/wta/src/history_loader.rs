@@ -1082,7 +1082,7 @@ mod tests {
         let text = "summary: hello\nsummary_count: 0\n";
         assert_eq!(parse_simple_yaml(text, "summary").as_deref(),       Some("hello"));
         assert_eq!(parse_simple_yaml(text, "summary_count").as_deref(), Some("0"));
-        // Querying a non-existent prefix must not partial-match a longer key.
+        // Querying a nonexistent prefix must not partial-match a longer key.
         assert_eq!(parse_simple_yaml(text, "summa"), None);
     }
 

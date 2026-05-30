@@ -130,6 +130,18 @@ system.command_copied_retry: "[!! Com_mand copied — run it in another terminal
 system.stopped_max_tokens: "[!! The_ response was cut off after reaching the model's output limit. !!]"
 system.stopped_max_turn_requests: "[!! The_ agent stopped after reaching its request limit for this turn. !!]"
 system.stopped_refusal: "[!! The_ agent declined to continue with this request. !!]"
+system.agent_busy: "[!! Age_nt is busy on this tab — wait for the current prompt to finish. !!]"
+system.resuming_session: "[!! Res_uming session %{session_id}... !!]"
+system.unknown_command: "[!! Unk_nown command \"%{command}\" — sent as prompt. Type /help for the list. !!]"  # {Locked="/help"}
+system.busy_use_stop: "[!! Wai_t for the current prompt to finish, or /stop first. !!]"  # {Locked="/stop"}
+system.cannot_focus_session: "[!! Can_not focus session %{session_id}: it appears live but no pane GUID is bound yet. Try again in a moment. !!]"
+system.cannot_resume_no_load_session: "[!! Can_not resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability. Press Enter (without Shift) to resume in a new terminal pane instead. !!]"  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "[!! Can_not resume %{agent} session: this agent has no `--resume`-style flag. Press Shift+Enter to try resuming inside the agent pane via ACP instead. !!]"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "[!! Can_not resume session %{session_id}: its source agent is unknown to this build. !!]"
+system.cannot_resume_phantom_via_flag: "[!! Can_not resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} itself would reject the resume. Removing the row. !!]"
+system.cannot_resume_phantom_via_load: "[!! Can_not resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row. !!]"
+system.fallback.this_agent: "[!! thi_s agent !!]"
+system.fallback.connected_agent: "[!! the_ connected agent !!]"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "[!! No_ windows found. !!]"
@@ -184,3 +196,6 @@ commands.new.summary: "[!! Start a fresh ACP session (drops history) !!]"
 commands.restart.summary: "[!! Restart agent !!]"
 commands.stop.summary: "[!! Cancel the in-flight prompt !!]"
 commands.sessions.summary: "[!! Open the historical sessions picker (Ctrl+Shift+/) !!]"
+
+# ── Recommendation execution (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "[!! Cho_ice %{choice} failed: %{error} !!]"

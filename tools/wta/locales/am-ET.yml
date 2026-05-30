@@ -130,6 +130,18 @@ system.command_copied_retry: "Command copied — run it in another terminal, the
 system.stopped_max_tokens: "ምላሹ የሞዴሉ የውፅዓት ገደብ ላይ ከደረሰ በኋላ ተቆርጧል።"
 system.stopped_max_turn_requests: "ወኪሉ ለዚህ ዙር የጥያቄ ገደቡ ላይ ከደረሰ በኋላ ቆሟል።"
 system.stopped_refusal: "ወኪሉ በዚህ ጥያቄ መቀጠል አልፈለገም።"
+system.agent_busy: "Agent በዚህ ትር ላይ በስራ ላይ ነው — የአሁኑ ጥያቄ እስኪያልቅ ይጠብቁ።"
+system.resuming_session: "ክፍለ ጊዜ %{session_id} እንደገና በመቀጠል ላይ..."
+system.unknown_command: "ያልታወቀ ትዕዛዝ \"%{command}\" — እንደ ጥያቄ ተልኳል። ዝርዝሩን ለማየት /help ይተይቡ።"  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "የአሁኑ ጥያቄ እስኪያልቅ ይጠብቁ፣ ወይም መጀመሪያ /stop ያድርጉ።"  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "ክፍለ ጊዜ %{session_id} ላይ ትኩረት ማድረግ አይቻልም፦ በቀጥታ ያለ ይመስላል ግን ገና የpane GUID የለም። ከጥቂት ጊዜ በኋላ እንደገና ይሞክሩ።"
+system.cannot_resume_no_load_session: "በagent pane ውስጥ መቀጠል አይቻልም፦ %{agent} የACP `loadSession` ችሎታን አላስታወቀም። በምትኩ በአዲስ terminal pane ውስጥ ለመቀጠል Enter (Shift ያለ) ይጫኑ።"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "የ%{agent} ክፍለ ጊዜን መቀጠል አይቻልም፦ ይህ agent የ`--resume` አይነት ሰንደቅ የለውም። በምትኩ በagent pane ውስጥ በACP ለመቀጠል Shift+Enter ይጫኑ።"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "ክፍለ ጊዜ %{session_id} መቀጠል አይቻልም፦ የምንጩ agent በዚህ WTA ግንባታ አይታወቅም።"
+system.cannot_resume_phantom_via_flag: "የ%{agent} ክፍለ ጊዜ %{session_id} መቀጠል አይቻልም፦ ተጀምሯል ግን ምንም ውይይት አልተከማቸበትም፣ ስለዚህ %{agent} ራሱ መቀጠሉን ይከለክላል። ረድፉን በማስወገድ ላይ።"
+system.cannot_resume_phantom_via_load: "የ%{agent} ክፍለ ጊዜ %{session_id} መቀጠል አይቻልም፦ ተጀምሯል ግን ምንም ውይይት አልተከማቸበትም፣ ስለዚህ %{agent} መጫኑን ይከለክላል። ረድፉን በማስወገድ ላይ።"
+system.fallback.this_agent: "ይህ agent"
+system.fallback.connected_agent: "የተገናኘው agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "No windows found."
@@ -175,3 +187,6 @@ time.hour_singular: "%{count} ሰዓት በፊት"
 time.hours_other: "%{count} ሰዓታት በፊት"
 time.day_singular: "%{count} ቀን በፊት"
 time.days_other: "%{count} ቀናት በፊት"
+
+# ── የምክር አፈጻጸም (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "ምርጫ %{choice} አልተሳካም፦ %{error}"

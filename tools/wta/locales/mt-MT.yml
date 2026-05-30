@@ -130,6 +130,18 @@ system.command_copied_retry: "Kmand ikkupjat — ħaddmu f'terminal ieħor, imba
 system.stopped_max_tokens: "It-tweġiba nqatgħet wara li ntlaħaq il-limitu tal-output tal-mudell."
 system.stopped_max_turn_requests: "L-aġent waqaf wara li laħaq il-limitu tat-talbiet tiegħu għal din id-dawra."
 system.stopped_refusal: "L-aġent irrifjuta li jkompli b'din it-talba."
+system.agent_busy: "L-aġent huwa okkupat fuq din it-tab — stenna sakemm jintemm il-prompt kurrenti."
+system.resuming_session: "Qed tkompli s-sessjoni %{session_id}..."
+system.unknown_command: "Kmand mhux magħruf \"%{command}\" — intbagħat bħala prompt. Ittajpja /help għal-lista."
+system.busy_use_stop: "Stenna sakemm jintemm il-prompt kurrenti, jew uża /stop l-ewwel."
+system.cannot_focus_session: "Ma tistax tiffoka s-sessjoni %{session_id}: tidher live iżda għad m’hemm l-ebda GUID tal-panew marbut. Erġa’ pprova fi ftit."
+system.cannot_resume_no_load_session: "Ma tistax tkompli fil-panew tal-aġent: %{agent} ma ħabbarx il-kapaċità ACP `loadSession`. Agħfas Enter (mingħajr Shift) biex minflok tkompli f’panew tat-terminal ġdid."
+system.cannot_resume_no_resume_flag: "Ma tistax tkompli s-sessjoni ta’ %{agent}: dan l-aġent m’għandux flag stil `--resume`. Agħfas Shift+Enter biex tipprova tkompli ġewwa l-panew tal-aġent permezz ta’ ACP minflok."
+system.cannot_resume_unknown_agent: "Ma tistax tkompli s-sessjoni %{session_id}: l-aġent tas-sors tagħha mhuwiex magħruf għal din il-build."
+system.cannot_resume_phantom_via_flag: "Ma tistax tkompli s-sessjoni ta’ %{agent} %{session_id}: inbdiet iżda qatt ma akkumulat konverżazzjoni, għalhekk %{agent} innifsu jirrifjuta t-tkomplija. Qed titneħħa r-ringiela."
+system.cannot_resume_phantom_via_load: "Ma tistax tkompli s-sessjoni ta’ %{agent} %{session_id}: inbdiet iżda qatt ma akkumulat konverżazzjoni, għalhekk %{agent} jirrifjuta t-tagħbija. Qed titneħħa r-ringiela."
+system.fallback.this_agent: "dan l-aġent"
+system.fallback.connected_agent: "l-aġent konness"
 
 # ── Output CLI waqt l-eżekuzzjoni (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ma nstabet l-ebda tieqa."
@@ -175,3 +187,6 @@ time.hour_singular: "%{count} siegħa ilu"
 time.hours_other: "%{count}-il siegħa ilu"
 time.day_singular: "%{count} ġurnata ilu"
 time.days_other: "%{count}-il ġurnata ilu"
+
+# ── Eżekuzzjoni tar-rakkomandazzjoni (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "L-għażla %{choice} falliet: %{error}"
