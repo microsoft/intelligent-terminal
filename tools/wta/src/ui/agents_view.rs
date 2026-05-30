@@ -137,7 +137,10 @@ pub fn render(
         (rows, total)
     };
     let filter_elapsed_us = filter_start.elapsed().as_micros() as u64;
-    tracing::debug!(
+    // These three fire on every render frame while the F2 view is open (the TUI
+    // redraws continuously), so they're trace-only — at info/debug a single
+    // open F2 view balloons the helper log by thousands of lines.
+    tracing::trace!(
         target: "f2_filter_perf",
         total      = pre_filter_total,
         kept       = sorted.len(),
@@ -147,7 +150,7 @@ pub fn render(
         source     = if using_snapshot { "snapshot" } else { "registry" },
         "f2 origin/cli filter applied"
     );
-    tracing::info!(
+    tracing::trace!(
         target: "agents_view_filter",
         filter = ?cli_filter,
         origin = ?origin_filter,
@@ -155,7 +158,7 @@ pub fn render(
         total = pre_filter_total,
         "rendering agent sessions list"
     );
-    tracing::debug!(
+    tracing::trace!(
         target: "agents_render",
         total = sorted.len(),
         filter = ?cli_filter,
