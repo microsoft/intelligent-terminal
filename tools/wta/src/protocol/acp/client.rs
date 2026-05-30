@@ -2092,16 +2092,16 @@ pub async fn run_acp_client_over_pipe(
         loop {
             match tokio::net::windows::named_pipe::ClientOptions::new().open(&pipe_name) {
                 Ok(pipe) => {
-                    if attempt > 0 {
-                        tracing::info!(
-                            target: "helper",
-                            step = "pipe_connect",
-                            pipe = %pipe_name,
-                            attempts = attempt + 1,
-                            "master pipe connected after retry"
-                        );
-                    }
-                    startup_probe.log(&format!("master pipe connected (attempt {})", attempt + 1));
+                    // Always log the connect milestone at info (not just on
+                    // retry) so a clean helper→master connect is visible in
+                    // release logs, not only failures/retries.
+                    tracing::info!(
+                        target: "helper",
+                        step = "pipe_connect",
+                        pipe = %pipe_name,
+                        attempts = attempt + 1,
+                        "master pipe connected"
+                    );
                     break pipe;
                 }
                 Err(e) => {
@@ -2211,6 +2211,13 @@ pub async fn run_acp_client_over_pipe(
             );
             anyhow::anyhow!("initialize over master pipe failed: {}", e)
         })?;
+    // Connection milestone at info so a clean handshake is visible in release.
+    tracing::info!(
+        target: "helper",
+        step = "acp_initialize",
+        pipe = %pipe_name,
+        "ACP initialized over master pipe"
+    );
     startup_probe.log(&format!(
         "Agent init response received (over pipe): {:?}",
         init_resp
