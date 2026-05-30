@@ -581,9 +581,10 @@ async fn main() -> Result<()> {
     // arg parsing, so even early-startup failures (locale, ETW registration,
     // legacy-flag dispatch) are captured. The global tracing subscriber can
     // only be set once per process, so every mode routes through here — the
-    // per-mode handlers below no longer init their own. `_log_guard` is held
-    // for the whole process so the non-blocking appender flushes on exit.
-    let _log_guard = logging::init(&process_label(&cli));
+    // per-mode handlers below no longer init their own. The appender's guard
+    // is held in a global and flushed via `logging::shutdown_flush()` on every
+    // exit path (see the calls below and before each `process::exit`).
+    logging::init(&process_label(&cli));
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "=== wta starting ===");
 
     let locale = cli
@@ -601,10 +602,14 @@ async fn main() -> Result<()> {
 
     // Legacy flags first (backward compat)
     if cli.test_pipe {
-        return run_test_pipe().await;
+        let r = run_test_pipe().await;
+        logging::shutdown_flush();
+        return r;
     }
     if cli.info {
-        return run_info_mode().await;
+        let r = run_info_mode().await;
+        logging::shutdown_flush();
+        return r;
     }
     let json_mode = cli.json;
 
@@ -870,6 +875,9 @@ async fn main() -> Result<()> {
     if let Err(err) = &result {
         tracing::error!(error = ?err, "wta exiting with error");
     }
+    // Flush the file appender before returning (its guard lives in a global,
+    // not a local, so it is not dropped automatically on return).
+    logging::shutdown_flush();
     result
 }
 
@@ -920,6 +928,8 @@ async fn run_probe_models(agent: &str) -> Result<()> {
             tracing::error!("probe-models failed: {:#}", e);
             eprintln!("probe-models failed: {:#}", e);
             let _ = std::io::Write::flush(&mut std::io::stderr());
+            // Flush the file appender — process::exit skips the guard drop.
+            logging::shutdown_flush();
             // See exit rationale below.
             std::process::exit(1);
         }
@@ -941,6 +951,8 @@ async fn run_probe_models(agent: &str) -> Result<()> {
     // handle, exit now. Orphan grandchildren self-exit shortly after
     // when they notice their pipes are broken.
     let _ = std::io::Write::flush(&mut std::io::stdout());
+    // Flush the file appender — process::exit skips the guard drop.
+    logging::shutdown_flush();
     std::process::exit(0);
 }
 
@@ -1882,6 +1894,8 @@ async fn run_acp_tui_mode(
 
     if let Err(e) = result {
         eprintln!("Error: {e:?}");
+        // Flush the file appender — process::exit skips the guard drop.
+        logging::shutdown_flush();
         std::process::exit(1);
     }
     Ok(())

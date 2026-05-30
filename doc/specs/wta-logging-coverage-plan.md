@@ -152,7 +152,8 @@ master 仍是单例,保持单文件 `wta-main_master.log`。
     其余进程跳过。
   - 清理用 `remove_file`,对被其他进程占用的文件(升级过渡期仍存活的旧进程)
     会失败 —— 忽略即可,安全。
-- **清理方式(已定)**:**直接 `remove_file` 删除**,不归档、不保留旧版本。
+- **清理方式**:~~直接 `remove_file` 删除~~ → **已被改动 H 取代**:改为按版本
+  分目录、保留最近 3 个版本(见下方「改动 H」)。
 
 **(2) per-PID helper 文件保留**(配合改动 D)
 
@@ -189,6 +190,28 @@ master 仍是单例,保持单文件 `wta-main_master.log`。
 失败路径统一用 `WARN`/`ERROR` 级别 + 结构化字段(`error=`、`code=`、
 `elapsed_ms=` 等),保证即便默认级别下也可见(release 默认已抬到 `info`,
 warn/error 必然落盘)。
+
+### 改动 H:按版本分目录存储 + PR review 修复
+
+PR #136 review 后的两项改动:
+
+**(1) 日志按版本分目录(取代「升级直删 + `.wta-log-version` 标记」)。**
+每个 build 的日志写到 `logs\<CARGO_PKG_VERSION>\`。升级后下次启动,
+`prune_old_version_dirs` **保留最近 3 个版本目录(按 mtime),其余整目录删除**。
+当前版本目录**永不**作为删除目标 —— 因此清理**天然无锁、并发安全**:并发启动的
+新版本进程只会去删同一批「死的」旧版本目录(`remove_dir_all` 幂等),不可能删到
+任何进程正在写的文件。这正面修掉了 Copilot 指出的「Windows 下 Rust 默认带
+delete-sharing,并发清理会删掉别人刚打开的当前日志」问题(原 `version_cleanup`
++ 标记文件方案已移除)。`logs\` 里的扁平文件(C++ `wta-agent-pane.log`、
+PowerShell `hook-trace.log`)不在删除范围。
+
+**(2) `process::exit` 前 flush 日志(修 Copilot 第二条)。** appender 的
+`WorkerGuard` 改为存全局,新增 `logging::shutdown_flush()`(take+drop → flush)。
+`main()` 所有返回路径、以及 3 处 `std::process::exit`(probe 成功/失败、TUI 出错)
+之前都显式调用它 —— 否则 `process::exit` 跳过 guard 的 Drop,probe 等路径会丢日志。
+(`static` 不在进程退出时跑 Drop,所以 `shutdown_flush` 是唯一 flush 点。)
+
+拼写:`reconstructable` → `can be reconstructed`(过 check-spelling)。
 
 ### 改动 G:隐私与级别审计(全量 `tracing::` 复查)
 

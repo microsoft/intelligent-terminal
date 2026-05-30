@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -11,9 +12,16 @@ const HELPER_RETENTION_DAYS: u64 = 3;
 /// Daily-rotated `wta-cli.log` files kept by the appender; older ones are
 /// deleted natively by `tracing_appender` (`Builder::max_log_files`).
 const CLI_MAX_LOG_FILES: usize = 3;
-/// Marker file recording the build version whose logs currently occupy the
-/// directory. A mismatch triggers a one-time wipe of the prior build's logs.
-const VERSION_MARKER: &str = ".wta-log-version";
+/// Keep the current build's per-version log dir plus this many older versions';
+/// anything beyond is deleted wholesale on the next start after an upgrade.
+const MAX_VERSION_DIRS: usize = 3;
+
+/// Holds the non-blocking appender's `WorkerGuard` for the whole process.
+///
+/// Stored in a global (not a `main()` local) so [`shutdown_flush`] can drop it
+/// — flushing the appender — before any `std::process::exit`, which would
+/// otherwise skip the `Drop` and lose the final buffered log records.
+static GUARD: OnceLock<Mutex<Option<WorkerGuard>>> = OnceLock::new();
 
 /// Returns the default `EnvFilter` directive to use when neither `WTA_LOG` nor
 /// `RUST_LOG` is set.
@@ -33,17 +41,21 @@ pub(crate) fn default_filter_directive(debug_assertions: bool) -> &'static str {
     }
 }
 
-pub fn init(process: &str) -> WorkerGuard {
-    // Logs are transient diagnostics → the cache (`LocalCache\Local`) root,
-    // not the persistent `LocalState` state root.
-    let log_dir = crate::runtime_paths::intelligent_terminal_local_root()
+pub fn init(process: &str) {
+    let logs_root = crate::runtime_paths::intelligent_terminal_local_root()
         .map(|r| r.join("logs"))
         .unwrap_or_else(|| std::env::temp_dir().join("IntelligentTerminal").join("logs"));
+
+    // Per-version subdirectory: each build's logs are stored separately so an
+    // upgrade keeps the last few versions and drops older ones wholesale. This
+    // is also what makes cleanup lock-free — the live (current-version) dir is
+    // never a deletion target, so no process can delete a file another is
+    // still writing.
+    let log_dir = logs_root.join(env!("CARGO_PKG_VERSION"));
     let _ = std::fs::create_dir_all(&log_dir);
 
-    // Reclaim disk BEFORE opening our own appender so a version-upgrade wipe
-    // can't race against the file we're about to create.
-    housekeeping(&log_dir, process);
+    // Reclaim disk BEFORE opening our own appender.
+    housekeeping(&logs_root, &log_dir, process);
 
     // The short-lived `cli` process is the only high-frequency writer, so it
     // gets daily rotation with native retention; every other process writes a
@@ -81,24 +93,36 @@ pub fn init(process: &str) -> WorkerGuard {
         )
         .init();
 
-    guard
+    // Stash the guard globally so `shutdown_flush` can drop it on exit.
+    let _ = GUARD.set(Mutex::new(Some(guard)));
+}
+
+/// Flush and release the file appender. Must be called once before any
+/// `std::process::exit` and at the end of `main()`.
+///
+/// The non-blocking appender only flushes its buffered records when its
+/// `WorkerGuard` is dropped. The guard lives in a `static` ([`GUARD`]) — and
+/// `static`s never run `Drop` at process teardown — so this explicit
+/// take-and-drop is the single flush point for *every* exit path, including
+/// the `process::exit` calls that bypass normal stack unwinding. Idempotent:
+/// a second call finds the guard already taken and is a no-op.
+pub fn shutdown_flush() {
+    if let Some(slot) = GUARD.get() {
+        if let Ok(mut guard) = slot.lock() {
+            guard.take(); // drop the WorkerGuard -> blocks until appender drains
+        }
+    }
 }
 
 /// Filesystem upkeep run once per process at logging init, before our own
 /// appender opens.
 ///
-/// Two jobs that no rolling library covers, because they span *distinct
-/// filenames* rather than one appender's rotation set:
-///
-///   1. On a build-version change, delete the previous build's `wta-*.log`.
-///   2. Reclaim per-PID helper logs older than [`HELPER_RETENTION_DAYS`].
-///
-/// Both use plain `remove_file`. This is safe to run from several
-/// concurrently-starting processes after an upgrade: `remove_file` is
-/// idempotent, and any file still held open by a live process fails to
-/// delete on Windows (sharing violation) and is simply skipped.
-fn housekeeping(log_dir: &Path, process: &str) {
-    version_cleanup(log_dir);
+/// 1. Cap the number of retained per-version log dirs (drops older builds'
+///    logs after an upgrade).
+/// 2. Reclaim per-PID helper logs older than [`HELPER_RETENTION_DAYS`] within
+///    the current version's dir.
+fn housekeeping(logs_root: &Path, log_dir: &Path, process: &str) {
+    prune_old_version_dirs(logs_root);
     // Only long-lived / relevant processes scan for stale helper files; the
     // high-frequency `cli` path must not pay a directory scan on every call.
     if process == "main_master" || process.starts_with("main_helper") {
@@ -106,34 +130,46 @@ fn housekeeping(log_dir: &Path, process: &str) {
     }
 }
 
-/// On a build-version change (or first run), delete the prior build's
-/// `wta-*.log` files, then stamp the directory with the current version.
-fn version_cleanup(log_dir: &Path) {
+/// Keep the most-recently-modified [`MAX_VERSION_DIRS`] per-version subdirs
+/// under `logs/`, deleting older ones whole.
+///
+/// The current build's dir is *always* kept (it was just created and is about
+/// to be written), so no live process's logs are ever a deletion target —
+/// which is why this needs no inter-process lock even when several upgraded
+/// processes start at once: they only ever race to delete the same *dead*
+/// (old-version) dirs, and `remove_dir_all` is idempotent.
+fn prune_old_version_dirs(logs_root: &Path) {
     let current = env!("CARGO_PKG_VERSION");
-    let marker = log_dir.join(VERSION_MARKER);
-    if std::fs::read_to_string(&marker)
-        .ok()
-        .as_deref()
-        .map(str::trim)
-        == Some(current)
-    {
-        // Common case: same build already owns this directory.
+    let Ok(entries) = std::fs::read_dir(logs_root) else {
         return;
-    }
+    };
 
-    if let Ok(entries) = std::fs::read_dir(log_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            // Our own logs all start with `wta-`. Leave `wta-agent-pane.log`
-            // alone — it's written by the C++ side, not us.
-            if name.starts_with("wta-") && name != "wta-agent-pane.log" {
-                let _ = std::fs::remove_file(entry.path());
-            }
+    let mut current_present = false;
+    // (mtime, path) for every non-current version subdir.
+    let mut others: Vec<(std::time::SystemTime, std::path::PathBuf)> = Vec::new();
+    for entry in entries.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            // Leave flat files (e.g. the C++ `wta-agent-pane.log`, PowerShell
+            // `hook-trace.log`) alone — they're not ours and not versioned.
+            continue;
         }
+        if entry.file_name().to_string_lossy() == current {
+            current_present = true;
+            continue;
+        }
+        let mtime = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::UNIX_EPOCH);
+        others.push((mtime, entry.path()));
     }
 
-    let _ = std::fs::write(&marker, current);
+    // Budget the current dir as one of the kept slots.
+    let keep_others = MAX_VERSION_DIRS.saturating_sub(usize::from(current_present));
+    others.sort_by(|a, b| b.0.cmp(&a.0)); // newest first
+    for (_, path) in others.into_iter().skip(keep_others) {
+        let _ = std::fs::remove_dir_all(path);
+    }
 }
 
 /// Delete per-PID helper logs whose mtime is older than
@@ -196,35 +232,36 @@ mod tests {
     }
 
     #[test]
-    fn version_cleanup_wipes_on_change_and_preserves_agent_pane() {
-        let dir = std::env::temp_dir().join(format!("wta-log-housekeeping-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+    fn prune_keeps_current_and_caps_version_dirs() {
+        let root = std::env::temp_dir().join(format!("wta-logdirs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
 
-        // Seed a stale-version marker + some logs.
-        std::fs::write(dir.join(VERSION_MARKER), "0.0.0-old").unwrap();
-        std::fs::write(dir.join("wta-main_master.log"), "old").unwrap();
-        std::fs::write(dir.join("wta-cli.log.2020-01-01"), "old").unwrap();
-        std::fs::write(dir.join("wta-agent-pane.log"), "cpp-owned").unwrap();
-        std::fs::write(dir.join("hook-trace.log"), "hooks").unwrap();
+        let current = env!("CARGO_PKG_VERSION");
+        std::fs::create_dir_all(root.join(current)).unwrap();
+        // Several older version dirs, each with a log file inside.
+        for v in ["0.0.1", "0.0.2", "0.0.3", "0.0.4", "0.0.5"] {
+            let d = root.join(v);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("wta-main.log"), "x").unwrap();
+        }
+        // A flat non-dir file must be left untouched.
+        std::fs::write(root.join("wta-agent-pane.log"), "cpp").unwrap();
 
-        version_cleanup(&dir);
+        prune_old_version_dirs(&root);
 
-        // Our logs wiped; C++ and hook logs untouched; marker rewritten.
-        assert!(!dir.join("wta-main_master.log").exists());
-        assert!(!dir.join("wta-cli.log.2020-01-01").exists());
-        assert!(dir.join("wta-agent-pane.log").exists());
-        assert!(dir.join("hook-trace.log").exists());
-        assert_eq!(
-            std::fs::read_to_string(dir.join(VERSION_MARKER)).unwrap(),
-            env!("CARGO_PKG_VERSION")
-        );
+        // Current version always survives.
+        assert!(root.join(current).exists());
+        // Flat file untouched.
+        assert!(root.join("wta-agent-pane.log").exists());
+        // Total retained version dirs capped at MAX_VERSION_DIRS.
+        let dir_count = std::fs::read_dir(&root)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .count();
+        assert_eq!(dir_count, MAX_VERSION_DIRS);
 
-        // Second run with matching version must NOT wipe freshly written logs.
-        std::fs::write(dir.join("wta-main_master.log"), "new").unwrap();
-        version_cleanup(&dir);
-        assert!(dir.join("wta-main_master.log").exists());
-
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

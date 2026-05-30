@@ -145,7 +145,7 @@ same bare path when the process has no package identity):
       master-pipe.txt               (helper↔master rendezvous)
 
   …\Packages\<PackageFamilyName>\LocalCache\Local\IntelligentTerminal\  <- LOCAL/cache root
-      logs\                         (all wta-*.log files)          intelligent_terminal_local_root()
+      logs\<version>\               (all wta-*.log files, per build) intelligent_terminal_local_root()
       hook-bundle-staging\ …        (hook-installer staging)
 
 # Unpackaged (dev builds run straight out of the Cargo target dir, tests):
@@ -186,16 +186,23 @@ release build further.
 
 **Logging is initialized once** in `main()` immediately after arg parsing
 (`logging::init(&process_label(&cli))`), before locale/ETW setup, so even
-early-startup failures land on disk. The `WorkerGuard` is held by `main()` for
-the whole process so the non-blocking appender flushes on exit. Every launch
-mode — including short-lived `wtcli`-style commands — now writes a log file
-(previously only 6 entry points did).
+early-startup failures land on disk. The non-blocking appender's `WorkerGuard`
+lives in a global and is flushed via `logging::shutdown_flush()` on every exit
+path — including before each `std::process::exit` (which would otherwise skip
+the guard drop and lose buffered records). Every launch mode — including
+short-lived `wtcli`-style commands — now writes a log file (previously only 6
+entry points did).
 
-**Log retention** is handled at init by `logging::housekeeping`: on a build
-**version change** (tracked via `.wta-log-version`) the prior build's
-`wta-*.log` are deleted; per-PID helper logs older than **3 days** are pruned.
-`wta-cli.log` rotates daily and keeps the last 3 days natively
-(`max_log_files`).
+**Per-version storage + retention** (`logging::housekeeping`): each build's
+logs live in their own subdir, `logs\<CARGO_PKG_VERSION>\`. On the next start
+after an upgrade, `prune_old_version_dirs` keeps the **3** most-recently-used
+version dirs and deletes older ones wholesale. The current version's dir is
+never a deletion target, so cleanup is **lock-free and concurrency-safe** (no
+process can delete a file another is writing). Within the current version's
+dir, per-PID helper logs older than **3 days** are pruned and `wta-cli.log`
+rotates daily keeping 3 days (`max_log_files`). Flat files in `logs\` written
+by other processes (C++ `wta-agent-pane.log`, PowerShell `hook-trace.log`) are
+left untouched.
 
 ### Log files in the helper+master architecture
 

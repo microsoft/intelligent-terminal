@@ -5463,9 +5463,9 @@ impl App {
 
     fn handle_key(&mut self, key: KeyEvent) {
         // Per-keystroke and carries the raw `KeyCode` (the typed character for
-        // `Char` keys) — the user's prompt is reconstructable from this stream.
-        // Trace only so it never persists in shipping (info) or default-debug
-        // logs.
+        // `Char` keys) — the user's prompt can be reconstructed from this
+        // stream. Trace only so it never persists in shipping (info) or
+        // default-debug logs.
         tracing::trace!(
             target: "input",
             code = ?key.code,
