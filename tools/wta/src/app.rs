@@ -4126,14 +4126,21 @@ impl App {
                     tab.activity_frame = 0;
                     tab.timing_note = None;
                     tab.turn = TurnState::Idle;
-                    // Collapse consecutive error lines. A transport death can
-                    // arrive twice in quick succession — the `handle_io` watchdog
-                    // (idle-death detector) and the in-flight prompt future both
-                    // resolve to errors when the pipe dies. Whichever lands first
-                    // owns the line; the second is suppressed so the user sees one
-                    // clear failure, not a stack of duplicates.
-                    let already_failed = matches!(tab.messages.last(), Some(ChatMessage::Error(_)));
-                    if !already_failed {
+                    // Suppress only an *identical* consecutive error, not any
+                    // trailing error. When the master/agent dies, two errors can
+                    // arrive: the raw transport error (returned as-is) and the
+                    // `handle_io` watchdog's connection.lost ("/restart") line.
+                    // Those are different messages and BOTH should show — the raw
+                    // one says what broke, the connection.lost one says how to
+                    // recover. Collapsing every consecutive error (the previous
+                    // behavior) could hide the /restart hint behind an unrelated
+                    // or in-flight error. Dedup only true duplicates so the same
+                    // line never stacks.
+                    let is_duplicate = matches!(
+                        tab.messages.last(),
+                        Some(ChatMessage::Error(prev)) if prev == &message
+                    );
+                    if !is_duplicate {
                         tab.messages.push(ChatMessage::Error(message));
                     }
                 }
@@ -10987,37 +10994,48 @@ mod tests {
         );
     }
 
-    /// F3: an idle transport death (helper `handle_io` watchdog) must move the
-    /// UI out of `Connected` and surface a clear line — and a near-simultaneous
-    /// in-flight prompt error must not stack a second duplicate line.
+    /// F3: a transport death (helper `handle_io` watchdog) moves the UI out of
+    /// `Connected`, and its connection.lost ("/restart") line must survive even
+    /// when a different error (e.g. the in-flight prompt failure, "returned as
+    /// is") is already shown — only identical consecutive errors collapse, so
+    /// the recovery hint is never hidden.
     #[test]
-    fn transport_loss_leaves_connected_and_shows_single_error() {
+    fn transport_loss_surfaces_restart_hint_even_behind_another_error() {
+        let lost = t!("connection.lost").into_owned();
         let mut app = test_app();
         app.state = ConnectionState::Connected;
-        // Watchdog fires connection.lost; the in-flight prompt future then also
-        // reports the broken pipe.
-        app.handle_event(AppEvent::AgentError {
-            session_id: None,
-            message: t!("connection.lost").into_owned(),
-        });
+        // In-flight prompt fails first (raw), then the watchdog's connection.lost.
         app.handle_event(AppEvent::AgentError {
             session_id: None,
             message: "prompt error: pipe closed".to_string(),
+        });
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            message: lost.clone(),
         });
         assert!(
             matches!(app.state, ConnectionState::Failed(_)),
             "a transport loss must move the UI out of Connected (F3)"
         );
-        let errors = app
+        assert!(
+            app.current_tab()
+                .messages
+                .iter()
+                .any(|m| matches!(m, ChatMessage::Error(s) if *s == lost)),
+            "the connection.lost /restart hint must be shown, not hidden behind the raw error"
+        );
+        // An identical connection.lost arriving again must not stack a duplicate.
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            message: lost.clone(),
+        });
+        let n = app
             .current_tab()
             .messages
             .iter()
-            .filter(|m| matches!(m, ChatMessage::Error(_)))
+            .filter(|m| matches!(m, ChatMessage::Error(s) if *s == lost))
             .count();
-        assert_eq!(
-            errors, 1,
-            "consecutive transport errors must collapse to one line"
-        );
+        assert_eq!(n, 1, "identical connection.lost must not duplicate");
     }
 
     /// Auth failures must reach the sign-in screen, not get flattened to a dead
