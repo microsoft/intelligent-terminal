@@ -2251,9 +2251,24 @@ async fn run_acp_app(
                             error = %e,
                             "run_acp_client_over_pipe failed"
                         );
+                        // Classify the (technical) transport error into a clear,
+                        // localized, actionable line. The raw `{e:#}` stays in the
+                        // log above for diagnosis; the user gets human text + the
+                        // /restart recovery hint baked into the message.
+                        let raw = format!("{e:#}").to_lowercase();
+                        let key = if raw.contains("timed out") || raw.contains("timeout") {
+                            "connection.timeout"
+                        } else if raw.contains("connect to master pipe") {
+                            // Master/agent never became reachable within the
+                            // connect-retry budget (cold start that ran long, or
+                            // master that exited during its own agent-CLI spawn).
+                            "connection.start_failed"
+                        } else {
+                            "connection.lost"
+                        };
                         let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
                             session_id: None,
-                            message: format!("helper ACP transport failed: {e:#}"),
+                            message: t!(key).into_owned(),
                         });
                     }
                 });

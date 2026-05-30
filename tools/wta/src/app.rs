@@ -3867,6 +3867,11 @@ impl App {
                 if self.mode == AppMode::Setup
                     || self.mode == AppMode::Auth
                     || self.history_load_state == HistoryLoadState::Loading
+                    // Keep the connecting indicator animating during the
+                    // pipe-connect → ACP init → session/new handshake so a cold
+                    // start (which can run tens of seconds) doesn't look frozen
+                    // (F7). Without this the chat sat static with no progress.
+                    || matches!(self.state, ConnectionState::Connecting(_))
                 {
                     self.activity_frame = self.activity_frame.wrapping_add(1);
                 }
@@ -4114,7 +4119,16 @@ impl App {
                     tab.activity_frame = 0;
                     tab.timing_note = None;
                     tab.turn = TurnState::Idle;
-                    tab.messages.push(ChatMessage::Error(message));
+                    // Collapse consecutive error lines. A transport death can
+                    // arrive twice in quick succession — the `handle_io` watchdog
+                    // (idle-death detector) and the in-flight prompt future both
+                    // resolve to errors when the pipe dies. Whichever lands first
+                    // owns the line; the second is suppressed so the user sees one
+                    // clear failure, not a stack of duplicates.
+                    let already_failed = matches!(tab.messages.last(), Some(ChatMessage::Error(_)));
+                    if !already_failed {
+                        tab.messages.push(ChatMessage::Error(message));
+                    }
                 }
             }
             AppEvent::ExecutionInfo(message) => {
@@ -10963,6 +10977,53 @@ mod tests {
         assert!(
             !app.tab_mut("test-tab").turn.is_idle(),
             "autofix prompt should be in-flight on the target tab"
+        );
+    }
+
+    /// F3: an idle transport death (helper `handle_io` watchdog) must move the
+    /// UI out of `Connected` and surface a clear line — and a near-simultaneous
+    /// in-flight prompt error must not stack a second duplicate line.
+    #[test]
+    fn transport_loss_leaves_connected_and_shows_single_error() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        // Watchdog fires connection.lost; the in-flight prompt future then also
+        // reports the broken pipe.
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            message: t!("connection.lost").into_owned(),
+        });
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            message: "prompt error: pipe closed".to_string(),
+        });
+        assert!(
+            matches!(app.state, ConnectionState::Failed(_)),
+            "a transport loss must move the UI out of Connected (F3)"
+        );
+        let errors = app
+            .current_tab()
+            .messages
+            .iter()
+            .filter(|m| matches!(m, ChatMessage::Error(_)))
+            .count();
+        assert_eq!(
+            errors, 1,
+            "consecutive transport errors must collapse to one line"
+        );
+    }
+
+    /// F7: while `Connecting`, the activity frame must keep advancing on Tick so
+    /// the indicator animates and a cold start doesn't look frozen.
+    #[test]
+    fn connecting_state_advances_activity_frame_on_tick() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connecting("Initializing ACP...".to_string());
+        let before = app.activity_frame;
+        app.handle_event(AppEvent::Tick);
+        assert_ne!(
+            app.activity_frame, before,
+            "the connecting indicator must keep animating (F7)"
         );
     }
 

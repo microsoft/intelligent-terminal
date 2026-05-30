@@ -279,6 +279,17 @@ fn build_completed_turn_lines<'a>(
 }
 
 fn build_activity_line(app: &App) -> Option<Line<'static>> {
+    // While the helper is still establishing its connection to the agent,
+    // show an animated "Connecting to agent…" line (F7). The handshake
+    // (pipe connect → ACP init → session/new) can take tens of seconds on a
+    // cold start; without an animated indicator the pane looked frozen. Uses
+    // the app-level `activity_frame`, which is advanced on Tick while the
+    // state is `Connecting` (see handle_event). Takes precedence over the
+    // turn spinner because no turn can be in flight before we're connected.
+    if matches!(app.state, crate::app::ConnectionState::Connecting(_)) {
+        let label = t!("connection.connecting_activity").into_owned();
+        return Some(Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize)));
+    }
     let tab = app.current_tab();
     if tab.turn.spinner_label().is_none() || pending_render_text(tab).is_some() {
         return None;
