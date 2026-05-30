@@ -2155,12 +2155,27 @@ pub async fn run_acp_client_over_pipe(
     let init_resp = tokio::time::timeout(std::time::Duration::from_secs(60), init_future)
         .await
         .map_err(|_| {
+            tracing::error!(
+                target: "helper",
+                step = "acp_initialize",
+                pipe = %pipe_name,
+                "ACP initialize over master pipe timed out after 60s — wta-master did not respond"
+            );
             anyhow::anyhow!(
                 "ACP initialize over master pipe timed out after 60s — \
              wta-master did not respond"
             )
         })?
-        .map_err(|e| anyhow::anyhow!("initialize over master pipe failed: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(
+                target: "helper",
+                step = "acp_initialize",
+                pipe = %pipe_name,
+                error = %e,
+                "ACP initialize over master pipe failed"
+            );
+            anyhow::anyhow!("initialize over master pipe failed: {}", e)
+        })?;
     startup_probe.log(&format!(
         "Agent init response received (over pipe): {:?}",
         init_resp

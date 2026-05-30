@@ -576,6 +576,16 @@ async fn main() -> Result<()> {
     //   2. sys_locale (GetUserPreferredUILanguages — automatic OS detection)
     //      — aligns with C++ side's MRT fallback when Language is empty
     let cli = Cli::parse();
+
+    // Initialize file logging exactly once, as the very first thing after
+    // arg parsing, so even early-startup failures (locale, ETW registration,
+    // legacy-flag dispatch) are captured. The global tracing subscriber can
+    // only be set once per process, so every mode routes through here — the
+    // per-mode handlers below no longer init their own. `_log_guard` is held
+    // for the whole process so the non-blocking appender flushes on exit.
+    let _log_guard = logging::init(&process_label(&cli));
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "=== wta starting ===");
+
     let locale = cli
         .language
         .clone()
@@ -598,7 +608,7 @@ async fn main() -> Result<()> {
     }
     let json_mode = cli.json;
 
-    match cli.command {
+    let result = match cli.command {
         // Subcommand aliases for legacy modes
         Some(Command::Info) => run_info_mode().await,
         Some(Command::TestPipe) => run_test_pipe().await,
@@ -850,6 +860,45 @@ async fn main() -> Result<()> {
                 run_default_tui(cli).await
             }
         }
+    };
+
+    // Last-resort diagnostic: any propagated failure (named-pipe connect,
+    // agent spawn, ACP initialize, etc.) is otherwise only printed to stderr
+    // and lost. Log it to file so connection failures are always recoverable
+    // from the logs. Mode-specific context (target=master / target=helper)
+    // is added closer to the source in run_master_mode / the helper path.
+    if let Err(err) = &result {
+        tracing::error!(error = ?err, "wta exiting with error");
+    }
+    result
+}
+
+/// Pick the log file label for this process from its launch mode. Drives the
+/// `wta-<label>.log` filename in [`logging::init`]. Singleton-service modes are
+/// selected by flags (`--master` / `--connect-master`); everything else by the
+/// subcommand. Short-lived `wtcli`-style commands all share `cli`.
+fn process_label(cli: &Cli) -> String {
+    if cli.master.is_some() {
+        return "main_master".to_string();
+    }
+    if cli.connect_master.is_some() {
+        // Per-PID so concurrent per-tab helpers don't interleave into one
+        // file (and can be reclaimed individually — see logging::housekeeping).
+        return format!("main_helper-{}", std::process::id());
+    }
+    // Legacy diagnostic flags are short-lived clients, not the TUI.
+    if cli.test_pipe || cli.info {
+        return "cli".to_string();
+    }
+    match &cli.command {
+        None => "main".to_string(),
+        Some(Command::Delegate { .. }) => "delegate".to_string(),
+        Some(Command::ProbeModels { .. }) => "probe".to_string(),
+        Some(Command::Hooks {
+            action: HooksAction::Install { .. },
+        }) => "install-hooks".to_string(),
+        // All other subcommands are short-lived wtcli-style clients.
+        Some(_) => "cli".to_string(),
     }
 }
 
@@ -857,10 +906,8 @@ async fn main() -> Result<()> {
 /// (the ACP client connection is `!Send`), serialize the result to
 /// stdout, force-exit. See exit notes below.
 async fn run_probe_models(agent: &str) -> Result<()> {
-    // Logging must go to file, not stderr — the Settings UI captures
-    // our stdout for the JSON payload, and stderr would be folded
-    // into the same pipe and pollute the parser.
-    let _guard = logging::init("probe");
+    // Logging is initialized in `main()` (file, not stderr — the Settings UI
+    // captures our stdout for the JSON payload and stderr would pollute it).
     tracing::info!("probe-models start: agent={}", agent);
 
     let local = tokio::task::LocalSet::new();
@@ -900,9 +947,8 @@ async fn run_probe_models(agent: &str) -> Result<()> {
 // ─── Hooks subcommand handlers ──────────────────────────────────────────────
 
 fn run_hooks_install(cli: HooksCliFilter) -> Result<()> {
-    // Initialize logging so the install attempt is observable in
+    // Logging is initialized in `main()`; the install attempt is observable in
     // %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.
-    let _guard = logging::init("install-hooks");
     agent_hooks_installer::ensure_installed_scoped(cli.into_scope());
     println!("{}", t!("hooks.install_attempted"));
     Ok(())
@@ -1522,7 +1568,6 @@ async fn run_delegate(
     delegate_model: Option<&str>,
     cwd: Option<&str>,
 ) -> Result<()> {
-    let _guard = logging::init("delegate");
     tracing::info!(prompt = ?prompt, agent = agent_cmd, cwd, "run_delegate started");
 
     let (debug_tx, _) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
@@ -1633,7 +1678,6 @@ async fn delegate_with_context(
 // ─── Default ACP TUI mode ───────────────────────────────────────────────────
 
 async fn run_default_tui(cli: Cli) -> Result<()> {
-    let _guard = logging::init("main");
     tracing::info!("=== run_default_tui started ===");
 
     // Debug channel for TUI debug panel (WT protocol traffic viewer)
@@ -1687,7 +1731,6 @@ async fn run_default_tui(cli: Cli) -> Result<()> {
 /// "spawn agent CLI" path: the helper attaches to wta-master over the
 /// supplied named pipe and forwards ACP traffic over it.
 pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Result<()> {
-    let _guard = logging::init("main_helper");
     tracing::info!(target: "helper", pipe = %pipe_name, "=== wta-helper starting (TUI) ===");
 
     // Debug channel — same wiring as run_default_tui.
@@ -1719,7 +1762,7 @@ pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Re
         None
     };
 
-    run_acp_tui_mode(
+    let result = run_acp_tui_mode(
         cli,
         shell_mgr,
         wt_connected,
@@ -1729,7 +1772,16 @@ pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Re
         wt_protocol_channel,
         Some(pipe_name),
     )
-    .await
+    .await;
+
+    // Connection failures to wta-master (pipe connect give-up, ACP initialize
+    // timeout/failure) propagate up through here. Log with target=helper so
+    // the failure is greppable in wta-main_helper-{pid}.log, not just surfaced
+    // as the process's final Err.
+    if let Err(err) = &result {
+        tracing::error!(target: "helper", error = ?err, "wta-helper exiting with error");
+    }
+    result
 }
 
 // ─── Existing functions (preserved) ─────────────────────────────────────────

@@ -178,23 +178,49 @@ pulling in the WinRT projection.
 > the sandbox on Win10/11). There is no migration — old data is left in place
 > and simply ignored.
 
-Log level is controlled by `WTA_LOG` env var (default: `info`; set `debug`
-for the noisy traces).
+**Log level** is controlled by the `WTA_LOG` (or `RUST_LOG`) env var. When
+unset, the default comes from the build: **debug builds default to `debug`,
+release builds default to `info`** (`logging::default_filter_directive`). Set
+`WTA_LOG=debug|trace` for the noisy traces, or `WTA_LOG=warn` to quiet a
+release build further.
+
+**Logging is initialized once** in `main()` immediately after arg parsing
+(`logging::init(&process_label(&cli))`), before locale/ETW setup, so even
+early-startup failures land on disk. The `WorkerGuard` is held by `main()` for
+the whole process so the non-blocking appender flushes on exit. Every launch
+mode — including short-lived `wtcli`-style commands — now writes a log file
+(previously only 6 entry points did).
+
+**Log retention** is handled at init by `logging::housekeeping`: on a build
+**version change** (tracked via `.wta-log-version`) the prior build's
+`wta-*.log` are deleted; per-PID helper logs older than **3 days** are pruned.
+`wta-cli.log` rotates daily and keeps the last 3 days natively
+(`max_log_files`).
 
 ### Log files in the helper+master architecture
 
 ```
-wta-main_master.log    — wta-master process: agent CLI spawn, named pipe accept loop,
-                          per-helper routing, session_to_helper map updates,
-                          agent CLI exit detection
-wta-main_helper.log    — each wta-helper process: pipe connect, ACP initialize,
-                          session/new, prompts sent, agent responses received,
-                          TUI lifecycle
-wta-ensure-host.log    — WT-side background ensure-running diagnostics (kept from
-                          M3-M6 era; remains useful for SharedWta lifecycle)
-wta-acp-debug.log      — low-level ACP JSON-RPC wire trace
-wta-delegate.log       — `?<prompt>` delegation flow (separate from agent pane)
+wta-main_master.log        — wta-master process: agent CLI spawn, named pipe accept
+                              loop, per-helper routing, session_to_helper map updates,
+                              agent CLI exit detection, connection failures
+wta-main_helper-{pid}.log  — each wta-helper process (one file per PID, so concurrent
+                              per-tab helpers don't interleave): pipe connect, ACP
+                              initialize, session/new, prompts, agent responses,
+                              TUI lifecycle, connection failures
+wta-cli.log                — short-lived wtcli-style commands (list-*, capture-pane,
+                              listen, sessions, …); daily-rotated, 3-day retention
+wta-delegate.log           — `?<prompt>` delegation flow (separate from agent pane)
+wta-probe.log              — `probe-models` ACP model-list probe
+wta-install-hooks.log      — `hooks install` agent-hook bridge installation
+wta-ensure-host.log        — WT-side background ensure-running diagnostics (kept from
+                              M3-M6 era; remains useful for SharedWta lifecycle)
+wta-acp-debug.log          — low-level ACP JSON-RPC wire trace
 ```
+
+Two files in this `logs\` dir are **not** written by the Rust wta binary —
+`hook-trace.log` (PowerShell hooks) and `wta-agent-pane.log` (C++ side); see
+**Other writers of the same dirs** above. `logging::housekeeping`'s
+version-upgrade wipe deliberately leaves `wta-agent-pane.log` alone.
 
 ### Tracking flows by `target` field
 
@@ -209,6 +235,7 @@ scenarios:
 | Trace one prompt end-to-end | grep `session_id="X"`, look for `step="helper→agent" op="prompt"` (sent) then `step="master→helper" op="session_notification"` (response chunks) |
 | Helper pipe lifecycle | `target=master helper_id=…` shows connect+exit |
 | Agent CLI failures | `target=agent_stderr` |
+| Connection failures (either side) | `"exiting with error"` — `target=master` in `wta-main_master.log`, `target=helper` in `wta-main_helper-{pid}.log`; plus inline `step="acp_initialize"` / `step="pipe_connect"` for the helper handshake |
 | Internal control routing | `target=internal_control` (legacy; mostly empty post-Z) |
 
 ### Example: end-to-end trace of one user prompt

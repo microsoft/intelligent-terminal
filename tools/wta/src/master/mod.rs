@@ -1149,7 +1149,9 @@ impl acp::Agent for HelperHandler {
 
 /// Master mode entry point.
 pub async fn run_master_mode(cli: Cli, pipe_name: String) -> Result<()> {
-    let _guard = crate::logging::init("main_master");
+    // Logging is initialized once in `main()`; the WorkerGuard lives there for
+    // the whole process so the non-blocking appender flushes on the graceful
+    // shutdown path (see the `run_master_loop` shutdown notes below).
     tracing::info!(
         target: "master",
         pipe_name = %pipe_name,
@@ -1164,9 +1166,18 @@ pub async fn run_master_mode(cli: Cli, pipe_name: String) -> Result<()> {
     }
 
     let local_set = LocalSet::new();
-    local_set
+    let result = local_set
         .run_until(async move { run_master_loop(cli, pipe_name).await })
-        .await
+        .await;
+
+    // Every master-side failure (named-pipe create/connect, agent CLI spawn,
+    // ACP initialize timeout/failure, accept-loop shutdown) funnels through
+    // here. Log with target=master so connection failures are always present
+    // in wta-main_master.log, greppable alongside the success-path traces.
+    if let Err(err) = &result {
+        tracing::error!(target: "master", error = ?err, "wta-master exiting with error");
+    }
+    result
 }
 
 
@@ -1289,12 +1300,13 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     //     remaining tasks, and the child handle drops — `kill_on_drop`
     //     then reaps surviving descendants. `process::exit` would skip
     //     that path and could orphan agent grandchildren.
-    //   * The `WorkerGuard` returned by `crate::logging::init` is held
-    //     by `run_master_mode`; it only flushes the non-blocking
-    //     tracing appender on Drop. `process::exit` skips that Drop and
-    //     the final error lines silently vanish. The graceful path
-    //     here lets the guard drop in normal stack unwinding so the
-    //     "agent CLI exited" diagnostic actually lands on disk.
+    //   * The `WorkerGuard` from `crate::logging::init` is held by
+    //     `main()` for the whole process; it only flushes the
+    //     non-blocking tracing appender on Drop. `process::exit` skips
+    //     that Drop and the final error lines silently vanish. The
+    //     graceful path here lets `main()` return so the guard drops in
+    //     normal stack unwinding and the "agent CLI exited" diagnostic
+    //     actually lands on disk.
     //
     // Capacity 2: at most one child-exit reason + one I/O-loop reason
     // will ever be sent, and both `try_send`s are non-blocking.
@@ -1479,12 +1491,20 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     )
     .await
     .map_err(|_| {
+        tracing::error!(
+            target: "master",
+            timeout_secs = init_timeout_secs,
+            "ACP initialize timed out — agent CLI did not respond"
+        );
         anyhow!(
             "ACP initialize timed out after {}s — agent CLI did not respond",
             init_timeout_secs
         )
     })?
-    .map_err(|e| anyhow!("ACP initialize failed: {e}"))?;
+    .map_err(|e| {
+        tracing::error!(target: "master", error = %e, "ACP initialize failed");
+        anyhow!("ACP initialize failed: {e}")
+    })?;
     tracing::info!(
         target: "master",
         ?init_resp,
