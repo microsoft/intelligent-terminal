@@ -116,7 +116,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ ئەڭگىمە ئىلمەكلىرىنى ئورنىتىش مەغلۇب بولدى. ئەڭگىمە باشقۇرۇش تاقالدى. ئۇنى قايتا ئېچىپ قايتا سىنىيالايسىز، ياكى ئۇنىڭسىز داۋاملاشتۇرۇش ئۈچۈن ساقلىيالايسىز.</value>
+    <value>⚠ session hooks ئورنىتىش مەغلۇب بولدى. ئەڭگىمە باشقۇرۇش تاقالدى. ئۇنى قايتا ئېچىپ قايتا سىنىيالايسىز، ياكى ئۇنىڭسىز داۋاملاشتۇرۇش ئۈچۈن ساقلىيالايسىز.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ شېل بىرلەشتۈرۈشنى ئورنىتىش مەغلۇب بولدى. خاتالىق بايقاش تاقالدى. ئۇنى قايتا ئېچىپ قايتا سىنىيالايسىز، ياكى ئۇنىڭسىز داۋاملاشتۇرۇش ئۈچۈن ساقلىيالايسىز.</value>

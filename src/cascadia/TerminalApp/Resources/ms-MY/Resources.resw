@@ -230,7 +230,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Gagal memasang cangkuk sesi. Pengurusan sesi telah dimatikan. Anda boleh mengaktifkannya semula dan cuba lagi, atau simpan untuk meneruskan tanpanya.</value>
+    <value>⚠ Gagal memasang session hooks. Pengurusan sesi telah dimatikan. Anda boleh mengaktifkannya semula dan cuba lagi, atau simpan untuk meneruskan tanpanya.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Gagal memasang integrasi shell. Pengesanan ralat telah dimatikan. Anda boleh mengaktifkannya semula dan cuba lagi, atau simpan untuk meneruskan tanpanya.</value>

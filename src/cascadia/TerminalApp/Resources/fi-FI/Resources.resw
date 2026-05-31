@@ -230,7 +230,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Istuntokoukut eivät asentuneet. Istunnonhallinta on poistettu käytöstä. Voit ottaa sen uudelleen käyttöön ja yrittää uudelleen tai tallentaa jatkaaksesi ilman sitä.</value>
+    <value>⚠ Session hooks eivät asentuneet. Istunnonhallinta on poistettu käytöstä. Voit ottaa sen uudelleen käyttöön ja yrittää uudelleen tai tallentaa jatkaaksesi ilman sitä.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Komentotulkin integroinnin asennus epäonnistui. Virheiden tunnistus on poistettu käytöstä. Voit ottaa sen uudelleen käyttöön ja yrittää uudelleen tai tallentaa jatkaaksesi ilman sitä.</value>

@@ -229,7 +229,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Namestitev kavljev seje ni uspela. Upravljanje sej je bilo izklopljeno. Lahko ga znova omogočite in poskusite znova ali shranite, da nadaljujete brez njega.</value>
+    <value>⚠ Namestitev session hooks ni uspela. Upravljanje sej je bilo izklopljeno. Lahko ga znova omogočite in poskusite znova ali shranite, da nadaljujete brez njega.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Namestitev integracije lupine ni uspela. Zaznavanje napak je bilo izklopljeno. Lahko ga znova omogočite in poskusite znova ali shranite, da nadaljujete brez njega.</value>

@@ -1077,7 +1077,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ セッション フックのインストールに失敗しました。セッション管理がオフになりました。再度有効にしてやり直すか、保存してセッション管理なしで続行できます。</value>
+    <value>⚠ session hooksのインストールに失敗しました。セッション管理がオフになりました。再度有効にしてやり直すか、保存してセッション管理なしで続行できます。</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ シェル統合のインストールに失敗しました。エラー検出がオフになりました。再度有効にしてやり直すか、保存してエラー検出なしで続行できます。</value>

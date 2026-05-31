@@ -229,7 +229,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Nie udało się zainstalować haków sesji. Zarządzanie sesjami zostało wyłączone. Możesz je ponownie włączyć i spróbować ponownie lub zapisać, aby kontynuować bez nich.</value>
+    <value>⚠ Nie udało się zainstalować session hooks. Zarządzanie sesjami zostało wyłączone. Możesz je ponownie włączyć i spróbować ponownie lub zapisać, aby kontynuować bez nich.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Nie udało się zainstalować integracji powłoki. Wykrywanie błędów zostało wyłączone. Możesz je ponownie włączyć i spróbować ponownie lub zapisać, aby kontynuować bez nich.</value>

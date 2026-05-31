@@ -230,7 +230,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ نصب قلاب‌های نشست ناموفق بود. مدیریت نشست غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>
+    <value>⚠ نصب session hooks ناموفق بود. مدیریت نشست غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ نصب یکپارچه‌سازی پوسته ناموفق بود. تشخیص خطا غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>

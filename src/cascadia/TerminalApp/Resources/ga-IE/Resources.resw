@@ -116,7 +116,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Theip ar na duáin seisiúin a shuiteáil. Tá bainistiú seisiún múchta. Is féidir leat é a athchumasú agus triail eile a bhaint as, nó sábháil chun leanúint ar aghaidh gan é.</value>
+    <value>⚠ Theip ar na session hooks a shuiteáil. Tá bainistiú seisiún múchta. Is féidir leat é a athchumasú agus triail eile a bhaint as, nó sábháil chun leanúint ar aghaidh gan é.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Theip ar chomhtháthú blaoisce a shuiteáil. Tá brath earráidí múchta. Is féidir leat é a athchumasú agus triail eile a bhaint as, nó sábháil chun leanúint ar aghaidh gan é.</value>

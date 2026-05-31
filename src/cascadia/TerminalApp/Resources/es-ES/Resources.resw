@@ -1068,6 +1068,7 @@
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
     <value>⚠ Error al instalar los hooks de sesión. La gestión de sesiones se ha desactivado. Puedes volver a activarla e intentarlo de nuevo, o guardar para continuar sin ella.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Error al instalar la integración del shell. La detección de errores se ha desactivado. Puedes volver a activarla e intentarlo de nuevo, o guardar para continuar sin ella.</value>

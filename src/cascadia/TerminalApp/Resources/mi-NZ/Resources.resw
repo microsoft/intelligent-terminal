@@ -116,7 +116,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ I rahua te tāuta i ngā matau whakatūnga. Kua whakawetohia te whakahaere whakatūnga. Ka taea e koe te whakahoki anō me te ngana anō, te tiaki rānei kia haere tonu i te kore.</value>
+    <value>⚠ I rahua te tāuta i ngā session hooks. Kua whakawetohia te whakahaere whakatūnga. Ka taea e koe te whakahoki anō me te ngana anō, te tiaki rānei kia haere tonu i te kore.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ I rahua te tāuta i te whakaurunga anga. Kua whakawetohia te kitenga hapa. Ka taea e koe te whakahoki anō me te ngana anō, te tiaki rānei kia haere tonu i te kore.</value>

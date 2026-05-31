@@ -1067,7 +1067,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Installazione degli hook di sessione non riuscita. La gestione delle sessioni è stata disattivata. È possibile riabilitarla e riprovare oppure salvare per continuare senza.</value>
+    <value>⚠ Installazione degli hooks di sessione non riuscita. La gestione delle sessioni è stata disattivata. È possibile riabilitarla e riprovare oppure salvare per continuare senza.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Installazione dell'integrazione della shell non riuscita. Il rilevamento degli errori è stato disattivato. È possibile riabilitarlo e riprovare oppure salvare per continuare senza.</value>

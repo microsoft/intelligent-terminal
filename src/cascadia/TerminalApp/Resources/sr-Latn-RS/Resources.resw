@@ -116,7 +116,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Instalacija zakački sesije nije uspela. Upravljanje sesijama je isključeno. Možete ga ponovo uključiti i pokušati ponovo, ili sačuvati da nastavite bez njega.</value>
+    <value>⚠ Instalacija session hooks nije uspela. Upravljanje sesijama je isključeno. Možete ga ponovo uključiti i pokušati ponovo, ili sačuvati da nastavite bez njega.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Instalacija integracije ljuske nije uspela. Otkrivanje grešaka je isključeno. Možete ga ponovo uključiti i pokušati ponovo, ili sačuvati da nastavite bez njega.</value>

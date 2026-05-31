@@ -229,7 +229,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Instalarea hook-urilor de sesiune a eșuat. Gestionarea sesiunilor a fost dezactivată. Puteți să o reactivați și să încercați din nou, sau să salvați pentru a continua fără aceasta.</value>
+    <value>⚠ Instalarea session hooks a eșuat. Gestionarea sesiunilor a fost dezactivată. Puteți să o reactivați și să încercați din nou, sau să salvați pentru a continua fără aceasta.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Instalarea integrării shell a eșuat. Detectarea erorilor a fost dezactivată. Puteți să o reactivați și să încercați din nou, sau să salvați pentru a continua fără aceasta.</value>

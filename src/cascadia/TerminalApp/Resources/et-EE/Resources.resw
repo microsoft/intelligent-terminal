@@ -230,7 +230,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Seansikonksude installimine nurjus. Seansihaldus on välja lülitatud. Saate selle uuesti lubada ja uuesti proovida või salvestada, et jätkata ilma selleta.</value>
+    <value>⚠ Session hooks installimine nurjus. Seansihaldus on välja lülitatud. Saate selle uuesti lubada ja uuesti proovida või salvestada, et jätkata ilma selleta.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Kestaintegratsiooni installimine nurjus. Vigade tuvastamine on välja lülitatud. Saate selle uuesti lubada ja uuesti proovida või salvestada, et jätkata ilma selleta.</value>

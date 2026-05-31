@@ -1077,6 +1077,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
     <value>⚠ 安裝 session hooks 失敗。工作階段管理已關閉。您可以重新啟用並重試，或儲存以繼續而不使用它。</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ 安裝殼層整合失敗。錯誤偵測已關閉。您可以重新啟用並重試，或儲存以繼續而不使用它。</value>

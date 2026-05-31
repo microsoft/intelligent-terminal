@@ -229,7 +229,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ A munkamenet-horogpontok telepítése sikertelen. A munkamenet-kezelés ki lett kapcsolva. Újra engedélyezheti, és megpróbálhatja újra, vagy menthet a folytatáshoz nélküle.</value>
+    <value>⚠ A session hooks telepítése sikertelen. A munkamenet-kezelés ki lett kapcsolva. Újra engedélyezheti, és megpróbálhatja újra, vagy menthet a folytatáshoz nélküle.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ A shell-integráció telepítése sikertelen. A hibaészlelés ki lett kapcsolva. Újra engedélyezheti, és megpróbálhatja újra, vagy menthet a folytatáshoz nélküle.</value>

@@ -116,7 +116,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Kon nie sessie-hakies installeer nie. Sessiebestuur is afgeskakel. Jy kan dit weer aktiveer en weer probeer, of stoor om sonder dit voort te gaan.</value>
+    <value>⚠ Kon nie session hooks installeer nie. Sessiebestuur is afgeskakel. Jy kan dit weer aktiveer en weer probeer, of stoor om sonder dit voort te gaan.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Kon nie dop-integrasie installeer nie. Foutopsporing is afgeskakel. Jy kan dit weer aktiveer en weer probeer, of stoor om sonder dit voort te gaan.</value>

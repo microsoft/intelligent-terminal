@@ -1136,7 +1136,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ 세션 후크를 설치하지 못했습니다. 세션 관리가 꺼졌습니다. 다시 사용하도록 설정하고 다시 시도하거나, 저장하여 이 기능 없이 계속할 수 있습니다.</value>
+    <value>⚠ session hooks를 설치하지 못했습니다. 세션 관리가 꺼졌습니다. 다시 사용하도록 설정하고 다시 시도하거나, 저장하여 이 기능 없이 계속할 수 있습니다.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ 셸 통합을 설치하지 못했습니다. 오류 감지가 꺼졌습니다. 다시 사용하도록 설정하고 다시 시도하거나, 저장하여 이 기능 없이 계속할 수 있습니다.</value>

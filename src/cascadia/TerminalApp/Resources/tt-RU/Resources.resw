@@ -229,7 +229,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Сессия тоткычларын урнату уңышсыз булды. Сессияләрне идарә итү сүндерелде. Аны яңадан кушып тырышырга яки аның бик булмавына карамастан дәвам итәр өчен саклый аласыз.</value>
+    <value>⚠ Session hooks урнату уңышсыз булды. Сессияләрне идарә итү сүндерелде. Аны яңадан кушып тырышырга яки аның бик булмавына карамастан дәвам итәр өчен саклый аласыз.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Кабык интеграциясен урнату уңышсыз булды. Хата ачыклау сүндерелде. Аны яңадан кушып тырышырга яки аның бик булмавына карамастан дәвам итәр өчен саклый аласыз.</value>

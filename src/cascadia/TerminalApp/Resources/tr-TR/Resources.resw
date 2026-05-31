@@ -229,7 +229,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Oturum kancaları yüklenemedi. Oturum yönetimi kapatıldı. Yeniden etkinleştirip tekrar deneyebilir veya bu özellik olmadan devam etmek için kaydedebilirsiniz.</value>
+    <value>⚠ Session hooks yüklenemedi. Oturum yönetimi kapatıldı. Yeniden etkinleştirip tekrar deneyebilir veya bu özellik olmadan devam etmek için kaydedebilirsiniz.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Kabuk tümleştirmesi yüklenemedi. Hata algılama kapatıldı. Yeniden etkinleştirip tekrar deneyebilir veya bu özellik olmadan devam etmek için kaydedebilirsiniz.</value>

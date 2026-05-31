@@ -229,7 +229,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Nepodarilo sa nainštalovať háky relácie. Správa relácií bola vypnutá. Môžete ju znova zapnúť a skúsiť to znova, alebo uložiť a pokračovať bez nej.</value>
+    <value>⚠ Nepodarilo sa nainštalovať session hooks. Správa relácií bola vypnutá. Môžete ju znova zapnúť a skúsiť to znova, alebo uložiť a pokračovať bez nej.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Nepodarilo sa nainštalovať integráciu shellu. Detekcia chýb bola vypnutá. Môžete ju znova zapnúť a skúsiť to znova, alebo uložiť a pokračovať bez nej.</value>

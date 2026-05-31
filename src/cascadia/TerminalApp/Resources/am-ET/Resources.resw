@@ -116,7 +116,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ የክፍለ ጊዜ መንጠቆዎችን መጫን አልተሳካም። የክፍለ ጊዜ አስተዳደር ጠፍቷል። እንደገና ማንቃት እና መሞከር ይችላሉ፣ ወይም ያለ እሱ ለመቀጠል ያስቀምጡ።</value>
+    <value>⚠ session hooks መጫን አልተሳካም። የክፍለ ጊዜ አስተዳደር ጠፍቷል። እንደገና ማንቃት እና መሞከር ይችላሉ፣ ወይም ያለ እሱ ለመቀጠል ያስቀምጡ።</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ የሼል ውህደት መጫን አልተሳካም። የስህተት ማወቂያ ጠፍቷል። እንደገና ማንቃት እና መሞከር ይችላሉ፣ ወይም ያለ እሱ ለመቀጠል ያስቀምጡ።</value>

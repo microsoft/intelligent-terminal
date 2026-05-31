@@ -230,7 +230,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Kunne ikkje installere sesjonskrokar. Sesjonshandtering er slått av. Du kan aktivere den på nytt og prøve igjen, eller lagre for å halde fram utan den.</value>
+    <value>⚠ Kunne ikkje installere session hooks. Sesjonshandtering er slått av. Du kan aktivere den på nytt og prøve igjen, eller lagre for å halde fram utan den.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Kunne ikkje installere skalintegrasjon. Feiloppdaging er slått av. Du kan aktivere den på nytt og prøve igjen, eller lagre for å halde fram utan den.</value>

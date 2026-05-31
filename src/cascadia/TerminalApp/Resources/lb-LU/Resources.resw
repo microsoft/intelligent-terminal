@@ -117,7 +117,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ D'Sessiounshaken konnten net installéiert ginn. D'Sessiounsgestioun gouf ausgeschalt. Dir kënnt se nees aktivéieren a nach eng Kéier probéieren, oder späicheren fir ouni se weiderzefueren.</value>
+    <value>⚠ D'Sessiouns-hooks konnten net installéiert ginn. D'Sessiounsgestioun gouf ausgeschalt. Dir kënnt se nees aktivéieren a nach eng Kéier probéieren, oder späicheren fir ouni se weiderzefueren.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ D'Shell-Integratioun konnt net installéiert ginn. D'Feelerkennung gouf ausgeschalt. Dir kënnt se nees aktivéieren a nach eng Kéier probéieren, oder späicheren fir ouni se weiderzefueren.</value>

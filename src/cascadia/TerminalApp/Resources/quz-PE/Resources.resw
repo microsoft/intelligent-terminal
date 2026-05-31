@@ -116,7 +116,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Sesiónpa ganchunkuna churay mana allinchu karqa. Sesión kamachiykuna wichqasqa karqa. Watiqmanta atichiy ruwarinapaq, utaq waqaychay mana paywan hina siginapaq.</value>
+    <value>⚠ Session hooks churay mana allinchu karqa. Sesión kamachiykuna wichqasqa karqa. Watiqmanta atichiy ruwarinapaq, utaq waqaychay mana paywan hina siginapaq.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Shell tinkiynin churay mana allinchu karqa. Pantay taripay wichqasqa karqa. Watiqmanta atichiy ruwarinapaq, utaq waqaychay mana paywan hina siginapaq.</value>

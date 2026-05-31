@@ -231,7 +231,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ سیشن ہکس انسٹال کرنے میں ناکامی۔ سیشن کا انتظام بند کر دیا گیا ہے۔ آپ اسے دوبارہ فعال کر کے دوبارہ کوشش کر سکتے ہیں، یا اس کے بغیر جاری رکھنے کے لیے محفوظ کر سکتے ہیں۔</value>
+    <value>⚠ session hooks انسٹال کرنے میں ناکامی۔ سیشن کا انتظام بند کر دیا گیا ہے۔ آپ اسے دوبارہ فعال کر کے دوبارہ کوشش کر سکتے ہیں، یا اس کے بغیر جاری رکھنے کے لیے محفوظ کر سکتے ہیں۔</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ شیل انضمام انسٹال کرنے میں ناکامی۔ خرابی کی نشاندہی بند کر دی گئی ہے۔ آپ اسے دوبارہ فعال کر کے دوبارہ کوشش کر سکتے ہیں، یا اس کے بغیر جاری رکھنے کے لیے محفوظ کر سکتے ہیں۔</value>

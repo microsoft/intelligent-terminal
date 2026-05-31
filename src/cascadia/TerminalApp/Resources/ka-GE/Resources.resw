@@ -116,7 +116,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ სესიის ჰუკების ინსტალაცია ვერ მოხერხდა. სესიების მართვა გამორთულია. შეგიძლიათ ხელახლა ჩართოთ და სცადოთ თავიდან, ან შეინახოთ მის გარეშე გასაგრძელებლად.</value>
+    <value>⚠ session hooks ინსტალაცია ვერ მოხერხდა. სესიების მართვა გამორთულია. შეგიძლიათ ხელახლა ჩართოთ და სცადოთ თავიდან, ან შეინახოთ მის გარეშე გასაგრძელებლად.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ გარსის ინტეგრაციის ინსტალაცია ვერ მოხერხდა. შეცდომების აღმოჩენა გამორთულია. შეგიძლიათ ხელახლა ჩართოთ და სცადოთ თავიდან, ან შეინახოთ მის გარეშე გასაგრძელებლად.</value>

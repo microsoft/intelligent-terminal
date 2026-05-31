@@ -1121,7 +1121,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Не вдалося встановити хуки сеансів. Керування сеансами вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>
+    <value>⚠ Не вдалося встановити session hooks. Керування сеансами вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Не вдалося встановити інтеграцію оболонки. Виявлення помилок вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>

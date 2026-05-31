@@ -229,7 +229,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Сеанс ілмектерін орнату сәтсіз аяқталды. Сеанстарды басқару өшірілді. Оны қайта қосып, қайталап көруіңізге немесе онсыз жалғастыру үшін сақтауыңызға болады.</value>
+    <value>⚠ Session hooks орнату сәтсіз аяқталды. Сеанстарды басқару өшірілді. Оны қайта қосып, қайталап көруіңізге немесе онсыз жалғастыру үшін сақтауыңызға болады.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Shell біріктіруін орнату сәтсіз аяқталды. Қателерді анықтау өшірілді. Оны қайта қосып, қайталап көруіңізге немесе онсыз жалғастыру үшін сақтауыңызға болады.</value>

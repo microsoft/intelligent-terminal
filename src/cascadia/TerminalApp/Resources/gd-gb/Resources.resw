@@ -116,7 +116,8 @@
     <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Dh'fhàillig stàladh nan cromagan seisein. Chaidh rianachd nan seisean a chur dheth. 'S urrainn dhut a chur air a-rithist agus feuchainn a-rithist, no sàbhail gus leantainn às aonais.</value>
+    <value>⚠ Dh'fhàillig stàladh nan session hooks. Chaidh rianachd nan seisean a chur dheth. 'S urrainn dhut a chur air a-rithist agus feuchainn a-rithist, no sàbhail gus leantainn às aonais.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Dh'fhàillig stàladh amalachadh na slige. Chaidh lorg mhearachdan a chur dheth. 'S urrainn dhut a chur air a-rithist agus feuchainn a-rithist, no sàbhail gus leantainn às aonais.</value>
