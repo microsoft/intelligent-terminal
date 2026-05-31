@@ -3778,19 +3778,77 @@ fn dispatch_master_ext_request(
         match req {
             MasterExtRequest::SessionsList { request_id } => {
                 let wire = crate::session_registry::build_sessions_list_request();
-                let sessions = match conn.ext_method(wire).await {
-                    Ok(resp) => crate::session_registry::parse_sessions_list_response(&resp.0)
-                        .map(|r| r.sessions)
-                        .unwrap_or_default(),
-                    Err(err) => {
-                        tracing::warn!(target: "agents_view", request_id, error = ?err, "sessions/list ext-request failed");
-                        Vec::new()
+                // Bound the wait so a single dropped RPC response can't
+                // permanently strand the tab's `refetch_in_flight=true`.
+                //
+                // Root cause is in agent-client-protocol@0.10's
+                // `RpcConnection::handle_io`: `read_line` is *not*
+                // cancellation-safe, but it's polled in a
+                // `select_biased!` whose outgoing arm has priority. When
+                // a concurrent outgoing message preempts an in-progress
+                // `read_line`, BufReader bytes already pulled off the
+                // pipe vanish; the next read starts mid-message, JSON
+                // parse fails, and the pending response future for the
+                // request whose response was being read never resolves.
+                // From our side `conn.ext_method(...)` then awaits
+                // forever.
+                //
+                // Without this timeout the failure mode is: helper opens
+                // /sessions, fires `sessions/list`, response gets
+                // truncated → `refetch_in_flight` stuck `true` → every
+                // subsequent `sessions/changed` broadcast and 5s tick
+                // hits `if refetch_in_flight { dirty=true; return; }`
+                // and never refetches → the tab's row activity / status
+                // is frozen until the user toggles /sessions off and
+                // on (which calls `close_agents_view_for_tab` and
+                // resets the gate).
+                //
+                // 8s > the 5s periodic tick so a healthy in-flight
+                // request never gets cancelled spuriously; under the
+                // bug the worst-case visible staleness becomes
+                // ~timeout + tick ≈ 13s instead of "until next manual
+                // toggle".
+                //
+                // The proper fix lives upstream — ACP 0.12 rewrote
+                // `handle_io` into separate incoming/outgoing actors,
+                // which is cancellation-safe by construction. Until we
+                // upgrade, this timeout is the guardrail.
+                const SESSIONS_LIST_TIMEOUT: std::time::Duration =
+                    std::time::Duration::from_secs(8);
+                let result =
+                    tokio::time::timeout(SESSIONS_LIST_TIMEOUT, conn.ext_method(wire)).await;
+                match result {
+                    Ok(Ok(resp)) => {
+                        let sessions =
+                            crate::session_registry::parse_sessions_list_response(&resp.0)
+                                .map(|r| r.sessions)
+                                .unwrap_or_default();
+                        let _ = event_tx.send(AppEvent::AgentsSnapshotLoaded {
+                            request_id,
+                            sessions,
+                        });
                     }
-                };
-                let _ = event_tx.send(AppEvent::AgentsSnapshotLoaded {
-                    request_id,
-                    sessions,
-                });
+                    Ok(Err(err)) => {
+                        tracing::warn!(
+                            target: "agents_view",
+                            request_id,
+                            error = ?err,
+                            "sessions/list ext-request failed"
+                        );
+                        let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
+                    }
+                    Err(_elapsed) => {
+                        tracing::warn!(
+                            target: "agents_view",
+                            request_id,
+                            timeout_secs = SESSIONS_LIST_TIMEOUT.as_secs(),
+                            "sessions/list timed out — likely ACP-0.10 \
+                             cancellation-safety bug; unblocking refetch_in_flight \
+                             so 5s tick can retry"
+                        );
+                        let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
+                    }
+                }
             }
             MasterExtRequest::SessionResumeDispatched { request_id, sid } => {
                 let wire = crate::session_registry::build_session_resume_dispatched_request(&sid);
