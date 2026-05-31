@@ -492,7 +492,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn merge_paths_prefers_fresh_and_dedups_case_insensitively() {
+    fn merge_paths_prefers_fresh_and_removes_duplicates_case_insensitively() {
         let fresh = r"C:\WinGet\Links;C:\Windows\System32";
         let current = r"C:\windows\system32\;C:\Runtime\Only";
         let merged = merge_paths(fresh, current);
