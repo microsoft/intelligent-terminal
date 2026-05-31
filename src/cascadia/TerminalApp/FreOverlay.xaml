@@ -214,6 +214,7 @@
                                                FontSize="14" FontWeight="SemiBold"
                                                Foreground="White" />
                                     <TextBlock x:Uid="FreOverlay_AgentDescription"
+                                               x:Name="AgentDescription"
                                                FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap" />
                                     <TextBlock x:Uid="FreOverlay_AgentInstallHint"

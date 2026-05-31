@@ -11,9 +11,12 @@
 #include "../inc/ShellIntegration.h"
 #include "../inc/RtlHelper.h"
 
+#include <winrt/Windows.UI.Xaml.Documents.h>
+
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
+using namespace winrt::Windows::UI::Xaml::Documents;
 namespace Automation = winrt::Windows::UI::Xaml::Automation;
 
 namespace winrt::TerminalApp::implementation
@@ -91,6 +94,56 @@ namespace winrt::TerminalApp::implementation
         WelcomeSubtitleLink().Text(RS_(L"FreOverlay_WelcomeSubtitleLink"));
         SettingsSubtitlePrefix().Text(RS_(L"FreOverlay_SettingsSubtitlePrefix"));
         SettingsSubtitleLink().Text(RS_(L"FreOverlay_SettingsSubtitleLink"));
+
+        // Rewrite the literal substring "ACP" inside the localized agent
+        // description into a hyperlink to the ACP reference page. "ACP" is
+        // {Locked} in every locale's resw, so the split is locale-independent
+        // and requires no per-locale resource changes. Idempotent — safe to
+        // call every time Initialize() runs (FRE may be re-shown).
+        if (const auto desc = AgentDescription())
+        {
+            // Skip if a Hyperlink is already present (re-Initialize).
+            bool alreadyInjected = false;
+            for (const auto& inl : desc.Inlines())
+            {
+                if (inl.try_as<Hyperlink>())
+                {
+                    alreadyInjected = true;
+                    break;
+                }
+            }
+            if (!alreadyInjected)
+            {
+                const std::wstring fullText{ desc.Text() };
+                constexpr std::wstring_view acpToken{ L"ACP" };
+                const auto pos = fullText.find(acpToken);
+                if (!fullText.empty() && pos != std::wstring::npos)
+                {
+                    desc.Text(L"");
+                    auto inlines = desc.Inlines();
+                    inlines.Clear();
+                    if (pos > 0)
+                    {
+                        Run prefix;
+                        prefix.Text(winrt::hstring{ fullText.substr(0, pos) });
+                        inlines.Append(prefix);
+                    }
+                    Hyperlink link;
+                    link.NavigateUri(Uri{ L"https://aka.ms/intelligent-terminal-acpref" });
+                    Run linkRun;
+                    linkRun.Text(L"ACP");
+                    link.Inlines().Append(linkRun);
+                    inlines.Append(link);
+                    const auto suffixStart = pos + acpToken.size();
+                    if (suffixStart < fullText.size())
+                    {
+                        Run suffix;
+                        suffix.Text(winrt::hstring{ fullText.substr(suffixStart) });
+                        inlines.Append(suffix);
+                    }
+                }
+            }
+        }
 
         // Set toggle On/Off labels
         AutoDetectToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
