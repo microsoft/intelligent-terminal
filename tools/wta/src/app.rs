@@ -988,6 +988,13 @@ pub struct DispatchedCommand {
 pub enum AppEvent {
     Key(KeyEvent),
     Tick,
+    /// High-frequency (~30Hz) reveal animation tick. Drives the typewriter
+    /// smoothing of the streaming agent response (advances `reveal_chars`).
+    /// Separate from `Tick` so we can run the reveal at 30fps without
+    /// quadrupling the spinner's full-frame flush rate: a `RevealTick` only
+    /// forces a redraw when there is unrevealed pending text on the current
+    /// tab (`has_reveal_backlog`).
+    RevealTick,
     Resize(u16, u16), // terminal resize (handled by ratatui)
     /// XAML focus on our hosting TermControl changed — true when the agent
     /// pane gained focus, false when it lost focus. Sourced from xterm
@@ -1327,6 +1334,13 @@ pub struct TabSession {
     // back to the spinner label derived from `turn` when None.
     pub progress_status: Option<String>,
     pub activity_frame: usize,
+    /// Typewriter reveal cursor: how many characters of the *user-visible*
+    /// streaming text are currently shown. The full text lives in
+    /// `turn.buffer()`; the renderer only emits the first `reveal_chars`
+    /// chars of it. Advanced toward the full length by `RevealTick`
+    /// (`advance_reveal`), reset to 0 when a new turn starts streaming, and
+    /// made irrelevant on finalize (the committed message renders in full).
+    pub reveal_chars: usize,
     pub timing_note: Option<String>,
     pub selection_visible_pending: bool,
 
@@ -3892,6 +3906,7 @@ impl App {
             AppEvent::SessionsChanged => "sessions_changed",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
+            AppEvent::RevealTick => "reveal_tick",
         }
     }
 
@@ -3955,6 +3970,9 @@ impl App {
             AppEvent::Resize(w, h) => {
                 self.terminal_cols = w;
                 self.terminal_rows = h;
+            }
+            AppEvent::RevealTick => {
+                self.advance_reveal();
             }
             AppEvent::FocusChanged(focused) => {
                 self.pane_focused = focused;
@@ -5590,6 +5608,11 @@ impl App {
     fn event_requires_redraw(&self, event: &AppEvent) -> bool {
         match event {
             AppEvent::Tick => self.has_activity_indicator() || self.show_notification_banner,
+            // The reveal animation only needs a frame while there is still
+            // unrevealed pending text on the *visible* tab. When the reveal
+            // has caught up (or nothing is streaming) this is a cheap no-op
+            // tick that doesn't redraw — so idle/no-backlog costs nothing.
+            AppEvent::RevealTick => self.has_reveal_backlog(),
             AppEvent::AgentMessageChunk { .. } => true,
             AppEvent::DebugPipeMessage(_) => self.show_debug_panel,
             // History only affects the agent session view; chat doesn't read it.
@@ -5597,6 +5620,51 @@ impl App {
             // view is showing — pay the one frame.
             AppEvent::HistoricalSessionsLoaded(_) => true,
             _ => true,
+        }
+    }
+
+    /// Number of *user-visible* characters in a tab's streaming buffer, i.e.
+    /// the length of what the renderer would show in full. `None` when the
+    /// tab is not streaming visible prose.
+    fn tab_visible_stream_len(tab: &TabSession) -> Option<usize> {
+        let buf = tab.turn.buffer()?;
+        crate::ui::chat::user_visible_stream_text(buf).map(|t| t.chars().count())
+    }
+
+    /// True iff the current (visible) tab has streaming text that the reveal
+    /// cursor hasn't caught up to yet. Used to gate `RevealTick` redraws.
+    fn has_reveal_backlog(&self) -> bool {
+        let tab = self.current_tab();
+        matches!(Self::tab_visible_stream_len(tab), Some(len) if tab.reveal_chars < len)
+    }
+
+    /// Advance the typewriter reveal cursor on every streaming tab. The step
+    /// is *adaptive*: it grows with the backlog so the reveal can never fall
+    /// permanently behind a fast model — any backlog is drained within
+    /// `REVEAL_CATCHUP_FRAMES` ticks. Combined with the fact that finalize
+    /// commits the message in full (un-gated), this guarantees the smoothing
+    /// never increases the total time for the response to appear: it only
+    /// redistributes *when* characters show up within the streaming window.
+    fn advance_reveal(&mut self) {
+        // ~30fps tick. `REVEAL_MIN_STEP` is the floor so a slow trickle still
+        // animates; the `backlog / REVEAL_CATCHUP_FRAMES` term speeds up to
+        // match (and overtake) arrival, capping the visible lag at roughly
+        // `REVEAL_CATCHUP_FRAMES` ticks (~130ms).
+        const REVEAL_MIN_STEP: usize = 3;
+        const REVEAL_CATCHUP_FRAMES: usize = 4;
+        for tab in self.tab_sessions.values_mut() {
+            let Some(len) = Self::tab_visible_stream_len(tab) else {
+                continue;
+            };
+            if tab.reveal_chars >= len {
+                // Clamp down if the visible text shrank (e.g. a fenced JSON
+                // block replaced the streamed prose).
+                tab.reveal_chars = len;
+                continue;
+            }
+            let backlog = len - tab.reveal_chars;
+            let step = REVEAL_MIN_STEP.max(backlog / REVEAL_CATCHUP_FRAMES);
+            tab.reveal_chars = (tab.reveal_chars + step).min(len);
         }
     }
 
@@ -7203,6 +7271,8 @@ impl App {
                     prompt,
                     buf: text.to_string(),
                 };
+                // New turn: restart the typewriter reveal from the top.
+                tab.reveal_chars = 0;
                 true
             }
             // Thought chunk while Submitted: enter Streaming with empty buf.
@@ -7216,6 +7286,7 @@ impl App {
                     prompt,
                     buf: String::new(),
                 };
+                tab.reveal_chars = 0;
                 false
             }
             // Streaming → Streaming, append message chunks only.

@@ -387,13 +387,29 @@ fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
-    let Some(text) = pending_render_text(app.current_tab()) else {
+    let tab = app.current_tab();
+    let Some(text) = pending_render_text(tab) else {
         return Vec::new();
+    };
+    // Typewriter smoothing: only reveal the first `reveal_chars` characters of
+    // the streaming text. The reveal cursor is advanced toward the full length
+    // by the `RevealTick` animation (`App::advance_reveal`), turning the
+    // upstream ~90-char-every-~100ms bursts into a smooth character flow. The
+    // full text is always in `turn.buffer()`, and finalize commits it in full,
+    // so this never drops or delays the final content.
+    let revealed: Cow<'_, str> = {
+        let total = text.chars().count();
+        let shown = tab.reveal_chars.min(total);
+        if shown >= total {
+            text
+        } else {
+            Cow::Owned(text.chars().take(shown).collect())
+        }
     };
     let mut lines = Vec::new();
     push_dot_prefixed_lines(
         &mut lines,
-        &text,
+        &revealed,
         wrap_width,
         theme::DOT_AGENT,
         theme::AGENT_TEXT,

@@ -10,6 +10,15 @@ pub async fn read_crossterm_events(tx: mpsc::UnboundedSender<AppEvent>) {
     let mut ticker = time::interval(Duration::from_millis(120));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
+    // Separate, higher-frequency ticker (~30fps) that drives only the
+    // typewriter reveal animation (`AppEvent::RevealTick`). Kept distinct from
+    // the 120ms spinner `Tick` so the reveal can run smoothly without
+    // quadrupling spinner full-frame flushes — a `RevealTick` only forces a
+    // redraw when there is unrevealed pending text (see
+    // `App::event_requires_redraw` / `has_reveal_backlog`).
+    let mut reveal_ticker = time::interval(Duration::from_millis(33));
+    reveal_ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
     tracing::info!(target: "input", "crossterm reader task starting");
     let mut consecutive_errors = 0usize;
 
@@ -17,6 +26,12 @@ pub async fn read_crossterm_events(tx: mpsc::UnboundedSender<AppEvent>) {
         tokio::select! {
             _ = ticker.tick() => {
                 if tx.send(AppEvent::Tick).is_err() {
+                    tracing::info!(target: "input", "crossterm reader exiting: AppEvent channel closed");
+                    break;
+                }
+            }
+            _ = reveal_ticker.tick() => {
+                if tx.send(AppEvent::RevealTick).is_err() {
                     tracing::info!(target: "input", "crossterm reader exiting: AppEvent channel closed");
                     break;
                 }
