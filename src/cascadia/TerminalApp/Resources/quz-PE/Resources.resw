@@ -54,7 +54,7 @@
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Kay agenteqa Node.js chaymanta NPX nisqakunata munan, mana churasqa kaqtinqa kikinmanta churakunqa.</value>
+    <value>Kay agenteqa Node.js chaymanta NPX nisqakunata munan, mana churasqa kaqtinqa kikinmanta churakunqa.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -72,7 +72,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Kayta hurquqtiyki integración hooks nisqakunata churanqa agente nisqakunaykipi hunt'akunata qhawarinapaq.</value>
+    <value>Kayta hurquqtiyki integración hooks nisqakunata churanqa agente nisqakunaykipi hunt'akunata qhawarinapaq.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">

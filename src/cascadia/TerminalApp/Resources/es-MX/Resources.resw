@@ -163,7 +163,7 @@
     <comment>{Locked="ACP"}</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Este agente requiere Node.js y NPX, que se instalarán automáticamente si no están presentes.</value>
+    <value>Este agente requiere Node.js y NPX, que se instalarán automáticamente si no están presentes.</value>
     <comment>{Locked="Node.js","NPX"}</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -181,7 +181,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Habilitar esto instalará hooks de integración para rastrear sesiones en tus agentes.</value>
+    <value>Habilitar esto instalará hooks de integración para rastrear sesiones en tus agentes.</value>
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">

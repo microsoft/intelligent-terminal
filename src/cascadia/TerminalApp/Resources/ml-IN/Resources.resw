@@ -167,7 +167,7 @@
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ ഈ ഏജന്റിന് Node.js-ഉം NPX-ഉം ആവശ്യമാണ്, ഇതിനകം ഇല്ലെങ്കിൽ സ്വയമേവ ഇൻസ്റ്റാൾ ചെയ്യപ്പെടും.</value>
+    <value>ഈ ഏജന്റിന് Node.js-ഉം NPX-ഉം ആവശ്യമാണ്, ഇതിനകം ഇല്ലെങ്കിൽ സ്വയമേവ ഇൻസ്റ്റാൾ ചെയ്യപ്പെടും.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -185,7 +185,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ ഇത് പ്രവർത്തനക്ഷമമാക്കുന്നത് നിങ്ങളുടെ ഏജന്റുകളിലുടനീളം സെഷനുകൾ ട്രാക്ക് ചെയ്യാൻ ഇന്റഗ്രേഷൻ hooks ഇൻസ്റ്റാൾ ചെയ്യും.</value>
+    <value>ഇത് പ്രവർത്തനക്ഷമമാക്കുന്നത് നിങ്ങളുടെ ഏജന്റുകളിലുടനീളം സെഷനുകൾ ട്രാക്ക് ചെയ്യാൻ ഇന്റഗ്രേഷൻ hooks ഇൻസ്റ്റാൾ ചെയ്യും.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">

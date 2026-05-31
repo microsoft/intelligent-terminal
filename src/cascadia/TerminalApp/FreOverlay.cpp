@@ -290,7 +290,7 @@ namespace winrt::TerminalApp::implementation
             {
                 const auto id = entry.Id();
                 const bool needsNode = (id == L"claude" || id == L"codex");
-                AgentInstallHint().Visibility(needsNode ? Visibility::Visible : Visibility::Collapsed);
+                AgentInstallHintRow().Visibility(needsNode ? Visibility::Visible : Visibility::Collapsed);
             }
         }
     }
@@ -300,10 +300,13 @@ namespace winrt::TerminalApp::implementation
     {
         // Guard: event can fire during InitializeComponent before controls exist
         auto toggle = SessionManagementToggle();
-        auto hint = SessionManagementHint();
-        if (toggle && hint)
+        // Hide/show the whole hint row (icon + text), not just the text — the
+        // monochrome FontIcon lives in the same StackPanel and would otherwise
+        // be left dangling when the toggle is off.
+        auto row = SessionManagementHintRow();
+        if (toggle && row)
         {
-            hint.Visibility(toggle.IsOn() ? Visibility::Visible : Visibility::Collapsed);
+            row.Visibility(toggle.IsOn() ? Visibility::Visible : Visibility::Collapsed);
         }
     }
 

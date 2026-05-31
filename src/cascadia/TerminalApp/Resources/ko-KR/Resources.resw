@@ -1072,7 +1072,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ 이 에이전트에는 Node.js 및 NPX가 필요하며, 아직 설치되지 않은 경우 자동으로 설치됩니다.</value>
+    <value>이 에이전트에는 Node.js 및 NPX가 필요하며, 아직 설치되지 않은 경우 자동으로 설치됩니다.</value>
     <comment>{Locked="Node.js","NPX"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
@@ -1091,7 +1091,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ 이를 활성화하면 에이전트 전체에서 세션을 추적하기 위한 통합 hooks가 설치됩니다.</value>
+    <value>이를 활성화하면 에이전트 전체에서 세션을 추적하기 위한 통합 hooks가 설치됩니다.</value>
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">

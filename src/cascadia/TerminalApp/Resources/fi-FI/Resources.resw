@@ -167,7 +167,7 @@
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Tämä agentti vaatii Node.js- ja NPX-asennuksen, jotka asennetaan automaattisesti, jos niitä ei vielä ole.</value>
+    <value>Tämä agentti vaatii Node.js- ja NPX-asennuksen, jotka asennetaan automaattisesti, jos niitä ei vielä ole.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -185,7 +185,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Tämän ottaminen käyttöön asentaa integraatio-hooksit istuntojen seuraamiseksi agenttiesi välillä.</value>
+    <value>Tämän ottaminen käyttöön asentaa integraatio-hooksit istuntojen seuraamiseksi agenttiesi välillä.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
