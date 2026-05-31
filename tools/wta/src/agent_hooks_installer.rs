@@ -17,7 +17,7 @@
 // -------------------------------------------
 //
 // The installable plugin contents live entirely under `tools/wta/wt-agent-hooks/`
-// in the repo, in three CLI-specific subtrees:
+// in the repo, in four CLI-specific subtrees:
 //
 //   tools/wta/wt-agent-hooks/
 //     claude/                              <- passed to `claude plugin marketplace add`
@@ -30,6 +30,11 @@
 //     gemini-extension/                    <- passed to `gemini extensions install`
 //       gemini-extension.json
 //       hooks/{hooks.json,send-event.ps1}
+//     codex/                               <- passed to `codex plugin marketplace add`
+//       .agents/plugins/marketplace.json   <- Codex's mandatory sentinel location
+//       wt-agent-hooks/                    <- the plugin folder Codex copies
+//         .codex-plugin/plugin.json
+//         hooks/{hooks.json,send-event.ps1}
 //
 // The MSIX package ships this directory next to `wta.exe` (see
 // `CascadiaPackage.wapproj`'s `wt-agent-hooks` Content glob), so at runtime
@@ -2751,7 +2756,6 @@ fn read_bundled_version(cli: CliKind) -> Option<Version> {
             dir.join("wt-agent-hooks").join(".claude-plugin").join("plugin.json")
         }
         CliKind::Codex => dir
-            .join("plugins")
             .join("wt-agent-hooks")
             .join(".codex-plugin")
             .join("plugin.json"),

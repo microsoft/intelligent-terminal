@@ -8,7 +8,7 @@
       "name": "wt-agent-hooks",
       "source": {
         "source": "local",
-        "path": "./plugins/wt-agent-hooks"
+        "path": "./wt-agent-hooks"
       },
       "policy": {
         "installation": "AVAILABLE",
