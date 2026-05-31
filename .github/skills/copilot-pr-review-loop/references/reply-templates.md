@@ -72,8 +72,8 @@ statement>.
 Example:
 
 > Good catch — updated the PR description (both the Plan and the Test
-> plan sections) to match the implemented behavior: the uninstaller now
-> strips orphan markers together with their recognizable body lines,
+> plan sections) to match the implemented behavior: the uninstall flow
+> now strips orphan markers together with their recognizable body lines,
 > rather than leaving them in place. Single expected recovery policy now.
 
 ## Template: Partial Fix With Followup Deferred

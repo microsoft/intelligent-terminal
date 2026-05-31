@@ -55,7 +55,7 @@ Then:
 - **Suggestions that contradict an established project convention** — even
   if the suggestion would be reasonable in isolation, consistency with the
   surrounding code is usually more valuable.
-- **Microoptimizations** in code that is not on a hot path.
+- **Micro-optimizations** in code that is not on a hot path.
 
 ## Always State Reasoning
 

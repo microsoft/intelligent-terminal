@@ -95,6 +95,7 @@ Resources/(?!en)
 ^build/StoreSubmission/
 ^consolegit2gitfilters\.json$
 ^dep/
+^docs/awesome-copilot-references/
 ^doc/reference/master-sequence-list\.csv$
 ^doc/reference/UTF8-torture-test\.txt$
 ^doc/reference/windows-terminal-logo\.ans$
