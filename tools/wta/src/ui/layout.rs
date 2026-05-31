@@ -187,15 +187,20 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     }
 
     if hint_visible {
+        // The hint is a single non-wrapping row; in a narrow pane the raw
+        // string overruns the width and ratatui clips it mid-token. Truncate
+        // with an ellipsis instead so it always reads as a deliberate, if
+        // shortened, line rather than a chopped-off fragment (issue #126).
+        let hint_width = chunks[4].width as usize;
         if welcome_visible {
             let line = Line::from(Span::styled(
-                t!("layout.welcome_hint").into_owned(),
+                truncate_to_width(&t!("layout.welcome_hint"), hint_width),
                 Style::default().fg(Color::DarkGray),
             ));
             frame.render_widget(line, chunks[4]);
         } else if let Some((text, _)) = app.transient_hint.as_ref() {
             let line = Line::from(Span::styled(
-                format!("  {}", text),
+                truncate_to_width(&format!("  {}", text), hint_width),
                 Style::default().fg(Color::DarkGray),
             ));
             frame.render_widget(line, chunks[4]);
@@ -294,4 +299,71 @@ pub fn input_cursor_position(app: &App, area: Rect) -> Option<Position> {
         .split(main_area);
 
     input::cursor_position(app, chunks[6])
+}
+
+/// Truncate `s` so its rendered (display-cell) width fits in `max` columns,
+/// appending a single-cell ellipsis when anything was dropped. Width-aware
+/// (not char-count) so localized hints containing wide CJK glyphs are clipped
+/// at the right column instead of overrunning the pane. The returned string is
+/// guaranteed to have a display width of at most `max`.
+fn truncate_to_width(s: &str, max: usize) -> String {
+    use unicode_width::UnicodeWidthChar;
+
+    let total: usize = s
+        .chars()
+        .map(|c| UnicodeWidthChar::width(c).unwrap_or(0))
+        .sum();
+    if total <= max {
+        return s.to_string();
+    }
+    if max == 0 {
+        return String::new();
+    }
+
+    // Reserve one cell for the ellipsis glyph (width 1).
+    let budget = max - 1;
+    let mut out = String::new();
+    let mut width = 0usize;
+    for c in s.chars() {
+        let cw = UnicodeWidthChar::width(c).unwrap_or(0);
+        if width + cw > budget {
+            break;
+        }
+        out.push(c);
+        width += cw;
+    }
+    out.push('…');
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_to_width;
+    use unicode_width::UnicodeWidthStr;
+
+    #[test]
+    fn shorter_than_max_is_unchanged() {
+        assert_eq!(truncate_to_width("hello", 10), "hello");
+        assert_eq!(truncate_to_width("hello", 5), "hello");
+    }
+
+    #[test]
+    fn longer_gets_ellipsis_and_fits() {
+        let out = truncate_to_width("hello world", 5);
+        assert_eq!(out, "hell…");
+        assert!(UnicodeWidthStr::width(out.as_str()) <= 5);
+    }
+
+    #[test]
+    fn zero_width_is_empty() {
+        assert_eq!(truncate_to_width("hello", 0), "");
+    }
+
+    #[test]
+    fn wide_glyphs_never_overrun() {
+        // CJK glyphs are 2 cells each; result must still fit the budget.
+        let out = truncate_to_width("你好世界你好", 5);
+        assert!(UnicodeWidthStr::width(out.as_str()) <= 5);
+        assert!(out.ends_with('…'));
+    }
 }
