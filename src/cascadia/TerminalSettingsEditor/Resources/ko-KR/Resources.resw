@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -2901,7 +2901,7 @@
     <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
   </data>
   <data name="AIAgents_HooksRemovingCodexSummary" xml:space="preserve">
-    <value>Removing Codex hooks...</value>
+    <value>Codex hooks 제거 중...</value>
     <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
   </data>
   <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
