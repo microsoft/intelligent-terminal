@@ -102,8 +102,8 @@ agent.custom.auth_hint: "%{name} がインストールされ、PATH 上にある
 
 # ── エージェント ビュー (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "読み込み中..."
-# {Locked="Enter","Esc","↑","↓"} - キーの組み合わせ、翻訳不要
-agents.footer_hint: "(↑ ↓ 移動 • Enter セッションを起動 • Esc 終了)"
+# {Locked="Enter","Esc","F5","↑","↓"} - キーの組み合わせ、翻訳不要
+agents.footer_hint: "(↑ ↓ 移動 • Enter セッションを起動 • Esc 終了 • F5 更新)"
 agents.status.active: "アクティブ"
 agents.status.waiting_for_input: "入力待ち"
 agents.status.error: "エラー"

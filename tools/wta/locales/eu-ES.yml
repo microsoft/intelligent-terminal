@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Ziurtatu %{name} instalatuta dagoela eta zure PATH-ean 
 
 # ── Agenteen ikuspegia (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Kargatzen..."
-# {Locked="Enter","Esc","↑","↓"} - tekla-konbinazioak, ez itzuli
-agents.footer_hint: "(↑ ↓ nabigatzeko • Enter saioa abiarazteko • Esc irteteko)"
+# {Locked="Enter","Esc","F5","↑","↓"} - tekla-konbinazioak, ez itzuli
+agents.footer_hint: "(↑ ↓ nabigatzeko • Enter saioa abiarazteko • Esc irteteko • F5 freskatzeko)"
 agents.status.active: "Aktiboa"
 agents.status.waiting_for_input: "Sarreraren zain"
 agents.status.error: "Errorea"

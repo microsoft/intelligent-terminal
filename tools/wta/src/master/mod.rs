@@ -1160,6 +1160,16 @@ impl acp::Agent for HelperHandler {
             );
             return handle_sessions_list(&self.state, &args.params).await;
         }
+        if method == crate::session_registry::INTELLTERM_METHOD_RECONCILE_LIVENESS {
+            tracing::info!(
+                target: "master",
+                op = "ext_method",
+                method = %method,
+                helper_id = ?self.helper_id,
+                "handling intellterm.wta/reconcile_liveness locally"
+            );
+            return handle_reconcile_liveness(&self.state, &args.params).await;
+        }
         if method == crate::session_registry::INTELLTERM_METHOD_SESSION_HOOK {
             tracing::info!(
                 target: "master",
@@ -1960,6 +1970,111 @@ async fn handle_sessions_list(
     let mut sessions = state.registry.snapshot().await;
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
     let raw = crate::session_registry::build_sessions_list_response(sessions);
+    Ok(acp::ExtResponse::new(raw.into()))
+}
+
+/// Slack (ms) applied on top of `enumerated_at_ms` when deciding which
+/// rows are "old enough" to drop. Sessions whose `last_activity_at_ms`
+/// is newer than `enumerated_at_ms - RECONCILE_MIN_AGE_SLACK_MS` are
+/// kept even when their pane isn't in the alive set — this absorbs
+/// helper↔master clock skew and any session created after the F5
+/// presser snapshotted WT but before master sees the request.
+const RECONCILE_MIN_AGE_SLACK_MS: u64 = 1_000;
+
+/// Handler for `intellterm.wta/reconcile_liveness`.
+///
+/// Walks the registry snapshot and drops any row whose `pane_session_id`
+/// (a) is set AND (b) is not in the helper-supplied alive set AND
+/// (c) is older than the race-guard cutoff. Per-sid cleanup mirrors
+/// [`drop_sessions_for_helper`]: remove from `session_to_helper`, remove
+/// from the registry, broadcast `session_removed`. A single
+/// `sessions/changed` broadcast follows at the end (cheaper than
+/// per-victim and the helper coalesces them anyway).
+///
+/// Pane id comparison is case-insensitive — `pane_session_id` is stored
+/// as a GUID and WT can return either casing.
+async fn handle_reconcile_liveness(
+    state: &MasterStateInner,
+    params: &serde_json::value::RawValue,
+) -> acp::Result<acp::ExtResponse> {
+    let parsed = crate::session_registry::parse_reconcile_liveness_params(params).map_err(
+        |err| {
+            tracing::warn!(
+                target: "master",
+                op = "reconcile_liveness",
+                error = %err,
+                "rejecting malformed reconcile_liveness params"
+            );
+            acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
+        },
+    )?;
+
+    let alive: std::collections::HashSet<String> = parsed
+        .alive_panes
+        .into_iter()
+        .map(|p| p.to_ascii_lowercase())
+        .collect();
+    let max_drop_activity_ms = parsed
+        .enumerated_at_ms
+        .saturating_sub(RECONCILE_MIN_AGE_SLACK_MS);
+
+    let snapshot = state.registry.snapshot().await;
+    let stale: Vec<acp::SessionId> = snapshot
+        .iter()
+        .filter(|s| {
+            let Some(pane) = s.pane_session_id.as_ref() else {
+                return false;
+            };
+            if alive.contains(&pane.to_ascii_lowercase()) {
+                return false;
+            }
+            // Race guard: sessions with no activity timestamp are
+            // brand-new (no events yet) and we don't know their age,
+            // so keep them. Sessions with a timestamp newer than the
+            // cutoff might have just been created after the F5
+            // presser snapshotted WT; also keep.
+            match s.last_activity_at_ms {
+                None => false,
+                Some(ts) => ts <= max_drop_activity_ms,
+            }
+        })
+        .map(|s| s.session_id.clone())
+        .collect();
+
+    let dropped = stale.len() as u32;
+    tracing::info!(
+        target: "master",
+        op = "reconcile_liveness",
+        registry_size = snapshot.len(),
+        alive_panes = alive.len(),
+        enumerated_at_ms = parsed.enumerated_at_ms,
+        stale = dropped,
+        "reconciled registry against WT alive panes"
+    );
+
+    for sid in &stale {
+        // Mirror drop_sessions_for_helper, per-sid. Lock order: take
+        // session_to_helper, mutate, release, then touch registry.
+        {
+            let mut map = state.session_to_helper.lock().await;
+            map.remove(sid);
+        }
+        state.registry.remove(sid).await;
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_session_removed_notification(sid),
+        )
+        .await;
+    }
+    if dropped > 0 {
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
+    }
+
+    let raw = crate::session_registry::build_reconcile_liveness_response(dropped);
     Ok(acp::ExtResponse::new(raw.into()))
 }
 
@@ -2870,6 +2985,202 @@ mod tests {
         let mut expected = vec![sid_a, sid_b];
         expected.sort_by(|a, b| a.0.cmp(&b.0));
         assert_eq!(got, expected);
+    }
+
+    /// Build a registry row with a pane binding and an explicit
+    /// activity timestamp. Reconcile tests use this so they can
+    /// directly steer the race-guard comparison.
+    fn reconcile_row(
+        sid: &str,
+        pane: Option<&str>,
+        last_activity_at_ms: Option<u64>,
+    ) -> crate::session_registry::SessionInfo {
+        let mut info = crate::session_registry::SessionInfo::new(
+            SessionId::new(sid),
+            PathBuf::from(format!("/repo/{sid}")),
+        );
+        if let Some(p) = pane {
+            info = info.with_pane_session_id(p.to_string());
+        }
+        info.last_activity_at_ms = last_activity_at_ms;
+        info
+    }
+
+    /// Drive the handler directly without going through the
+    /// `ext_method` dispatch glue.
+    async fn invoke_reconcile(
+        state: &Arc<MasterStateInner>,
+        alive: Vec<&str>,
+        enumerated_at_ms: u64,
+    ) -> crate::session_registry::ReconcileLivenessResponse {
+        let req = crate::session_registry::build_reconcile_liveness_request(
+            alive.into_iter().map(|s| s.to_string()).collect(),
+            enumerated_at_ms,
+        );
+        let resp = handle_reconcile_liveness(state, &req.params)
+            .await
+            .expect("handler returns Ok");
+        crate::session_registry::parse_reconcile_liveness_response(&resp.0)
+            .expect("response parses")
+    }
+
+    /// Reconcile drops registry rows whose pane binding is gone (and
+    /// is old enough to clear the race guard), broadcasts
+    /// `session_removed` for each, and a single trailing
+    /// `sessions/changed`. Rows whose pane is still alive, or which
+    /// have no pane binding, are untouched.
+    #[tokio::test]
+    async fn handle_reconcile_liveness_drops_stale_pane_bindings() {
+        let state = make_state();
+        let now_ms = 10_000_u64;
+        let old_ms = now_ms - RECONCILE_MIN_AGE_SLACK_MS - 100;
+        let sid_alive = SessionId::new("alive-1");
+        let sid_stale = SessionId::new("stale-1");
+        let sid_no_pane = SessionId::new("no-pane-1");
+
+        state
+            .registry
+            .upsert(reconcile_row("alive-1", Some("pane-A"), Some(old_ms)))
+            .await;
+        state
+            .registry
+            .upsert(reconcile_row("stale-1", Some("pane-B"), Some(old_ms)))
+            .await;
+        state
+            .registry
+            .upsert(reconcile_row("no-pane-1", None, Some(old_ms)))
+            .await;
+        // Peer helper subscribes so we can observe the broadcasts.
+        let (ext_tx, mut ext_rx) = mpsc::unbounded_channel::<acp::ExtNotification>();
+        {
+            let mut subs = state.helper_ext_subscribers.lock().await;
+            subs.insert(HelperId(99), ext_tx);
+        }
+
+        let resp = invoke_reconcile(&state, vec!["pane-A"], now_ms).await;
+
+        assert_eq!(resp.dropped, 1, "only stale-1 is dropped");
+        assert!(
+            state.registry.lookup(&sid_alive).await.is_some(),
+            "alive row survives"
+        );
+        assert!(
+            state.registry.lookup(&sid_stale).await.is_none(),
+            "stale row removed from registry"
+        );
+        assert!(
+            state.registry.lookup(&sid_no_pane).await.is_some(),
+            "no-pane row untouched (we never had a pane to compare against)"
+        );
+
+        let mut removed: Vec<acp::SessionId> = Vec::new();
+        let mut changed_count = 0;
+        while let Ok(ext) = ext_rx.try_recv() {
+            match crate::session_registry::parse_ext_notification(&ext) {
+                crate::session_registry::WtaExtNotification::SessionRemoved(sid) => {
+                    removed.push(sid)
+                }
+                crate::session_registry::WtaExtNotification::SessionsChanged => {
+                    changed_count += 1
+                }
+                other => panic!("unexpected ext: {other:?}"),
+            }
+        }
+        assert_eq!(removed, vec![sid_stale.clone()]);
+        assert_eq!(changed_count, 1, "single trailing sessions/changed");
+    }
+
+    /// Sessions without a `pane_session_id` are Historical / disk-only
+    /// — reconcile must never demote them, regardless of the alive set
+    /// (it could be empty if WT has no agent panes open at all).
+    #[tokio::test]
+    async fn handle_reconcile_liveness_keeps_rows_without_pane_binding() {
+        let state = make_state();
+        let sid = SessionId::new("hist-1");
+        state
+            .registry
+            .upsert(reconcile_row("hist-1", None, Some(0)))
+            .await;
+
+        let resp = invoke_reconcile(&state, vec![], 999_999).await;
+
+        assert_eq!(resp.dropped, 0);
+        assert!(state.registry.lookup(&sid).await.is_some());
+    }
+
+    /// RACE GUARD: a session whose `last_activity_at_ms` is newer than
+    /// `enumerated_at_ms - slack` is kept even when its pane isn't in
+    /// the alive set. Models a session created concurrently with the
+    /// F5 enumeration whose pane hadn't appeared in WT yet when the
+    /// presser snapshotted the list.
+    #[tokio::test]
+    async fn handle_reconcile_liveness_race_guard_keeps_fresh_sessions() {
+        let state = make_state();
+        let enumerated_at_ms = 10_000;
+        // "Just created" — activity ms is AFTER enumeration started.
+        let fresh_ms = enumerated_at_ms - RECONCILE_MIN_AGE_SLACK_MS + 1;
+        let sid = SessionId::new("fresh-1");
+        state
+            .registry
+            .upsert(reconcile_row(
+                "fresh-1",
+                Some("pane-fresh"),
+                Some(fresh_ms),
+            ))
+            .await;
+
+        // Alive set is empty — without the race guard this would drop
+        // the row.
+        let resp = invoke_reconcile(&state, vec![], enumerated_at_ms).await;
+
+        assert_eq!(resp.dropped, 0, "race guard kept the fresh row");
+        assert!(state.registry.lookup(&sid).await.is_some());
+    }
+
+    /// `last_activity_at_ms == None` means the session was created
+    /// but no events have updated its activity yet (very fresh). We
+    /// conservatively keep these — without a timestamp we can't tell
+    /// they're old enough to drop safely. User can re-press F5 once
+    /// the row has any activity stamped.
+    #[tokio::test]
+    async fn handle_reconcile_liveness_keeps_sessions_with_no_activity_ts() {
+        let state = make_state();
+        let sid = SessionId::new("no-ts-1");
+        state
+            .registry
+            .upsert(reconcile_row("no-ts-1", Some("pane-no-ts"), None))
+            .await;
+
+        let resp = invoke_reconcile(&state, vec![], 999_999).await;
+
+        assert_eq!(resp.dropped, 0);
+        assert!(state.registry.lookup(&sid).await.is_some());
+    }
+
+    /// Pane id comparison is case-insensitive — WT can return either
+    /// casing in `pane_session_id`/`session_id`, and the registry's
+    /// stored value isn't guaranteed lowercased. Reconcile must not
+    /// drop a row just because the helper sent `aaa-bbb` and the
+    /// registry stored `AAA-BBB`.
+    #[tokio::test]
+    async fn handle_reconcile_liveness_matches_pane_ids_case_insensitively() {
+        let state = make_state();
+        let now_ms = 10_000_u64;
+        let old_ms = now_ms - RECONCILE_MIN_AGE_SLACK_MS - 100;
+        let sid = SessionId::new("alive-mixed-case");
+        state
+            .registry
+            .upsert(reconcile_row(
+                "alive-mixed-case",
+                Some("AAA-BBB-CCC"),
+                Some(old_ms),
+            ))
+            .await;
+
+        let resp = invoke_reconcile(&state, vec!["aaa-bbb-ccc"], now_ms).await;
+
+        assert_eq!(resp.dropped, 0, "case-insensitive match keeps the row");
+        assert!(state.registry.lookup(&sid).await.is_some());
     }
 
     /// `route_for` (used by every `MasterClient::<client-method>`

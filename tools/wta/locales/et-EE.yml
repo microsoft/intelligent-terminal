@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Veenduge, et %{name} on installitud ja teie PATH-is."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laadimine..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ navigeerimiseks • Enter seansi käivitamiseks • Esc väljumiseks)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ navigeerimiseks • Enter seansi käivitamiseks • Esc väljumiseks • F5 värskendamiseks)"
 agents.status.active: "Aktiivne"
 agents.status.waiting_for_input: "Ootab sisendit"
 agents.status.error: "Viga"

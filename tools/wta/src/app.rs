@@ -3065,6 +3065,28 @@ impl App {
         }
     }
 
+    /// F5 in the F2 view: ask master to reconcile its registry against
+    /// WT's actual live pane set. Master broadcasts `session_removed`
+    /// for each dropped row (which our local reducer turns into Ended)
+    /// and a `sessions/changed` notification, which the existing
+    /// `AppEvent::SessionsChanged` handler converts into a UI refetch —
+    /// so we don't schedule the refetch here.
+    ///
+    /// Unlike [`schedule_agents_refetch_for_tab`], this is a no-op
+    /// guard rather than per-tab state: it runs regardless of whether
+    /// a specific tab's F2 snapshot is open (the broadcast is global)
+    /// and doesn't take the `refetch_in_flight` lock — multiple
+    /// near-simultaneous F5 presses just do extra enumerations, which
+    /// are idempotent.
+    fn schedule_reconcile_liveness(&mut self) {
+        let tab = self.current_tab_mut();
+        tab.agents_view.next_request_id = tab.agents_view.next_request_id.wrapping_add(1);
+        let request_id = tab.agents_view.next_request_id;
+        let _ = self.master_request_tx.send(
+            crate::protocol::acp::client::MasterExtRequest::ReconcileLiveness { request_id },
+        );
+    }
+
     fn restore_agents_selection(&mut self, tab_id: &str, old_selected: usize) {
         let rows = self.agents_rows_for_tab(tab_id);
         let tab = self.tab_mut(tab_id);
@@ -5898,6 +5920,23 @@ impl App {
                             }
                         }
                     }
+                }
+                KeyCode::F(5) => {
+                    // F5 = on-demand pane-liveness reconcile against
+                    // WT. Master compares its registry to the alive
+                    // pane set we send, drops rows whose pane is gone
+                    // (with a race guard so freshly-created sessions
+                    // aren't killed), and broadcasts session_removed
+                    // + sessions/changed. The sessions/changed handler
+                    // schedules the UI refetch automatically, so we
+                    // don't need to schedule one explicitly here.
+                    //
+                    // Why this exists: Gemini-class bugs where the
+                    // agent CLI doesn't exit cleanly when its WT pane
+                    // closes leave the F2 row stuck at Idle/Live
+                    // because master's drop_sessions_for_helper never
+                    // fires. F5 is the user-visible escape hatch.
+                    self.schedule_reconcile_liveness();
                 }
                 KeyCode::Esc => {
                     let tab_id = self.active_tab_key().to_string();
@@ -10243,6 +10282,52 @@ mod tests {
         assert!(
             master_rx.try_recv().is_err(),
             "at most one trailing refetch"
+        );
+    }
+
+    #[test]
+    fn f5_in_agents_view_triggers_reconcile_liveness() {
+        // F5 must dispatch a ReconcileLiveness request to master. The
+        // helper-side dispatcher then enumerates panes and forwards
+        // the alive set to master via ext-method; master's broadcast
+        // of `sessions/changed` is what drives the eventual UI
+        // refetch — so we don't assert a SessionsList here.
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_view.snapshot = Some(Vec::new());
+        // Drain any request scheduled by prior bootstrap so the assertion
+        // below observes only what F5 produced.
+        while master_rx.try_recv().is_ok() {}
+
+        app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE));
+
+        match master_rx.try_recv().expect("F5 schedules a reconcile") {
+            crate::protocol::acp::client::MasterExtRequest::ReconcileLiveness { .. } => {}
+            other => panic!("expected ReconcileLiveness, got {other:?}"),
+        }
+        // No second request — refetch is implicit via the eventual
+        // sessions/changed broadcast from master, not scheduled here.
+        assert!(
+            master_rx.try_recv().is_err(),
+            "F5 must not also schedule a SessionsList — refetch is driven by master's sessions/changed broadcast"
+        );
+    }
+
+    #[test]
+    fn f5_outside_agents_view_is_ignored() {
+        // F5 is scoped to the F2 picker — pressing it from the chat view
+        // must not generate any master traffic (no reconcile, no refetch).
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        // Leave current_view = Chat (the default); snapshot stays None.
+        while master_rx.try_recv().is_ok() {}
+
+        app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE));
+
+        assert!(
+            master_rx.try_recv().is_err(),
+            "F5 outside agents view must not produce master traffic"
         );
     }
 

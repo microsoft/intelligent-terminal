@@ -102,8 +102,8 @@ agent.custom.auth_hint: "请确保 %{name} 已安装并位于 PATH 上。"  # {L
 
 # ── 智能体视图 (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "加载中..."
-# {Locked="Enter","Esc","↑","↓"} - 组合键，不翻译
-agents.footer_hint: "(↑ ↓ 导航 • Enter 启动会话 • Esc 退出)"
+# {Locked="Enter","Esc","F5","↑","↓"} - 组合键，不翻译
+agents.footer_hint: "(↑ ↓ 导航 • Enter 启动会话 • Esc 退出 • F5 刷新)"
 agents.status.active: "活动"
 agents.status.waiting_for_input: "等待输入"
 agents.status.error: "错误"

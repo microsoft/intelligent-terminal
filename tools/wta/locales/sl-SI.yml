@@ -113,8 +113,8 @@ agent.custom.auth_hint: "Prepričajte se, da je %{name} nameščen in v PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Nalaganje..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ za krmarjenje • Enter za zagon seje • Esc za izhod)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ za krmarjenje • Enter za zagon seje • Esc za izhod • F5 za osvežitev)"
 agents.status.active: "Aktivno"
 agents.status.waiting_for_input: "Čaka na vnos"
 agents.status.error: "Napaka"

@@ -117,8 +117,8 @@ agent.custom.auth_hint: "مطمئن شوید که %{name} نصب شده و در 
 
 # ── نمای عامل‌های هوش مصنوعی (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "در حال بارگذاری..."
-# {Locked="Enter","Esc","↑","↓"} - ترکیب کلیدها، ترجمه نکنید
-agents.footer_hint: "(↑ ↓ ناوبری • Enter شروع نشست • Esc خروج)"
+# {Locked="Enter","Esc","F5","↑","↓"} - ترکیب کلیدها، ترجمه نکنید
+agents.footer_hint: "(↑ ↓ ناوبری • Enter شروع نشست • Esc خروج • F5 تازه‌سازی)"
 agents.status.active: "فعال"
 agents.status.waiting_for_input: "در انتظار ورودی"
 agents.status.error: "خطا"

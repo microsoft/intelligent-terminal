@@ -133,6 +133,14 @@ pub enum MasterExtRequest {
         request_id: u64,
         sid: acp::SessionId,
     },
+    /// F5 in the F2 sessions view: enumerate WT's live panes via
+    /// ShellManager, send the alive set to master so it can drop any
+    /// registry row whose pane binding no longer exists. Caller
+    /// observes the UI update via the resulting `sessions/changed`
+    /// broadcast (which schedules a refetch in the existing handler).
+    ReconcileLiveness {
+        request_id: u64,
+    },
 }
 
 /// User-initiated request to resume a historical agent session by calling
@@ -2551,7 +2559,7 @@ pub async fn run_acp_client_over_pipe(
                 });
             }
             Some(req) = master_ext_rx.recv() => {
-                dispatch_master_ext_request(req, &conn, &event_tx);
+                dispatch_master_ext_request(req, &conn, &event_tx, &shell_mgr);
             }
             Some(req) = restart_rx.recv() => {
                 // Helper can't restart the agent CLI in-process — master owns
@@ -3403,7 +3411,7 @@ async fn run_inner(
             // /restart: priority over other arms via `biased;` so a
             // queued prompt can't sneak in front of a kill request.
             Some(req) = master_ext_rx.recv() => {
-                dispatch_master_ext_request(req, &conn, &event_tx);
+                dispatch_master_ext_request(req, &conn, &event_tx, &shell_mgr);
             }
             Some(req) = restart_rx.recv() => {
                 tracing::info!(target: "acp_restart", "restart requested, new_agent={:?}", req.agent_cmd);
@@ -3771,9 +3779,11 @@ fn dispatch_master_ext_request(
     req: MasterExtRequest,
     conn: &Arc<acp::ClientSideConnection>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
+    shell_mgr: &Arc<ShellManager>,
 ) {
     let conn = Arc::clone(conn);
     let event_tx = event_tx.clone();
+    let shell_mgr = Arc::clone(shell_mgr);
     tokio::task::spawn_local(async move {
         match req {
             MasterExtRequest::SessionsList { request_id } => {
@@ -3818,8 +3828,119 @@ fn dispatch_master_ext_request(
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
+            MasterExtRequest::ReconcileLiveness { request_id } => {
+                // Capture the timestamp BEFORE enumeration so master's
+                // race guard correctly excludes sessions created during
+                // (or after) our snapshot of WT.
+                let enumerated_at_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let alive_panes = match enumerate_alive_panes(&shell_mgr).await {
+                    Ok(panes) => panes,
+                    Err(err) => {
+                        // ALL-OR-NOTHING: a partial alive set would
+                        // falsely demote live sessions whose pane was
+                        // in the unreachable subtree. Abort without
+                        // sending the request.
+                        tracing::warn!(
+                            target: "agents_view",
+                            request_id,
+                            error = %err,
+                            "reconcile_liveness aborted: pane enumeration failed"
+                        );
+                        let _ = event_tx
+                            .send(AppEvent::MasterMutationCompleted { request_id });
+                        return;
+                    }
+                };
+                let wire = crate::session_registry::build_reconcile_liveness_request(
+                    alive_panes,
+                    enumerated_at_ms,
+                );
+                match conn.ext_method(wire).await {
+                    Ok(resp) => {
+                        match crate::session_registry::parse_reconcile_liveness_response(
+                            &resp.0,
+                        ) {
+                            Ok(parsed) => tracing::info!(
+                                target: "agents_view",
+                                request_id,
+                                dropped = parsed.dropped,
+                                "reconcile_liveness completed"
+                            ),
+                            Err(err) => tracing::warn!(
+                                target: "agents_view",
+                                request_id,
+                                error = %err,
+                                "reconcile_liveness response parse failed"
+                            ),
+                        }
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            target: "agents_view",
+                            request_id,
+                            error = ?err,
+                            "reconcile_liveness ext-request failed (likely direct-mode: agent CLI doesn't recognize the method)"
+                        );
+                    }
+                }
+                let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
+            }
         }
     });
+}
+
+/// Walk WT's window → tab → pane tree via `ShellManager` and collect
+/// every pane's `session_id` (lowercased) into an alive set. Used by
+/// the F5 reconcile-liveness flow.
+///
+/// **All-or-nothing.** Any failed COM call (or missing/malformed JSON
+/// field) returns `Err` and the caller must abort the reconcile —
+/// sending a partial alive set would falsely demote live sessions
+/// whose pane was in the unreachable subtree.
+///
+/// Pane JSON field name is `session_id` (NOT `pane_session_id`),
+/// matching `src/tools/wtcli/Formatting.cpp::PaneInfoToJson` and the
+/// existing pane-discovery code in `tools/wta/src/main.rs:1688`.
+async fn enumerate_alive_panes(shell_mgr: &ShellManager) -> Result<Vec<String>> {
+    let windows = shell_mgr.wt_list_windows().await?;
+    let windows_arr = windows
+        .get("windows")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow::anyhow!("list_windows: missing 'windows' array"))?;
+    let mut alive = Vec::new();
+    for w in windows_arr {
+        let window_id = w
+            .get("window_id")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| anyhow::anyhow!("window missing window_id"))?
+            .to_string();
+        let tabs = shell_mgr.wt_list_tabs(&window_id).await?;
+        let tabs_arr = tabs
+            .get("tabs")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("list_tabs: missing 'tabs' array"))?;
+        for t in tabs_arr {
+            let tab_id = t
+                .get("tab_id")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| anyhow::anyhow!("tab missing tab_id"))?
+                .to_string();
+            let panes = shell_mgr.wt_list_panes(&tab_id).await?;
+            let panes_arr = panes
+                .get("panes")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| anyhow::anyhow!("list_panes: missing 'panes' array"))?;
+            for p in panes_arr {
+                if let Some(sid) = p.get("session_id").and_then(|v| v.as_str()) {
+                    alive.push(sid.to_ascii_lowercase());
+                }
+            }
+        }
+    }
+    Ok(alive)
 }
 
 fn dispatch_prompt(

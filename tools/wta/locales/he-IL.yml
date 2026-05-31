@@ -117,8 +117,8 @@ agent.custom.auth_hint: "ודא ש-%{name} מותקן ונמצא ב-PATH שלך.
 
 # ── תצוגת סוכנים (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "טוען..."
-# {Locked="Enter","Esc","↑","↓"} - צירופי מקשים, אין לתרגם
-agents.footer_hint: "(↑ ↓ לניווט • Enter להפעלת הפעלה • Esc ליציאה)"
+# {Locked="Enter","Esc","F5","↑","↓"} - צירופי מקשים, אין לתרגם
+agents.footer_hint: "(↑ ↓ לניווט • Enter להפעלת הפעלה • Esc ליציאה • F5 לרענון)"
 agents.status.active: "פעיל"
 agents.status.waiting_for_input: "ממתין לקלט"
 agents.status.error: "שגיאה"

@@ -117,8 +117,8 @@ agent.custom.auth_hint: "%{name} ಇನ್‌ಸ್ಟಾಲ್ ಆಗಿದೆ 
 
 # ── ಏಜೆಂಟ್‌ಗಳ ವೀಕ್ಷಣೆ (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "ಲೋಡ್ ಆಗುತ್ತಿದೆ..."
-# {Locked="Enter","Esc","↑","↓"} - ಕೀ ಸಂಯೋಜನೆಗಳು, ಅನುವಾದಿಸಬೇಡಿ
-agents.footer_hint: "(↑ ↓ ನ್ಯಾವಿಗೇಟ್ ಮಾಡಿ • Enter ಸೆಶನ್ ಪ್ರಾರಂಭಿಸಿ • Esc ನಿರ್ಗಮಿಸಿ)"
+# {Locked="Enter","Esc","F5","↑","↓"} - ಕೀ ಸಂಯೋಜನೆಗಳು, ಅನುವಾದಿಸಬೇಡಿ
+agents.footer_hint: "(↑ ↓ ನ್ಯಾವಿಗೇಟ್ ಮಾಡಿ • Enter ಸೆಶನ್ ಪ್ರಾರಂಭಿಸಿ • Esc ನಿರ್ಗಮಿಸಿ • F5 ರಿಫ್ರೆಶ್ ಮಾಡಿ)"
 agents.status.active: "ಸಕ್ರಿಯ"
 agents.status.waiting_for_input: "ಇನ್‌ಪುಟ್‌ಗಾಗಿ ಕಾಯಲಾಗುತ್ತಿದೆ"
 agents.status.error: "ದೋಷ"

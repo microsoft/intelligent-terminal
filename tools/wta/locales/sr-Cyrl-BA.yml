@@ -113,8 +113,8 @@ agent.custom.auth_hint: "Провјерите да је %{name} инсталир
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Учитавање..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ за навигацију • Enter за отварање сесије • Esc за излаз)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ за навигацију • Enter за отварање сесије • Esc за излаз • F5 за освежавање)"
 agents.status.active: "Активан"
 agents.status.waiting_for_input: "Чека на унос"
 agents.status.error: "Грешка"

@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Asigurați-vă că %{name} este instalat și în PATH."
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Se încarcă..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ pentru navigare • Enter pentru a lansa sesiunea • Esc pentru a ieși)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ pentru navigare • Enter pentru a lansa sesiunea • Esc pentru a ieși • F5 pentru a reîmprospăta)"
 agents.status.active: "Activ"
 agents.status.waiting_for_input: "Așteaptă introducere"
 agents.status.error: "Eroare"

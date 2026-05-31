@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Pastikan %{name} sudah diinstal dan ada di PATH Anda." 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Memuat..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ untuk navigasi • Enter untuk membuka sesi • Esc untuk keluar)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ untuk navigasi • Enter untuk membuka sesi • Esc untuk keluar • F5 untuk menyegarkan)"
 agents.status.active: "Aktif"
 agents.status.waiting_for_input: "Menunggu input"
 agents.status.error: "Kesalahan"

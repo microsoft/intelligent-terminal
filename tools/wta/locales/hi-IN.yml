@@ -117,8 +117,8 @@ agent.custom.auth_hint: "सुनिश्चित करें कि %{name}
 
 # ── एजेंट दृश्य (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "लोड हो रहा है..."
-# {Locked="Enter","Esc","↑","↓"} - कुंजी संयोजन, अनुवाद न करें
-agents.footer_hint: "(↑ ↓ नेविगेट करें • Enter सत्र शुरू करें • Esc बाहर निकलें)"
+# {Locked="Enter","Esc","F5","↑","↓"} - कुंजी संयोजन, अनुवाद न करें
+agents.footer_hint: "(↑ ↓ नेविगेट करें • Enter सत्र शुरू करें • Esc बाहर निकलें • F5 रीफ़्रेश करें)"
 agents.status.active: "सक्रिय"
 agents.status.waiting_for_input: "इनपुट की प्रतीक्षा"
 agents.status.error: "त्रुटि"

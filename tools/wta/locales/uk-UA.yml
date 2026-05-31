@@ -113,8 +113,8 @@ agent.custom.auth_hint: "Переконайтеся, що %{name} встанов
 
 # ── Перегляд агентів (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Завантаження..."
-# {Locked="Enter","Esc","↑","↓"} - комбінації клавіш, не перекладати
-agents.footer_hint: "(↑ ↓ навігація • Enter запустити сеанс • Esc вихід)"
+# {Locked="Enter","Esc","F5","↑","↓"} - комбінації клавіш, не перекладати
+agents.footer_hint: "(↑ ↓ навігація • Enter запустити сеанс • Esc вихід • F5 оновити)"
 agents.status.active: "Активний"
 agents.status.waiting_for_input: "Очікування введення"
 agents.status.error: "Помилка"

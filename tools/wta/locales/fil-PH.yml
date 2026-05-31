@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Tiyaking naka-install ang %{name} at nasa iyong PATH." 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Naglo-load..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ para mag-navigate • Enter para magbukas ng session • Esc para lumabas)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ para mag-navigate • Enter para magbukas ng session • Esc para lumabas • F5 para mag-refresh)"
 agents.status.active: "Aktibo"
 agents.status.waiting_for_input: "Naghihintay ng input"
 agents.status.error: "May error"

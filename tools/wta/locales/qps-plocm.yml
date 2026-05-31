@@ -107,7 +107,7 @@ agent.custom.auth_hint: "[!! Mak_e sure %{name} is installed and on your PATH. !
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "[!! Loa_ding... !!]"
 # {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "[!! (↑_ ↓ to navigate • Enter to launch session • Esc to exit) !!]"
+agents.footer_hint: "[!! (↑_ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh) !!]"
 agents.status.active: "[!! Act_ive !!]"
 agents.status.waiting_for_input: "[!! Wai_ting for input !!]"
 agents.status.error: "[!! Err_or !!]"

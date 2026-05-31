@@ -117,8 +117,8 @@ agent.custom.auth_hint: "%{name} ଇନ୍‌ଷ୍ଟଲ୍ ଅଛି ଏବଂ
 
 # ── ଏଜେଣ୍ଟ ଦୃଶ୍ୟ (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "ଲୋଡ୍ ହେଉଛି..."
-# {Locked="Enter","Esc","↑","↓"} - କୀ ସଂଯୋଜନ, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
-agents.footer_hint: "(↑ ↓ ନେଭିଗେଟ୍ କରନ୍ତୁ • Enter ସେସନ୍ ଆରମ୍ଭ କରନ୍ତୁ • Esc ବାହାରନ୍ତୁ)"
+# {Locked="Enter","Esc","F5","↑","↓"} - କୀ ସଂଯୋଜନ, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
+agents.footer_hint: "(↑ ↓ ନେଭିଗେଟ୍ କରନ୍ତୁ • Enter ସେସନ୍ ଆରମ୍ଭ କରନ୍ତୁ • Esc ବାହାରନ୍ତୁ • F5 ସତେଜ କରନ୍ତୁ)"
 agents.status.active: "ସକ୍ରିୟ"
 agents.status.waiting_for_input: "ଇନ୍‌ପୁଟ୍ ପାଇଁ ଅପେକ୍ଷା"
 agents.status.error: "ତ୍ରୁଟି"

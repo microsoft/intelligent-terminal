@@ -128,8 +128,8 @@ agent.custom.auth_hint: "Համոզվեք, որ %{name}-ը տեղադրված է
 
 # ── Agents view (src/ui/agents_view.rs) ───────────────────────────────────────────────────────────────
 agents.loading: "Բեռնվում է..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ նավիգացիա • Enter նիստ գործարկելու համար • Esc դուրս գալու համար)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ նավիգացիա • Enter նիստ գործարկելու համար • Esc դուրս գալու համար • F5 թարմացնելու համար)"
 # Status badge when agent session is actively processing
 agents.status.active: "Ակտիվ"
 agents.status.waiting_for_input: "Սպասում է մուտքի"

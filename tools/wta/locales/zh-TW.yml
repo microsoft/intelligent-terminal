@@ -102,8 +102,8 @@ agent.custom.auth_hint: "請確認 %{name} 已安裝並位於 PATH 上。"  # {L
 
 # ── 智能體檢視 (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "載入中..."
-# {Locked="Enter","Esc","↑","↓"} - 組合鍵，請勿翻譯
-agents.footer_hint: "(↑ ↓ 瀏覽 • Enter 啟動工作階段 • Esc 結束)"
+# {Locked="Enter","Esc","F5","↑","↓"} - 組合鍵，請勿翻譯
+agents.footer_hint: "(↑ ↓ 瀏覽 • Enter 啟動工作階段 • Esc 結束 • F5 重新整理)"
 agents.status.active: "使用中"
 agents.status.waiting_for_input: "等待輸入"
 agents.status.error: "錯誤"

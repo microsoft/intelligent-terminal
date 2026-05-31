@@ -113,8 +113,8 @@ agent.custom.auth_hint: "Upewnij się, że %{name} jest zainstalowany i znajduje
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Ładowanie..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ do nawigacji • Enter aby uruchomić sesję • Esc aby wyjść)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ do nawigacji • Enter aby uruchomić sesję • Esc aby wyjść • F5 aby odświeżyć)"
 agents.status.active: "Aktywny"
 agents.status.waiting_for_input: "Oczekiwanie na dane"
 agents.status.error: "Błąd"

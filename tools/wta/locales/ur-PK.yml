@@ -117,8 +117,8 @@ agent.custom.auth_hint: "یقینی بنائیں کہ %{name} انسٹال ہے 
 
 # ── ایجنٹ منظر (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "لوڈ ہو رہا ہے..."
-# {Locked="Enter","Esc","↑","↓"} - کلید کے مجموعے، ترجمہ نہ کریں
-agents.footer_hint: "(↑ ↓ نیویگیشن • Enter سیشن شروع کریں • Esc باہر نکلیں)"
+# {Locked="Enter","Esc","F5","↑","↓"} - کلید کے مجموعے، ترجمہ نہ کریں
+agents.footer_hint: "(↑ ↓ نیویگیشن • Enter سیشن شروع کریں • Esc باہر نکلیں • F5 ریفریش کریں)"
 agents.status.active: "فعال"
 agents.status.waiting_for_input: "ان پٹ کا انتظار"
 agents.status.error: "خرابی"

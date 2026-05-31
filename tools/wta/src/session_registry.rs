@@ -173,6 +173,21 @@ pub const INTELLTERM_METHOD_SESSIONS_CHANGED: &str = "intellterm.wta/sessions/ch
 /// ExtRequest method for fetching the master's full session registry snapshot.
 pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "intellterm.wta/sessions/list";
 
+/// ExtRequest method for "F5 in F2 view: reconcile master's registry
+/// against WT's actual live pane set". Helper-initiated; master
+/// computes the stale set, drops each stale row, and broadcasts
+/// `session_removed` for it. Caller observes the resulting UI updates
+/// through the existing `sessions/changed` notification.
+///
+/// Why it exists: the push-based liveness path (helper-pipe disconnect
+/// triggers `drop_sessions_for_helper`) misses cases where the agent
+/// CLI subprocess stays alive after its WT pane closes — most visible
+/// with Gemini, which doesn't reliably exit on stdin EOF. Without an
+/// active liveness check, the F2 row stays stuck at Idle/Live until WT
+/// restarts. This ext-method gives the user a manual escape hatch.
+pub const INTELLTERM_METHOD_RECONCILE_LIVENESS: &str =
+    "intellterm.wta/reconcile_liveness";
+
 /// Wire payload for [`INTELLTERM_METHOD_SESSION_REMOVED`].
 ///
 /// We only need the session id — helpers look the row up locally to
@@ -255,6 +270,71 @@ pub fn parse_sessions_list_response(
     raw: &serde_json::value::RawValue,
 ) -> Result<SessionsListResponse, serde_json::Error> {
     serde_json::from_str::<SessionsListResponse>(raw.get())
+}
+
+// ─── intellterm.wta/reconcile_liveness ───────────────────────────────────────
+
+/// Wire payload for [`INTELLTERM_METHOD_RECONCILE_LIVENESS`].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ReconcileLivenessParams {
+    /// Lowercased pane session_ids currently alive in WT, gathered by
+    /// the helper from `wt_list_panes` (field name `session_id` per
+    /// `src/tools/wtcli/Formatting.cpp::PaneInfoToJson`). Master
+    /// compares case-insensitively against each registry row's
+    /// `pane_session_id`.
+    pub alive_panes: Vec<String>,
+    /// Helper-side wall-clock (ms since UNIX epoch) at the moment pane
+    /// enumeration *started*. Master uses this as a race guard —
+    /// sessions whose `last_activity_at_ms` is newer than
+    /// `enumerated_at_ms - RECONCILE_MIN_AGE_SLACK_MS` are NOT dropped
+    /// even if their pane isn't in `alive_panes`. Prevents reconcile
+    /// from killing brand-new sessions created concurrently with the
+    /// F5 enumeration (their pane would have appeared after we
+    /// snapshotted the WT pane list, so it'd look "missing").
+    pub enumerated_at_ms: u64,
+}
+
+/// Wire payload for the response to [`INTELLTERM_METHOD_RECONCILE_LIVENESS`].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ReconcileLivenessResponse {
+    /// Count of sessions that were stale-dropped from master's
+    /// registry. Caller can surface this in a transient hint if desired.
+    pub dropped: u32,
+}
+
+pub fn build_reconcile_liveness_request(
+    alive_panes: Vec<String>,
+    enumerated_at_ms: u64,
+) -> acp::ExtRequest {
+    let params = ReconcileLivenessParams {
+        alive_panes,
+        enumerated_at_ms,
+    };
+    let json =
+        serde_json::to_string(&params).expect("ReconcileLivenessParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::ExtRequest::new(INTELLTERM_METHOD_RECONCILE_LIVENESS, Arc::from(raw))
+}
+
+pub fn parse_reconcile_liveness_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<ReconcileLivenessParams, serde_json::Error> {
+    serde_json::from_str::<ReconcileLivenessParams>(raw.get())
+}
+
+pub fn build_reconcile_liveness_response(
+    dropped: u32,
+) -> Box<serde_json::value::RawValue> {
+    let response = ReconcileLivenessResponse { dropped };
+    serde_json::value::to_raw_value(&response)
+        .expect("ReconcileLivenessResponse serialization is infallible for owned data")
+}
+
+pub fn parse_reconcile_liveness_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<ReconcileLivenessResponse, serde_json::Error> {
+    serde_json::from_str::<ReconcileLivenessResponse>(raw.get())
 }
 
 /// Parsed view of an inbound ACP `ExtNotification` from master, as
@@ -2514,5 +2594,40 @@ mod tests {
             reg.snapshot().await.is_empty(),
             "registry untouched on malformed input"
         );
+    }
+
+    // ─── reconcile_liveness wire-types ──────────────────────────────────────
+
+    #[test]
+    fn reconcile_liveness_params_roundtrip() {
+        let original = ReconcileLivenessParams {
+            alive_panes: vec!["aaa-bbb".into(), "ccc".into()],
+            enumerated_at_ms: 1_700_000_000_000,
+        };
+        let req = build_reconcile_liveness_request(
+            original.alive_panes.clone(),
+            original.enumerated_at_ms,
+        );
+        assert_eq!(&*req.method, INTELLTERM_METHOD_RECONCILE_LIVENESS);
+        let parsed = parse_reconcile_liveness_params(&req.params).expect("parse");
+        assert_eq!(parsed, original);
+    }
+
+    #[test]
+    fn reconcile_liveness_response_roundtrip() {
+        let raw = build_reconcile_liveness_response(7);
+        let parsed = parse_reconcile_liveness_response(&raw).expect("parse");
+        assert_eq!(parsed.dropped, 7);
+    }
+
+    #[test]
+    fn reconcile_liveness_params_accepts_empty_alive_set() {
+        // Empty alive set is a legitimate request (e.g. WT has no agent
+        // panes left). Master still uses the timestamp guard, so this
+        // doesn't drop fresh sessions.
+        let req = build_reconcile_liveness_request(Vec::new(), 0);
+        let parsed = parse_reconcile_liveness_params(&req.params).expect("parse");
+        assert!(parsed.alive_panes.is_empty());
+        assert_eq!(parsed.enumerated_at_ms, 0);
     }
 }
