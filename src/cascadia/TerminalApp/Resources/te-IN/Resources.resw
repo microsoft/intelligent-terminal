@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -304,4 +304,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>మీ షెల్‌ను యాక్సెస్ చేయడానికి మరియు లోపాలను స్వయంచాలకంగా గుర్తించడానికి Intelligent Terminal‌ను అనుమతించండి.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ షెల్ ఇంటిగ్రేషన్‌ను ఇన్‌స్టాల్ చేయడం విఫలమైంది. లోపం గుర్తింపు ఆపివేయబడింది. మీరు దాన్ని మళ్ళీ ప్రారంభించి మళ్ళీ ప్రయత్నించవచ్చు, లేదా అది లేకుండా కొనసాగించడానికి సేవ్ చేయవచ్చు.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks ఇన్‌స్టాల్ చేయడం విఫలమైంది. సెషన్ నిర్వహణ ఆపివేయబడింది. మీరు దాన్ని మళ్ళీ ప్రారంభించి మళ్ళీ ప్రయత్నించవచ్చు, లేదా అది లేకుండా కొనసాగించడానికి సేవ్ చేయవచ్చు.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>దీన్ని మాన్యువల్‌గా ఎలా పరిష్కరించాలో తెలుసుకోండి</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

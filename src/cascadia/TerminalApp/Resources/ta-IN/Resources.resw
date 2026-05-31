@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -304,4 +304,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>உங்கள் ஷெல்லை அணுகவும் பிழைகளைத் தானாகவே கண்டறியவும் Intelligent Terminal-ஐ அனுமதிக்கவும்.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ஷெல் ஒருங்கிணைப்பை நிறுவுவதில் தோல்வி. பிழை கண்டறிதல் முடக்கப்பட்டுள்ளது. நீங்கள் அதை மீண்டும் இயக்கி மீண்டும் முயற்சிக்கலாம், அல்லது அது இல்லாமல் தொடர சேமிக்கலாம்.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks நிறுவுவதில் தோல்வி. அமர்வு மேலாண்மை முடக்கப்பட்டுள்ளது. நீங்கள் அதை மீண்டும் இயக்கி மீண்டும் முயற்சிக்கலாம், அல்லது அது இல்லாமல் தொடர சேமிக்கலாம்.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>இதை கைமுறையாக சரிசெய்வது எப்படி என்பதை அறிக</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

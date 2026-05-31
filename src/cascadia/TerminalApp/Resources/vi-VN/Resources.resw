@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -240,4 +240,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Cho phép Intelligent Terminal truy cập shell của bạn và tự động phát hiện lỗi.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Không thể cài đặt tích hợp shell. Phát hiện lỗi đã bị tắt. Bạn có thể bật lại và thử lại, hoặc lưu để tiếp tục mà không có nó.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Không thể cài đặt session hooks. Quản lý phiên đã bị tắt. Bạn có thể bật lại và thử lại, hoặc lưu để tiếp tục mà không có nó.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Tìm hiểu cách khắc phục theo cách thủ công</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

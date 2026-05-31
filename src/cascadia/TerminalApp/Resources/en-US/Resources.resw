@@ -1072,7 +1072,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Choose the agent used in the agent pane. Any compatible ACP agent will be detected.</value>
     <comment>{Locked="ACP"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
+  </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
     <value>ℹ This agent requires Node.js and NPX, which will be installed automatically if not already present.</value>
     <comment>{Locked="Node.js","NPX"}
@@ -1144,6 +1144,17 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ Failed to install Node.js. Check your network and try again.</value>
     <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Failed to install session hooks. Session management has been turned off. You can re-enable it and try again, or save to continue without it.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Failed to install shell integration. Error detection has been turned off. You can re-enable it and try again, or save to continue without it.</value>
+  </data>
+  <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Learn how to fix this manually</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>On</value>

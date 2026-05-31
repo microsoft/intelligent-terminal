@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
   <resheader name="version"><value>2.0</value></resheader>
@@ -127,4 +127,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>ផ្តល់សិទ្ធិឱ្យ Intelligent Terminal ចូលប្រើសែលរបស់អ្នក និងរកឃើញកំហុសដោយស្វ័យប្រវត្តិ។</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ បានបរាជ័យក្នុងការតំឡើងការរួមបញ្ចូល shell។ ការរកឃើញកំហុសត្រូវបានបិទ។ អ្នកអាចបើកវាឡើងវិញ ហើយសាកល្បងម្ដងទៀត ឬរក្សាទុកដើម្បីបន្តដោយគ្មានវា។</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ បានបរាជ័យក្នុងការតំឡើង session hooks។ ការគ្រប់គ្រងវគ្គត្រូវបានបិទ។ អ្នកអាចបើកវាឡើងវិញ ហើយសាកល្បងម្ដងទៀត ឬរក្សាទុកដើម្បីបន្តដោយគ្មានវា។</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>ស្វែងយល់ពីរបៀបជួសជុលវាដោយដៃ</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

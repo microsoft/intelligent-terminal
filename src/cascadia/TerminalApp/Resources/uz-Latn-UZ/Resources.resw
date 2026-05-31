@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -304,4 +304,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal'ga qobig'ingizga kirish va xatolarni avtomatik aniqlashga ruxsat bering.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Shell integratsiyasini oʻrnatish amalga oshmadi. Xatolarni aniqlash oʻchirildi. Uni qayta yoqish va qayta urinib koʻrishingiz yoki usiz davom etish uchun saqlashingiz mumkin.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Session hooks oʻrnatish amalga oshmadi. Seanslarni boshqarish oʻchirildi. Uni qayta yoqish va qayta urinib koʻrishingiz yoki usiz davom etish uchun saqlashingiz mumkin.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Buni qoʻlda qanday tuzatishni oʻrganing</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -305,4 +305,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>امنح Intelligent Terminal إذنًا بالوصول إلى الصدفة واكتشاف الأخطاء تلقائيًا.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ فشل تثبيت تكامل الصدفة. تم إيقاف اكتشاف الأخطاء. يمكنك إعادة تمكينه والمحاولة مرة أخرى، أو الحفظ للمتابعة بدونه.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ فشل تثبيت session hooks. تم إيقاف إدارة الجلسات. يمكنك إعادة تمكينها والمحاولة مرة أخرى، أو الحفظ للمتابعة بدونها.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>تعرف على كيفية إصلاح ذلك يدويًا</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

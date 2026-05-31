@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -304,4 +304,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Дозволете му на Intelligent Terminal да пристапи до вашата обвивка и автоматски да открива грешки.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Не успеа инсталирањето на интеграција на школка. Детекцијата на грешки е исклучена. Можете повторно да ја вклучите и да се обидете повторно, или да зачувате за да продолжите без неа.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Не успеа инсталирањето на session hooks. Управувањето со сесии е исклучено. Можете повторно да го вклучите и да се обидете повторно, или да зачувате за да продолжите без него.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Дознајте како да го поправите ова рачно</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

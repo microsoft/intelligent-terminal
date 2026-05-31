@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -304,4 +304,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Atļaujiet Intelligent Terminal piekļūt jūsu čaulai un automātiski noteikt kļūdas.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Neizdevās instalēt čaulas integrāciju. Kļūdu noteikšana ir izslēgta. Varat to atkārtoti iespējot un mēģināt vēlreiz vai saglabāt, lai turpinātu bez tās.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Neizdevās instalēt session hooks. Sesiju pārvaldība ir izslēgta. Varat to atkārtoti iespējot un mēģināt vēlreiz vai saglabāt, lai turpinātu bez tās.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Uzziniet, kā to manuāli novērst</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

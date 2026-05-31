@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -304,4 +304,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>നിങ്ങളുടെ ഷെല്ലിലേക്ക് പ്രവേശിക്കാനും പിശകുകൾ സ്വയമേവ കണ്ടെത്താനും Intelligent Terminal-നെ അനുവദിക്കുക.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ഷെൽ ഇന്റഗ്രേഷൻ ഇൻസ്റ്റാൾ ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു. പിശക് കണ്ടെത്തൽ ഓഫ് ചെയ്തിരിക്കുന്നു. നിങ്ങൾക്ക് ഇത് വീണ്ടും പ്രവർത്തനക്ഷമമാക്കി വീണ്ടും ശ്രമിക്കാം, അല്ലെങ്കിൽ ഇത് ഇല്ലാതെ തുടരാൻ സേവ് ചെയ്യാം.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks ഇൻസ്റ്റാൾ ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു. സെഷൻ മാനേജ്മെന്റ് ഓഫ് ചെയ്തിരിക്കുന്നു. നിങ്ങൾക്ക് ഇത് വീണ്ടും പ്രവർത്തനക്ഷമമാക്കി വീണ്ടും ശ്രമിക്കാം, അല്ലെങ്കിൽ ഇത് ഇല്ലാതെ തുടരാൻ സേവ് ചെയ്യാം.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>ഇത് സ്വമേധയാ എങ്ങനെ പരിഹരിക്കാമെന്ന് അറിയുക</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

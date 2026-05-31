@@ -52,10 +52,31 @@ namespace winrt::TerminalApp::implementation
     private:
         winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings _settings{ nullptr };
 
+        // Things that can block FRE completion, in priority order (lower value
+        // = higher priority). Only the highest-priority problem is surfaced in
+        // the bottom-left error area at a time (see _ShowProblem).
+        enum class FreProblemKind
+        {
+            CopilotInstall = 0, // hard prerequisite — winget GitHub.Copilot
+            NodeInstall = 1, // hard prerequisite — winget OpenJS.NodeJS.LTS
+            ShellIntegration = 2, // optional feature — error detection
+            Hooks = 3, // optional feature — session management
+        };
+
+        // Show a single problem: set the error message + manual-fix link, then
+        // apply that problem's remediation (toggle off the affected feature, if
+        // any) and re-enable the Save button. Does not raise Completed.
+        void _ShowProblem(FreProblemKind kind);
+
         // Apply the detection→suggestion master-detail dependency: detection
         // off turns the suggestion toggle off and disables it; detection on
         // re-enables it (preserving the stored value).
         void _UpdateSuggestionEnabledState();
+
+        // (Re)build the agent dropdown from the GPO-filtered registry, labeling
+        // each entry with its live install state. Safe to call repeatedly (e.g.
+        // after a save) and preserves the current selection.
+        void _PopulateAgentComboBox();
 
         // Detect whether an executable is on PATH.
         static bool _IsAgentInstalled(const wchar_t* name);
@@ -66,7 +87,8 @@ namespace winrt::TerminalApp::implementation
         static winrt::Windows::Foundation::IAsyncOperation<bool> _WingetInstallAsync(winrt::hstring packageId);
 
         // Run wta.exe hooks install on a background thread.
-        static winrt::Windows::Foundation::IAsyncAction _InstallHooksAsync(winrt::hstring agentId);
+        // Returns true on success.
+        static winrt::Windows::Foundation::IAsyncOperation<bool> _InstallHooksAsync(winrt::hstring agentId);
 
 
         // Perform the full save + install flow asynchronously.

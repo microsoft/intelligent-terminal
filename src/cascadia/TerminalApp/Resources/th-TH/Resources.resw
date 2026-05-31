@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -240,4 +240,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>อนุญาตให้ Intelligent Terminal เข้าถึงเชลล์ของคุณและตรวจหาข้อผิดพลาดโดยอัตโนมัติ</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ติดตั้งการรวมเชลล์ล้มเหลว การตรวจจับข้อผิดพลาดถูกปิดใช้งาน คุณสามารถเปิดใช้งานอีกครั้งแล้วลองใหม่ หรือบันทึกเพื่อดำเนินการต่อโดยไม่ใช้</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ ติดตั้ง session hooksล้มเหลว การจัดการเซสชันถูกปิดใช้งาน คุณสามารถเปิดใช้งานอีกครั้งแล้วลองใหม่ หรือบันทึกเพื่อดำเนินการต่อโดยไม่ใช้</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>เรียนรู้วิธีแก้ไขปัญหานี้ด้วยตนเอง</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

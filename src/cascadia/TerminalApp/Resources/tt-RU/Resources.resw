@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -304,4 +304,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal'га кабыгыгызга керергә һәм хаталарны автоматик рәвештә ачыкларга рөхсәт итегез.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Кабык интеграциясен урнату уңышсыз булды. Хата ачыклау сүндерелде. Аны яңадан кушып тырышырга яки аның бик булмавына карамастан дәвам итәр өчен саклый аласыз.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Session hooks урнату уңышсыз булды. Сессияләрне идарә итү сүндерелде. Аны яңадан кушып тырышырга яки аның бик булмавына карамастан дәвам итәр өчен саклый аласыз.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Моны кулдан ничек төзәтергә икәнен өйрәнегез</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

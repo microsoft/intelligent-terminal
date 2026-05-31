@@ -49,13 +49,85 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
+    // ── Agent ComboBox ──────────────────────────────────────────────────
+
+    // (Re)build the agent dropdown from the GPO-filtered registry. Each entry's
+    // status label reflects the live install state at call time, so calling this
+    // again after a save refreshes Copilot from "(will install)" to
+    // "(installed)" once the winget install has actually succeeded. Preserves
+    // the currently selected agent across rebuilds.
+    void FreOverlay::_PopulateAgentComboBox()
+    {
+        if (!_settings)
+            return;
+
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const auto& globals = _settings.GlobalSettings();
+
+        // Keep the user's current selection across a rebuild: prefer the live
+        // ComboBox selection, falling back to the effective settings value the
+        // first time (when nothing is selected yet).
+        winrt::hstring selectedId;
+        if (const auto selected = AgentComboBox().SelectedItem())
+        {
+            if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
+            {
+                selectedId = entry.Id();
+            }
+        }
+        if (selectedId.empty())
+        {
+            selectedId = globals.EffectiveAcpAgent();
+        }
+
+        const auto allowedAgents = Reg::FilteredAcpAgents();
+        auto items = AgentComboBox().Items();
+        items.Clear();
+        int32_t selectedIndex = 0;
+        int32_t idx = 0;
+
+        for (const auto& a : allowedAgents)
+        {
+            const bool installed = _IsAgentInstalled(std::wstring{ a.id }.c_str());
+            const bool isCopilot = (a.id == L"copilot");
+
+            // Show Copilot always + detected agents only
+            if (!isCopilot && !installed)
+                continue;
+
+            auto entry = winrt::make<FreAgentEntry>();
+            entry.Id(winrt::hstring{ a.id });
+
+            if (isCopilot && !installed)
+            {
+                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusWillInstall")) });
+            }
+            else
+            {
+                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusInstalled")) });
+            }
+
+            items.Append(entry);
+
+            if (a.id == selectedId)
+            {
+                selectedIndex = idx;
+            }
+            idx++;
+        }
+
+        if (items.Size() > 0)
+        {
+            AgentComboBox().SelectedIndex(selectedIndex);
+        }
+    }
+
     // ── Initialize ──────────────────────────────────────────────────────
 
     void FreOverlay::Initialize(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings)
     {
         _settings = settings;
         const auto& globals = _settings.GlobalSettings();
-        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
         // Honor RTL languages on the FRE root grid. XAML cascades
         // FlowDirection down the tree and auto-mirrors HorizontalAlignment,
@@ -124,48 +196,10 @@ namespace winrt::TerminalApp::implementation
         SessionManagementToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
 
         // Populate agent ComboBox using GPO-filtered list — only agents
-        // permitted by policy are shown.
-        const auto allowedAgents = Reg::FilteredAcpAgents();
-        auto items = AgentComboBox().Items();
-        items.Clear();
-        int32_t selectedIndex = 0;
-        int32_t idx = 0;
-        const auto currentAgent = globals.EffectiveAcpAgent();
-
-        for (const auto& a : allowedAgents)
-        {
-            const bool installed = _IsAgentInstalled(std::wstring{ a.id }.c_str());
-            const bool isCopilot = (a.id == L"copilot");
-
-            // Show Copilot always + detected agents only
-            if (!isCopilot && !installed)
-                continue;
-
-            auto entry = winrt::make<FreAgentEntry>();
-            entry.Id(winrt::hstring{ a.id });
-
-            if (isCopilot && !installed)
-            {
-                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusWillInstall")) });
-            }
-            else
-            {
-                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusInstalled")) });
-            }
-
-            items.Append(entry);
-
-            if (a.id == currentAgent)
-            {
-                selectedIndex = idx;
-            }
-            idx++;
-        }
-
-        if (items.Size() > 0)
-        {
-            AgentComboBox().SelectedIndex(selectedIndex);
-        }
+        // permitted by policy are shown. Each entry's status label reflects the
+        // live install state, so this is re-run after a save to flip Copilot
+        // from "(will install)" to "(installed)".
+        _PopulateAgentComboBox();
 
         // Agent dropdown — show policy notice if AllowedAgents GPO is active
         if (globals.IsAgentPolicyLocked())
@@ -371,7 +405,7 @@ namespace winrt::TerminalApp::implementation
 
     // ── Hooks install helper ────────────────────────────────────────────
 
-    IAsyncAction FreOverlay::_InstallHooksAsync(winrt::hstring agentId)
+    IAsyncOperation<bool> FreOverlay::_InstallHooksAsync(winrt::hstring agentId)
     {
         auto id = std::wstring{ agentId };
 
@@ -384,11 +418,69 @@ namespace winrt::TerminalApp::implementation
         // are discoverable by the hooks installer.
         auto envBlock = Wta::BuildExtendedPathEnvBlock();
         auto args = L"hooks install --cli " + id;
-        Wta::RunWtaAndWait(wtaPath, args, 60'000,
-                           envBlock.empty() ? nullptr : envBlock.data());
+        co_return Wta::RunWtaAndWait(wtaPath, args, 60'000,
+                                     envBlock.empty() ? nullptr : envBlock.data());
     }
 
     // ── Save + install flow ─────────────────────────────────────────────
+
+    // Surface a single blocking problem in the bottom-left error area and
+    // apply its remediation. Only one problem is shown at a time so the layout
+    // stays compact; each problem links to step-by-step manual-setup docs.
+    void FreOverlay::_ShowProblem(FreProblemKind kind)
+    {
+        // Base doc; prerequisites and shell integration deep-link to a section.
+        static constexpr std::wstring_view baseUrl{ L"https://aka.ms/intelligent-terminal-dependency" };
+
+        std::wstring url{ baseUrl };
+
+        // RS_ requires string literals (the resource keys are extracted at
+        // build time), so set the message per-branch rather than via a
+        // variable key.
+        switch (kind)
+        {
+        case FreProblemKind::CopilotInstall:
+            ErrorText().Text(RS_(L"FreOverlay_InstallErrorCopilot"));
+            url += L"#3-github-copilot-cli";
+            break;
+        case FreProblemKind::NodeInstall:
+            ErrorText().Text(RS_(L"FreOverlay_InstallErrorNode"));
+            url += L"#2-nodejs-lts--shared-prerequisite";
+            break;
+        case FreProblemKind::ShellIntegration:
+            ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegration"));
+            url += L"#8-powershell-shell-integration";
+            // Remediation: turn off error detection (and its dependent
+            // suggestion) so the user can save and continue without it.
+            AutoDetectToggle().IsOn(false);
+            _UpdateSuggestionEnabledState();
+            if (_settings)
+            {
+                _settings.GlobalSettings().AutoErrorDetectionEnabled(false);
+                _settings.GlobalSettings().AutoFixEnabled(false);
+            }
+            break;
+        case FreProblemKind::Hooks:
+            ErrorText().Text(RS_(L"FreOverlay_InstallErrorHooks"));
+            // Remediation: turn off session management so the user can save and
+            // continue without it. (No section anchor yet — base doc.)
+            SessionManagementToggle().IsOn(false);
+            break;
+        }
+
+        ErrorHelpRun().Text(RS_(L"FreOverlay_ErrorHelpLink"));
+        ErrorHelpLink().NavigateUri(Uri{ winrt::hstring{ url } });
+        ErrorPanel().Visibility(Visibility::Visible);
+
+        // Refresh the agent dropdown so its status labels reflect what actually
+        // got installed during this attempt. A prerequisite may have succeeded
+        // before a later step failed (e.g. Copilot installed but hooks failed),
+        // so flip "(will install)" → "(installed)" for anything now on PATH.
+        _PopulateAgentComboBox();
+
+        SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SaveButton/Content")));
+        SaveButton().IsEnabled(true);
+    }
 
     IAsyncAction FreOverlay::_SaveAndInstallAsync()
     {
@@ -424,7 +516,7 @@ namespace winrt::TerminalApp::implementation
         // 2. Disable button, hide previous error
         SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SettingUp")));
         SaveButton().IsEnabled(false);
-        ErrorText().Visibility(Visibility::Collapsed);
+        ErrorPanel().Visibility(Visibility::Collapsed);
 
         // 3. Install prerequisites if needed (blocking — cannot proceed without these)
         const bool needsCopilot = (agentId == L"copilot") && !_IsAgentInstalled(L"copilot");
@@ -437,10 +529,7 @@ namespace winrt::TerminalApp::implementation
             if (!self) co_return;
             if (!ok)
             {
-                ErrorText().Text(RS_(L"FreOverlay_InstallErrorCopilot"));
-                ErrorText().Visibility(Visibility::Visible);
-                SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SaveButton/Content")));
-                SaveButton().IsEnabled(true);
+                _ShowProblem(FreProblemKind::CopilotInstall);
                 co_return;
             }
         }
@@ -451,33 +540,37 @@ namespace winrt::TerminalApp::implementation
             if (!self) co_return;
             if (!ok)
             {
-                ErrorText().Text(RS_(L"FreOverlay_InstallErrorNode"));
-                ErrorText().Visibility(Visibility::Visible);
-                SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SaveButton/Content")));
-                SaveButton().IsEnabled(true);
+                _ShowProblem(FreProblemKind::NodeInstall);
                 co_return;
             }
         }
 
-        // 4. Install hooks (non-blocking — agent works without hooks)
-        //    Skip if AllowAgentSessionHooks GPO blocks it.
+        // 4+5. Install hooks and shell integration. Run both, collect any
+        // failures, then surface only the highest-priority one (see
+        // _ShowProblem). Lower-priority failures are left enabled so the next
+        // Save retries them.
+        bool hooksFailed = false;
+        bool shellIntegFailed = false;
+
+        // 4. Hooks — skip if GPO blocks it or settings unavailable.
         if (SessionManagementToggle().IsOn() &&
+            _settings &&
             !_settings.GlobalSettings().IsAgentSessionHooksPolicyLocked())
         {
             auto self = weak.get();
             if (!self) co_return;
 
-            if (SessionManagementToggle().IsOn())
+            bool hooksOk = co_await _InstallHooksAsync(agentId);
+            self = weak.get();
+            if (!self) co_return;
+
+            if (!hooksOk)
             {
-                co_await _InstallHooksAsync(agentId);
+                hooksFailed = true;
             }
         }
 
-        // 5. Install shell integration only when error detection is enabled.
-        // Detection is driven by the OSC 133 marks emitted by shell
-        // integration; with detection off we honour "don't access my shell"
-        // and skip the install entirely. (The suggestion toggle is a
-        // strict subset — it can't be on unless detection is on.)
+        // 5. Shell integration — only when error detection is enabled.
         if (AutoDetectToggle().IsOn())
         {
             auto self = weak.get();
@@ -485,8 +578,26 @@ namespace winrt::TerminalApp::implementation
 
             co_await winrt::resume_background();
             namespace SI = ::Microsoft::Terminal::ShellIntegration;
-            SI::InstallForTarget(SI::Target::Pwsh);
-            SI::InstallForTarget(SI::Target::WindowsPowerShell);
+            const auto pwsh7Result = SI::InstallForTarget(SI::Target::Pwsh);
+            const auto winPsResult = SI::InstallForTarget(SI::Target::WindowsPowerShell);
+
+            if (!pwsh7Result.success || !winPsResult.success)
+            {
+                shellIntegFailed = true;
+            }
+        }
+
+        // Surface only the highest-priority failure. Shell integration outranks
+        // hooks; the unshown failure stays enabled and is retried on next Save.
+        if (hooksFailed || shellIntegFailed)
+        {
+            co_await winrt::resume_foreground(Dispatcher());
+            auto self = weak.get();
+            if (!self) co_return;
+
+            _ShowProblem(shellIntegFailed ? FreProblemKind::ShellIntegration
+                                          : FreProblemKind::Hooks);
+            co_return;
         }
 
         // 6. Resume UI thread before touching controls / raising events
@@ -494,6 +605,11 @@ namespace winrt::TerminalApp::implementation
         {
             auto self = weak.get();
             if (!self) co_return;
+
+            // Refresh the agent dropdown so any agent we just installed (e.g.
+            // Copilot via winget) now shows "(installed)" instead of
+            // "(will install)" — confirms the install actually landed.
+            _PopulateAgentComboBox();
 
             SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SaveButton/Content")));
             SaveButton().IsEnabled(true);

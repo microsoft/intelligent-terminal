@@ -1212,13 +1212,14 @@ try
     auto settingsString = til::io::read_file_as_utf8_string_if_exists(_settingsPath(), false, &lastWriteTime);
     auto firstTimeSetup = settingsString.empty();
 
-    // If it's the firstTimeSetup and a preview build, then try to
-    // read settings.json from the Release stable file path if it exists.
+    // If it's the firstTimeSetup and a shipped build, then try to
+    // read settings.json from the stable Microsoft Windows Terminal file
+    // path if it exists (GH#130: shipped Intelligent Terminal also migrates).
     // Otherwise use default settings file provided from original settings file
     bool releaseSettingExists = false;
     if (firstTimeSetup && !IsPortableMode())
     {
-#if defined(WT_BRANDING_PREVIEW) || defined(WT_BRANDING_CANARY)
+#if defined(WT_BRANDING_RELEASE) || defined(WT_BRANDING_PREVIEW) || defined(WT_BRANDING_CANARY)
         {
             try
             {

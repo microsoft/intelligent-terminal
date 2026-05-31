@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -240,4 +240,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Benarkan Intelligent Terminal mengakses shell anda dan mengesan ralat secara automatik.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Gagal memasang integrasi shell. Pengesanan ralat telah dimatikan. Anda boleh mengaktifkannya semula dan cuba lagi, atau simpan untuk meneruskan tanpanya.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Gagal memasang session hooks. Pengurusan sesi telah dimatikan. Anda boleh mengaktifkannya semula dan cuba lagi, atau simpan untuk meneruskan tanpanya.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Ketahui cara membaiki ini secara manual</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

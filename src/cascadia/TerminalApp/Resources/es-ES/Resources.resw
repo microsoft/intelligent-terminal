@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -1065,6 +1065,17 @@
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ Error al instalar Node.js. Comprueba tu conexión de red e inténtalo de nuevo.</value>
     <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Error al instalar los hooks de sesión. La gestión de sesiones se ha desactivado. Puedes volver a activarla e intentarlo de nuevo, o guardar para continuar sin ella.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Error al instalar la integración del shell. La detección de errores se ha desactivado. Puedes volver a activarla e intentarlo de nuevo, o guardar para continuar sin ella.</value>
+  </data>
+  <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Obtenga información sobre cómo solucionar esto manualmente</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Activado</value>

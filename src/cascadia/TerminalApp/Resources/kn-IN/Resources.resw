@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -304,4 +304,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>ನಿಮ್ಮ ಶೆಲ್ ಅನ್ನು ಪ್ರವೇಶಿಸಲು ಮತ್ತು ದೋಷಗಳನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪತ್ತೆಹಚ್ಚಲು Intelligent Terminal ಗೆ ಅನುಮತಿ ನೀಡಿ.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ಶೆಲ್ ಏಕೀಕರಣವನ್ನು ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ. ದೋಷ ಪತ್ತೆಯನ್ನು ಆಫ್ ಮಾಡಲಾಗಿದೆ. ನೀವು ಅದನ್ನು ಮರು-ಸಕ್ರಿಯಗೊಳಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಬಹುದು, ಅಥವಾ ಅದಿಲ್ಲದೆ ಮುಂದುವರಿಸಲು ಉಳಿಸಿ.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ. ಸೆಶನ್ ನಿರ್ವಹಣೆಯನ್ನು ಆಫ್ ಮಾಡಲಾಗಿದೆ. ನೀವು ಅದನ್ನು ಮರು-ಸಕ್ರಿಯಗೊಳಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಬಹುದು, ಅಥವಾ ಅದಿಲ್ಲದೆ ಮುಂದುವರಿಸಲು ಉಳಿಸಿ.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>ಇದನ್ನು ಹಸ್ತಚಾಲಿತವಾಗಿ ಸರಿಪಡಿಸುವುದು ಹೇಗೆ ಎಂದು ತಿಳಿಯಿರಿ</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

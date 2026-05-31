@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -299,4 +299,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Geef Intelligent Terminal toestemming om toegang te krijgen tot uw shell en automatisch fouten te detecteren.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Het installeren van shellintegratie is mislukt. Foutdetectie is uitgeschakeld. U kunt het opnieuw inschakelen en het opnieuw proberen, of opslaan om verder te gaan zonder.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Het installeren van sessie-hooks is mislukt. Sessiebeheer is uitgeschakeld. U kunt het opnieuw inschakelen en het opnieuw proberen, of opslaan om verder te gaan zonder.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Meer informatie over hoe u dit handmatig kunt oplossen</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -304,4 +304,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Leiskite „Intelligent Terminal“ pasiekti jūsų apvalkalą ir automatiškai aptikti klaidas.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Nepavyko įdiegti apvalkalo integracijos. Klaidų aptikimas buvo išjungtas. Galite jį vėl įjungti ir bandyti dar kartą arba išsaugoti ir tęsti be jo.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Nepavyko įdiegti session hooks. Sesijų valdymas buvo išjungtas. Galite jį vėl įjungti ir bandyti dar kartą arba išsaugoti ir tęsti be jo.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Sužinokite, kaip tai išspręsti rankiniu būdu</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

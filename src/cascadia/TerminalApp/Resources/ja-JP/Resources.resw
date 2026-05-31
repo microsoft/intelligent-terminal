@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -1074,6 +1074,17 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ Node.js のインストールに失敗しました。ネットワークを確認して再試行してください。</value>
     <comment>{Locked="Node.js"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooksのインストールに失敗しました。セッション管理がオフになりました。再度有効にしてやり直すか、保存してセッション管理なしで続行できます。</value>
+    <comment>{Locked="hooks"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ シェル統合のインストールに失敗しました。エラー検出がオフになりました。再度有効にしてやり直すか、保存してエラー検出なしで続行できます。</value>
+  </data>
+  <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>手動で修正する方法について</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>オン</value>

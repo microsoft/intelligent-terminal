@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -305,4 +305,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal କୁ ଆପଣଙ୍କ ଶେଲ୍ ଆକ୍ସେସ୍ କରିବାକୁ ଏବଂ ତ୍ରୁଟିଗୁଡ଼ିକୁ ସ୍ୱୟଂଚାଳିତ ଭାବରେ ଚିହ୍ନଟ କରିବାକୁ ଅନୁମତି ଦିଅନ୍ତୁ।</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ସେଲ୍ ଏକୀକରଣ ଇନ୍‌ଷ୍ଟଲ୍ କରିବାରେ ବିଫଳ। ତ୍ରୁଟି ଚିହ୍ନଟ ବନ୍ଦ କରାଯାଇଛି। ଆପଣ ଏହାକୁ ପୁଣି ସକ୍ରିୟ କରି ପୁଣି ଚେଷ୍ଟା କରିପାରିବେ, କିମ୍ବା ଏହା ବିନା ଜାରି ରଖିବାକୁ ସେଭ୍ କରନ୍ତୁ।</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks ଇନ୍‌ଷ୍ଟଲ୍ କରିବାରେ ବିଫଳ। ସେସନ୍ ପରିଚାଳନା ବନ୍ଦ କରାଯାଇଛି। ଆପଣ ଏହାକୁ ପୁଣି ସକ୍ରିୟ କରି ପୁଣି ଚେଷ୍ଟା କରିପାରିବେ, କିମ୍ବା ଏହା ବିନା ଜାରି ରଖିବାକୁ ସେଭ୍ କରନ୍ତୁ।</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>ଏହାକୁ ମାନୁଆଲ୍ ଭାବରେ କିପରି ଠିକ୍ କରିବେ ତାହା ଶିଖନ୍ତୁ</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

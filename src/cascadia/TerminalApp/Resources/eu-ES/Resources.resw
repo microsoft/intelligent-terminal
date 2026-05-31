@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
   <resheader name="version"><value>2.0</value></resheader>
@@ -127,4 +127,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Eman baimena Intelligent Terminal-i zure shell-era sartzeko eta erroreak automatikoki detektatzeko.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Shell integrazioa instalatzeak huts egin du. Erroreen detekzioa desaktibatu da. Berriro aktibatu eta berriro saiatu dezakezu, edo gorde hori gabe jarraitzeko.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Session hooks instalatzeak huts egin du. Saio-kudeaketa desaktibatu da. Berriro aktibatu eta berriro saiatu dezakezu, edo gorde hori gabe jarraitzeko.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Ikasi nola konpondu hau eskuz</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

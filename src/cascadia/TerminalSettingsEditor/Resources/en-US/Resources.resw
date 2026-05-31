@@ -726,7 +726,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
     <value>Choose the agent used in the agent pane. Any compatible ACP agent will be detected.</value>
     <comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment>
-  </data>
+  </data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>Model</value>
     <comment>Header for the setting that specifies the model used by the agent pane agent. 

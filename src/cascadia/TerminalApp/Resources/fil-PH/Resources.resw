@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -240,4 +240,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Bigyan ang Intelligent Terminal ng pahintulot na i-access ang iyong shell at awtomatikong tukuyin ang mga error.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Nabigong i-install ang shell integration. Na-off ang error detection. Maaari mo itong i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ito.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Nabigong i-install ang session hooks. Na-off ang pamamahala ng session. Maaari mo itong i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ito.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Alamin kung paano ito ayusin nang manu-mano</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

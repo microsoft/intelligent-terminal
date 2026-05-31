@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
   <resheader name="version"><value>2.0</value></resheader>
@@ -127,4 +127,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>ອະນຸຍາດໃຫ້ Intelligent Terminal ເຂົ້າເຖິງເຊລຂອງທ່ານ ແລະກວດຫາຂໍ້ຜິດພາດໂດຍອັດຕະໂນມັດ.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ການຕິດຕັ້ງ shell integration ລົ້ມເຫລວ. ການກວດຫາຂໍ້ຜິດພາດໄດ້ຖືກປິດແລ້ວ. ທ່ານສາມາດເປີດໃຊ້ງານມັນອີກຄັ້ງແລະລອງໃຫມ່, ຫຼືບັນທຶກເພື່ອສືບຕໍ່ໂດຍບໍ່ມີມັນ.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ ການຕິດຕັ້ງ session hooks ລົ້ມເຫລວ. ການຈັດການ session ໄດ້ຖືກປິດແລ້ວ. ທ່ານສາມາດເປີດໃຊ້ງານມັນອີກຄັ້ງແລະລອງໃຫມ່, ຫຼືບັນທຶກເພື່ອສືບຕໍ່ໂດຍບໍ່ມີມັນ.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>ຮຽນຮູ້ວິທີແກ້ໄຂສິ່ງນີ້ດ້ວຍຕົນເອງ</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

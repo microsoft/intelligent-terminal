@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -305,4 +305,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>به Intelligent Terminal اجازه دهید به پوسته شما دسترسی پیدا کند و خطاها را به طور خودکار تشخیص دهد.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ نصب یکپارچه‌سازی پوسته ناموفق بود. تشخیص خطا غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ نصب session hooks ناموفق بود. مدیریت نشست غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>با نحوه رفع این مشکل به‌صورت دستی آشنا شوید</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

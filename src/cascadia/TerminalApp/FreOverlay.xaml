@@ -167,7 +167,10 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="48" />
+                    <!--  Bottom zone grows to fit a two-line error (message +
+                          manual-fix link) without clipping; MinHeight keeps the
+                          Save button area stable when there's no error.  -->
+                    <RowDefinition Height="Auto" MinHeight="48" />
                 </Grid.RowDefinitions>
 
                 <!--  Top: Title + Subtitle  -->
@@ -381,14 +384,34 @@
 
                 <!--  Bottom: Error text + Save Button  -->
                 <Grid Grid.Row="2">
-                    <TextBlock x:Name="ErrorText"
-                               HorizontalAlignment="Left" VerticalAlignment="Center"
-                               Foreground="#FFFF6B6B" FontSize="13"
-                               TextWrapping="Wrap" MaxWidth="400"
-                               Visibility="Collapsed"
-                               AutomationProperties.LiveSetting="Assertive" />
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <!--  Single prioritized error: message + a manual-fix
+                          hyperlink line. Only the highest-priority problem is
+                          shown at a time (see FreOverlay::_ShowProblem), so the
+                          bottom row stays compact.  -->
+                    <StackPanel x:Name="ErrorPanel"
+                                Grid.Column="0"
+                                HorizontalAlignment="Left" VerticalAlignment="Center"
+                                MaxWidth="440" Spacing="2"
+                                Visibility="Collapsed">
+                        <TextBlock x:Name="ErrorText"
+                                   Foreground="#FFFF6B6B" FontSize="13"
+                                   TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Assertive" />
+                        <TextBlock FontSize="12" TextWrapping="Wrap">
+                            <Hyperlink x:Name="ErrorHelpLink"
+                                       NavigateUri="https://aka.ms/intelligent-terminal-dependency"
+                                       Foreground="#FF99EBFF">
+                                <Run x:Name="ErrorHelpRun" Text="" />
+                            </Hyperlink>
+                        </TextBlock>
+                    </StackPanel>
                     <Button x:Uid="FreOverlay_SaveButton"
                             x:Name="SaveButton"
+                            Grid.Column="1"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             Width="120" Height="32"
                             Style="{ThemeResource AccentButtonStyle}"

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -304,4 +304,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal ला तुमच्या शेलमध्ये प्रवेश करण्याची आणि त्रुटी स्वयंचलितपणे शोधण्याची परवानगी द्या.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ शेल इंटिग्रेशन इंस्टॉल करणे अयशस्वी. त्रुटी शोध बंद केले गेले आहे. तुम्ही ते पुन्हा सक्षम करू शकता आणि पुन्हा प्रयत्न करू शकता, किंवा त्याशिवाय सुरू ठेवण्यासाठी सेव्ह करू शकता.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks इंस्टॉल करणे अयशस्वी. सत्र व्यवस्थापन बंद केले गेले आहे. तुम्ही ते पुन्हा सक्षम करू शकता आणि पुन्हा प्रयत्न करू शकता, किंवा त्याशिवाय सुरू ठेवण्यासाठी सेव्ह करू शकता.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>हे व्यक्तिचलितरीत्या कसे निराकरण करायचे ते जाणून घ्या</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

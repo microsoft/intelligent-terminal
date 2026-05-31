@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -305,4 +305,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal ক আপোনাৰ শ্বেল ব্যৱহাৰ কৰিবলৈ আৰু ত্ৰুটিসমূহ স্বয়ংক্ৰিয়ভাৱে চিনাক্ত কৰিবলৈ অনুমতি দিয়ক।</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ শ্বেল সংহতি ইনষ্টল কৰাত বিফল হ'ল। ত্ৰুটি চিনাক্তকৰণ বন্ধ কৰা হৈছে। আপুনি ইয়াক পুনৰ সক্ৰিয় কৰি পুনৰ চেষ্টা কৰিব পাৰে, বা ইয়াৰ অবিহনে আগবাঢ়িবলৈ সংৰক্ষণ কৰক।</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks ইনষ্টল কৰাত বিফল হ'ল। ছেছন ব্যৱস্থাপনা বন্ধ কৰা হৈছে। আপুনি ইয়াক পুনৰ সক্ৰিয় কৰি পুনৰ চেষ্টা কৰিব পাৰে, বা ইয়াৰ অবিহনে আগবাঢ়িবলৈ সংৰক্ষণ কৰক।</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>এইটো কেনেকৈ মেনুৱেলী ঠিক কৰিব শিকক</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

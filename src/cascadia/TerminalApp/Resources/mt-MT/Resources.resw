@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
   <resheader name="version"><value>2.0</value></resheader>
@@ -191,4 +191,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Agħti permess lil Intelligent Terminal biex jaċċessa l-qoxra tiegħek u jidentifika l-iżbalji awtomatikament.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ L-installazzjoni tal-integrazzjoni tal-qoxra falliet. Id-detezzjoni tal-iżbalji ġiet mitfija. Tista' terġa' tixgħelha u terġa' tipprova, jew issejvja biex tkompli mingħajrha.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ L-installazzjoni tal-hooks tas-sessjoni falliet. Il-ġestjoni tas-sessjonijiet ġiet mitfija. Tista' terġa' tixgħelha u terġa' tipprova, jew issejvja biex tkompli mingħajrha.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Tgħallem kif issewwi dan manwalment</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>

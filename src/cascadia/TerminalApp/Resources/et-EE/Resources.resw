@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -304,4 +304,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Lubage rakendusel Intelligent Terminal pääseda juurde teie kestale ja tuvastada vead automaatselt.</value>
   </data>
-</root>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Kestaintegratsiooni installimine nurjus. Vigade tuvastamine on välja lülitatud. Saate selle uuesti lubada ja uuesti proovida või salvestada, et jätkata ilma selleta.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Session hooks installimine nurjus. Seansihaldus on välja lülitatud. Saate selle uuesti lubada ja uuesti proovida või salvestada, et jätkata ilma selleta.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Lugege, kuidas seda käsitsi parandada</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data></root>
