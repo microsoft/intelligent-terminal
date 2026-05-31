@@ -124,8 +124,8 @@ system.no_prompt_in_flight: "没有正在进行的提示。"
 system.authentication_failed: "身份验证失败"
 system.command_copied_retry: "命令已复制 — 在另一个终端中运行，然后按 Enter 重试"  # {Locked="Enter"}
 system.stopped_max_tokens: "达到模型的输出上限后，回复被截断。"
-system.stopped_max_turn_requests: "达到本轮的请求上限后，代理已停止。"
-system.stopped_refusal: "代理拒绝继续处理此请求。"
+system.stopped_max_turn_requests: "达到本轮的请求上限后，智能体已停止。"
+system.stopped_refusal: "智能体拒绝继续处理此请求。"
 system.agent_busy: "智能体正忙于此标签页 — 请等待当前提示完成。"
 system.resuming_session: "正在恢复会话 %{session_id}..."
 system.unknown_command: "未知命令 \"%{command}\" — 已作为提示发送。键入 /help 查看列表。"  # {Locked="/help"}

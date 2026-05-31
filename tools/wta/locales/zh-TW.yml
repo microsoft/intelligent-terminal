@@ -124,8 +124,8 @@ system.no_prompt_in_flight: "沒有進行中的提示。"
 system.authentication_failed: "驗證失敗"
 system.command_copied_retry: "命令已複製 — 在另一個終端機中執行，然後按 Enter 重試"  # {Locked="Enter"}
 system.stopped_max_tokens: "達到模型的輸出上限後，回覆遭到截斷。"
-system.stopped_max_turn_requests: "達到本回合的要求上限後，代理程式已停止。"
-system.stopped_refusal: "代理程式拒絕繼續處理此要求。"
+system.stopped_max_turn_requests: "達到本回合的要求上限後，智能體已停止。"
+system.stopped_refusal: "智能體拒絕繼續處理此要求。"
 system.agent_busy: "智能體正在此索引標籤上忙碌 — 請等待目前提示完成。"
 system.resuming_session: "正在恢復工作階段 %{session_id}..."
 system.unknown_command: "未知命令 \"%{command}\" — 已作為提示傳送。輸入 /help 查看清單。"  # {Locked="/help"}
