@@ -2687,7 +2687,7 @@ impl App {
         }
         let short_key: String = key.chars().take(8).collect();
         let launch_commandline = format!(
-            "cmd /c echo \x1b[1;36;5mResuming {} session {}...\x1b[0m && {}",
+            "cmd /c echo \x1b[2;37mResuming {} session {}...\x1b[0m && {}",
             cli_id, short_key, commandline
         );
         let mut argv = vec![
@@ -10532,15 +10532,18 @@ mod tests {
         // The CLI invocation is still wrapped in `cmd /c` so .cmd shims
         // resolve via PATHEXT, but the legacy `cd /d` prefix is gone —
         // cwd is threaded through wtcli's `-d` flag now. Issue #135:
-        // a blinking ANSI loading banner (`SGR 1;36;5` = bold cyan
-        // slow-blink) is prepended so the user sees immediate animated
-        // feedback while the CLI cold-starts; the CLI's alt-screen TUI
-        // overwrites it on success.
+        // a muted "Resuming … session …" banner is prepended so the
+        // user sees immediate feedback while the CLI cold-starts; the
+        // CLI's alt-screen TUI overwrites it on success. (Previously
+        // SGR 1;36;5 — bold + cyan + slow-blink — was used, but the
+        // blink + bold were too noisy. Now SGR 2;37 = dim + white, a
+        // low-contrast tone similar to the cwd line in a typical
+        // Copilot-CLI shell prompt.)
         assert!(
             argv.contains(
-                "cmd /c echo \x1b[1;36;5mResuming claude session abc-123...\x1b[0m"
+                "cmd /c echo \x1b[2;37mResuming claude session abc-123...\x1b[0m"
             ),
-            "expected blinking loading banner echo; argv: {:?}",
+            "expected dim-white Resuming banner echo; argv: {:?}",
             argv
         );
         assert!(
