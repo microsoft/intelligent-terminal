@@ -730,7 +730,7 @@ fn read_codex_session_meta(path: &Path) -> Option<CodexSessionMeta> {
     Some(CodexSessionMeta {
         id:        payload.get("id")?.as_str()?.to_string(),
         cwd:       PathBuf::from(payload.get("cwd")?.as_str()?),
-        timestamp: ts_str.and_then(parse_iso_to_systemtime),
+        timestamp: ts_str.and_then(parse_iso_to_system_time),
     })
 }
 
@@ -851,9 +851,13 @@ fn find_codex_rollout_by_id(home: &Path, id: &str) -> Option<PathBuf> {
 }
 
 /// Parse a subset of ISO 8601 timestamps into `SystemTime`.
-/// Handles: `YYYY-MM-DDTHH:MM:SSZ` and `YYYY-MM-DDTHH:MM:SS.fffZ`
-/// (the shapes Codex session_meta emits).
-fn parse_iso_to_systemtime(s: &str) -> Option<SystemTime> {
+///
+/// Handles the UTC shapes Codex `session_meta` emits
+/// (`YYYY-MM-DDTHH:MM:SSZ` and `YYYY-MM-DDTHH:MM:SS.fffZ`) plus the
+/// numeric offset variants (`±HH:MM`), e.g. `2026-05-27T10:53:09+08:00`.
+/// Returns `None` for any out-of-range / overflowing / malformed input
+/// (never panics).
+fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
     let s = s.trim();
     
     // Detect and parse timezone offset (+HH:MM or -HH:MM, or Z for UTC)
@@ -869,6 +873,11 @@ fn parse_iso_to_systemtime(s: &str) -> Option<SystemTime> {
                 if hm.len() == 5 && hm.chars().nth(2) == Some(':') {
                     let hh: i32 = hm.get(..2)?.parse().ok()?;
                     let mm: i32 = hm.get(3..)?.parse().ok()?;
+                    // Reject out-of-range offsets (e.g. `+99:99`) so they
+                    // don't silently skew the timestamp.
+                    if !(0..=23).contains(&hh) || !(0..=59).contains(&mm) {
+                        return None;
+                    }
                     let total_seconds = hh * 3600 + mm * 60;
                     if offset_part.starts_with('-') { -total_seconds } else { total_seconds }
                 } else {
@@ -905,8 +914,10 @@ fn parse_iso_to_systemtime(s: &str) -> Option<SystemTime> {
     let min: u64 = time_iter.next()?.parse().ok()?;
     let sec: u64 = time_iter.next()?.parse().ok()?;
 
-    // Pre-1970 underflow check
-    if year < 1970 {
+    // Pre-1970 underflow check, and bound the year so the day/seconds
+    // arithmetic below cannot overflow u64 (the documented subset of
+    // ISO 8601 only needs 4-digit years anyway).
+    if year < 1970 || year > 9999 {
         return None;
     }
 
@@ -950,7 +961,9 @@ fn parse_iso_to_systemtime(s: &str) -> Option<SystemTime> {
     if secs < 0 {
         return None;
     }
-    Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs as u64))
+    // `checked_add` so malformed / far-future timestamps fail closed
+    // (return `None`) instead of panicking on overflow.
+    SystemTime::UNIX_EPOCH.checked_add(std::time::Duration::from_secs(secs as u64))
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -2413,48 +2426,48 @@ mod tests {
     #[test]
     fn parse_iso_handles_positive_offset() {
         // 2026-05-27T10:53:09+08:00 is 2026-05-27T02:53:09Z
-        let t1 = parse_iso_to_systemtime("2026-05-27T10:53:09+08:00").unwrap();
-        let t2 = parse_iso_to_systemtime("2026-05-27T02:53:09Z").unwrap();
+        let t1 = parse_iso_to_system_time("2026-05-27T10:53:09+08:00").unwrap();
+        let t2 = parse_iso_to_system_time("2026-05-27T02:53:09Z").unwrap();
         assert_eq!(t1, t2);
     }
 
     #[test]
     fn parse_iso_handles_negative_offset() {
         // 2026-05-27T02:53:09-05:00 is 2026-05-27T07:53:09Z
-        let t1 = parse_iso_to_systemtime("2026-05-27T02:53:09-05:00").unwrap();
-        let t2 = parse_iso_to_systemtime("2026-05-27T07:53:09Z").unwrap();
+        let t1 = parse_iso_to_system_time("2026-05-27T02:53:09-05:00").unwrap();
+        let t2 = parse_iso_to_system_time("2026-05-27T07:53:09Z").unwrap();
         assert_eq!(t1, t2);
     }
 
     #[test]
     fn parse_iso_rejects_pre_1970_years() {
-        assert!(parse_iso_to_systemtime("1969-12-31T23:59:59Z").is_none());
+        assert!(parse_iso_to_system_time("1969-12-31T23:59:59Z").is_none());
     }
 
     #[test]
     fn parse_iso_rejects_invalid_month() {
-        assert!(parse_iso_to_systemtime("2026-13-01T00:00:00Z").is_none());
-        assert!(parse_iso_to_systemtime("2026-00-01T00:00:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-13-01T00:00:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-00-01T00:00:00Z").is_none());
     }
 
     #[test]
     fn parse_iso_rejects_invalid_day_for_month() {
-        assert!(parse_iso_to_systemtime("2026-02-30T00:00:00Z").is_none());
-        assert!(parse_iso_to_systemtime("2026-05-32T00:00:00Z").is_none());
-        assert!(parse_iso_to_systemtime("2026-04-31T00:00:00Z").is_none()); // April has 30
+        assert!(parse_iso_to_system_time("2026-02-30T00:00:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-05-32T00:00:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-04-31T00:00:00Z").is_none()); // April has 30
     }
 
     #[test]
     fn parse_iso_rejects_invalid_time_components() {
-        assert!(parse_iso_to_systemtime("2026-05-28T25:30:00Z").is_none());
-        assert!(parse_iso_to_systemtime("2026-05-28T10:60:00Z").is_none());
-        assert!(parse_iso_to_systemtime("2026-05-28T10:30:60Z").is_none());
+        assert!(parse_iso_to_system_time("2026-05-28T25:30:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-05-28T10:60:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-05-28T10:30:60Z").is_none());
     }
 
     #[test]
-    fn parse_iso_accepts_feb_29_leap_year() {
+    fn parse_iso_accepts_february_29_leap_year() {
         // 2024 IS a leap year; 2023 is not.
-        assert!(parse_iso_to_systemtime("2024-02-29T00:00:00Z").is_some());
-        assert!(parse_iso_to_systemtime("2023-02-29T00:00:00Z").is_none());
+        assert!(parse_iso_to_system_time("2024-02-29T00:00:00Z").is_some());
+        assert!(parse_iso_to_system_time("2023-02-29T00:00:00Z").is_none());
     }
 }

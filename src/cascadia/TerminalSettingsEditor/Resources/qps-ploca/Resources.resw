@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -2806,6 +2806,10 @@
   <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
     <value>Removing Gemini hooks...</value>
     <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCodexSummary" xml:space="preserve">
+    <value>Removing Codex hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
   </data>
   <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
     <value>Failed: could not locate wta.exe</value>

@@ -1487,7 +1487,7 @@ fn parse_gemini_extensions_list_json(stdout: &str) -> Option<PluginPresence> {
 /// exists, and `root_path` is the remainder of that row trimmed.
 fn parse_codex_marketplace_list(stdout: &str) -> (bool, Option<String>) {
     for line in stdout.lines() {
-       let line = line.trim_end();
+       let line = line.trim();
        // Skip header and blank lines.
        if line.is_empty() || line.starts_with("MARKETPLACE") {
            continue;
@@ -1537,10 +1537,11 @@ fn parse_codex_plugin_list(stdout: &str) -> bool {
        if rest.is_empty() {
            return false;
        }
-       // Status column starts here. "not installed" → not installed.
-       // Any "installed*" status (installed / installed, enabled /
-       // installed, disabled) counts as installed.
-       return rest[0] != "not";
+       // Status column starts here. Only an "installed*" status
+       // (installed / installed, enabled / installed, disabled)
+       // counts as installed — "not installed", "available", and
+       // any other status mean the plugin is not active.
+       return rest[0].starts_with("installed");
     }
     false
 }
@@ -2410,10 +2411,11 @@ fn paths_equivalent(a: &Path, b: &Path) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Codex placeholders — replaced by Tasks 7 and 8 with real implementations.
-// They are correct as "not installed" responses so runtime behavior stays
-// safe between slice-B Rust commits.
+// Codex status: CLI-parse path (`codex plugin marketplace list` +
+// `codex plugin list`) with a filesystem fallback when the binary
+// isn't on PATH. Both helpers default to a safe "not installed"
+// response on any IO / parse failure so runtime behavior stays
+// conservative.
 // ---------------------------------------------------------------------------
 
 fn codex_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -> CliStatus {
