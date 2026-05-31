@@ -2186,14 +2186,14 @@ mod tests {
         let cli = CliSource::from_agent_id("codex")
             .expect("from_agent_id('codex') must yield Some(Codex)");
         let event = SessionEvent::SessionStarted {
-            key: "codex-fanin-test".to_string(),
+            key: "codex-fan-in-test".to_string(),
             cli_source: cli.clone(),
             pane_session_id: "p1".to_string(),
             cwd: PathBuf::from(r#"C:\x"#),
             title: "fan-in test".to_string(),
         };
         reg.apply_event(event).await;
-        let row = reg.lookup(&acp::SessionId::new("codex-fanin-test")).await.expect("row inserted");
+        let row = reg.lookup(&acp::SessionId::new("codex-fan-in-test")).await.expect("row inserted");
         assert_eq!(row.cli_source, Some(CliSource::Codex));
     }
 

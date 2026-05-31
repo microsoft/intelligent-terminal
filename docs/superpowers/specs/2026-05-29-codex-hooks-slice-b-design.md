@@ -1,7 +1,7 @@
 # Codex hooks — slice B design
 
 **Date:** 2026-05-29
-**Branch:** `dev/yuazha/codex-session`
+**Branch:** `dev/<user>/codex-session`
 **Builds on:** slice A (read-only Codex session discovery, merged into PR #98)
 **Successor:** slice C (l10n, docs, ut_app fixtures, ACP `loadSession`)
 
@@ -50,7 +50,7 @@ Both commands run with stdin closed and 30-second timeout. Output captured to tr
 #### `status_for_codex(home)`
 
 **Primary path** (CLI on PATH):
-- `codex plugin marketplace list` → text-parse columns `MARKETPLACE  ROOT`, look for row whose name == `wt-local`. Set `marketplace_registered` and `marketplace_path` from the `ROOT` column. Compute `marketplace_path_valid` by stat'ing the path (`directory` exists check, same logic as Claude/Copilot).
+- `codex plugin marketplace list` → text-parse columns `MARKETPLACE  ROOT`, look for row whose name == `wt-local`. Set `marketplace_registered` and `marketplace_path` from the `ROOT` column. Compute `marketplace_path_valid` by running stat on the path (`directory` exists check, same logic as Claude/Copilot).
 - `codex plugin list` → text-parse for a row whose `PLUGIN` column == `wt-agent-hooks`. Set `plugin_installed`. Codex has no enable/disable distinction in `plugin list` output → `plugin_enabled := plugin_installed`.
 
 **Filesystem fallback** (CLI not on PATH or commands fail):

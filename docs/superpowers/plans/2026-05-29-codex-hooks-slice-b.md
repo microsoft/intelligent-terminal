@@ -10,7 +10,7 @@
 
 **Reference spec:** `docs/superpowers/specs/2026-05-29-codex-hooks-slice-b-design.md`
 
-**Worktree:** `C:\yuazha\GitRepo\intelligent-terminal\.worktree\codex-session` (branch `dev/yuazha/codex-session`, PR #98).
+**Worktree:** `C:\<user>\GitRepo\intelligent-terminal\.worktree\codex-session` (branch `dev/<user>/codex-session`, PR #98).
 
 ---
 
@@ -48,7 +48,7 @@ The bundle files (Task 2) are created early so later Rust tests can stat real pa
 
 ```powershell
 $env:RUSTUP_TOOLCHAIN="stable"
-cd C:\yuazha\GitRepo\intelligent-terminal\.worktree\codex-session
+cd C:\<user>\GitRepo\intelligent-terminal\.worktree\codex-session
 cargo test --manifest-path tools/wta/Cargo.toml
 ```
 
@@ -1234,7 +1234,7 @@ git commit -m "feat(settings): add Codex CLI row to AI Agents page`n`nCo-authore
 
 ```powershell
 $env:RUSTUP_TOOLCHAIN="stable"
-cd C:\yuazha\GitRepo\intelligent-terminal\.worktree\codex-session
+cd C:\<user>\GitRepo\intelligent-terminal\.worktree\codex-session
 cargo test --manifest-path tools/wta/Cargo.toml
 ```
 
