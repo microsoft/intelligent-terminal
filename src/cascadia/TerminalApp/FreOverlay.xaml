@@ -216,18 +216,22 @@
                                     <TextBlock x:Uid="FreOverlay_AgentDescription"
                                                FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap" />
-                                    <!--  FontSize=12 matches the FreOverlay_AgentDescription
-                                          TextBlock above (HyperlinkButton default is ~14,
-                                          which renders visibly larger than the description).
-                                          Padding override keeps text flush-left while removing
-                                          the default vertical padding so the link sits snug
-                                          beneath the description.  -->
+                                    <!--  Match the 12px description above. Setting FontSize on
+                                          HyperlinkButton itself doesn't propagate to the inner
+                                          ContentPresenter's auto-wrapped TextBlock (which inherits
+                                          BodyTextBlockStyle = 14px), so we override via an implicit
+                                          TextBlock style in the button's resource scope.  -->
                                     <HyperlinkButton x:Uid="FreOverlay_AcpReferenceLink"
                                                      NavigateUri="https://aka.ms/intelligent-terminal-acpref"
-                                                     FontSize="12"
                                                      Margin="-12,0,0,0"
                                                      Padding="12,2,12,2"
-                                                     Foreground="#FF99EBFF" />
+                                                     Foreground="#FF99EBFF">
+                                        <HyperlinkButton.Resources>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="FontSize" Value="12" />
+                                            </Style>
+                                        </HyperlinkButton.Resources>
+                                    </HyperlinkButton>
                                     <TextBlock x:Uid="FreOverlay_AgentInstallHint"
                                                x:Name="AgentInstallHint"
                                                FontSize="12" Foreground="#99FFFFFF"
