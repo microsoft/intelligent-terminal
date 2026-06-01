@@ -1,11 +1,10 @@
 # send-event.ps1 — Telemetry hook for WTA agent session tracking.
 #
 # ── EXIT-CODE CONTRACT ──────────────────────────────────────────────────
-# This script MUST exit 0 unconditionally. It is wired to Codex
-# PreToolUse, UserPromptSubmit, Stop, SubagentStop, and other lifecycle
+# This script MUST exit 0 unconditionally. It is wired to lifecycle
 # events where a non-zero exit has *semantic* consequences:
 #   * Exit 2  → blocks the tool call / erases the user prompt /
-#               forces Codex to keep going past Stop
+#               forces to keep going past Stop
 #   * Other   → shows "<hook> hook error" + first line of stderr in the
 #               transcript on every fire
 # Two guarantees defend the contract:
@@ -24,12 +23,10 @@
 #
 # ── CLI-source identification ───────────────────────────────────────────
 # The installer hard-codes which CLI invokes this script via the
-# `-CliSource` parameter (claude / codex / copilot / gemini). This
-# bundle is the Codex variant and passes `-CliSource codex` from
-# `hooks.json`. That parameter is the ONLY reliable signal — env-var
-# heuristics are unreliable because Copilot CLI inherits Claude's
-# plugin shape and sets CLAUDE_PLUGIN_ROOT, making it indistinguishable
-# from a real Claude run by env vars alone.
+# `-CliSource` parameter (claude / codex / copilot / gemini). That is the
+# ONLY reliable signal — env-var heuristics are unreliable because
+# Copilot CLI inherits Claude's plugin shape and sets CLAUDE_PLUGIN_ROOT,
+# making it indistinguishable from a real Claude run by env vars alone.
 param(
     [string]$EventType = "agent.hook",
     [string]$CliSource = ""
