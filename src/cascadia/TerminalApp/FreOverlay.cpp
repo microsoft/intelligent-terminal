@@ -639,7 +639,15 @@ namespace winrt::TerminalApp::implementation
         if (needsCopilot || needsNode)
         {
             _agentPaneLog("[FRE] Refreshing process PATH from registry");
-            ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
+            try
+            {
+                ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
+            }
+            catch (...)
+            {
+                _agentPaneLog("[FRE] RefreshProcessPath threw an exception");
+                LOG_CAUGHT_EXCEPTION();
+            }
         }
 
         // 4+5. Install hooks and shell integration. Run both, collect any

@@ -267,7 +267,14 @@ namespace winrt::TerminalApp::implementation
         // copilot). Using RefreshProcessPath + lpEnvironment=nullptr
         // preserves all process-only variables (WT_COM_CLSID, etc.)
         // that regenerate() would drop.
-        ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
+        try
+        {
+            ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
 
         std::wstring mutableCmdLine{ commandline };
         if (!CreateProcessW(
