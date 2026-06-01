@@ -147,9 +147,10 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     if !truncated {
         let selected_idx = app.current_tab().selected_completed_turn_idx;
+        let pane_focused = app.pane_focused;
         for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
             let is_selected = selected_idx == Some(idx);
-            let mut turn_lines = build_completed_turn_lines(turn, is_selected, wrap_width);
+            let mut turn_lines = build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
             reversed_lines.extend(turn_lines.drain(..).rev());
             if reversed_lines.len() >= requested_lines {
                 truncated = true;
@@ -217,19 +218,27 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 fn build_completed_turn_lines<'a>(
     turn: &'a crate::app::CompletedTurn,
     is_selected: bool,
+    pane_focused: bool,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
     let chevron = if turn.expanded { "▼ " } else { "▶ " };
-    // Selected row uses the SELECTED theme (reverse video) to make the
-    // current Tab target visible. Unselected rows render in the standard
-    // dim USER_PROMPT style — same as before this feature existed.
-    let prompt_style = if is_selected {
+    // Selected row highlights the current Tab target. When the pane is focused
+    // it's the live, active selection (bright SELECTED bar); when the pane is
+    // unfocused the selection is preserved but muted (SELECTED_INACTIVE), so
+    // it reads as "not active" and matches the hidden caret. Unselected rows
+    // render in the standard dim USER_PROMPT style.
+    let selected_style = if pane_focused {
         theme::SELECTED
+    } else {
+        theme::SELECTED_INACTIVE
+    };
+    let prompt_style = if is_selected {
+        selected_style
     } else {
         theme::USER_PROMPT
     };
     let chevron_style = if is_selected {
-        theme::SELECTED
+        selected_style
     } else {
         theme::DIM
     };

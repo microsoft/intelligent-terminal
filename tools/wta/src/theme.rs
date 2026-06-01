@@ -17,6 +17,13 @@ pub const SELECTED: Style = Style::new()
     .fg(Color::Black)
     .bg(Color::Yellow)
     .add_modifier(Modifier::BOLD);
+// Selected row while the pane is unfocused: same shape, muted to a gray bar
+// so the selection is preserved (and restored on refocus) without reading as
+// the live, active target.
+pub const SELECTED_INACTIVE: Style = Style::new()
+    .fg(Color::Black)
+    .bg(Color::DarkGray)
+    .add_modifier(Modifier::BOLD);
 pub const DEBUG_SENT: Style = Style::new().fg(Color::Green);
 pub const DEBUG_RECEIVED: Style = Style::new().fg(Color::Cyan);
 pub const RECOMMENDATION_TITLE: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);

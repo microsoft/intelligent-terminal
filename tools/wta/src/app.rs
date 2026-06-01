@@ -6218,7 +6218,12 @@ impl App {
                 self.current_tab_mut().accept_command_popup_completion();
             }
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                self.current_tab_mut().insert_input_char('\n');
+                // Input editing only acts when the input is the live caret
+                // target. While a recommendation/permission card or a past
+                // turn is highlighted the input is locked (see Char below).
+                if self.current_tab().input_has_nav_focus() {
+                    self.current_tab_mut().insert_input_char('\n');
+                }
             }
             KeyCode::Enter if self.command_popup_visible() => {
                 // Popup is showing — Enter runs the highlighted command
@@ -6376,13 +6381,19 @@ impl App {
                 }
             }
             KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.current_tab_mut().delete_word_before_cursor();
+                if self.current_tab().input_has_nav_focus() {
+                    self.current_tab_mut().delete_word_before_cursor();
+                }
             }
             KeyCode::Backspace => {
-                self.current_tab_mut().delete_before_cursor();
+                if self.current_tab().input_has_nav_focus() {
+                    self.current_tab_mut().delete_before_cursor();
+                }
             }
             KeyCode::Delete => {
-                self.current_tab_mut().delete_at_cursor();
+                if self.current_tab().input_has_nav_focus() {
+                    self.current_tab_mut().delete_at_cursor();
+                }
             }
             KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.current_tab_mut().move_cursor_word_left();
@@ -6409,7 +6420,15 @@ impl App {
                 self.current_tab_mut().chat_scroll.by(-10);
             }
             KeyCode::Char(c) => {
-                self.current_tab_mut().insert_input_char(c);
+                // Only type into the input when it is the live caret target.
+                // When a recommendation/permission card or a past turn is
+                // highlighted the input is locked: keystrokes are ignored so
+                // the buffer can't fill invisibly (no caret) and strand the
+                // user (a non-empty buffer disables Tab/↑ history nav). Press
+                // Esc, or Tab/Shift+Tab back past the ends, to return focus.
+                if self.current_tab().input_has_nav_focus() {
+                    self.current_tab_mut().insert_input_char(c);
+                }
             }
             _ => {}
         }
@@ -12742,6 +12761,52 @@ mod tests {
             3,
             "non-empty input must NOT trigger the chat-scroll fallback",
         );
+    }
+
+    #[test]
+    fn typing_is_ignored_while_a_past_turn_is_selected() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: "old prompt".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        // Highlight the past turn, as Tab would.
+        app.current_tab_mut().selected_completed_turn_idx = Some(0);
+        assert!(!app.current_tab().input_has_nav_focus());
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+
+        assert!(
+            app.current_tab().input.is_empty(),
+            "typing must be ignored while a past turn is highlighted (input locked)",
+        );
+        assert_eq!(
+            app.current_tab().selected_completed_turn_idx,
+            Some(0),
+            "selection must survive the keystroke so Tab/↑ history nav keeps working",
+        );
+    }
+
+    #[test]
+    fn typing_returns_to_input_after_clearing_selection() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: "old prompt".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        app.current_tab_mut().selected_completed_turn_idx = Some(0);
+
+        // Esc backs out of history nav, then typing lands in the input again.
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+        app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "x");
     }
 
     #[test]
