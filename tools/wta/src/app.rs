@@ -6523,107 +6523,131 @@ impl App {
             "dispatch"
         );
 
+        // Thin dispatch: each arm's logic lives in a `cmd_*` method so a
+        // single command can be read and unit-tested in isolation. `in_flight`
+        // is computed once here and threaded to the commands that branch on it.
         match cmd.kind {
-            CommandKind::Help => {
-                self.help_overlay_visible = !self.help_overlay_visible;
-            }
-            CommandKind::Clear => {
-                let tab = self.current_tab_mut();
-                tab.clear_chat_history();
-                tab.completed_turns.clear();
-                tab.selected_completed_turn_idx = None;
-                tab.scroll_to_bottom();
-            }
-            CommandKind::Stop => {
-                if in_flight {
-                    let session_id = self.current_tab().session_id.clone();
-                    if let Some(sid) = session_id.clone() {
-                        let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
-                    }
-                    if let Some(sid) = session_id {
-                        self.turn_cancel(&sid);
-                    }
-                    let tab = self.current_tab_mut();
-                    tab.messages
-                        .push(ChatMessage::System(t!("system.cancelled").into_owned()));
-                    tab.scroll_to_bottom();
-                } else {
-                    let tab = self.current_tab_mut();
-                    tab.messages.push(ChatMessage::System(
-                        t!("system.no_prompt_in_flight").into_owned(),
-                    ));
-                    tab.scroll_to_bottom();
-                }
-            }
-            CommandKind::New => {
-                if in_flight {
-                    let tab = self.current_tab_mut();
-                    tab.messages.push(ChatMessage::System(
-                        t!("system.busy_use_stop").into_owned(),
-                    ));
-                    tab.scroll_to_bottom();
-                    return;
-                }
-                let tab_id = self
-                    .tab_id
-                    .clone()
-                    .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-                let _ = self
-                    .new_session_tx
-                    .send(NewSessionForTab { tab_id, cwd: None });
-                let tab = self.current_tab_mut();
-                tab.clear_chat_history();
-                tab.completed_turns.clear();
-                tab.selected_completed_turn_idx = None;
-                tab.session_id = None;
-                tab.scroll_to_bottom();
-            }
-            CommandKind::Sessions => {
-                // Mirror the Ctrl+Shift+/ keybinding's open path: jump straight to
-                // the Agents picker and seed a selection so Enter/Up/Down
-                // are immediately useful. Esc / Ctrl+Shift+/ still close the view.
-                // Per-tab — only flips the active tab's view state.
-                let tab_id = self.active_tab_key().to_string();
-                self.open_agents_view_for_tab(tab_id);
-                // session management path also kicks the lazy history scan here. Without this,
-                // /sessions left the registry empty and rendered a blank view
-                // forever (state stuck at NotStarted, no Loading row, no rows).
-                self.ensure_history_loaded();
-                self.project_active_tab_state();
-            }
-            CommandKind::Restart => {
-                // Behavior depends on which transport this App is running on:
-                //
-                // * Standalone mode: the ACP client owns the agent CLI child.
-                //   `restart_tx` triggers an in-process tear-down + respawn;
-                //   subsequent prompts get a fresh session on each tab. The
-                //   `Connecting("Restarting agent...")` state lasts until the
-                //   new `initialize` round-trip lands.
-                //
-                // * Helper mode: master owns the agent CLI lifetime, so a
-                //   single helper cannot restart it in-process. The helper's
-                //   `restart_rx` arm asks the C++ side to force-restart the
-                //   whole agent stack (`restart_agent_stack` SendEvent →
-                //   TerminalPage tears down every agent pane,
-                //   `SharedWta::Restart` respawns master on the same stable
-                //   pipe name, then the active tab's pane is re-opened). The
-                //   user briefly sees the agent pane flash closed and reopen
-                //   with a clean session. The `Connecting("Restarting...")`
-                //   state set below is short-lived — this helper process is
-                //   on its way out as part of the pane teardown.
-                self.state = ConnectionState::Connecting("Restarting agent...".to_string());
-                self.session_to_tab.clear();
-                self.session_id.clear();
-                for (_, tab) in self.tab_sessions.iter_mut() {
-                    tab.clear_chat_history();
-                    tab.completed_turns.clear();
-                    tab.selected_completed_turn_idx = None;
-                    tab.session_id = None;
-                }
-                let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
-                self.publish_agent_status();
-            }
+            CommandKind::Help => self.cmd_help(),
+            CommandKind::Clear => self.cmd_clear(),
+            CommandKind::Stop => self.cmd_stop(in_flight),
+            CommandKind::New => self.cmd_new(in_flight),
+            CommandKind::Sessions => self.cmd_sessions(),
+            CommandKind::Restart => self.cmd_restart(),
         }
+    }
+
+    /// `/help` — toggle the help overlay.
+    fn cmd_help(&mut self) {
+        self.help_overlay_visible = !self.help_overlay_visible;
+    }
+
+    /// `/clear` — wipe the active tab's chat history and completed turns.
+    fn cmd_clear(&mut self) {
+        let tab = self.current_tab_mut();
+        tab.clear_chat_history();
+        tab.completed_turns.clear();
+        tab.selected_completed_turn_idx = None;
+        tab.scroll_to_bottom();
+    }
+
+    /// `/stop` — cancel the in-flight turn, or note that there is nothing to
+    /// stop. `in_flight` is the active tab's turn state, captured by the
+    /// dispatcher before any mutation.
+    fn cmd_stop(&mut self, in_flight: bool) {
+        if in_flight {
+            let session_id = self.current_tab().session_id.clone();
+            if let Some(sid) = session_id.clone() {
+                let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
+            }
+            if let Some(sid) = session_id {
+                self.turn_cancel(&sid);
+            }
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("system.cancelled").into_owned()));
+            tab.scroll_to_bottom();
+        } else {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("system.no_prompt_in_flight").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+        }
+    }
+
+    /// `/new` — start a fresh session on the active tab. Refuses while a turn
+    /// is in flight (the user should `/stop` first).
+    fn cmd_new(&mut self, in_flight: bool) {
+        if in_flight {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("system.busy_use_stop").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        let tab_id = self
+            .tab_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        let _ = self
+            .new_session_tx
+            .send(NewSessionForTab { tab_id, cwd: None });
+        let tab = self.current_tab_mut();
+        tab.clear_chat_history();
+        tab.completed_turns.clear();
+        tab.selected_completed_turn_idx = None;
+        tab.session_id = None;
+        tab.scroll_to_bottom();
+    }
+
+    /// `/sessions` — open the Agents picker for the active tab.
+    fn cmd_sessions(&mut self) {
+        // Mirror the Ctrl+Shift+/ keybinding's open path: jump straight to
+        // the Agents picker and seed a selection so Enter/Up/Down
+        // are immediately useful. Esc / Ctrl+Shift+/ still close the view.
+        // Per-tab — only flips the active tab's view state.
+        let tab_id = self.active_tab_key().to_string();
+        self.open_agents_view_for_tab(tab_id);
+        // session management path also kicks the lazy history scan here. Without this,
+        // /sessions left the registry empty and rendered a blank view
+        // forever (state stuck at NotStarted, no Loading row, no rows).
+        self.ensure_history_loaded();
+        self.project_active_tab_state();
+    }
+
+    /// `/restart` — reset the agent CLI subprocess. Behavior depends on which
+    /// transport this App is running on:
+    ///
+    /// * Standalone mode: the ACP client owns the agent CLI child.
+    ///   `restart_tx` triggers an in-process tear-down + respawn;
+    ///   subsequent prompts get a fresh session on each tab. The
+    ///   `Connecting("Restarting agent...")` state lasts until the
+    ///   new `initialize` round-trip lands.
+    ///
+    /// * Helper mode: master owns the agent CLI lifetime, so a
+    ///   single helper cannot restart it in-process. The helper's
+    ///   `restart_rx` arm asks the C++ side to force-restart the
+    ///   whole agent stack (`restart_agent_stack` SendEvent →
+    ///   TerminalPage tears down every agent pane,
+    ///   `SharedWta::Restart` respawns master on the same stable
+    ///   pipe name, then the active tab's pane is re-opened). The
+    ///   user briefly sees the agent pane flash closed and reopen
+    ///   with a clean session. The `Connecting("Restarting...")`
+    ///   state set below is short-lived — this helper process is
+    ///   on its way out as part of the pane teardown.
+    fn cmd_restart(&mut self) {
+        self.state = ConnectionState::Connecting("Restarting agent...".to_string());
+        self.session_to_tab.clear();
+        self.session_id.clear();
+        for (_, tab) in self.tab_sessions.iter_mut() {
+            tab.clear_chat_history();
+            tab.completed_turns.clear();
+            tab.selected_completed_turn_idx = None;
+            tab.session_id = None;
+        }
+        let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
+        self.publish_agent_status();
     }
 
     /// Width of the main area (chat / recs / perm / input) — matches the
@@ -8600,6 +8624,70 @@ mod tests {
             false,
             Arc::new(crate::shell::ShellManager::new()),
         )
+    }
+
+    /// Dispatch a zero-arg slash command by name through the real
+    /// `handle_slash_command` path, the way the Enter handler does.
+    fn run_slash(app: &mut App, name: &str) {
+        let spec = commands::lookup(name).expect("name is a registered command");
+        app.handle_slash_command(ParsedCommand {
+            kind: spec.kind,
+            spec,
+            rest: String::new(),
+        });
+    }
+
+    #[test]
+    fn slash_help_toggles_overlay() {
+        let mut app = test_app();
+        assert!(!app.help_overlay_visible);
+        run_slash(&mut app, "help");
+        assert!(app.help_overlay_visible);
+        run_slash(&mut app, "help");
+        assert!(!app.help_overlay_visible);
+    }
+
+    #[test]
+    fn slash_clear_wipes_active_tab_history() {
+        let mut app = test_app();
+        app.current_tab_mut()
+            .messages
+            .push(ChatMessage::System("stale".into()));
+        app.current_tab_mut().selected_completed_turn_idx = Some(0);
+
+        run_slash(&mut app, "clear");
+
+        assert!(app.current_tab().messages.is_empty());
+        assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+    }
+
+    #[test]
+    fn slash_stop_when_idle_notes_nothing_to_stop() {
+        let mut app = test_app();
+        // Fresh tab: turn is Idle, so /stop only emits the advisory message.
+        assert!(!app.current_tab().turn.is_in_flight());
+
+        run_slash(&mut app, "stop");
+
+        assert_eq!(app.current_tab().messages.len(), 1);
+        assert!(matches!(
+            app.current_tab().messages.last(),
+            Some(ChatMessage::System(_))
+        ));
+    }
+
+    #[test]
+    fn slash_new_when_idle_resets_session() {
+        let mut app = test_app();
+        app.current_tab_mut().session_id = Some("sid-1".into());
+        app.current_tab_mut()
+            .messages
+            .push(ChatMessage::System("stale".into()));
+
+        run_slash(&mut app, "new");
+
+        assert_eq!(app.current_tab().session_id, None);
+        assert!(app.current_tab().messages.is_empty());
     }
 
     /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event
