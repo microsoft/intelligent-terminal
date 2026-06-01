@@ -231,11 +231,11 @@ namespace Microsoft::Terminal::WtaProcess
         return envBlock;
     }
 
-    // Re-read PATH from the Windows registry (system + user) and update
-    // the current process's PATH environment variable. This makes
-    // SearchPathW pick up directories added after Terminal launched
-    // (e.g. WinGet\Links after installing Copilot via winget).
-    // Pure Win32 — no til/env or WinRT dependency.
+    // Merge registry PATH entries into the current process's PATH.
+    // Reads system + user PATH from the registry, then appends any
+    // directories not already present. Preserves session-specific
+    // entries inherited from the parent process.
+    // Pure Win32 + std::wstring only — no til/env, no STL containers.
     inline void RefreshProcessPath()
     {
         auto readRegPath = [](HKEY root, const wchar_t* subkey) -> std::wstring {
@@ -248,7 +248,15 @@ namespace Microsoft::Terminal::WtaProcess
                 RegCloseKey(hk);
                 return {};
             }
-            std::wstring buf(size / sizeof(wchar_t), L'\0');
+            // Only process string types
+            if (kind != REG_SZ && kind != REG_EXPAND_SZ)
+            {
+                RegCloseKey(hk);
+                return {};
+            }
+            // Round up to whole wchar_t count to guard against odd byte sizes
+            const DWORD wcharCount = (size + sizeof(wchar_t) - 1) / sizeof(wchar_t);
+            std::wstring buf(wcharCount, L'\0');
             if (RegQueryValueExW(hk, L"Path", nullptr, &kind,
                                  reinterpret_cast<BYTE*>(buf.data()), &size) != ERROR_SUCCESS)
             {
@@ -275,21 +283,64 @@ namespace Microsoft::Terminal::WtaProcess
             return buf;
         };
 
+        // Case-insensitive check: is `entry` already somewhere in
+        // the semicolon-delimited `path`?
+        auto pathContains = [](const std::wstring& path, const std::wstring& entry) -> bool {
+            if (entry.empty())
+                return true;
+            // Walk the semicolon-delimited string without allocating
+            size_t start = 0;
+            while (start <= path.size())
+            {
+                auto pos = path.find(L';', start);
+                if (pos == std::wstring::npos)
+                    pos = path.size();
+                if (pos - start == entry.size() &&
+                    _wcsnicmp(path.c_str() + start, entry.c_str(), entry.size()) == 0)
+                {
+                    return true;
+                }
+                start = pos + 1;
+            }
+            return false;
+        };
+
         auto sysPath = readRegPath(HKEY_LOCAL_MACHINE,
                                    LR"(SYSTEM\CurrentControlSet\Control\Session Manager\Environment)");
         auto usrPath = readRegPath(HKEY_CURRENT_USER, L"Environment");
 
-        std::wstring combined;
-        if (!sysPath.empty() && !usrPath.empty())
-            combined = sysPath + L";" + usrPath;
-        else if (!sysPath.empty())
-            combined = sysPath;
-        else if (!usrPath.empty())
-            combined = usrPath;
+        // Get current process PATH
+        wchar_t currentBuf[32767]{};
+        GetEnvironmentVariableW(L"PATH", currentBuf, 32767);
+        std::wstring currentPath{ currentBuf };
 
-        if (!combined.empty())
+        // Append registry entries not already in the process PATH
+        bool changed = false;
+        auto mergeFrom = [&](const std::wstring& regPath) {
+            size_t start = 0;
+            while (start < regPath.size())
+            {
+                auto pos = regPath.find(L';', start);
+                if (pos == std::wstring::npos)
+                    pos = regPath.size();
+                auto entry = regPath.substr(start, pos - start);
+                if (!entry.empty() && !pathContains(currentPath, entry))
+                {
+                    if (!currentPath.empty() && currentPath.back() != L';')
+                        currentPath += L';';
+                    currentPath += entry;
+                    changed = true;
+                }
+                start = pos + 1;
+            }
+        };
+
+        mergeFrom(sysPath);
+        mergeFrom(usrPath);
+
+        if (changed)
         {
-            SetEnvironmentVariableW(L"PATH", combined.c_str());
+            SetEnvironmentVariableW(L"PATH", currentPath.c_str());
         }
     }
 
