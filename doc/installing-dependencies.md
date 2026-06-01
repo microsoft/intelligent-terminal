@@ -127,13 +127,12 @@ first-run experience installs **GitHub Copilot** (the default) for you;
 the other three are **bring-your-own** — install the CLI yourself
 (sub-sections below) before selecting it in the FRE.
 
-All four speak the
-[**Agent Control Protocol (ACP)**](https://agentclientprotocol.com/get-started/agents),
-the open spec Intelligent Terminal uses to talk to agent CLIs. **Claude
-Code** and **OpenAI Codex** additionally need an ACP wrapper so
-Intelligent Terminal can talk to them; the wrapper is fetched on demand
-via `npx` at run time, so its only prerequisite is Node.js. Copilot and
-Gemini speak ACP natively and need no wrapper.
+Intelligent Terminal talks to all four through the
+[**Agent Control Protocol (ACP)**](https://agentclientprotocol.com/get-started/agents).
+**Copilot** and **Gemini** speak ACP natively, so no extra layer is
+required. **Claude Code** and **OpenAI Codex** do not speak ACP directly
+— Intelligent Terminal launches them through an `npx` wrapper that is
+fetched on demand at run time, so its only prerequisite is Node.js.
 
 > [!NOTE]
 > **Bringing your own ACP agent.** Any CLI that speaks ACP can also be
@@ -220,7 +219,7 @@ npx -y @zed-industries/claude-code-acp
 ```
 
 You do **not** need to install anything for this — the only prerequisite
-is a working Node.js + `npx` (which you already installed in Step 4.1).
+is a working Node.js + `npx` (which you already installed in Step 3.2.1).
 The first launch may take a few seconds while `npx` downloads the wrapper.
 
 > [!IMPORTANT]
@@ -267,7 +266,7 @@ npx -y @zed-industries/codex-acp
 ```
 
 You do **not** need to install anything for this — the only prerequisite
-is a working Node.js + `npx` (which you already installed in Step 5.1).
+is a working Node.js + `npx` (which you already installed in Step 3.3.1).
 The first launch may take a few seconds while `npx` downloads the wrapper.
 
 > [!IMPORTANT]
