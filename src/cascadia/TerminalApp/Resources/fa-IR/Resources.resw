@@ -227,7 +227,7 @@
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ مدیر بسته Windows (winget) نصب نشده یا در دسترس نیست. ابتدا آن را نصب کنید، سپس دوباره تلاش کنید.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ نصب Node.js ناموفق بود. شبکه خود را بررسی کنید و دوباره تلاش کنید.</value>

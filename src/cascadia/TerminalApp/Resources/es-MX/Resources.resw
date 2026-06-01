@@ -221,7 +221,7 @@
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ El Administrador de paquetes de Windows (winget) no está instalado o no está disponible. Instálalo primero y vuelve a intentarlo.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ Error al instalar Node.js. Verifica tu conexión de red e inténtalo de nuevo.</value>

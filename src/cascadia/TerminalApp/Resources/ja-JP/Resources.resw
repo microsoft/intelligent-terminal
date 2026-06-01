@@ -1073,7 +1073,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows パッケージ マネージャー (winget) がインストールされていないか、利用できません。先にインストールしてから、もう一度お試しください。</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ Node.js のインストールに失敗しました。ネットワークを確認して再試行してください。</value>

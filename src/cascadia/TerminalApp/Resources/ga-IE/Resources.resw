@@ -113,7 +113,7 @@
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Níl Bainisteoir Pacáistí Windows (winget) suiteáilte nó ar fáil. Suiteáil é ar dtús, ansin bain triail eile as.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ Theip ar Node.js a shuiteáil. Seiceáil do cheangal líonra agus bain triail eile as.</value>

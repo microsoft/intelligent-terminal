@@ -1118,7 +1118,7 @@
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Диспетчер пакетів Windows (winget) не інстальовано або він недоступний. Спочатку інсталюйте його, а потім спробуйте знову.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ Не вдалося встановити Node.js. Перевірте мережеве підключення та спробуйте знову.</value>

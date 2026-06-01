@@ -226,7 +226,7 @@
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Správce balíčků systému Windows (winget) není nainstalovaný nebo není dostupný. Nejdřív ho nainstalujte a pak to zkuste znovu.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ Nepodařilo se nainstalovat Node.js. Zkontrolujte síťové připojení a zkuste to znovu.</value>

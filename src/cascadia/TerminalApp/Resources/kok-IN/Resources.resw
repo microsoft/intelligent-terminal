@@ -227,7 +227,7 @@
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows Package Manager (winget) इन्स्टॉल केल्लो ना वा उपलब्ध ना. पयलीं तो इन्स्टॉल करात, मागीर परतून यत्न करात.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ Node.js इन्स्टॉल करपाक अपेशी. तुमचें नेटवर्क तपासात आनी परतून यत्न करात.</value>

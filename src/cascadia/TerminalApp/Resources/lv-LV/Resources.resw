@@ -226,7 +226,7 @@
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows pakotņu pārvaldnieks (winget) nav instalēts vai nav pieejams. Vispirms instalējiet to un pēc tam mēģiniet vēlreiz.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ Neizdevās instalēt Node.js. Pārbaudiet tīkla savienojumu un mēģiniet vēlreiz.</value>

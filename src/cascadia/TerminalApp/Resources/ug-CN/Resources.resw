@@ -113,7 +113,7 @@
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows Package Manager (winget) ئورنىتىلمىغان ياكى ئىشلەتكىلى بولمايدۇ. ئالدى بىلەن ئۇنى ئورنىتىڭ، ئاندىن قايتا سىناڭ.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
   <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
     <value>⚠ Node.js ئورنىتىش مەغلۇب بولدى. تور باغلىنىشىڭىزنى تەكشۈرۈڭ ۋە قايتا سىناڭ.</value>
