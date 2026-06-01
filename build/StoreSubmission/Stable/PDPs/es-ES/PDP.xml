@@ -32,7 +32,7 @@
   <Description>
       Terminal Windows es una aplicación de terminal moderna, rápida, eficaz, eficiente y productiva para los usuarios de herramientas de línea de comandos y shell, como Símbolo del sistema, PowerShell y WSL. Entre las características principales se incluyen varias pestañas, paneles, compatibilidad con caracteres Unicode y UTF-8, un motor de representación de texto acelerado por GPU, y temas, estilos y configuraciones personalizados.
 
-Este es un proyecto de fuente abierta y animamos a la comunidad a participar. Para colaborar, visite https://aka.ms/intelligentterminal/source </Description>
+Este es un proyecto de fuente abierta y animamos a la comunidad a participar. Para colaborar, visite https://aka.ms/intelligent-terminal-source </Description>
   <ShortDescription>
     <!-- Only used for games. This description appears in the Information section of the Game Hub on Xbox One, and helps customers understand more about your game. -->
     
@@ -173,9 +173,9 @@ Consulte la página de versiones de GitHub para más información.
     
   </AdditionalLicenseTerms>
   <WebsiteURL>
-    https://aka.ms/intelligentterminal/source</WebsiteURL>
+    https://aka.ms/intelligent-terminal-source</WebsiteURL>
   <SupportContactInfo>
-    https://aka.ms/intelligentterminal/feedback</SupportContactInfo>
+    https://aka.ms/intelligent-terminal-feedback</SupportContactInfo>
   <PrivacyPolicyURL>
-    https://aka.ms/intelligentterminal/privacy</PrivacyPolicyURL>
+    https://aka.ms/intelligent-terminal-privacy</PrivacyPolicyURL>
 </ProductDescription>

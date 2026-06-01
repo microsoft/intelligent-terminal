@@ -166,7 +166,7 @@
     <value>Не вдалося перезавантажити налаштування</value>
   </data>
   <data name="FeedbackUriValue" xml:space="preserve">
-    <value>https://aka.ms/intelligentterminal/feedback</value>
+    <value>https://aka.ms/intelligent-terminal-feedback</value>
     <comment>{Locked}</comment>
   </data>
   <data name="AboutMenuItem" xml:space="preserve">
@@ -298,7 +298,7 @@
     <comment>{Locked="\"globals\""} </comment>
   </data>
   <data name="LegacyGlobalsPropertyHrefUrl" xml:space="preserve">
-    <value>https://aka.ms/intelligentterminal/legacy-globals</value>
+    <value>https://go.microsoft.com/fwlink/?linkid=2128258</value>
     <comment>{Locked}</comment>
   </data>
   <data name="LegacyGlobalsPropertyHrefLabel" xml:space="preserve">

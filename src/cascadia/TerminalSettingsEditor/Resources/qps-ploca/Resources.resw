@@ -2233,7 +2233,7 @@
     <comment>A disclaimer that indicates that Terminal is running in a mode that saves settings to a different folder. {Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" should not be pseudo-localized.</comment>
   </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
-    <value>https://aka.ms/intelligentterminal/portable-mode</value>
+    <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
     <comment>{Locked}</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
