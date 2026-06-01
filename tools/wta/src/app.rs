@@ -1,7 +1,5 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use crossterm::queue;
-use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
 use ratatui::backend::CrosstermBackend;
 use ratatui::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -3835,47 +3833,24 @@ impl App {
         let total_started = std::time::Instant::now();
 
         let mut frame = terminal.get_frame();
-        let area = frame.area();
 
         let render_started = std::time::Instant::now();
         ui::render(&mut frame, self);
         ui_trace::log_slow("ui_render", render_started.elapsed(), || self.trace_state());
 
-        // Wrap the whole frame in a synchronized-update boundary (CSI ? 2026
-        // h/l, supported by Windows Terminal). Without it, every cursor
-        // call in the ratatui-crossterm backend (`hide_cursor`,
-        // `show_cursor`, `set_cursor_position` — all `execute!`-based, see
-        // ratatui-crossterm lib.rs:288/292/303) flushes stdout on its own,
-        // so WT can render partial states between them — most visibly the
-        // brief cursor-hidden window during the shimmer redraw, which the
-        // eye reads as the inputbox cursor blinking at ~8Hz. Inside a sync
-        // block WT freezes rendering until End and paints the final state
-        // in a single frame.
-        queue!(terminal.backend_mut(), BeginSynchronizedUpdate)?;
-
+        // The text caret is painted as an inverse buffer cell by `ui::input`
+        // in every state, so the OS cursor is always hidden. With no
+        // `show_cursor`/`set_cursor_position` interleaved after the content
+        // flush, there's no partial-frame tearing to hide — hence no need for
+        // a synchronized-update (CSI ? 2026) wrapper around the frame (which
+        // was also the prime suspect for frames being held until the next
+        // redraw on an unfocused pane).
         let flush_started = std::time::Instant::now();
+        terminal.hide_cursor()?;
         terminal.flush()?;
         ui_trace::log_slow("terminal_flush", flush_started.elapsed(), || {
             self.trace_state()
         });
-
-        let cursor_started = std::time::Instant::now();
-        if let Some(position) = ui::input_cursor_position(self, area) {
-            // Order matters: position first, then show. Showing first would
-            // briefly reveal the cursor wherever the flush left it (typically
-            // the last redrawn cell on the chat side) before the move lands.
-            // (Inside the sync block this is academic — WT won't render
-            // either intermediate — but the ordering also documents intent.)
-            terminal.set_cursor_position(position)?;
-            terminal.show_cursor()?;
-        } else {
-            terminal.hide_cursor()?;
-        }
-        ui_trace::log_slow("terminal_cursor", cursor_started.elapsed(), || {
-            self.trace_state()
-        });
-
-        queue!(terminal.backend_mut(), EndSynchronizedUpdate)?;
 
         terminal.swap_buffers();
 

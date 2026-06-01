@@ -48,6 +48,13 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         .saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH);
     let viewport = input_viewport(&tab.input, tab.cursor_pos, text_width);
 
+    // The caret is painted as a buffer cell (not the OS cursor) in every
+    // state, but only when the input box is the live caret target: the pane
+    // has XAML focus *and* the TUI's arrow keys land in the input (not in a
+    // recommendation card or a selected completed turn). See
+    // TabSession::input_has_nav_focus.
+    let input_active = app.pane_focused && tab.input_has_nav_focus();
+
     let lines: Vec<Line> = if tab.input.is_empty() {
         // Show a placeholder reflecting connection state. The "> " is its
         // own span so the placeholder/typed text/cursor all sit in the same
@@ -68,11 +75,6 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         // on Black = invisible) before the cursor overlay had anything to
         // reveal.
         //
-        // Only paint the white block when the input cell is actually the
-        // live caret target: the pane has XAML focus *and* the TUI's arrow
-        // keys land in the input (not in a recommendation card or a
-        // selected completed turn). See TabSession::input_has_nav_focus.
-        let input_active = app.pane_focused && tab.input_has_nav_focus();
         let mut placeholder_spans = vec![Span::styled(INPUT_PROMPT, theme::DIM)];
         let mut chars = placeholder.chars();
         if let Some(first) = chars.next() {
@@ -108,7 +110,17 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 } else {
                     Span::raw(INPUT_PROMPT_CONT)
                 };
-                Line::from(vec![prefix, Span::styled(line.clone(), theme::INPUT_TEXT)])
+                // Paint the caret as an inverse cell on the row/column the
+                // cursor sits on. This replaces the OS block cursor so there
+                // is nothing for WT to blink or tear, and lets `draw_frame`
+                // keep the OS cursor hidden in every state.
+                if input_active && i == viewport.cursor_row {
+                    let mut spans = vec![prefix];
+                    push_caret_spans(&mut spans, line, viewport.cursor_col);
+                    Line::from(spans)
+                } else {
+                    Line::from(vec![prefix, Span::styled(line.clone(), theme::INPUT_TEXT)])
+                }
             })
             .collect()
     };
@@ -126,27 +138,37 @@ pub(crate) fn input_height(input: &str, cursor_pos: usize, total_width: u16) -> 
     (viewport.visible_lines.len() as u16 + 2).clamp(INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT)
 }
 
-pub(crate) fn cursor_position(app: &App, area: Rect) -> Option<Position> {
-    if area.width <= INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH || area.height <= 2 {
-        return None;
+/// Split `line` at the caret display-column and push up to three spans onto
+/// `spans`: the text before the caret, the caret cell (the glyph under it, or
+/// a space when the caret sits past the last char at end of line) painted as
+/// an inverse block, and the text after. `caret_col` is a display-cell column
+/// produced by `wrap_input`, so it always lands on a char boundary.
+fn push_caret_spans(spans: &mut Vec<Span<'static>>, line: &str, caret_col: usize) {
+    let mut before = String::new();
+    let mut col = 0usize;
+    let mut chars = line.chars();
+    let mut caret_ch: Option<char> = None;
+    for ch in chars.by_ref() {
+        if col >= caret_col {
+            caret_ch = Some(ch);
+            break;
+        }
+        before.push(ch);
+        col += char_display_width(ch);
     }
+    let after: String = chars.collect();
+    let caret_text = caret_ch.map(|c| c.to_string()).unwrap_or_else(|| " ".to_string());
 
-    let text_width = area
-        .width
-        .saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH);
-    let tab = app.current_tab();
-    let viewport = input_viewport(&tab.input, tab.cursor_pos, text_width);
-    let cursor_col = viewport.cursor_col.min(text_width.saturating_sub(1) as usize);
-    let cursor_row = viewport
-        .cursor_row
-        .min(viewport.visible_lines.len().saturating_sub(1));
-
-    // +1 for the left `│` border, then inner padding, then the "> " prefix,
-    // then the column inside the text.
-    Some(Position::new(
-        area.x + 1 + INPUT_LEFT_PAD + INPUT_PROMPT_WIDTH + cursor_col as u16,
-        area.y + 1 + cursor_row as u16,
-    ))
+    if !before.is_empty() {
+        spans.push(Span::styled(before, theme::INPUT_TEXT));
+    }
+    spans.push(Span::styled(
+        caret_text,
+        Style::new().fg(Color::Black).bg(Color::White),
+    ));
+    if !after.is_empty() {
+        spans.push(Span::styled(after, theme::INPUT_TEXT));
+    }
 }
 
 pub(crate) fn input_viewport(input: &str, cursor_pos: usize, total_width: u16) -> InputViewport {

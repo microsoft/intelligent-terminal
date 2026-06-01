@@ -13,5 +13,4 @@ pub mod shimmer;
 
 pub use shimmer::CYCLE_FRAMES as ACTIVITY_CYCLE_FRAMES;
 pub use command_popup::PopupState;
-pub use layout::input_cursor_position;
 pub use layout::render;
