@@ -8590,13 +8590,22 @@ fn prev_word_boundary(input: &str, cursor_pos: usize) -> usize {
     i
 }
 
+// Slash-command behavior tests live in their own file. Declared as a child
+// of `app` (not the crate root) so they can reach `App`'s private dispatch
+// methods, and `#[path]` keeps the file flat in `src/` like the rest.
+#[cfg(test)]
+#[path = "slash_command_tests.rs"]
+mod slash_command_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
 
     // Helper to create an App for testing (avoids needing real channels for simple state tests).
-    fn test_app() -> App {
+    // `pub(super)` so the sibling `slash_command_tests` module (see the
+    // `#[path]` mod in app.rs) can reuse it instead of duplicating App::new.
+    pub(super) fn test_app() -> App {
         let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
         let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
         let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -8624,70 +8633,6 @@ mod tests {
             false,
             Arc::new(crate::shell::ShellManager::new()),
         )
-    }
-
-    /// Dispatch a zero-arg slash command by name through the real
-    /// `handle_slash_command` path, the way the Enter handler does.
-    fn run_slash(app: &mut App, name: &str) {
-        let spec = commands::lookup(name).expect("name is a registered command");
-        app.handle_slash_command(ParsedCommand {
-            kind: spec.kind,
-            spec,
-            rest: String::new(),
-        });
-    }
-
-    #[test]
-    fn slash_help_toggles_overlay() {
-        let mut app = test_app();
-        assert!(!app.help_overlay_visible);
-        run_slash(&mut app, "help");
-        assert!(app.help_overlay_visible);
-        run_slash(&mut app, "help");
-        assert!(!app.help_overlay_visible);
-    }
-
-    #[test]
-    fn slash_clear_wipes_active_tab_history() {
-        let mut app = test_app();
-        app.current_tab_mut()
-            .messages
-            .push(ChatMessage::System("stale".into()));
-        app.current_tab_mut().selected_completed_turn_idx = Some(0);
-
-        run_slash(&mut app, "clear");
-
-        assert!(app.current_tab().messages.is_empty());
-        assert_eq!(app.current_tab().selected_completed_turn_idx, None);
-    }
-
-    #[test]
-    fn slash_stop_when_idle_notes_nothing_to_stop() {
-        let mut app = test_app();
-        // Fresh tab: turn is Idle, so /stop only emits the advisory message.
-        assert!(!app.current_tab().turn.is_in_flight());
-
-        run_slash(&mut app, "stop");
-
-        assert_eq!(app.current_tab().messages.len(), 1);
-        assert!(matches!(
-            app.current_tab().messages.last(),
-            Some(ChatMessage::System(_))
-        ));
-    }
-
-    #[test]
-    fn slash_new_when_idle_resets_session() {
-        let mut app = test_app();
-        app.current_tab_mut().session_id = Some("sid-1".into());
-        app.current_tab_mut()
-            .messages
-            .push(ChatMessage::System("stale".into()));
-
-        run_slash(&mut app, "new");
-
-        assert_eq!(app.current_tab().session_id, None);
-        assert!(app.current_tab().messages.is_empty());
     }
 
     /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event

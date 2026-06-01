@@ -275,54 +275,6 @@ mod tests {
     }
 
     #[test]
-    fn classify_known_command() {
-        match classify("/stop") {
-            ParseOutcome::Command(c) => assert_eq!(c.kind, CommandKind::Stop),
-            other => panic!("expected Command, got {other:?}"),
-        }
-        match classify("/help me please") {
-            ParseOutcome::Command(c) => {
-                assert_eq!(c.kind, CommandKind::Help);
-                assert_eq!(c.rest, "me please");
-            }
-            other => panic!("expected Command, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn classify_unknown_keeps_attempted_token() {
-        // Token carries its leading `/`, and trailing args are dropped from it.
-        assert_eq!(
-            classify("/claer"),
-            ParseOutcome::Unknown("/claer".to_string())
-        );
-        assert_eq!(
-            classify("/claer foo bar"),
-            ParseOutcome::Unknown("/claer".to_string())
-        );
-        // Leading whitespace is trimmed before the token is taken.
-        assert_eq!(
-            classify("   /nope"),
-            ParseOutcome::Unknown("/nope".to_string())
-        );
-    }
-
-    #[test]
-    fn classify_not_a_command() {
-        assert_eq!(classify("hello"), ParseOutcome::NotACommand);
-        // `//literal` escape is a prompt, not an unknown-command warning.
-        assert_eq!(classify("//etc/hosts"), ParseOutcome::NotACommand);
-        // Bare slash / whitespace-only slash have no token to name.
-        assert_eq!(classify("/"), ParseOutcome::NotACommand);
-        assert_eq!(classify("/  "), ParseOutcome::NotACommand);
-        // A `/` in the middle of a prompt is not an attempt.
-        assert_eq!(
-            classify("run cmd /flag"),
-            ParseOutcome::NotACommand
-        );
-    }
-
-    #[test]
     fn double_slash_is_not_a_command() {
         assert!(parse("//etc/hosts").is_none());
         assert!(parse("//literal").is_none());
