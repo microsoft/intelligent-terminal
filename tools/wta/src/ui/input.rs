@@ -115,8 +115,17 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 // is nothing for WT to blink or tear, and lets `draw_frame`
                 // keep the OS cursor hidden in every state.
                 if input_active && i == viewport.cursor_row {
+                    // Clamp to the last visible cell. At the end of a line that
+                    // already fills `text_width`, `cursor_col == text_width`;
+                    // an appended caret cell would be clipped off the right
+                    // edge and vanish, so sit the caret on the last glyph
+                    // instead (matches the OS-cursor clamp this replaced). The
+                    // `min` is an upper bound only — short lines keep the caret
+                    // in the blank cell right after their text.
+                    let caret_col =
+                        viewport.cursor_col.min((text_width as usize).saturating_sub(1));
                     let mut spans = vec![prefix];
-                    push_caret_spans(&mut spans, line, viewport.cursor_col);
+                    push_caret_spans(&mut spans, line, caret_col);
                     Line::from(spans)
                 } else {
                     Line::from(vec![prefix, Span::styled(line.clone(), theme::INPUT_TEXT)])
@@ -263,7 +272,7 @@ fn clamp_cursor_to_boundary(input: &str, cursor_pos: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{input_height, input_viewport};
+    use super::{input_height, input_viewport, push_caret_spans};
 
     #[test]
     fn empty_input_uses_single_visible_row() {
@@ -306,5 +315,46 @@ mod tests {
         assert_eq!(viewport.visible_lines.len(), 6);
         assert!(viewport.scroll_row > 0);
         assert_eq!(viewport.cursor_row, 5);
+    }
+
+    fn spans_text(spans: &[ratatui::text::Span]) -> String {
+        spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn caret_at_end_of_full_line_sits_on_last_glyph() {
+        // Caret column clamped to the last cell of a 4-wide line. The caret
+        // must land on the final glyph (not an appended cell that would be
+        // clipped past the right edge), and total rendered width stays 4.
+        let mut spans = Vec::new();
+        push_caret_spans(&mut spans, "abcd", 3);
+
+        assert_eq!(spans_text(&spans), "abcd");
+        assert_eq!(spans_text(&spans).chars().count(), 4);
+        // before = "abc", caret cell = "d" (no trailing span).
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[1].content.as_ref(), "d");
+    }
+
+    #[test]
+    fn caret_past_end_of_short_line_uses_blank_cell() {
+        // Short line: the caret sits in the blank cell right after the text.
+        let mut spans = Vec::new();
+        push_caret_spans(&mut spans, "ab", 2);
+
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].content.as_ref(), "ab");
+        assert_eq!(spans[1].content.as_ref(), " ");
+    }
+
+    #[test]
+    fn caret_in_middle_splits_before_glyph_after() {
+        let mut spans = Vec::new();
+        push_caret_spans(&mut spans, "abcd", 1);
+
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content.as_ref(), "a");
+        assert_eq!(spans[1].content.as_ref(), "b");
+        assert_eq!(spans[2].content.as_ref(), "cd");
     }
 }
