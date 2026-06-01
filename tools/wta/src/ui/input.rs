@@ -115,17 +115,8 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 // is nothing for WT to blink or tear, and lets `draw_frame`
                 // keep the OS cursor hidden in every state.
                 if input_active && i == viewport.cursor_row {
-                    // Clamp to the last visible cell. At the end of a line that
-                    // already fills `text_width`, `cursor_col == text_width`;
-                    // an appended caret cell would be clipped off the right
-                    // edge and vanish, so sit the caret on the last glyph
-                    // instead (matches the OS-cursor clamp this replaced). The
-                    // `min` is an upper bound only — short lines keep the caret
-                    // in the blank cell right after their text.
-                    let caret_col =
-                        viewport.cursor_col.min((text_width as usize).saturating_sub(1));
                     let mut spans = vec![prefix];
-                    push_caret_spans(&mut spans, line, caret_col);
+                    push_caret_spans(&mut spans, line, viewport.cursor_col);
                     Line::from(spans)
                 } else {
                     Line::from(vec![prefix, Span::styled(line.clone(), theme::INPUT_TEXT)])
@@ -246,7 +237,21 @@ fn wrap_input(input: &str, cursor_pos: usize, max_width: usize) -> WrappedInput 
         }
     }
 
-    let (cursor_row, cursor_col) = cursor.unwrap_or((row, col));
+    let (mut cursor_row, mut cursor_col) = cursor.unwrap_or((row, col));
+
+    // When the caret sits exactly at the right edge of a full line with
+    // nothing after it, show it at the start of the next line instead of the
+    // overflow column. The next typed glyph wraps down there anyway, so the
+    // caret just leads it — no cramming onto the last glyph and no cell
+    // clipped past the edge. Grows the box by one row to make the line
+    // visible, matching how it would look right after the wrapping keystroke.
+    if cursor_col >= max_width {
+        cursor_row += 1;
+        cursor_col = 0;
+        if lines.len() <= cursor_row {
+            lines.push(String::new());
+        }
+    }
 
     WrappedInput {
         lines,
@@ -322,18 +327,21 @@ mod tests {
     }
 
     #[test]
-    fn caret_at_end_of_full_line_sits_on_last_glyph() {
-        // Caret column clamped to the last cell of a 4-wide line. The caret
-        // must land on the final glyph (not an appended cell that would be
-        // clipped past the right edge), and total rendered width stays 4.
-        let mut spans = Vec::new();
-        push_caret_spans(&mut spans, "abcd", 3);
+    fn caret_at_end_of_full_line_moves_to_next_line() {
+        // "abcdefgh" exactly fills width 8 with the cursor at the end. Rather
+        // than stranding the caret in the overflow column (where it would be
+        // clipped), it shows at the start of a fresh empty line below, and the
+        // box grows a row to make room.
+        let viewport = input_viewport("abcdefgh", 8, 8);
 
-        assert_eq!(spans_text(&spans), "abcd");
-        assert_eq!(spans_text(&spans).chars().count(), 4);
-        // before = "abc", caret cell = "d" (no trailing span).
-        assert_eq!(spans.len(), 2);
-        assert_eq!(spans[1].content.as_ref(), "d");
+        assert_eq!(
+            viewport.visible_lines,
+            vec!["abcdefgh".to_string(), String::new()]
+        );
+        assert_eq!(viewport.cursor_row, 1);
+        assert_eq!(viewport.cursor_col, 0);
+        // inner width 8 (= 13 - 5 borders/pad/prefix): 2 rows + 2 borders.
+        assert_eq!(input_height("abcdefgh", 8, 13), 4);
     }
 
     #[test]
