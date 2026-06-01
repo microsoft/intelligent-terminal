@@ -521,6 +521,22 @@ fn ensure_installed_in(home: &Path) {
 // Per-CLI install flows
 // ---------------------------------------------------------------------------
 
+/// Whether the CLI's binary is currently resolvable on `PATH`.
+///
+/// This is the **authoritative "is the CLI installed" signal** for the
+/// per-CLI install gates below. Earlier wta builds gated install solely on
+/// the presence of `~/.<cli>` (Claude's `~/.claude`, Copilot's
+/// `~/.copilot`, etc.), but every supported CLI leaves that directory
+/// behind on uninstall (containing logs, auth tokens, plugin state, ...),
+/// so the dir-only check fires "install hooks for X" even on machines
+/// where X has been uninstalled. Probing `PATH` via `which::which` matches
+/// what [`status_for`] already does (`locate_binary` at line ~915) and
+/// what the dev probes in [`upgrade_installed_hooks`] use, so we stay
+/// consistent with the rest of the module.
+fn cli_binary_on_path(cli: CliKind) -> bool {
+    which::which(cli.name()).is_ok()
+}
+
 /// Install hooks for Claude Code by spawning `claude plugin install`.
 ///
 /// Always uses Claude Code's own plugin manager — never edits
@@ -535,6 +551,13 @@ fn ensure_installed_in(home: &Path) {
 ///   3. Spawn `claude plugin marketplace add <bundle>/claude`.
 ///   4. Spawn `claude plugin install wt-agent-hooks@wt-local`.
 fn install_for_claude(home: &Path) {
+    if !cli_binary_on_path(CliKind::Claude) {
+        tracing::debug!(
+            target: "agent_hooks",
+            "claude not on PATH; skipping hook install (CLI not installed)",
+        );
+        return;
+    }
     let claude_dir = home.join(".claude");
     if !claude_dir.is_dir() {
         tracing::debug!(target: "agent_hooks", "no ~/.claude dir; Claude not present");
@@ -635,6 +658,13 @@ fn install_for_claude(home: &Path) {
 /// to trust the plugin before any events fire. That's documented in
 /// the slice-C README; this function returns success on registration.
 fn install_for_codex(home: &Path) {
+    if !cli_binary_on_path(CliKind::Codex) {
+        tracing::debug!(
+            target: "agent_hooks",
+            "codex not on PATH; skipping hook install (CLI not installed)",
+        );
+        return;
+    }
     let codex_dir = home.join(".codex");
     if !codex_dir.is_dir() {
         tracing::debug!(target: "agent_hooks", "no ~/.codex dir; Codex not present");
@@ -719,6 +749,13 @@ fn maybe_stage_bundle_for_codex(source: &Path) -> Option<PathBuf> {
 
 /// Install hooks for Copilot CLI by spawning `copilot plugin install`.
 fn install_for_copilot(home: &Path) {
+    if !cli_binary_on_path(CliKind::Copilot) {
+        tracing::debug!(
+            target: "copilot_hooks",
+            "copilot not on PATH; skipping hook install (CLI not installed)",
+        );
+        return;
+    }
     let copilot_dir = home.join(".copilot");
     if !copilot_dir.is_dir() {
         tracing::debug!(target: "copilot_hooks", "no ~/.copilot dir; Copilot CLI not present");
@@ -814,6 +851,13 @@ fn install_for_copilot(home: &Path) {
 
 /// Install hooks for Gemini CLI by spawning `gemini extensions install`.
 fn install_for_gemini(home: &Path) {
+    if !cli_binary_on_path(CliKind::Gemini) {
+        tracing::debug!(
+            target: "gemini_hooks",
+            "gemini not on PATH; skipping hook install (CLI not installed)",
+        );
+        return;
+    }
     let gemini_dir = home.join(".gemini");
     if !gemini_dir.is_dir() {
         tracing::debug!(target: "gemini_hooks", "no ~/.gemini dir; Gemini CLI not present");
