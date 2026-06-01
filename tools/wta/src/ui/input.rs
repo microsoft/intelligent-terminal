@@ -239,13 +239,14 @@ fn wrap_input(input: &str, cursor_pos: usize, max_width: usize) -> WrappedInput 
 
     let (mut cursor_row, mut cursor_col) = cursor.unwrap_or((row, col));
 
-    // When the caret sits exactly at the right edge of a full line with
-    // nothing after it, show it at the start of the next line instead of the
-    // overflow column. The next typed glyph wraps down there anyway, so the
-    // caret just leads it — no cramming onto the last glyph and no cell
-    // clipped past the edge. Grows the box by one row to make the line
-    // visible, matching how it would look right after the wrapping keystroke.
-    if cursor_col >= max_width {
+    // When the caret is at the very end of the input and sits at the right
+    // edge of a full line, show it at the start of a fresh next line instead
+    // of the overflow column (where the appended caret cell would be clipped).
+    // The next typed glyph wraps down there anyway, so the caret just leads
+    // it. Gated on end-of-input: a caret in the middle of text that happens to
+    // land on a wrap boundary (e.g. just before a `\n` or wrapped content) is
+    // left where it is so it doesn't jump onto the following line's glyph.
+    if cursor_col >= max_width && cursor_pos == input.len() {
         cursor_row += 1;
         cursor_col = 0;
         if lines.len() <= cursor_row {
@@ -322,10 +323,6 @@ mod tests {
         assert_eq!(viewport.cursor_row, 5);
     }
 
-    fn spans_text(spans: &[ratatui::text::Span]) -> String {
-        spans.iter().map(|s| s.content.as_ref()).collect()
-    }
-
     #[test]
     fn caret_at_end_of_full_line_moves_to_next_line() {
         // "abcdefgh" exactly fills width 8 with the cursor at the end. Rather
@@ -342,6 +339,15 @@ mod tests {
         assert_eq!(viewport.cursor_col, 0);
         // inner width 8 (= 13 - 5 borders/pad/prefix): 2 rows + 2 borders.
         assert_eq!(input_height("abcdefgh", 8, 13), 4);
+    }
+
+    #[test]
+    fn caret_mid_text_at_wrap_boundary_does_not_jump_to_next_line() {
+        // Caret just before a hard '\n' that lands on the wrap boundary is
+        // mid-text, not end-of-input, so it must stay on its own line instead
+        // of jumping onto the following line's glyph.
+        let viewport = input_viewport("abcdefgh\nx", 8, 8);
+        assert_eq!(viewport.cursor_row, 0);
     }
 
     #[test]
