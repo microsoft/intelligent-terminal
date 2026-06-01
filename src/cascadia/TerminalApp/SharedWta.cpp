@@ -8,7 +8,7 @@
 #include <string>
 
 #include "../WinRTUtils/inc/WtExeUtils.h"
-#include <til/env.h>
+#include "../inc/WtaProcess.h"
 
 namespace winrt::TerminalApp::implementation
 {
@@ -261,14 +261,13 @@ namespace winrt::TerminalApp::implementation
         // (no job → no KILL_ON_JOB_CLOSE containment).
         DWORD creationFlags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED;
 
-        // Build a fresh environment from the Windows registry so the
-        // master sees PATH entries added after Terminal launched (e.g.
-        // WinGet\Links after FRE installs copilot). Without this the
-        // master inherits Terminal's startup-time PATH which may not
-        // include freshly-installed CLIs.
-        til::env masterEnv;
-        masterEnv.regenerate();
-        auto envBlock = masterEnv.to_string();
+        // Refresh the current process's PATH from the Windows registry
+        // so the master (which inherits our env) sees PATH entries added
+        // after Terminal launched (e.g. WinGet\Links after FRE installs
+        // copilot). Using RefreshProcessPath + lpEnvironment=nullptr
+        // preserves all process-only variables (WT_COM_CLSID, etc.)
+        // that regenerate() would drop.
+        ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
 
         std::wstring mutableCmdLine{ commandline };
         if (!CreateProcessW(
@@ -278,7 +277,7 @@ namespace winrt::TerminalApp::implementation
                 /* lpThreadAttributes   */ nullptr,
                 /* bInheritHandles      */ FALSE,
                 /* dwCreationFlags      */ creationFlags,
-                /* lpEnvironment        */ envBlock.empty() ? nullptr : envBlock.data(),
+                /* lpEnvironment        */ nullptr,
                 /* lpCurrentDirectory   */ nullptr,
                 /* lpStartupInfo        */ &si,
                 /* lpProcessInformation */ &pi))

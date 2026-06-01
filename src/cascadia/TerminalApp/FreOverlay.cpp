@@ -11,7 +11,6 @@
 #include "../inc/ShellIntegration.h"
 #include "../inc/RtlHelper.h"
 
-#include <til/env.h>
 #include <winrt/Windows.UI.Xaml.Documents.h>
 
 using namespace winrt::Windows::Foundation;
@@ -25,28 +24,6 @@ namespace winrt::TerminalApp::implementation
     FreOverlay::FreOverlay()
     {
         InitializeComponent();
-    }
-
-    // ── PATH refresh helper ───────────────────────────────────────────
-
-    // Re-read PATH from the Windows registry (system + user) and update
-    // the current process's PATH environment variable. This makes
-    // SearchPathW pick up directories added after Terminal launched
-    // (e.g. WinGet\Links after installing Copilot via winget).
-    static void _RefreshProcessPath()
-    {
-        til::env freshEnv;
-        freshEnv.regenerate();
-        const auto block = freshEnv.to_string();
-        // Extract PATH from the regenerated block
-        for (const wchar_t* p = block.c_str(); *p; p += wcslen(p) + 1)
-        {
-            if (_wcsnicmp(p, L"Path=", 5) == 0 || _wcsnicmp(p, L"PATH=", 5) == 0)
-            {
-                SetEnvironmentVariableW(L"PATH", p + 5);
-                break;
-            }
-        }
     }
 
     // ── Detection helpers ───────────────────────────────────────────────
@@ -577,7 +554,7 @@ namespace winrt::TerminalApp::implementation
         // CLIs without restarting Terminal.
         if (needsCopilot || needsNode)
         {
-            _RefreshProcessPath();
+            ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
         }
 
         // 4+5. Install hooks and shell integration. Run both, collect any

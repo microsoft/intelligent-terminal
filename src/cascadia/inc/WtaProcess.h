@@ -14,6 +14,7 @@
 
 #include <filesystem>
 #include <string>
+#include <til/env.h>
 
 namespace Microsoft::Terminal::WtaProcess
 {
@@ -229,6 +230,22 @@ namespace Microsoft::Terminal::WtaProcess
         envBlock += L'\0'; // double-null terminator
         FreeEnvironmentStringsW(currentEnv);
         return envBlock;
+    }
+
+    // Re-read PATH from the Windows registry (system + user) and update
+    // the current process's PATH environment variable. This makes
+    // SearchPathW pick up directories added after Terminal launched
+    // (e.g. WinGet\Links after installing Copilot via winget).
+    inline void RefreshProcessPath()
+    {
+        til::env freshEnv;
+        freshEnv.regenerate();
+        auto& map = freshEnv.as_map();
+        auto it = map.find(L"Path");
+        if (it != map.end())
+        {
+            SetEnvironmentVariableW(L"PATH", it->second.c_str());
+        }
     }
 
     // Spawn `wta.exe <argsAfterExe>` and wait for completion (no stdout capture).

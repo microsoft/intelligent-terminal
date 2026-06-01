@@ -12,7 +12,6 @@
 #include "../inc/CustomAgentId.h"
 #include "../inc/WtaProcess.h"
 
-#include <til/env.h>
 #include <json/json.h>
 
 using namespace winrt::Windows::Foundation;
@@ -38,23 +37,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
-
-    // Re-read PATH from the Windows registry and update the current
-    // process so SearchPathW finds CLIs installed after Terminal launched.
-    static void _RefreshProcessPath()
-    {
-        til::env freshEnv;
-        freshEnv.regenerate();
-        const auto block = freshEnv.to_string();
-        for (const wchar_t* p = block.c_str(); *p; p += wcslen(p) + 1)
-        {
-            if (_wcsnicmp(p, L"Path=", 5) == 0 || _wcsnicmp(p, L"PATH=", 5) == 0)
-            {
-                SetEnvironmentVariableW(L"PATH", p + 5);
-                break;
-            }
-        }
-    }
 
     bool AIAgentsViewModel::_IsAgentInstalled(const wchar_t* name)
     {
@@ -130,7 +112,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         // Refresh PATH from the Windows registry so SearchPathW can find
         // CLIs installed after Terminal launched (e.g. WinGet\Links).
-        _RefreshProcessPath();
+        ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
 
         // ACP-capable agents — use GPO-filtered list so only policy-allowed
         // agents appear in the dropdown. Also skip agents whose CLI isn't
