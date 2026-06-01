@@ -37,6 +37,67 @@ private:
 
 // ── Helpers ──
 
+// Print a context-appropriate diagnostic for a COM activation failure.
+// We special-case a few HRESULTs that have known, actionable causes; for
+// anything else we fall back to the raw HRESULT + system message so bug
+// reports retain the original signal.
+static void PrintConnectionError(HRESULT hr, const wchar_t* sysMessage)
+{
+    switch (hr)
+    {
+    case RPC_E_SERVERFAULT: // 0x80010105
+        // Combase's MetadataBasedMarshaler (used for cross-process WinRT
+        // activation when no proxy/stub DLL is registered) crashes on
+        // older Windows builds — observed on stock Win10 21H2 (combase
+        // 19041.1288) and Win11 22H2 (combase 22621.x). Fixed in newer
+        // cumulative updates and in Win11 24H2+. We deliberately do NOT
+        // cite a specific build number here because the fix shipped via
+        // ordinary monthly cumulative updates rather than a named release.
+        fprintf(stderr,
+                "[wtcli] Could not connect to Intelligent Terminal.\n"
+                "        This Windows build contains a known issue with cross-process\n"
+                "        WinRT activation. To fix:\n"
+                "          1. Open Settings > Windows Update\n"
+                "          2. Install all available updates and restart\n"
+                "          3. Try the command again\n"
+                "        If you are already on the latest Windows 11 24H2 (or newer)\n"
+                "        and still see this, please file an issue.\n"
+                "        (HRESULT 0x%08X: %ls)\n",
+                static_cast<uint32_t>(hr), sysMessage);
+        break;
+
+    case REGDB_E_CLASSNOTREG: // 0x80040154
+        // The TerminalProtocolComServer COM class is not registered. This
+        // typically means Intelligent Terminal's MSIX package failed to
+        // finish (re)registering — e.g. after a stuck upgrade. Reinstall
+        // or repair usually fixes it.
+        fprintf(stderr,
+                "[wtcli] Could not connect to Intelligent Terminal.\n"
+                "        Intelligent Terminal's COM server is not registered with\n"
+                "        Windows. This usually means the app's install or upgrade did\n"
+                "        not complete successfully. To fix, try one of the following:\n"
+                "          - Reinstall Intelligent Terminal from the Store / installer\n"
+                "          - Run the repair script bundled with the install\n"
+                "        (HRESULT 0x%08X: %ls)\n",
+                static_cast<uint32_t>(hr), sysMessage);
+        break;
+
+    case CO_E_SERVER_EXEC_FAILURE: // 0x80080005
+        fprintf(stderr,
+                "[wtcli] Could not launch the Intelligent Terminal protocol server.\n"
+                "        The server process failed to start. Make sure Intelligent\n"
+                "        Terminal is installed and try restarting it.\n"
+                "        (HRESULT 0x%08X: %ls)\n",
+                static_cast<uint32_t>(hr), sysMessage);
+        break;
+
+    default:
+        fprintf(stderr, "[wtcli] Connection failed: 0x%08X %ls\n",
+                static_cast<uint32_t>(hr), sysMessage);
+        break;
+    }
+}
+
 static Protocol::IProtocolServer ConnectToTerminal(Protocol::AuthResult* outAuth = nullptr)
 {
     wchar_t clsid[128]{};
@@ -68,8 +129,7 @@ static Protocol::IProtocolServer ConnectToTerminal(Protocol::AuthResult* outAuth
     }
     catch (const winrt::hresult_error& e)
     {
-        fprintf(stderr, "[wtcli] Connection failed: 0x%08X %ls\n",
-                static_cast<uint32_t>(e.code()), e.message().c_str());
+        PrintConnectionError(e.code(), e.message().c_str());
         return nullptr;
     }
 }
