@@ -2846,7 +2846,7 @@
   </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Hooks 설치</value>
-    <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment>
+    <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Codex, Gemini).</comment>
   </data>
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
     <value>새로 고침</value>
