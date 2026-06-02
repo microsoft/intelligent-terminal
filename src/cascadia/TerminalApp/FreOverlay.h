@@ -98,11 +98,13 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::IAsyncAction _SaveAndInstallAsync();
 
         // Flip the overlay between "saving / installing in progress" and
-        // "idle / editable" states. While saving: the settings form is
-        // dimmed + non-interactive, the Save button is disabled, the
-        // inline ProgressRing spins, and the button label switches to
-        // "Setting up...". On error or completion the inverse is applied
-        // so the user can edit and retry (or click Save again).
+        // "idle / editable" states. While saving: a modal SavingOverlay
+        // covers the settings form with a centered ProgressRing +
+        // "Setting up..." text, the form underneath is disabled
+        // (blocks keyboard too — pointer is caught by the overlay's
+        // Background), and the Save button is disabled. On error or
+        // completion the inverse is applied so the user can edit and
+        // retry (or click Save again).
         void _SetSavingState(bool saving);
     };
 }

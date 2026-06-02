@@ -26,10 +26,10 @@ namespace winrt::TerminalApp::implementation
     {
         InitializeComponent();
 
-        // The Save button hosts a ProgressRing + TextBlock instead of a
-        // plain text Content, so x:Uid can't carry the label. Seed the
-        // idle state (label = "Save", ring hidden, form interactive).
-        _SetSavingState(false);
+        // Seed the overlay's status text from the existing localized
+        // resource (reused here rather than adding a new .Text key
+        // across every locale).
+        SavingStatusText().Text(RS_(L"FreOverlay_SettingUp"));
     }
 
     // ── Detection helpers ───────────────────────────────────────────────
@@ -641,9 +641,9 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // 2. Enter the "saving" state: dim + block the form, disable the
-        // button, spin the ring, switch the label to "Setting up...".
-        // Hide any previous error.
+        // 2. Enter the "saving" state: disable the form, raise the
+        // SavingOverlay (with spinner + "Setting up..."), disable the
+        // Save button. Hide any previous error.
         _SetSavingState(true);
         ErrorPanel().Visibility(Visibility::Collapsed);
 
@@ -862,23 +862,21 @@ namespace winrt::TerminalApp::implementation
     //   state to descendants (it ANDs with each child's own IsEnabled)
     //   without clobbering the per-control IsEnabled values, so
     //   policy-driven disables (locked toggles, etc.) survive when we
-    //   restore. Crucially, IsEnabled blocks keyboard input too — unlike
-    //   IsHitTestVisible, which is pointer-only and would leave Tab /
-    //   Space / arrows working on the form mid-install. Opacity gives
-    //   the user visual confirmation that the area is inert.
+    //   restore. Crucially, IsEnabled blocks keyboard input too —
+    //   unlike IsHitTestVisible, which is pointer-only and would leave
+    //   Tab / Space / arrows working on the form mid-install.
+    // - The SavingOverlay (a semi-opaque Border sitting in the same
+    //   Grid cell as the form, z-stacked on top) gives the visual: a
+    //   centered ProgressRing + "Setting up..." status text. Its
+    //   Background also catches any stray pointer input the disabled
+    //   form might still surface.
     // - The Save button is gated separately so an Enter keypress can't
     //   re-fire the click while we're already saving.
     void FreOverlay::_SetSavingState(bool saving)
     {
         SettingsFormScroller().IsEnabled(!saving);
-        SettingsFormScroller().Opacity(saving ? 0.5 : 1.0);
-
+        SavingOverlay().Visibility(saving ? Visibility::Visible : Visibility::Collapsed);
+        SavingProgressRing().IsActive(saving);
         SaveButton().IsEnabled(!saving);
-        SaveProgressRing().IsActive(saving);
-        SaveProgressRing().Visibility(saving ? Visibility::Visible : Visibility::Collapsed);
-        // RS_ requires a string literal (the key is extracted at build
-        // time), so branch rather than select the key at runtime.
-        SaveButtonText().Text(saving ? RS_(L"FreOverlay_SettingUp")
-                                     : RS_(L"FreOverlay_SaveButton/Content"));
     }
 }

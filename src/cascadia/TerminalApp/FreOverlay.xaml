@@ -194,9 +194,11 @@
                     </TextBlock>
                 </StackPanel>
 
-                <!--  Content: Settings Form. Named so we can disable +
-                      dim it as a group while a save/install is in
-                      progress (see FreOverlay::_SetSavingState).  -->
+                <!--  Content: Settings Form. Named so we can disable it as
+                      a group while a save/install is in progress
+                      (keyboard input blocking — see
+                      FreOverlay::_SetSavingState). A SavingOverlay
+                      sibling sits on top for the visual + spinner.  -->
                 <ScrollViewer x:Name="SettingsFormScroller"
                               Grid.Row="1"
                               HorizontalAlignment="Stretch"
@@ -495,6 +497,41 @@
                     </StackPanel>
                 </ScrollViewer>
 
+                <!--  "Saving / installing in progress" overlay. Sits in
+                      the same Grid cell as SettingsFormScroller and is
+                      rendered after it, so it z-stacks on top. While
+                      visible:
+                        - The opaque-ish Background blocks pointer input
+                          to the form below.
+                        - SettingsFormScroller.IsEnabled is also set to
+                          false in code, which blocks keyboard input
+                          (overlays don't intercept keyboard on their
+                          own — focus would still tab into the form).
+                        - The centered ProgressRing + "Setting up..."
+                          label gives the user an unmissable signal that
+                          a long-running operation is happening.
+                      Collapsed when idle so it doesn't intercept input
+                      or paint pixels.  -->
+                <Border x:Name="SavingOverlay"
+                        Grid.Row="1"
+                        Background="#CC1E1E1E"
+                        Visibility="Collapsed">
+                    <StackPanel Orientation="Vertical"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="16">
+                        <mux:ProgressRing x:Name="SavingProgressRing"
+                                          Width="48" Height="48"
+                                          IsActive="False" />
+                        <TextBlock x:Name="SavingStatusText"
+                                   FontFamily="Segoe UI Variable Text, Segoe UI"
+                                   FontSize="14"
+                                   Foreground="White"
+                                   HorizontalAlignment="Center"
+                                   AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
+                </Border>
+
                 <!--  Bottom: Error text + Save Button  -->
                 <Grid Grid.Row="2">
                     <Grid.ColumnDefinitions>
@@ -522,39 +559,19 @@
                             </Hyperlink>
                         </TextBlock>
                     </StackPanel>
-                    <!--  Save button. While a save/install is in progress
-                          the ring spins inline next to the label and the
-                          settings form above is dimmed + non-interactive
-                          (see FreOverlay::_SetSavingState). Width is fixed
-                          so the bottom row doesn't shift when the label
-                          swaps "Save" ↔ "Setting up..." with a leading
-                          spinner. Label text is set from code so we can
-                          swap it without disturbing the ProgressRing
-                          sibling.  -->
-                    <Button x:Name="SaveButton"
+                    <!--  Save button. Disabled while a save/install is
+                          in progress; the SavingOverlay above the form
+                          carries the spinner + status text. Label
+                          stays "Save" (via x:Uid) — no in-button text
+                          swap is needed since the overlay communicates
+                          the in-progress state.  -->
+                    <Button x:Uid="FreOverlay_SaveButton"
+                            x:Name="SaveButton"
                             Grid.Column="1"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Width="160" Height="32"
+                            Width="120" Height="32"
                             Style="{ThemeResource AccentButtonStyle}"
-                            Click="_OnSaveButtonClick">
-                        <StackPanel Orientation="Horizontal"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    Spacing="8">
-                            <!--  Foreground pinned to the button's text
-                                  brush so the ring is visible against the
-                                  AccentButton fill (its default stroke is
-                                  the system accent color, which would
-                                  blend in).  -->
-                            <mux:ProgressRing x:Name="SaveProgressRing"
-                                              Width="16" Height="16"
-                                              IsActive="False"
-                                              Visibility="Collapsed"
-                                              Foreground="{ThemeResource AccentButtonForeground}" />
-                            <TextBlock x:Name="SaveButtonText"
-                                       VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
+                            Click="_OnSaveButtonClick" />
                 </Grid>
             </Grid>
         </Grid>
