@@ -1330,7 +1330,6 @@ PSINGLE
 psl
 psldl
 PSNRET
-PSobject
 psp
 PSPCB
 psr
@@ -1541,7 +1540,6 @@ SHOWWINDOW
 sidebyside
 SIF
 SIGDN
-Signtool
 SINGLETHREADED
 siup
 sixel
@@ -1820,7 +1818,6 @@ VSTS
 VSTT
 vswhere
 vtapp
-VTE
 VTID
 vtmode
 vtpipeterm
@@ -1936,7 +1933,6 @@ wstr
 wstrings
 wsz
 wta
-WTCLI
 wtai
 wtd
 WTEXT
