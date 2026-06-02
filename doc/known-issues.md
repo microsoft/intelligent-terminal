@@ -39,11 +39,7 @@ This only affects the first tab of the first launch — subsequent tabs and subs
    - Claude: [Step 3.2.3 — ACP wrapper (no install action required)](./installing-dependencies.md#step-323--acp-wrapper-no-install-action-required)
    - Codex (or other): [Step 3.3.3 — ACP wrapper (no install action required)](./installing-dependencies.md#step-333--acp-wrapper-no-install-action-required)
 
-2. **Re-install the session-tracking hooks.** In Intelligent Terminal **Settings → Agent**, find the **Agent session tracking (hooks)** section, expand it, and click **Install hooks**:
-
-   ![Settings → Agent session tracking (hooks) → Install hooks](../images/known-issues-install-hooks.png)
-
-   This wires the newly installed CLI into Agent Management so its sessions show up in the panel.
+2. **Re-install the session-tracking hooks.** Open Intelligent Terminal **Settings → Agent**, scroll to the **Agent session tracking (hooks)** row ("Track sessions across agents. Required for agent session management."), expand it, and click the **Install hooks** button next to *Install agent hook script*. This wires the newly installed CLI into Agent Management so its sessions show up in the panel.
 
 ---
 
