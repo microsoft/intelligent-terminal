@@ -32,7 +32,20 @@ The FRE only sets up the session-tracking hooks for the agents you went through 
 
 2. **Re-install the session-tracking hooks.** Open Intelligent Terminal **Settings → Agent**, scroll to the **Agent session tracking (hooks)** row ("Track sessions across agents. Required for agent session management."), expand it, and click the **Install hooks** button next to *Install agent hook script*. This wires the newly installed CLI into agent session management so its sessions show up in the panel.
 
-## 4. Why does the Model dropdown stay greyed out / show "default" after I change agents?
+## 4. Can I use a custom ACP-compatible agent (Qwen, Cline, Goose, Cursor, …)?
+
+Yes. Intelligent Terminal can drive any agent CLI that implements the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/get-started/agents) — the [linked list](https://agentclientprotocol.com/get-started/agents) on that page covers Qwen Code, Cline, Goose, Cursor, Kimi CLI, Kiro CLI, OpenHands, and many more, in addition to the ones Intelligent Terminal sets up for you (Copilot, Claude, Codex, Gemini).
+
+**How to wire one up:** open **Settings → Agent**, then in either the **Agent** (agent pane) or **Delegate agent** dropdown, pick **+ Add new…** and enter the command that launches your CLI:
+
+- For the **agent pane**, use the command that puts your CLI into ACP mode. Some CLIs need a flag — e.g. for Qwen Code: `qwen.cmd --acp`.
+- For the **delegate agent**, you typically just need the bare CLI command — e.g. `qwen.cmd` — because the delegate launches it as a regular interactive session in a new tab.
+
+You must install and authenticate the agent CLI yourself first (Intelligent Terminal does not install bring-your-own agents — see [`installing-dependencies.md`](./installing-dependencies.md) for the pattern).
+
+**Limitation:** **Agent session management does not yet work for custom agents.** The session-tracking hooks ship only for the four built-in agents (Copilot, Claude, Codex, Gemini), so custom-agent sessions will not appear in the agent session management panel even after you install hooks. The agent pane and delegate flows themselves work normally.
+
+## 5. Why does the Model dropdown stay greyed out / show "default" after I change agents?
 
 After you change the **agent** in Settings → Agent (or save a custom-command agent), the **Model** dropdown for that agent first appears greyed out with `default` selected, then becomes enabled and populates a few seconds later.
 
@@ -40,7 +53,7 @@ This isn't a freeze — Intelligent Terminal is doing a one-shot ACP handshake a
 
 The fastest way to confirm everything is healthy: open the **agent pane** for that agent. If it shows **Connected**, the Model dropdown in Settings is ready and you can pick a model. If the agent pane reports a connection timeout instead, run `/restart` inside the agent pane — that's the easiest way to retry the connection.
 
-## 5. Why doesn't agent session management show my session on the first tab right after I install?
+## 6. Why doesn't agent session management show my session on the first tab right after I install?
 
 Immediately after installing Intelligent Terminal for the first time and selecting GitHub Copilot CLI as your agent, the **agent session management** panel (<kbd>Ctrl+Shift+/</kbd>) may not show your active session for the very first tab you open.
 
@@ -48,11 +61,11 @@ Immediately after installing Intelligent Terminal for the first time and selecti
 
 This only affects the first tab of the first launch — subsequent tabs and subsequent app launches are unaffected.
 
-## 6. Why is there no model picker for the delegate agent in Settings?
+## 7. Why is there no model picker for the delegate agent in Settings?
 
 The Settings → Agent page exposes a **Model** dropdown for the **agent pane** agent, but there is no equivalent control for the **delegate agent** (the agent invoked by <kbd>Alt+Shift+/</kbd>, <kbd>Alt+Shift+B</kbd>, and the `?<prompt>` command-palette syntax). The delegate currently always runs against its agent CLI's default model. A Settings UI control for this is planned for a later release.
 
-## 7. Why doesn't agent session management show my delegate-agent sessions?
+## 8. Why doesn't agent session management show my delegate-agent sessions?
 
 In this release, **agent session management only tracks sessions for the agent CLI you selected as your agent-pane agent in Settings**. If your delegate agent (the one invoked by <kbd>Alt+Shift+/</kbd>, <kbd>Alt+Shift+B</kbd>, and the `?<prompt>` command-palette syntax) is a *different* CLI from your agent-pane agent, its sessions will not appear in the panel.
 
