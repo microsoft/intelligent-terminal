@@ -2353,6 +2353,31 @@ async fn run_acp_app(
                 app_state.set_session_hook_tx(session_hook_tx);
             }
 
+            // Pipe-mode reconnect pre-stash. In helper mode the initial
+            // `run_acp_client_over_pipe` task fails immediately with
+            // `Authentication required` if the user is in FRE (not yet
+            // logged in). The post-login `LoginComplete` handler fires
+            // `try_start_acp`; without this stash it would synthesize a
+            // direct-mode `DeferredAcpParams` and spawn `run_acp_client`,
+            // bypassing master and breaking every `intellterm.wta/...`
+            // ext-method (e.g. `sessions/list` — session view would stay
+            // empty on the first tab forever). With the stash in place,
+            // `try_start_acp` sees `master_pipe_name = Some(...)` and
+            // routes the reconnect back through master.
+            //
+            // No effect when the initial connection succeeds: the
+            // stashed params just sit unused for the helper's lifetime.
+            if let Some(ref pipe_name) = connect_master_pipe {
+                app_state.set_master_pipe_acp_params(
+                    pipe_name.clone(),
+                    agent_cmd.clone(),
+                    cli.acp_model.clone(),
+                    cli.owner_tab_id.clone(),
+                    Arc::clone(&shell_mgr),
+                    wt_connected,
+                );
+            }
+
             // ── Preflight: check the agent CLI before connecting ──────────
             // Skip preflight when FRE is active — FRE has its own agent
             // selection + auth flow and doesn't need the preflight wizard.
