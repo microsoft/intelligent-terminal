@@ -194,8 +194,11 @@
                     </TextBlock>
                 </StackPanel>
 
-                <!--  Content: Settings Form  -->
-                <ScrollViewer Grid.Row="1"
+                <!--  Content: Settings Form. Named so we can disable +
+                      dim it as a group while a save/install is in
+                      progress (see FreOverlay::_SetSavingState).  -->
+                <ScrollViewer x:Name="SettingsFormScroller"
+                              Grid.Row="1"
                               HorizontalAlignment="Stretch"
                               VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="4"
@@ -519,13 +522,39 @@
                             </Hyperlink>
                         </TextBlock>
                     </StackPanel>
-                    <Button x:Uid="FreOverlay_SaveButton"
-                            x:Name="SaveButton"
+                    <!--  Save button. While a save/install is in progress
+                          the ring spins inline next to the label and the
+                          settings form above is dimmed + non-interactive
+                          (see FreOverlay::_SetSavingState). Width is fixed
+                          so the bottom row doesn't shift when the label
+                          swaps "Save" ↔ "Setting up..." with a leading
+                          spinner. Label text is set from code so we can
+                          swap it without disturbing the ProgressRing
+                          sibling.  -->
+                    <Button x:Name="SaveButton"
                             Grid.Column="1"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Width="120" Height="32"
+                            Width="160" Height="32"
                             Style="{ThemeResource AccentButtonStyle}"
-                            Click="_OnSaveButtonClick" />
+                            Click="_OnSaveButtonClick">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="8">
+                            <!--  Foreground pinned to the button's text
+                                  brush so the ring is visible against the
+                                  AccentButton fill (its default stroke is
+                                  the system accent color, which would
+                                  blend in).  -->
+                            <mux:ProgressRing x:Name="SaveProgressRing"
+                                              Width="16" Height="16"
+                                              IsActive="False"
+                                              Visibility="Collapsed"
+                                              Foreground="{ThemeResource AccentButtonForeground}" />
+                            <TextBlock x:Name="SaveButtonText"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                 </Grid>
             </Grid>
         </Grid>

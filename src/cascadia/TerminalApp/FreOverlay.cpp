@@ -25,6 +25,11 @@ namespace winrt::TerminalApp::implementation
     FreOverlay::FreOverlay()
     {
         InitializeComponent();
+
+        // The Save button hosts a ProgressRing + TextBlock instead of a
+        // plain text Content, so x:Uid can't carry the label. Seed the
+        // idle state (label = "Save", ring hidden, form interactive).
+        _SetSavingState(false);
     }
 
     // ── Detection helpers ───────────────────────────────────────────────
@@ -600,8 +605,8 @@ namespace winrt::TerminalApp::implementation
         // so flip "(will install)" → "(installed)" for anything now on PATH.
         _PopulateAgentComboBox();
 
-        SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SaveButton/Content")));
-        SaveButton().IsEnabled(true);
+        // Re-enable editing so the user can adjust selections and retry.
+        _SetSavingState(false);
     }
 
     IAsyncAction FreOverlay::_SaveAndInstallAsync()
@@ -636,9 +641,10 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // 2. Disable button, hide previous error
-        SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SettingUp")));
-        SaveButton().IsEnabled(false);
+        // 2. Enter the "saving" state: dim + block the form, disable the
+        // button, spin the ring, switch the label to "Setting up...".
+        // Hide any previous error.
+        _SetSavingState(true);
         ErrorPanel().Visibility(Visibility::Collapsed);
 
         // 3. Install prerequisites if needed (blocking — cannot proceed without these)
@@ -819,8 +825,10 @@ namespace winrt::TerminalApp::implementation
             _PopulateAgentComboBox();
 
             _agentPaneLog("[FRE] Completed — raising Completed event");
-            SaveButton().Content(winrt::box_value(RS_(L"FreOverlay_SaveButton/Content")));
-            SaveButton().IsEnabled(true);
+            // Restore the editable state before raising Completed so that
+            // if anything keeps the overlay alive a moment longer, it
+            // doesn't appear stuck in the "saving" visual.
+            _SetSavingState(false);
             Completed.raise(*this, nullptr);
         }
     }
@@ -843,5 +851,34 @@ namespace winrt::TerminalApp::implementation
 
     void FreOverlay::ResetDragOffset()
     {
+    }
+
+    // ── Saving state ────────────────────────────────────────────────────
+
+    // Toggle the overlay between "saving / installing" and "idle / editable".
+    //
+    // - The settings ScrollViewer is disabled as a group while saving.
+    //   IsEnabled on an ancestor propagates an "effectively disabled"
+    //   state to descendants (it ANDs with each child's own IsEnabled)
+    //   without clobbering the per-control IsEnabled values, so
+    //   policy-driven disables (locked toggles, etc.) survive when we
+    //   restore. Crucially, IsEnabled blocks keyboard input too — unlike
+    //   IsHitTestVisible, which is pointer-only and would leave Tab /
+    //   Space / arrows working on the form mid-install. Opacity gives
+    //   the user visual confirmation that the area is inert.
+    // - The Save button is gated separately so an Enter keypress can't
+    //   re-fire the click while we're already saving.
+    void FreOverlay::_SetSavingState(bool saving)
+    {
+        SettingsFormScroller().IsEnabled(!saving);
+        SettingsFormScroller().Opacity(saving ? 0.5 : 1.0);
+
+        SaveButton().IsEnabled(!saving);
+        SaveProgressRing().IsActive(saving);
+        SaveProgressRing().Visibility(saving ? Visibility::Visible : Visibility::Collapsed);
+        // RS_ requires a string literal (the key is extracted at build
+        // time), so branch rather than select the key at runtime.
+        SaveButtonText().Text(saving ? RS_(L"FreOverlay_SettingUp")
+                                     : RS_(L"FreOverlay_SaveButton/Content"));
     }
 }
