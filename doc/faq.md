@@ -2,15 +2,7 @@
 
 Frequently asked questions about the current release of Intelligent Terminal. Some entries are first-run quirks with workarounds; others are intentional limitations that are planned to be improved. If your question isn't covered here, please [file an issue](https://github.com/microsoft/intelligent-terminal/issues).
 
-## 1. Why doesn't Agent Management show my session on the first tab right after I install?
-
-Immediately after installing Intelligent Terminal for the first time and selecting GitHub Copilot CLI as your agent, the **Agent Management** panel (<kbd>Ctrl+Shift+/</kbd>) may not show your active session for the very first tab you open.
-
-**Workaround:** Either open a **second tab**, or run `/restart` inside the agent pane of the first tab. The session will then show up in Agent Management as expected.
-
-This only affects the first tab of the first launch — subsequent tabs and subsequent app launches are unaffected.
-
-## 2. Why is the first-run experience (FRE) taking so long, or failing?
+## 1. Why is the first-run experience (FRE) taking so long, or failing?
 
 Depending on which agent you pick, the first-run setup may need to download dependencies — [`winget`](https://learn.microsoft.com/windows/package-manager/winget/) is used to install GitHub Copilot CLI and (when needed) Node.js LTS, and `npm`/`npx` is used to fetch ACP wrappers for the bring-your-own agents (Claude, Codex, Gemini). On slow, throttled, or unreliable networks any of these downloads can take **more than 10 minutes**, and on intermittent connections they can fail outright.
 
@@ -19,13 +11,13 @@ Depending on which agent you pick, the first-run setup may need to download depe
 - Make sure you're on a stable, unrestricted internet connection before running the FRE.
 - If the FRE fails or times out, you can install the missing dependencies manually by following [`installing-dependencies.md`](./installing-dependencies.md), then re-open Intelligent Terminal — the FRE will detect what's already installed and skip those steps.
 
-## 3. Why won't Intelligent Terminal install on my Windows 10 machine?
+## 2. Why won't Intelligent Terminal install on my Windows 10 machine?
 
 **Symptom:** The package manifest sets `MinVersion="10.0.22621.6060"` (Windows 11 22H2), so the MSIX install is blocked on earlier OS builds. This release is Windows 11 only.
 
 **Workaround:** Use Windows 11 (22H2 or later). Windows 10 support is planned for a later release.
 
-## 4. I installed a new agent CLI after the FRE — why isn't it tracked in Agent Management?
+## 3. I installed a new agent CLI after the FRE — why isn't it tracked in Agent Management?
 
 You completed the FRE with one agent (say, Copilot), then later installed Claude or Codex (or another bring-your-own ACP-compatible CLI) and switched the **agent pane** to it in Settings. The agent pane may not work, or **Agent Management** doesn't track its sessions.
 
@@ -40,7 +32,7 @@ The FRE only sets up the session-tracking hooks for the agents you went through 
 
 2. **Re-install the session-tracking hooks.** Open Intelligent Terminal **Settings → Agent**, scroll to the **Agent session tracking (hooks)** row ("Track sessions across agents. Required for agent session management."), expand it, and click the **Install hooks** button next to *Install agent hook script*. This wires the newly installed CLI into Agent Management so its sessions show up in the panel.
 
-## 5. Why does the Model dropdown take a while to populate after I change agents?
+## 4. Why does the Model dropdown take a while to populate after I change agents?
 
 After you change the **agent** in Settings → Agent (or save a custom-command agent), the **Model** dropdown for that agent briefly shows nothing (or stays disabled), then populates a few seconds later.
 
@@ -51,6 +43,14 @@ This isn't a freeze — Intelligent Terminal is running a one-shot `wta probe-mo
 - The probe is capped at **40 seconds** total (25 s for `initialize` on `npx`-launched agents + 10 s for `session/new` + slack). If it doesn't complete in time, Intelligent Terminal falls back to a free-form model textbox and you can type a model name manually.
 
 **Workaround:** just wait. If the dropdown is still empty after ~40 seconds, type your model name into the textbox that appears in place of the dropdown, or check `wta-probe.log` in the logs folder (use the **Report a bug (collect logs)** command palette action to grab it) to see why the probe failed.
+
+## 5. Why doesn't Agent Management show my session on the first tab right after I install?
+
+Immediately after installing Intelligent Terminal for the first time and selecting GitHub Copilot CLI as your agent, the **Agent Management** panel (<kbd>Ctrl+Shift+/</kbd>) may not show your active session for the very first tab you open.
+
+**Workaround:** Either open a **second tab**, or run `/restart` inside the agent pane of the first tab. The session will then show up in Agent Management as expected.
+
+This only affects the first tab of the first launch — subsequent tabs and subsequent app launches are unaffected.
 
 ## 6. Why is there no model picker for the delegate agent in Settings?
 
