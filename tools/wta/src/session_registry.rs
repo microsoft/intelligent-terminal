@@ -1367,6 +1367,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn insert_if_absent_inserts_missing_row() {
+        let reg = InMemoryRegistry::new();
+        let original = info("sess-1", Some("pane-A"));
+        assert!(reg.insert_if_absent(original.clone()).await);
+        assert_eq!(reg.lookup(&original.session_id).await, Some(original));
+    }
+
+    #[tokio::test]
+    async fn insert_if_absent_preserves_existing_row() {
+        let reg = InMemoryRegistry::new();
+        let sid = acp::SessionId::new("sess-1".to_string());
+        assert!(reg.insert_if_absent(info("sess-1", Some("pane-A"))).await);
+        assert!(!reg.insert_if_absent(info("sess-1", Some("pane-B"))).await);
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().pane_session_id.as_deref(),
+            Some("pane-A")
+        );
+    }
+
+    #[tokio::test]
+    async fn insert_if_absent_allows_only_one_concurrent_insert() {
+        let reg = Arc::new(InMemoryRegistry::new());
+        let left = Arc::clone(&reg);
+        let right = Arc::clone(&reg);
+        let (left_inserted, right_inserted) = tokio::join!(
+            async move { left.insert_if_absent(info("sess-1", Some("pane-A"))).await },
+            async move { right.insert_if_absent(info("sess-1", Some("pane-B"))).await }
+        );
+
+        let inserted = [left_inserted, right_inserted]
+            .into_iter()
+            .filter(|inserted| *inserted)
+            .count();
+        assert_eq!(inserted, 1);
+        assert_eq!(reg.snapshot().await.len(), 1);
+    }
+
+    #[tokio::test]
     async fn remove_returns_prior_and_subsequent_lookup_is_none() {
         let reg = InMemoryRegistry::new();
         reg.upsert(info("sess-1", Some("pane-A"))).await;
