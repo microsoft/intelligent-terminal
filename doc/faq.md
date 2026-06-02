@@ -17,9 +17,9 @@ Depending on which agent you pick, the first-run setup may need to download depe
 
 **Workaround:** Use Windows 11 (22H2 or later). Windows 10 support is planned for a later release.
 
-## 3. I installed a new agent CLI after the FRE — why isn't it tracked in Agent Management?
+## 3. I installed a new agent CLI after the FRE — why isn't it tracked in agent session management?
 
-You completed the FRE with one agent (say, Copilot), then later installed Claude or Codex (or another bring-your-own ACP-compatible CLI) and switched the **agent pane** to it in Settings. The agent pane may not work, or **Agent Management** doesn't track its sessions.
+You completed the FRE with one agent (say, Copilot), then later installed Claude or Codex (or another bring-your-own ACP-compatible CLI) and switched the **agent pane** to it in Settings. The agent pane may not work, or **agent session management** doesn't track its sessions.
 
 The FRE only sets up the session-tracking hooks for the agents you went through it with. Agents installed *after* the FRE need a one-time manual setup. (The ACP wrapper itself is auto-fetched on demand via `npx`, so there is no wrapper "install" to run — see [Step 3.2.3](./installing-dependencies.md#step-323--acp-wrapper-no-install-action-required) / [Step 3.3.3](./installing-dependencies.md#step-333--acp-wrapper-no-install-action-required) — but you do need to make sure the prerequisites the wrapper depends on are in place.)
 
@@ -30,7 +30,7 @@ The FRE only sets up the session-tracking hooks for the agents you went through 
    - Codex: [Steps 3.3.1 – 3.3.3](./installing-dependencies.md#33-openai-codex-bring-your-own)
    - Gemini: [Section 3.4](./installing-dependencies.md#34-gemini-cli-bring-your-own)
 
-2. **Re-install the session-tracking hooks.** Open Intelligent Terminal **Settings → Agent**, scroll to the **Agent session tracking (hooks)** row ("Track sessions across agents. Required for agent session management."), expand it, and click the **Install hooks** button next to *Install agent hook script*. This wires the newly installed CLI into Agent Management so its sessions show up in the panel.
+2. **Re-install the session-tracking hooks.** Open Intelligent Terminal **Settings → Agent**, scroll to the **Agent session tracking (hooks)** row ("Track sessions across agents. Required for agent session management."), expand it, and click the **Install hooks** button next to *Install agent hook script*. This wires the newly installed CLI into agent session management so its sessions show up in the panel.
 
 ## 4. Why does the Model dropdown stay greyed out / show "default" after I change agents?
 
@@ -40,11 +40,11 @@ This isn't a freeze — Intelligent Terminal is doing a one-shot ACP handshake a
 
 The fastest way to confirm everything is healthy: open the **agent pane** for that agent. If it shows **Connected**, the Model dropdown in Settings is ready and you can pick a model. If the agent pane reports a connection timeout instead, run `/restart` inside the agent pane — that's the easiest way to retry the connection.
 
-## 5. Why doesn't Agent Management show my session on the first tab right after I install?
+## 5. Why doesn't agent session management show my session on the first tab right after I install?
 
-Immediately after installing Intelligent Terminal for the first time and selecting GitHub Copilot CLI as your agent, the **Agent Management** panel (<kbd>Ctrl+Shift+/</kbd>) may not show your active session for the very first tab you open.
+Immediately after installing Intelligent Terminal for the first time and selecting GitHub Copilot CLI as your agent, the **agent session management** panel (<kbd>Ctrl+Shift+/</kbd>) may not show your active session for the very first tab you open.
 
-**Workaround:** Either open a **second tab**, or run `/restart` inside the agent pane of the first tab. The session will then show up in Agent Management as expected.
+**Workaround:** Either open a **second tab**, or run `/restart` inside the agent pane of the first tab. The session will then show up in agent session management as expected.
 
 This only affects the first tab of the first launch — subsequent tabs and subsequent app launches are unaffected.
 
@@ -52,11 +52,11 @@ This only affects the first tab of the first launch — subsequent tabs and subs
 
 The Settings → Agent page exposes a **Model** dropdown for the **agent pane** agent, but there is no equivalent control for the **delegate agent** (the agent invoked by <kbd>Alt+Shift+/</kbd>, <kbd>Alt+Shift+B</kbd>, and the `?<prompt>` command-palette syntax). The delegate currently always runs against its agent CLI's default model. A Settings UI control for this is planned for a later release.
 
-## 7. Why doesn't Agent Management show my delegate-agent sessions?
+## 7. Why doesn't agent session management show my delegate-agent sessions?
 
-In this release, **Agent Management only tracks sessions for the agent CLI you selected as your agent-pane agent in Settings**. If your delegate agent (the one invoked by <kbd>Alt+Shift+/</kbd>, <kbd>Alt+Shift+B</kbd>, and the `?<prompt>` command-palette syntax) is a *different* CLI from your agent-pane agent, its sessions will not appear in the panel.
+In this release, **agent session management only tracks sessions for the agent CLI you selected as your agent-pane agent in Settings**. If your delegate agent (the one invoked by <kbd>Alt+Shift+/</kbd>, <kbd>Alt+Shift+B</kbd>, and the `?<prompt>` command-palette syntax) is a *different* CLI from your agent-pane agent, its sessions will not appear in the panel.
 
-**Workaround:** Until a better design ships, select the **same agent** for both your agent pane and your delegate agent in Settings → Agent. With both pointed at the same CLI, the delegate's sessions will appear in Agent Management alongside the agent pane's.
+**Workaround:** Until a better design ships, select the **same agent** for both your agent pane and your delegate agent in Settings → Agent. With both pointed at the same CLI, the delegate's sessions will appear in agent session management alongside the agent pane's.
 
 ---
 
