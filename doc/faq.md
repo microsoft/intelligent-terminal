@@ -25,7 +25,7 @@ The FRE only sets up the session-tracking hooks for the agents you went through 
 
 **Workaround:**
 
-1. **Make sure the prerequisites are in place.** Follow the steps in [`installing-dependencies.md`](./installing-dependencies.md) that match your agent — install Node.js LTS and the agent's own CLI (via `npm install -g …`). The ACP wrapper itself requires no install action; it will be downloaded automatically the first time the agent is launched:
+1. **Make sure the prerequisites are in place.** Follow the steps in [`installing-dependencies.md`](./installing-dependencies.md) that match your agent — install Node.js LTS and the agent's own CLI (via `npm install -g <package>`). The ACP wrapper itself requires no install action; it will be downloaded automatically the first time the agent is launched:
    - Claude: [Steps 3.2.1 – 3.2.3](./installing-dependencies.md#32-claude-code-bring-your-own)
    - Codex: [Steps 3.3.1 – 3.3.3](./installing-dependencies.md#33-openai-codex-bring-your-own)
    - Gemini: [Section 3.4](./installing-dependencies.md#34-gemini-cli-bring-your-own)
@@ -54,11 +54,9 @@ The Settings → Agent page exposes a **Model** dropdown for the **agent pane** 
 
 ## 7. Why doesn't Agent Management show my delegate-agent sessions?
 
-Open the **Agent Management** panel (<kbd>Ctrl+Shift+/</kbd>) after using the delegate agent (via <kbd>Alt+Shift+/</kbd> / <kbd>Alt+Shift+B</kbd> / `?<prompt>`). The panel lists sessions belonging to your **agent pane** agent — the delegate agent's running session is not represented.
+In this release, **Agent Management only tracks sessions for the agent CLI you selected as your agent-pane agent in Settings**. If your delegate agent (the one invoked by <kbd>Alt+Shift+/</kbd>, <kbd>Alt+Shift+B</kbd>, and the `?<prompt>` command-palette syntax) is a *different* CLI from your agent-pane agent, its sessions will not appear in the panel.
 
-Session tracking in this release is wired to the agent-pane lifecycle. Delegate agents run in their own tab (or in the background for `?<prompt>`) but are not yet surfaced in the management UI.
-
-**Workaround:** Switch to the delegate's tab directly (or, for background `?<prompt>` work, watch the **Agent Status Bar** at the bottom of the window) to monitor its progress. Unified tracking of both agent-pane and delegate sessions is planned for a later release.
+**Workaround:** Until a better design ships, select the **same agent** for both your agent pane and your delegate agent in Settings → Agent. With both pointed at the same CLI, the delegate's sessions will appear in Agent Management alongside the agent pane's.
 
 ---
 
