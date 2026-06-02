@@ -40,6 +40,18 @@ The FRE only sets up the session-tracking hooks for the agents you went through 
 
 2. **Re-install the session-tracking hooks.** Open Intelligent Terminal **Settings → Agent**, scroll to the **Agent session tracking (hooks)** row ("Track sessions across agents. Required for agent session management."), expand it, and click the **Install hooks** button next to *Install agent hook script*. This wires the newly installed CLI into Agent Management so its sessions show up in the panel.
 
+## Why does the Model dropdown take a while to populate after I change agents?
+
+After you change the **agent** in Settings → Agent (or save a custom-command agent), the **Model** dropdown for that agent briefly shows nothing (or stays disabled), then populates a few seconds later.
+
+This isn't a freeze — Intelligent Terminal is running a one-shot `wta probe-models` against the newly selected CLI in the background. It does a full ACP handshake (`initialize` + a throwaway `session/new`) so the agent can tell us which models it actually offers, then exits and the dropdown re-renders from the result. How long that takes is dictated by the agent's own startup and ACP response time:
+
+- A cached / warm agent typically returns in **under 2 seconds**.
+- A bring-your-own agent (Claude / Codex / Gemini) on a cold `npx` cache can take noticeably longer the first time, because `npx` has to download the ACP wrapper before the agent can even start. Subsequent probes hit the cache and are fast.
+- The probe is capped at **40 seconds** total (25 s for `initialize` on `npx`-launched agents + 10 s for `session/new` + slack). If it doesn't complete in time, Intelligent Terminal falls back to a free-form model textbox and you can type a model name manually.
+
+**What to do:** just wait. If the dropdown is still empty after ~40 seconds, type your model name into the textbox that appears in place of the dropdown, or check `wta-probe.log` in the logs folder (use the **Report a bug (collect logs)** command palette action to grab it) to see why the probe failed.
+
 ## Why is there no model picker for the delegate agent in Settings?
 
 The Settings → Agent page exposes a **Model** dropdown for the **agent pane** agent, but there is no equivalent control for the **delegate agent** (the agent invoked by <kbd>Alt+Shift+/</kbd>, <kbd>Alt+Shift+B</kbd>, and the `?<prompt>` command-palette syntax). The delegate currently always runs against its agent CLI's default model.
