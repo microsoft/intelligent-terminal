@@ -6705,8 +6705,10 @@ impl App {
             text: prompt.text.clone(),
             submitted_at_unix_s: prompt.submitted_at_unix_s,
             autofix: Some(AutofixContext {
-                // Empty → `turn_execute_card` leaves `Send.parent` blank, which
-                // the host treats as "no override" and routes to the working pane.
+                // Placeholder — the working pane isn't known synchronously here.
+                // The ACP client task resolves it and `apply_autofix_target_resolved`
+                // late-binds it (matched by prompt id) before the card surfaces,
+                // so `turn_execute_card` fills `Send.parent` with a real pane.
                 target_pane_id: String::new(),
                 generation,
             }),
@@ -6727,7 +6729,7 @@ impl App {
     /// plumbed back via [`AppEvent::AutofixTargetResolved`]. We patch the
     /// matching in-flight turn's `AutofixContext.target_pane_id` so that
     /// `turn_execute_card` fills `Send.parent` with a real pane — without it,
-    /// the host's send has no destination ("sendinput failed: no parent").
+    /// the host's send has no destination ("SendInput failed: no parent").
     ///
     /// Routed by `prompt_id`: a superseded turn (the user fired a newer `/fix`)
     /// won't match, so a stale resolution is dropped. The event is emitted

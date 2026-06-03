@@ -1300,6 +1300,12 @@ async fn build_prompt_text(
                 tracing::debug!(
                     target: "acp.terminal_context",
                     source_pane_id = %source_pane_id,
+                    // The shell type shipped in `### Shell Context` above; log it
+                    // here too so a `/fix` run shows what the agent received.
+                    profile = ?active
+                        .as_ref()
+                        .and_then(|a| a.get("profile"))
+                        .and_then(|v| v.as_str()),
                     mode = "autofix",
                     "terminal_context_target_resolved"
                 );
