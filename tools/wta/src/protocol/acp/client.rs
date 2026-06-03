@@ -1127,7 +1127,8 @@ fn process_image_name(_pid: u32) -> Option<String> {
 
 /// Resolve the canonical shell exe from an active-pane JSON object's `pid`
 /// field (already present in `get_active_pane`/`get_panes` responses). The
-/// agent gets this as the `shell` field alongside the renamable `profile`.
+/// agent gets this as the `shell` field — the sole shell-type signal, since
+/// the WT profile *name* is user-renamable and no longer shipped.
 fn shell_from_active(active: &serde_json::Value) -> Option<String> {
     active
         .get("pid")
@@ -1160,25 +1161,16 @@ async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String>
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-    // Shell profile (e.g. "PowerShell", "Command Prompt", "Ubuntu") is
-    // load-bearing for the planner: any `send` action it emits has to
-    // match the active pane's shell syntax (`Get-ChildItem` vs `ls`,
-    // `Set-Location` vs `cd`, etc.). Without this the agent has to
-    // guess from the buffer's prompt prefix, which silently fails on
-    // renamed or unusual profiles.
-    let target_profile = active
-        .get("profile")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
     // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) from the pane's pid.
-    // Survives a renamed profile, so it's the reliable syntax signal.
+    // Load-bearing for the planner: any `send` action it emits has to match the
+    // active pane's shell syntax (`Get-ChildItem` vs `ls`, `Set-Location` vs
+    // `cd`, etc.). We use the real process rather than the WT profile name,
+    // which the user can rename.
     let target_shell = shell_from_active(&active);
 
     tracing::debug!(
         target: "acp.terminal_context",
         target_pane_id = %target_pane_id,
-        profile = ?target_profile,
         shell = ?target_shell,
         "terminal_context_target_resolved"
     );
@@ -1195,7 +1187,6 @@ async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String>
         "activeTarget": target_pane_id,
         "window_title": target_window_title,
         "cwd": target_cwd,
-        "profile": target_profile,
         "shell": target_shell,
         "locale": user_locale_tag(),
         "buffer": buffer,
@@ -1307,15 +1298,9 @@ async fn build_prompt_text(
             // from its notification.
             let active = shell_mgr.wt_get_active_pane().await.ok();
 
-            // Shell context — best-effort. WT returns the profile name
-            // (e.g. "PowerShell", "Command Prompt", "Ubuntu") which is a
-            // strong signal even when the user has renamed the profile.
+            // Shell context — best-effort. The canonical shell exe (from the
+            // pane's pid) tells the agent which syntax the fix command must use.
             if let Some(active) = active.as_ref() {
-                let profile = active
-                    .get("profile")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
                 let cwd = active
                     .get("cwd")
                     .and_then(|v| v.as_str())
@@ -1324,7 +1309,6 @@ async fn build_prompt_text(
                 // Canonical shell exe from the pane's pid — see `shell_from_active`.
                 let shell = shell_from_active(active);
                 let json = serde_json::to_string(&serde_json::json!({
-                    "profile": profile,
                     "shell": shell,
                     "cwd": cwd,
                     "locale": user_locale_tag(),
@@ -1364,10 +1348,6 @@ async fn build_prompt_text(
                     source_pane_id = %source_pane_id,
                     // The shell type shipped in `### Shell Context` above; log it
                     // here too so a `/fix` run shows what the agent received.
-                    profile = ?active
-                        .as_ref()
-                        .and_then(|a| a.get("profile"))
-                        .and_then(|v| v.as_str()),
                     shell = ?active.as_ref().and_then(shell_from_active),
                     mode = "autofix",
                     "terminal_context_target_resolved"
