@@ -3,6 +3,14 @@
 Detailed procedure for one round of the loop. Repeat until both convergence
 conditions in step 8 hold, then run step 9 once.
 
+## How to run this workflow
+
+Most steps below are best executed by a **fresh sub-agent** (via the
+`task` tool), not directly by the parent agent. The mapping is in
+SKILL.md → "Delegate Each Step to a Fresh Sub-Agent". The parent owns
+sequencing, the `git commit`/`git push`, and the final
+`reply-and-resolve` call after replies have been reviewed.
+
 ## 1. Request a Copilot review
 
 Use the `gh pr edit --add-reviewer` form — the only consistently working

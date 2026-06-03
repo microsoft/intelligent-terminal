@@ -54,7 +54,8 @@ mutation($tid: ID!, $body: String!) {
 }
 '@
 
-gh api graphql -f query=$replyMutation -F tid=$ThreadId -F body=$Body | Out-Null
+$replyArgs = @('-f', "query=$replyMutation", '-f', "tid=$ThreadId", '-f', "body=$Body")
+gh api graphql @replyArgs | Out-Null
 Write-Output "Replied to thread $ThreadId"
 
 if (-not $NoResolve) {
@@ -65,6 +66,7 @@ mutation($tid: ID!) {
   }
 }
 '@
-    gh api graphql -f query=$resolveMutation -F tid=$ThreadId | Out-Null
+    $resolveArgs = @('-f', "query=$resolveMutation", '-f', "tid=$ThreadId")
+    gh api graphql @resolveArgs | Out-Null
     Write-Output "Resolved thread $ThreadId"
 }

@@ -46,6 +46,26 @@ Terminate when a review returns "no new comments" **and** the open-threads
 list is empty. A single condition is not enough — a "no new comments"
 review can still coexist with a stale open thread you forgot to resolve.
 
+## Delegate Each Step to a Fresh Sub-Agent
+
+The loop is naturally decomposable. Dispatch a fresh sub-agent (via the
+`task` tool) for each step that produces substantive content. This keeps
+context clean, avoids self-confirmation bias on triage decisions, and
+parallelizes independent work.
+
+| Step | Sub-agent role | Why |
+|------|----------------|-----|
+| 2 — List open threads | Categorize each finding by file/severity | One-shot, deterministic; useful as a fresh read of what's outstanding |
+| 3 — Triage | Apply the rubric in [references/03-triage-criteria.md](references/03-triage-criteria.md), return fix/decline per thread | Fresh judgment, not contaminated by the implementer's intent |
+| 4 — Fix | One sub-agent per independent fix; run in parallel where possible | Parallelism; isolated context per fix |
+| 5 — Build & test | Run the project's build + unit tests, return only failures | Keeps long build output out of the parent context |
+| 6 — Reply drafting | Draft replies using [references/06-reply-templates.md](references/06-reply-templates.md) | Consistency; avoids drift between replies on related threads |
+| 8 — Convergence check | Re-run step 2's script and re-list, compare to expected empty set | Independent verification of the convergence condition |
+
+The parent agent owns sequencing, commit/push, and the final
+`reply-and-resolve` call (which mutates remote state and shouldn't be
+delegated until the reply text has been reviewed).
+
 ## Gotchas
 
 - **Use `gh pr edit --add-reviewer copilot-pull-request-reviewer`** to
@@ -55,6 +75,11 @@ review can still coexist with a stale open thread you forgot to resolve.
 - **`git stash push -m` must come before `--`.** The form
   `git stash push -- <paths> -m <msg>` parses `<msg>` as a path and
   silently produces a stash with no message.
+- **`gh api graphql -F` type-coerces strings.** Use `-f key=value` for any
+  `String!` variable (`owner`, `repo`, `body`, `tid`, `after`); reserve
+  `-F` for numeric/boolean variables. A reply body that happens to be
+  `"true"` or all digits otherwise fails silently with a type error. See
+  [references/api-quirks.md](references/api-quirks.md).
 - **Reply *and* resolve every thread, including declines.** Resolving
   without a reply leaves no record of why the issue was considered
   addressed; replying without resolving keeps the open-threads list

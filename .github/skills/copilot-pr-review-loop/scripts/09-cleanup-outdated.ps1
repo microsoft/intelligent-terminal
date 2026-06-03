@@ -24,10 +24,6 @@
 .PARAMETER PrNumber
     The pull request number.
 
-.PARAMETER WhatIf
-    Standard PowerShell switch. When set, lists threads that would be
-    resolved without actually resolving them.
-
 .EXAMPLE
     pwsh 09-cleanup-outdated.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 122
 
@@ -49,10 +45,14 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $query = @'
-query($owner: String!, $repo: String!, $pr: Int!) {
+query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $pr) {
-      reviewThreads(last: 100) {
+      reviewThreads(first: 100, after: $after) {
+        pageInfo {
+          endCursor
+          hasNextPage
+        }
         nodes {
           id
           isResolved
@@ -67,14 +67,20 @@ query($owner: String!, $repo: String!, $pr: Int!) {
 }
 '@
 
-$json = gh api graphql `
-    -f query=$query `
-    -F owner=$Owner `
-    -F repo=$Repo `
-    -F pr=$PrNumber
+$all = @()
+$after = $null
+do {
+    $args = @('-f', "query=$query", '-f', "owner=$Owner", '-f', "repo=$Repo", '-F', "pr=$PrNumber")
+    if ($after) { $args += @('-f', "after=$after") }
 
-$data = $json | ConvertFrom-Json
-$threads = $data.data.repository.pullRequest.reviewThreads.nodes
+    $json = gh api graphql @args
+    $data = $json | ConvertFrom-Json
+    $page = $data.data.repository.pullRequest.reviewThreads
+    $all += $page.nodes
+    $after = $page.pageInfo.endCursor
+} while ($page.pageInfo.hasNextPage)
+
+$threads = $all
 
 $targets = $threads | Where-Object {
     $_.isOutdated -and
@@ -99,7 +105,7 @@ mutation($tid: ID!) {
 
 foreach ($t in $targets) {
     if ($PSCmdlet.ShouldProcess($t.id, 'Resolve outdated Copilot thread')) {
-        gh api graphql -f query=$resolveMutation -F tid=$t.id | Out-Null
+        gh api graphql -f query=$resolveMutation -f "tid=$($t.id)" | Out-Null
         Write-Output "Resolved $($t.id)"
     }
 }

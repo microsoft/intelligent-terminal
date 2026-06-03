@@ -46,10 +46,14 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $query = @'
-query($owner: String!, $repo: String!, $pr: Int!) {
+query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $pr) {
-      reviewThreads(last: 50) {
+      reviewThreads(first: 100, after: $after) {
+        pageInfo {
+          endCursor
+          hasNextPage
+        }
         nodes {
           id
           isResolved
@@ -70,14 +74,20 @@ query($owner: String!, $repo: String!, $pr: Int!) {
 }
 '@
 
-$json = gh api graphql `
-    -f query=$query `
-    -F owner=$Owner `
-    -F repo=$Repo `
-    -F pr=$PrNumber
+$all = @()
+$after = $null
+do {
+    $args = @('-f', "query=$query", '-f', "owner=$Owner", '-f', "repo=$Repo", '-F', "pr=$PrNumber")
+    if ($after) { $args += @('-f', "after=$after") }
 
-$data = $json | ConvertFrom-Json
-$threads = $data.data.repository.pullRequest.reviewThreads.nodes
+    $json = gh api graphql @args
+    $data = $json | ConvertFrom-Json
+    $page = $data.data.repository.pullRequest.reviewThreads
+    $all += $page.nodes
+    $after = $page.pageInfo.endCursor
+} while ($page.pageInfo.hasNextPage)
+
+$threads = $all
 
 $open = $threads | Where-Object {
     -not $_.isResolved -and

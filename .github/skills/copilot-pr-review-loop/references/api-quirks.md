@@ -90,7 +90,7 @@ threads:
 
 A Copilot review summary that says *"generated no new comments"* is
 necessary but not sufficient. You also need the open-thread list (after
-filtering for `!isResolved && !isOutdated`) to be empty. Otherwise an
+filtering for `!isResolved && !isOutdated`) to be empty. Otherwise, an
 unresolved thread from an earlier round will keep the PR in review-pending
 state.
 
@@ -109,3 +109,25 @@ git stash push -- src/path/a src/path/b -m "local-build"
 ```
 
 The `-m` MUST come before the `--` path separator.
+
+## ⚠️ `gh api graphql -F` coerces strings — use `-f` for `String!` variables
+
+The `gh` CLI distinguishes its two flag forms:
+
+- `-F key=value` does **type inference** — a value that parses as int, bool, or null is sent as that JSON literal.
+- `-f key=value` always sends the value as a raw string.
+
+For any GraphQL variable declared `String!` (e.g. `owner`, `repo`, `body`,
+`tid`, `after`), use `-f`. A reply body that happens to be `"true"`,
+`"null"`, or all digits will otherwise be silently coerced and the call
+fails because the receiver expects a string.
+
+Keep `-F` only for genuinely numeric or boolean variables (e.g. `pr: Int!`).
+
+```powershell
+# Wrong — body could be coerced
+gh api graphql -f query=$q -F body=$Body
+
+# Right
+gh api graphql -f query=$q -f body=$Body
+```
