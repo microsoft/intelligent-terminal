@@ -56,6 +56,9 @@ mutation($tid: ID!, $body: String!) {
 
 $replyArgs = @('-f', "query=$replyMutation", '-f', "tid=$ThreadId", '-f', "body=$Body")
 gh api graphql @replyArgs | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "gh api graphql (reply) failed (exit $LASTEXITCODE) for thread $ThreadId."
+}
 Write-Output "Replied to thread $ThreadId"
 
 if (-not $NoResolve) {
@@ -68,5 +71,8 @@ mutation($tid: ID!) {
 '@
     $resolveArgs = @('-f', "query=$resolveMutation", '-f', "tid=$ThreadId")
     gh api graphql @resolveArgs | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh api graphql (resolve) failed (exit $LASTEXITCODE) for thread $ThreadId."
+    }
     Write-Output "Resolved thread $ThreadId"
 }

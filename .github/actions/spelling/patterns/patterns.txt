@@ -317,3 +317,6 @@ env_remove\("[A-Z_]+"\)
 
 # Shell flag combos (e.g. set -euo pipefail) used in hooks.instructions.md
 \b(?:bash|(?<!\.)sh|set)(?:\s+[-+][abefimouxE]{1,2})*\s+[-+][abefimouxE]{3,}(?:\s+[-+][abefimouxE]+)*(?:\s+pipefail\b)?
+
+# GitHub GraphQL node ID prefix for PullRequestReviewThread
+\bPRRT_[A-Za-z0-9_-]+\b

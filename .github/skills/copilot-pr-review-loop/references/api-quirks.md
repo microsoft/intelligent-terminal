@@ -131,3 +131,25 @@ gh api graphql -f query=$q -F body=$Body
 # Right
 gh api graphql -f query=$q -f body=$Body
 ```
+
+
+## ⚠️ Native `gh` exit codes bypass `$ErrorActionPreference`
+
+`gh` (and any other native executable) is **not** a PowerShell cmdlet, so
+a non-zero exit code does **not** throw even when
+`$ErrorActionPreference = 'Stop'` is set. Without an explicit check the
+script will print misleading success messages (`"Replied to thread X"`,
+`"Resolved Y"`) after a failed API call, and the loop will falsely
+declare convergence on auth issues, rate limits, or transient 5xx.
+
+Pattern — check immediately after every `gh` call:
+
+```powershell
+gh api graphql @args | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "gh api graphql failed (exit $LASTEXITCODE) for <context>."
+}
+```
+
+Applies to `gh api`, `gh pr edit`, `gh pr view`, and any other `gh`
+invocation in a loop script.

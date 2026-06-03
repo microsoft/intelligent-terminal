@@ -27,17 +27,25 @@ The script is idempotent — re-running it triggers a fresh review.
 ## 2. Wait, then fetch open threads
 
 Copilot typically posts a new review within 3–6 minutes; allow up to 10.
-Don't poll faster than ~3 minutes — there is no progress signal and faster
-polling only wastes API budget.
+
+**Do not block the agent foreground with `Start-Sleep`.** If the parent
+agent is running interactively, end the turn after step 1 and resume in a
+later turn (or schedule a reminder). If you are running headless or in a
+script, use a background mechanism — `Start-Job`, a separate shell, or
+the scheduling layer of your runtime — rather than holding the foreground
+for 6 minutes doing nothing.
+
+When you come back, fetch the open threads:
 
 ```powershell
-Start-Sleep -Seconds 360
-pwsh ../scripts/02-list-open-threads.ps1 -Owner <owner> -Repo <repo> -PrNumber <pr-number>
+pwsh ../scripts/02-list-open-threads.ps1 -PrNumber <pr-number>
 ```
 
-Filter for **open AND non-outdated** threads only. Outdated threads point at
-lines you've since rewritten and are not actionable; they get batch-resolved
-at convergence (step 9) instead.
+`-Owner` / `-Repo` default to the current repo via `gh repo view`, so
+they're optional when you run from inside a worktree of the target repo.
+
+Don't poll faster than ~3 minutes — there is no progress signal and faster
+polling only wastes API budget.
 
 ## 3. Triage each finding
 

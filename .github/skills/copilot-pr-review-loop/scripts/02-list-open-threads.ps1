@@ -14,10 +14,11 @@
     cleaned up at convergence via 09-cleanup-outdated.ps1.
 
 .PARAMETER Owner
-    Repository owner (org or user).
+    Repository owner (org or user). Defaults to the current repo's owner
+    (resolved via `gh repo view`).
 
 .PARAMETER Repo
-    Repository name.
+    Repository name. Defaults to the current repo's name.
 
 .PARAMETER PrNumber
     The pull request number.
@@ -27,14 +28,14 @@
     Defaults to 400.
 
 .EXAMPLE
+    pwsh 02-list-open-threads.ps1 -PrNumber 122
+
+.EXAMPLE
     pwsh 02-list-open-threads.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 122
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
     [string]$Owner,
-
-    [Parameter(Mandatory = $true)]
     [string]$Repo,
 
     [Parameter(Mandatory = $true)]
@@ -44,6 +45,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $Owner -or -not $Repo) {
+    $repoInfo = gh repo view --json owner,name | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh repo view failed (exit $LASTEXITCODE). Pass -Owner and -Repo explicitly or run from inside a gh-detected repo."
+    }
+    if (-not $Owner) { $Owner = $repoInfo.owner.login }
+    if (-not $Repo)  { $Repo  = $repoInfo.name }
+}
 
 $query = @'
 query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
@@ -81,6 +91,9 @@ do {
     if ($after) { $args += @('-f', "after=$after") }
 
     $json = gh api graphql @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh api graphql failed (exit $LASTEXITCODE) for $Owner/$Repo PR #$PrNumber."
+    }
     $data = $json | ConvertFrom-Json
     $page = $data.data.repository.pullRequest.reviewThreads
     $all += $page.nodes

@@ -16,26 +16,24 @@
     Threads from human reviewers are never touched.
 
 .PARAMETER Owner
-    Repository owner (org or user).
+    Repository owner (org or user). Defaults to the current repo's owner
+    (resolved via `gh repo view`).
 
 .PARAMETER Repo
-    Repository name.
+    Repository name. Defaults to the current repo's name.
 
 .PARAMETER PrNumber
     The pull request number.
 
 .EXAMPLE
-    pwsh 09-cleanup-outdated.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 122
+    pwsh 09-cleanup-outdated.ps1 -PrNumber 122
 
 .EXAMPLE
-    pwsh 09-cleanup-outdated.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 122 -WhatIf
+    pwsh 09-cleanup-outdated.ps1 -PrNumber 122 -WhatIf
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [Parameter(Mandatory = $true)]
     [string]$Owner,
-
-    [Parameter(Mandatory = $true)]
     [string]$Repo,
 
     [Parameter(Mandatory = $true)]
@@ -43,6 +41,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $Owner -or -not $Repo) {
+    $repoInfo = gh repo view --json owner,name | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh repo view failed (exit $LASTEXITCODE). Pass -Owner and -Repo explicitly or run from inside a gh-detected repo."
+    }
+    if (-not $Owner) { $Owner = $repoInfo.owner.login }
+    if (-not $Repo)  { $Repo  = $repoInfo.name }
+}
 
 $query = @'
 query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
@@ -74,6 +81,9 @@ do {
     if ($after) { $args += @('-f', "after=$after") }
 
     $json = gh api graphql @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh api graphql (list) failed (exit $LASTEXITCODE) for $Owner/$Repo PR #$PrNumber."
+    }
     $data = $json | ConvertFrom-Json
     $page = $data.data.repository.pullRequest.reviewThreads
     $all += $page.nodes
@@ -106,6 +116,9 @@ mutation($tid: ID!) {
 foreach ($t in $targets) {
     if ($PSCmdlet.ShouldProcess($t.id, 'Resolve outdated Copilot thread')) {
         gh api graphql -f query=$resolveMutation -f "tid=$($t.id)" | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "gh api graphql (resolve) failed (exit $LASTEXITCODE) for thread $($t.id)."
+        }
         Write-Output "Resolved $($t.id)"
     }
 }
