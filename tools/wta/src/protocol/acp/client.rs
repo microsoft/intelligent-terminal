@@ -1104,8 +1104,13 @@ fn process_image_name(pid: u32) -> Option<String> {
         if handle.is_null() {
             return None;
         }
-        let mut buf = [0u16; 260]; // MAX_PATH
-        let mut size = buf.len() as u32;
+        // Not MAX_PATH: QueryFullProcessImageNameW can return paths longer than
+        // 260 for processes under long roots (WindowsApps installs, `\\?\`
+        // extended paths). Use the extended-length max so a valid pid never
+        // silently drops the `shell` field. Heap-allocated to keep it off the
+        // (smaller) task stack.
+        let mut size: u32 = 32768;
+        let mut buf = vec![0u16; size as usize];
         let ok =
             QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut size);
         CloseHandle(handle);
@@ -1128,7 +1133,7 @@ fn process_image_name(_pid: u32) -> Option<String> {
 /// Resolve the canonical shell exe from an active-pane JSON object's `pid`
 /// field (already present in `get_active_pane`/`get_panes` responses). The
 /// agent gets this as the `shell` field — the sole shell-type signal, since
-/// the WT profile *name* is user-renamable and no longer shipped.
+/// the WT profile *name* (which the user can rename) is no longer shipped.
 fn shell_from_active(active: &serde_json::Value) -> Option<String> {
     active
         .get("pid")

@@ -6660,10 +6660,12 @@ impl App {
     /// resolved in the ACP client task — `PaneContext.source_pane_id` is left
     /// `None` and `build_prompt_text` falls back to WT's active pane, which
     /// GetActivePane maps from the agent pane to the user's working pane; and
-    /// (2) `target_pane_id` is left empty so the eventual fix is routed to the
-    /// agent's default working pane ("no override"). The bottom-bar Pending
-    /// pill is *not* armed — that UI is tied to a specific failing pane, and a
-    /// command typed into the agent pane surfaces its result there directly.
+    /// (2) `target_pane_id` starts empty and is late-bound once the client task
+    /// resolves that working pane (`AppEvent::AutofixTargetResolved` →
+    /// `apply_autofix_target_resolved`), so `turn_execute_card` fills
+    /// `Send.parent` with a real pane. The bottom-bar Pending pill is *not*
+    /// armed — that UI is tied to a specific failing pane, and a command typed
+    /// into the agent pane surfaces its result there directly.
     ///
     /// Refuses while a turn is in flight; the user should `/stop` first.
     fn cmd_fix(&mut self, in_flight: bool, hint: String) {
