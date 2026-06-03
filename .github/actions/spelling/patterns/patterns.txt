@@ -245,6 +245,9 @@ ROY\sG\.\sBIV
 # Win32 SDK LOCALE_* constants (locale-info field identifiers from winnls.h)
 \bLOCALE_[A-Z][A-Z0-9_]+\b
 
+# COM/RPC HRESULT constants from rpcerror.h (e.g. RPC_E_SERVERFAULT)
+\bRPC_E_[A-Z][A-Z0-9_]+\b
+
 # AppX package
 _\d[0-9a-z]{12}['\.]
 

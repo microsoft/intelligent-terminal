@@ -201,7 +201,6 @@ colortbl
 colortest
 colortool
 COLORVALUE
-combase
 comctl
 commdlg
 conapi
@@ -1486,7 +1485,6 @@ SELECTSTRING
 Selfhosters
 Serbo
 SERVERDLL
-SERVERFAULT
 SETACTIVE
 SETBUDDYINT
 setcp
@@ -1899,7 +1897,6 @@ winrt
 winternl
 winuser
 WINVER
-winver
 wistd
 wmain
 WMSZ
