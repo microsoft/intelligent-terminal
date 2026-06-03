@@ -78,28 +78,28 @@ review can still coexist with a stale open thread you forgot to resolve.
 | Issue | Solution |
 |-------|----------|
 | `gh api` request to add Copilot reviewer returns HTTP 422 | Use `gh pr edit --add-reviewer copilot-pull-request-reviewer` (see [api-quirks.md](references/api-quirks.md)) |
-| No new review after ~10 minutes | Re-run the request — `scripts/request-review.ps1` is idempotent |
-| Outdated threads still appear in the open-threads list | Run [scripts/cleanup-outdated.ps1](scripts/cleanup-outdated.ps1) once at convergence |
-| Unsure whether to fix or decline a finding | Apply the rubric in [references/triage-criteria.md](references/triage-criteria.md) |
-| Need a reply that conveys "fixed", "declined", or "drift" | Use a template from [references/reply-templates.md](references/reply-templates.md) |
+| No new review after ~10 minutes | Re-run the request — `scripts/01-request-review.ps1` is idempotent |
+| Outdated threads still appear in the open-threads list | Run [scripts/09-cleanup-outdated.ps1](scripts/09-cleanup-outdated.ps1) once at convergence |
+| Unsure whether to fix or decline a finding | Apply the rubric in [references/03-triage-criteria.md](references/03-triage-criteria.md) |
+| Need a reply that conveys "fixed", "declined", or "drift" | Use a template from [references/06-reply-templates.md](references/06-reply-templates.md) |
 | `list-open-threads` still shows resolved-looking threads | Filter is `!isResolved && !isOutdated` only — the script already does this; resolved-looking but still-open threads usually mean someone resolved the GitHub UI conversation without the GraphQL `resolveReviewThread` mutation completing |
 
 ## References
 
 - [references/workflow.md](references/workflow.md) — full nine-step
   procedure with commands and rationale.
-- [references/triage-criteria.md](references/triage-criteria.md) —
+- [references/03-triage-criteria.md](references/03-triage-criteria.md) —
   fix-vs-decline decision rubric.
 - [references/api-quirks.md](references/api-quirks.md) — verified GitHub
   API dead-ends; read before scripting any Copilot reviewer interaction.
-- [references/reply-templates.md](references/reply-templates.md) — reply
+- [references/06-reply-templates.md](references/06-reply-templates.md) — reply
   patterns for accepted fixes, declined-with-rationale findings, and
   description-update acknowledgements.
-- [scripts/request-review.ps1](scripts/request-review.ps1) — re-request a
+- [scripts/01-request-review.ps1](scripts/01-request-review.ps1) — re-request a
   Copilot review on a PR.
-- [scripts/list-open-threads.ps1](scripts/list-open-threads.ps1) — fetch
+- [scripts/02-list-open-threads.ps1](scripts/02-list-open-threads.ps1) — fetch
   open, non-outdated Copilot review threads.
-- [scripts/reply-and-resolve.ps1](scripts/reply-and-resolve.ps1) — post a
+- [scripts/06-reply-and-resolve.ps1](scripts/06-reply-and-resolve.ps1) — post a
   reply and resolve in one call.
-- [scripts/cleanup-outdated.ps1](scripts/cleanup-outdated.ps1) —
+- [scripts/09-cleanup-outdated.ps1](scripts/09-cleanup-outdated.ps1) —
   batch-resolve outdated Copilot threads at convergence.

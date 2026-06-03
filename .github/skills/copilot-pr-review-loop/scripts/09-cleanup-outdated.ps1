@@ -29,10 +29,10 @@
     resolved without actually resolving them.
 
 .EXAMPLE
-    pwsh cleanup-outdated.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 122
+    pwsh 09-cleanup-outdated.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 122
 
 .EXAMPLE
-    pwsh cleanup-outdated.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 122 -WhatIf
+    pwsh 09-cleanup-outdated.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 122 -WhatIf
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(

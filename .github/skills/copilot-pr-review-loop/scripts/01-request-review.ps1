@@ -13,7 +13,7 @@
     The pull request number to re-request review on.
 
 .EXAMPLE
-    pwsh request-review.ps1 -PrNumber 122
+    pwsh 01-request-review.ps1 -PrNumber 122
 #>
 [CmdletBinding()]
 param(

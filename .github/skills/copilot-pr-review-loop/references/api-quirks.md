@@ -84,7 +84,7 @@ threads:
   resolved.
 - Should be filtered out when listing what needs triage.
 - Should be batch-resolved once at convergence (see
-  `scripts/cleanup-outdated.ps1`).
+  `scripts/09-cleanup-outdated.ps1`).
 
 ## ⚠️ The "no new comments" review is not enough to declare convergence
 

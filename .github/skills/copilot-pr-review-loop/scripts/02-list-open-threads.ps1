@@ -11,7 +11,7 @@
 
     Outdated threads (earlier comments on lines that have since been
     rewritten) are not actionable in the current round and should be
-    cleaned up at convergence via cleanup-outdated.ps1.
+    cleaned up at convergence via 09-cleanup-outdated.ps1.
 
 .PARAMETER Owner
     Repository owner (org or user).
@@ -27,7 +27,7 @@
     Defaults to 400.
 
 .EXAMPLE
-    pwsh list-open-threads.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 122
+    pwsh 02-list-open-threads.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 122
 #>
 [CmdletBinding()]
 param(

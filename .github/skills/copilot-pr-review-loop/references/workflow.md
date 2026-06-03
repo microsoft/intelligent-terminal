@@ -11,7 +11,7 @@ Copilot bot login, and REST `requested_reviewers` rejects bots with HTTP
 422. See [api-quirks.md](api-quirks.md) for details.
 
 ```powershell
-pwsh ../scripts/request-review.ps1 -PrNumber <pr-number>
+pwsh ../scripts/01-request-review.ps1 -PrNumber <pr-number>
 ```
 
 The script is idempotent — re-running it triggers a fresh review.
@@ -24,7 +24,7 @@ polling only wastes API budget.
 
 ```powershell
 Start-Sleep -Seconds 360
-pwsh ../scripts/list-open-threads.ps1 -Owner <owner> -Repo <repo> -PrNumber <pr-number>
+pwsh ../scripts/02-list-open-threads.ps1 -Owner <owner> -Repo <repo> -PrNumber <pr-number>
 ```
 
 Filter for **open AND non-outdated** threads only. Outdated threads point at
@@ -33,7 +33,7 @@ at convergence (step 9) instead.
 
 ## 3. Triage each finding
 
-Apply the decision rubric in [triage-criteria.md](triage-criteria.md). The
+Apply the decision rubric in [03-triage-criteria.md](03-triage-criteria.md). The
 short version:
 
 - **Fix** real correctness bugs (use-after-free, races that drop user
@@ -79,10 +79,10 @@ full review cycle.
 ## 6. Reply to and resolve each thread
 
 Reply first (explain what you did, cite the commit SHA), then resolve. Use
-the templates in [reply-templates.md](reply-templates.md).
+the templates in [06-reply-templates.md](06-reply-templates.md).
 
 ```powershell
-pwsh ../scripts/reply-and-resolve.ps1 `
+pwsh ../scripts/06-reply-and-resolve.ps1 `
     -ThreadId <thread-id> `
     -Body "Did X because Y. Fixed in <commit-sha>."
 ```
@@ -120,5 +120,5 @@ threads still listed as open. They are already addressed by later commits,
 but they clutter the conversation tab. Batch-resolve them:
 
 ```powershell
-pwsh ../scripts/cleanup-outdated.ps1 -Owner <owner> -Repo <repo> -PrNumber <pr-number>
+pwsh ../scripts/09-cleanup-outdated.ps1 -Owner <owner> -Repo <repo> -PrNumber <pr-number>
 ```

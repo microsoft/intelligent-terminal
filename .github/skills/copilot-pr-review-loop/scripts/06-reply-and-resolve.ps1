@@ -8,7 +8,7 @@
     2. resolveReviewThread             — marks the thread resolved.
 
     Use this for both accepted-and-fixed findings and for declined-with-
-    rationale findings. See ../references/reply-templates.md for body
+    rationale findings. See ../references/06-reply-templates.md for body
     patterns.
 
 .PARAMETER ThreadId
@@ -23,11 +23,11 @@
     thread.
 
 .EXAMPLE
-    pwsh reply-and-resolve.ps1 -ThreadId PRRT_kw... -Body "Fixed in abc1234."
+    pwsh 06-reply-and-resolve.ps1 -ThreadId PRRT_kw... -Body "Fixed in abc1234."
 
 .EXAMPLE
     # Decline with rationale, do not resolve yet
-    pwsh reply-and-resolve.ps1 -ThreadId PRRT_kw... -NoResolve `
+    pwsh 06-reply-and-resolve.ps1 -ThreadId PRRT_kw... -NoResolve `
         -Body "Declining: this would require cross-class plumbing for a hypothetical race."
 #>
 [CmdletBinding()]
