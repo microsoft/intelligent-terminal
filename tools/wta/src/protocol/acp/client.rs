@@ -1081,6 +1081,60 @@ async fn resolve_active_pane_cwd(
         .map(std::path::PathBuf::from)
 }
 
+/// Best-effort canonical shell executable for a pid — e.g. `pwsh.exe`,
+/// `powershell.exe`, `cmd.exe`, `bash.exe`, `wsl.exe`. Unlike the WT profile
+/// *name* (which the user can rename), this is the actual running process, so
+/// the agent can reliably pick shell syntax. Returns the file name only;
+/// `None` on any failure (or off Windows).
+#[cfg(windows)]
+fn process_image_name(pid: u32) -> Option<String> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    if pid == 0 {
+        return None;
+    }
+    // SAFETY: a standard Win32 handle dance. The handle from OpenProcess is
+    // closed on every return path; the buffer is sized up front and the
+    // written length comes back in `size`.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return None;
+        }
+        let mut buf = [0u16; 260]; // MAX_PATH
+        let mut size = buf.len() as u32;
+        let ok =
+            QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut size);
+        CloseHandle(handle);
+        if ok == 0 || size == 0 {
+            return None;
+        }
+        let full = String::from_utf16_lossy(&buf[..size as usize]);
+        full.rsplit(['\\', '/'])
+            .next()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    }
+}
+
+#[cfg(not(windows))]
+fn process_image_name(_pid: u32) -> Option<String> {
+    None
+}
+
+/// Resolve the canonical shell exe from an active-pane JSON object's `pid`
+/// field (already present in `get_active_pane`/`get_panes` responses). The
+/// agent gets this as the `shell` field alongside the renamable `profile`.
+fn shell_from_active(active: &serde_json::Value) -> Option<String> {
+    active
+        .get("pid")
+        .and_then(|v| v.as_u64())
+        .and_then(|pid| process_image_name(pid as u32))
+}
+
 async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String> {
     // WT's GetActivePane already resolves the agent pane to the user's working
     // pane (the "source"), so a single active-pane query gives us the right
@@ -1117,11 +1171,15 @@ async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String>
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
+    // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) from the pane's pid.
+    // Survives a renamed profile, so it's the reliable syntax signal.
+    let target_shell = shell_from_active(&active);
 
     tracing::debug!(
         target: "acp.terminal_context",
         target_pane_id = %target_pane_id,
         profile = ?target_profile,
+        shell = ?target_shell,
         "terminal_context_target_resolved"
     );
 
@@ -1138,6 +1196,7 @@ async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String>
         "window_title": target_window_title,
         "cwd": target_cwd,
         "profile": target_profile,
+        "shell": target_shell,
         "locale": user_locale_tag(),
         "buffer": buffer,
     }))
@@ -1262,8 +1321,11 @@ async fn build_prompt_text(
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
+                // Canonical shell exe from the pane's pid — see `shell_from_active`.
+                let shell = shell_from_active(active);
                 let json = serde_json::to_string(&serde_json::json!({
                     "profile": profile,
+                    "shell": shell,
                     "cwd": cwd,
                     "locale": user_locale_tag(),
                 }))
@@ -1306,6 +1368,7 @@ async fn build_prompt_text(
                         .as_ref()
                         .and_then(|a| a.get("profile"))
                         .and_then(|v| v.as_str()),
+                    shell = ?active.as_ref().and_then(shell_from_active),
                     mode = "autofix",
                     "terminal_context_target_resolved"
                 );
@@ -4207,12 +4270,29 @@ async fn dispatch_prompt_body(
 #[cfg(test)]
 mod tests {
     use super::{
-        complete_prompt_request, inject_wta_pane_meta, requested_model_id,
+        complete_prompt_request, inject_wta_pane_meta, requested_model_id, shell_from_active,
         summarize_agent_identity, user_locale_tag, PromptTimingState, SoftStopReason,
     };
     use super::acp;
     use crate::app::AppEvent;
     use tokio::sync::mpsc;
+
+    /// `shell_from_active` resolves our own pid to a real exe name (the test
+    /// binary). Proves the pid → image-name path works end to end on Windows;
+    /// a missing/zero pid yields `None`.
+    #[cfg(windows)]
+    #[test]
+    fn shell_from_active_resolves_pid() {
+        let me = serde_json::json!({ "pid": std::process::id() });
+        let name = shell_from_active(&me).expect("own pid should resolve");
+        assert!(
+            name.to_ascii_lowercase().ends_with(".exe"),
+            "expected an .exe image name, got {name:?}"
+        );
+
+        assert_eq!(shell_from_active(&serde_json::json!({ "pid": 0 })), None);
+        assert_eq!(shell_from_active(&serde_json::json!({})), None);
+    }
 
     /// Helper-only: round-trip a `_meta` blob through `inject_wta_pane_meta`
     /// and report the `pane_session_id` that the master would see in
