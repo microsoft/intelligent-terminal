@@ -481,6 +481,12 @@ to **at least** `RemoteSigned`:
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 ```
 
+> [!IMPORTANT]
+> Make sure to run this command in **both** hosts:
+>
+> - **PowerShell 7+** (`pwsh.exe`)
+> - **Windows PowerShell 5.1** (`powershell.exe`)
+
 `RemoteSigned` allows local scripts (such as your profile) to run while
 still requiring a signature on scripts downloaded from the internet, which
 is the recommended Microsoft default for developer machines.
