@@ -71,6 +71,21 @@ In this release, **agent session management only tracks sessions for the agent C
 
 **Workaround:** Until a better design ships, select the **same agent** for both your agent pane and your delegate agent in Settings → Agent. With both pointed at the same CLI, the delegate's sessions will appear in agent session management alongside the agent pane's.
 
+## 9. Why does Intelligent Terminal crash a few seconds after launch, or fail agent actions with "0x80010105 — The server threw an exception"?
+
+**Symptom:** One of two related failures:
+
+- The app launches, the agent pane starts, and then **`WindowsTerminal.exe` crashes a few seconds later**. Windows Event Viewer records an *Application Error* faulting in **`combase.dll`** with exception code **`0xc0000005`**.
+- Or the app stays open, but agent-driven actions (for example, inserting a command into a pane) fail with **`Connection failed: 0x80010105 — The server threw an exception`** (`RPC_E_SERVERFAULT`) reported by `wtcli`.
+
+**Cause:** This is an **operating-system-level issue in the Windows COM/WinRT cross-process activation path** (the `rpcss` / `combase` activation catalog) — **not a defect in Intelligent Terminal itself**. Intelligent Terminal's agent integration activates a cross-process COM service (via Metadata-Based Marshaling) whenever the agent talks to the terminal. On an affected Windows build, this cross-process activation can fault. The same underlying fault surfaces either as the `combase.dll` crash or as the `0x80010105` "server threw an exception" error. It is being tracked across several reports (issues [#197](https://github.com/microsoft/intelligent-terminal/issues/197), [#200](https://github.com/microsoft/intelligent-terminal/issues/200), [#170](https://github.com/microsoft/intelligent-terminal/issues/170)) and investigated with the Windows servicing team.
+
+**Workaround:**
+
+- **Update Windows to the latest available cumulative update for your version** — Windows 11 22H2, 23H2, 24H2, or 25H2 — via **Settings → Windows Update**, and install all pending updates. Moving to the latest patch level resolves the crash and the `0x80010105` failures.
+- The Intelligent Terminal team is also **actively reworking how the app communicates with the terminal**, so the issue will be mitigated independently of the OS update in a future release.
+- If it still reproduces on a fully updated machine, please add your Windows build number (run `winver`) and, if available, the crash dump from `%LOCALAPPDATA%\CrashDumps\` to one of the tracked issues above.
+
 ---
 
-*Last updated: 2026-06-02. See the [release notes](https://github.com/microsoft/intelligent-terminal/releases) for items resolved in newer versions.*
+*Last updated: 2026-06-03. See the [release notes](https://github.com/microsoft/intelligent-terminal/releases) for items resolved in newer versions.*
