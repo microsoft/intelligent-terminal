@@ -1235,42 +1235,67 @@ async fn build_prompt_text(
         // header so the agent can choose PowerShell vs bash vs cmd syntax for
         // any file-edit fix it suggests.
         if wt_connected {
-            if let Some(source_pane_id) =
-                pane_context.and_then(|ctx| ctx.effective_source_pane_id())
-            {
+            // Resolve the active pane once: it supplies the shell-context
+            // header and — for a manual `/fix`, which carries no explicit
+            // `source_pane_id` — doubles as the source-pane resolver. WT's
+            // GetActivePane already maps the agent pane to the user's working
+            // pane, so this is the same target the error-triggered path gets
+            // from its notification.
+            let active = shell_mgr.wt_get_active_pane().await.ok();
+
+            // Shell context — best-effort. WT returns the profile name
+            // (e.g. "PowerShell", "Command Prompt", "Ubuntu") which is a
+            // strong signal even when the user has renamed the profile.
+            if let Some(active) = active.as_ref() {
+                let profile = active
+                    .get("profile")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let cwd = active
+                    .get("cwd")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let json = serde_json::to_string(&serde_json::json!({
+                    "profile": profile,
+                    "cwd": cwd,
+                    "locale": user_locale_tag(),
+                }))
+                .unwrap_or_else(|_| "{}".to_string());
+                runtime_sections.push(format!("### Shell Context\n```json\n{}\n```", json));
+            }
+
+            // Explicit source pane (error-triggered autofix) wins; otherwise
+            // fall back to the resolved active working pane (`/fix`). An
+            // active pane that is itself an agent pane is skipped — there's
+            // no terminal output to read there.
+            let source_pane_id = pane_context
+                .and_then(|ctx| ctx.source_pane_id.clone())
+                .or_else(|| {
+                    active.as_ref().and_then(|a| {
+                        let is_agent = a
+                            .get("is_agent_pane")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        if is_agent {
+                            None
+                        } else {
+                            json_str_or_num(a.get("session_id"))
+                        }
+                    })
+                });
+
+            if let Some(source_pane_id) = source_pane_id {
                 tracing::debug!(
                     target: "acp.terminal_context",
-                    source_pane_id,
+                    source_pane_id = %source_pane_id,
                     mode = "autofix",
                     "terminal_context_target_resolved"
                 );
-
-                // Shell context — best-effort. WT returns the profile name
-                // (e.g. "PowerShell", "Command Prompt", "Ubuntu") which is a
-                // strong signal even when the user has renamed the profile.
-                if let Ok(active) = shell_mgr.wt_get_active_pane().await {
-                    let profile = active
-                        .get("profile")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let cwd = active
-                        .get("cwd")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let json = serde_json::to_string(&serde_json::json!({
-                        "profile": profile,
-                        "cwd": cwd,
-                        "locale": user_locale_tag(),
-                    }))
-                    .unwrap_or_else(|_| "{}".to_string());
-                    runtime_sections.push(format!("### Shell Context\n```json\n{}\n```", json));
-                }
-
                 if let Some(content) = read_pane_last_message(
                     shell_mgr,
-                    source_pane_id,
+                    &source_pane_id,
                     30,
                     ACTIVE_PANE_CONTEXT_MAX_CHARS,
                 )
@@ -1299,7 +1324,14 @@ async fn build_prompt_text(
             .join("\n\n")
     };
     let prompt = if is_autofix {
-        prompt_body
+        // Auto-triggered autofix carries no user text — the template + terminal
+        // output is the whole prompt. A manual `/fix <hint>` passes the hint as
+        // `user_text`; append it so the agent can use it to steer the diagnosis.
+        if user_text.trim().is_empty() {
+            prompt_body
+        } else {
+            format!("{}\n\n## User Request\n{}", prompt_body, user_text)
+        }
     } else if prompt_body.is_empty() {
         format!("## User Request\n{}", user_text)
     } else {

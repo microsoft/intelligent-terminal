@@ -82,12 +82,13 @@ commands.help_header: "Slash commands — type / in the input box."
 commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command parser)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 # Slash-command summaries shown in the popup and /help overlay.
-# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
-# English. Only the descriptions are localized.
+# Command names (/help, /clear, /new, /fix, /restart, /stop, /sessions) stay
+# in English. Only the descriptions are localized.
 # {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
 commands.help.summary: "Show this command list"
 commands.clear.summary: "Clear the chat scrollback (keeps session)"
 commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

@@ -6560,6 +6560,7 @@ impl App {
             CommandKind::Clear => self.cmd_clear(),
             CommandKind::Stop => self.cmd_stop(in_flight),
             CommandKind::New => self.cmd_new(in_flight),
+            CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
         }
@@ -6628,6 +6629,79 @@ impl App {
         tab.selected_completed_turn_idx = None;
         tab.session_id = None;
         tab.scroll_to_bottom();
+    }
+
+    /// `/fix [hint]` — run the auto-fix prompt on demand against the active
+    /// terminal pane. Reuses the error-triggered autofix pipeline
+    /// (`PromptSubmission::is_autofix`): the agent receives the `auto-fix.md`
+    /// template plus the working pane's recent output, and any `hint` typed
+    /// after `/fix` is appended as an extra steer.
+    ///
+    /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):
+    /// there is no failing-pane notification, so (1) the source pane is
+    /// resolved in the ACP client task — `PaneContext.source_pane_id` is left
+    /// `None` and `build_prompt_text` falls back to WT's active pane, which
+    /// GetActivePane maps from the agent pane to the user's working pane; and
+    /// (2) `target_pane_id` is left empty so the eventual fix is routed to the
+    /// agent's default working pane ("no override"). The bottom-bar Pending
+    /// pill is *not* armed — that UI is tied to a specific failing pane, and a
+    /// command typed into the agent pane surfaces its result there directly.
+    ///
+    /// Refuses while a turn is in flight; the user should `/stop` first.
+    fn cmd_fix(&mut self, in_flight: bool, hint: String) {
+        if in_flight {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("system.busy_use_stop").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
+
+        let target_tab_id = self
+            .tab_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+
+        // Bump generation so any stale in-flight autofix response is dropped,
+        // and clear a leftover suggestion — mirrors `maybe_trigger_autofix`.
+        let generation = {
+            let tab = self.tab_mut(&target_tab_id);
+            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
+            tab.autofix.suggested_pane_id = None;
+            tab.autofix.generation
+        };
+
+        let pane_context = PaneContext {
+            pane_id: self.pane_id.clone(),
+            tab_id: Some(target_tab_id.clone()),
+            window_id: self.window_id.clone(),
+            cwd: None,
+            // None → the client task resolves the active working pane itself.
+            source_pane_id: None,
+        };
+
+        let hint = hint.trim().to_string();
+        let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context));
+        let submitted = SubmittedPrompt {
+            id: prompt.id,
+            text: prompt.text.clone(),
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            autofix: Some(AutofixContext {
+                // Empty → `turn_execute_card` leaves `Send.parent` blank, which
+                // the host treats as "no override" and routes to the working pane.
+                target_pane_id: String::new(),
+                generation,
+            }),
+        };
+        tracing::info!(
+            target: "slash_cmd",
+            tab_id = %target_tab_id,
+            generation,
+            has_hint = !hint.is_empty(),
+            "dispatching /fix",
+        );
+        self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
+        let _ = self.prompt_tx.send(prompt);
     }
 
     /// `/sessions` — open the Agents picker for the active tab.

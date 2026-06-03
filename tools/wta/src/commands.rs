@@ -14,6 +14,14 @@ pub enum CommandKind {
     Clear,
     Stop,
     New,
+    /// Run the auto-fix prompt on demand.
+    ///
+    /// Submits the dedicated `auto-fix.md` template plus the active
+    /// terminal pane's recent output to the agent — the same pipeline the
+    /// error-triggered autofix uses (`PromptSubmission::is_autofix`), but
+    /// invoked manually. Any text after `/fix` is passed through as an
+    /// extra hint to steer the diagnosis (`/fix the path looks wrong`).
+    Fix,
     /// Reset the agent CLI subprocess.
     ///
     /// * Standalone wta: tears down + respawns the agent CLI in-process;
@@ -77,6 +85,13 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_args: false,
     },
     CommandSpec {
+        name: "fix",
+        summary_key: "commands.fix.summary",
+        kind: CommandKind::Fix,
+        // `/fix <hint>` — free-form text after the name steers the fix.
+        takes_args: true,
+    },
+    CommandSpec {
         name: "restart",
         summary_key: "commands.restart.summary",
         kind: CommandKind::Restart,
@@ -100,9 +115,8 @@ pub const REGISTRY: &[CommandSpec] = &[
 pub struct ParsedCommand {
     pub kind: CommandKind,
     pub spec: &'static CommandSpec,
-    /// Anything after the command name (trimmed, may be empty).
-    /// MVP commands ignore this; reserved for future `/model`, `/cwd`, …
-    #[allow(dead_code)]
+    /// Anything after the command name (trimmed, may be empty). Consumed by
+    /// arg-taking commands (`/fix <hint>`); zero-arg commands ignore it.
     pub rest: String,
 }
 
@@ -254,6 +268,20 @@ mod tests {
         let s_matches: Vec<&str> = matches("s").into_iter().map(|c| c.name).collect();
         assert!(s_matches.contains(&"stop"));
         assert!(s_matches.contains(&"sessions"));
+    }
+
+    #[test]
+    fn fix_parses_with_optional_hint() {
+        // Bare /fix: no hint.
+        let bare = parse("/fix").unwrap();
+        assert_eq!(bare.kind, CommandKind::Fix);
+        assert_eq!(bare.rest, "");
+        // /fix <hint>: the trailing text is captured verbatim.
+        let hinted = parse("/fix the path looks wrong").unwrap();
+        assert_eq!(hinted.kind, CommandKind::Fix);
+        assert_eq!(hinted.rest, "the path looks wrong");
+        // takes_args is advertised so Tab-completion leaves a trailing space.
+        assert!(lookup("fix").unwrap().takes_args);
     }
 
     #[test]
