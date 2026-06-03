@@ -43,6 +43,29 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Invoke-GhGraphQL {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Args,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Context
+    )
+
+    $json = gh api graphql @Args
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh api graphql failed (exit $LASTEXITCODE) [$Context]."
+    }
+
+    $data = $json | ConvertFrom-Json
+    if ($data.errors) {
+        $msgs = ($data.errors | ForEach-Object { $_.message }) -join '; '
+        throw "GraphQL errors [$Context]: $msgs"
+    }
+
+    return $data
+}
+
 $replyMutation = @'
 mutation($tid: ID!, $body: String!) {
   addPullRequestReviewThreadReply(input: {
@@ -55,10 +78,7 @@ mutation($tid: ID!, $body: String!) {
 '@
 
 $replyArgs = @('-f', "query=$replyMutation", '-f', "tid=$ThreadId", '-f', "body=$Body")
-gh api graphql @replyArgs | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    throw "gh api graphql (reply) failed (exit $LASTEXITCODE) for thread $ThreadId."
-}
+Invoke-GhGraphQL -Args $replyArgs -Context "reply to thread $ThreadId" | Out-Null
 Write-Output "Replied to thread $ThreadId"
 
 if (-not $NoResolve) {
@@ -70,9 +90,6 @@ mutation($tid: ID!) {
 }
 '@
     $resolveArgs = @('-f', "query=$resolveMutation", '-f', "tid=$ThreadId")
-    gh api graphql @resolveArgs | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "gh api graphql (resolve) failed (exit $LASTEXITCODE) for thread $ThreadId."
-    }
+    Invoke-GhGraphQL -Args $resolveArgs -Context "resolve thread $ThreadId" | Out-Null
     Write-Output "Resolved thread $ThreadId"
 }

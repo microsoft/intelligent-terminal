@@ -42,6 +42,29 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Invoke-GhGraphQL {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Args,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Context
+    )
+
+    $json = gh api graphql @Args
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh api graphql failed (exit $LASTEXITCODE) [$Context]."
+    }
+
+    $data = $json | ConvertFrom-Json
+    if ($data.errors) {
+        $msgs = ($data.errors | ForEach-Object { $_.message }) -join '; '
+        throw "GraphQL errors [$Context]: $msgs"
+    }
+
+    return $data
+}
+
 if (-not $Owner -or -not $Repo) {
     $repoInfo = gh repo view --json owner,name | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) {
@@ -80,11 +103,7 @@ do {
     $args = @('-f', "query=$query", '-f', "owner=$Owner", '-f', "repo=$Repo", '-F', "pr=$PrNumber")
     if ($after) { $args += @('-f', "after=$after") }
 
-    $json = gh api graphql @args
-    if ($LASTEXITCODE -ne 0) {
-        throw "gh api graphql (list) failed (exit $LASTEXITCODE) for $Owner/$Repo PR #$PrNumber."
-    }
-    $data = $json | ConvertFrom-Json
+    $data = Invoke-GhGraphQL -Args $args -Context "list outdated threads for $Owner/$Repo PR #$PrNumber"
     $page = $data.data.repository.pullRequest.reviewThreads
     $all += $page.nodes
     $after = $page.pageInfo.endCursor
@@ -115,10 +134,8 @@ mutation($tid: ID!) {
 
 foreach ($t in $targets) {
     if ($PSCmdlet.ShouldProcess($t.id, 'Resolve outdated Copilot thread')) {
-        gh api graphql -f query=$resolveMutation -f "tid=$($t.id)" | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "gh api graphql (resolve) failed (exit $LASTEXITCODE) for thread $($t.id)."
-        }
+        $resolveArgs = @('-f', "query=$resolveMutation", '-f', "tid=$($t.id)")
+        Invoke-GhGraphQL -Args $resolveArgs -Context "resolve outdated thread $($t.id)" | Out-Null
         Write-Output "Resolved $($t.id)"
     }
 }

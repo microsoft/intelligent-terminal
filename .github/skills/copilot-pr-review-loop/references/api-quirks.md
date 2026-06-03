@@ -142,14 +142,37 @@ script will print misleading success messages (`"Replied to thread X"`,
 `"Resolved Y"`) after a failed API call, and the loop will falsely
 declare convergence on auth issues, rate limits, or transient 5xx.
 
-Pattern — check immediately after every `gh` call:
+GraphQL has an additional trap: `gh api graphql` can exit 0 for an HTTP 200
+response whose JSON body contains a top-level `errors` array. Treat that as a
+failed call too.
+
+Pattern — wrap every `gh api graphql` call, check the native exit code, then
+parse stdout and check `$data.errors` before printing success:
 
 ```powershell
-gh api graphql @args | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    throw "gh api graphql failed (exit $LASTEXITCODE) for <context>."
+function Invoke-GhGraphQL {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Args,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Context
+    )
+
+    $json = gh api graphql @Args
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh api graphql failed (exit $LASTEXITCODE) [$Context]."
+    }
+
+    $data = $json | ConvertFrom-Json
+    if ($data.errors) {
+        $msgs = ($data.errors | ForEach-Object { $_.message }) -join '; '
+        throw "GraphQL errors [$Context]: $msgs"
+    }
+
+    return $data
 }
 ```
 
-Applies to `gh api`, `gh pr edit`, `gh pr view`, and any other `gh`
-invocation in a loop script.
+For non-GraphQL `gh` commands (`gh pr edit`, `gh pr view`, etc.), still check
+`$LASTEXITCODE` immediately after each call.
