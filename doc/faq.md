@@ -80,6 +80,7 @@ In this release, **agent session management only tracks sessions for the agent C
 
 **Cause:** This appears to be an **operating-system-level issue in the Windows COM/WinRT cross-process activation path** (the `combase.dll` activation/marshaling path) that is **triggered by Intelligent Terminal's use of Metadata-Based Marshaling** when activating its out-of-proc COM/WinRT service. The same underlying fault can surface either as the `combase.dll` crash or as the `0x80010105` "server threw an exception" error.
 
+
 **Workaround:**
 
 - **Update Windows to the latest available cumulative update for your version** — Windows 11 22H2, 23H2, 24H2, or 25H2 — via **Settings → Windows Update**, and install all pending updates. Moving to the latest patch level resolves the crash and the `0x80010105` failures. The latest cumulative update for each Windows version is listed on the [Windows 11 release information](https://learn.microsoft.com/windows/release-health/windows11-release-information) page.
