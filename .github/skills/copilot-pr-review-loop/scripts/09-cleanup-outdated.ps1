@@ -82,13 +82,13 @@ do {
 
 $threads = $all
 
-$targets = $threads | Where-Object {
+$targets = @($threads | Where-Object {
     $_.isOutdated -and
     -not $_.isResolved -and
     $_.comments.nodes[0].author.login -eq 'copilot-pull-request-reviewer'
-}
+})
 
-if (-not $targets) {
+if ($targets.Count -eq 0) {
     Write-Output 'No outdated Copilot threads to clean up.'
     return
 }

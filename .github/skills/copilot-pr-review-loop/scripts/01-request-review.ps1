@@ -24,3 +24,6 @@ param(
 $ErrorActionPreference = 'Stop'
 
 gh pr edit $PrNumber --add-reviewer copilot-pull-request-reviewer
+if ($LASTEXITCODE -ne 0) {
+    throw "gh pr edit failed with exit code $LASTEXITCODE while requesting Copilot review on PR #$PrNumber."
+}
