@@ -66,7 +66,7 @@ The parent agent owns sequencing, commit/push, and the final
 `reply-and-resolve` call (which mutates remote state and shouldn't be
 delegated until the reply text has been reviewed).
 
-## Gotchas
+## Pitfalls
 
 - **Use `gh pr edit --add-reviewer copilot-pull-request-reviewer`** to
   request a Copilot review. The GraphQL `requestReviews` mutation rejects

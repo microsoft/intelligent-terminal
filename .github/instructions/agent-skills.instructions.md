@@ -82,11 +82,11 @@ The body contains detailed instructions that Copilot loads AFTER the skill is ac
 | `## When to Use This Skill` | List of scenarios (reinforces description triggers) |
 | `## Prerequisites` | Required tools, dependencies, environment setup (if applicable) |
 | `## Step-by-Step Workflows` | Numbered steps for repeatable procedures (build, deploy, setup) |
-| `## Gotchas` | Proactive warnings about non-obvious behavior ("never do X because Y") |
+| `## Pitfalls` | Proactive warnings about non-obvious behavior ("never do X because Y") |
 | `## Troubleshooting` | Reactive fixes for known issues ("if you see X, try Y") |
 | `## References` | Links to bundled docs or external resources |
 
-Not every skill needs every section. Skip `## Prerequisites` if there are no external dependencies. Skip `## Step-by-Step Workflows` if the skill is purely advisory. Include `## Gotchas` whenever the skill involves external tools, APIs, or platform-specific behavior.
+Not every skill needs every section. Skip `## Prerequisites` if there are no external dependencies. Skip `## Step-by-Step Workflows` if the skill is purely advisory. Include `## Pitfalls` whenever the skill involves external tools, APIs, or platform-specific behavior.
 
 For content quality principles (what to include and what to leave out), see [Writing High-Impact Skills](#writing-high-impact-skills) below.
 
@@ -126,10 +126,10 @@ For content quality principles (what to include and what to leave out), see [Wri
 4. Verify the health endpoint returns 200
 ```
 
-**`## Gotchas`** — Proactive warnings that prevent mistakes. Document non-obvious defaults, API quirks, version-specific behavior, and common traps. Bold the key constraint, then explain why.
+**`## Pitfalls`** — Proactive warnings that prevent mistakes. Document non-obvious defaults, API quirks, version-specific behavior, and common traps. Bold the key constraint, then explain why.
 
 ```markdown
-## Gotchas
+## Pitfalls
 
 - **Never** call `billing.charge()` without checking `user.hasPaymentMethod` first —
   the SDK throws an unrecoverable error instead of returning a failure.
@@ -286,9 +286,9 @@ Do not include information Copilot already knows from its training data — stan
 
 All skill descriptions share a limited portion of the available context window during discovery. Your description competes with every other installed skill for Copilot's attention. Keep descriptions concise and keyword-dense — aim for the shortest text that still communicates WHAT, WHEN, and relevant KEYWORDS. Verbose descriptions don't just waste your own budget; they reduce visibility for every other skill in the system.
 
-### Gotchas Are Your Highest-Signal Content
+### Pitfalls Are Your Highest-Signal Content
 
-The `## Gotchas` section is consistently the most valuable part of any skill — proactive warnings that prevent mistakes before they happen. This is distinct from `## Troubleshooting`, which provides reactive fixes after something goes wrong. Treat gotchas as a living section: every time Copilot produces a wrong result, add a gotcha. Bold the key constraint, then explain why (e.g., "**Never** call `X()` without checking `Y` first — the SDK throws an unrecoverable error").
+The `## Pitfalls` section is consistently the most valuable part of any skill — proactive warnings that prevent mistakes before they happen. This is distinct from `## Troubleshooting`, which provides reactive fixes after something goes wrong. Treat Pitfalls as a living section: every time Copilot produces a wrong result, add a pitfall. Bold the key constraint, then explain why (e.g., "**Never** call `X()` without checking `Y` first — the SDK throws an unrecoverable error").
 
 ### Prefer Flexible Guidelines Over Rigid Steps
 
@@ -360,7 +360,7 @@ Before publishing a skill:
 - [ ] `description` is concise and keyword-dense (respects context budget)
 - [ ] Body focuses on information Copilot wouldn't know from training data
 - [ ] Body includes when to use, prerequisites (if applicable), and core instructions
-- [ ] `## Gotchas` section present if skill involves non-obvious behavior, API quirks, or common traps
+- [ ] `## Pitfalls` section present if skill involves non-obvious behavior, API quirks, or common traps
 - [ ] SKILL.md body under 500 lines (consider splitting into `references/` at ~200 lines; 500 is the hard maximum)
 - [ ] Large workflows (>5 steps) split into `references/` folder with clear links from SKILL.md
 - [ ] Scripts include help documentation and error handling
