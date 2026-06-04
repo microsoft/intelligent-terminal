@@ -1435,19 +1435,28 @@ namespace winrt::TerminalApp::implementation
             params["delegate_model"] = winrt::to_string(current.delegateModel);
         }
 
+        _agentPaneLog("emitting agent_config_changed (hot settings update)");
+        _RaiseProtocolEvent("agent_config_changed", params);
+
+        _lastAgentRuntimeConfig = current;
+    }
+
+    // Single source of the wta protocol-event wire shape. Wraps `params` in a
+    // `{type:"event", method, params}` envelope, serializes it compactly, and
+    // raises it on ProtocolVtSequenceReceived (which fans out to the agent
+    // helper(s) over the COM event bus).
+    void TerminalPage::_RaiseProtocolEvent(std::string_view method, const Json::Value& params)
+    {
         Json::Value evt{ Json::objectValue };
         evt["type"] = "event";
-        evt["method"] = "agent_config_changed";
+        evt["method"] = std::string{ method };
         evt["params"] = params;
 
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
-        _agentPaneLog("emitting agent_config_changed (hot settings update)");
         ProtocolVtSequenceReceived.raise(
             *this,
             winrt::to_hstring(Json::writeString(wb, evt)));
-
-        _lastAgentRuntimeConfig = current;
     }
 
     // Close the agent pane in a specific tab, if it has one.
@@ -1526,17 +1535,9 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        Json::Value tabEvt;
-        tabEvt["type"] = "event";
-        tabEvt["method"] = "reset_tab_session";
         Json::Value tabParams;
         tabParams["tab_id"] = winrt::to_string(tabId);
-        tabEvt["params"] = tabParams;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        ProtocolVtSequenceReceived.raise(
-            *this,
-            winrt::to_hstring(Json::writeString(wb, tabEvt)));
+        _RaiseProtocolEvent("reset_tab_session", tabParams);
     }
 
     // Tells wta that a tab has been destroyed so it can drop the per-tab
@@ -1548,18 +1549,10 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        Json::Value tabEvt;
-        tabEvt["type"] = "event";
-        tabEvt["method"] = "tab_closed";
         Json::Value tabParams;
         tabParams["tab_id"] = winrt::to_string(tabId);
         tabParams["window_id"] = std::to_string(_WindowProperties.WindowId());
-        tabEvt["params"] = tabParams;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        ProtocolVtSequenceReceived.raise(
-            *this,
-            winrt::to_hstring(Json::writeString(wb, tabEvt)));
+        _RaiseProtocolEvent("tab_closed", tabParams);
     }
 
     // Tells wta that the focused tab changed so it can re-project per-tab
@@ -1575,18 +1568,10 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        Json::Value tabEvt;
-        tabEvt["type"] = "event";
-        tabEvt["method"] = "tab_changed";
         Json::Value tabParams;
         tabParams["tab_id"] = winrt::to_string(tabId);
         tabParams["window_id"] = std::to_string(_WindowProperties.WindowId());
-        tabEvt["params"] = tabParams;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        ProtocolVtSequenceReceived.raise(
-            *this,
-            winrt::to_hstring(Json::writeString(wb, tabEvt)));
+        _RaiseProtocolEvent("tab_changed", tabParams);
     }
 
     // C++ → wta request for changing per-tab agent-pane UI state. The target
@@ -1597,9 +1582,6 @@ namespace winrt::TerminalApp::implementation
                                                 std::optional<std::string_view> view,
                                                 std::optional<bool> paneOpen)
     {
-        Json::Value evt;
-        evt["type"] = "event";
-        evt["method"] = "set_agent_state";
         Json::Value params;
         params["window_id"] = std::to_string(_WindowProperties.WindowId());
 
@@ -1623,13 +1605,8 @@ namespace winrt::TerminalApp::implementation
             params["pane_open"] = *paneOpen;
             logSuffix += " pane_open=" + std::string{ *paneOpen ? "true" : "false" };
         }
-        evt["params"] = params;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
         _agentPaneLog(std::string{ "requesting set_agent_state:" } + logSuffix);
-        ProtocolVtSequenceReceived.raise(
-            *this,
-            winrt::to_hstring(Json::writeString(wb, evt)));
+        _RaiseProtocolEvent("set_agent_state", params);
     }
 
     // Builds the per-process flag/value pairs that wta-master inherits
@@ -2138,17 +2115,9 @@ namespace winrt::TerminalApp::implementation
             // "Ask the agent for a fix": open/focus the pane so the user
             // watches the analysis, then fire the LLM call. No auto-inject.
             openAgentPaneForReview();
-            Json::Value evt;
-            evt["type"] = "event";
-            evt["method"] = "autofix_execute_from_detected";
             Json::Value params;
             params["pane_id"] = winrt::to_string(paneId);
-            evt["params"] = params;
-            Json::StreamWriterBuilder wb;
-            wb["indentation"] = "";
-            ProtocolVtSequenceReceived.raise(
-                *this,
-                winrt::to_hstring(Json::writeString(wb, evt)));
+            _RaiseProtocolEvent("autofix_execute_from_detected", params);
             break;
         }
         case AS::Review:
@@ -7099,9 +7068,6 @@ namespace winrt::TerminalApp::implementation
                             const auto newTabId = focusedTab->StableId();
                             if (!newTabId.empty() && newTabId != oldTabId)
                             {
-                                Json::Value evt;
-                                evt["type"] = "event";
-                                evt["method"] = "tab_renamed";
                                 Json::Value params;
                                 params["old_tab_id"] = winrt::to_string(oldTabId);
                                 params["new_tab_id"] = winrt::to_string(newTabId);
@@ -7111,14 +7077,10 @@ namespace winrt::TerminalApp::implementation
                                 // set_agent_state events from the new window
                                 // pass the per-tab window filter.
                                 params["window_id"] = std::to_string(_WindowProperties.WindowId());
-                                evt["params"] = params;
-                                Json::StreamWriterBuilder wb;
-                                wb["indentation"] = "";
-                                const auto payload = winrt::to_hstring(Json::writeString(wb, evt));
                                 _agentPaneLog(
                                     std::string{ "_MakeTerminalPane: emitting tab_renamed old=" } +
                                     winrt::to_string(oldTabId) + " new=" + winrt::to_string(newTabId));
-                                ProtocolVtSequenceReceived.raise(*this, payload);
+                                _RaiseProtocolEvent("tab_renamed", params);
                             }
                             else
                             {

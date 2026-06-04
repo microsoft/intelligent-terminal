@@ -29,6 +29,11 @@ namespace Microsoft::Terminal::Core
     class ControlKeyStates;
 }
 
+namespace Json
+{
+    class Value;
+}
+
 namespace winrt::Microsoft::Terminal::Settings
 {
     struct TerminalSettingsCreateResult;
@@ -460,6 +465,10 @@ namespace winrt::TerminalApp::implementation
         // and, on change, emits one `agent_config_changed` event carrying
         // only the changed fields. No agent-pane teardown.
         void _EmitAgentRuntimeConfigIfChanged();
+        // Serialize and raise a `{type:"event", method, params}` envelope on
+        // ProtocolVtSequenceReceived. Single source of the wta protocol-event
+        // wire shape — callers just supply the method name and a params object.
+        void _RaiseProtocolEvent(std::string_view method, const Json::Value& params);
         void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab, bool suppressMasterRestart = true);
         void _RebuildAgentStack();
         void _FlushPendingAgentRebuild();
