@@ -25,13 +25,16 @@ pub const BORDER_HEIGHT: u16 = 2;
 /// above the input. Falls back to anchoring below — clamped into the frame —
 /// only when there genuinely isn't room above (input box near the top).
 pub fn anchored_above(frame: &Frame, input_area: Rect, content_rows: u16) -> Rect {
-    let height = content_rows + BORDER_HEIGHT;
+    let frame_area = frame.area();
+    // Cap the height at the frame so a popup taller than the screen (tiny
+    // pane) can't extend past the buffer — some ratatui widgets assume the
+    // render area fits, and the below-fallback clamp below relies on this.
+    let height = (content_rows + BORDER_HEIGHT).min(frame_area.height);
     let width = input_area.width;
 
     if input_area.y >= height {
         Rect::new(input_area.x, input_area.y - height, width, height)
     } else {
-        let frame_area = frame.area();
         let y = (input_area.y + input_area.height)
             .min(frame_area.y + frame_area.height.saturating_sub(height));
         Rect::new(input_area.x, y, width, height)
