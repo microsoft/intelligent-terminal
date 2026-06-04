@@ -606,7 +606,43 @@ namespace winrt::TerminalApp::implementation
         _PopulateAgentComboBox();
 
         // Re-enable editing so the user can adjust selections and retry.
+        // _SetSavingState(false) parks focus on SaveButton as its safe
+        // default — fine for the success path (where the overlay
+        // immediately collapses) but suboptimal here: a Narrator user
+        // would be told the error and then find their focus on the
+        // generic Save button, with no clear cue that they're "on the
+        // error" or what they can do about it. Override the focus to
+        // the help-link inside the ErrorPanel — it's the only
+        // actionable element in the error area, and pressing Enter
+        // there opens the manual-fix docs (the natural next action
+        // after hearing the error). The user can Shift+Tab back to
+        // SaveButton if they want to retry instead.
         _SetSavingState(false);
+
+        // Narrator: order matters. Fire the error notification BEFORE
+        // moving focus to the hyperlink, so the user hears the error
+        // message first and the focus-location ("Learn how to fix,
+        // link") second. Doing it the other way around means the
+        // focus announcement plays first and the error sounds like an
+        // afterthought.
+        //
+        // The ErrorText carries LiveSetting="Assertive" in XAML, but
+        // live regions don't fire reliably for Text changes that
+        // happen while the hosting element is still Collapsed (we set
+        // the text above before flipping Visibility). Uses SaveButton
+        // as the peer source (matches the FRE welcome pattern in
+        // TerminalPage::_ShowFreOverlay) because UserControl peers
+        // don't propagate notifications to Narrator reliably.
+        if (auto peer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(SaveButton()))
+        {
+            peer.RaiseNotificationEvent(
+                Automation::Peers::AutomationNotificationKind::Other,
+                Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
+                ErrorText().Text(),
+                L"FreInstallErrorAnnouncement");
+        }
+
+        ErrorHelpLink().Focus(FocusState::Programmatic);
     }
 
     IAsyncAction FreOverlay::_SaveAndInstallAsync()
@@ -902,10 +938,34 @@ namespace winrt::TerminalApp::implementation
         if (saving)
         {
             overlay.Visibility(Visibility::Visible);
-            ring.IsActive(true);
+            // Move focus BEFORE activating the spinner. Narrator
+            // announces the focused control's state on focus change; if
+            // IsActive is already true, the announcement is prefixed
+            // with "busy" which buries the "Setting up..." notification
+            // we fire below. Toggling IsActive after focus tends to
+            // not re-announce.
             ring.Focus(FocusState::Programmatic);
+            ring.IsActive(true);
             scroller.IsEnabled(false);
             save.IsEnabled(false);
+
+            // Narrator: focus moving to the ProgressRing alone reads
+            // "ProgressRing" — a blind user has no idea what's busy.
+            // Announce the operation name explicitly with
+            // ImportantMostRecent so this wins over the focus
+            // announcement. Same RaiseNotificationEvent pattern as
+            // TerminalPage::_ShowFreOverlay (welcome) — uses SaveButton
+            // as the peer source because announcements fired through a
+            // UserControl's automation peer don't propagate to Narrator
+            // reliably; a concrete focusable Control does.
+            if (auto peer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(SaveButton()))
+            {
+                peer.RaiseNotificationEvent(
+                    Automation::Peers::AutomationNotificationKind::Other,
+                    Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
+                    RS_(L"FreOverlay_SettingUp"),
+                    L"FreSavingAnnouncement");
+            }
         }
         else
         {
