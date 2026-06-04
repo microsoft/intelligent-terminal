@@ -2819,12 +2819,6 @@
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>エージェント間でセッションを追跡します。エージェントのセッション管理に必要です。</value><comment>Help text shown under the expandable section header.</comment></data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Hooks をインストール</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Codex, Gemini).</comment></data>
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>再読み込み</value><comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment></data>
-  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>閉じる前に警告する</value><comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment></data>
-  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve"><value>タブやウィンドウを閉じる前に確認ダイアログを表示する条件を制御します。"常に" を選ぶと、任意のペインを閉じるときにダイアログが表示されます。</value><comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment></data>
-  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve"><value>表示しない</value><comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment></data>
-  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve"><value>常に</value><comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment></data>
-  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>複数のタブまたはペイン</value><comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment></data>
-  <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>デスクトップ通知</value><comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment></data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://go.microsoft.com/fwlink/?linkid=2229086</value><comment>{Locked}</comment></data>
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>この設定は組織によって管理されています。</value>

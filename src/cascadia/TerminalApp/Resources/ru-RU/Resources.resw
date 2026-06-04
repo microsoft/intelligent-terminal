@@ -961,45 +961,6 @@
   <data name="InvalidRegex" xml:space="preserve">
     <value>Обнаружено недопустимое регулярное выражение.</value>
   </data>
-  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve">
-    <value>Отмена</value>
-  </data>
-  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve">
-    <value>Вы хотите закрыть все окна?</value>
-  </data>
-  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve">
-    <value>Закрыть все</value>
-  </data>
-  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve">
-    <value>Вы хотите закрыть все вкладки?</value>
-  </data>
-  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve">
-    <value>Закрыть все</value>
-  </data>
-  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve">
-    <value>Вы хотите закрыть эту вкладку?</value>
-  </data>
-  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve">
-    <value>Закрыть вкладку</value>
-  </data>
-  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve">
-    <value>Вы хотите закрыть эту панель?</value>
-  </data>
-  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve">
-    <value>Закрыть панель</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve">
-    <value>Вы хотите закрыть эти вкладки?</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve">
-    <value>Закрыть вкладки</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve">
-    <value>Вы хотите закрыть эти панели?</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve">
-    <value>Закрыть панели</value>
-  </data>
   <data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve">
     <value>Режим запроса к агенту</value>
   </data>
@@ -1011,12 +972,6 @@
   </data>
   <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve">
     <value>Запустить задачу агента в фоновом режиме...</value>
-  </data>
-  <data name="NotificationMessage_TabActivity" xml:space="preserve">
-    <value>Активность на вкладке "{0}"</value>
-  </data>
-  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">
-    <value>Активность на вкладке "{0}" (окно "{1}")</value>
   </data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve">
     <value>Интеграция с оболочкой настроена</value>

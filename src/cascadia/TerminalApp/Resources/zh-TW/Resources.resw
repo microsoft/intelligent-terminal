@@ -961,25 +961,10 @@
   <data name="InvalidRegex" xml:space="preserve">
     <value>發現無效的規則運算式。</value>
   </data>
-  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve"><value>取消</value></data>
-  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve"><value>您要關閉所有視窗嗎？</value></data>
-  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve"><value>全部關閉</value></data>
-  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve"><value>您要關閉所有索引標籤嗎？</value></data>
-  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve"><value>全部關閉</value></data>
-  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve"><value>您要關閉此索引標籤嗎？</value></data>
-  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve"><value>關閉索引標籤</value></data>
-  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve"><value>您要關閉此窗格嗎？</value></data>
-  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve"><value>關閉窗格</value></data>
-  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve"><value>您要關閉這些索引標籤嗎？</value></data>
-  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve"><value>關閉索引標籤</value></data>
-  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve"><value>您要關閉這些窗格嗎？</value></data>
-  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve"><value>關閉窗格</value></data>
   <data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve"><value>AI 智能體提問模式</value><comment>This text will be read aloud using assistive technologies when the command palette switches into the agent foreground prompt mode.</comment></data>
   <data name="CommandPaletteModeAnnouncement_AgentBackgroundMode" xml:space="preserve"><value>AI 智能體背景工作模式</value><comment>This text will be read aloud using assistive technologies when the command palette switches into the agent background task mode.</comment></data>
   <data name="CmdPalAgentForegroundPrompt" xml:space="preserve"><value>詢問 AI 智能體...</value><comment>Placeholder text shown in the command palette search box when in agent foreground prompt mode.</comment></data>
   <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve"><value>在背景執行 AI 智能體工作...</value><comment>Placeholder text shown in the command palette search box when in agent background task mode.</comment></data>
-  <data name="NotificationMessage_TabActivity" xml:space="preserve"><value>索引標籤「{0}」中有活動</value><comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment></data>
-  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve"><value>索引標籤「{0}」中有活動（視窗「{1}」）</value><comment>{0} is the tab title, {1} is the window name. Shown as the body of a desktop notification when tab activity is detected and the window has a name.</comment></data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve"><value>Shell 整合已初始化</value></data>
   <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>Shell 整合已完成設定。請重新啟動您的 PowerShell 工作階段，或開啟新的索引標籤，讓變更生效。</value><comment>{Locked="PowerShell"}</comment></data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve"><value>Shell 整合已完成設定</value></data>

@@ -2876,29 +2876,6 @@
     <value>刷新</value>
     <comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment>
   </data>
-  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
-    <value>关闭前发出警告</value>
-    <comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment>
-  </data>
-  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
-    <value>控制在关闭标签页或窗口前何时显示确认对话框。“始终”会在关闭任何窗格时显示该对话框。</value>
-    <comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment>
-  </data>
-  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
-    <value>从不</value>
-    <comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment>
-  </data>
-  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
-    <value>始终</value>
-    <comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment>
-  </data>
-  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
-    <value>多个标签页或窗格</value>
-    <comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment>
-  </data>
-  <data name="Profile_BellStyleNotification.Content" xml:space="preserve">
-    <value>桌面通知</value>
-  </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
     <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
     <comment>{Locked}</comment>

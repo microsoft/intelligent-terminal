@@ -961,25 +961,10 @@
   <data name="InvalidRegex" xml:space="preserve">
     <value>È stata trovata un'espressione regolare non valida.</value>
   </data>
-  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve"><value>Annulla</value></data>
-  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve"><value>Vuoi chiudere tutte le finestre?</value></data>
-  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve"><value>Chiudi tutto</value></data>
-  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve"><value>Vuoi chiudere tutte le schede?</value></data>
-  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve"><value>Chiudi tutto</value></data>
-  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve"><value>Vuoi chiudere questa scheda?</value></data>
-  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve"><value>Chiudi scheda</value></data>
-  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve"><value>Vuoi chiudere questo riquadro?</value></data>
-  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve"><value>Chiudi riquadro</value></data>
-  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve"><value>Vuoi chiudere queste schede?</value></data>
-  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve"><value>Chiudi schede</value></data>
-  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve"><value>Vuoi chiudere questi riquadri?</value></data>
-  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve"><value>Chiudi riquadri</value></data>
   <data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve"><value>Modalità prompt dell'agente</value></data>
   <data name="CommandPaletteModeAnnouncement_AgentBackgroundMode" xml:space="preserve"><value>Modalità attività dell'agente in background</value></data>
   <data name="CmdPalAgentForegroundPrompt" xml:space="preserve"><value>Chiedi all'agente...</value></data>
   <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve"><value>Esegui attività dell'agente in background...</value></data>
-  <data name="NotificationMessage_TabActivity" xml:space="preserve"><value>Attività nella scheda "{0}"</value></data>
-  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve"><value>Attività nella scheda "{0}" (finestra "{1}")</value></data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve"><value>Integrazione della shell inizializzata</value></data>
   <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>L'integrazione della shell è stata configurata. Riavvia la sessione di PowerShell o apri una nuova scheda affinché le modifiche abbiano effetto.</value><comment>{Locked="PowerShell"}</comment></data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve"><value>Integrazione della shell già configurata</value></data>

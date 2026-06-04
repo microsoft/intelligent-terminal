@@ -961,45 +961,6 @@
   <data name="InvalidRegex" xml:space="preserve">
     <value>Foi encontrada uma expressão regular inválida.</value>
   </data>
-  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve">
-    <value>Cancelar</value>
-  </data>
-  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve">
-    <value>Deseja fechar todas as janelas?</value>
-  </data>
-  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve">
-    <value>Fechar tudo</value>
-  </data>
-  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve">
-    <value>Deseja fechar todas as guias?</value>
-  </data>
-  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve">
-    <value>Fechar tudo</value>
-  </data>
-  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve">
-    <value>Deseja fechar esta guia?</value>
-  </data>
-  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve">
-    <value>Fechar guia</value>
-  </data>
-  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve">
-    <value>Deseja fechar este painel?</value>
-  </data>
-  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve">
-    <value>Fechar painel</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve">
-    <value>Deseja fechar estas guias?</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve">
-    <value>Fechar guias</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve">
-    <value>Deseja fechar estes painéis?</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve">
-    <value>Fechar painéis</value>
-  </data>
   <data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve">
     <value>Modo de solicitação ao agente</value>
   </data>
@@ -1011,12 +972,6 @@
   </data>
   <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve">
     <value>Executar tarefa do agente em segundo plano...</value>
-  </data>
-  <data name="NotificationMessage_TabActivity" xml:space="preserve">
-    <value>Atividade na guia "{0}"</value>
-  </data>
-  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">
-    <value>Atividade na guia "{0}" (janela "{1}")</value>
   </data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve">
     <value>Integração de shell inicializada</value>

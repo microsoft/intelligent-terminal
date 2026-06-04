@@ -2859,24 +2859,6 @@
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
     <value>Обновить</value>
   </data>
-  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
-    <value>Предупреждать при закрытии</value>
-  </data>
-  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
-    <value>Управляет тем, когда перед закрытием вкладок или окон появляется диалог подтверждения. При значении "Всегда" диалог показывается при закрытии любой панели.</value>
-  </data>
-  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
-    <value>Никогда</value>
-  </data>
-  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
-    <value>Всегда</value>
-  </data>
-  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
-    <value>Несколько вкладок или панелей</value>
-  </data>
-  <data name="Profile_BellStyleNotification.Content" xml:space="preserve">
-    <value>Уведомление на рабочем столе</value>
-  </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
     <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
     <comment>{Locked}</comment>

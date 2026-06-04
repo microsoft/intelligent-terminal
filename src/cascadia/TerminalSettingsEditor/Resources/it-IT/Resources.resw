@@ -2819,12 +2819,6 @@
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Monitora le sessioni tra agenti. Necessario per la gestione delle sessioni degli agenti.</value><comment>Description for the Agent Hooks install section.</comment></data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Installa hook</value></data>
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>Aggiorna</value></data>
-  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>Avvisa in caso di chiusura</value></data>
-  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve"><value>Controlla quando viene visualizzata una finestra di conferma prima di chiudere schede o finestre. "Sempre" mostra la finestra di dialogo anche quando si chiude un solo riquadro.</value></data>
-  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve"><value>Mai</value></data>
-  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve"><value>Sempre</value></data>
-  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>Più schede o riquadri</value></data>
-  <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>Notifica desktop</value></data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://go.microsoft.com/fwlink/?linkid=2229086</value><comment>{Locked}</comment></data>
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>Questa impostazione è gestita dalla tua organizzazione.</value>

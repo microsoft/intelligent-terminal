@@ -2859,24 +2859,6 @@
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
     <value>Atualizar</value>
   </data>
-  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
-    <value>Avisar ao fechar</value>
-  </data>
-  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
-    <value>Controla quando uma caixa de diálogo de confirmação aparece antes de fechar guias ou janelas. "Sempre" exibe a caixa de diálogo ao fechar qualquer painel.</value>
-  </data>
-  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
-    <value>Nunca</value>
-  </data>
-  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
-    <value>Sempre</value>
-  </data>
-  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
-    <value>Várias guias ou painéis</value>
-  </data>
-  <data name="Profile_BellStyleNotification.Content" xml:space="preserve">
-    <value>Notificação da área de trabalho</value>
-  </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
     <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
     <comment>{Locked}</comment>
