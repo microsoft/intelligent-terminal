@@ -874,9 +874,23 @@ namespace winrt::TerminalApp::implementation
     //   re-fire the click while we're already saving.
     void FreOverlay::_SetSavingState(bool saving)
     {
-        SettingsFormScroller().IsEnabled(!saving);
-        SavingOverlay().Visibility(saving ? Visibility::Visible : Visibility::Collapsed);
-        SavingProgressRing().IsActive(saving);
-        SaveButton().IsEnabled(!saving);
+        _agentPaneLog(std::string("[FRE] saving state: ") + (saving ? "ON" : "OFF"));
+
+        // Guard against being called before InitializeComponent has populated
+        // the named XAML elements — matches the pattern used elsewhere in
+        // this file (see _UpdateSuggestionEnabledState, _OnAutoDetectToggled).
+        auto scroller = SettingsFormScroller();
+        auto overlay = SavingOverlay();
+        auto ring = SavingProgressRing();
+        auto save = SaveButton();
+        if (!scroller || !overlay || !ring || !save)
+        {
+            return;
+        }
+
+        scroller.IsEnabled(!saving);
+        overlay.Visibility(saving ? Visibility::Visible : Visibility::Collapsed);
+        ring.IsActive(saving);
+        save.IsEnabled(!saving);
     }
 }
