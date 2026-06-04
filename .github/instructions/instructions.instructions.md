@@ -15,9 +15,9 @@ Instructions for creating effective and maintainable custom instruction files th
 - Location: `.github/instructions/` directory
 - Purpose: Provide context-aware guidance for code generation, review, and documentation
 
-## Required Frontmatter
+## Frontmatter
 
-Every instruction file must include YAML frontmatter with the following fields:
+Every instruction file should include YAML frontmatter. `applyTo` is the only strictly required field (it controls when Copilot loads the file); `description` is recommended but optional — several files in this repo (e.g. `localization.instructions.md`, `rust-localization.instructions.md`) ship with `applyTo` only.
 
 ```yaml
 ---

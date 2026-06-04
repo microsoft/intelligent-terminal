@@ -161,7 +161,7 @@ Each handoff in the list must include the following properties:
   - Only add handoffs for agents that naturally follow in the workflow
 
 - **Agent Dependencies**: Ensure target agents exist before creating handoffs
-  - Handoffs to non-existent agents will be silently ignored
+  - Handoffs to nonexistent agents will be silently ignored
   - Test handoffs to verify they work as expected
 
 - **Prompt Content**: Keep prompts concise and actionable
@@ -951,7 +951,7 @@ Each level can override settings from previous levels.
 ### Integration Testing
 - Test agent with different file types in scope
 - Verify MCP server connectivity (if configured)
-- Check agent behavior with missing context
+- Check agent behavior when context is missing
 - Test error handling and edge cases
 - Validate agent switching and handoffs
 

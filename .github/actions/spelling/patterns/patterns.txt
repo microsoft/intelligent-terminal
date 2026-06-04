@@ -314,3 +314,6 @@ equals_insensitive_ascii\("\w+", "\w+"
 
 # tools/wta/src/protocol/acp/spawn.rs - external env var name passed as string literal
 env_remove\("[A-Z_]+"\)
+
+# Shell flag combos (e.g. set -euo pipefail) used in hooks.instructions.md
+\b(?:bash|(?<!\.)sh|set)(?:\s+[-+][abefimouxE]{1,2})*\s+[-+][abefimouxE]{3,}(?:\s+[-+][abefimouxE]+)*

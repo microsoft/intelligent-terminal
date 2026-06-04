@@ -7,19 +7,20 @@ applyTo: 'tools/wta/**/*.rs'
 
 Project-specific Rust guidance for the WTA crate (`tools/wta/`). Applies **in addition to** `rust.instructions.md`; where the two conflict, this file wins.
 
-All Rust code in this repository lives under `tools/wta/` (the Windows Terminal Agent orchestrator, helper, and CLI).
+The repo contains multiple Rust crates (e.g. `installer/bootstrap/`); this file's conventions apply only to the WTA crate under `tools/wta/`. Other Rust code in the repo is governed by the generic `rust.instructions.md` only.
 
 ## Toolchain & Build
 
 - **Toolchain is pinned.** `tools/wta/rust-toolchain.toml` pins the channel to `ms-prod-1.93` for CI reproducibility. Do not bump it casually.
 - **Static CRT on Windows.** The repo-root `.cargo/config.toml` forces `+crt-static` rustflags for all Windows MSVC targets (`x86_64`, `i686`, `aarch64`). Avoid dependencies that break under static CRT.
-- **Always build with an explicit target.** Use:
+- **Two supported build invocations — don't mix them.** Both of these are valid for WTA local dev:
 
   ```bash
-  cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
+  cargo build --manifest-path tools/wta/Cargo.toml                              # host target (bare target/)
+  cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml   # explicit target
   ```
 
-  The C++ wapproj prefers `tools/wta/target/<triple>/<profile>/wta.exe` over the bare `target/<profile>` fallback. A stale explicit-target binary will silently shadow your fresh bare-target build.
+  Pick one and stay with it within a single dev session. The `CascadiaPackage.wapproj` deploy step prefers `tools/wta/target/x86_64-pc-windows-msvc/<profile>/wta.exe` over the bare `tools/wta/target/<profile>/wta.exe`, so if you build once with `--target` and later iterate with plain `cargo build`, the wapproj will silently keep deploying the stale explicit-target binary. See `tools/wta/README.md` and `tools/wta/AGENTS.md` for the host-target workflow.
 
 ## Localization
 

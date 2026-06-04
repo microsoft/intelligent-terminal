@@ -37,6 +37,7 @@ CMMI
 colorbrewer
 commandlines
 consvc
+contextualizing
 copyable
 crossterm
 Crossterm
@@ -76,6 +77,8 @@ Ghostty
 github
 githubnext
 godbolt
+gotcha
+gotchas
 gpt
 greenfield
 greppable
@@ -128,6 +131,7 @@ muxer
 myproj
 nafter
 ncwd
+newtypes
 neww
 NOAGGREGATION
 noname
