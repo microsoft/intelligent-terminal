@@ -913,7 +913,7 @@
     <value>如果設定，命令會附加到設定檔的預設命令，而不是取代命令。</value>
   </data>
   <data name="RestartConnectionText" xml:space="preserve">
-    <value>重新啟動工作模式</value>
+    <value>重新啟動工作階段</value>
   </data>
   <data name="RestartConnectionToolTip" xml:space="preserve">
     <value>在使用中窗格重新啟動工作階段</value>
