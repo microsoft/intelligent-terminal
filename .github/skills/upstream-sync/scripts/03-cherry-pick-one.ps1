@@ -124,6 +124,7 @@ foreach ($p in $conflicts) {
 
 if ($unhandled.Count -gt 0) {
     git cherry-pick --abort | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "git cherry-pick --abort failed after unhandled conflicts; repository may still be mid-cherry-pick." }
     $result.status = 'stuck'
     $result.conflict_paths = $unhandled
     $result | ConvertTo-Json -Compress
@@ -137,11 +138,13 @@ if ($LASTEXITCODE -ne 0) {
     $staged = git diff --cached --name-only
     if (-not $staged) {
         git cherry-pick --skip | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "git cherry-pick --skip failed after an empty Tier-0 continuation." }
         $result.status = 'skipped-empty'
         $result | ConvertTo-Json -Compress
         return
     }
     git cherry-pick --abort | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "git cherry-pick --abort failed after Tier-0 continuation failed; repository may still be mid-cherry-pick." }
     $result.status = 'stuck'
     $result | ConvertTo-Json -Compress
     return
