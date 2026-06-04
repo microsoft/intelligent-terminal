@@ -98,3 +98,46 @@ Look for `target: "autofix"` lines — they show received events, classification
 - **Idle only**: Auto-fix only fires when the agent is connected and not already processing a request.
 - **Own-pane filtering**: Events from WTA's own pane are ignored to avoid self-triggering.
 - **Buffer context**: When auto-fix triggers, it reads the last ~30 lines from the failing pane to provide error context to the AI.
+
+## Troubleshooting
+
+### Checking which shells got integration
+
+Every block written by the installer is bracketed with sentinel markers, so you can grep your profile files to see what the installer touched:
+
+```powershell
+# PowerShell 7+ and Windows PowerShell
+Select-String -Path "$env:USERPROFILE\Documents\PowerShell\Microsoft.PowerShell_profile.ps1",
+                    "$env:USERPROFILE\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1" `
+              -Pattern 'intelligent-terminal shell-integration' -ErrorAction SilentlyContinue
+
+# Bash (Git Bash + every WSL distro that shares your Windows %USERPROFILE%)
+Get-Content "$env:USERPROFILE\.bashrc" -ErrorAction SilentlyContinue |
+    Select-String 'intelligent-terminal shell-integration'
+
+# WSL distro with its own home (most distros)
+wsl.exe -d <DistroName> -e bash -c "grep 'intelligent-terminal shell-integration' ~/.bashrc"
+```
+
+If the markers aren't present, the installer didn't run for that shell — re-run FRE or use Settings → Install.
+
+### Removing the integration manually
+
+Each block is self-contained between the open marker (`# >>> intelligent-terminal shell-integration >>>`) and the close marker (`# <<< intelligent-terminal shell-integration <<<`). Delete everything between (and including) those two lines, save the file, and restart the shell. The Settings UI "Uninstall" button does the same thing — including for every WSL distro it can find.
+
+The sourced helper script (`~/.intelligent-terminal/shell-integration_v1.sh` for bash; equivalent versioned files for the other shells) is also safe to delete by hand. The installer leaves stale versions in place to support side-by-side rollback; remove them after you've confirmed the latest version works.
+
+### WSL: distro not detected
+
+The installer discovers WSL distros by iterating `_settings.AllProfiles()` and filtering on `Source == "Windows.Terminal.Wsl"`. A distro is invisible to the installer if Windows Terminal hasn't generated a profile for it yet. Two fixes:
+
+1. **New distro**: open WT Settings → "+ Add a new profile" (the "from default profiles" picker lists newly registered WSL distros), or just relaunch WT after `wsl --install <Distro>`. Then re-run the installer.
+2. **Hidden profile**: if the WSL profile exists but is marked `"hidden": true` in `settings.json`, the installer still picks it up (the filter is on `Source`, not visibility). If it doesn't, check that the profile's `source` field literally reads `"Windows.Terminal.Wsl"` — `wsl-distro-launcher`-style manual profiles use a different generator and are skipped.
+
+### `set -u` / strict bash mode
+
+The installed bash block uses `${VAR:-}` defaulting throughout (e.g. `${PROMPT_COMMAND:-}`, `${BASH_VERSION:-}`), so it's safe under `set -u` (`set -o nounset`). If you've added `set -u` to your `.bashrc` ABOVE the integration block and a prior `PROMPT_COMMAND` was undefined, the integration still works — earlier versions would have errored here.
+
+### Multiple PowerShell versions
+
+The PowerShell 7+ block writes to `Documents\PowerShell\` and the Windows PowerShell 5.1 block writes to `Documents\WindowsPowerShell\` — two different files. Both get the same integration but each is independent. Uninstalling from one does not affect the other.
