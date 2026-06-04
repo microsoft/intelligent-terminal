@@ -956,17 +956,29 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Order matters: we want focus to move exactly once across the
-        // transition. If we disable the form first, XAML forcibly evicts
-        // focus from the disabled subtree to an unpredictable place
-        // (possibly lost entirely), which breaks keyboard navigation and
-        // Narrator for the duration of the save. Raise the overlay
-        // first so the ProgressRing can receive focus (it needs
-        // IsTabStop=true, set in XAML — Border itself isn't a Control
-        // and can't host focus), snatch focus to it, then disable the
-        // form — at which point the form has no focus to evict. On the
-        // way back, re-enable first so Focus(SaveButton) lands on an
-        // enabled target, then hide the overlay.
+        // Saving-state transition note. Order intentionally accepts
+        // two focus changes in close succession on entry:
+        //   (1) save.IsEnabled(false) below evicts focus from the
+        //       SaveButton (the user just clicked Save, so focus was
+        //       on it). XAML auto-moves focus to the next available
+        //       tab stop; with the form also disabled, that's
+        //       effectively "nowhere".
+        //   (2) The deferred Dispatcher().RunAsync(Low) further down
+        //       moves focus to the ProgressRing once layout settles
+        //       (~one frame later — calling Focus() inline right
+        //       after overlay.Visibility(Visible) silently fails
+        //       because the ring isn't in the live visual tree yet).
+        // The RaiseNotificationEvent ("Setting up...") fires
+        // synchronously with ImportantMostRecent priority and
+        // preempts the brief between-state focus eviction in
+        // Narrator, so the user hears the operation name rather
+        // than noise. We deliberately do NOT defer save.IsEnabled
+        // alongside the focus call: that would create a window
+        // where the user could re-click Save mid-install.
+        //
+        // On the way back (saving=false), we re-enable scroller and
+        // save before calling save.Focus, so the focus target is
+        // already enabled when XAML lands it.
         if (saving)
         {
             overlay.Visibility(Visibility::Visible);
