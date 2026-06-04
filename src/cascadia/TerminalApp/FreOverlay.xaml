@@ -522,6 +522,7 @@
                                 Spacing="16">
                         <mux:ProgressRing x:Name="SavingProgressRing"
                                           Width="48" Height="48"
+                                          IsTabStop="True"
                                           IsActive="False" />
                         <TextBlock x:Name="SavingStatusText"
                                    FontFamily="Segoe UI Variable Text, Segoe UI"

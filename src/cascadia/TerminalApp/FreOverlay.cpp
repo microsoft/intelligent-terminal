@@ -888,9 +888,35 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        scroller.IsEnabled(!saving);
-        overlay.Visibility(saving ? Visibility::Visible : Visibility::Collapsed);
-        ring.IsActive(saving);
-        save.IsEnabled(!saving);
+        // Order matters: we want focus to move exactly once across the
+        // transition. If we disable the form first, XAML forcibly evicts
+        // focus from the disabled subtree to an unpredictable place
+        // (possibly lost entirely), which breaks keyboard navigation and
+        // Narrator for the duration of the save. Raise the overlay
+        // first so the ProgressRing can receive focus (it needs
+        // IsTabStop=true, set in XAML — Border itself isn't a Control
+        // and can't host focus), snatch focus to it, then disable the
+        // form — at which point the form has no focus to evict. On the
+        // way back, re-enable first so Focus(SaveButton) lands on an
+        // enabled target, then hide the overlay.
+        if (saving)
+        {
+            overlay.Visibility(Visibility::Visible);
+            ring.IsActive(true);
+            ring.Focus(FocusState::Programmatic);
+            scroller.IsEnabled(false);
+            save.IsEnabled(false);
+        }
+        else
+        {
+            scroller.IsEnabled(true);
+            save.IsEnabled(true);
+            overlay.Visibility(Visibility::Collapsed);
+            ring.IsActive(false);
+            // Park focus on Save so a keyboard user (typically after an
+            // error, where the form is re-enabled but ErrorPanel now
+            // shows) can press Enter to retry without a mouse trip.
+            save.Focus(FocusState::Programmatic);
+        }
     }
 }
