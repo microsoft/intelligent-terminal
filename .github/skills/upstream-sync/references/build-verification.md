@@ -50,8 +50,8 @@ cmd.exe /c "tools\razzle.cmd && bz no_clean"
 (`bz no_clean` = incremental Debug build of the full solution.)
 
 Configurable via the orchestrator's `-BuildCommand` parameter. The
-default is verified on the maintainer host and documented in the
-state.json `last_run.build_command` field for traceability.
+default is verified on the maintainer host; if validation blocks the run,
+the generated Tier-4 diagnostics include the build log path and tail.
 
 Output:
 

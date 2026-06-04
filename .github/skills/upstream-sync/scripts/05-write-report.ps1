@@ -163,8 +163,9 @@ if ($Status -like 'stuck-*') {
                 $lines.Add("|---|---|---|---|")
                 foreach ($f in $blocking) {
                     $where = if ($f.path) { "``$($f.path)``" } else { '—' }
+                    $findingKind = if ($f.check) { $f.check } elseif ($f.kind) { $f.kind } else { 'unknown' }
                     $detail = ($f | ConvertTo-Json -Compress -Depth 4)
-                    $lines.Add("| $($f.severity) | $($f.kind) | $where | ``$detail`` |")
+                    $lines.Add("| $($f.severity) | $findingKind | $where | ``$detail`` |")
                 }
                 $lines.Add("")
             }

@@ -28,28 +28,28 @@ as the PR description (success path) and the issue body (stuck path).
 
 ## Picked commits (oldest → newest)
 
-| # | SHA | Subject | Files | Author |
-|---|---|---|---|---|
-| 1 | <short> | <subject (60 char)> | <n> | <author> |
-| ... | | | | |
+| # | SHA | Subject | Author |
+|---|---|---|---|
+| 1 | <short> | <subject> | <author> |
+| ... | | | |
 
 ## Dropped revert pairs
 
-| Original SHA | Original subject | Revert SHA | Detected via |
-|---|---|---|---|
-| <short> | <subject> | <short> | "Revert" prefix / "This reverts commit" body |
+| Original SHA | Original subject | Revert SHA |
+|---|---|---|
+| <short> | <subject> | <short> |
 
 ## Empty / no-op commits skipped
 
-| SHA | Subject | Reason |
-|---|---|---|
-| <short> | <subject> | upstream empty / already applied |
+| SHA | Subject |
+|---|---|
+| <short> | <subject> |
 
 ## Tier-0 auto-resolutions
 
-| Commit SHA | File | Strategy |
-|---|---|---|
-| <short> | `.github/workflows/spelling2.yml` | take-upstream |
+| Commit SHA | File |
+|---|---|
+| <short> | `.github/workflows/spelling2.yml` |
 
 ## (Stuck only) Conflict diagnostics
 

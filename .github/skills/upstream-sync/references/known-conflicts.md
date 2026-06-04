@@ -7,8 +7,9 @@ cherry-pick loop parses this file and auto-resolves matching paths.
 ## Format
 
 Each entry is an H2 path heading, a one-line `Strategy:` line, and a
-"Why" paragraph. The parser reads the heading text as the literal path
-and the `Strategy:` token as one of `take-upstream` | `take-ours` | `union`.
+"Why" paragraph. The parser reads the heading text as the literal path.
+Implemented Tier-0 strategies are `take-upstream` and `take-ours`;
+`union` is reserved and currently escalates instead of auto-resolving.
 
 ---
 
@@ -33,7 +34,7 @@ the manual resolution PR merges. Format:
 ```markdown
 ## `<exact-repo-relative-path>`
 
-**Strategy:** `take-upstream`   <!-- or take-ours or union -->
+**Strategy:** `take-upstream`   <!-- or take-ours -->
 
 **Why:** <one paragraph: what's in this file, why the strategy is safe,
 when it would stop being safe.>

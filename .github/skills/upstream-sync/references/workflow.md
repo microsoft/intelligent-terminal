@@ -156,7 +156,7 @@ write `.github/upstream-sync/reports/YYYY-MM-DDTHHmm[-suffix].md` with:
 
 - Run metadata (start, end, duration, host, status)
 - Counts: picked / dropped-pair / empty / known-conflict-resolved / stuck-at
-- For each picked commit: SHA, subject, author, files-touched count
+- For each picked commit: SHA, subject, author
 - For dropped pairs: the two SHAs and their subjects
 - If stuck (Tier-3): the conflicting commit, the conflicting paths, what was attempted, the exact resume command
 - If stuck (Tier-4): the validation findings, the build log tail, the exact resume command
