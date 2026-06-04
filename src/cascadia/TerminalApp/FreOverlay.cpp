@@ -724,6 +724,14 @@ namespace winrt::TerminalApp::implementation
         {
             _agentPaneLog("[FRE] Installing GitHub.Copilot via winget");
             bool ok = co_await _WingetInstallAsync(L"GitHub.Copilot");
+            // Helper internally does co_await winrt::resume_background(),
+            // so the continuation may resume on a thread-pool thread.
+            // Hop back to the UI thread before any XAML access (the
+            // _ShowProblem call below touches ErrorText / ErrorPanel /
+            // toggles); without this, RPC_E_WRONG_THREAD is thrown and
+            // silently swallowed by IAsyncAction, leaving the
+            // SavingOverlay stuck.
+            co_await winrt::resume_foreground(Dispatcher());
             auto self = weak.get();
             if (!self) co_return;
             _agentPaneLog("[FRE] Copilot install: " + std::string(ok ? "ok" : "FAILED"));
@@ -737,6 +745,9 @@ namespace winrt::TerminalApp::implementation
         {
             _agentPaneLog("[FRE] Installing Node.js via winget");
             bool ok = co_await _WingetInstallAsync(L"OpenJS.NodeJS.LTS");
+            // See note above for the Copilot install — same threading
+            // concern applies here.
+            co_await winrt::resume_foreground(Dispatcher());
             auto self = weak.get();
             if (!self) co_return;
             _agentPaneLog("[FRE] Node.js install: " + std::string(ok ? "ok" : "FAILED"));
@@ -796,6 +807,15 @@ namespace winrt::TerminalApp::implementation
 
             _agentPaneLog("[FRE] Installing hooks for " + winrt::to_string(agentId));
             bool hooksOk = co_await _InstallHooksAsync(agentId);
+            // Helper internally does co_await winrt::resume_background(),
+            // so the continuation may resume on a thread-pool thread.
+            // Hop back to the UI thread before the subsequent
+            // AutoDetectToggle().IsOn() read and any later _ShowProblem
+            // call. Without this, XAML access from the thread pool
+            // throws RPC_E_WRONG_THREAD, which IAsyncAction swallows —
+            // the SavingOverlay would then be stuck with no error
+            // surfaced.
+            co_await winrt::resume_foreground(Dispatcher());
             self = weak.get();
             if (!self) co_return;
 
