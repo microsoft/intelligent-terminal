@@ -158,9 +158,12 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                 cmdLine += L" -e bash -c \"echo $HOME\"";
 
                 // WSL_UTF8=1 → wsl.exe relays child stdout as UTF-8.
-                // Size-then-allocate so prior values of any length
-                // survive (a fixed buffer would silently fail to
-                // restore when the prior value exceeds the buffer).
+                // The variable only needs to be present at CreateProcessW
+                // time (the child inherits the parent env at spawn). Save
+                // the prior value once via size-probe-then-allocate so
+                // prior values of any length survive (a fixed buffer
+                // would silently fail to restore when the prior value
+                // exceeds the buffer).
                 std::wstring prevVal;
                 bool hadPrev = false;
                 {
@@ -180,22 +183,25 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                         }
                     }
                 }
-                SetEnvironmentVariableW(L"WSL_UTF8", L"1");
-                auto restoreEnv = wil::scope_exit([&] {
-                    SetEnvironmentVariableW(L"WSL_UTF8", hadPrev ? prevVal.c_str() : nullptr);
-                });
 
+                // Narrow the WSL_UTF8 window to JUST the spawn call so
+                // unrelated CreateProcess* calls in this process during
+                // the 30-second blocking wait below cannot accidentally
+                // inherit our flag.
                 PROCESS_INFORMATION pi{};
-                if (!CreateProcessW(nullptr,
-                                    cmdLine.data(),
-                                    nullptr,
-                                    nullptr,
-                                    TRUE,
-                                    CREATE_NO_WINDOW,
-                                    nullptr,
-                                    nullptr,
-                                    &si,
-                                    &pi))
+                SetEnvironmentVariableW(L"WSL_UTF8", L"1");
+                const bool spawnOk = CreateProcessW(nullptr,
+                                                    cmdLine.data(),
+                                                    nullptr,
+                                                    nullptr,
+                                                    TRUE,
+                                                    CREATE_NO_WINDOW,
+                                                    nullptr,
+                                                    nullptr,
+                                                    &si,
+                                                    &pi) != FALSE;
+                SetEnvironmentVariableW(L"WSL_UTF8", hadPrev ? prevVal.c_str() : nullptr);
+                if (!spawnOk)
                 {
                     return {};
                 }

@@ -6,8 +6,8 @@ The downstream pipeline (autofix detection, classification, VT-event forwarding)
 
 - **PowerShell 7+** (`pwsh.exe`) — written to `Documents\PowerShell\Microsoft.PowerShell_profile.ps1`
 - **Windows PowerShell 5.1** (`powershell.exe`) — written to `Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`
-- **Bash** (Git Bash on Windows) — written to `~/.bashrc`, sourcing `%USERPROFILE%\.intelligent-terminal\shell-integration_v1.sh`
-- **WSL** (one install per WSL distro you have a Windows Terminal profile for) — written to the distro's `~/.bashrc` and `~/.intelligent-terminal/shell-integration_v1.sh` via the `\\wsl$\<distName>\` UNC mount
+- **Bash** (Git Bash on Windows) — block written to `~/.bashrc`; the block sources `$HOME/.intelligent-terminal/shell-integration_v1.sh` (which is `%USERPROFILE%\.intelligent-terminal\shell-integration_v1.sh` on Git Bash, where `$HOME` resolves to `%USERPROFILE%`)
+- **WSL** (one install per WSL distro you have a Windows Terminal profile for) — block written to the distro's `~/.bashrc`; the block sources `$HOME/.intelligent-terminal/shell-integration_v1.sh` inside the distro filesystem. We write both via the `\\wsl$\<distName>\` UNC mount from the Windows side
 
 > **Distro discovery.** The installer iterates `_settings.AllProfiles()` and picks every profile whose `Source` is `Windows.Terminal.Wsl` (the dynamic-profile namespace used by `WslDistroGenerator`). Add a distro to WT (Settings → "+ Add a new profile" picks up new WSL distros automatically; or `wsl --install <Distro>` followed by relaunching WT) and the next FRE save or Settings install will cover it.
 

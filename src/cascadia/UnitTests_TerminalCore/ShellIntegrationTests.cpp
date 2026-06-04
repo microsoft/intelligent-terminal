@@ -978,7 +978,7 @@ void ShellIntegrationTests::Bash_ScriptContent_HasIdempotencyGuardAndOscSequence
     VERIFY_IS_TRUE(_Contains(script, "133;B"));
     // CWD reporting.
     VERIFY_IS_TRUE(_Contains(script, "9;9;"));
-    // Preserves the user's pre-existing PROMPT_COMMAND.
+    // Preserves the user's existing PROMPT_COMMAND.
     VERIFY_IS_TRUE(_Contains(script, "__IT_SHELLINTEG_USER_PC"));
     // Preserves $? for that user hook so its `local ec=$?` still works.
     VERIFY_IS_TRUE(_Contains(script, "(exit \"$__ec\")"));

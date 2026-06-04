@@ -945,10 +945,15 @@ namespace winrt::TerminalApp::implementation
                 _agentPaneLog(detail);
             }
 
-            // Shell integration is considered successful as long as the
-            // user's PRIMARY shell family (PowerShell) succeeded on at
-            // least one host. Bash AND WSL failure alone do NOT block —
-            // users without Git Bash / without (running) WSL would
+            // Shell integration is treated as failed when EITHER
+            // PowerShell host's install fails. Both hosts are part of
+            // the user's primary shell family and the install is
+            // best-effort idempotent — if pwsh7 isn't installed,
+            // InstallForTarget returns success-with-empty-error
+            // because the file write succeeds harmlessly; only a real
+            // write failure or an execution-policy block reaches here.
+            // Bash and WSL failures are NOT counted here: users
+            // without Git Bash or without (running) WSL would
             // otherwise see false-alarm errors on every FRE / Save.
             if (!pwsh7Result.success || !windowsPsResult.success)
             {
