@@ -101,7 +101,7 @@ The issue body is the report itself, plus a short header explaining
 urgency:
 
 ```markdown
-🛑 **Upstream sync stopped at a conflict that needs human judgement.**
+🛑 **Upstream sync stopped at a conflict that needs human judgment.**
 
 The scheduler will keep skipping its runs until this issue is resolved
 and the stuck-lock is cleared. No alarm — the lock is intentional.

@@ -323,5 +323,5 @@ env_remove\("[A-Z_]+"\)
 
 # upstream-sync skill: PowerShell variable names, git/config tokens, toolchain labels, and timestamp placeholders
 \b(?:ACMR|MFC)\b
-\b(?:u(?:sha|pid)|quotepath|forwardable|hashtables|(?:[a-z]+_)?[Tt]oolsets)\b
-\b(?:DDTH(?:mmss)?|Hmmss|sszzz)\b
+\b(?:u(?:sha|pid)|quotepath|forwardable|hashtables?|(?:[a-z]+_)?[Tt]oolsets)\b
+\b(?:(?:DD|dd)THH?(?:mm(?:ss)?|:mm:sszzz)|Hmmss|sszzz)\b

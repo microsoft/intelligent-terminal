@@ -46,7 +46,7 @@ auto-resolve under Tier 0.
 ## What does NOT belong here
 
 - Files that conflict but where the correct resolution **depends on the
-  commit** (those need Tier-2 or human judgement, not a fixed rule).
+  commit** (those need Tier-2 or human judgment, not a fixed rule).
 - Fork-only files (`tools/wta/**`, `src/cascadia/TerminalProtocol/**`)
   — these shouldn't conflict at all; if they do, the cause is structural
   and a Tier-0 entry would mask it.

@@ -32,7 +32,7 @@ $title = "Upstream sync stuck at ${shortSha}: $subj"
 
 # Header prepended to report content.
 $header = @"
-🛑 **Upstream sync stopped at a conflict that needs human judgement.**
+🛑 **Upstream sync stopped at a conflict that needs human judgment.**
 
 The scheduler will keep skipping its runs until this issue is resolved
 and the stuck-lock is cleared. No alarm — the lock is intentional.

@@ -8,7 +8,7 @@ license: MIT
 
 Cherry-pick commit-by-commit from `https://github.com/microsoft/terminal`
 into this fork, preserving per-commit attribution, skipping commits that
-cancel each other out, and stopping cleanly the moment a human-judgement
+cancel each other out, and stopping cleanly the moment a human-judgment
 conflict appears.
 
 ## When to Use This Skill
