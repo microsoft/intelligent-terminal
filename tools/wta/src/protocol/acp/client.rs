@@ -139,8 +139,9 @@ pub enum MasterExtRequest {
     ///   picker, both in `App`.
     ///
     /// `session_id == Some` targets exactly that session (a per-pane `/model`
-    /// pick, or a global change pushed to one non-overridden pane);
-    /// `session_id == None` fans out to every session this helper owns.
+    /// pick, or a global settings change pushed per-pane to each of this
+    /// helper's tabs); `session_id == None` fans out to every session this
+    /// helper owns.
     SetSessionModel {
         session_id: Option<acp::SessionId>,
         model: String,

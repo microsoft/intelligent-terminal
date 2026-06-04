@@ -41,9 +41,9 @@ pub enum CommandKind {
     ///
     /// Bare `/model` opens an interactive picker listing the models the
     /// connected agent advertised; `/model <id-or-name>` switches directly.
-    /// The choice is a per-pane override that wins over the global
-    /// `acpModel` setting and survives `/new` for the life of the pane —
-    /// see `App::commit_model_pick` / `App::cmd_model`.
+    /// The choice is a transient per-pane override that survives `/new` for
+    /// the life of the pane but is reset by a global `acpModel` settings
+    /// change — see `App::commit_model_pick` / `App::cmd_model`.
     Model,
 }
 

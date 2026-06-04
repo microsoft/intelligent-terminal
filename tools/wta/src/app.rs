@@ -1448,10 +1448,12 @@ pub struct TabSession {
 
     /// Per-pane ACP model override, set by the `/model` picker. `None` means
     /// "follow the global `acpModel` setting"; `Some(id)` pins this pane to a
-    /// specific model that wins over the global value and survives `/new`
-    /// (re-applied to fresh sessions in the `SessionAttached` handler via
-    /// `effective_model_for_tab`). In-memory only — not persisted across pane
-    /// close / Terminal restart. See `App::commit_model_pick`.
+    /// specific model and survives `/new` (re-applied to fresh sessions in the
+    /// `SessionAttached` handler via `effective_model_for_tab`). It is a
+    /// transient per-pane tweak: a global `acpModel` settings change is
+    /// authoritative and clears it (see `apply_global_acp_model`). In-memory
+    /// only — not persisted across pane close / Terminal restart. See
+    /// `App::commit_model_pick`.
     pub model_override: Option<String>,
     /// True while the `/model` picker modal is up for this tab. Drives both
     /// the key-event intercept in `handle_key` and the popup render.
@@ -2396,22 +2398,42 @@ impl App {
             .filter(|s| !s.trim().is_empty())
     }
 
-    /// Push the global `acpModel` to every *non-overridden* tab's live
-    /// session. Called from the settings hot-reload path: panes the user
-    /// pinned with `/model` keep their local choice (local wins); the rest
-    /// follow the new global value.
+    /// Push the global `acpModel` to *every* tab's live session. A global
+    /// settings change is authoritative — it overrides per-pane `/model`
+    /// picks too (see `apply_global_acp_model`, which clears the overrides
+    /// first), so this no longer skips overridden tabs.
     fn send_acp_model_update(&self) {
         let Some(model) = self.acp_model.as_ref().filter(|s| !s.trim().is_empty()) else {
             return;
         };
         for tab in self.tab_sessions.values() {
-            if tab.model_override.is_some() {
-                continue; // local pick wins over the global setting
-            }
             if let Some(sid) = tab.session_id.clone() {
                 self.send_session_model(Some(sid), model.clone());
             }
         }
+    }
+
+    /// Apply a global `acpModel` settings change. This is authoritative over
+    /// per-pane `/model` picks: it
+    ///   1. clears every tab's local override (so all panes — now and on
+    ///      their next `/new` session — follow the new global model),
+    ///   2. points the shared current-model display at the new value so the
+    ///      title bar / settings dropdown / `/model` row update on every pane,
+    ///   3. pushes the model to every live session, and
+    ///   4. republishes agent status.
+    /// An empty value means "agent default": overrides still clear and the
+    /// sessions fall back on their next attach, but we send nothing (the
+    /// default can't be expressed as `set_session_model`).
+    fn apply_global_acp_model(&mut self, new_model: Option<String>) {
+        self.acp_model = new_model.filter(|s| !s.trim().is_empty());
+        for tab in self.tab_sessions.values_mut() {
+            tab.model_override = None;
+        }
+        if self.acp_model.is_some() {
+            self.current_model_id = self.acp_model.clone();
+        }
+        self.send_acp_model_update();
+        self.publish_agent_status();
     }
 
     // ── /model picker ───────────────────────────────────────────────────
@@ -5084,21 +5106,20 @@ impl App {
                         self.apply_delegate_config(delegate_agent, delegate_model);
                     }
 
-                    // acp-model: remember the new override and hot-swap it on
-                    // the running ACP session(s) via the client task
-                    // (set_session_model). Storing it also keeps future
-                    // sessions (/new, lazy-first-prompt) on the new model —
-                    // see the SessionAttached re-apply. Empty = "agent
-                    // default" (can't be expressed as set_session_model), so
-                    // we clear the override and send nothing.
+                    // acp-model: a global settings change is authoritative. It
+                    // overrides every pane's local `/model` pick, repoints the
+                    // shared current-model display, hot-swaps the model on all
+                    // live sessions, and republishes status — so every pane
+                    // visibly follows the new model (see apply_global_acp_model).
+                    // Storing it also keeps future sessions (/new, lazy-first-
+                    // prompt) on the new model via the SessionAttached re-apply.
                     if let Some(raw) = params.get("acp_model").and_then(|v| v.as_str()) {
-                        self.acp_model = Some(raw.to_string()).filter(|s| !s.trim().is_empty());
                         tracing::info!(
                             target: "autofix",
                             model = raw,
                             "acp-model hot-update requested from settings change",
                         );
-                        self.send_acp_model_update();
+                        self.apply_global_acp_model(Some(raw.to_string()));
                     }
                     return;
                 }
@@ -10776,31 +10797,44 @@ mod tests {
         }
     }
 
-    /// A pane that picked a model locally keeps it when the *global* `acpModel`
-    /// setting hot-reloads (local wins).
+    /// A global `acpModel` settings change is authoritative: it overrides a
+    /// pane's local `/model` pick — clearing the override, repointing the
+    /// shared current model, and pushing the new model to the pane's session.
     #[test]
-    fn local_model_override_wins_over_global_hot_reload() {
+    fn global_settings_change_overrides_local_pick() {
+        use crate::protocol::acp::client::MasterExtRequest;
         let (mut app, mut master_rx) = test_app_with_master_rx();
-        app.available_models = vec![model_info("local")];
+        app.available_models = vec![model_info("local"), model_info("globalv2")];
         app.current_tab_mut().session_id = Some("sid-1".into());
-        app.acp_model = Some("global".into());
 
+        // Pane pins a local model first.
         app.cmd_model("local".into());
         let _ = master_rx.try_recv(); // drain the pick's own apply
+        assert_eq!(app.current_tab().model_override.as_deref(), Some("local"));
+
+        // Global settings change to a different model — authoritative.
+        app.apply_global_acp_model(Some("globalv2".into()));
 
         assert_eq!(
-            app.effective_model_for_tab(DEFAULT_TAB_ID).as_deref(),
-            Some("local"),
-            "override beats the global setting"
+            app.current_tab().model_override,
+            None,
+            "a global change clears the per-pane override"
         );
-
-        // Global change to a new model must not touch the overridden pane.
-        app.acp_model = Some("global2".into());
-        app.send_acp_model_update();
-        assert!(
-            master_rx.try_recv().is_err(),
-            "an overridden pane ignores global acp-model changes"
+        assert_eq!(
+            app.current_model_id.as_deref(),
+            Some("globalv2"),
+            "the shared current model follows the new global value"
         );
+        match master_rx
+            .try_recv()
+            .expect("the previously-overridden pane still gets the new global model")
+        {
+            MasterExtRequest::SetSessionModel { session_id, model } => {
+                assert_eq!(model, "globalv2");
+                assert_eq!(session_id.unwrap().0.to_string(), "sid-1");
+            }
+            other => panic!("expected SetSessionModel, got {other:?}"),
+        }
     }
 
     /// A pane with no local pick follows the global `acpModel` on hot-reload.
