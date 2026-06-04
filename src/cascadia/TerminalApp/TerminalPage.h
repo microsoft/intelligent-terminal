@@ -380,8 +380,8 @@ namespace winrt::TerminalApp::implementation
         // push a single consolidated `agent_config_changed` event to the
         // running wta-helper(s) so they update in place — no agent-pane
         // teardown/restart. This is the unified dispatch point for every
-        // hot-reloadable agent setting (autofix gate, acp-model, delegate
-        // agent/model). `delegateAgent` holds the *resolved effective*
+        // agent setting that can be hot-reloaded (autofix gate, acp-model,
+        // delegate agent/model). `delegateAgent` holds the *resolved effective*
         // value (custom-command ids already expanded).
         struct AgentRuntimeConfigSnapshot
         {
