@@ -89,6 +89,52 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(QueryExecutionPolicy_ParsesStdoutAndLowercases);
     TEST_METHOD(QueryExecutionPolicy_TrimsWhitespaceAndStopsAtFirstLine);
 
+    // ─── Bash flavor ──────────────────────────────────────────────────────
+    // FindShellIntegrationBashBlock — pure parser.
+    TEST_METHOD(Bash_FindBlock_EmptyContent_ReturnsNpos);
+    TEST_METHOD(Bash_FindBlock_UnrelatedContent_ReturnsNpos);
+    TEST_METHOD(Bash_FindBlock_ModernBlock_ReturnsRange);
+    TEST_METHOD(Bash_FindBlock_OrphanOpenMarker_ConsumesRecognizableBodyLines);
+    TEST_METHOD(Bash_FindBlock_OrphanOpenMarker_StopsAtUnrelatedUserContent);
+
+    // BuildShellIntegrationBashBlock + ShellIntegrationBashScriptContent — generators.
+    TEST_METHOD(Bash_BuildBlock_ContainsMarkersAndScriptFilename);
+    TEST_METHOD(Bash_BuildBlock_IsLfOnly);
+    TEST_METHOD(Bash_BuildBlock_UsesHomeAndGuardsOnBashVersion);
+    TEST_METHOD(Bash_ScriptContent_HasIdempotencyGuardAndOscSequences);
+
+    // InstallBash / UninstallBash scenarios.
+    TEST_METHOD(Bash_Install_EmptyProfilePath_Fails);
+    TEST_METHOD(Bash_Install_EmptyScriptDir_Fails);
+    TEST_METHOD(Bash_Install_ProfileMissing_CreatesProfileAndScript);
+    TEST_METHOD(Bash_Install_ProfileWithoutBlock_AppendsBlockPreservesOriginalContent);
+    TEST_METHOD(Bash_Install_IsLfOnly);
+    TEST_METHOD(Bash_Install_IdempotentWhenAlreadyInstalled);
+    TEST_METHOD(Bash_Install_ReinstallsWhenScriptMissingButBlockMatches);
+    TEST_METHOD(Bash_Install_OverwritesOrphanOpenMarker);
+    TEST_METHOD(Bash_Install_CreatesBackupForNonEmptyProfile);
+    TEST_METHOD(Bash_Install_DoesNotCreateBackupForEmptyProfile);
+
+    TEST_METHOD(Bash_Uninstall_EmptyPath_Fails);
+    TEST_METHOD(Bash_Uninstall_ProfileMissing_NoOp);
+    TEST_METHOD(Bash_Uninstall_ProfileWithoutBlock_NoOp);
+    TEST_METHOD(Bash_Uninstall_StripsBlockCleanly);
+    TEST_METHOD(Bash_Uninstall_AfterInstall_RestoresOriginalContent);
+    TEST_METHOD(Bash_Uninstall_TwoConsecutiveCalls_AreIdempotent);
+
+    TEST_METHOD(Bash_InstallUninstallInstall_RoundTrip);
+
+    // ─── WSL flavor (helpers only — Install/UninstallWslBash requires real WSL) ──
+    TEST_METHOD(Wsl_IsSafeDistroName_AcceptsCommonNames);
+    TEST_METHOD(Wsl_IsSafeDistroName_RejectsInjection);
+    TEST_METHOD(Wsl_IsSafeDistroName_RejectsEmptyAndOverlong);
+    TEST_METHOD(Wsl_IsSafeWslHome_AcceptsCommonHomes);
+    TEST_METHOD(Wsl_IsSafeWslHome_RejectsRelativeAndTraversal);
+    TEST_METHOD(Wsl_IsSafeWslHome_RejectsBadChars);
+    TEST_METHOD(Wsl_UncPath_BuildsExpectedFormat);
+    TEST_METHOD(Wsl_InstallWslBash_RejectsUnsafeDistroName);
+    TEST_METHOD(Wsl_UninstallWslBash_RejectsUnsafeDistroName);
+
     TEST_CLASS_SETUP(ClassSetup)
     {
         return true;
@@ -136,6 +182,18 @@ private:
     std::filesystem::path _ProfilePath(std::wstring_view subdir = L"PowerShell") const
     {
         return _scratchDir / subdir / L"Microsoft.PowerShell_profile.ps1";
+    }
+
+    // Bash equivalents: .bashrc lives at the scratch root, and the
+    // versioned .sh lives under a sibling "bash-script-dir" so tests
+    // never touch the real %USERPROFILE%\.intelligent-terminal\.
+    std::filesystem::path _BashProfilePath() const
+    {
+        return _scratchDir / L".bashrc";
+    }
+    std::filesystem::path _BashScriptDir() const
+    {
+        return _scratchDir / L"bash-script-dir";
     }
 
     static std::string _ReadFile(const std::filesystem::path& p)
@@ -796,4 +854,507 @@ void ShellIntegrationTests::QueryExecutionPolicy_TrimsWhitespaceAndStopsAtFirstL
     const auto first = details::QueryExecutionPolicy(L"powershell.exe");
     const auto second = details::QueryExecutionPolicy(L"powershell.exe");
     VERIFY_ARE_EQUAL(first, second, L"QueryExecutionPolicy must be deterministic for the same host");
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Bash flavor
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ─── FindShellIntegrationBashBlock ────────────────────────────────────────────
+
+void ShellIntegrationTests::Bash_FindBlock_EmptyContent_ReturnsNpos()
+{
+    const auto [s, e] = FindShellIntegrationBashBlock("");
+    VERIFY_ARE_EQUAL(std::string::npos, s);
+    VERIFY_ARE_EQUAL(std::string::npos, e);
+}
+
+void ShellIntegrationTests::Bash_FindBlock_UnrelatedContent_ReturnsNpos()
+{
+    const auto [s, e] = FindShellIntegrationBashBlock("export PATH=$PATH:/usr/local/bin\nalias ll='ls -la'\n");
+    VERIFY_ARE_EQUAL(std::string::npos, s);
+    VERIFY_ARE_EQUAL(std::string::npos, e);
+}
+
+void ShellIntegrationTests::Bash_FindBlock_ModernBlock_ReturnsRange()
+{
+    std::string content = "alias ll='ls -la'\n";
+    const auto blockStart = content.size();
+    content += std::string{ kShellIntegrationBlockOpenMarker };
+    content += "\nbody\n";
+    content += std::string{ kShellIntegrationBlockCloseMarker };
+    const auto blockEnd = content.size();
+    content += "\nexport FOO=bar\n";
+
+    const auto [s, e] = FindShellIntegrationBashBlock(content);
+    VERIFY_ARE_EQUAL(blockStart, s);
+    VERIFY_ARE_EQUAL(blockEnd, e);
+}
+
+void ShellIntegrationTests::Bash_FindBlock_OrphanOpenMarker_ConsumesRecognizableBodyLines()
+{
+    // Open marker present, no close marker, but recognizable body lines.
+    // Find must extend past the marker line through the recognized body.
+    std::string content = "alias ll='ls -la'\n";
+    const auto start = content.size();
+    content += std::string{ kShellIntegrationBlockOpenMarker };
+    content += "\n# Auto-generated by Intelligent Terminal. Do not edit between markers.";
+    content += "\nif [ -n \"$BASH_VERSION\" ]; then";
+    content += "\n    __it_si=\"$HOME/.intelligent-terminal/shell-integration_v1.sh\"";
+    content += "\n    [ -f \"$__it_si\" ] && . \"$__it_si\"";
+    content += "\n    unset __it_si";
+    content += "\nfi";
+
+    const auto [s, e] = FindShellIntegrationBashBlock(content);
+    VERIFY_ARE_EQUAL(start, s);
+    VERIFY_ARE_EQUAL(content.size(), e);
+}
+
+void ShellIntegrationTests::Bash_FindBlock_OrphanOpenMarker_StopsAtUnrelatedUserContent()
+{
+    // Stop at first non-recognized line so user content below the
+    // corruption is preserved.
+    std::string content;
+    content += std::string{ kShellIntegrationBlockOpenMarker };
+    content += "\n# Auto-generated by Intelligent Terminal. Do not edit between markers.";
+    const auto expectedEnd = content.size();
+    content += "\necho 'this is user content, must survive'";
+    content += "\nexport USER_THING=1";
+
+    const auto [s, e] = FindShellIntegrationBashBlock(content);
+    VERIFY_ARE_EQUAL(static_cast<size_t>(0), s);
+    VERIFY_ARE_EQUAL(expectedEnd, e);
+}
+
+// ─── BuildShellIntegrationBashBlock + script content ──────────────────────────
+
+void ShellIntegrationTests::Bash_BuildBlock_ContainsMarkersAndScriptFilename()
+{
+    const auto block = BuildShellIntegrationBashBlock();
+    VERIFY_IS_TRUE(_Contains(block, kShellIntegrationBlockOpenMarker));
+    VERIFY_IS_TRUE(_Contains(block, kShellIntegrationBlockCloseMarker));
+    VERIFY_IS_TRUE(_Contains(block,
+                             "shell-integration_v" + std::to_string(kShellIntegrationBashVersion) + ".sh"));
+}
+
+void ShellIntegrationTests::Bash_BuildBlock_IsLfOnly()
+{
+    const auto block = BuildShellIntegrationBashBlock();
+    VERIFY_IS_FALSE(_Contains(block, "\r\n"),
+                    L"Bash block must be LF-only — bash files are never CRLF");
+    VERIFY_IS_FALSE(_Contains(block, "\r"),
+                    L"Bash block must not contain bare CR either");
+}
+
+void ShellIntegrationTests::Bash_BuildBlock_UsesHomeAndGuardsOnBashVersion()
+{
+    const auto block = BuildShellIntegrationBashBlock();
+    // Machine-portable: references $HOME, not a hardcoded path. This is
+    // the bash analogue of the PS block's runtime Documents resolution
+    // and is the property that lets .bashrc roam across machines safely.
+    VERIFY_IS_TRUE(_Contains(block, "$HOME/"));
+    VERIFY_IS_FALSE(_Contains(block, "C:\\"),
+                    L"Block must NOT contain a hardcoded Windows path");
+    // Bash-only guard so the block is a silent no-op when .bashrc is
+    // sourced by sh / dash / zsh.
+    VERIFY_IS_TRUE(_Contains(block, "$BASH_VERSION"));
+    // Missing-script guard so roaming to a machine without IT installed
+    // is a silent no-op rather than an error per shell start.
+    VERIFY_IS_TRUE(_Contains(block, "[ -f \"$__it_si\" ]"));
+}
+
+void ShellIntegrationTests::Bash_ScriptContent_HasIdempotencyGuardAndOscSequences()
+{
+    const auto& script = ShellIntegrationBashScriptContent();
+
+    // Idempotency: must guard against double-sourcing.
+    VERIFY_IS_TRUE(_Contains(script, "__IT_SHELLINTEG_INSTALLED"));
+    // Bash-only + interactive-only guards.
+    VERIFY_IS_TRUE(_Contains(script, "BASH_VERSION"));
+    VERIFY_IS_TRUE(_Contains(script, "case \"${-:-}\" in *i*"));
+    // The three OSC sequences the autofix pipeline downstream depends on.
+    VERIFY_IS_TRUE(_Contains(script, "133;D;%s"));
+    VERIFY_IS_TRUE(_Contains(script, "133;A"));
+    VERIFY_IS_TRUE(_Contains(script, "133;B"));
+    // CWD reporting.
+    VERIFY_IS_TRUE(_Contains(script, "9;9;"));
+    // Preserves the user's pre-existing PROMPT_COMMAND.
+    VERIFY_IS_TRUE(_Contains(script, "__IT_SHELLINTEG_USER_PC"));
+    // Preserves $? for that user hook so its `local ec=$?` still works.
+    VERIFY_IS_TRUE(_Contains(script, "(exit \"$__ec\")"));
+    // `set -u` (nounset) safety: every variable that might be unset
+    // BEFORE we touch it must use ${VAR:-} defaulting. A user with
+    // `set -u` earlier in .bashrc must not see "unbound variable" noise
+    // from sourcing our script.
+    VERIFY_IS_TRUE(_Contains(script, "${BASH_VERSION:-}"));
+    VERIFY_IS_TRUE(_Contains(script, "${-:-}"));
+    VERIFY_IS_TRUE(_Contains(script, "${__IT_SHELLINTEG_INSTALLED:-}"));
+    VERIFY_IS_TRUE(_Contains(script, "${PROMPT_COMMAND:-}"));
+    VERIFY_IS_TRUE(_Contains(script, "${PS1:-}"));
+}
+
+// ─── InstallBash ──────────────────────────────────────────────────────────────
+
+void ShellIntegrationTests::Bash_Install_EmptyProfilePath_Fails()
+{
+    const auto r = InstallBash(L"", _BashScriptDir().wstring());
+    VERIFY_IS_FALSE(r.success);
+    VERIFY_IS_FALSE(r.alreadyInstalled);
+    VERIFY_IS_FALSE(r.errorMessage.empty());
+}
+
+void ShellIntegrationTests::Bash_Install_EmptyScriptDir_Fails()
+{
+    const auto r = InstallBash(_BashProfilePath().wstring(), L"");
+    VERIFY_IS_FALSE(r.success);
+    VERIFY_IS_FALSE(r.alreadyInstalled);
+    VERIFY_IS_FALSE(r.errorMessage.empty());
+}
+
+void ShellIntegrationTests::Bash_Install_ProfileMissing_CreatesProfileAndScript()
+{
+    const auto profile = _BashProfilePath();
+    const auto scriptDir = _BashScriptDir();
+    VERIFY_IS_FALSE(std::filesystem::exists(profile));
+
+    const auto r = InstallBash(profile.wstring(), scriptDir.wstring());
+    VERIFY_IS_TRUE(r.success);
+    VERIFY_IS_FALSE(r.alreadyInstalled);
+    VERIFY_IS_TRUE(std::filesystem::exists(profile));
+    VERIFY_IS_TRUE(std::filesystem::exists(scriptDir / ShellIntegrationBashScriptFileName()));
+
+    const auto contents = _ReadFile(profile);
+    VERIFY_IS_TRUE(_Contains(contents, kShellIntegrationBlockOpenMarker));
+    VERIFY_IS_TRUE(_Contains(contents, kShellIntegrationBlockCloseMarker));
+}
+
+void ShellIntegrationTests::Bash_Install_ProfileWithoutBlock_AppendsBlockPreservesOriginalContent()
+{
+    const auto profile = _BashProfilePath();
+    const std::string original = "export PATH=$PATH:/usr/local/bin\nalias ll='ls -la'\n";
+    _WriteFile(profile, original);
+
+    const auto r = InstallBash(profile.wstring(), _BashScriptDir().wstring());
+    VERIFY_IS_TRUE(r.success);
+    VERIFY_IS_FALSE(r.alreadyInstalled);
+
+    const auto contents = _ReadFile(profile);
+    VERIFY_IS_TRUE(contents.rfind(original, 0) == 0, L"Original content must remain at start of .bashrc");
+    VERIFY_IS_TRUE(_Contains(contents, kShellIntegrationBlockOpenMarker));
+}
+
+void ShellIntegrationTests::Bash_Install_IsLfOnly()
+{
+    const auto profile = _BashProfilePath();
+    // Even if a user (or a buggy editor) introduced CRLF, our install
+    // must not emit CRLF inside its own block — bash tolerates both,
+    // but our block style stays consistent with the bash convention.
+    _WriteFile(profile, "alias ll='ls -la'\r\n");
+
+    VERIFY_IS_TRUE(InstallBash(profile.wstring(), _BashScriptDir().wstring()).success);
+
+    const auto contents = _ReadFile(profile);
+    const auto openPos = contents.find(kShellIntegrationBlockOpenMarker);
+    const auto closePos = contents.find(kShellIntegrationBlockCloseMarker, openPos);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, openPos);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, closePos);
+    for (size_t i = openPos; i < closePos; ++i)
+    {
+        VERIFY_ARE_NOT_EQUAL('\r', contents[i],
+                             L"Bash block must contain no CR characters");
+    }
+}
+
+void ShellIntegrationTests::Bash_Install_IdempotentWhenAlreadyInstalled()
+{
+    const auto profile = _BashProfilePath();
+    const auto scriptDir = _BashScriptDir();
+    VERIFY_IS_TRUE(InstallBash(profile.wstring(), scriptDir.wstring()).success);
+
+    const auto firstContents = _ReadFile(profile);
+    const auto r2 = InstallBash(profile.wstring(), scriptDir.wstring());
+    VERIFY_IS_TRUE(r2.success);
+    VERIFY_IS_TRUE(r2.alreadyInstalled);
+    VERIFY_ARE_EQUAL(firstContents, _ReadFile(profile));
+}
+
+void ShellIntegrationTests::Bash_Install_ReinstallsWhenScriptMissingButBlockMatches()
+{
+    const auto profile = _BashProfilePath();
+    const auto scriptDir = _BashScriptDir();
+    VERIFY_IS_TRUE(InstallBash(profile.wstring(), scriptDir.wstring()).success);
+
+    const auto scriptPath = scriptDir / ShellIntegrationBashScriptFileName();
+    std::error_code ec;
+    std::filesystem::remove(scriptPath, ec);
+    VERIFY_IS_FALSE(std::filesystem::exists(scriptPath));
+
+    const auto r = InstallBash(profile.wstring(), scriptDir.wstring());
+    VERIFY_IS_TRUE(r.success);
+    VERIFY_IS_FALSE(r.alreadyInstalled, L"Script file went missing → must re-install, not no-op");
+    VERIFY_IS_TRUE(std::filesystem::exists(scriptPath));
+}
+
+void ShellIntegrationTests::Bash_Install_OverwritesOrphanOpenMarker()
+{
+    const auto profile = _BashProfilePath();
+    std::string original = "alias ll='ls -la'\n";
+    original += std::string{ kShellIntegrationBlockOpenMarker };
+    original += "\n# Auto-generated by Intelligent Terminal. Do not edit between markers.";
+    original += "\nif [ -n \"$BASH_VERSION\" ]; then";
+    original += "\n    __it_si=\"/leaked/path\"";
+    original += "\n    [ -f \"$__it_si\" ] && . \"$__it_si\"";
+    original += "\n    unset __it_si";
+    original += "\nfi\n";
+    _WriteFile(profile, original);
+
+    const auto r = InstallBash(profile.wstring(), _BashScriptDir().wstring());
+    VERIFY_IS_TRUE(r.success);
+
+    const auto contents = _ReadFile(profile);
+    size_t openCount = 0, closeCount = 0, pos = 0;
+    while ((pos = contents.find(kShellIntegrationBlockOpenMarker, pos)) != std::string::npos)
+    {
+        ++openCount;
+        pos += kShellIntegrationBlockOpenMarker.size();
+    }
+    pos = 0;
+    while ((pos = contents.find(kShellIntegrationBlockCloseMarker, pos)) != std::string::npos)
+    {
+        ++closeCount;
+        pos += kShellIntegrationBlockCloseMarker.size();
+    }
+    VERIFY_ARE_EQUAL(static_cast<size_t>(1), openCount);
+    VERIFY_ARE_EQUAL(static_cast<size_t>(1), closeCount);
+    VERIFY_IS_FALSE(_Contains(contents, "/leaked/path"),
+                    L"Orphaned body line must be replaced by InstallBash");
+}
+
+void ShellIntegrationTests::Bash_Install_CreatesBackupForNonEmptyProfile()
+{
+    const auto profile = _BashProfilePath();
+    _WriteFile(profile, "alias ll='ls -la'\n");
+
+    VERIFY_IS_TRUE(InstallBash(profile.wstring(), _BashScriptDir().wstring()).success);
+    VERIFY_IS_GREATER_THAN_OR_EQUAL(_CountBackups(profile), static_cast<size_t>(1));
+}
+
+void ShellIntegrationTests::Bash_Install_DoesNotCreateBackupForEmptyProfile()
+{
+    const auto profile = _BashProfilePath();
+    VERIFY_IS_TRUE(InstallBash(profile.wstring(), _BashScriptDir().wstring()).success);
+    VERIFY_ARE_EQUAL(static_cast<size_t>(0), _CountBackups(profile));
+}
+
+// ─── UninstallBash ────────────────────────────────────────────────────────────
+
+void ShellIntegrationTests::Bash_Uninstall_EmptyPath_Fails()
+{
+    const auto r = UninstallBash(L"");
+    VERIFY_IS_FALSE(r.success);
+}
+
+void ShellIntegrationTests::Bash_Uninstall_ProfileMissing_NoOp()
+{
+    const auto profile = _BashProfilePath();
+    VERIFY_IS_FALSE(std::filesystem::exists(profile));
+
+    const auto r = UninstallBash(profile.wstring());
+    VERIFY_IS_TRUE(r.success);
+    VERIFY_IS_TRUE(r.alreadyInstalled);
+    VERIFY_IS_FALSE(std::filesystem::exists(profile), L"UninstallBash must NOT create .bashrc");
+}
+
+void ShellIntegrationTests::Bash_Uninstall_ProfileWithoutBlock_NoOp()
+{
+    const auto profile = _BashProfilePath();
+    const std::string original = "alias ll='ls -la'\n";
+    _WriteFile(profile, original);
+
+    const auto r = UninstallBash(profile.wstring());
+    VERIFY_IS_TRUE(r.success);
+    VERIFY_IS_TRUE(r.alreadyInstalled);
+    VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+}
+
+void ShellIntegrationTests::Bash_Uninstall_StripsBlockCleanly()
+{
+    const auto profile = _BashProfilePath();
+    const auto scriptDir = _BashScriptDir();
+    _WriteFile(profile, "alias ll='ls -la'\nexport FOO=bar\n");
+
+    VERIFY_IS_TRUE(InstallBash(profile.wstring(), scriptDir.wstring()).success);
+
+    const auto r = UninstallBash(profile.wstring());
+    VERIFY_IS_TRUE(r.success);
+    VERIFY_IS_FALSE(r.alreadyInstalled);
+
+    const auto contents = _ReadFile(profile);
+    VERIFY_IS_FALSE(_Contains(contents, kShellIntegrationBlockOpenMarker));
+    VERIFY_IS_FALSE(_Contains(contents, kShellIntegrationBlockCloseMarker));
+    VERIFY_IS_TRUE(_Contains(contents, "alias ll='ls -la'"));
+    VERIFY_IS_TRUE(_Contains(contents, "export FOO=bar"));
+}
+
+void ShellIntegrationTests::Bash_Uninstall_AfterInstall_RestoresOriginalContent()
+{
+    const auto profile = _BashProfilePath();
+    const std::string original = "alias ll='ls -la'\nexport FOO=bar\n";
+    _WriteFile(profile, original);
+
+    VERIFY_IS_TRUE(InstallBash(profile.wstring(), _BashScriptDir().wstring()).success);
+    VERIFY_IS_TRUE(UninstallBash(profile.wstring()).success);
+
+    VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+}
+
+void ShellIntegrationTests::Bash_Uninstall_TwoConsecutiveCalls_AreIdempotent()
+{
+    const auto profile = _BashProfilePath();
+    VERIFY_IS_TRUE(InstallBash(profile.wstring(), _BashScriptDir().wstring()).success);
+
+    const auto r1 = UninstallBash(profile.wstring());
+    VERIFY_IS_TRUE(r1.success);
+    VERIFY_IS_FALSE(r1.alreadyInstalled);
+
+    const auto r2 = UninstallBash(profile.wstring());
+    VERIFY_IS_TRUE(r2.success);
+    VERIFY_IS_TRUE(r2.alreadyInstalled, L"Second uninstall must be a no-op");
+}
+
+void ShellIntegrationTests::Bash_InstallUninstallInstall_RoundTrip()
+{
+    const auto profile = _BashProfilePath();
+    const auto scriptDir = _BashScriptDir();
+    _WriteFile(profile, "alias ll='ls -la'\n");
+
+    VERIFY_IS_TRUE(InstallBash(profile.wstring(), scriptDir.wstring()).success);
+    const auto afterFirstInstall = _ReadFile(profile);
+
+    VERIFY_IS_TRUE(UninstallBash(profile.wstring()).success);
+    VERIFY_IS_TRUE(InstallBash(profile.wstring(), scriptDir.wstring()).success);
+
+    VERIFY_ARE_EQUAL(afterFirstInstall, _ReadFile(profile),
+                     L"Round-trip: second Install must produce byte-identical output to first");
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// WSL flavor
+//
+// Install/UninstallWslBash require a real running WSL distro on the host —
+// we cover only the pure-function helpers here. The shared UNC-mediated
+// write path is already covered by the Bash_* tests; once QueryWslHomeRaw
+// returns successfully the implementation IS InstallBash / UninstallBash
+// with a different profilePath / scriptDir.
+// ═════════════════════════════════════════════════════════════════════════════
+
+void ShellIntegrationTests::Wsl_IsSafeDistroName_AcceptsCommonNames()
+{
+    VERIFY_IS_TRUE(details::IsSafeWslDistroName(L"Ubuntu"));
+    VERIFY_IS_TRUE(details::IsSafeWslDistroName(L"Ubuntu-22.04"));
+    VERIFY_IS_TRUE(details::IsSafeWslDistroName(L"Ubuntu-18.04"));
+    VERIFY_IS_TRUE(details::IsSafeWslDistroName(L"Debian"));
+    VERIFY_IS_TRUE(details::IsSafeWslDistroName(L"kali-linux"));
+    VERIFY_IS_TRUE(details::IsSafeWslDistroName(L"openSUSE-Tumbleweed"));
+    VERIFY_IS_TRUE(details::IsSafeWslDistroName(L"Alpine"));
+    VERIFY_IS_TRUE(details::IsSafeWslDistroName(L"docker-desktop"));
+    VERIFY_IS_TRUE(details::IsSafeWslDistroName(L"my_custom_distro_42"));
+}
+
+void ShellIntegrationTests::Wsl_IsSafeDistroName_RejectsInjection()
+{
+    // Anything that could break out of the `wsl.exe -d <name>` argument
+    // boundary or pull in additional shell behavior must be rejected.
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"Ubuntu\""));
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"Ubuntu\\Debian"));
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"Ubuntu/Debian"));
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"Ubuntu Debian"));
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"Ubuntu;rm -rf ~"));
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"Ubuntu&calc"));
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"Ubuntu|cat"));
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"Ubuntu`whoami`"));
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"Ubuntu$HOME"));
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"Ubuntu\nDebian"));
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"Ubuntu\rDebian"));
+    // wstring_view of a literal with embedded NUL needs the size to
+    // include the NUL byte explicitly.
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(std::wstring_view{ L"Ubuntu\0Debian", 13 }));
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L"\u65e5\u672c\u8a9e")); // non-ASCII
+}
+
+void ShellIntegrationTests::Wsl_IsSafeDistroName_RejectsEmptyAndOverlong()
+{
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(L""));
+    std::wstring overlong(257, L'a');
+    VERIFY_IS_FALSE(details::IsSafeWslDistroName(overlong));
+}
+
+void ShellIntegrationTests::Wsl_IsSafeWslHome_AcceptsCommonHomes()
+{
+    VERIFY_IS_TRUE(details::IsSafeWslHome("/home/yeelam"));
+    VERIFY_IS_TRUE(details::IsSafeWslHome("/root"));
+    VERIFY_IS_TRUE(details::IsSafeWslHome("/home/user.with.dots"));
+    VERIFY_IS_TRUE(details::IsSafeWslHome("/home/user-name_42"));
+    VERIFY_IS_TRUE(details::IsSafeWslHome("/var/lib/something/home/x"));
+}
+
+void ShellIntegrationTests::Wsl_IsSafeWslHome_RejectsRelativeAndTraversal()
+{
+    VERIFY_IS_FALSE(details::IsSafeWslHome(""));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("home/yeelam"));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home/yeelam/"));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home//yeelam"));
+    // Dot-only segments (current dir / traversal) — any segment whose
+    // characters are entirely `.` must be rejected.
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home/."));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/./home"));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home/./x"));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home/.."));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/../etc"));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home/../etc"));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home/..."));
+    // But legitimate dot-containing segments (`.bashrc`, `user.name`)
+    // must still pass — they are NOT dot-only segments.
+    VERIFY_IS_TRUE(details::IsSafeWslHome("/home/user.name"));
+    VERIFY_IS_TRUE(details::IsSafeWslHome("/home/a.b.c"));
+}
+
+void ShellIntegrationTests::Wsl_IsSafeWslHome_RejectsBadChars()
+{
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home/yee lam"));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home/yeelam\""));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home/yeelam;rm"));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home/yeelam\n"));
+    VERIFY_IS_FALSE(details::IsSafeWslHome("/home/\xc3\xa9")); // UTF-8 byte
+}
+
+void ShellIntegrationTests::Wsl_UncPath_BuildsExpectedFormat()
+{
+    VERIFY_ARE_EQUAL(std::wstring{ LR"(\\wsl$\Ubuntu/home/yeelam/.bashrc)" },
+                     WslUncPath(L"Ubuntu", "/home/yeelam/.bashrc"));
+    VERIFY_ARE_EQUAL(std::wstring{ LR"(\\wsl$\Debian-12/root/.intelligent-terminal)" },
+                     WslUncPath(L"Debian-12", "/root/.intelligent-terminal"));
+    // Forward slashes inside the posix part are preserved — the
+    // \\wsl$\ provider routes the lookup through the distro's vfs.
+    VERIFY_ARE_EQUAL(std::wstring{ LR"(\\wsl$\Alpine/home/x/y/z)" },
+                     WslUncPath(L"Alpine", "/home/x/y/z"));
+}
+
+void ShellIntegrationTests::Wsl_InstallWslBash_RejectsUnsafeDistroName()
+{
+    // The validator gates the wsl.exe spawn — we must never even
+    // attempt to launch with a tainted name. Verifying the early
+    // return prevents a regression where someone reorders the checks.
+    const auto r = InstallWslBash(L"Ubuntu\"; rm -rf ~ ; \"");
+    VERIFY_IS_FALSE(r.success);
+    VERIFY_IS_FALSE(r.alreadyInstalled);
+    VERIFY_IS_FALSE(r.errorMessage.empty());
+}
+
+void ShellIntegrationTests::Wsl_UninstallWslBash_RejectsUnsafeDistroName()
+{
+    const auto r = UninstallWslBash(L"Ubuntu | calc");
+    VERIFY_IS_FALSE(r.success);
+    VERIFY_IS_FALSE(r.alreadyInstalled);
+    VERIFY_IS_FALSE(r.errorMessage.empty());
 }

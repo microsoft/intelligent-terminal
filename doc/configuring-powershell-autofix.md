@@ -1,10 +1,21 @@
-# Configuring PowerShell for Auto-Fix
+# Configuring Shells for Auto-Fix
 
-The WTA auto-fix feature automatically detects when a command fails in another pane and suggests a fix. It works by listening for **OSC 133** shell integration sequences that PowerShell emits after each command.
+The WTA auto-fix feature automatically detects when a command fails in another pane and suggests a fix. It works by listening for **OSC 133** shell integration sequences that the shell emits after each command.
+
+The downstream pipeline (autofix detection, classification, VT-event forwarding) is **shell-agnostic** — it only cares about the OSC 133 marks on the wire. Any shell that emits them works. Today the installer ships ready-to-go integrations for:
+
+- **PowerShell 7+** (`pwsh.exe`) — written to `Documents\PowerShell\Microsoft.PowerShell_profile.ps1`
+- **Windows PowerShell 5.1** (`powershell.exe`) — written to `Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`
+- **Bash** (Git Bash on Windows) — written to `~/.bashrc`, sourcing `%USERPROFILE%\.intelligent-terminal\shell-integration_v1.sh`
+- **WSL** (one install per WSL distro you have a Windows Terminal profile for) — written to the distro's `~/.bashrc` and `~/.intelligent-terminal/shell-integration_v1.sh` via the `\\wsl$\<distName>\` UNC mount
+
+> **Distro discovery.** The installer iterates `_settings.AllProfiles()` and picks every profile whose `Source` is `Windows.Terminal.Wsl` (the dynamic-profile namespace used by `WslDistroGenerator`). Add a distro to WT (Settings → "+ Add a new profile" picks up new WSL distros automatically; or `wsl --install <Distro>` followed by relaunching WT) and the next FRE save or Settings install will cover it.
+
+> **Cold-start cost.** The first `wsl.exe` invocation in a Windows session spins up the WSL2 VM (~5–15s). The installer's per-distro `$HOME` probe pays this cost once; subsequent invocations are fast.
 
 ## How It Works
 
-1. PowerShell emits `OSC 133;D;<exit_code>` after every command finishes
+1. The shell emits `OSC 133;D;<exit_code>` after every command finishes
 2. Windows Terminal forwards this as a `vt_sequence` event to WTA
 3. If `exit_code != 0`, WTA reads the pane's terminal buffer and asks the AI to diagnose the error and suggest a fix
 4. The user reviews and confirms the suggestion before it runs
@@ -12,9 +23,13 @@ The WTA auto-fix feature automatically detects when a command fails in another p
 ## Requirements
 
 - **Windows Terminal** with the Intelligent Terminal build (handles event forwarding)
-- **PowerShell 7+** with shell integration enabled (emits OSC 133 sequences)
+- A supported shell with integration enabled (FRE / Settings UI installs both PowerShell flavors and Bash automatically)
 
 ## Enabling Shell Integration
+
+The FRE wizard and the Settings UI "Install" button handle this for you. The sections below document the snippets they install, in case you want to install manually or audit them.
+
+### PowerShell (manual)
 
 Add the following to your PowerShell profile (open it with `notepad $PROFILE`):
 
@@ -37,10 +52,27 @@ This wraps your existing prompt to emit three OSC 133 sequences on every command
 
 The key is `133;D` — it reports the previous command's exit code. WTA listens for this and triggers auto-fix whenever the exit code is non-zero.
 
+### Manual bash setup
+
+Add the following to your `~/.bashrc`:
+
+```bash
+__it_shellinteg_prompt() {
+    local __ec=$?
+    printf '\033]133;D;%s\007\033]133;A\007\033]9;9;"%s"\007' "$__ec" "$PWD"
+}
+PROMPT_COMMAND=__it_shellinteg_prompt
+PS1="${PS1}\[$'\033]133;B\007'\]"
+```
+
+This produces the same `133;D` / `133;A` / `133;B` marks as the PowerShell snippet (plus OSC `9;9` to report the current working directory). The `\[ \]` brackets tell readline the embedded escape sequence is zero-width so line wrap stays correct.
+
+For Git Bash users on Windows, the FRE / Settings installer takes care of all of this for you — including a more careful version that preserves any existing `PROMPT_COMMAND` and guards on `$BASH_VERSION` so non-bash shells silently no-op.
+
 ### Verifying It Works
 
 1. Open a pane in Intelligent Terminal
-2. Run a command that fails, e.g.: `Get-Item "C:\nonexistent-path"`
+2. Run a command that fails, e.g.: `Get-Item "C:\nonexistent-path"` (pwsh) or `ls /nonexistent` (bash)
 3. The WTA agent pane should show a notification and automatically suggest a fix
 
 ### Checking the Diagnostic Log
