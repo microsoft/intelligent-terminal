@@ -1933,6 +1933,22 @@ pub struct App {
     agent_event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
     /// Helper-mode fire-and-forget publisher for `intellterm.wta/session_hook`.
     session_hook_tx: Option<mpsc::UnboundedSender<crate::agent_sessions::SessionEvent>>,
+    /// Hot-updatable delegate config, shared with the recommendation
+    /// executor (`run_recommendation_executor`). Rebuilt in place on an
+    /// `agent_config_changed` settings event so the configured delegate
+    /// agent/model can change without restarting the agent pane. None in
+    /// tests / manual runs where no executor is wired.
+    delegate_agents:
+        Option<Arc<std::sync::Mutex<Vec<crate::coordinator::DelegateAgentRuntime>>>>,
+    /// The helper's own `--agent` cmdline. Needed to re-derive the delegate
+    /// runtime commandline when only the delegate agent/model change.
+    delegate_base_agent_cmd: String,
+    /// The configured ACP model override (the `--acp-model` setting). Seeded
+    /// from the spawn cmdline and updated on `agent_config_changed`. Re-applied
+    /// to every freshly-created session (via `SessionAttached`) so `/new` and
+    /// lazy-first-prompt sessions stay on the configured model, not just the
+    /// bootstrap one. None = "agent default" (no override).
+    acp_model: Option<String>,
     /// Test-only: last command issued via the agent session view's Enter
     /// dispatch (`dispatch_resume` / focus). Used by unit tests in
     /// place of a live wtcli; not compiled into release builds.
@@ -2152,6 +2168,9 @@ impl App {
             install_request_tx: None,
             agent_event_tx: None,
             session_hook_tx: None,
+            delegate_agents: None,
+            delegate_base_agent_cmd: String::new(),
+            acp_model: None,
             #[cfg(test)]
             last_dispatched_command: None,
             source_session_id: None,
@@ -2307,6 +2326,56 @@ impl App {
         tx: mpsc::UnboundedSender<crate::agent_sessions::SessionEvent>,
     ) {
         self.session_hook_tx = Some(tx);
+    }
+
+    /// Seed the hot-updatable runtime agent config: the delegate runtime
+    /// table shared with the recommendation executor, the helper's own
+    /// agent cmdline (used to re-derive the delegate commandline on partial
+    /// updates), and the configured acp-model override.
+    pub fn set_runtime_agent_config(
+        &mut self,
+        delegate_agents: Arc<std::sync::Mutex<Vec<crate::coordinator::DelegateAgentRuntime>>>,
+        base_agent_cmd: String,
+        acp_model: Option<String>,
+    ) {
+        self.delegate_agents = Some(delegate_agents);
+        self.delegate_base_agent_cmd = base_agent_cmd;
+        self.acp_model = acp_model.filter(|s| !s.trim().is_empty());
+    }
+
+    /// Push the currently-configured acp-model to the ACP client task so it
+    /// applies it (via `set_session_model`) to this helper's live session(s).
+    /// No-op when no override is configured ("agent default").
+    fn send_acp_model_update(&self) {
+        if let Some(model) = self.acp_model.as_ref().filter(|s| !s.trim().is_empty()) {
+            let _ = self.master_request_tx.send(
+                crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
+                    model: model.clone(),
+                },
+            );
+        }
+    }
+
+    /// Rebuild the shared delegate runtime table from a settings change.
+    /// `delegate_agent` / `delegate_model` are the new effective values
+    /// (empty string = unset → fall back to deriving from the base agent
+    /// cmd). No-op when no executor is wired (tests / manual runs).
+    fn apply_delegate_config(&self, delegate_agent: &str, delegate_model: &str) {
+        let Some(shared) = &self.delegate_agents else {
+            return;
+        };
+        let runtimes = crate::coordinator::default_delegate_agent_runtimes(
+            Some(delegate_agent).filter(|s| !s.is_empty()),
+            Some(self.delegate_base_agent_cmd.as_str()),
+            Some(delegate_model).filter(|s| !s.is_empty()),
+        );
+        *shared.lock().unwrap() = runtimes;
+        tracing::info!(
+            target: "autofix",
+            delegate_agent,
+            delegate_model,
+            "delegate config hot-updated from settings change"
+        );
     }
 
     fn publish_session_hook(&self, event: crate::agent_sessions::SessionEvent) {
@@ -4133,6 +4202,14 @@ impl App {
                 if current_model_id.is_some() {
                     self.current_model_id = current_model_id;
                 }
+                // Keep freshly-created sessions on the configured acp-model.
+                // A resumed (loaded) session keeps whatever model it was
+                // saved with; only fresh `/new` and lazy-first-prompt
+                // sessions adopt the global override. The bootstrap session
+                // is already model-applied by the client at startup.
+                if !is_load_target {
+                    self.send_acp_model_update();
+                }
                 self.publish_agent_status();
             }
             AppEvent::TabError { tab_id, message } => {
@@ -4773,22 +4850,59 @@ impl App {
                     return;
                 }
 
-                if method == "autofix_enabled_changed" {
-                    // C++ pushes this when the user toggles "Auto-suggest
-                    // fixes" in settings while WTA is already running.
-                    // Without it the flag would stay pinned to whatever
-                    // `--no-autofix` value WTA was launched with.
-                    let enabled = params
-                        .get("enabled")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    tracing::info!(
-                        target: "autofix",
-                        old = self.autofix_enabled,
-                        new = enabled,
-                        "autofix_enabled hot-reloaded from settings change",
-                    );
-                    self.autofix_enabled = enabled;
+                if method == "agent_config_changed" {
+                    // C++ pushes this when the user changes a hot-updatable
+                    // agent setting (auto-suggest gate, acp-model, delegate
+                    // agent/model) while WTA is already running. Unified
+                    // dispatch: each field is optional and only present when
+                    // it actually changed, so we apply exactly what's set
+                    // — all in place, with NO agent-pane teardown/restart.
+                    // (Agent *identity* changes go through a master respawn
+                    // on the C++ side, not this event.)
+                    if let Some(enabled) =
+                        params.get("autofix_enabled").and_then(|v| v.as_bool())
+                    {
+                        tracing::info!(
+                            target: "autofix",
+                            old = self.autofix_enabled,
+                            new = enabled,
+                            "autofix_enabled hot-reloaded from settings change",
+                        );
+                        self.autofix_enabled = enabled;
+                    }
+
+                    // delegate_agent + delegate_model travel together so the
+                    // delegate runtime table can be rebuilt in one shot.
+                    if params.get("delegate_agent").is_some()
+                        || params.get("delegate_model").is_some()
+                    {
+                        let delegate_agent = params
+                            .get("delegate_agent")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let delegate_model = params
+                            .get("delegate_model")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        self.apply_delegate_config(delegate_agent, delegate_model);
+                    }
+
+                    // acp-model: remember the new override and hot-swap it on
+                    // the running ACP session(s) via the client task
+                    // (set_session_model). Storing it also keeps future
+                    // sessions (/new, lazy-first-prompt) on the new model —
+                    // see the SessionAttached re-apply. Empty = "agent
+                    // default" (can't be expressed as set_session_model), so
+                    // we clear the override and send nothing.
+                    if let Some(raw) = params.get("acp_model").and_then(|v| v.as_str()) {
+                        self.acp_model = Some(raw.to_string()).filter(|s| !s.trim().is_empty());
+                        tracing::info!(
+                            target: "autofix",
+                            model = raw,
+                            "acp-model hot-update requested from settings change",
+                        );
+                        self.send_acp_model_update();
+                    }
                     return;
                 }
 

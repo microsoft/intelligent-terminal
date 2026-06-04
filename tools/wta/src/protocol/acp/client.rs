@@ -133,6 +133,13 @@ pub enum MasterExtRequest {
         request_id: u64,
         sid: acp::SessionId,
     },
+    /// Hot-swap the ACP model on this helper's live session(s). Emitted by
+    /// `App::handle_event` when the user changes `acp-model` in settings
+    /// while the agent pane is already running — applied via
+    /// `set_session_model` without restarting anything.
+    SetSessionModel {
+        model: String,
+    },
 }
 
 /// User-initiated request to resume a historical agent session by calling
@@ -2551,7 +2558,7 @@ pub async fn run_acp_client_over_pipe(
                 });
             }
             Some(req) = master_ext_rx.recv() => {
-                dispatch_master_ext_request(req, &conn, &event_tx);
+                dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
             }
             Some(req) = restart_rx.recv() => {
                 // Helper can't restart the agent CLI in-process — master owns
@@ -3403,7 +3410,7 @@ async fn run_inner(
             // /restart: priority over other arms via `biased;` so a
             // queued prompt can't sneak in front of a kill request.
             Some(req) = master_ext_rx.recv() => {
-                dispatch_master_ext_request(req, &conn, &event_tx);
+                dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
             }
             Some(req) = restart_rx.recv() => {
                 tracing::info!(target: "acp_restart", "restart requested, new_agent={:?}", req.agent_cmd);
@@ -3771,9 +3778,11 @@ fn dispatch_master_ext_request(
     req: MasterExtRequest,
     conn: &Arc<acp::ClientSideConnection>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
+    tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::SessionId>>>,
 ) {
     let conn = Arc::clone(conn);
     let event_tx = event_tx.clone();
+    let tab_to_session = Arc::clone(tab_to_session);
     tokio::task::spawn_local(async move {
         match req {
             MasterExtRequest::SessionsList { request_id } => {
@@ -3875,6 +3884,39 @@ fn dispatch_master_ext_request(
                     }
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
+            }
+            MasterExtRequest::SetSessionModel { model } => {
+                // Apply to every live session this helper owns (normally
+                // just the one bound to its owner tab). Best-effort: a
+                // failure on one session is logged, not fatal — the next
+                // prompt still works on the previously-selected model.
+                let sessions: Vec<acp::SessionId> = {
+                    let g = tab_to_session.lock().await;
+                    g.values().cloned().collect()
+                };
+                for sid in sessions {
+                    match conn
+                        .set_session_model(acp::SetSessionModelRequest::new(
+                            sid.clone(),
+                            model.clone(),
+                        ))
+                        .await
+                    {
+                        Ok(_) => tracing::info!(
+                            target: "autofix",
+                            session_id = %sid.0,
+                            model = %model,
+                            "acp-model hot-applied to live session"
+                        ),
+                        Err(err) => tracing::warn!(
+                            target: "autofix",
+                            session_id = %sid.0,
+                            model = %model,
+                            error = ?err,
+                            "set_session_model hot-update failed"
+                        ),
+                    }
+                }
             }
         }
     });

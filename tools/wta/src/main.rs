@@ -2335,20 +2335,36 @@ async fn run_acp_app(
 
             // Spawn the recommendation executor so selected choices actually run.
             let rec_event_tx = event_tx.clone();
-            let delegate_agents = crate::coordinator::default_delegate_agent_runtimes(
-                cli.delegate_agent.as_deref(),
-                Some(cli.agent.as_str()),
-                cli.delegate_model.as_deref(),
-            );
+            // Shared so a runtime `agent_config_changed` settings update can
+            // hot-swap the configured delegate agent/model in place (handled
+            // in App::handle_event) without restarting the agent pane. The
+            // executor snapshots it per choice; the App rebuilds it on change.
+            let delegate_agents = Arc::new(std::sync::Mutex::new(
+                crate::coordinator::default_delegate_agent_runtimes(
+                    cli.delegate_agent.as_deref(),
+                    Some(cli.agent.as_str()),
+                    cli.delegate_model.as_deref(),
+                ),
+            ));
             tokio::spawn(crate::coordinator::run_recommendation_executor(
                 recommendation_rx,
                 rec_event_tx,
                 shell_mgr_for_recs,
-                delegate_agents,
+                Arc::clone(&delegate_agents),
             ));
 
             let autofix_enabled = !cli.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
+            // Seed the hot-updatable runtime agent config: the shared
+            // delegate runtime table, the helper's own agent_cmd (needed to
+            // re-derive the delegate commandline when only the delegate
+            // agent/model change), and the configured acp-model override
+            // (re-applied to future sessions so /new stays on the model).
+            app_state.set_runtime_agent_config(
+                Arc::clone(&delegate_agents),
+                cli.agent.clone(),
+                cli.acp_model.clone(),
+            );
             if let Some(session_hook_tx) = session_hook_tx_opt {
                 app_state.set_session_hook_tx(session_hook_tx);
             }

@@ -359,6 +359,12 @@ namespace winrt::TerminalApp::implementation
         // Hot-reload of agent/model settings. Snapshot is captured on first
         // SetSettings and after every rebuild; a diff drives teardown/rebuild
         // of the agent pane.
+        //
+        // Only the agent-CLI *identity* (acpAgent / acpCustomCommand, which
+        // resolve --agent + --agent-id = the actual agent binary) forces a
+        // master respawn via _RebuildAgentStack. Model + delegate config are
+        // hot-updated over the event channel (see AgentRuntimeConfigSnapshot
+        // + _EmitAgentRuntimeConfigIfChanged) and must NOT restart the pane.
         struct AgentSettingsSnapshot
         {
             std::wstring acpAgent;
@@ -370,12 +376,22 @@ namespace winrt::TerminalApp::implementation
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
-        // Snapshot of AutoFixEnabled at last SetSettings call. When the
-        // user toggles "Auto-suggest fixes" we send the new value to WTA
-        // over the protocol so it can update its in-memory gate without
-        // requiring the agent pane to be torn down and restarted.
-        bool _lastAutoFixEnabled{ false };
-        bool _autoFixEnabledSnapshotInitialized{ false };
+        // Hot-updatable runtime agent config. When any of these change we
+        // push a single consolidated `agent_config_changed` event to the
+        // running wta-helper(s) so they update in place — no agent-pane
+        // teardown/restart. This is the unified dispatch point for every
+        // hot-reloadable agent setting (autofix gate, acp-model, delegate
+        // agent/model). `delegateAgent` holds the *resolved effective*
+        // value (custom-command ids already expanded).
+        struct AgentRuntimeConfigSnapshot
+        {
+            std::wstring acpModel;
+            std::wstring delegateAgent;
+            std::wstring delegateModel;
+            bool autofixEnabled{ false };
+        };
+        AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
+        bool _agentRuntimeConfigInitialized{ false };
         // Snapshot of EffectiveAutoErrorDetectionEnabled at last
         // SetSettings call. Drives the silent shell-integration reconcile
         // (Install when ON, Uninstall when OFF) on first-load and on
@@ -435,7 +451,15 @@ namespace winrt::TerminalApp::implementation
         // expire after a few seconds.
         std::unordered_map<winrt::hstring, std::chrono::steady_clock::time_point> _agentPaneRestartSuppression;
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
+        // Compares only agent-CLI *identity* fields — the change that forces
+        // a master respawn. Model/delegate changes are handled by
+        // _EmitAgentRuntimeConfigIfChanged instead.
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
+        AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
+        // Diffs the hot-updatable runtime config against the last snapshot
+        // and, on change, emits one `agent_config_changed` event carrying
+        // only the changed fields. No agent-pane teardown.
+        void _EmitAgentRuntimeConfigIfChanged();
         void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab, bool suppressMasterRestart = true);
         void _RebuildAgentStack();
         void _FlushPendingAgentRebuild();

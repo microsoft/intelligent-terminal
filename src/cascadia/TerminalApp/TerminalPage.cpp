@@ -358,36 +358,16 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Auto-suggest toggle hot-reload: when the effective auto-fix
-        // value changes between settings reloads, push the new value
-        // to WTA over the protocol. Tracks `EffectiveAutoFixEnabled`
-        // (not the raw user pref) so GPO Forced/Blocked transitions
-        // also propagate. WTA's `autofix_enabled` flag would
-        // otherwise stay pinned to whatever `--no-autofix` value it
-        // was launched with.
-        {
-            const bool currentAutoFix = _settings.GlobalSettings().EffectiveAutoFixEnabled();
-            if (!_autoFixEnabledSnapshotInitialized)
-            {
-                _lastAutoFixEnabled = currentAutoFix;
-                _autoFixEnabledSnapshotInitialized = true;
-            }
-            else if (_lastAutoFixEnabled != currentAutoFix)
-            {
-                _lastAutoFixEnabled = currentAutoFix;
-                Json::Value evt;
-                evt["type"] = "event";
-                evt["method"] = "autofix_enabled_changed";
-                Json::Value params;
-                params["enabled"] = currentAutoFix;
-                evt["params"] = params;
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "";
-                ProtocolVtSequenceReceived.raise(
-                    *this,
-                    winrt::to_hstring(Json::writeString(wb, evt)));
-            }
-        }
+        // Hot-reload of runtime agent config (autofix gate, acp-model,
+        // delegate agent/model). When any of these change between settings
+        // reloads we push a single consolidated `agent_config_changed`
+        // event to the running wta-helper(s) so they update in place,
+        // WITHOUT tearing down and restarting the agent pane. This is the
+        // unified dispatch for every hot-updatable agent setting — adding a
+        // new one means adding a field to AgentRuntimeConfigSnapshot, not a
+        // bespoke diff/emit block here. (Agent *identity* changes still go
+        // through _RebuildAgentStack in _RefreshUIForSettingsReload.)
+        _EmitAgentRuntimeConfigIfChanged();
 
         // Make sure to call SetCommands before _RefreshUIForSettingsReload.
         // SetCommands will make sure the KeyChordText of Commands is updated, which needs
@@ -1385,12 +1365,89 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b)
     {
+        // Only the agent-CLI *identity* (which binary + agent-id) forces a
+        // master respawn. acp-model and the delegate-* fields are hot-updated
+        // over the protocol by _EmitAgentRuntimeConfigIfChanged and must NOT
+        // trigger a teardown/rebuild here — that was the bug where changing
+        // the delegate agent restarted the whole agent pane connection.
         return a.acpAgent != b.acpAgent ||
-               a.acpModel != b.acpModel ||
-               a.acpCustomCommand != b.acpCustomCommand ||
-               a.delegateAgent != b.delegateAgent ||
-               a.delegateModel != b.delegateModel ||
-               a.delegateCustomCommand != b.delegateCustomCommand;
+               a.acpCustomCommand != b.acpCustomCommand;
+    }
+
+    TerminalPage::AgentRuntimeConfigSnapshot TerminalPage::_CaptureAgentRuntimeConfig() const
+    {
+        const auto& globals = _settings.GlobalSettings();
+        return AgentRuntimeConfigSnapshot{
+            std::wstring{ globals.AcpModel() },
+            std::wstring{ _ResolveEffectiveDelegateAgent(globals) },
+            std::wstring{ globals.DelegateModel() },
+            globals.EffectiveAutoFixEnabled(),
+        };
+    }
+
+    // Hot-propagate runtime agent config to the running wta-helper(s) over
+    // the protocol event channel. Unlike agent *identity* changes (which
+    // require a master respawn via _RebuildAgentStack), these take effect
+    // without tearing down the agent pane. A single consolidated
+    // `agent_config_changed` event carries only the fields that changed:
+    //   - autofix_enabled : the auto-suggest gate (was its own event)
+    //   - acp_model        : the main ACP agent's model override
+    //   - delegate_agent + delegate_model : the delegate-tab agent identity;
+    //     both travel together so the helper can rebuild its delegate
+    //     runtime table in one shot.
+    void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
+    {
+        const auto current = _CaptureAgentRuntimeConfig();
+
+        // First call just seeds the baseline — there's no running helper to
+        // notify yet, and on first load the helper picks these values up
+        // from its spawn cmdline.
+        if (!_agentRuntimeConfigInitialized)
+        {
+            _lastAgentRuntimeConfig = current;
+            _agentRuntimeConfigInitialized = true;
+            return;
+        }
+
+        const auto& last = _lastAgentRuntimeConfig;
+        const bool autofixChanged = last.autofixEnabled != current.autofixEnabled;
+        const bool acpModelChanged = last.acpModel != current.acpModel;
+        const bool delegateChanged = last.delegateAgent != current.delegateAgent ||
+                                     last.delegateModel != current.delegateModel;
+
+        if (!autofixChanged && !acpModelChanged && !delegateChanged)
+        {
+            return;
+        }
+
+        Json::Value params{ Json::objectValue };
+        if (autofixChanged)
+        {
+            params["autofix_enabled"] = current.autofixEnabled;
+        }
+        if (acpModelChanged)
+        {
+            params["acp_model"] = winrt::to_string(current.acpModel);
+        }
+        if (delegateChanged)
+        {
+            params["delegate_agent"] = winrt::to_string(current.delegateAgent);
+            params["delegate_model"] = winrt::to_string(current.delegateModel);
+        }
+
+        Json::Value evt{ Json::objectValue };
+        evt["type"] = "event";
+        evt["method"] = "agent_config_changed";
+        evt["params"] = params;
+
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        _agentPaneLog("emitting agent_config_changed (hot settings update)");
+        ProtocolVtSequenceReceived.raise(
+            *this,
+            winrt::to_hstring(Json::writeString(wb, evt)));
+
+        _lastAgentRuntimeConfig = current;
     }
 
     // Close the agent pane in a specific tab, if it has one.

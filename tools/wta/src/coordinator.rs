@@ -321,9 +321,14 @@ pub async fn run_recommendation_executor(
     mut rx: mpsc::UnboundedReceiver<ChoiceExecution>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     shell_mgr: Arc<ShellManager>,
-    delegate_agents: Vec<DelegateAgentRuntime>,
+    // Shared so the App can hot-swap the configured delegate agent/model on
+    // an `agent_config_changed` settings update without respawning anything.
+    // Snapshotted (cloned) under the lock per choice — the table is tiny
+    // (one entry) and the lock is never held across an await.
+    delegate_agents: Arc<std::sync::Mutex<Vec<DelegateAgentRuntime>>>,
 ) {
     while let Some(exec) = rx.recv().await {
+        let delegate_agents = delegate_agents.lock().unwrap().clone();
         match execute_choice(&exec.choice, exec.insert_only, &shell_mgr, &delegate_agents, &event_tx).await {
             Ok(()) => {}
             Err(err) => {
