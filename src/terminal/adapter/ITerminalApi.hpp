@@ -95,5 +95,6 @@ namespace Microsoft::Console::VirtualTerminal
         virtual void SearchMissingCommand(const std::wstring_view command) = 0;
 
         virtual void NotifyVtSequence(const std::wstring_view sequence) = 0;
+        virtual void ShowNotification(const std::wstring_view title, const std::wstring_view body) = 0;
     };
 }

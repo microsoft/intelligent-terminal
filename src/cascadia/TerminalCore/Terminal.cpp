@@ -267,6 +267,7 @@ void Terminal::SetOptionalFeatures(winrt::Microsoft::Terminal::Core::ICoreSettin
     auto features = til::enumset<ITermDispatch::OptionalFeature>{};
     features.set(ITermDispatch::OptionalFeature::ChecksumReport, settings.AllowVtChecksumReport());
     features.set(ITermDispatch::OptionalFeature::ClipboardWrite, settings.AllowVtClipboardWrite());
+    features.set(ITermDispatch::OptionalFeature::DesktopNotification, settings.AllowOscNotifications());
     engine.Dispatch().SetOptionalFeatures(features);
 }
 
@@ -1289,6 +1290,11 @@ void Microsoft::Terminal::Core::Terminal::SetSearchMissingCommandCallback(std::f
 void Microsoft::Terminal::Core::Terminal::SetVtSequenceCallback(std::function<void(std::wstring_view)> pfn) noexcept
 {
     _pfnVtSequence.swap(pfn);
+}
+
+void Microsoft::Terminal::Core::Terminal::SetShowNotificationCallback(std::function<void(std::wstring_view, std::wstring_view)> pfn) noexcept
+{
+    _pfnShowNotification.swap(pfn);
 }
 
 void Microsoft::Terminal::Core::Terminal::SetClearQuickFixCallback(std::function<void()> pfn) noexcept
