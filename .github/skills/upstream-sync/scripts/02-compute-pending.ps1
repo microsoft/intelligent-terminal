@@ -64,12 +64,24 @@ foreach ($sha in $all) {
     if ($body -match 'This reverts commit ([0-9a-f]{40})\b') {
         $targetSha = $Matches[1]
     } elseif ($subj -match '^Revert "') {
-        # Best-effort: try to find the original by matching the quoted subject.
+        # Best-effort fallback: match the quoted original subject. To
+        # avoid pairing the revert with a *later* unrelated commit
+        # that happens to share the subject, search only the prefix of
+        # $all up to (but not including) the current revert — the
+        # original must precede its revert in oldest-first order.
+        # Also require exactly one match; if subjects repeat, fall
+        # through and let the revert land as a normal pick (safer
+        # than dropping the wrong commit).
         $origSubject = $subj -replace '^Revert "', '' -replace '"\s*$', '' -replace '"\.?\s*$',''
-        $candidate = $all | Where-Object {
+        $prefix = @()
+        foreach ($candidateSha in $all) {
+            if ($candidateSha -eq $sha) { break }
+            $prefix += $candidateSha
+        }
+        $candidates = @($prefix | Where-Object {
             $info[$_].subject -eq $origSubject -and -not $dropped.Contains($_)
-        } | Select-Object -First 1
-        if ($candidate) { $targetSha = $candidate }
+        })
+        if ($candidates.Count -eq 1) { $targetSha = $candidates[0] }
     }
 
     if ($targetSha -and $info.ContainsKey($targetSha) -and -not $dropped.Contains($targetSha)) {

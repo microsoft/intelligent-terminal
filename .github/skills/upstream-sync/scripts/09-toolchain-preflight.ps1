@@ -38,10 +38,19 @@ param()
 
 function Get-RequiredToolsets {
     $root = Get-RepoRoot
+    # PlatformToolset can live at either the repo root (e.g. fork-local
+    # common.openconsole.props) or under src/ (the upstream cascadia
+    # layout). Probe both so a future relocation doesn't silently make
+    # the preflight read a stale file. Tests/older layouts may differ —
+    # missing files are skipped.
     $candidates = @(
-        'src/common.build.pre.props',
+        'common.openconsole.props',
         'src/common.openconsole.props',
-        'src/common.build.tests.props'
+        'src/common.build.pre.props',
+        'src/common.build.post.props',
+        'src/common.build.tests.props',
+        'src/wap-common.build.pre.props',
+        'src/wap-common.build.post.props'
     )
     $found = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($rel in $candidates) {
