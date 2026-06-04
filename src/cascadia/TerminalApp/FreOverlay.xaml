@@ -516,6 +516,13 @@
                         Grid.Row="1"
                         Background="#CC1E1E1E"
                         Visibility="Collapsed">
+                    <!--  Background is the same RGB as RootGrid (#FF1E1E1E
+                          on line 31) with 80 % alpha, by design: the
+                          overlay reads as "FRE dims itself" rather than
+                          an independent panel. Keep these two in sync
+                          if the FRE backdrop ever changes — extracting
+                          both into shared SolidColorBrush resources is
+                          left for a broader FRE theming pass.  -->
                     <StackPanel Orientation="Vertical"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
