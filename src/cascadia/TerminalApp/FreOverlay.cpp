@@ -302,6 +302,18 @@ namespace winrt::TerminalApp::implementation
             AgentComboBox(), RS_(L"FreOverlay_AgentLabel/Text"));
         Automation::AutomationProperties::SetName(
             PanePositionComboBox(), RS_(L"FreOverlay_PanePositionLabel/Text"));
+
+        // Give the SavingProgressRing a localized accessible Name so
+        // Narrator announces "Setting up Intelligent Terminal" when
+        // focus moves to it during a save/install (and "Setting up
+        // Intelligent Terminal, busy" if the user later presses Caps+0
+        // mid-install). Without this, focus reads just "ProgressRing".
+        // Paired with the Focus-before-IsActive(true) ordering in
+        // _SetSavingState so the initial focus announcement does NOT
+        // include the "busy" state prefix — that comes later only on
+        // explicit re-query.
+        Automation::AutomationProperties::SetName(
+            SavingProgressRing(), RS_(L"FreOverlay_SettingUp"));
     }
 
     // ── Agent selection changed ─────────────────────────────────────────
@@ -937,26 +949,44 @@ namespace winrt::TerminalApp::implementation
         if (saving)
         {
             overlay.Visibility(Visibility::Visible);
-            // Move focus BEFORE activating the spinner. Narrator
-            // announces the focused control's state on focus change; if
-            // IsActive is already true, the announcement is prefixed
-            // with "busy" which buries the "Setting up..." notification
-            // we fire below. Toggling IsActive after focus tends to
-            // not re-announce.
-            ring.Focus(FocusState::Programmatic);
             ring.IsActive(true);
             scroller.IsEnabled(false);
             save.IsEnabled(false);
 
-            // Narrator: focus moving to the ProgressRing alone reads
-            // "ProgressRing" — a blind user has no idea what's busy.
-            // Announce the operation name explicitly with
-            // ImportantMostRecent so this wins over the focus
-            // announcement. Same RaiseNotificationEvent pattern as
-            // TerminalPage::_ShowFreOverlay (welcome) — uses SaveButton
-            // as the peer source because announcements fired through a
-            // UserControl's automation peer don't propagate to Narrator
-            // reliably; a concrete focusable Control does.
+            // Move focus to the ProgressRing AFTER the synchronous
+            // layout work completes. Calling ring.Focus() right after
+            // overlay.Visibility(Visible) silently fails — the ring
+            // isn't in the live visual tree yet, Focus() returns false
+            // (we don't see it because the return value is discarded),
+            // and focus stays on the SaveButton the user just clicked.
+            // Mirror the deferred-focus pattern used in
+            // TerminalPage::_ShowFreOverlay (line ~955) for the FRE
+            // NextButton: dispatch at Low priority so the focus call
+            // runs after the visibility change has been laid out.
+            Dispatcher().RunAsync(
+                winrt::Windows::UI::Core::CoreDispatcherPriority::Low,
+                [weak = get_weak()]() {
+                    if (auto self = weak.get())
+                    {
+                        if (auto r = self->SavingProgressRing())
+                        {
+                            r.Focus(FocusState::Programmatic);
+                        }
+                    }
+                });
+
+            // Narrator: the deferred focus above will eventually fire a
+            // focus event with the ProgressRing's Name ("Setting up
+            // Intelligent Terminal", set in Initialize via SetName) +
+            // its "busy" state. RaiseNotificationEvent ensures the
+            // user hears something immediately, before that deferred
+            // focus lands. Together: an early notification on entry,
+            // and a meaningful Caps+Tab readout (or focus-changed
+            // announcement on re-entry) once focus is parked on the
+            // ring. Uses SaveButton as the peer source (matches the
+            // FRE welcome pattern in TerminalPage::_ShowFreOverlay)
+            // because UserControl peers don't propagate notifications
+            // to Narrator reliably; a concrete focusable Control does.
             if (auto peer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(SaveButton()))
             {
                 peer.RaiseNotificationEvent(
