@@ -2,7 +2,8 @@ use crate::app::{App, AppMode, View, DEFAULT_TAB_ID};
 use ratatui::prelude::*;
 
 use super::{
-    agents_view, auth, chat, command_popup, debug_panel, input, permission, recommendations, setup,
+    agents_view, auth, chat, command_popup, debug_panel, input, model_popup, permission,
+    recommendations, setup,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -219,6 +220,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // the filler row between the perm panel and the hint row.
     if let Some(popup_state) = app.command_popup_state() {
         command_popup::render_popup(frame, popup_state, chunks[3]);
+    }
+
+    // `/model` picker modal: same anchor as the autocomplete popup. The two
+    // are mutually exclusive — opening the picker clears the input, so the
+    // command popup isn't visible while it's up.
+    if let Some(model_state) = app.model_popup_state() {
+        model_popup::render_popup(frame, model_state, chunks[3]);
     }
 
     // `/help` overlay sits on top of everything so the user can always

@@ -1446,6 +1446,20 @@ pub struct TabSession {
     #[allow(dead_code)]
     pub session_id: Option<String>,
 
+    /// Per-pane ACP model override, set by the `/model` picker. `None` means
+    /// "follow the global `acpModel` setting"; `Some(id)` pins this pane to a
+    /// specific model that wins over the global value and survives `/new`
+    /// (re-applied to fresh sessions in the `SessionAttached` handler via
+    /// `effective_model_for_tab`). In-memory only — not persisted across pane
+    /// close / Terminal restart. See `App::commit_model_pick`.
+    pub model_override: Option<String>,
+    /// True while the `/model` picker modal is up for this tab. Drives both
+    /// the key-event intercept in `handle_key` and the popup render.
+    pub model_picker_open: bool,
+    /// Highlighted row in the open model picker — an index into the agent's
+    /// advertised `App::available_models`. Clamped on open.
+    pub model_picker_selected: usize,
+
     // agent session view (`/sessions`) — per-tab so each WT tab keeps
     // its own open/closed state and selected row across tab switches.
     pub current_view: View,
@@ -2353,17 +2367,174 @@ impl App {
         self.acp_model = acp_model.filter(|s| !s.trim().is_empty());
     }
 
-    /// Push the currently-configured acp-model to the ACP client task so it
-    /// applies it (via `set_session_model`) to this helper's live session(s).
-    /// No-op when no override is configured ("agent default").
-    fn send_acp_model_update(&self) {
-        if let Some(model) = self.acp_model.as_ref().filter(|s| !s.trim().is_empty()) {
-            let _ = self.master_request_tx.send(
-                crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
-                    model: model.clone(),
-                },
-            );
+    /// Low-level: ask the ACP client task to apply `model` via
+    /// `set_session_model`. `session_id == Some` targets exactly that live
+    /// session (the per-pane `/model` pick); `None` fans out to every session
+    /// this helper owns. No-op on an empty/whitespace model — an empty
+    /// override means "agent default", which `set_session_model` can't
+    /// express.
+    fn send_session_model(&self, session_id: Option<String>, model: String) {
+        if model.trim().is_empty() {
+            return;
         }
+        let _ = self.master_request_tx.send(
+            crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
+                session_id: session_id.map(agent_client_protocol::SessionId::new),
+                model,
+            },
+        );
+    }
+
+    /// The model a given tab should run on: its explicit per-pane override
+    /// (set via `/model`) wins, else the global `acpModel`. `None` means no
+    /// opinion — leave the session on the agent's default.
+    fn effective_model_for_tab(&self, tab_key: &str) -> Option<String> {
+        self.tab_sessions
+            .get(tab_key)
+            .and_then(|t| t.model_override.clone())
+            .or_else(|| self.acp_model.clone())
+            .filter(|s| !s.trim().is_empty())
+    }
+
+    /// Push the global `acpModel` to every *non-overridden* tab's live
+    /// session. Called from the settings hot-reload path: panes the user
+    /// pinned with `/model` keep their local choice (local wins); the rest
+    /// follow the new global value.
+    fn send_acp_model_update(&self) {
+        let Some(model) = self.acp_model.as_ref().filter(|s| !s.trim().is_empty()) else {
+            return;
+        };
+        for tab in self.tab_sessions.values() {
+            if tab.model_override.is_some() {
+                continue; // local pick wins over the global setting
+            }
+            if let Some(sid) = tab.session_id.clone() {
+                self.send_session_model(Some(sid), model.clone());
+            }
+        }
+    }
+
+    // ── /model picker ───────────────────────────────────────────────────
+
+    /// True while the model picker modal is up for the active tab.
+    fn model_picker_visible(&self) -> bool {
+        self.current_tab().model_picker_open
+    }
+
+    /// `/model [id]` — switch this pane's model. With an argument, match it
+    /// against the agent's advertised list and apply directly; bare `/model`
+    /// opens the interactive picker.
+    fn cmd_model(&mut self, arg: String) {
+        let arg = arg.trim().to_string();
+        if self.available_models.is_empty() {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("system.no_models").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
+        if arg.is_empty() {
+            self.open_model_picker();
+            return;
+        }
+        // Direct switch: exact id first, then case-insensitive id/name.
+        let matched = self
+            .available_models
+            .iter()
+            .find(|m| m.id == arg)
+            .or_else(|| {
+                self.available_models
+                    .iter()
+                    .find(|m| m.id.eq_ignore_ascii_case(&arg) || m.name.eq_ignore_ascii_case(&arg))
+            })
+            .map(|m| m.id.clone());
+        match matched {
+            Some(id) => self.apply_model_pick(id),
+            None => {
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(
+                    t!("system.model_unknown", model = arg.as_str()).into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
+        }
+    }
+
+    /// Open the picker on the active tab, pre-selecting the model the pane is
+    /// currently effectively on (so Enter is a confirm and arrows move
+    /// relative to "here").
+    fn open_model_picker(&mut self) {
+        if self.available_models.is_empty() {
+            return;
+        }
+        let current = self
+            .current_tab()
+            .model_override
+            .clone()
+            .or_else(|| self.current_model_id.clone());
+        let selected = current
+            .and_then(|cur| self.available_models.iter().position(|m| m.id == cur))
+            .unwrap_or(0);
+        let tab = self.current_tab_mut();
+        tab.model_picker_open = true;
+        tab.model_picker_selected = selected;
+    }
+
+    fn close_model_picker(&mut self) {
+        self.current_tab_mut().model_picker_open = false;
+    }
+
+    fn model_picker_up(&mut self) {
+        let tab = self.current_tab_mut();
+        if tab.model_picker_selected > 0 {
+            tab.model_picker_selected -= 1;
+        }
+    }
+
+    fn model_picker_down(&mut self) {
+        let len = self.available_models.len();
+        let tab = self.current_tab_mut();
+        if tab.model_picker_selected + 1 < len {
+            tab.model_picker_selected += 1;
+        }
+    }
+
+    /// Commit the highlighted row in the open picker.
+    fn commit_model_pick(&mut self) {
+        let idx = self.current_tab().model_picker_selected;
+        let id = self.available_models.get(idx).map(|m| m.id.clone());
+        self.close_model_picker();
+        if let Some(id) = id {
+            self.apply_model_pick(id);
+        }
+    }
+
+    /// Pin the active pane to `model_id`: record the per-pane override, mirror
+    /// it into the status projection (title bar / settings dropdown), and
+    /// hot-apply it to the tab's live session. Shared by the picker (Enter)
+    /// and `/model <id>`. If no session is live yet, the override is stored
+    /// and `SessionAttached` applies it via `effective_model_for_tab`.
+    fn apply_model_pick(&mut self, model_id: String) {
+        let name = self
+            .available_models
+            .iter()
+            .find(|m| m.id == model_id)
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| model_id.clone());
+        let session_id = {
+            let tab = self.current_tab_mut();
+            tab.model_override = Some(model_id.clone());
+            tab.messages.push(ChatMessage::System(
+                t!("system.model_set", model = name.as_str()).into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            tab.session_id.clone()
+        };
+        self.current_model_id = Some(model_id.clone());
+        if let Some(sid) = session_id {
+            self.send_session_model(Some(sid), model_id);
+        }
+        self.publish_agent_status();
     }
 
     /// Rebuild the shared delegate runtime table from a settings change.
@@ -4215,13 +4386,17 @@ impl App {
                 if current_model_id.is_some() {
                     self.current_model_id = current_model_id;
                 }
-                // Keep freshly-created sessions on the configured acp-model.
-                // A resumed (loaded) session keeps whatever model it was
-                // saved with; only fresh `/new` and lazy-first-prompt
-                // sessions adopt the global override. The bootstrap session
-                // is already model-applied by the client at startup.
+                // Keep freshly-created sessions on the effective model for
+                // this tab — its per-pane `/model` override if set, else the
+                // global acp-model. A resumed (loaded) session keeps whatever
+                // model it was saved with; only fresh `/new` and lazy-first-
+                // prompt sessions adopt the override. This is what makes a
+                // local `/model` pick survive `/new`. The bootstrap session is
+                // already model-applied by the client at startup.
                 if !is_load_target {
-                    self.send_acp_model_update();
+                    if let Some(model) = self.effective_model_for_tab(&tab_id) {
+                        self.send_session_model(Some(session_id.clone()), model);
+                    }
                 }
                 self.publish_agent_status();
             }
@@ -6163,6 +6338,20 @@ impl App {
             return;
         }
 
+        // Model picker modal (`/model`): while it's up, arrows move the
+        // highlight, Enter commits the pick, Esc dismisses. Swallow every
+        // other key so nothing leaks into the input box behind the modal.
+        if self.model_picker_visible() {
+            match key.code {
+                KeyCode::Up => self.model_picker_up(),
+                KeyCode::Down => self.model_picker_down(),
+                KeyCode::Enter => self.commit_model_pick(),
+                KeyCode::Esc => self.close_model_picker(),
+                _ => {}
+            }
+            return;
+        }
+
         match key.code {
             KeyCode::Up
                 if self.current_tab().input.is_empty()
@@ -6627,12 +6816,51 @@ impl App {
             Some(crate::ui::PopupState {
                 candidates: &tab.command_popup_candidates,
                 selected: tab.command_popup_selected,
+                current_model: self.current_model_display(),
             })
         }
     }
 
+    /// Display label for the active pane's effective model — its per-pane
+    /// `/model` override if set, else the global `current_model_id` — using
+    /// the agent's friendly name when known and falling back to the raw id.
+    /// `None` when no model is known yet (nothing to append).
+    fn current_model_display(&self) -> Option<String> {
+        let id = self
+            .current_tab()
+            .model_override
+            .clone()
+            .or_else(|| self.current_model_id.clone())?;
+        let name = self
+            .available_models
+            .iter()
+            .find(|m| m.id == id)
+            .map(|m| m.name.clone())
+            .unwrap_or(id);
+        Some(name)
+    }
+
     fn command_popup_visible(&self) -> bool {
         self.current_tab().command_popup_visible()
+    }
+
+    /// Per-frame state for the `/model` picker modal, or `None` when it's not
+    /// open on the active tab. Sources the list from the agent's advertised
+    /// `available_models` and marks the pane's currently-effective model.
+    pub fn model_popup_state(&self) -> Option<crate::ui::ModelPopupState<'_>> {
+        let tab = self.current_tab();
+        if !tab.model_picker_open || self.available_models.is_empty() {
+            return None;
+        }
+        let current_id = tab
+            .model_override
+            .as_deref()
+            .or(self.current_model_id.as_deref());
+        Some(crate::ui::ModelPopupState {
+            models: &self.available_models,
+            selected: tab.model_picker_selected,
+            current_id,
+        })
     }
 
     /// Handle Enter for the slash-command system. Centralizes all three
@@ -6710,6 +6938,7 @@ impl App {
             CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
+            CommandKind::Model => self.cmd_model(cmd.rest),
         }
     }
 
@@ -10495,6 +10724,115 @@ mod tests {
         app.current_tab_mut().agents_view.snapshot = None;
         app.handle_event(AppEvent::SessionsChanged);
         assert!(master_rx.try_recv().is_err(), "closed UI must not refetch");
+    }
+
+    // ─── /model per-pane override ───────────────────────────────────────────
+
+    fn model_info(id: &str) -> AcpModelInfo {
+        AcpModelInfo {
+            id: id.to_string(),
+            name: id.to_uppercase(),
+            description: None,
+        }
+    }
+
+    /// `/model <id>` records a per-pane override and hot-applies it to *that*
+    /// tab's live session (a targeted `SetSessionModel`, not a fan-out).
+    #[test]
+    fn model_pick_overrides_and_applies_to_live_session() {
+        use crate::protocol::acp::client::MasterExtRequest;
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.available_models = vec![model_info("gpt-5.5"), model_info("gpt-5.4")];
+        app.current_tab_mut().session_id = Some("sid-1".into());
+
+        app.cmd_model("gpt-5.4".into());
+
+        assert_eq!(
+            app.current_tab().model_override.as_deref(),
+            Some("gpt-5.4"),
+            "the pane records its per-pane override"
+        );
+        match master_rx
+            .try_recv()
+            .expect("a live session gets set_session_model")
+        {
+            MasterExtRequest::SetSessionModel { session_id, model } => {
+                assert_eq!(model, "gpt-5.4");
+                assert_eq!(
+                    session_id.expect("targets just this session").0.to_string(),
+                    "sid-1"
+                );
+            }
+            other => panic!("expected SetSessionModel, got {other:?}"),
+        }
+    }
+
+    /// A pane that picked a model locally keeps it when the *global* `acpModel`
+    /// setting hot-reloads (local wins).
+    #[test]
+    fn local_model_override_wins_over_global_hot_reload() {
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.available_models = vec![model_info("local")];
+        app.current_tab_mut().session_id = Some("sid-1".into());
+        app.acp_model = Some("global".into());
+
+        app.cmd_model("local".into());
+        let _ = master_rx.try_recv(); // drain the pick's own apply
+
+        assert_eq!(
+            app.effective_model_for_tab(DEFAULT_TAB_ID).as_deref(),
+            Some("local"),
+            "override beats the global setting"
+        );
+
+        // Global change to a new model must not touch the overridden pane.
+        app.acp_model = Some("global2".into());
+        app.send_acp_model_update();
+        assert!(
+            master_rx.try_recv().is_err(),
+            "an overridden pane ignores global acp-model changes"
+        );
+    }
+
+    /// A pane with no local pick follows the global `acpModel` on hot-reload.
+    #[test]
+    fn non_overridden_pane_follows_global_model() {
+        use crate::protocol::acp::client::MasterExtRequest;
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.current_tab_mut().session_id = Some("sid-1".into());
+        app.acp_model = Some("global".into());
+
+        app.send_acp_model_update();
+
+        match master_rx
+            .try_recv()
+            .expect("non-overridden pane follows global")
+        {
+            MasterExtRequest::SetSessionModel { session_id, model } => {
+                assert_eq!(model, "global");
+                assert_eq!(session_id.unwrap().0.to_string(), "sid-1");
+            }
+            other => panic!("expected SetSessionModel, got {other:?}"),
+        }
+    }
+
+    /// `/model` with an unrecognized argument warns and changes nothing.
+    #[test]
+    fn model_pick_rejects_unknown_model() {
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.available_models = vec![model_info("known")];
+        app.current_tab_mut().session_id = Some("sid-1".into());
+
+        app.cmd_model("nope".into());
+
+        assert!(
+            app.current_tab().model_override.is_none(),
+            "an unknown model must not set an override"
+        );
+        assert!(
+            master_rx.try_recv().is_err(),
+            "an unknown model must not emit a set_session_model"
+        );
     }
 
     /// MVP sessions origin filter: with `ShellOnly`, agent-pane rows must

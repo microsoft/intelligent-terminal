@@ -133,11 +133,16 @@ pub enum MasterExtRequest {
         request_id: u64,
         sid: acp::SessionId,
     },
-    /// Hot-swap the ACP model on this helper's live session(s). Emitted by
-    /// `App::handle_event` when the user changes `acp-model` in settings
-    /// while the agent pane is already running — applied via
-    /// `set_session_model` without restarting anything.
+    /// Hot-swap the ACP model on this helper's live session(s) via
+    /// `set_session_model`, without restarting anything. Two callers:
+    /// * settings hot-reload (`acpModel` changed) and the per-pane `/model`
+    ///   picker, both in `App`.
+    ///
+    /// `session_id == Some` targets exactly that session (a per-pane `/model`
+    /// pick, or a global change pushed to one non-overridden pane);
+    /// `session_id == None` fans out to every session this helper owns.
     SetSessionModel {
+        session_id: Option<acp::SessionId>,
         model: String,
     },
 }
@@ -3983,14 +3988,20 @@ fn dispatch_master_ext_request(
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
-            MasterExtRequest::SetSessionModel { model } => {
-                // Apply to every live session this helper owns (normally
-                // just the one bound to its owner tab). Best-effort: a
-                // failure on one session is logged, not fatal — the next
-                // prompt still works on the previously-selected model.
+            MasterExtRequest::SetSessionModel { session_id, model } => {
+                // Apply to the targeted session, or to every live session
+                // this helper owns when no target is given (normally just the
+                // one bound to its owner tab). Best-effort: a failure on one
+                // session is logged, not fatal — the next prompt still works
+                // on the previously-selected model.
                 let sessions: Vec<acp::SessionId> = {
                     let g = tab_to_session.lock().await;
-                    g.values().cloned().collect()
+                    match &session_id {
+                        Some(target) => {
+                            g.values().filter(|s| *s == target).cloned().collect()
+                        }
+                        None => g.values().cloned().collect(),
+                    }
                 };
                 for sid in sessions {
                     match conn

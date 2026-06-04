@@ -92,6 +92,17 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
+
+# ── Model picker (src/ui/model_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+model_picker.title: "Select model (↑ ↓ • Enter • Esc)"
+# Shown when the connected agent advertised no selectable models.
+system.no_models: "The connected agent did not advertise any selectable models."
+# {model} is the agent's model id/name, inserted verbatim.
+system.model_set: "Model for this pane set to %{model}."
+# {model} is the unrecognized text the user typed after /model.
+system.model_unknown: "Unknown model %{model} — type /model to see the available list."
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key
