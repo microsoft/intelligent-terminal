@@ -191,3 +191,10 @@ time.days_other: "%{count} วันที่แล้ว"
 
 # ── การดำเนินการคำแนะนำ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ตัวเลือก %{choice} ล้มเหลว: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "เลือกโมเดลสำหรับแผงนี้ (/model <id> เพื่อสลับโดยตรง)"  # {Locked="/model","<id>"}
+model_picker.title: "เลือกโมเดล (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "เอเจนต์ที่เชื่อมต่ออยู่ไม่ได้ประกาศโมเดลที่เลือกได้"
+system.model_set: "ตั้งค่าโมเดลสำหรับแผงนี้เป็น %{model} แล้ว"  # {Locked="%{model}"}
+system.model_unknown: "ไม่รู้จักโมเดล %{model} — พิมพ์ /model เพื่อดูรายการที่มีอยู่"  # {Locked="%{model}","/model"}

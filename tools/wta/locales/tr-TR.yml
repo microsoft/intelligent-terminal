@@ -201,3 +201,10 @@ time.days_other: "%{count} gün önce"
 
 # ── Öneri yürütme (src/coordinator.rs) ──────────────────────────────────────
 system.choice_execution_failed: "%{choice} seçimi başarısız oldu: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Bu panel için modeli seçin (doğrudan geçmek için /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Bağlı aracı seçilebilir hiçbir model duyurmadı."
+system.model_set: "Bu panel için model %{model} olarak ayarlandı."  # {Locked="%{model}"}
+system.model_unknown: "Bilinmeyen model %{model} — kullanılabilir listeyi görmek için /model yazın."  # {Locked="%{model}","/model"}

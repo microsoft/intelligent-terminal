@@ -201,3 +201,10 @@ time.days_other: "%{count} დღის წინ"
 
 # ── რეკომენდაციის შესრულება (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "არჩევანი %{choice} ვერ შესრულდა: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "აირჩიეთ მოდელი ამ პანელისთვის (/model <id> პირდაპირ გადასართავად)"  # {Locked="/model","<id>"}
+model_picker.title: "აირჩიეთ მოდელი (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "დაკავშირებულმა აგენტმა არცერთი ასარჩევი მოდელი არ გამოაცხადა."
+system.model_set: "ამ პანელის მოდელად დაყენდა %{model}."  # {Locked="%{model}"}
+system.model_unknown: "უცნობი მოდელი %{model} — აკრიფეთ /model ხელმისაწვდომი სიის სანახავად."  # {Locked="%{model}","/model"}

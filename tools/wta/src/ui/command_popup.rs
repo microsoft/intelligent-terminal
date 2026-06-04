@@ -20,6 +20,11 @@ const POPUP_BORDER_HEIGHT: u16 = 2;
 pub struct PopupState<'a> {
     pub candidates: &'a [&'static CommandSpec],
     pub selected: usize,
+    /// Effective model for the active pane (per-pane `/model` override, else
+    /// the global one). Appended to the `/model` row so the user sees what
+    /// they're currently on while typing the command. `None` when no model
+    /// is known yet.
+    pub current_model: Option<String>,
 }
 
 /// Render the autocomplete popup just above `input_area`. If there isn't
@@ -51,11 +56,19 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         .candidates
         .iter()
         .map(|spec| {
-            let line = Line::from(vec![
+            let mut spans = vec![
                 Span::styled(format!(" /{:<8} ", spec.name), theme::INPUT_TEXT),
                 Span::styled(spec.summary(), theme::DIM),
-            ]);
-            ListItem::new(line)
+            ];
+            // The `/model` row shows the pane's current model so the user can
+            // see what they're on before opening the picker.
+            if spec.name == "model" {
+                if let Some(model) = state.current_model.as_deref() {
+                    spans.push(Span::styled("  → ", theme::DIM));
+                    spans.push(Span::styled(model, theme::INPUT_TEXT));
+                }
+            }
+            ListItem::new(Line::from(spans))
         })
         .collect();
 

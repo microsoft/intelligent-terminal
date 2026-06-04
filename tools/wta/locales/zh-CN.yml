@@ -196,3 +196,10 @@ commands.sessions.summary: "打开历史会话选择器（Ctrl+Shift+/）"
 
 # ── 建议执行 (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "选项 %{choice} 执行失败：%{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "为此窗格选择模型（使用 /model <id> 可直接切换）"  # {Locked="/model","<id>"}
+model_picker.title: "选择模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "已连接的智能体未公布任何可选模型。"
+system.model_set: "此窗格的模型已设置为 %{model}。"  # {Locked="%{model}"}
+system.model_unknown: "未知模型 %{model} — 键入 /model 查看可用列表。"  # {Locked="%{model}","/model"}

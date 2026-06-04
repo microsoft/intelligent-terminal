@@ -202,3 +202,10 @@ time.days_other: "%{count} দিন আগতে"
 
 # ── পৰামৰ্শ কাৰ্যকৰকৰণ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "পছন্দ %{choice} ব্যৰ্থ হ'ল: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "এই পেনৰ বাবে মডেল বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "মডেল বাছনি কৰক (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "সংযুক্ত এজেণ্টে কোনো বাছনিযোগ্য মডেল ঘোষণা কৰা নাই।"
+system.model_set: "এই পেনৰ বাবে মডেল %{model} লৈ ছেট কৰা হ'ল।"  # {Locked="%{model}"}
+system.model_unknown: "অজ্ঞাত মডেল %{model} — উপলব্ধ তালিকা চাবলৈ /model টাইপ কৰক।"  # {Locked="%{model}","/model"}

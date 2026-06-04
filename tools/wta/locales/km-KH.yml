@@ -209,3 +209,10 @@ time.days_other: "%{count} ថ្ងៃមុន"
 
 # ── ការអនុវត្តអនុសាសន៍ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ជម្រើស %{choice} បានបរាជ័យ: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "ជ្រើសរើសម៉ូដែលសម្រាប់ផ្តាំងនេះ (/model <id> ដើម្បីប្តូរដោយផ្ទាល់)"  # {Locked="/model","<id>"}
+model_picker.title: "ជ្រើសរើសម៉ូដែល (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "AI អេជេន្ត់ដែលបានភ្ជាប់មិនបានប្រកាសម៉ូដែលណាមួយដែលអាចជ្រើសរើសបានទេ។"
+system.model_set: "ម៉ូដែលសម្រាប់ផ្តាំងនេះត្រូវបានកំណត់ទៅ %{model}។"  # {Locked="%{model}"}
+system.model_unknown: "មិនស្គាល់ម៉ូដែល %{model} — វាយ /model ដើម្បីមើលបញ្ជីដែលមាន។"  # {Locked="%{model}","/model"}

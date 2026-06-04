@@ -190,3 +190,10 @@ time.days_other: "%{count} lá ó shin"
 
 # ── Rith moltaí (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Theip ar rogha %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Roghnaigh an samhail don phána seo (/model <id> chun athrú go díreach)"  # {Locked="/model","<id>"}
+model_picker.title: "Roghnaigh samhail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Níor fhógair an gníomhaire ceangailte aon tsamhail in-roghnaithe."
+system.model_set: "Samhail an phána seo socraithe go %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Samhail anaithnid %{model} — clóscríobh /model chun an liosta atá ar fáil a fheiceáil."  # {Locked="%{model}","/model"}

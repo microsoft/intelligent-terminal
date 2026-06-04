@@ -201,3 +201,10 @@ commands.sessions.summary: "Abrir o seletor de sessões anteriores (Ctrl+Shift+/
 
 # ── Execução de recomendação (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "A opção %{choice} falhou: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Escolha o modelo para este painel (/model <id> para mudar diretamente)"  # {Locked="/model","<id>"}
+model_picker.title: "Selecionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "O agente ligado não anunciou nenhum modelo selecionável."
+system.model_set: "Modelo para este painel definido como %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Modelo desconhecido %{model} — escreva /model para ver a lista disponível."  # {Locked="%{model}","/model"}

@@ -201,3 +201,10 @@ time.days_other: "prije %{count} dana"
 
 # ── Izvršavanje preporuke (src/coordinator.rs) ──────────────────────────────
 system.choice_execution_failed: "Izbor %{choice} nije uspio: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Izaberite model za ovaj panel (/model <id> za direktnu promjenu)"  # {Locked="/model","<id>"}
+model_picker.title: "Izaberite model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Povezani agent nije oglasio nijedan model koji se može izabrati."
+system.model_set: "Model za ovaj panel postavljen je na %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Nepoznat model %{model} — upišite /model da vidite dostupnu listu."  # {Locked="%{model}","/model"}

@@ -219,3 +219,10 @@ time.days_other: "%{count} օր առաջ"
 
 # ── Խորհրդատվության կատարում (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Ընտրությունը %{choice} ձախողվեց. %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Ընտրեք մոդելն այս վահանակի համար (/model <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/model","<id>"}
+model_picker.title: "Ընտրեք մոդելը (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Միացված ագենտը չհայտարարեց ընտրելի մոդելների մասին։"
+system.model_set: "Այս վահանակի մոդելը սահմանվել է %{model}։"  # {Locked="%{model}"}
+system.model_unknown: "Անհայտ մոդել %{model} — մուտքագրեք /model՝ հասանելի ցանկը տեսնելու համար։"  # {Locked="%{model}","/model"}

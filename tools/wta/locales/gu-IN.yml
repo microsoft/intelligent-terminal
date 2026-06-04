@@ -202,3 +202,10 @@ time.days_other: "%{count} દિવસ પહેલાં"
 
 # ── ભલામણ અમલ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "પસંદગી %{choice} નિષ્ફળ ગઈ: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "આ પેન માટે મોડેલ પસંદ કરો (સીધું બદલવા /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "મોડેલ પસંદ કરો (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "જોડાયેલ એજન્ટે કોઈ પસંદ કરી શકાય તેવા મોડેલ જાહેર કર્યા નથી."
+system.model_set: "આ પેન માટેનું મોડેલ %{model} પર સેટ કર્યું."  # {Locked="%{model}"}
+system.model_unknown: "અજ્ઞાત મોડેલ %{model} — ઉપલબ્ધ સૂચિ જોવા /model ટાઇપ કરો."  # {Locked="%{model}","/model"}

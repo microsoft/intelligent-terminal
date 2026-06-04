@@ -201,3 +201,10 @@ time.days_other: "%{count} روز پیش"
 
 # ── اجرای توصیه (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "انتخاب %{choice} ناموفق بود: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "مدل این پنل را انتخاب کنید (/model <id> برای تغییر مستقیم)"  # {Locked="/model","<id>"}
+model_picker.title: "انتخاب مدل (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "عامل هوش مصنوعی متصل هیچ مدل قابل انتخابی را اعلام نکرد."
+system.model_set: "مدل این پنل روی %{model} تنظیم شد."  # {Locked="%{model}"}
+system.model_unknown: "مدل ناشناخته %{model} — برای دیدن فهرست در دسترس، /model را تایپ کنید."  # {Locked="%{model}","/model"}

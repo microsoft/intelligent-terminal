@@ -199,3 +199,10 @@ commands.sessions.summary: "[!!_Open the historical sessions picker (Ctrl+Shift+
 
 # ── Recommendation execution (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "[!!_Choice %{choice} failed: %{error}_!!]"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "[!!_Pick the model for this pane (/model <id> to switch directly)_!!]"  # {Locked="/model","<id>"}
+model_picker.title: "[!!_Select model (↑ ↓ • Enter • Esc)_!!]"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "[!!_The connected agent did not advertise any selectable models._!!]"
+system.model_set: "[!!_Model for this pane set to %{model}._!!]"  # {Locked="%{model}"}
+system.model_unknown: "[!!_Unknown model %{model} — type /model to see the available list._!!]"  # {Locked="%{model}","/model"}

@@ -190,3 +190,10 @@ time.days_other: "%{count} diwrnod yn ôl"
 
 # ── Gweithredu argymhelliad (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Methodd dewis %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Dewiswch y model ar gyfer y paen hwn (/model <id> i newid yn uniongyrchol)"  # {Locked="/model","<id>"}
+model_picker.title: "Dewiswch model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Ni hysbysebodd yr asiant cysylltiedig unrhyw fodelau dethol."
+system.model_set: "Gosodwyd y model ar gyfer y paen hwn i %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model anhysbys %{model} — teipiwch /model i weld y rhestr sydd ar gael."  # {Locked="%{model}","/model"}

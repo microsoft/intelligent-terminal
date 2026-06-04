@@ -190,3 +190,10 @@ time.days_other: "%{count}-il ġurnata ilu"
 
 # ── Eżekuzzjoni tar-rakkomandazzjoni (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "L-għażla %{choice} falliet: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Agħżel il-mudell għal dan il-pannell (/model <id> biex tibdel direttament)"  # {Locked="/model","<id>"}
+model_picker.title: "Agħżel mudell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "L-aġent konness ma rreklama l-ebda mudell li jista' jintgħażel."
+system.model_set: "Il-mudell għal dan il-pannell ġie ssettjat għal %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}

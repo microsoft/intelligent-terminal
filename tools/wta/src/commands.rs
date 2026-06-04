@@ -37,6 +37,14 @@ pub enum CommandKind {
     ///   restart Windows Terminal.
     Restart,
     Sessions,
+    /// Pick the ACP model for *this* agent pane.
+    ///
+    /// Bare `/model` opens an interactive picker listing the models the
+    /// connected agent advertised; `/model <id-or-name>` switches directly.
+    /// The choice is a transient per-pane override that survives `/new` for
+    /// the life of the pane but is reset by a global `acpModel` settings
+    /// change — see `App::apply_global_acp_model`.
+    Model,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -108,6 +116,13 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
         takes_args: false,
+    },
+    CommandSpec {
+        name: "model",
+        summary_key: "commands.model.summary",
+        // `/model <id>` switches directly; bare `/model` opens the picker.
+        kind: CommandKind::Model,
+        takes_args: true,
     },
 ];
 

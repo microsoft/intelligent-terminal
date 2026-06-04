@@ -190,3 +190,10 @@ time.days_other: "%{count} rā ki muri"
 
 # ── Whakahaere tūtohutanga (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "I rahua te kōwhiringa %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Kōwhiria te tauira mō tēnei papa (/model <id> ki te huri tika)"  # {Locked="/model","<id>"}
+model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."
+system.model_set: "Kua whakaritea te tauira mō tēnei papa ki %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Tauira kāore e mōhiotia %{model} — patohia /model kia kite i te rārangi e wātea ana."  # {Locked="%{model}","/model"}

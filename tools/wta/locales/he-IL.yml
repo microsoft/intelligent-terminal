@@ -201,3 +201,10 @@ time.days_other: "לפני %{count} ימים"
 
 # ── ביצוע המלצה (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "הבחירה %{choice} נכשלה: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "בחר את המודל עבור חלונית זו (/model <id> למעבר ישיר)"  # {Locked="/model","<id>"}
+model_picker.title: "בחר מודל (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "הסוכן המחובר לא פרסם מודלים הניתנים לבחירה."
+system.model_set: "המודל עבור חלונית זו הוגדר ל-%{model}."  # {Locked="%{model}"}
+system.model_unknown: "מודל לא ידוע %{model} — הקלד /model כדי לראות את הרשימה הזמינה."  # {Locked="%{model}","/model"}

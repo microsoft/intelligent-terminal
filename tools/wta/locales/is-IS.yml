@@ -191,3 +191,10 @@ time.days_other: "fyrir %{count} dögum síðan"
 
 # ── Framkvæmd ráðleggingar (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Val %{choice} mistókst: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Veldu líkanið fyrir þetta spjald (/model <id> til að skipta beint)"  # {Locked="/model","<id>"}
+model_picker.title: "Veldu líkan (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Tengdi agentinn auglýsti engin valanleg líkön."
+system.model_set: "Líkan fyrir þetta spjald stillt á %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Óþekkt líkan %{model} — sláðu inn /model til að sjá tiltækan lista."  # {Locked="%{model}","/model"}

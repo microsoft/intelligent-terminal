@@ -196,3 +196,10 @@ commands.sessions.summary: "過去のセッション ピッカーを開く（Ctr
 
 # ── 推奨事項の実行 (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "選択肢 %{choice} が失敗しました: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "このペインのモデルを選択（直接切り替えるには /model <id>）"  # {Locked="/model","<id>"}
+model_picker.title: "モデルを選択 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "接続中のエージェントは選択可能なモデルを通知しませんでした。"
+system.model_set: "このペインのモデルを %{model} に設定しました。"  # {Locked="%{model}"}
+system.model_unknown: "不明なモデル %{model} — 利用可能な一覧を表示するには /model と入力してください。"  # {Locked="%{model}","/model"}

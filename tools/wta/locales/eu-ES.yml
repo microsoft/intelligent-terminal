@@ -191,3 +191,10 @@ time.days_other: "duela %{count} egun"
 
 # ── Gomendioaren exekuzioa (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "%{choice} aukera huts egin du: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Aukeratu panel honetarako modeloa (/model <id> zuzenean aldatzeko)"  # {Locked="/model","<id>"}
+model_picker.title: "Hautatu modeloa (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Konektatutako agenteak ez du modelo hautagarririk iragarri."
+system.model_set: "Panel honetarako modeloa %{model} gisa ezarri da."  # {Locked="%{model}"}
+system.model_unknown: "%{model} modelo ezezaguna — idatzi /model erabilgarri dagoen zerrenda ikusteko."  # {Locked="%{model}","/model"}

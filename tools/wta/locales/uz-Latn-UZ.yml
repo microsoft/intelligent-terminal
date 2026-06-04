@@ -201,3 +201,10 @@ time.days_other: "%{count} kun oldin"
 
 # ── Tavsiyani bajarish (src/coordinator.rs) ─────────────────────────────────
 system.choice_execution_failed: "%{choice} tanlovi bajarilmadi: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Bu panel uchun modelni tanlang (toʻgʻridan-toʻgʻri almashtirish uchun /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "Modelni tanlang (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Ulangan agent hech qanday tanlanadigan modelni eʼlon qilmadi."
+system.model_set: "Bu panel uchun model %{model} ga oʻrnatildi."  # {Locked="%{model}"}
+system.model_unknown: "Nomaʼlum model %{model} — mavjud roʻyxatni koʻrish uchun /model yozing."  # {Locked="%{model}","/model"}

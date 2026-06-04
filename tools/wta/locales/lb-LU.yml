@@ -191,3 +191,10 @@ time.days_other: "virun %{count} Deeg"
 
 # ── Ausféierung vun der Recommandatioun (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Wiel %{choice} ass feelgeschloen: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Wielt de Modell fir dës Panell (/model <id> fir direkt ze wiesselen)"  # {Locked="/model","<id>"}
+model_picker.title: "Modell auswielen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Den ugeschlossenen Agent huet keng auswielbar Modeller ugekënnegt."
+system.model_set: "De Modell fir dës Panell gouf op %{model} gesat."  # {Locked="%{model}"}
+system.model_unknown: "Onbekannte Modell %{model} — tippt /model fir d'verfügbar Lëscht ze gesinn."  # {Locked="%{model}","/model"}

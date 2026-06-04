@@ -202,3 +202,10 @@ time.days_other: "%{count} دن پہلے"
 
 # ── سفارش پر عمل درآمد (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "انتخاب %{choice} ناکام ہو گیا: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "اس پین کے لیے ماڈل منتخب کریں (براہ راست تبدیل کرنے کے لیے /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "ماڈل منتخب کریں (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "منسلک ایجنٹ نے کوئی قابلِ انتخاب ماڈل ظاہر نہیں کیا۔"
+system.model_set: "اس پین کے لیے ماڈل %{model} پر سیٹ کر دیا گیا۔"  # {Locked="%{model}"}
+system.model_unknown: "نامعلوم ماڈل %{model} — دستیاب فہرست دیکھنے کے لیے /model ٹائپ کریں۔"  # {Locked="%{model}","/model"}

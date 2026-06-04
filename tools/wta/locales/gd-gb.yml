@@ -190,3 +190,10 @@ time.days_other: "%{count} làithean air ais"
 
 # ── Cur an gnìomh molaidh (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Dh’fhàillig roghainn %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Tagh am modail airson a' phana seo (/model <id> gus atharrachadh gu dìreach)"  # {Locked="/model","<id>"}
+model_picker.title: "Tagh modail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Cha do dh'ainmich an t-àidseant ceangailte modail sam bith a ghabhas taghadh."
+system.model_set: "Chaidh modail a' phana seo a shuidheachadh gu %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Modail neo-aithnichte %{model} — sgrìobh /model gus an liosta a tha ri làimh fhaicinn."  # {Locked="%{model}","/model"}

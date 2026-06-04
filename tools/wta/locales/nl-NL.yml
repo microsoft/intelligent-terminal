@@ -201,3 +201,10 @@ commands.sessions.summary: "De selector voor eerdere sessies openen (Ctrl+Shift+
 
 # ── Aanbeveling uitvoeren (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Keuze %{choice} is mislukt: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Het model voor dit deelvenster kiezen (/model <id> om direct te wisselen)"  # {Locked="/model","<id>"}
+model_picker.title: "Model selecteren (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "De verbonden agent heeft geen selecteerbare modellen aangekondigd."
+system.model_set: "Model voor dit deelvenster ingesteld op %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Onbekend model %{model} — typ /model om de beschikbare lijst te zien."  # {Locked="%{model}","/model"}

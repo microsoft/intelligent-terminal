@@ -201,3 +201,10 @@ time.days_other: "преди %{count} дни"
 
 # ── Изпълнение на препоръка (src/coordinator.rs) ────────────────────────────
 system.choice_execution_failed: "Избор %{choice} е неуспешен: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Изберете модела за този панел (/model <id> за директно превключване)"  # {Locked="/model","<id>"}
+model_picker.title: "Изберете модел (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Свързаният агент не обяви никакви избираеми модели."
+system.model_set: "Моделът за този панел е зададен на %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Неизвестен модел %{model} — въведете /model, за да видите наличния списък."  # {Locked="%{model}","/model"}

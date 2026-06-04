@@ -201,3 +201,10 @@ commands.sessions.summary: "Apri il selettore delle sessioni storiche (Ctrl+Shif
 
 # ── Esecuzione della raccomandazione (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Scelta %{choice} non riuscita: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Scegli il modello per questo riquadro (/model <id> per cambiare direttamente)"  # {Locked="/model","<id>"}
+model_picker.title: "Seleziona modello (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "L'agente connesso non ha annunciato alcun modello selezionabile."
+system.model_set: "Modello per questo riquadro impostato su %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Modello sconosciuto %{model} — digita /model per visualizzare l'elenco disponibile."  # {Locked="%{model}","/model"}

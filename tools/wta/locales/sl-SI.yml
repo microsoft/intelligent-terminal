@@ -201,3 +201,10 @@ time.days_other: "pred %{count} dnevi"
 
 # ── Izvajanje priporočila (src/coordinator.rs) ──────────────────────────────
 system.choice_execution_failed: "Izbira %{choice} ni uspela: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Izberite model za to podokno (/model <id> za neposreden preklop)"  # {Locked="/model","<id>"}
+model_picker.title: "Izberi model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Povezani agent ni oglaševal nobenega izbirljivega modela."
+system.model_set: "Model za to podokno je nastavljen na %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Neznan model %{model} — vnesite /model za prikaz razpoložljivega seznama."  # {Locked="%{model}","/model"}

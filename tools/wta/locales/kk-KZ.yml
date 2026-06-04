@@ -201,3 +201,10 @@ time.days_other: "%{count} күн бұрын"
 
 # ── Ұсынымды орындау (src/coordinator.rs) ───────────────────────────────────
 system.choice_execution_failed: "%{choice} таңдауы сәтсіз аяқталды: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Осы панель үшін модельді таңдаңыз (тікелей ауыстыру үшін /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "Модельді таңдаңыз (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Қосылған агент таңдауға болатын ешбір модельді жарияламады."
+system.model_set: "Осы панельдің моделі %{model} етіп орнатылды."  # {Locked="%{model}"}
+system.model_unknown: "Белгісіз модель %{model} — қолжетімді тізімді көру үшін /model теріңіз."  # {Locked="%{model}","/model"}

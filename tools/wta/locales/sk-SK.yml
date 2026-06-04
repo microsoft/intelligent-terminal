@@ -201,3 +201,10 @@ time.days_other: "pred %{count} dňami"
 
 # ── Vykonanie odporúčania (src/coordinator.rs) ──────────────────────────────
 system.choice_execution_failed: "Voľba %{choice} zlyhala: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Vyberte model pre túto tablu (/model <id> na priame prepnutie)"  # {Locked="/model","<id>"}
+model_picker.title: "Vybrať model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Pripojený agent neohlásil žiadne vybrateľné modely."
+system.model_set: "Model pre túto tablu je nastavený na %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Neznámy model %{model} — zadaním /model zobrazíte dostupný zoznam."  # {Locked="%{model}","/model"}

@@ -201,3 +201,10 @@ time.days_other: "%{count} gün əvvəl"
 
 # ── Tövsiyənin icrası (src/coordinator.rs) ──────────────────────────────────
 system.choice_execution_failed: "Seçim %{choice} uğursuz oldu: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Bu panel üçün modeli seçin (birbaşa keçmək üçün /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Qoşulmuş agent heç bir seçilə bilən model elan etmədi."
+system.model_set: "Bu panel üçün model %{model} olaraq təyin edildi."  # {Locked="%{model}"}
+system.model_unknown: "Naməlum model %{model} — əlçatan siyahını görmək üçün /model yazın."  # {Locked="%{model}","/model"}

@@ -190,3 +190,10 @@ time.days_other: "πριν από %{count} ημέρες"
 
 # ── Εκτέλεση σύστασης (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Η επιλογή %{choice} απέτυχε: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Επιλέξτε το μοντέλο για αυτό το πλαίσιο (/model <id> για άμεση εναλλαγή)"  # {Locked="/model","<id>"}
+model_picker.title: "Επιλέξτε μοντέλο (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Ο συνδεδεμένος agent δεν δήλωσε κανένα επιλέξιμο μοντέλο."
+system.model_set: "Το μοντέλο για αυτό το πλαίσιο ορίστηκε σε %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Άγνωστο μοντέλο %{model} — πληκτρολογήστε /model για να δείτε τη διαθέσιμη λίστα."  # {Locked="%{model}","/model"}
