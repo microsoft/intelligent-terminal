@@ -43,7 +43,7 @@ pub enum CommandKind {
     /// connected agent advertised; `/model <id-or-name>` switches directly.
     /// The choice is a transient per-pane override that survives `/new` for
     /// the life of the pane but is reset by a global `acpModel` settings
-    /// change — see `App::commit_model_pick` / `App::cmd_model`.
+    /// change — see `App::apply_global_acp_model`.
     Model,
 }
 

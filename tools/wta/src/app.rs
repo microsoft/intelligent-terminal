@@ -2484,7 +2484,10 @@ impl App {
 
     /// Open the picker on the active tab, pre-selecting the model the pane is
     /// currently effectively on (so Enter is a confirm and arrows move
-    /// relative to "here").
+    /// relative to "here"). Mirrors `current_model_display`'s precedence:
+    /// per-pane override, then the agent's reported `current_model_id`, then
+    /// the global `acpModel` (so a pane following the global value preselects
+    /// it before the agent reports `current_model_id`).
     fn open_model_picker(&mut self) {
         if self.available_models.is_empty() {
             return;
@@ -2493,7 +2496,8 @@ impl App {
             .current_tab()
             .model_override
             .clone()
-            .or_else(|| self.current_model_id.clone());
+            .or_else(|| self.current_model_id.clone())
+            .or_else(|| self.acp_model.clone());
         let selected = current
             .and_then(|cur| self.available_models.iter().position(|m| m.id == cur))
             .unwrap_or(0);
@@ -5107,7 +5111,7 @@ impl App {
                     }
 
                     // acp-model: a global settings change is authoritative. It
-                    // overrides every pane's local `/model` pick, repoints the
+                    // overrides every pane's local `/model` pick, redirects the
                     // shared current-model display, hot-swaps the model on all
                     // live sessions, and republishes status — so every pane
                     // visibly follows the new model (see apply_global_acp_model).
@@ -6882,10 +6886,14 @@ impl App {
         if !tab.model_picker_open || self.available_models.is_empty() {
             return None;
         }
+        // Same precedence as `current_model_display`: override → agent's
+        // reported model → global `acpModel`, so the picker marks the pane's
+        // effective model even before the agent reports `current_model_id`.
         let current_id = tab
             .model_override
             .as_deref()
-            .or(self.current_model_id.as_deref());
+            .or(self.current_model_id.as_deref())
+            .or(self.acp_model.as_deref());
         Some(crate::ui::ModelPopupState {
             models: &self.available_models,
             selected: tab.model_picker_selected,
@@ -10798,7 +10806,7 @@ mod tests {
     }
 
     /// A global `acpModel` settings change is authoritative: it overrides a
-    /// pane's local `/model` pick — clearing the override, repointing the
+    /// pane's local `/model` pick — clearing the override, redirecting the
     /// shared current model, and pushing the new model to the pane's session.
     #[test]
     fn global_settings_change_overrides_local_pick() {
