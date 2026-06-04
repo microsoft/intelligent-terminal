@@ -29,7 +29,8 @@ Ensure-UpstreamRemote
 git fetch upstream main --no-tags | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "git fetch upstream main failed." }
 
-# Verify the SHA exists on upstream/main.
+# Verify the SHA exists on upstream/main and persist the canonical 40-hex form.
+$BaselineSha = Resolve-FullCommitSha $BaselineSha
 $null = git merge-base --is-ancestor $BaselineSha upstream/main
 if ($LASTEXITCODE -ne 0) {
     throw "Baseline SHA $BaselineSha is not an ancestor of upstream/main. Refusing to write state.json."

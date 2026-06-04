@@ -62,6 +62,13 @@ function Assert-CleanWorktree {
     }
 }
 
+function Resolve-FullCommitSha {
+    param([Parameter(Mandatory)] [string] $Sha)
+    $full = (git rev-parse "$Sha^{commit}" 2>$null).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $full) { throw "Could not resolve commit SHA '$Sha'." }
+    return $full
+}
+
 function Get-GhUserLogin {
     $login = gh api user --jq '.login' 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $login) { throw "gh CLI is not authenticated. Run 'gh auth login'." }

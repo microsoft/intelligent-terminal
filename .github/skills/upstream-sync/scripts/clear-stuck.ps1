@@ -51,19 +51,21 @@ if ($LASTEXITCODE -ne 0) { throw "git switch main failed; refusing to clear stuc
 git pull --ff-only origin main | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "git pull --ff-only origin main failed; refusing to clear stuck-lock until main is current." }
 
+$resolvedFullSha = if ($ResolvedThroughSha) { Resolve-FullCommitSha $ResolvedThroughSha } else { $null }
+
 if ($tier3) {
-    if (-not $ResolvedThroughSha) {
+    if (-not $resolvedFullSha) {
         throw "Tier-3 stuck_on_sha is set ($($state.stuck_on_sha)) — -ResolvedThroughSha is required to clear it."
     }
-    $null = git merge-base --is-ancestor $ResolvedThroughSha upstream/main
+    $null = git merge-base --is-ancestor $resolvedFullSha upstream/main
     if ($LASTEXITCODE -ne 0) {
-        throw "ResolvedThroughSha $ResolvedThroughSha is not on upstream/main. Refusing to clear lock."
+        throw "ResolvedThroughSha $resolvedFullSha is not on upstream/main. Refusing to clear lock."
     }
-    $null = git merge-base --is-ancestor $state.stuck_on_sha $ResolvedThroughSha
+    $null = git merge-base --is-ancestor $state.stuck_on_sha $resolvedFullSha
     if ($LASTEXITCODE -ne 0) {
-        throw "stuck_on_sha $($state.stuck_on_sha) is not an ancestor of $ResolvedThroughSha. Refusing — pass the same SHA or a later one."
+        throw "stuck_on_sha $($state.stuck_on_sha) is not an ancestor of $resolvedFullSha. Refusing — pass the same SHA or a later one."
     }
-    $state.last_synced_upstream_sha = $ResolvedThroughSha
+    $state.last_synced_upstream_sha = $resolvedFullSha
     $state.stuck_on_sha    = $null
     $state.stuck_branch    = $null
     $state.stuck_at        = $null
@@ -71,12 +73,12 @@ if ($tier3) {
 }
 
 if ($tier4) {
-    if ($ResolvedThroughSha) {
-        $null = git merge-base --is-ancestor $ResolvedThroughSha upstream/main
+    if ($resolvedFullSha) {
+        $null = git merge-base --is-ancestor $resolvedFullSha upstream/main
         if ($LASTEXITCODE -ne 0) {
-            throw "ResolvedThroughSha $ResolvedThroughSha is not on upstream/main. Refusing to clear lock."
+            throw "ResolvedThroughSha $resolvedFullSha is not on upstream/main. Refusing to clear lock."
         }
-        $state.last_synced_upstream_sha = $ResolvedThroughSha
+        $state.last_synced_upstream_sha = $resolvedFullSha
     }
     $state.stuck_validation = $null
 }
@@ -88,14 +90,14 @@ $entry = [ordered] @{
     status   = if ($tier3 -and $tier4) { 'cleared-stuck (tier3+tier4)' }
                elseif ($tier3)         { 'cleared-stuck (tier3)' }
                else                    { 'cleared-stuck (tier4)' }
-    advanced_to = $ResolvedThroughSha
+    advanced_to = $resolvedFullSha
     reason   = $Reason
 }
 $state.history = @($entry) + @($state.history) | Select-Object -First 20
 Write-State $state
 
 git add -- (Get-StatePath) | Out-Null
-$shortLabel = if ($ResolvedThroughSha) { $ResolvedThroughSha.Substring(0,9) } else { 'no-advance' }
+$shortLabel = if ($resolvedFullSha) { $resolvedFullSha.Substring(0,9) } else { 'no-advance' }
 git commit -m "chore(upstream-sync): clear stuck-lock ($shortLabel)" | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "git commit failed (state unchanged?); lock is NOT cleared on origin/main." }
 git push origin main | Out-Host
