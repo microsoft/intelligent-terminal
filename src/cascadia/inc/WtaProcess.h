@@ -19,7 +19,7 @@ namespace Microsoft::Terminal::WtaProcess
 {
     // Locate wta.exe using the same strategy as TerminalPage::_DetectWtaPath:
     //   1. Co-located next to the running module (MSIX / packaged)
-    //   2. Walk up from module dir looking for wta/target/{debug,release}/wta.exe (dev build)
+    //   2. Walk up from module dir looking for tools/wta/target/{debug,release}/wta.exe (dev build)
     //   3. SearchPathW fallback
     inline std::wstring ResolveWtaExePath()
     {
@@ -36,13 +36,19 @@ namespace Microsoft::Terminal::WtaProcess
             }
         }
 
-        // 2. Dev-tree walk
+        // 2. Dev-tree walk. Relative path must match the canonical layout
+        //    `tools\wta\target\<profile>\wta.exe` produced by
+        //    `cargo build --manifest-path tools\wta\Cargo.toml` and
+        //    matched by TerminalPage::_DetectWtaPath. Keep this list in
+        //    sync with that function — diverging here silently makes
+        //    `wta hooks status` / FRE "Install hooks" fall through to
+        //    the PATH fallback in dev (unpackaged) builds.
         auto cursor = moduleDir;
         while (!cursor.empty())
         {
             for (const auto& relative : {
-                     std::filesystem::path{ L"wta\\target\\debug\\wta.exe" },
-                     std::filesystem::path{ L"wta\\target\\release\\wta.exe" },
+                     std::filesystem::path{ L"tools\\wta\\target\\debug\\wta.exe" },
+                     std::filesystem::path{ L"tools\\wta\\target\\release\\wta.exe" },
                  })
             {
                 const auto candidate = cursor / relative;
