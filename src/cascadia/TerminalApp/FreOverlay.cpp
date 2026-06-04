@@ -304,14 +304,15 @@ namespace winrt::TerminalApp::implementation
             PanePositionComboBox(), RS_(L"FreOverlay_PanePositionLabel/Text"));
 
         // Give the SavingProgressRing a localized accessible Name so
-        // Narrator announces "Setting up Intelligent Terminal" when
-        // focus moves to it during a save/install (and "Setting up
-        // Intelligent Terminal, busy" if the user later presses Caps+0
-        // mid-install). Without this, focus reads just "ProgressRing".
-        // Paired with the Focus-before-IsActive(true) ordering in
-        // _SetSavingState so the initial focus announcement does NOT
-        // include the "busy" state prefix — that comes later only on
-        // explicit re-query.
+        // Narrator announces "Setting up Intelligent Terminal, busy"
+        // when focus lands on it during a save/install (and the same
+        // readout on Caps+Tab mid-install). _SetSavingState defers
+        // the ring.Focus() call via Dispatcher().RunAsync(Low) so it
+        // fires after IsActive(true) and the visibility change have
+        // been laid out — the announcement combines this Name with
+        // the "busy" state from the active spinner in a single
+        // readout. Without this Name, Narrator would just read
+        // "ProgressRing".
         Automation::AutomationProperties::SetName(
             SavingProgressRing(), RS_(L"FreOverlay_SettingUp"));
     }
@@ -963,15 +964,22 @@ namespace winrt::TerminalApp::implementation
             // TerminalPage::_ShowFreOverlay (line ~955) for the FRE
             // NextButton: dispatch at Low priority so the focus call
             // runs after the visibility change has been laid out.
+            //
+            // Guard against the fast-success / fast-error race: on a
+            // very quick install the synchronous flow can call
+            // _SetSavingState(false) — collapsing the overlay — before
+            // this deferred lambda fires. Re-check Visibility inside
+            // the lambda so we don't pull focus back to a hidden ring.
             Dispatcher().RunAsync(
                 winrt::Windows::UI::Core::CoreDispatcherPriority::Low,
                 [weak = get_weak()]() {
-                    if (auto self = weak.get())
+                    auto self = weak.get();
+                    if (!self) { return; }
+                    auto o = self->SavingOverlay();
+                    if (!o || o.Visibility() != Visibility::Visible) { return; }
+                    if (auto r = self->SavingProgressRing())
                     {
-                        if (auto r = self->SavingProgressRing())
-                        {
-                            r.Focus(FocusState::Programmatic);
-                        }
+                        r.Focus(FocusState::Programmatic);
                     }
                 });
 
