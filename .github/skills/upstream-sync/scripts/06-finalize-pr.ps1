@@ -34,6 +34,14 @@ $banner = @"
 > merge"** (preferred — flat history, all $($Ctx.Picked.Count) commits land
 > individually) or **"Create a merge commit"** (also preserves per-commit
 > content).
+>
+> 📝 **Review-fix policy.** Only build-blocking fixes (compile errors, dedup
+> of conflicts surfaced at build time, CI gate failures on this PR itself)
+> belong here — as **one** focused extra commit on this branch. All other
+> Copilot / human review feedback (code-quality, logic, translation,
+> spelling-list migrations, doc nits) goes into a **follow-up PR** based on
+> this PR's head, not amended into the cherry-pick commits. Rationale and
+> mechanics: [``.github/skills/upstream-sync/references/follow-up-pr.md``](../blob/$($Ctx.Branch)/.github/skills/upstream-sync/references/follow-up-pr.md).
 
 ---
 

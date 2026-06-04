@@ -113,6 +113,46 @@ Resumability is built into the state file — re-running after a successful
 run is a fast no-op (nothing pending), and re-running while the stuck-lock
 is set exits early without touching the branch.
 
+### After-PR review handling — fix-in-PR vs. follow-up PR
+
+Once the sync PR is open, Copilot and human reviewers will leave
+comments. The cherry-pick PR's commits must stay reviewable as
+"per-commit, faithful to upstream + minimal must-merge delta" so the
+reviewer can spot-check each upstream commit was applied correctly.
+That constraint shapes the response policy:
+
+| Comment type | Where to fix |
+|---|---|
+| **Build-blocking** (compile error, dedup of resw/manifest collisions exposed only at build time, CI gate failure on the sync PR itself) | **One** focused extra commit on the sync branch. The cherry-pick PR is what's broken; the cherry-pick PR is what gets the fix. |
+| **Everything else** — code-quality findings, logic-bug suggestions, translation corrections, spelling-allowlist migrations, typo fixes, doc nits, design pushback | **Follow-up PR** on top of the cherry-pick PR (see [references/follow-up-pr.md](./references/follow-up-pr.md)) |
+
+**Why split.** A reviewer scanning the cherry-pick PR is auditing
+"did the sync engine faithfully apply the upstream batch?" Mixing
+substantive review feedback into the same PR forces them to mentally
+subtract those commits from every upstream-comparison check. Worse,
+amending or squashing in review fixes destroys the per-commit
+attribution the cherry-pick approach was chosen to preserve.
+
+**Follow-up PR shape** (template in
+[references/follow-up-pr.md](./references/follow-up-pr.md)):
+
+- New worktree + branch `dev/<alias>/sync-<sync-pr-number>-review-fixes`
+  off the sync PR's HEAD (see
+  [branch-worktree-workflow](./references/follow-up-pr.md#worktree-setup)).
+- Base = the sync branch (e.g. `upstream-sync/2026-06-04`), **not**
+  `main`. The follow-up rides along with the sync PR.
+- One focused commit per concern (code-bugs / translations /
+  spelling-cleanup / etc.) — same "audit trail per finding" rule as the
+  Copilot PR review loop skill.
+- Reply + resolve every original thread on the sync PR pointing to the
+  follow-up PR number.
+- If the sync PR merges first, rebase the follow-up onto `main` before
+  it merges.
+
+The orchestrator's PR banner ([scripts/06-finalize-pr.ps1](./scripts/06-finalize-pr.ps1))
+spells this policy out to the first reviewer so they don't push back on
+deferred fixes.
+
 ## Gotchas
 
 - **Never squash-merge the sync PR.** Squash collapses every cherry-picked
@@ -122,6 +162,14 @@ is set exits early without touching the branch.
   banner reminding the reviewer; `-AutoMergeStrategy rebase` arms GitHub
   auto-merge with the right strategy so a tired reviewer can't get it
   wrong.
+- **Don't amend review fixes into the sync PR.** Only build-blocking
+  fixes (compile errors, dedup of conflicts that surface at build time,
+  CI gate failures on the sync PR itself) get **one** extra commit on
+  the sync branch. Substantive Copilot/human review feedback —
+  code-quality, logic, translations, spelling-list migrations, doc nits
+  — goes into a separate follow-up PR off the sync branch's HEAD. See
+  [references/follow-up-pr.md](./references/follow-up-pr.md). Mixing
+  them poisons the "faithful to upstream" audit of the cherry-pick PR.
 - **Never rebase `upstream/main` onto this fork.** Old "Merge upstream"
   commits in the fork history replay and cascade conflicts. Use cherry-pick.
   Verified failure mode on the sister repo `agentic-terminal`.
@@ -176,6 +224,7 @@ is set exits early without touching the branch.
 - [references/static-scan.md](./references/static-scan.md) — post-pick static breakage scan rules.
 - [references/fork-invariants.json](./references/fork-invariants.json) — fork-specific patterns that must survive any upstream pick.
 - [references/build-verification.md](./references/build-verification.md) — try-build pipeline + toolchain preflight policy.
+- [references/follow-up-pr.md](./references/follow-up-pr.md) — fix-in-PR vs. follow-up PR rubric and worktree workflow for handling post-PR review.
 - [references/reporting.md](./references/reporting.md) — report template and stuck-issue template.
 - [scripts/04-run-batch.ps1](./scripts/04-run-batch.ps1) — the scheduler entrypoint.
 - [scripts/clear-stuck.ps1](./scripts/clear-stuck.ps1) — clear the stuck-lock after human resolution.

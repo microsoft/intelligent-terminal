@@ -202,6 +202,49 @@ the lock is set — NO issue is opened.
 
 Script: [`07b-open-validation-stuck-issue.ps1`](../scripts/07b-open-validation-stuck-issue.ps1).
 
+### 10. After-PR review handling (post-merge gate)
+
+Once the sync PR is open and reviewers (the GitHub Copilot bot, then
+humans) start leaving comments, route the response by **comment kind**,
+not by reviewer:
+
+| Comment kind | Where to fix |
+|---|---|
+| Build-blocking on the sync PR — compile errors, dedup of conflicts surfaced only at build time, sync-PR CI gate failures (check-spelling, lint, format) genuinely caused by the cherry-picked content | **Sync PR**, in **one** focused extra commit. Anything more than one extra commit is a smell. |
+| Everything else — Copilot correctness findings, logic suggestions, translation corrections, spelling allow/expect migrations, doc/comment typos, design pushback | **Follow-up PR** based on the sync PR's HEAD. |
+
+The cherry-pick PR's value to a reviewer is "N small commits, each
+faithful to one upstream commit, plus the bare minimum to make CI
+green". Bundling substantive review fixes destroys that audit
+property and forces the reviewer to mentally subtract those commits
+from every upstream-comparison check.
+
+**Follow-up PR mechanics** (full procedure in
+[follow-up-pr.md](./follow-up-pr.md)):
+
+1. Open a sibling worktree on a new branch off the sync PR's head:
+   ```pwsh
+   git fetch origin <sync-branch>
+   git worktree add ..\it-<sync-pr>fix -b dev/<alias>/sync-<sync-pr>-review-fixes "origin/<sync-branch>"
+   ```
+2. Apply fixes as **one focused commit per concern** (code-bugs /
+   translations / spelling-cleanup / etc.) — same "one commit per
+   round" rule as
+   [`copilot-pr-review-loop`](../../copilot-pr-review-loop/SKILL.md).
+3. `gh pr create --base <sync-branch> --head dev/<alias>/sync-<sync-pr>-review-fixes` —
+   base is the **sync branch**, not `main`, so only the fix commits
+   show in the diff.
+4. Walk every deferred review thread on the sync PR and reply +
+   resolve pointing to the follow-up PR number, via
+   [`copilot-pr-review-loop/scripts/06-reply-and-resolve.ps1`](../../copilot-pr-review-loop/scripts/06-reply-and-resolve.ps1).
+5. If the sync PR merges first, rebase the follow-up onto `main` and
+   `gh pr edit <follow-up-pr> --base main`.
+
+The PR banner emitted by
+[`scripts/06-finalize-pr.ps1`](../scripts/06-finalize-pr.ps1) spells
+this policy out so the first reviewer doesn't push back on deferred
+fixes.
+
 ## Stuck-Lock
 
 When **either** `state.stuck_on_sha` (Tier-3) **or** `state.stuck_validation`
