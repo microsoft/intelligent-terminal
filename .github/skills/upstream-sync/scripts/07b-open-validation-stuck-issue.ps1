@@ -46,8 +46,10 @@ $findingsForHash = switch ($Kind) {
 $findingsHash = Get-FindingsHash $findingsForHash
 
 # Establish base/head for this batch (best-effort; tolerate detached states).
-$base = git rev-parse origin/main 2>$null
-$head = git rev-parse HEAD       2>$null
+$baseRaw = git rev-parse origin/main 2>$null
+$base = if ($LASTEXITCODE -eq 0 -and $baseRaw) { $baseRaw.Trim() } else { $null }
+$headRaw = git rev-parse HEAD 2>$null
+$head = if ($LASTEXITCODE -eq 0 -and $headRaw) { $headRaw.Trim() } else { $null }
 
 # Push the sync branch so the human can resume on it (even toolchain-missing —
 # the picks are still useful artifacts for whoever owns the host).

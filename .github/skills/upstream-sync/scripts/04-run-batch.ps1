@@ -147,6 +147,7 @@ try {
     $pending = $pendingJson | ConvertFrom-Json
     Write-Host ("Pending: {0} commits, {1} revert pairs dropped, {2} empties dropped." -f $pending.pending.Count, $pending.dropped_pairs.Count, $pending.skipped_empty.Count)
 
+    $ctx.Pending = @($pending.pending)
     $ctx.DroppedPairs = @($pending.dropped_pairs)
     $ctx.SkippedEmpty = @($pending.skipped_empty)
 
@@ -159,7 +160,7 @@ try {
 
     if ($DryRun) {
         Write-Host "DryRun: skipping branch creation and cherry-picks." -ForegroundColor Cyan
-        $reportPath = & "$PSScriptRoot/05-write-report.ps1" -Ctx $ctx -From $fromSha -To $toSha -Status 'no-op'
+        $reportPath = & "$PSScriptRoot/05-write-report.ps1" -Ctx $ctx -From $fromSha -To $toSha -Status 'dry-run'
         Write-Host "DryRun report: $reportPath"
         exit 0
     }

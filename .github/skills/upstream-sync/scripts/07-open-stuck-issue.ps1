@@ -27,7 +27,7 @@ git push -u origin $Ctx.Branch 2>&1 | Out-Host
 if ($LASTEXITCODE -ne 0) { Write-Warning "Could not push stuck branch — issue still being filed for visibility." }
 
 $shortSha = $Ctx.StuckSha.Substring(0,9)
-$subj = git log -1 --format='%s' $Ctx.StuckSha
+$subj = (git log -1 --format='%s' $Ctx.StuckSha).Trim()
 $title = "Upstream sync stuck at ${shortSha}: $subj"
 
 # Header prepended to report content.

@@ -9,7 +9,7 @@ as the PR description (success path) and the issue body (stuck path).
 ```markdown
 # Upstream sync — <STATUS> — <YYYY-MM-DD HH:mm UTC+TZ>
 
-**Status:** <ok | no-op | stuck | skipped-locked>
+**Status:** <ok | no-op | dry-run | stuck | skipped-locked>
 **Host:** <hostname>
 **Duration:** <Xm Ys>
 **Baseline (before run):** `<old_sha>` (<old_sha_short>) — <old_subject>
@@ -25,6 +25,13 @@ as the PR description (success path) and the issue body (stuck path).
 - Tier-0 auto-resolutions:       **<R>** (across <F> files)
 - Tier-2 LLM resolutions:        **<L>** (only when -TryTier2)
 - Tier-3 escalation (stuck at):  <STUCK_SHA or "none">
+
+## Pending commits (dry-run only, oldest → newest)
+
+| # | SHA | Subject | Author |
+|---|---|---|---|
+| 1 | <short> | <subject> | <author> |
+| ... | | | |
 
 ## Picked commits (oldest → newest)
 

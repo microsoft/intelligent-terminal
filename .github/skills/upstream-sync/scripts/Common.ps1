@@ -50,7 +50,7 @@ function Ensure-UpstreamRemote {
         git remote add $Name $Url | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Failed to add remote $Name." }
     } elseif ($existing.Trim() -ne $Url) {
-        Write-Warning "Remote '$Name' exists but points at '$existing' (expected '$Url'). Leaving as-is."
+        throw "Remote '$Name' points at '$($existing.Trim())' (expected '$Url'). Fix the remote before running upstream-sync."
     }
 }
 
@@ -86,6 +86,7 @@ function New-RunContext {
         Host             = $env:COMPUTERNAME
         Branch           = "upstream-sync/$((Get-Date).ToString('yyyy-MM-dd'))"
         Picked           = @()
+        Pending          = @()
         DroppedPairs     = @()
         SkippedEmpty     = @()
         Tier0            = @()

@@ -150,7 +150,7 @@ Skipped when `-SkipBuild`. Logs land in `.github/upstream-sync/build-logs/`
 
 ### 8. Write report (always)
 
-Regardless of outcome (ok / no-op / stuck / stuck-static-scan /
+Regardless of outcome (ok / no-op / dry-run / stuck / stuck-static-scan /
 stuck-build-failed / stuck-build-inconclusive / stuck-toolchain-missing),
 write `.github/upstream-sync/reports/YYYY-MM-DDTHHmm[-suffix].md` with:
 
