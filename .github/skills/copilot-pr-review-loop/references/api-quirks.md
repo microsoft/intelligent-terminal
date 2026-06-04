@@ -73,18 +73,27 @@ up to ~10 minutes. There is no progress signal on the in-flight review,
 and polling more often than every ~3 minutes wastes API budget without
 making the review arrive sooner.
 
-## ⚠️ `isOutdated` ≠ `isResolved`
+## ⚠️ `isOutdated` ≠ `isResolved` — outdated threads still need replies
 
 A review thread can be `isOutdated: true` (Copilot's comment points at
 lines that have since changed) while still `isResolved: false`. These
 threads:
 
-- Are NOT actionable in the current round (the cited code is gone).
-- Will still appear in the PR's open conversations until explicitly
-  resolved.
-- Should be filtered out when listing what needs triage.
-- Should be batch-resolved once at convergence (see
-  `scripts/09-cleanup-outdated.ps1`).
+- **Still need a reply + resolve in the per-round loop.** A thread can
+  start out actionable when Copilot posts it and BECOME outdated
+  mid-round when your own fix shifts the cited lines. Filtering on
+  `!isOutdated` would silently drop those threads from the per-round
+  triage, leaving the PR's open-conversations list non-empty even
+  after the underlying code is fixed.
+- `scripts/02-list-open-threads.ps1` therefore includes outdated
+  threads in its output by default (with an `IsOutdated` column for
+  triage), and exposes a `-ExcludeOutdated` opt-out only for the
+  legacy "what's actionable on current lines" use case.
+- `scripts/09-cleanup-outdated.ps1` remains a safety net for the rare
+  case where an outdated thread slips past the per-round loop entirely
+  (e.g. it became outdated only AFTER your last `02-list-open-threads`
+  fetch). Most loops should reach convergence with nothing for step 9
+  to do.
 
 ## ⚠️ The "no new comments" review is not enough to declare convergence
 

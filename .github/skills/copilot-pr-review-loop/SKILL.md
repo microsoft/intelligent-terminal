@@ -67,10 +67,13 @@ agent owns sequencing, commits, and the final mutating
   `-F` for numeric/boolean variables. A reply body that happens to be
   `"true"` or all digits otherwise fails silently with a type error. See
   [references/api-quirks.md](references/api-quirks.md).
-- **Reply *and* resolve every thread, including declines.** Resolving
-  without a reply leaves no record of why the issue was considered
-  addressed; replying without resolving keeps the open-threads list
-  non-empty and blocks convergence.
+- **Reply *and* resolve every thread, including declines and outdated
+  ones.** Resolving without a reply leaves no record of why the issue
+  was considered addressed; replying without resolving keeps the
+  open-threads list non-empty and blocks convergence. Outdated threads
+  (whose cited lines have since shifted) still need reply + resolve —
+  they show up in the PR UI as unresolved until you explicitly close
+  them.
 - **One focused commit per round, not one per PR.** Bundling rounds
   destroys the audit trail of which finding drove which change and breaks
   `git bisect`.
@@ -94,7 +97,7 @@ agent owns sequencing, commits, and the final mutating
 | Outdated threads still appear in the open-threads list | Run [scripts/09-cleanup-outdated.ps1](scripts/09-cleanup-outdated.ps1) once at convergence |
 | Unsure whether to fix or decline a finding | Apply the rubric in [references/03-triage-criteria.md](references/03-triage-criteria.md) |
 | Need a reply that conveys "fixed", "declined", or "drift" | Use a template from [references/06-reply-templates.md](references/06-reply-templates.md) |
-| `list-open-threads` still shows resolved-looking threads | Filter is `!isResolved && !isOutdated` only — the script already does this; resolved-looking but still-open threads usually mean someone resolved the GitHub UI conversation without the GraphQL `resolveReviewThread` mutation completing |
+| `list-open-threads` still shows resolved-looking threads | Filter is `!isResolved` only (and excludes `isOutdated` only when `-ExcludeOutdated` is passed) — the script already does this; resolved-looking but still-open threads usually mean someone resolved the GitHub UI conversation without the GraphQL `resolveReviewThread` mutation completing |
 
 ## References
 

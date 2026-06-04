@@ -1,17 +1,24 @@
 <#
 .SYNOPSIS
-    List open, non-outdated review threads on a pull request.
+    List unresolved review threads on a pull request.
 
 .DESCRIPTION
-    Fetches review threads via the GraphQL API and prints the ones that are
-    both unresolved AND non-outdated — i.e. the ones that still need a
-    decision in the current loop iteration. Threads from all reviewers
-    (Copilot, humans, other bots) are included; the loop's triage step
-    decides what to do with each.
+    Fetches review threads via the GraphQL API and prints every thread
+    that is still `isResolved: false` — including threads marked
+    `isOutdated: true` (e.g. because a prior round's fix shifted the
+    cited lines). Each entry carries an `IsOutdated` column so triage
+    can see the distinction at a glance.
 
-    Outdated threads (earlier comments on lines that have since been
-    rewritten) are not actionable in the current round and should be
-    cleaned up at convergence via 09-cleanup-outdated.ps1.
+    Why outdated threads are NOT filtered out: a thread that was
+    actionable when Copilot posted it can BECOME outdated mid-round
+    when your own fix shifts its cited lines. Filtering on
+    `!isOutdated` would silently drop those threads from the per-round
+    list, leaving them unresolved in the PR UI even after the
+    underlying code is fixed. Reply + resolve every unresolved thread,
+    outdated or not.
+
+    Threads from all reviewers (Copilot, humans, other bots) are
+    included; the loop's triage step decides what to do with each.
 
 .PARAMETER Owner
     Repository owner (org or user). Defaults to the current repo's owner
@@ -27,6 +34,13 @@
     Truncate each comment body to this many characters when printing.
     Defaults to 400.
 
+.PARAMETER ExcludeOutdated
+    Suppress threads whose code has since been rewritten
+    (`isOutdated: true`). Off by default — outdated-but-unresolved
+    threads still need a reply + resolve in the current round. Pass
+    this flag only when you specifically want the legacy filter
+    (e.g. for a quick scan of "what's actionable on current lines").
+
 .EXAMPLE
     pwsh 02-list-open-threads.ps1 -PrNumber 122
 
@@ -41,7 +55,9 @@ param(
     [Parameter(Mandatory = $true)]
     [int]$PrNumber,
 
-    [int]$MaxBodyLength = 400
+    [int]$MaxBodyLength = 400,
+
+    [switch]$ExcludeOutdated
 )
 
 $ErrorActionPreference = 'Stop'
@@ -124,7 +140,7 @@ $threads = $all
 
 $open = $threads | Where-Object {
     -not $_.isResolved -and
-    -not $_.isOutdated
+    (-not $ExcludeOutdated -or -not $_.isOutdated)
 }
 
 if (-not $open) {
@@ -139,10 +155,11 @@ foreach ($t in $open) {
         $body = $body.Substring(0, $MaxBodyLength) + '...'
     }
     [pscustomobject]@{
-        ThreadId  = $t.id
-        Author    = $c.author.login
-        Path      = "$($c.path):$($c.line)"
-        CreatedAt = $c.createdAt
-        Body      = $body -replace "`r?`n", ' '
+        ThreadId   = $t.id
+        Author     = $c.author.login
+        Path       = "$($c.path):$($c.line)"
+        IsOutdated = $t.isOutdated
+        CreatedAt  = $c.createdAt
+        Body       = $body -replace "`r?`n", ' '
     }
 }
