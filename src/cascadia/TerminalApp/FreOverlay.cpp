@@ -605,26 +605,12 @@ namespace winrt::TerminalApp::implementation
         // so flip "(will install)" → "(installed)" for anything now on PATH.
         _PopulateAgentComboBox();
 
-        // Re-enable editing so the user can adjust selections and retry.
-        // _SetSavingState(false) parks focus on SaveButton as its safe
-        // default — fine for the success path (where the overlay
-        // immediately collapses) but suboptimal here: a Narrator user
-        // would be told the error and then find their focus on the
-        // generic Save button, with no clear cue that they're "on the
-        // error" or what they can do about it. Override the focus to
-        // the help-link inside the ErrorPanel — it's the only
-        // actionable element in the error area, and pressing Enter
-        // there opens the manual-fix docs (the natural next action
-        // after hearing the error). The user can Shift+Tab back to
-        // SaveButton if they want to retry instead.
-        _SetSavingState(false);
-
-        // Narrator: order matters. Fire the error notification BEFORE
-        // moving focus to the hyperlink, so the user hears the error
-        // message first and the focus-location ("Learn how to fix,
-        // link") second. Doing it the other way around means the
-        // focus announcement plays first and the error sounds like an
-        // afterthought.
+        // Narrator: order matters. Fire the error notification FIRST,
+        // BEFORE any focus transitions, so the assertive announcement
+        // is queued before the Save-button focus event that
+        // _SetSavingState(false) emits below. Without this ordering,
+        // some Narrator versions announce "Save button" first and the
+        // actual error message sounds like an afterthought.
         //
         // The ErrorText carries LiveSetting="Assertive" in XAML, but
         // live regions don't fire reliably for Text changes that
@@ -642,6 +628,19 @@ namespace winrt::TerminalApp::implementation
                 L"FreInstallErrorAnnouncement");
         }
 
+        // Re-enable editing so the user can adjust selections and retry.
+        // _SetSavingState(false) parks focus on SaveButton as its safe
+        // default — fine for the success path (where the overlay
+        // immediately collapses) but suboptimal here: a Narrator user
+        // would be told the error and then find their focus on the
+        // generic Save button, with no clear cue that they're "on the
+        // error" or what they can do about it. Override the focus to
+        // the help-link inside the ErrorPanel — it's the only
+        // actionable element in the error area, and pressing Enter
+        // there opens the manual-fix docs (the natural next action
+        // after hearing the error). The user can Shift+Tab back to
+        // SaveButton if they want to retry instead.
+        _SetSavingState(false);
         ErrorHelpLink().Focus(FocusState::Programmatic);
     }
 
