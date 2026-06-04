@@ -191,12 +191,32 @@ try {
             'toolResult', 'toolResponse', 'toolOutput',
             'prompt', 'user_prompt', 'userPrompt',
             'transcript_path', 'transcriptPath',
-            'cwd', 'hook_event_name', 'hookEventName',
+            'hook_event_name', 'hookEventName',
             'permission_mode', 'permissionMode',
             'model', 'model_info', 'modelInfo',
             'output_style', 'outputStyle',
-            'version', 'source', 'apiKeySource'
+            'version', 'source', 'apiKeySource',
+            # Large per-session context that some CLIs (notably Copilot)
+            # bundle into SessionStart / Stop hook stdin when restoring or
+            # snapshotting a conversation. None of these are consumed by
+            # wta — the SessionStart/SessionEnd handlers only flip state
+            # and need `session_id`. Without this strip a single long
+            # conversation puts SessionStart over the CreateProcess argv
+            # cap and the hook silently fails ("filename or extension is
+            # too long").
+            'transcript', 'messages', 'history', 'conversation',
+            'systemPrompt', 'system_prompt', 'instructions', 'context',
+            'files', 'attachments', 'events', 'chat', 'chatHistory'
         )
+        # NOTE: `cwd` is intentionally NOT stripped. wta's route_one_hook
+        # (app.rs ~582) reads `payload["cwd"]` to populate
+        # SessionStarted.cwd and to derive a synthetic title (the cwd
+        # basename) for events that arrive before the real
+        # `agent.session.started` lands. Stripping it here would empty
+        # the cwd field for every session whose first hook is not
+        # SessionStart (every Copilot session, since prompt.submit fires
+        # first in that CLI's run model) and produce blank rows in the
+        # session-management picker.
         foreach ($key in $alwaysStrip) {
             if ($parsed.PSObject.Properties[$key]) {
                 $parsed.PSObject.Properties.Remove($key)
@@ -215,7 +235,8 @@ try {
         $userInputTools = @(
             'ask_user', 'askuser', 'ask-user',
             'ask_question', 'askquestion', 'ask_for_clarification',
-            'request_input', 'request_user_input', 'user_input'
+            'request_input', 'request_user_input', 'user_input',
+            'prompt_user', 'clarification_request'
         )
         if (-not ($userInputTools -contains $toolNameLower)) {
             foreach ($key in @('tool_input', 'toolInput')) {
@@ -233,6 +254,43 @@ try {
     }
 
     $payload = $wrapper | ConvertTo-Json -Compress -Depth 5
+
+    # Size guard — final defense against CreateProcess argv overflow.
+    #
+    # Even with the aggressive strip above, a CLI we don't know about can
+    # bundle unexpectedly large state into stdin (a new Copilot experiment
+    # ships full conversation context on SessionStart; a custom agent
+    # might dump anything). When that happens, the argv-escaped JSON below
+    # would push past Windows' ~32 768-char CreateProcess command-line cap
+    # and the `Process.Start` call throws "filename or extension is too
+    # long", silently dropping the event.
+    #
+    # When the wrapper is too big we keep the bare-minimum envelope —
+    # cli_source + agent_session_id — which is all wta's SessionStart /
+    # SessionEnd / agent.prompt.submit / agent.stop handlers actually
+    # consume. Notification and agent.error lose their `message` /
+    # `error` text in this rare case; that's a deliberate trade-off vs.
+    # the alternative of dropping the event entirely.
+    #
+    # Threshold: 25 000 raw-JSON chars leaves ~7 KB of headroom for the
+    # wtcli.exe path (~80), the surrounding `send-event -e <event>
+    # -p "<pane>" "..."` framing (~80), and worst-case 2x growth from
+    # the CommandLineToArgvW backslash-doubling escape below.
+    $MAX_PAYLOAD_CHARS = 25000
+    $payloadTruncated  = $false
+    $originalSize      = $payload.Length
+    if ($payload.Length -gt $MAX_PAYLOAD_CHARS) {
+        $payloadTruncated = $true
+        $wrapper = @{
+            cli_source       = $cliSource
+            agent_session_id = $agentSessionId
+            payload          = @{
+                _truncated     = $true
+                _original_size = $originalSize
+            }
+        }
+        $payload = $wrapper | ConvertTo-Json -Compress -Depth 3
+    }
 
     # CommandLineToArgvW-correct escape for a quoted argument:
     #   * Every backslash run that precedes a `"` (or end of string) is doubled.
@@ -284,7 +342,8 @@ try {
     [void][System.Diagnostics.Process]::Start($psi)
     $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
     $sessIdShort = if ($agentSessionId) { $agentSessionId.Substring(0, [Math]::Min(8, $agentSessionId.Length)) } else { '<none>' }
-    Add-Content -LiteralPath $tracePath -Value "$stamp | DISPATCHED cli=$cliSource event=$EventType sessId=$sessIdShort wtcli=$wtcliPath" -ErrorAction SilentlyContinue
+    $truncTag = if ($payloadTruncated) { " TRUNCATED orig=$originalSize" } else { "" }
+    Add-Content -LiteralPath $tracePath -Value "$stamp | DISPATCHED cli=$cliSource event=$EventType sessId=$sessIdShort wtcli=$wtcliPath$truncTag" -ErrorAction SilentlyContinue
 } catch {
     # Single error sink. Best-effort ERROR breadcrumb; if Add-Content
     # itself throws, the `trap { exit 0 }` at the top catches it.
