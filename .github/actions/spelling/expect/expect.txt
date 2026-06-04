@@ -1077,7 +1077,6 @@ NOCONTEXTHELP
 NOCOPYBITS
 nodiscard
 NODUP
-NODEFAULT
 noexcepts
 NOFONT
 NOHIDDENTEXT
@@ -1555,7 +1554,6 @@ SLGP
 SLIST
 slmult
 sln
-slnf
 slnx
 slpit
 SManifest
@@ -1563,7 +1561,6 @@ SMARTQUOTE
 SMTO
 snapcx
 snapcy
-SND
 snk
 SOLIDBOX
 Solutiondir

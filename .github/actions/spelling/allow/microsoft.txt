@@ -59,6 +59,7 @@ resfiles
 SACLs
 segoe
 sid
+slnf
 SRW
 sxs
 symbolrequestprod
