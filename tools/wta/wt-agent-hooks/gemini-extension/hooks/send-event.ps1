@@ -167,12 +167,61 @@ try {
     }
     $cliSource = $CliSource
 
-    # Drop large model-bound fields wta never reads, so multi-KB tool output
-    # doesn't ride the hook -> wtcli -> COM -> wta pipeline for nothing.
+    # Drop large / model-bound fields wta never reads, so multi-KB tool output
+    # and the user's prompt text don't ride the
+    # hook -> wtcli -> COM -> wta pipeline for nothing.
+    #
+    # Why this matters even though dispatch is async (ShellExecuteEx, hidden
+    # window): every prompt spawns a new wtcli.exe, and the wrapped JSON is
+    # passed as a single CreateProcess argv. Windows caps the command-line
+    # near 32 768 chars, so a long pasted prompt or a Write/Edit tool_input
+    # carrying file contents can truncate the JSON (or silently fail to
+    # spawn). The COM SendEvent broadcast also has to marshal the HString
+    # to every listener (TerminalPage + every `wtcli listen` subscriber).
+    #
+    # Authoritative list of fields wta consumes lives in tools/wta/src/app.rs
+    # (route_one_hook switch). Anything outside that list is pure overhead.
     if ($parsed -is [System.Management.Automation.PSCustomObject]) {
-        foreach ($key in @('tool_result', 'tool_response', 'tool_output', 'toolResult', 'toolResponse', 'toolOutput')) {
+        # Always-strip: large tool-call results, the user's prompt text
+        # (UserPromptSubmit / BeforeAgent — wta only needs the state flip,
+        # never the body), and CLI-side metadata wta never reads (paths,
+        # model info, permission mode, hook bookkeeping, etc).
+        $alwaysStrip = @(
+            'tool_result', 'tool_response', 'tool_output',
+            'toolResult', 'toolResponse', 'toolOutput',
+            'prompt', 'user_prompt', 'userPrompt',
+            'transcript_path', 'transcriptPath',
+            'cwd', 'hook_event_name', 'hookEventName',
+            'permission_mode', 'permissionMode',
+            'model', 'model_info', 'modelInfo',
+            'output_style', 'outputStyle',
+            'version', 'source', 'apiKeySource'
+        )
+        foreach ($key in $alwaysStrip) {
             if ($parsed.PSObject.Properties[$key]) {
                 $parsed.PSObject.Properties.Remove($key)
+            }
+        }
+
+        # tool_input is only consumed by wta when tool_name is a user-input
+        # tool (mirrors `is_user_input_tool` in agent_sessions.rs, where wta
+        # pulls `tool_input.{question,prompt,message}` to surface the
+        # question text in a Notification). For every other tool — Bash
+        # commands, Write/Edit file contents, MCP arg payloads — it's pure
+        # overhead and can be many KB.
+        $toolNameProp = $parsed.PSObject.Properties['tool_name']
+        if (-not $toolNameProp) { $toolNameProp = $parsed.PSObject.Properties['toolName'] }
+        $toolNameLower = if ($toolNameProp) { ([string]$toolNameProp.Value).ToLowerInvariant() } else { '' }
+        $userInputTools = @(
+            'ask_user', 'askuser', 'ask-user',
+            'ask_question', 'askquestion', 'ask_for_clarification',
+            'request_input', 'request_user_input', 'user_input'
+        )
+        if (-not ($userInputTools -contains $toolNameLower)) {
+            foreach ($key in @('tool_input', 'toolInput')) {
+                if ($parsed.PSObject.Properties[$key]) {
+                    $parsed.PSObject.Properties.Remove($key)
+                }
             }
         }
     }
