@@ -1,6 +1,6 @@
 [![Spell checking](https://github.com/microsoft/intelligent-terminal/actions/workflows/spelling2.yml/badge.svg?branch=dev%2Fyeelam-gordon%2Fversion-rebrand-0.1&event=workflow_run)](https://github.com/microsoft/intelligent-terminal/actions/workflows/spelling2.yml)
 
-
+[![Spell checking](https://github.com/microsoft/intelligent-terminal/actions/workflows/spelling2.yml/badge.svg?branch=dev%2Fyuazha%2Finstall-hooks-binary-check&event=deployment)](https://github.com/microsoft/intelligent-terminal/actions/workflows/spelling2.yml)
 
 
 
