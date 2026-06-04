@@ -3903,13 +3903,13 @@ fn dispatch_master_ext_request(
                         .await
                     {
                         Ok(_) => tracing::info!(
-                            target: "autofix",
+                            target: "acp",
                             session_id = %sid.0,
                             model = %model,
                             "acp-model hot-applied to live session"
                         ),
                         Err(err) => tracing::warn!(
-                            target: "autofix",
+                            target: "acp",
                             session_id = %sid.0,
                             model = %model,
                             error = ?err,

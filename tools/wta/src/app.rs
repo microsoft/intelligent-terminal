@@ -2364,10 +2364,12 @@ impl App {
         let Some(shared) = &self.delegate_agents else {
             return;
         };
+        // Treat whitespace-only values as unset so the fallback-to-derived
+        // path kicks in (matches the acp_model handling in handle_event).
         let runtimes = crate::coordinator::default_delegate_agent_runtimes(
-            Some(delegate_agent).filter(|s| !s.is_empty()),
+            Some(delegate_agent).filter(|s| !s.trim().is_empty()),
             Some(self.delegate_base_agent_cmd.as_str()),
-            Some(delegate_model).filter(|s| !s.is_empty()),
+            Some(delegate_model).filter(|s| !s.trim().is_empty()),
         );
         *shared.lock().unwrap() = runtimes;
         tracing::info!(
