@@ -1,7 +1,7 @@
 ---
 author: Kai Tao @kaitao
 created on: 2026-06-03
-last updated: 2026-06-03
+last updated: 2026-06-04
 issue id: TBD
 ---
 
@@ -227,14 +227,176 @@ Drawing this line is the whole point: it is exactly the boundary upstream never
 committed to crossing, and crossing it is what made the feature perpetually
 "complex, budgeted work" rather than shippable.
 
-## UI/UX
+## Experience Design
 
-- Saving prompts for a name (Command Palette text input), pre-filled with a
-  suggestion derived from the active profiles (e.g. "PowerShell + cmd").
-- Saving with an existing name asks to overwrite (upsert-by-name).
-- Templates with a now-missing `profile` fall back to the default profile on
-  instantiation, with a non-blocking warning (mirrors existing missing-profile
-  behavior).
+This section specifies the three core flows as wireframes. Wireframes are ASCII
+approximations of XAML; final visuals follow the Settings UI (#1564) and Command
+Palette (#2046) styling. The **layout thumbnail** is treated as a first-class,
+cross-cutting element and is described first because every flow uses it.
+
+### Layout thumbnails (the core visual primitive)
+
+A thumbnail is a small render of a template's pane arrangement, used so the user
+recognizes a layout *by shape* rather than by name alone. Key design point:
+
+> **Thumbnails are rendered live from the stored proportional layout, not stored
+> as bitmaps.** The pane tree (split direction + `[0,1]` ratios) is already in
+> `TabLayout`. A small XAML control recursively subdivides a rectangle by the
+> same ratios used at runtime, tinting each leaf by its profile's color and
+> labeling it with the profile's initials. No image is persisted; thumbnails
+> stay correct if the user re-themes or renames a profile, and they cost
+> nothing in `state.json`.
+
+```
+  ┌──────────┬──────────┐      split ratios drawn directly:
+  │          │   cmd    │        outer:  vertical  split @ 0.50
+  │   pwsh   ├──────────┤        right:  horizontal split @ 0.30
+  │          │   pwsh   │
+  └──────────┴──────────┘
+```
+
+Degenerate cases: a single-pane template renders one filled cell; very deep
+trees clamp to a maximum visible depth (leaves beyond it collapse into a "…"
+cell) so the thumbnail stays legible at ~16×6 px-cells.
+
+### Flow 1 — Save current tab as a layout template
+
+Triggered by the `saveLayoutTemplate` action (Command Palette, the "+ From
+current" button in Settings, or a user keybinding). Opens a content dialog
+showing a **live preview of the tab being saved**, so the user confirms they are
+capturing the right arrangement.
+
+```
+┌─ Save layout template ──────────────────────────────┐
+│                                                      │
+│  Name                                                │
+│  ┌────────────────────────────────────────────────┐ │
+│  │ PowerShell + cmd                              ▌ │ │  ← prefilled suggestion (selected)
+│  └────────────────────────────────────────────────┘ │
+│                                                      │
+│  Preview — current tab                               │
+│  ┌──────────┬──────────┐    3 panes                  │
+│  │          │   cmd    │    PowerShell ×1             │
+│  │   pwsh   ├──────────┤    cmd ×1                    │
+│  │          │   pwsh   │                              │
+│  └──────────┴──────────┘                              │
+│                                                      │
+│  ☐ Include each pane's starting directory            │
+│                                                      │
+│              [ Cancel ]            [ Save ]           │
+└──────────────────────────────────────────────────────┘
+```
+
+- **Name suggestion** is derived from the distinct profiles in the tab
+  (e.g. "PowerShell + cmd"); the text is pre-selected so the user can type over
+  it immediately.
+- **Starting-directory opt-in** is unchecked by default (see "What is captured")
+  to avoid surprising "wrong directory" restores.
+- **Overwrite state** — if the typed name matches an existing template, an
+  inline warning appears and the primary button relabels:
+
+```
+│  ┌────────────────────────────────────────────────┐ │
+│  │ Dev: editor + logs + shell                     │ │
+│  └────────────────────────────────────────────────┘ │
+│  ⚠ A template named “Dev: editor + logs + shell”     │
+│    already exists. Saving will replace it.           │
+│              [ Cancel ]         [ Overwrite ]        │
+```
+
+### Flow 2 — Open a template (Command Palette, primary surface)
+
+Typing in the palette surfaces saved templates (each a generated
+`newTabFromLayout` command) alongside the management commands. Each row carries
+its thumbnail + a one-line summary so the user picks by shape and contents.
+
+```
+┌─ Command Palette ───────────────────────────────────┐
+│ > layout                                             │
+├──────────────────────────────────────────────────────┤
+│  Layout templates                                    │
+│   ┌────┐  Dev: editor + logs + shell                 │
+│   │▛▟▖ │  3 panes · pwsh, cmd                         │
+│   └────┘                                              │
+│   ┌────┐  Ops: 4-pane grid                            │
+│   │▛▀▜ │  4 panes · pwsh ×4                            │
+│   │▙▄▟ │                                              │
+│   └────┘                                              │
+│  ──────────────────────────────────────────────       │
+│   ⚙  Save current tab as layout template…             │
+│   ⚙  Manage layout templates…                         │
+└──────────────────────────────────────────────────────┘
+```
+
+- **Enter** opens the highlighted template as a **new tab in the current
+  window** (the common case; "open in new window" is a future submenu action).
+- Templates are also offered as a "Layouts" section in the new-tab dropdown,
+  composing with `newTabMenu` (#1571) for users who prefer that surface.
+
+### Flow 3 — Manage templates (Settings UI)
+
+A page under Settings for renaming/deleting/opening. Creation stays
+action-driven (you save *from* a live tab), so the page's only "create"
+affordance is "+ From current", which runs Flow 1 for the active tab.
+
+```
+Settings ▸ Layout templates
+
+┌──────────────────────────────────────────────────────────────┐
+│  Layout templates                           [ + From current ]│
+│  Saved pane arrangements you can open as a new tab.            │
+├──────────────────────────────────────────────────────────────┤
+│   ┌──────┐  Dev: editor + logs + shell                        │
+│   │ ▛▟▖  │  3 panes · PowerShell, cmd                          │
+│   └──────┘                    [ Open ] [ Rename ] [ Delete ]   │
+│                                                               │
+│   ┌──────┐  Ops: 4-pane grid                                  │
+│   │ ▛▀▜  │  4 panes · PowerShell ×4                            │
+│   │ ▙▄▟  │                                                    │
+│   └──────┘                    [ Open ] [ Rename ] [ Delete ]   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Empty state** (first run — important for discoverability, since there is no
+hand-authoring path):
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Layout templates                           [ + From current ]│
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│              No layout templates yet.                         │
+│                                                               │
+│   Arrange a tab into the panes you like, then choose          │
+│   “Save current tab as layout template…” from the Command     │
+│   Palette — or click “+ From current” above.                  │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+- **Rename** is inline edit on the row; a name collision shows the same warning
+  as Flow 1's overwrite state and blocks the rename until resolved.
+- **Delete** confirms inline ("Delete ‘Dev…’? [Cancel] [Delete]"); no separate
+  modal.
+- **Editing a layout** (changing the pane shape) is *not* a v1 affordance: the
+  user re-arranges a live tab and re-saves over the same name (Flow 1 overwrite).
+  Called out deliberately to keep the first cut small; an in-place layout editor
+  is Future work.
+
+### Cross-cutting UX rules
+
+- **Discoverability:** the `saveLayoutTemplate` command, the "+ From current"
+  button, and the empty-state copy all teach the save entry point; templates
+  then appear in the palette and (optionally) the new-tab dropdown.
+- **Missing profile on open:** a leaf whose `profile` no longer exists falls
+  back to the default profile and shows a non-blocking info bar naming the
+  missing profile (mirrors existing missing-profile behavior).
+- **Corrupt / empty template:** an entry with an empty `TabLayout` is skipped
+  on load with a warning rather than producing a blank tab.
+- **Accessibility:** thumbnails are decorative (`AutomationProperties` ignored);
+  each row exposes an accessible name summarizing the layout
+  (e.g. "Dev: editor + logs + shell, 3 panes, PowerShell and cmd"). All flows
+  are fully keyboard-operable; the save dialog traps focus and Esc cancels.
 
 ## Capabilities / Concerns
 
@@ -252,6 +414,10 @@ committed to crossing, and crossing it is what made the feature perpetually
   as a new window. Natural extension of the active-tab cut.
 - **"Workspace" = ordered set of templates** opened together — the closest thing
   to #10223. Build only after single-tab templates prove out.
+- **In-place layout editor** — edit a template's pane shape without re-saving
+  from a live tab (v1 only supports re-save-over-name).
+- **"Open in new window"** — a palette/menu submenu action beside the default
+  "open as new tab".
 - **Optional `preferredLaunchMode`** on a template (maximized/fullscreen/focus).
 - **Export/import / share** a template as a JSON snippet.
 - **Agent session checkpoint** — if/when agent state becomes persistable
