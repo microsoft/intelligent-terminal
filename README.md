@@ -1,3 +1,9 @@
+[![Spell checking](https://github.com/microsoft/intelligent-terminal/actions/workflows/spelling2.yml/badge.svg?branch=dev%2Fyeelam-gordon%2Fversion-rebrand-0.1&event=workflow_run)](https://github.com/microsoft/intelligent-terminal/actions/workflows/spelling2.yml)
+
+
+
+
+
 # Allow files are lists of words to accept unconditionally
 
 While check spelling will complain about an expected word
