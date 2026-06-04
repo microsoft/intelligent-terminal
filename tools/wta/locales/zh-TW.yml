@@ -196,3 +196,10 @@ commands.sessions.summary: "開啟歷史工作階段選擇器（Ctrl+Shift+/）"
 
 # ── 建議執行 (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "選項 %{choice} 執行失敗：%{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "為此窗格選擇模型（使用 /model <id> 可直接切換）"  # {Locked="/model","<id>"}
+model_picker.title: "選擇模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "已連線的智能體未公布任何可選取的模型。"
+system.model_set: "此窗格的模型已設定為 %{model}。"  # {Locked="%{model}"}
+system.model_unknown: "未知模型 %{model} — 輸入 /model 查看可用清單。"  # {Locked="%{model}","/model"}

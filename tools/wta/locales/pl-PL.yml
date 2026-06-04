@@ -201,3 +201,10 @@ time.days_other: "%{count} dni temu"
 
 # ── Wykonywanie rekomendacji (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Wybór %{choice} nie powiódł się: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Wybierz model dla tego panelu (/model <id>, aby przełączyć bezpośrednio)"  # {Locked="/model","<id>"}
+model_picker.title: "Wybierz model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Połączony agent nie ogłosił żadnych modeli do wyboru."
+system.model_set: "Model dla tego panelu ustawiono na %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Nieznany model %{model} — wpisz /model, aby zobaczyć dostępną listę."  # {Locked="%{model}","/model"}

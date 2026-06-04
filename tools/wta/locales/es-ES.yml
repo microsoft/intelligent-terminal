@@ -201,3 +201,10 @@ commands.sessions.summary: "Abrir el selector de sesiones anteriores (Ctrl+Shift
 
 # ── Ejecución de recomendaciones (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Error en la opción %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Elija el modelo para este panel (/model <id> para cambiar directamente)"  # {Locked="/model","<id>"}
+model_picker.title: "Seleccionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "El agente conectado no anunció ningún modelo seleccionable."
+system.model_set: "El modelo para este panel se ha establecido en %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Modelo desconocido %{model} — escriba /model para ver la lista disponible."  # {Locked="%{model}","/model"}

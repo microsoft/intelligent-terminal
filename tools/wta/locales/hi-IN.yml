@@ -202,3 +202,10 @@ time.days_other: "%{count} दिन पहले"
 
 # ── अनुशंसा निष्पादन (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "चुनाव %{choice} विफल रहा: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "इस पेन के लिए मॉडल चुनें (सीधे बदलने के लिए /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "मॉडल चुनें (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "कनेक्टेड एजेंट ने कोई चयन योग्य मॉडल घोषित नहीं किया।"
+system.model_set: "इस पेन के लिए मॉडल %{model} पर सेट किया गया।"  # {Locked="%{model}"}
+system.model_unknown: "अज्ञात मॉडल %{model} — उपलब्ध सूची देखने के लिए /model टाइप करें।"  # {Locked="%{model}","/model"}

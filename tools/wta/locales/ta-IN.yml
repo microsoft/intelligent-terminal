@@ -202,3 +202,10 @@ time.days_other: "%{count} நாட்கள் முன்பு"
 
 # ── பரிந்துரை செயலாக்கம் (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "தேர்வு %{choice} தோல்வியடைந்தது: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "இந்தப் பலகத்திற்கான மாதிரியைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "மாதிரியைத் தேர்ந்தெடுக்கவும் (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "இணைக்கப்பட்ட ஏஜெண்ட் தேர்ந்தெடுக்கக்கூடிய எந்த மாதிரியையும் அறிவிக்கவில்லை."
+system.model_set: "இந்தப் பலகத்திற்கான மாதிரி %{model} ஆக அமைக்கப்பட்டது."  # {Locked="%{model}"}
+system.model_unknown: "அறியப்படாத மாதிரி %{model} — கிடைக்கும் பட்டியலைக் காண /model எனத் தட்டச்சு செய்யவும்."  # {Locked="%{model}","/model"}

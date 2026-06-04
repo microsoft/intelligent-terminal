@@ -196,3 +196,10 @@ commands.sessions.summary: "기록된 세션 선택기 열기(Ctrl+Shift+/)"
 
 # ── 추천 실행 (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "선택 %{choice} 실패: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}
+model_picker.title: "모델 선택 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "연결된 에이전트가 선택 가능한 모델을 알리지 않았습니다."
+system.model_set: "이 창의 모델이 %{model}(으)로 설정되었습니다."  # {Locked="%{model}"}
+system.model_unknown: "알 수 없는 모델 %{model} — 사용 가능한 목록을 보려면 /model을 입력하세요."  # {Locked="%{model}","/model"}

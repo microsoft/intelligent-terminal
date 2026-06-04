@@ -201,3 +201,10 @@ time.days_other: "пре %{count} дана"
 
 # ── Извршавање препоруке (src/coordinator.rs) ───────────────────────────────
 system.choice_execution_failed: "Избор %{choice} није успео: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Изаберите модел за ово окно (/model <id> за директно пребацивање)"  # {Locked="/model","<id>"}
+model_picker.title: "Изаберите модел (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Повезани агент није огласио ниједан модел који се може изабрати."
+system.model_set: "Модел за ово окно је подешен на %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Непознат модел %{model} — унесите /model да видите доступну листу."  # {Locked="%{model}","/model"}

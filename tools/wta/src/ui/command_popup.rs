@@ -65,7 +65,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
             if spec.name == "model" {
                 if let Some(model) = state.current_model.as_deref() {
                     spans.push(Span::styled("  → ", theme::DIM));
-                    spans.push(Span::styled(model.to_string(), theme::INPUT_TEXT));
+                    spans.push(Span::styled(model, theme::INPUT_TEXT));
                 }
             }
             ListItem::new(Line::from(spans))

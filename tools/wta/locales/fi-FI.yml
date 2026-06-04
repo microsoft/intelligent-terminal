@@ -191,3 +191,10 @@ time.days_other: "%{count} päivää sitten"
 
 # ── Suosituksen suorittaminen (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Valinta %{choice} epäonnistui: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Valitse tämän paneelin malli (/model <id> vaihtaaksesi suoraan)"  # {Locked="/model","<id>"}
+model_picker.title: "Valitse malli (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Yhdistetty agentti ei ilmoittanut yhtään valittavissa olevaa mallia."
+system.model_set: "Tämän paneelin malliksi asetettiin %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Tuntematon malli %{model} — kirjoita /model nähdäksesi käytettävissä olevien mallien luettelon."  # {Locked="%{model}","/model"}

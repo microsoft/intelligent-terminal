@@ -201,3 +201,10 @@ time.days_other: "%{count} көн элек"
 
 # ── Тәкъдимне үтәү (src/coordinator.rs) ─────────────────────────────────────
 system.choice_execution_failed: "%{choice} сайлавы уңышсыз булды: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Бу панель өчен модель сайлагыз (туры алыштыру өчен /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "Модель сайлагыз (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Тоташкан агент бер дә сайлап була торган модель игълан итмәде."
+system.model_set: "Бу панель өчен модель %{model} итеп билгеләнде."  # {Locked="%{model}"}
+system.model_unknown: "Билгесез модель %{model} — мөмкин булган исемлекне күрү өчен /model языгыз."  # {Locked="%{model}","/model"}

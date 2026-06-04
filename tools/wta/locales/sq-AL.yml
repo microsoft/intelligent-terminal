@@ -190,3 +190,10 @@ time.days_other: "%{count} ditë më parë"
 
 # ── Ekzekutimi i rekomandimit (src/coordinator.rs) ──────────────────────────
 system.choice_execution_failed: "Zgjedhja %{choice} dështoi: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Zgjidhni modelin për këtë panel (/model <id> për të kaluar drejtpërdrejt)"  # {Locked="/model","<id>"}
+model_picker.title: "Zgjidhni modelin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Agjenti i lidhur nuk shpalli asnjë model të zgjedhshëm."
+system.model_set: "Modeli për këtë panel u caktua në %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model i panjohur %{model} — shkruani /model për të parë listën e disponueshme."  # {Locked="%{model}","/model"}

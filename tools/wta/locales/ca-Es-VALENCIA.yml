@@ -191,3 +191,10 @@ time.days_other: "fa %{count} dies"
 
 # ── Execució de recomanacions (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "L’opció %{choice} ha fallat: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Trieu el model per a este panell (/model <id> per a canviar directament)"  # {Locked="/model","<id>"}
+model_picker.title: "Seleccioneu el model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "L’agent connectat no ha anunciat cap model seleccionable."
+system.model_set: "El model d’este panell s’ha establit a %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model desconegut %{model} — escriviu /model per a vore la llista disponible."  # {Locked="%{model}","/model"}

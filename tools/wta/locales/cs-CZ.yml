@@ -201,3 +201,10 @@ time.days_other: "před %{count} dny"
 
 # ── Provedení doporučení (src/coordinator.rs) ───────────────────────────────
 system.choice_execution_failed: "Volba %{choice} selhala: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Vyberte model pro tento panel (/model <id> pro přímé přepnutí)"  # {Locked="/model","<id>"}
+model_picker.title: "Vyberte model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Připojený agent neohlásil žádné dostupné modely."
+system.model_set: "Model pro tento panel nastaven na %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Neznámý model %{model} — zadáním /model zobrazíte dostupný seznam."  # {Locked="%{model}","/model"}

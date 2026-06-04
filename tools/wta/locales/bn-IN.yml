@@ -202,3 +202,10 @@ time.days_other: "%{count} দিন আগে"
 
 # ── সুপারিশ কার্যকরকরণ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "পছন্দ %{choice} ব্যর্থ হয়েছে: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "এই পেনের জন্য মডেল নির্বাচন করুন (সরাসরি পরিবর্তন করতে /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "মডেল নির্বাচন করুন (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "সংযুক্ত এজেন্ট কোনো নির্বাচনযোগ্য মডেল ঘোষণা করেনি।"
+system.model_set: "এই পেনের জন্য মডেল %{model}-এ সেট করা হয়েছে।"  # {Locked="%{model}"}
+system.model_unknown: "অজানা মডেল %{model} — উপলব্ধ তালিকা দেখতে /model টাইপ করুন।"  # {Locked="%{model}","/model"}

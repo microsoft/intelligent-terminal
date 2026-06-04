@@ -2492,9 +2492,11 @@ impl App {
     }
 
     fn model_picker_down(&mut self) {
-        let len = self.available_models.len();
+        // `saturating_sub` keeps this safe if the model list is empty while
+        // the picker is somehow open (len 0 -> last index clamps to 0).
+        let last = self.available_models.len().saturating_sub(1);
         let tab = self.current_tab_mut();
-        if tab.model_picker_selected + 1 < len {
+        if tab.model_picker_selected < last {
             tab.model_picker_selected += 1;
         }
     }
@@ -6830,7 +6832,14 @@ impl App {
             .current_tab()
             .model_override
             .clone()
-            .or_else(|| self.current_model_id.clone())?;
+            // Prefer the per-pane override, then the agent's reported active
+            // model, and finally the global `acpModel` setting as a hint for
+            // the window before the agent reports `current_model_id` (or when
+            // only the global override is in effect). Empty acp_model means
+            // "agent default" and contributes nothing.
+            .or_else(|| self.current_model_id.clone())
+            .or_else(|| self.acp_model.clone())
+            .filter(|s| !s.trim().is_empty())?;
         let name = self
             .available_models
             .iter()

@@ -190,3 +190,10 @@ time.days_other: "%{count} p'unchaw ñawpaq"
 
 # ── Recomendación ruwariy (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Akllay %{choice} pantarun: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Kay k'itipaq modelo akllay (/model <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/model","<id>"}
+model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."
+system.model_set: "Kay k'itipaq modelo %{model} nisqaman churasqa."  # {Locked="%{model}"}
+system.model_unknown: "Mana riqsisqa modelo %{model} — akllana lista rikunaykipaq /model qillqay."  # {Locked="%{model}","/model"}

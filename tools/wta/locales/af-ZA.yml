@@ -190,3 +190,10 @@ time.days_other: "%{count} dae gelede"
 
 # ── Aanbevelingsuitvoering (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Keuse %{choice} het misluk: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Kies die model vir hierdie paneel (/model <id> om direk oor te skakel)"  # {Locked="/model","<id>"}
+model_picker.title: "Kies model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Die gekoppelde agent het geen kiesbare modelle aangekondig nie."
+system.model_set: "Model vir hierdie paneel gestel op %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Onbekende model %{model} — tik /model om die beskikbare lys te sien."  # {Locked="%{model}","/model"}

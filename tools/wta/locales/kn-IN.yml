@@ -202,3 +202,10 @@ time.days_other: "%{count} ದಿನಗಳ ಹಿಂದೆ"
 
 # ── ಶಿಫಾರಸು ಕಾರ್ಯಗತಗೊಳಿಸುವಿಕೆ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ಆಯ್ಕೆ %{choice} ವಿಫಲವಾಗಿದೆ: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆಮಾಡಿ (ನೇರವಾಗಿ ಬದಲಾಯಿಸಲು /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "ಮಾದರಿ ಆಯ್ಕೆಮಾಡಿ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಆಯ್ಕೆ ಮಾಡಬಹುದಾದ ಮಾದರಿಗಳನ್ನು ಪ್ರಕಟಿಸಲಿಲ್ಲ."
+system.model_set: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು %{model} ಗೆ ಹೊಂದಿಸಲಾಗಿದೆ."  # {Locked="%{model}"}
+system.model_unknown: "ಅಪರಿಚಿತ ಮಾದರಿ %{model} — ಲಭ್ಯವಿರುವ ಪಟ್ಟಿಯನ್ನು ನೋಡಲು /model ಟೈಪ್ ಮಾಡಿ."  # {Locked="%{model}","/model"}

@@ -201,3 +201,10 @@ commands.sessions.summary: "Ouvrir le sélecteur de sessions précédentes (Ctrl
 
 # ── Exécution des recommandations (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Le choix %{choice} a échoué : %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Choisir le modèle pour ce volet (/model <id> pour changer directement)"  # {Locked="/model","<id>"}
+model_picker.title: "Sélectionner le modèle (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "L’agent connecté n’a annoncé aucun modèle sélectionnable."
+system.model_set: "Modèle de ce volet défini sur %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Modèle inconnu %{model} — tapez /model pour afficher la liste disponible."  # {Locked="%{model}","/model"}

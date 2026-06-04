@@ -191,3 +191,10 @@ time.days_other: "%{count} days ago"
 
 # ── Recommendation execution (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Choice %{choice} failed: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
+model_picker.title: "Select model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "The connected agent did not advertise any selectable models."
+system.model_set: "Model for this pane set to %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Unknown model %{model} — type /model to see the available list."  # {Locked="%{model}","/model"}

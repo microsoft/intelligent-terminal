@@ -4003,6 +4003,20 @@ fn dispatch_master_ext_request(
                         None => g.values().cloned().collect(),
                     }
                 };
+                // A targeted update that matches no live session is a silent
+                // no-op the UI can't see — surface it so a stale session id
+                // (e.g. a race with `/new`) is diagnosable instead of the UI
+                // claiming the model changed when nothing happened.
+                if let Some(target) = &session_id {
+                    if sessions.is_empty() {
+                        tracing::warn!(
+                            target: "acp",
+                            session_id = %target.0,
+                            model = %model,
+                            "set_session_model targeted an unknown/stale session; no live session updated"
+                        );
+                    }
+                }
                 for sid in sessions {
                     match conn
                         .set_session_model(acp::SetSessionModelRequest::new(

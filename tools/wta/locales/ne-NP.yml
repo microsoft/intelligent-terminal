@@ -202,3 +202,10 @@ time.days_other: "%{count} दिनअघि"
 
 # ── सिफारिस कार्यान्वयन (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "छनोट %{choice} असफल भयो: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "यो पेनका लागि मोडेल छान्नुहोस् (सिधै बदल्न /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "मोडेल छान्नुहोस् (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "जोडिएको agent ले कुनै पनि छान्न मिल्ने मोडेल घोषणा गरेन।"
+system.model_set: "यो पेनका लागि मोडेल %{model} मा सेट गरियो।"  # {Locked="%{model}"}
+system.model_unknown: "अज्ञात मोडेल %{model} — उपलब्ध सूची हेर्न /model टाइप गर्नुहोस्।"  # {Locked="%{model}","/model"}

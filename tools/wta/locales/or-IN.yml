@@ -202,3 +202,10 @@ time.days_other: "%{count} ଦିନ ପୂର୍ବରୁ"
 
 # ── ସୁପାରିଶ କାର୍ଯ୍ୟକରଣ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ପସନ୍ଦ %{choice} ବିଫଳ ହେଲା: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "ଏହି ପେନ୍ ପାଇଁ ମଡେଲ ବାଛନ୍ତୁ (ସିଧାସଳଖ ବଦଳାଇବାକୁ /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "ମଡେଲ ବାଛନ୍ତୁ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "ସଂଯୁକ୍ତ ଏଜେଣ୍ଟ କୌଣସି ଚୟନଯୋଗ୍ୟ ମଡେଲ ଘୋଷଣା କଲା ନାହିଁ।"
+system.model_set: "ଏହି ପେନ୍ ପାଇଁ ମଡେଲ %{model} କୁ ସେଟ୍ କରାଗଲା।"  # {Locked="%{model}"}
+system.model_unknown: "ଅଜଣା ମଡେଲ %{model} — ଉପଲବ୍ଧ ତାଲିକା ଦେଖିବାକୁ /model ଟାଇପ୍ କରନ୍ତୁ।"  # {Locked="%{model}","/model"}

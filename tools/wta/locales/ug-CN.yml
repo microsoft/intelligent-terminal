@@ -210,3 +210,10 @@ time.days_other: "%{count} كۈن بۇرۇن"
 
 # ── تەۋسىيەنى ئىجرا قىلىش (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "تاللاش %{choice} مەغلۇپ بولدى: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "بۇ تاختا ئۈچۈن مودېل تاللاڭ (بىۋاسىتە الماشتۇرۇش ئۈچۈن /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "مودېل تاللاڭ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "ئۇلانغان AI ئاگېنتى تاللىغىلى بولىدىغان ھېچقانداق مودېل ئېلان قىلمىدى."
+system.model_set: "بۇ تاختا ئۈچۈن مودېل %{model} قىلىپ بەلگىلەندى."  # {Locked="%{model}"}
+system.model_unknown: "نامەلۇم مودېل %{model} — ئىشلەتكىلى بولىدىغان تىزىملىكنى كۆرۈش ئۈچۈن /model نى كىرگۈزۈڭ."  # {Locked="%{model}","/model"}

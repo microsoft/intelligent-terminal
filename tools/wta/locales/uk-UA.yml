@@ -201,3 +201,10 @@ time.days_other: "%{count} днів тому"
 
 # ── Виконання рекомендації (src/coordinator.rs) ─────────────────────────────
 system.choice_execution_failed: "Не вдалося виконати вибір %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Виберіть модель для цієї панелі (/model <id> для прямого перемикання)"  # {Locked="/model","<id>"}
+model_picker.title: "Виберіть модель (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Підключений агент не оголосив жодної моделі, яку можна вибрати."
+system.model_set: "Модель для цієї панелі встановлено на %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Невідома модель %{model} — введіть /model, щоб переглянути доступний список."  # {Locked="%{model}","/model"}

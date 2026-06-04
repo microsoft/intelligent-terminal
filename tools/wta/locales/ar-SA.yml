@@ -201,3 +201,10 @@ time.days_other: "منذ %{count} يومًا"
 
 # ── تنفيذ التوصية (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "فشل الاختيار %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "اختر النموذج لهذه اللوحة (/model <id> للتبديل مباشرةً)"  # {Locked="/model","<id>"}
+model_picker.title: "اختر النموذج (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "لم يُعلن عامل الذكاء الاصطناعي المتصل عن أي نماذج قابلة للاختيار."
+system.model_set: "تم تعيين نموذج هذه اللوحة إلى %{model}."  # {Locked="%{model}"}
+system.model_unknown: "نموذج غير معروف %{model} — اكتب /model لعرض القائمة المتاحة."  # {Locked="%{model}","/model"}

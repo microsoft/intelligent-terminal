@@ -202,3 +202,10 @@ time.days_other: "%{count} రోజుల క్రితం"
 
 # ── సిఫార్సు అమలు (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ఎంపిక %{choice} విఫలమైంది: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "ఈ పేన్ కోసం మోడల్‌ను ఎంచుకోండి (నేరుగా మార్చడానికి /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "మోడల్‌ను ఎంచుకోండి (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "కనెక్ట్ అయిన ఏజెంట్ ఎంచుకోదగిన ఏ మోడల్‌ను కూడా ప్రకటించలేదు."
+system.model_set: "ఈ పేన్ కోసం మోడల్ %{model} గా సెట్ చేయబడింది."  # {Locked="%{model}"}
+system.model_unknown: "తెలియని మోడల్ %{model} — అందుబాటులో ఉన్న జాబితాను చూడటానికి /model టైప్ చేయండి."  # {Locked="%{model}","/model"}

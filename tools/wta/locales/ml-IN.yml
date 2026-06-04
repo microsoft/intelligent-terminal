@@ -202,3 +202,10 @@ time.days_other: "%{count} ദിവസങ്ങൾ മുമ്പ്"
 
 # ── ശുപാർശ നടപ്പാക്കൽ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "തിരഞ്ഞെടുപ്പ് %{choice} പരാജയപ്പെട്ടു: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "ഈ പേനിനായി മോഡൽ തിരഞ്ഞെടുക്കുക (നേരിട്ട് മാറാൻ /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "മോഡൽ തിരഞ്ഞെടുക്കുക (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "കണക്റ്റുചെയ്‌ത agent തിരഞ്ഞെടുക്കാവുന്ന ഒരു മോഡലും പ്രഖ്യാപിച്ചില്ല."
+system.model_set: "ഈ പേനിനായുള്ള മോഡൽ %{model} ആയി സജ്ജമാക്കി."  # {Locked="%{model}"}
+system.model_unknown: "അറിയാത്ത മോഡൽ %{model} — ലഭ്യമായ പട്ടിക കാണാൻ /model ടൈപ്പ് ചെയ്യുക."  # {Locked="%{model}","/model"}

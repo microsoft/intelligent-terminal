@@ -190,3 +190,10 @@ time.days_other: "acum %{count} de zile"
 
 # ── Executarea recomandării (src/coordinator.rs) ────────────────────────────
 system.choice_execution_failed: "Alegerea %{choice} a eșuat: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Alegeți modelul pentru acest panou (/model <id> pentru a comuta direct)"  # {Locked="/model","<id>"}
+model_picker.title: "Selectați modelul (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Agentul conectat nu a anunțat niciun model selectabil."
+system.model_set: "Modelul pentru acest panou a fost setat la %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model necunoscut %{model} — tastați /model pentru a vedea lista disponibilă."  # {Locked="%{model}","/model"}

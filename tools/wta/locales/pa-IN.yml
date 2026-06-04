@@ -202,3 +202,10 @@ time.days_other: "%{count} ਦਿਨ ਪਹਿਲਾਂ"
 
 # ── ਸਿਫਾਰਸ਼ ਚਲਾਉਣਾ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ਚੋਣ %{choice} ਅਸਫਲ ਰਹੀ: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ ਚੁਣੋ (ਸਿੱਧਾ ਬਦਲਣ ਲਈ /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "ਮਾਡਲ ਚੁਣੋ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "ਜੁੜੇ ਏਜੰਟ ਨੇ ਕੋਈ ਚੁਣਨਯੋਗ ਮਾਡਲ ਦਾ ਐਲਾਨ ਨਹੀਂ ਕੀਤਾ।"
+system.model_set: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ %{model} 'ਤੇ ਸੈੱਟ ਕੀਤਾ ਗਿਆ।"  # {Locked="%{model}"}
+system.model_unknown: "ਅਣਜਾਣ ਮਾਡਲ %{model} — ਉਪਲਬਧ ਸੂਚੀ ਵੇਖਣ ਲਈ /model ਟਾਈਪ ਕਰੋ।"  # {Locked="%{model}","/model"}

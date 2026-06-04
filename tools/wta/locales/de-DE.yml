@@ -201,3 +201,10 @@ commands.sessions.summary: "Auswahl historischer Sitzungen öffnen (Ctrl+Shift+/
 
 # ── Empfehlungsausführung (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Auswahl %{choice} fehlgeschlagen: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Modell für diesen Bereich auswählen (/model <id> zum direkten Wechseln)"  # {Locked="/model","<id>"}
+model_picker.title: "Modell auswählen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Der verbundene Agent hat keine auswählbaren Modelle angekündigt."
+system.model_set: "Modell für diesen Bereich auf %{model} festgelegt."  # {Locked="%{model}"}
+system.model_unknown: "Unbekanntes Modell %{model} — geben Sie /model ein, um die verfügbare Liste anzuzeigen."  # {Locked="%{model}","/model"}

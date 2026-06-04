@@ -191,3 +191,10 @@ time.days_other: "%{count} hari yang lalu"
 
 # ── Pelaksanaan cadangan (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Pilihan %{choice} gagal: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Pilih model untuk anak tetingkap ini (/model <id> untuk menukar terus)"  # {Locked="/model","<id>"}
+model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Ejen yang disambungkan tidak mengiklankan sebarang model yang boleh dipilih."
+system.model_set: "Model untuk anak tetingkap ini ditetapkan kepada %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model tidak diketahui %{model} — taip /model untuk melihat senarai yang tersedia."  # {Locked="%{model}","/model"}
