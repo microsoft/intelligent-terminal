@@ -7,6 +7,7 @@ mod input;
 mod layout;
 mod model_popup;
 mod permission;
+mod popup;
 mod recommendations;
 pub mod agents_view;
 pub mod setup;
