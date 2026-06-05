@@ -57,7 +57,7 @@ function Get-GeneratedDir {
     # top-level .gitignore has `**/Generated Files/`).
     param([string] $Sub)
     $root = Get-RepoRoot
-    $date = (Get-Date).ToString('yyyy-MM-dd')
+    $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
     $path = Join-Path $root "Generated Files/upstream-sync/$date"
     if ($Sub) { $path = Join-Path $path $Sub }
     if (-not (Test-Path -LiteralPath $path)) {

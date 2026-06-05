@@ -103,12 +103,20 @@ The fresh suffix means re-runs never collide with stale local branches.
 ### 3. Fetch upstream
 
 ```pwsh
-$expectedUpstream = 'https://github.com/microsoft/terminal.git'
+# Accept any equivalent form pointing at microsoft/terminal — HTTPS with
+# or without .git, SSH form, etc. We only care about owner/repo identity.
+$expectedOwnerRepo = 'microsoft/terminal'
 $existing = git remote get-url upstream 2>$null
+function Get-OwnerRepo([string] $url) {
+    if (-not $url) { return $null }
+    $u = $url.Trim().TrimEnd('/')
+    if ($u -match '^(?:https?://[^/]+/|git@[^:]+:)([^/]+/[^/]+?)(?:\.git)?$') { return $Matches[1].ToLowerInvariant() }
+    return $null
+}
 if (-not $existing) {
-    git remote add upstream $expectedUpstream
-} elseif ($existing.Trim().TrimEnd('/') -ne $expectedUpstream.TrimEnd('/')) {
-    throw "Remote 'upstream' points at '$existing' but this skill requires '$expectedUpstream'. Aborting so we don't silently sync from the wrong fork."
+    git remote add upstream "https://github.com/$expectedOwnerRepo.git"
+} elseif ((Get-OwnerRepo $existing) -ne $expectedOwnerRepo) {
+    throw "Remote 'upstream' points at '$existing' but this skill requires $expectedOwnerRepo. Aborting so we don't silently sync from the wrong fork."
 }
 git fetch upstream main --no-tags 2>&1 | ForEach-Object { [Console]::Error.WriteLine($_) }
 if ($LASTEXITCODE -ne 0) { throw "git fetch upstream main failed." }

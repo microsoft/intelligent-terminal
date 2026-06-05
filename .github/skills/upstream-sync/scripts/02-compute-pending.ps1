@@ -53,7 +53,10 @@ function Get-LastSyncedUpstreamSha {
     $commits = @(git log origin/main --max-count=5000 --grep='cherry picked from commit' --format='%H' 2>$null)
     if ($LASTEXITCODE -ne 0) { throw "git log on origin/main failed while deriving last-synced SHA." }
     foreach ($c in $commits) {
-        $body = git log -1 --format='%B' $c 2>$null
+        # %B comes back as string[] (one element per line) — join to a
+        # single string so [regex]::Matches doesn't coerce the array to
+        # the literal "System.String[]".
+        $body = (git log -1 --format='%B' $c 2>$null) -join "`n"
         $allMatches = [regex]::Matches($body, '\(cherry picked from commit ([0-9a-f]{7,40})\)')
         if ($allMatches.Count -eq 0) { continue }
         # Walk trailers bottom-up (newest-first within the same commit).
@@ -106,8 +109,12 @@ $info = @{}
 foreach ($sha in $all) {
     $subj = git log -1 --format='%s' $sha 2>&1
     if ($LASTEXITCODE -ne 0) { throw "git log --format=%s failed for $sha : $subj" }
-    $body = git log -1 --format='%B' $sha 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "git log --format=%B failed for $sha : $body" }
+    # %B is multi-line — flatten to a single string so `-match` later
+    # operates on the body rather than an array of lines (where -match
+    # filters elements instead of returning a single bool + $Matches).
+    $bodyArr = git log -1 --format='%B' $sha 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "git log --format=%B failed for $sha : $bodyArr" }
+    $body = $bodyArr -join "`n"
     $info[$sha] = @{ subject = $subj; body = $body }
 }
 
