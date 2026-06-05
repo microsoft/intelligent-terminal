@@ -155,16 +155,6 @@ query($owner:String!,$repo:String!,$pr:Int!){
           commit{oid}
         }
 
-        function Get-LatestCopilotWorkStarted {
-            $json = gh api --paginate "repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100" `
-                --jq '[.[] | select(.event=="copilot_work_started") | .created_at] | sort | .[-1] // ""' 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                throw "gh api events failed (exit $LASTEXITCODE) while fetching copilot_work_started events: $json"
-            }
-            $lines = $json -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
-            if (-not $lines -or $lines.Count -eq 0) { return '' }
-            ($lines | Sort-Object | Select-Object -Last 1)
-        }
       }
     }
   }
@@ -189,6 +179,17 @@ query($owner:String!,$repo:String!,$pr:Int!){
         State               = $pr.state
         LatestCopilotReview = $latest   # may be $null
     }
+}
+
+function Get-LatestCopilotWorkStarted {
+    $json = gh api --paginate "repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100" `
+        --jq '[.[] | select(.event=="copilot_work_started") | .created_at] | sort | .[-1] // ""' 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh api events failed (exit $LASTEXITCODE) while fetching copilot_work_started events: $json"
+    }
+    $lines = $json -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+    if (-not $lines -or $lines.Count -eq 0) { return '' }
+    ($lines | Sort-Object | Select-Object -Last 1)
 }
 
 # ---------- resolve repo ----------
