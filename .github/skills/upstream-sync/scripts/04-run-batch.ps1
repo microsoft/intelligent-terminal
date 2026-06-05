@@ -206,7 +206,9 @@ try {
     }
 
     # Capture pre-pick base SHA (origin/main) — used as static-scan baseline.
-    $preBase = git rev-parse origin/main
+    # Trim defensively: native git output occasionally carries a trailing \r
+    # depending on shim, and an untrimmed SHA breaks `"$Base..$Head"` ranges.
+    $preBase = (git rev-parse origin/main).Trim()
     if ($LASTEXITCODE -ne 0) { Exit-Hard "Could not resolve origin/main for scan baseline." }
 
     # --- 3. Create / switch to sync branch ---
