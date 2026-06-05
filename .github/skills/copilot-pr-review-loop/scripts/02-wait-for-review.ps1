@@ -73,7 +73,8 @@ function Get-ReviewStatus {
 $start = Get-Date
 $initial = Get-ReviewStatus
 if (-not $ExpectedHeadOid) { $ExpectedHeadOid = $initial.HeadOid }
-$sinceDt = if ($SinceTimestamp) { ToUtcDt $SinceTimestamp } else { $null }
+$requiresFreshReview = -not [string]::IsNullOrWhiteSpace($SinceTimestamp)
+$sinceDt = if ($requiresFreshReview) { ToUtcDt $SinceTimestamp } else { $null }
 
 $sinceDisplay = if ($SinceTimestamp) { $SinceTimestamp } else { '(none)' }
 Write-Host "[baseline] expectedHead=$(Short $ExpectedHeadOid) since=$sinceDisplay timeout=${TimeoutMinutes}min poll=${PollSeconds}s"
@@ -104,7 +105,7 @@ while ($true) {
     }
 
     $latestDt = if ($current.LatestCopilotReview) { ToUtcDt $current.LatestCopilotReview.submittedAt } else { $null }
-    $freshReviewAtHead = $current.ReviewAtHead -and (-not $sinceDt -or ($latestDt -and $latestDt -gt $sinceDt))
+    $freshReviewAtHead = $current.ReviewAtHead -and (-not $requiresFreshReview -or ($latestDt -and $latestDt -gt $sinceDt))
     if ($freshReviewAtHead) {
         $result = [ordered]@{
             Owner              = $current.Owner
