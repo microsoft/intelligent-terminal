@@ -390,6 +390,24 @@ namespace Microsoft::Terminal::ShellIntegration
             {
                 return { true, true, {} };
             }
+            // Script-only repair: profile contents already match
+            // desiredBlock byte-for-byte. Don't back up or rewrite the
+            // profile — that would be a no-op write that still produces
+            // a `.bak.*` file and an mtime bump on the user's PROFILE
+            // (potentially OneDrive-synced). Just write the missing
+            // script file and return.
+            std::ofstream scriptRepairOut{ scriptPath, std::ios::binary | std::ios::trunc };
+            if (!scriptRepairOut)
+            {
+                return { false, false, L"Failed to write shell-integration script" };
+            }
+            scriptRepairOut.write(flavor.scriptContent.data(), flavor.scriptContent.size());
+            scriptRepairOut.close();
+            if (!scriptRepairOut)
+            {
+                return { false, false, L"Failed to write shell-integration script (write/close failed)" };
+            }
+            return { true, false, {} };
         }
 
         if (!contents.empty())
