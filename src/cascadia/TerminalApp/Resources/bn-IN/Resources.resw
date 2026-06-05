@@ -322,12 +322,4 @@
   <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
     <value>আরও জানুন</value>
   </data>
-  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
-    <value>PowerShell এক্সিকিউশন পলিসি স্ক্রিপ্ট ব্লক করছে।</value>
-    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
-  </data>
-  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ PowerShell এক্সিকিউশন পলিসি স্ক্রিপ্ট ব্লক করছে। ত্রুটি শনাক্তকরণ বন্ধ করা হয়েছে।</value>
-    <comment>{Locked="PowerShell"}</comment>
-  </data>
 </root>

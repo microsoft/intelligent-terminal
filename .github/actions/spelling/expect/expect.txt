@@ -26,7 +26,6 @@ AImpl
 AInplace
 ALIGNRIGHT
 allocing
-allsigned
 alpc
 ALTERNATENAME
 ALTF

@@ -572,20 +572,6 @@ namespace winrt::TerminalApp::implementation
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorNode"));
             url += L"#2-nodejs-lts--shared-prerequisite";
             break;
-        case FreProblemKind::ShellIntegrationExecutionPolicy:
-            ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegrationExecutionPolicy"));
-            url += L"#4-powershell-shell-integration";
-            // Same remediation as generic shell-integration failure: turn
-            // off error detection so the user can save and continue. Once
-            // they fix execution policy they can re-enable it from Settings.
-            AutoDetectToggle().IsOn(false);
-            _UpdateSuggestionEnabledState();
-            if (_settings)
-            {
-                _settings.GlobalSettings().AutoErrorDetectionEnabled(false);
-                _settings.GlobalSettings().AutoFixEnabled(false);
-            }
-            break;
         case FreProblemKind::ShellIntegration:
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegration"));
             url += L"#4-powershell-shell-integration";
@@ -795,7 +781,6 @@ namespace winrt::TerminalApp::implementation
         // Save retries them.
         bool hooksFailed = false;
         bool shellIntegFailed = false;
-        bool shellIntegEpBlocked = false;
 
         // 4. Hooks — skip if GPO blocks it or settings unavailable.
         if (SessionManagementToggle().IsOn() &&
@@ -836,7 +821,7 @@ namespace winrt::TerminalApp::implementation
             co_await winrt::resume_background();
             namespace SI = ::Microsoft::Terminal::ShellIntegration;
             const auto pwsh7Result = SI::InstallForTarget(SI::Target::Pwsh);
-            const auto windowsPsResult = SI::InstallForTarget(SI::Target::WindowsPowerShell);
+            const auto winPsResult = SI::InstallForTarget(SI::Target::WindowsPowerShell);
 
             {
                 std::string detail = "[FRE] Shell integration: pwsh7=";
@@ -844,24 +829,15 @@ namespace winrt::TerminalApp::implementation
                 if (!pwsh7Result.success && !pwsh7Result.errorMessage.empty())
                     detail += " (" + winrt::to_string(winrt::hstring{ pwsh7Result.errorMessage }) + ")";
                 detail += " winPs=";
-                detail += windowsPsResult.success ? "ok" : "FAILED";
-                if (!windowsPsResult.success && !windowsPsResult.errorMessage.empty())
-                    detail += " (" + winrt::to_string(winrt::hstring{ windowsPsResult.errorMessage }) + ")";
+                detail += winPsResult.success ? "ok" : "FAILED";
+                if (!winPsResult.success && !winPsResult.errorMessage.empty())
+                    detail += " (" + winrt::to_string(winrt::hstring{ winPsResult.errorMessage }) + ")";
                 _agentPaneLog(detail);
             }
 
-            if (!pwsh7Result.success || !windowsPsResult.success)
+            if (!pwsh7Result.success || !winPsResult.success)
             {
                 shellIntegFailed = true;
-                // If either host's failure was specifically the execution
-                // policy, surface the policy-specific message instead of the
-                // generic write-failed one. The user needs different
-                // remediation (Set-ExecutionPolicy / GPO) vs. a transient
-                // file write failure.
-                if (pwsh7Result.executionPolicyBlocked || windowsPsResult.executionPolicyBlocked)
-                {
-                    shellIntegEpBlocked = true;
-                }
             }
         }
 
@@ -875,9 +851,8 @@ namespace winrt::TerminalApp::implementation
             auto self = weak.get();
             if (!self) co_return;
 
-            _ShowProblem(shellIntegEpBlocked ? FreProblemKind::ShellIntegrationExecutionPolicy
-                                             : shellIntegFailed ? FreProblemKind::ShellIntegration
-                                                                : FreProblemKind::Hooks);
+            _ShowProblem(shellIntegFailed ? FreProblemKind::ShellIntegration
+                                          : FreProblemKind::Hooks);
             co_return;
         }
 

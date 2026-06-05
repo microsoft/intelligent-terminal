@@ -1990,7 +1990,6 @@ namespace winrt::TerminalApp::implementation
         bool wpAlready = false;
         bool pwshOk = false;
         bool wpOk = false;
-        bool epBlocked = false;
         {
             std::lock_guard<std::mutex> guard{ _shellIntegrationReconcileMutex };
             // Re-check after acquiring the lock. If a settings reload (toggle
@@ -2007,7 +2006,6 @@ namespace winrt::TerminalApp::implementation
                 wpAlready = wpResult.alreadyInstalled;
                 pwshOk = pwshResult.success;
                 wpOk = wpResult.success;
-                epBlocked = pwshResult.executionPolicyBlocked || wpResult.executionPolicyBlocked;
             }
         }
 
@@ -2025,42 +2023,6 @@ namespace winrt::TerminalApp::implementation
             else if (allAlreadyInstalled)
             {
                 // Already configured — no dialog needed
-            }
-            else if (epBlocked)
-            {
-                // Specific message: execution policy is refusing scripts.
-                // Different remediation than a generic write failure (the user
-                // needs to change execution policy, not retry). Build the body
-                // as a TextBlock with the sentence on one line and a clickable
-                // "Learn how to fix this manually" Hyperlink on a separate
-                // line below — matches the FreOverlay error-banner pattern
-                // and avoids any concat/RTL issues with inline links.
-                if (auto presenter{ strong->_dialogPresenter.get() })
-                {
-                    Controls::ContentDialog dialog;
-                    dialog.Title(winrt::box_value(RS_(L"InitShellIntegrationErrorTitle")));
-
-                    Controls::TextBlock body;
-                    body.TextWrapping(TextWrapping::Wrap);
-
-                    Documents::Run sentence;
-                    sentence.Text(RS_(L"InitShellIntegrationExecutionPolicyErrorMessage"));
-                    body.Inlines().Append(sentence);
-
-                    body.Inlines().Append(Documents::LineBreak{});
-
-                    Documents::Hyperlink link;
-                    link.NavigateUri(winrt::Windows::Foundation::Uri{ L"https://aka.ms/intelligent-terminal-dependency#4-powershell-shell-integration" });
-                    Documents::Run linkRun;
-                    linkRun.Text(RS_(L"FreOverlay_ErrorHelpLink"));
-                    link.Inlines().Append(linkRun);
-                    body.Inlines().Append(link);
-
-                    dialog.Content(body);
-                    dialog.CloseButtonText(RS_(L"Ok"));
-                    dialog.DefaultButton(Controls::ContentDialogButton::Close);
-                    presenter.ShowDialog(dialog);
-                }
             }
             else if (anyFailure)
             {

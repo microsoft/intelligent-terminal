@@ -24,7 +24,6 @@
 #include <string_view>
 #include <utility>
 #include <ShlObj.h>
-#include <wil/resource.h>
 
 namespace Microsoft::Terminal::ShellIntegration
 {
@@ -40,176 +39,7 @@ namespace Microsoft::Terminal::ShellIntegration
         bool success{ false };
         bool alreadyInstalled{ false }; // true when skipped because already configured
         std::wstring errorMessage;
-        bool executionPolicyBlocked{ false }; // true when the host's effective PowerShell execution policy refuses unsigned local scripts
     };
-
-    namespace details
-    {
-        // Runs `<exe> -NoProfile -NonInteractive -Command Get-ExecutionPolicy`
-        // synchronously and returns the lowercased policy name from stdout
-        // (e.g. "restricted"). Returns an empty string if the executable can't
-        // be launched (typical for pwsh.exe when PowerShell 7 isn't installed)
-        // or if the call doesn't finish within the timeout.
-        //
-        // `-Command <expr>` runs an inline expression that is NOT subject to
-        // the .ps1 execution policy, so this works even when the answer is
-        // Restricted / AllSigned. We deliberately do NOT pass
-        // `-ExecutionPolicy` because that would set the Process scope and
-        // override the value we're trying to read.
-        inline std::wstring QueryExecutionPolicy(LPCWSTR exe) noexcept
-        {
-            // This is a best-effort helper: any failure (CreateProcess, pipe,
-            // read hang, OOM, …) must fail-open by returning an empty string
-            // so the caller treats the policy as "not blocking" rather than
-            // crashing the Terminal over a diagnostic probe. The whole body
-            // is wrapped in a swallow-all try/catch and every Win32 step
-            // either returns {} on failure or is bounded by a timeout.
-            try
-            {
-                SECURITY_ATTRIBUTES sa{};
-                sa.nLength = sizeof(sa);
-                sa.bInheritHandle = TRUE;
-
-                HANDLE rawRead = nullptr;
-                HANDLE rawWrite = nullptr;
-                if (!CreatePipe(&rawRead, &rawWrite, &sa, 0))
-                {
-                    return {};
-                }
-                wil::unique_handle readEnd{ rawRead };
-                wil::unique_handle writeEnd{ rawWrite };
-                SetHandleInformation(readEnd.get(), HANDLE_FLAG_INHERIT, 0);
-
-                STARTUPINFOW si{};
-                si.cb = sizeof(si);
-                si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-                si.wShowWindow = SW_HIDE;
-                si.hStdOutput = writeEnd.get();
-                si.hStdError = writeEnd.get();
-                si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-
-                std::wstring cmdLine{ L"\"" };
-                cmdLine += exe;
-                cmdLine += L"\" -NoProfile -NonInteractive -Command Get-ExecutionPolicy";
-
-                PROCESS_INFORMATION pi{};
-                if (!CreateProcessW(nullptr,
-                                    cmdLine.data(),
-                                    nullptr,
-                                    nullptr,
-                                    TRUE,
-                                    CREATE_NO_WINDOW,
-                                    nullptr,
-                                    nullptr,
-                                    &si,
-                                    &pi))
-                {
-                    return {};
-                }
-                wil::unique_handle process{ pi.hProcess };
-                wil::unique_handle thread{ pi.hThread };
-
-                // Drop our copy of the write end so the read side sees EOF
-                // when the child exits — otherwise ReadFile would block
-                // indefinitely.
-                writeEnd.reset();
-
-                // Bound the child to 5 seconds total wall-clock. If it
-                // hasn't exited by then (hung profile, misbehaving anti-virus
-                // shim, inherited write handle held by a grandchild, …),
-                // terminate it so the subsequent ReadFile is guaranteed to
-                // hit EOF and return promptly. We deliberately wait BEFORE
-                // reading: doing it the other way around (the natural
-                // streaming-read pattern) means a hung ReadFile would
-                // prevent the timeout from ever firing.
-                if (WaitForSingleObject(process.get(), 5000) != WAIT_OBJECT_0)
-                {
-                    TerminateProcess(process.get(), 1);
-                    // Give the OS a brief grace period to close the handle
-                    // table so the write end is released.
-                    WaitForSingleObject(process.get(), 1000);
-                }
-
-                std::string raw;
-                char buf[256];
-                DWORD bytesRead = 0;
-                // Cap the total bytes we'll accept so a runaway child can't
-                // make us spin forever even after the timeout fired.
-                while (raw.size() < 4096 &&
-                       ReadFile(readEnd.get(), buf, sizeof(buf), &bytesRead, nullptr) &&
-                       bytesRead > 0)
-                {
-                    raw.append(buf, bytesRead);
-                }
-
-                std::wstring result;
-                for (const char c : raw)
-                {
-                    if (c == '\r' || c == '\n')
-                    {
-                        if (!result.empty())
-                        {
-                            break;
-                        }
-                        continue;
-                    }
-                    // Only collect ASCII letters. Drops whitespace, control chars,
-                    // and any stray non-ASCII bytes (e.g. a UTF-16 BOM emitted by
-                    // PowerShell when stdout is redirected) that would otherwise
-                    // silently break the comparison against the known policy
-                    // names in PolicyNameBlocksUnsignedScripts.
-                    if (c >= 'A' && c <= 'Z')
-                    {
-                        result.push_back(static_cast<wchar_t>(c + 0x20));
-                    }
-                    else if (c >= 'a' && c <= 'z')
-                    {
-                        result.push_back(static_cast<wchar_t>(c));
-                    }
-                }
-                return result;
-            }
-            catch (...)
-            {
-                // Fail-open: any unexpected error means "we couldn't tell",
-                // which the caller treats as "not blocking". The user will
-                // still see the normal shell-integration error path if the
-                // install actually fails later.
-                return {};
-            }
-        }
-
-        // True when the policy name refuses to run unsigned local scripts —
-        // i.e. our shell-integration block, which is appended to $PROFILE and
-        // not Authenticode-signed.
-        inline bool PolicyNameBlocksUnsignedScripts(std::wstring_view name) noexcept
-        {
-            return name == L"restricted" || name == L"allsigned";
-        }
-    }
-
-    // True when the effective PowerShell execution policy for `target` refuses
-    // to run unsigned local scripts. Asks PowerShell itself rather than walking
-    // the registry / Group Policy hives — `Get-ExecutionPolicy` returns the
-    // effective policy after considering every scope plus the built-in default,
-    // exactly the value the shell will obey when trying to load $PROFILE.
-    //
-    // Re-queried on every call so that after the user fixes the policy outside
-    // (e.g. `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`) and clicks
-    // Save again, the Terminal picks up the new policy instead of returning a
-    // stale cached "blocked" verdict. The cost is one extra PowerShell spawn
-    // per Save / Install attempt, which is negligible next to the profile file
-    // I/O that follows.
-    inline bool ExecutionPolicyBlocksShellIntegration(Target target) noexcept
-    {
-        // pwsh.exe is optional. If it isn't installed QueryExecutionPolicy
-        // returns "" which doesn't match any blocking policy → not blocked,
-        // and the install attempt for that profile dir will succeed
-        // (creating a $PROFILE for a host the user hasn't installed is
-        // harmless — it sits inert until they install PowerShell 7).
-        const auto exe = target == Target::Pwsh ? L"pwsh.exe" : L"powershell.exe";
-        return details::PolicyNameBlocksUnsignedScripts(details::QueryExecutionPolicy(exe));
-    }
 
     namespace details
     {
@@ -700,16 +530,6 @@ if (-not $Global:__ShellInteg_Installed) {
     // Synchronous — call from a background thread.
     inline InstallResult InstallForTarget(Target target)
     {
-        // Probe the effective execution policy first. If the host refuses
-        // unsigned local scripts our $PROFILE block would either silently
-        // no-op or throw a PSSecurityException on every shell start. Fail
-        // up front with executionPolicyBlocked set so the caller can show a
-        // policy-specific error instead of a generic write-failed message.
-        if (ExecutionPolicyBlocksShellIntegration(target))
-        {
-            return { false, false, L"PowerShell execution policy blocks scripts", true };
-        }
-
         auto profilePath = DiscoverProfilePath(target);
         if (profilePath.empty())
         {

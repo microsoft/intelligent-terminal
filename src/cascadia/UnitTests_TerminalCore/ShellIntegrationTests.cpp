@@ -81,14 +81,6 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     // Install -> Uninstall -> Install round-trip
     TEST_METHOD(InstallUninstallInstall_RoundTrip);
 
-    // ExecutionPolicy detection.
-    TEST_METHOD(PolicyName_RestrictedAndAllSigned_AreBlocking);
-    TEST_METHOD(PolicyName_RemoteSignedAndPermissive_AreNotBlocking);
-    TEST_METHOD(PolicyName_EmptyOrUnknown_NotBlocking);
-    TEST_METHOD(QueryExecutionPolicy_NonexistentExe_ReturnsEmpty);
-    TEST_METHOD(QueryExecutionPolicy_ParsesStdoutAndLowercases);
-    TEST_METHOD(QueryExecutionPolicy_TrimsWhitespaceAndStopsAtFirstLine);
-
     TEST_CLASS_SETUP(ClassSetup)
     {
         return true;
@@ -719,81 +711,4 @@ void ShellIntegrationTests::InstallUninstallInstall_RoundTrip()
     VERIFY_IS_TRUE(Install(profile.wstring()).success);
     VERIFY_ARE_EQUAL(afterFirstInstall, _ReadFile(profile),
                      L"Round-trip: second Install must produce byte-identical output to first");
-}
-
-// ─── ExecutionPolicy detection ────────────────────────────────────────────────
-
-void ShellIntegrationTests::PolicyName_RestrictedAndAllSigned_AreBlocking()
-{
-    // The two policy names that refuse to run unsigned local scripts —
-    // the exact case our $PROFILE block hits because we don't Authenticode-sign
-    // it. Comparison must be lowercase (QueryExecutionPolicy normalizes its
-    // output) — verifying mixed case here would test the wrong contract.
-    VERIFY_IS_TRUE(details::PolicyNameBlocksUnsignedScripts(L"restricted"));
-    VERIFY_IS_TRUE(details::PolicyNameBlocksUnsignedScripts(L"allsigned"));
-}
-
-void ShellIntegrationTests::PolicyName_RemoteSignedAndPermissive_AreNotBlocking()
-{
-    // RemoteSigned lets *local* unsigned scripts run (it only blocks
-    // downloaded ones) — that's the default for pwsh on Windows, so it
-    // must not trigger the EP-blocked path or we'd false-positive on
-    // the most common pwsh install.
-    VERIFY_IS_FALSE(details::PolicyNameBlocksUnsignedScripts(L"remote" L"signed"));
-    VERIFY_IS_FALSE(details::PolicyNameBlocksUnsignedScripts(L"unrestricted"));
-    VERIFY_IS_FALSE(details::PolicyNameBlocksUnsignedScripts(L"bypass"));
-    VERIFY_IS_FALSE(details::PolicyNameBlocksUnsignedScripts(L"undefined"));
-}
-
-void ShellIntegrationTests::PolicyName_EmptyOrUnknown_NotBlocking()
-{
-    // Empty string is what QueryExecutionPolicy returns when CreateProcess
-    // fails (e.g. pwsh.exe not installed). Treating that as "not blocking"
-    // is the deliberate fail-open behavior: we don't want a missing
-    // optional host to lock the user out of error detection.
-    VERIFY_IS_FALSE(details::PolicyNameBlocksUnsignedScripts(L""));
-    VERIFY_IS_FALSE(details::PolicyNameBlocksUnsignedScripts(L"something" L"else"));
-}
-
-void ShellIntegrationTests::QueryExecutionPolicy_NonexistentExe_ReturnsEmpty()
-{
-    // CreateProcess fails synchronously when the exe doesn't resolve —
-    // QueryExecutionPolicy must return empty (not hang, not throw) so the
-    // pwsh-not-installed case fails open.
-    const auto out = details::QueryExecutionPolicy(L"definitely-not-a-real-binary-zzzzz.exe");
-    VERIFY_IS_TRUE(out.empty());
-}
-
-void ShellIntegrationTests::QueryExecutionPolicy_ParsesStdoutAndLowercases()
-{
-    // Smoke test against real powershell.exe (always present on Windows).
-    // We don't care WHICH policy the runner returns — we care that the
-    // QueryExecutionPolicy contract holds:
-    //   * the call completes within the 5s timeout (no hang on the pipe),
-    //   * stdout is captured (non-empty), and
-    //   * the result is lowercase ASCII letters only — the parser strips
-    //     newlines / spaces / tabs, lowercases A-Z, but a stray BOM byte or
-    //     control char would slip through and silently break the comparison
-    //     against the known policy names in PolicyNameBlocksUnsignedScripts.
-    const auto out = details::QueryExecutionPolicy(L"powershell.exe");
-    VERIFY_IS_FALSE(out.empty(), L"powershell.exe must be on PATH on Windows runners");
-    for (const auto c : out)
-    {
-        VERIFY_IS_TRUE(c >= L'a' && c <= L'z',
-                       L"QueryExecutionPolicy output must be lowercase ASCII letters only "
-                       L"(no whitespace, control chars, or BOM bytes leaking through)");
-    }
-}
-
-void ShellIntegrationTests::QueryExecutionPolicy_TrimsWhitespaceAndStopsAtFirstLine()
-{
-    // Same invariant tested two ways for redundancy with the smoke test:
-    // even if PowerShell ever adds blank-line padding, the parser must
-    // skip leading blanks and stop at the first non-empty line. The smoke
-    // test above already exercises the "single token" path; verify here that
-    // calling QueryExecutionPolicy back-to-back stays cheap and consistent,
-    // and that nothing depends on first-call side effects in the function.
-    const auto first = details::QueryExecutionPolicy(L"powershell.exe");
-    const auto second = details::QueryExecutionPolicy(L"powershell.exe");
-    VERIFY_ARE_EQUAL(first, second, L"QueryExecutionPolicy must be deterministic for the same host");
 }
