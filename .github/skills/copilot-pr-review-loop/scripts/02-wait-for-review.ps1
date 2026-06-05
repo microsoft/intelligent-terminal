@@ -28,7 +28,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if ($PollSeconds -lt 30) {
-    Write-Warning "PollSeconds=$PollSeconds is below the 30s floor; using 30."
+    Write-Verbose "PollSeconds=$PollSeconds is below the 30s floor; using 30."
     $PollSeconds = 30
 }
 
@@ -77,7 +77,7 @@ $requiresFreshReview = -not [string]::IsNullOrWhiteSpace($SinceTimestamp)
 $sinceDt = if ($requiresFreshReview) { ToUtcDt $SinceTimestamp } else { $null }
 
 $sinceDisplay = if ($SinceTimestamp) { $SinceTimestamp } else { '(none)' }
-Write-Host "[baseline] expectedHead=$(Short $ExpectedHeadOid) since=$sinceDisplay timeout=${TimeoutMinutes}min poll=${PollSeconds}s"
+Write-Verbose "[baseline] expectedHead=$(Short $ExpectedHeadOid) since=$sinceDisplay timeout=${TimeoutMinutes}min poll=${PollSeconds}s"
 
 $deadline = $start.AddMinutes($TimeoutMinutes)
 $last = $initial
@@ -99,7 +99,7 @@ while ($true) {
             ElapsedSec    = [int]((Get-Date) - $start).TotalSeconds
             Detail        = "PR head advanced from $(Short $ExpectedHeadOid) to $(Short $current.HeadOid) during wait."
         }
-        Write-Host "[stop] $($result.Detail)"
+        Write-Verbose "[stop] $($result.Detail)"
         $result | ConvertTo-Json -Depth 5
         return
     }
@@ -122,7 +122,7 @@ while ($true) {
             ElapsedSec         = [int]((Get-Date) - $start).TotalSeconds
             Detail             = "Copilot latest review is at head $(Short $ExpectedHeadOid). NoNewComments=$($current.NoNewComments); OpenThreadCount=$($current.OpenThreadCount)."
         }
-        Write-Host "[done] $($result.Detail)"
+        Write-Verbose "[done] $($result.Detail)"
         $result | ConvertTo-Json -Depth 5
         return
     }
@@ -149,6 +149,6 @@ while ($true) {
 
     $remaining = [int]($deadline - (Get-Date)).TotalSeconds
     $latestOid = if ($current.LatestCopilotReview) { Short $current.LatestCopilotReview.commitOid } else { '(none)' }
-    Write-Host "[poll] no review at HEAD yet (latestHead=$latestOid); ${remaining}s left"
+    Write-Verbose "[poll] no review at HEAD yet (latestHead=$latestOid); ${remaining}s left"
     Start-Sleep -Seconds ([Math]::Min($PollSeconds, [Math]::Max(1, $remaining)))
 }

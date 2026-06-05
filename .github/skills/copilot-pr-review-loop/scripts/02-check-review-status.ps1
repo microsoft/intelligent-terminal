@@ -107,7 +107,7 @@ if (-not $d) {
 $pr = $d.data.repository.pullRequest
 if (-not $pr) { throw "PR #$PrNumber not found in $Owner/$Repo." }
 
-$copilotReviews = @($pr.reviews.nodes | Where-Object { $_.author.login -match '^(?i)copilot' })
+$copilotReviews = @($pr.reviews.nodes | Where-Object { $_.author.login -match '^(?i)(copilot-pull-request-reviewer|copilot)$' })
 $latest = if ($copilotReviews.Count -gt 0) { $copilotReviews | Sort-Object submittedAt -Descending | Select-Object -First 1 } else { $null }
 
 $reviewAtHead = $false
