@@ -73,6 +73,19 @@ $prePickHead = (git rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw "Could not record pre-pick HEAD before cherry-picking $Sha." }
 
 $info = (git log -1 --format='%an%x09%ae%x09%aI%x09%cn%x09%ce%x09%cI' $fullSha) -split "`t"
+
+# Capture caller's existing GIT_AUTHOR_* / GIT_COMMITTER_* env so the finally
+# block can restore them. Higher-level automation may have set these
+# intentionally — we don't want to silently wipe them out after our pick.
+$prevEnv = @{
+    GIT_AUTHOR_NAME     = $env:GIT_AUTHOR_NAME
+    GIT_AUTHOR_EMAIL    = $env:GIT_AUTHOR_EMAIL
+    GIT_AUTHOR_DATE     = $env:GIT_AUTHOR_DATE
+    GIT_COMMITTER_NAME  = $env:GIT_COMMITTER_NAME
+    GIT_COMMITTER_EMAIL = $env:GIT_COMMITTER_EMAIL
+    GIT_COMMITTER_DATE  = $env:GIT_COMMITTER_DATE
+}
+
 $env:GIT_AUTHOR_NAME     = $info[0]
 $env:GIT_AUTHOR_EMAIL    = $info[1]
 $env:GIT_AUTHOR_DATE     = $info[2]
@@ -154,10 +167,14 @@ $result.status = 'picked'
 $result | ConvertTo-Json -Compress
 
 } finally {
-    Remove-Item Env:GIT_AUTHOR_NAME     -ErrorAction SilentlyContinue
-    Remove-Item Env:GIT_AUTHOR_EMAIL    -ErrorAction SilentlyContinue
-    Remove-Item Env:GIT_AUTHOR_DATE     -ErrorAction SilentlyContinue
-    Remove-Item Env:GIT_COMMITTER_NAME  -ErrorAction SilentlyContinue
-    Remove-Item Env:GIT_COMMITTER_EMAIL -ErrorAction SilentlyContinue
-    Remove-Item Env:GIT_COMMITTER_DATE  -ErrorAction SilentlyContinue
+    # Restore — not delete — so callers that intentionally set these
+    # env vars don't see them wiped after our pick.
+    foreach ($k in $prevEnv.Keys) {
+        $prev = $prevEnv[$k]
+        if ($null -eq $prev) {
+            Remove-Item "Env:$k" -ErrorAction SilentlyContinue
+        } else {
+            Set-Item "Env:$k" -Value $prev
+        }
+    }
 }

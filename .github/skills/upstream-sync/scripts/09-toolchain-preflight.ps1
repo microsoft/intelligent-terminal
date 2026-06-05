@@ -52,10 +52,12 @@ function Get-RequiredToolsets {
         'src/wap-common.build.pre.props',
         'src/wap-common.build.post.props'
     )
-    $found = [System.Collections.Generic.HashSet[string]]::new()
+    $found  = [System.Collections.Generic.HashSet[string]]::new()
+    $probed = [System.Collections.Generic.List[string]]::new()
     foreach ($rel in $candidates) {
         $p = Join-Path $root $rel
         if (-not (Test-Path -LiteralPath $p)) { continue }
+        $probed.Add($rel) | Out-Null
         $text = [System.IO.File]::ReadAllText($p)
         foreach ($m in ([regex]'<PlatformToolset[^>]*>([^<]+)</PlatformToolset>').Matches($text)) {
             $val = $m.Groups[1].Value.Trim()
@@ -63,11 +65,20 @@ function Get-RequiredToolsets {
             if ($val -and $val -notmatch '^\$\(') { [void]$found.Add($val) }
         }
     }
-    return ,@($found)
+    return [pscustomobject] @{
+        Toolsets     = ,@($found)
+        ProbedFiles  = ,@($probed)
+    }
 }
 
 function Get-VsInstalls {
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    # ${env:ProgramFiles(x86)} can be unset on nonstandard hosts (e.g. a
+    # 32-bit-only container, or a misconfigured runner). Treat the
+    # absence as "no VS detected" rather than throwing — the orchestrator
+    # treats VS-missing as a Tier-4 infra stuck the same way.
+    $pf86 = ${env:ProgramFiles(x86)}
+    if (-not $pf86) { return ,@() }
+    $vswhere = Join-Path $pf86 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (-not (Test-Path -LiteralPath $vswhere)) { return ,@() }
     $out = & $vswhere -all -products * -property installationPath 2>$null
     if ($LASTEXITCODE -ne 0) { return ,@() }
@@ -97,17 +108,28 @@ function Get-AvailableToolsets {
 }
 
 try {
-    $required  = Get-RequiredToolsets
+    $req        = Get-RequiredToolsets
+    $required   = $req.Toolsets
+    $probed     = $req.ProbedFiles
     $vsInstalls = Get-VsInstalls
-    $available = Get-AvailableToolsets -VsInstalls $vsInstalls
-    $missing   = @($required | Where-Object { $available -notcontains $_ })
-    $ok        = ($missing.Count -eq 0) -and ($required.Count -gt 0 -or $vsInstalls.Count -gt 0)
+    $available  = Get-AvailableToolsets -VsInstalls $vsInstalls
+    $missing    = @($required | Where-Object { $available -notcontains $_ })
+
+    # Stale-probe guard: if none of the candidate build files even
+    # existed, the probe list itself is wrong (paths moved). That's a
+    # silent gap — fail closed so the orchestrator surfaces it as a
+    # Tier-4 stuck instead of waving the run through on an empty
+    # required-toolsets list.
+    $probeStale = ($probed.Count -eq 0)
+    $ok = (-not $probeStale) -and ($missing.Count -eq 0) -and ($vsInstalls.Count -gt 0)
 
     $doc = [ordered] @{
         required_toolsets  = @($required)
         available_toolsets = @($available)
         missing            = @($missing)
         vs_installs        = @($vsInstalls)
+        probed_files       = @($probed)
+        probe_stale        = $probeStale
         ok                 = $ok
     }
     $doc | ConvertTo-Json -Depth 4
