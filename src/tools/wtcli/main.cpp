@@ -111,9 +111,14 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     if (rawAuth)
         SysFreeString(rawAuth);
 
-    if (FAILED(hr) || !authenticated)
+    if (FAILED(hr))
     {
-        fprintf(stderr, "[wtcli] Authentication failed\n");
+        fprintf(stderr, "[wtcli] Authentication failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        return nullptr;
+    }
+    if (!authenticated)
+    {
+        fprintf(stderr, "[wtcli] Authentication rejected by server\n");
         return nullptr;
     }
 
@@ -619,7 +624,8 @@ int main()
                 {
                     Json::Value v;
                     v["state"] = "exited";
-                    v["exit_code"] = status["exit_code"].asInt();
+                    if (status.isMember("exit_code"))
+                        v["exit_code"] = status["exit_code"].asInt();
                     PrintJson(v);
                 }
                 else

@@ -247,8 +247,11 @@ static Json::Value _toJson(const Protocol::ProcessStatus& s)
     v["session_id"] = _guidStr(s.SessionId);
     v["state"] = winrt::to_string(s.State);
     v["pid"] = static_cast<Json::UInt>(s.Pid);
-    v["exit_code"] = s.ExitCode;
     v["has_exit_code"] = static_cast<bool>(s.HasExitCode);
+    // Only emit exit_code when it's meaningful; clients gate on has_exit_code,
+    // so omitting it for a still-running process avoids a misleading 0.
+    if (s.HasExitCode)
+        v["exit_code"] = s.ExitCode;
     return v;
 }
 
@@ -343,6 +346,13 @@ void TerminalProtocolComServer::s_OnWindowAdded(AppHost* /*host*/)
 void TerminalProtocolComServer::s_NotifyEventToComClients(const std::string& eventJson)
 {
     wil::unique_bstr eventBstr{ ::SysAllocString(winrt::to_hstring(eventJson).c_str()) };
+    if (!eventBstr)
+    {
+        // OOM allocating the event payload — skip this delivery rather than
+        // calling OnEvent with a null BSTR, which would break the documented
+        // JSON-string event contract.
+        return;
+    }
 
     // Snapshot the agile sink references under lock, then invoke outside the
     // lock to avoid deadlocks if a callback reenters the server (e.g. via
