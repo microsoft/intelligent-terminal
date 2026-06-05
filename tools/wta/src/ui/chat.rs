@@ -165,10 +165,10 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     {
         let mut welcome_lines = vec![
             Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
                 Span::styled(
                     t!("chat.welcome_title").into_owned(),
-                    Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
                 ),
             ]),
         ];
@@ -518,7 +518,7 @@ fn build_message_lines<'a>(
                 Span::raw("  "),
                 Span::styled(
                     t!("chat.welcome_disclaimer").into_owned(),
-                    Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
                 ),
             ]));
         }

@@ -35,11 +35,11 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     lines.push(Line::from(vec![
         Span::styled(
             "\u{25CF} ",
-            Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             &setup.title,
-            Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
         ),
     ]));
 
@@ -132,7 +132,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         } else if is_selected {
             Style::new().fg(SELECTED_COLOR)
         } else {
-            Style::new().fg(Color::White)
+            Style::new().fg(Color::Reset)
         };
 
         if is_selected {
@@ -149,7 +149,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         } else {
             lines.push(Line::from(vec![
                 Span::raw("    "),
-                Span::styled(label, Style::new().fg(Color::White)),
+                Span::styled(label, Style::new().fg(Color::Reset)),
                 Span::styled(status_text, status_style),
             ]));
         }
@@ -166,7 +166,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             ),
             Span::styled(
                 t!("setup.status.installing_winget").into_owned(),
-                Style::new().fg(Color::White),
+                Style::new().fg(Color::Reset),
             ),
         ]));
         for log_line in setup.install_log.iter() {

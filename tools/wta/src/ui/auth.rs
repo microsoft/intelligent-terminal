@@ -24,10 +24,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         let spinner_char = SPINNER[app.activity_frame as usize % SPINNER.len()];
 
         lines.push(Line::from(vec![
-            Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
+            Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
             Span::styled(
                 t!("auth.agent_selected", name = &auth.agent_name).into_owned(),
-                Style::new().fg(Color::White),
+                Style::new().fg(Color::Reset),
             ),
         ]));
         lines.push(Line::from(""));
@@ -49,7 +49,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 format!("  {}", auth.status_message),
-                Style::new().fg(Color::White),
+                Style::new().fg(Color::Reset),
             )));
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
@@ -60,18 +60,18 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         if auth.status_message.is_empty() {
             lines.push(Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
                 Span::styled(
                     t!("auth.agent_selected", name = &auth.agent_name).into_owned(),
-                    Style::new().fg(Color::White),
+                    Style::new().fg(Color::Reset),
                 ),
             ]));
         } else {
             lines.push(Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
                 Span::styled(
                     t!("auth.agent_selected_with_status", name = &auth.agent_name).into_owned(),
-                    Style::new().fg(Color::White),
+                    Style::new().fg(Color::Reset),
                 ),
                 Span::styled(
                     &auth.status_message,
@@ -83,10 +83,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(""));
 
         lines.push(Line::from(vec![
-            Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
+            Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
             Span::styled(
                 t!("auth.sign_in_prompt").into_owned(),
-                Style::new().fg(Color::White),
+                Style::new().fg(Color::Reset),
             ),
         ]));
 
@@ -94,7 +94,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
         lines.push(Line::from(Span::styled(
             t!("auth.card_connect", name = &auth.agent_name).into_owned(),
-            Style::new().fg(Color::White),
+            Style::new().fg(Color::Reset),
         )));
 
         lines.push(Line::from(""));
@@ -108,7 +108,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             Span::raw("                          "),
             Span::styled(
                 button_text,
-                Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
             ),
         ]));
 
