@@ -153,7 +153,7 @@ try {
         @(Get-Content -LiteralPath $logPath -Tail 200) -join "`n"
     } else { '' }
 
-    $logPathForReport = try { ConvertTo-RepoRelativePath $logPath } catch { $logPath }
+    $logPathForReport = ConvertTo-RepoRelativePath $logPath  # fails fast if outside repo — log_path is a public contract field
 
     [ordered] @{
         kind        = $kind

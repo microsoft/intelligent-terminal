@@ -104,9 +104,15 @@ The issue body **must** include:
 - The conflicting commit SHA, subject, author, and upstream URL.
 - The list of conflicting paths.
 - The exact local branch name where the human picks up.
-- The exact resume action: resolve on the stuck branch, merge a PR
-  that keeps the `(cherry picked from commit <sha>)` trailer, then
-  CLOSE the stuck issue (that's the lock-clear signal — no script).
+- The exact resume action: (1) check out the stuck branch,
+  (2) **re-run the cherry-pick to reproduce the conflict** — the script
+  calls `git cherry-pick --abort` before returning, so a fresh checkout
+  has no `MERGE_MSG` / conflict markers to resolve. Use
+  `git cherry-pick -x <stuck_sha>` (the `-x` preserves the
+  `(cherry picked from commit <sha>)` trailer — critical for the
+  watermark). (3) Resolve, `git add`, `git cherry-pick --continue`.
+  (4) Push, open a PR, merge keeping the trailer (no squash).
+  (5) CLOSE the stuck issue (that's the lock-clear signal — no script).
 
 No fenced YAML metadata block is needed. Closing the labeled issue IS
 the lock-clear signal; nothing parses the body back.

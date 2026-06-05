@@ -196,6 +196,21 @@ $pathLines
 
 $(if ($pick.error) { "**Error:** ``$($pick.error)``" })
 
+**To resume** (the script ran ``git cherry-pick --abort`` — the branch
+has no in-progress conflict state to resolve directly):
+
+``````pwsh
+git fetch origin
+git switch $branch
+git cherry-pick -x $sha   # re-run to reproduce the conflict; -x keeps the trailer
+# ... resolve conflicts ...
+git add -A
+git cherry-pick --continue
+git push
+# Open a PR against main, merge without squashing (the trailer must survive),
+# then close this issue to clear the lock.
+``````
+
 See [references/03-conflict-triage.md](https://github.com/microsoft/intelligent-terminal/blob/main/.github/skills/upstream-sync/references/03-conflict-triage.md) for the resolution rubric.
 "@
 
@@ -212,10 +227,21 @@ try {
 }
 ```
 
-Surface `$issueUrl` and `$branch` to the operator. The human is expected to
-check out the branch, resolve the conflict, push it, open a PR, merge it
-(keeping the `(cherry picked from commit <sha>)` trailer!), then close
-the issue. EXIT — do not attempt the build.
+Surface `$issueUrl` and `$branch` to the operator. The human is expected to:
+
+1. `git fetch origin && git switch $branch` to pick up the sync branch.
+2. **Re-run the cherry-pick to reproduce the conflict** — `03-cherry-pick-one.ps1`
+   calls `git cherry-pick --abort` before returning `stuck`, so the branch
+   itself has no conflict markers / `MERGE_MSG`. Use the stuck SHA from
+   the issue body: `git cherry-pick -x <stuck_sha>` (the `-x` preserves
+   the `(cherry picked from commit <sha>)` trailer — critical for the
+   watermark).
+3. Resolve the conflicts, `git add` the resolutions, `git cherry-pick --continue`.
+4. Push, open a PR against `main`, merge it (the `-x` trailer must
+   survive the merge — DO NOT squash).
+5. Close the stuck issue.
+
+EXIT — do not attempt the build.
 
 See [references/03-conflict-triage.md](./references/03-conflict-triage.md)
 for what "Tier-3" means and the resolution rubric.
