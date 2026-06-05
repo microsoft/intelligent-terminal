@@ -66,17 +66,15 @@ $ErrorActionPreference = 'Stop'
 # stderr into ConvertFrom-Json on success.
 function Invoke-Gh {
     param([Parameter(Mandatory)][string[]]$GhArgs)
-
-    $psi = [System.Diagnostics.ProcessStartInfo]::new('gh')
-    foreach ($arg in $GhArgs) { $null = $psi.ArgumentList.Add($arg) }
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $out = $proc.StandardOutput.ReadToEnd()
-    $err = $proc.StandardError.ReadToEnd()
-    $proc.WaitForExit()
-    [pscustomobject]@{ ExitCode = $proc.ExitCode; Stdout = $out; Stderr = $err }
+    $errFile = [IO.Path]::GetTempFileName()
+    try {
+        $out = & gh @GhArgs 2>$errFile
+        $ec = $LASTEXITCODE
+        $err = (Get-Content -Raw -LiteralPath $errFile -ErrorAction SilentlyContinue) ?? ''
+        [pscustomobject]@{ ExitCode = $ec; Stdout = ($out | Out-String); Stderr = $err }
+    } finally {
+        Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
+    }
 }
 
 # ---------- repo resolve ----------
@@ -140,7 +138,7 @@ query($o:String!,$r:String!,$n:Int!,$after:String!){
     $pr.reviewRequests.pageInfo = $page.pageInfo
     $after = $page.pageInfo.endCursor
 }
-$copilotPendingRequests = @($reviewRequests | Where-Object { $_.requestedReviewer.login -match '(?i)^(copilot-pull-request-reviewer(\[bot\])?|copilot(\[bot\])?)$' })
+$copilotPendingRequests = @($reviewRequests | Where-Object { $_.requestedReviewer.login -match '(?i)^copilot-pull-request-reviewer(\[bot\])?$' })
 $copilotPending = $copilotPendingRequests.Count -gt 0
 
 # If Copilot is currently in requested_reviewers, it's in-flight by definition.

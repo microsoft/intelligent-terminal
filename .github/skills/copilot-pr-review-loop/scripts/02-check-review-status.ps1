@@ -61,17 +61,15 @@ $ErrorActionPreference = 'Stop'
 # into ConvertFrom-Json on success.
 function Invoke-Gh {
     param([Parameter(Mandatory)][string[]]$GhArgs)
-
-    $psi = [System.Diagnostics.ProcessStartInfo]::new('gh')
-    foreach ($arg in $GhArgs) { $null = $psi.ArgumentList.Add($arg) }
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $out = $proc.StandardOutput.ReadToEnd()
-    $err = $proc.StandardError.ReadToEnd()
-    $proc.WaitForExit()
-    [pscustomobject]@{ ExitCode = $proc.ExitCode; Stdout = $out; Stderr = $err }
+    $errFile = [IO.Path]::GetTempFileName()
+    try {
+        $out = & gh @GhArgs 2>$errFile
+        $ec = $LASTEXITCODE
+        $err = (Get-Content -Raw -LiteralPath $errFile -ErrorAction SilentlyContinue) ?? ''
+        [pscustomobject]@{ ExitCode = $ec; Stdout = ($out | Out-String); Stderr = $err }
+    } finally {
+        Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
+    }
 }
 
 if (-not $Owner -or -not $Repo) {
@@ -135,18 +133,18 @@ do {
     if ($r.ExitCode -ne 0) {
         throw "GraphQL threads query failed (exit $($r.ExitCode)): $($r.Stderr) $($r.Stdout)"
     }
-    $tdata = $r.Stdout | ConvertFrom-Json
-    if ($tdata.errors) {
-        $msgs = ($tdata.errors | ForEach-Object { $_.message }) -join '; '
+    $threadResp = $r.Stdout | ConvertFrom-Json
+    if ($threadResp.errors) {
+        $msgs = ($threadResp.errors | ForEach-Object { $_.message }) -join '; '
         throw "GraphQL threads query returned errors: $msgs"
     }
-    $pagePr = $tdata.data.repository.pullRequest
+    $pagePr = $threadResp.data.repository.pullRequest
     if (-not $pagePr) { throw "PR #$PrNumber not found in $Owner/$Repo (threads page)." }
     $allThreads += $pagePr.reviewThreads.nodes
     $after = $pagePr.reviewThreads.pageInfo.endCursor
 } while ($pagePr.reviewThreads.pageInfo.hasNextPage)
 
-$copilotReviews = @($pr.reviews.nodes | Where-Object { $_.author.login -match '(?i)^(copilot-pull-request-reviewer(\[bot\])?|copilot(\[bot\])?)$' })
+$copilotReviews = @($pr.reviews.nodes | Where-Object { $_.author.login -match '(?i)^copilot-pull-request-reviewer(\[bot\])?$' })
 $latest = if ($copilotReviews.Count -gt 0) { $copilotReviews | Sort-Object submittedAt -Descending | Select-Object -First 1 } else { $null }
 
 $reviewAtHead = $false
