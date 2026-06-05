@@ -82,7 +82,7 @@ query($o:String!,$r:String!,$n:Int!){
     pullRequest(number:$n){
       headRefOid
       state
-      reviewRequests(first:50){nodes{requestedReviewer{__typename ... on Bot{login}}}}
+      reviewRequests(first:50){nodes{requestedReviewer{__typename ... on Bot{login} ... on User{login} ... on Mannequin{login}}}}
     }
   }
 }
