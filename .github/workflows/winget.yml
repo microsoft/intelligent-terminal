@@ -18,8 +18,14 @@ jobs:
       - name: Publish Intelligent Terminal
         run: |
           $assets = '${{ toJSON(github.event.release.assets) }}' | ConvertFrom-Json
-          $wingetRelevantAsset = $assets | Where-Object { $_.name -like '*.msixbundle' } | Select-Object -First 1
           $regex = [Regex]::New($env:REGEX)
+          $wingetRelevantAsset = $assets | Where-Object { $regex.IsMatch($_.name) } | Select-Object -First 1
+
+          if (-not $wingetRelevantAsset) {
+            Write-Error "No release asset matched '$env:REGEX'; nothing to publish to WinGet."
+            exit 1
+          }
+
           $version = $regex.Match($wingetRelevantAsset.name).Groups[1].Value
 
           $wingetPackage = "Microsoft.IntelligentTerminal"
