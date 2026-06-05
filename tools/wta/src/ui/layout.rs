@@ -216,17 +216,20 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         debug_panel::render(frame, app, debug_area);
     }
 
-    // Slash-command autocomplete: anchored above the input box. Drawn into
-    // the filler row between the perm panel and the hint row.
+    // Slash-command autocomplete: pinned directly above the input box
+    // (`chunks[6]`). Anchoring to the input box rather than the filler row
+    // keeps the popup glued to the input regardless of how much empty space
+    // sits above it — otherwise a short chat leaves a tall filler and the
+    // popup floats far up the pane (worst in side-by-side layouts).
     if let Some(popup_state) = app.command_popup_state() {
-        command_popup::render_popup(frame, popup_state, chunks[3]);
+        command_popup::render_popup(frame, popup_state, chunks[6]);
     }
 
     // `/model` picker modal: same anchor as the autocomplete popup. The two
     // are mutually exclusive — opening the picker clears the input, so the
     // command popup isn't visible while it's up.
     if let Some(model_state) = app.model_popup_state() {
-        model_popup::render_popup(frame, model_state, chunks[3]);
+        model_popup::render_popup(frame, model_state, chunks[6]);
     }
 
     // `/help` overlay sits on top of everything so the user can always
