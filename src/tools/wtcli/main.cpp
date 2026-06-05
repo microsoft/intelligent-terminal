@@ -161,7 +161,11 @@ static GUID GuidFromString(const std::string& target)
         guidStr = L"{" + guidStr + L"}";
     GUID g{};
     if (FAILED(CLSIDFromString(guidStr.c_str(), &g)))
+    {
+        if (!target.empty())
+            fprintf(stderr, "[wtcli] Invalid session ID: %s\n", target.c_str());
         return GUID{};
+    }
     return g;
 }
 

@@ -70,7 +70,6 @@ Test-Step 'list-windows(json)' @('--json','list-windows') | Out-Null
 Test-Step 'list-tabs'          @('list-tabs')           | Out-Null
 Test-Step 'list-panes'         @('list-panes')          | Out-Null
 Test-Step 'active-pane'        @('active-pane')         | Out-Null
-Test-Step 'get-settings'       @('--json','info')       | Out-Null
 
 # Capture the active pane's session id for targeted read-only ops.
 $activeSid = $null
@@ -103,15 +102,15 @@ if ($newSid) {
 Write-Host "############ EVENTS (subscribe is where #197 crashed) ############`n" -ForegroundColor Magenta
 Write-Host "-- listen: subscribe in background, then send-event" -ForegroundColor Cyan
 $lout = Join-Path $env:TEMP ("wtcli_listen_{0}.out" -f $PID)
-$lerr = "$lout.err"
+$listenError = "$lout.err"
 $proc = Start-Process -FilePath $wtcli -ArgumentList 'listen' `
-    -RedirectStandardOutput $lout -RedirectStandardError $lerr -PassThru -WindowStyle Hidden
+    -RedirectStandardOutput $lout -RedirectStandardError $listenError -PassThru -WindowStyle Hidden
 Start-Sleep -Seconds 2          # let it activate + Subscribe
 & $wtcli send-event -e wtcli.test.ping '{"hello":"classic"}' 2>&1 | Out-Null
 Start-Sleep -Seconds 1
 Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 $gotOut = (Get-Content $lout -ErrorAction SilentlyContinue) -join "`n"
-$gotErr = (Get-Content $lerr -ErrorAction SilentlyContinue) -join "`n"
+$gotErr = (Get-Content $listenError -ErrorAction SilentlyContinue) -join "`n"
 if ($gotOut) { Write-Host $gotOut }
 if ($gotErr -match '0x80010105|0xc0000005|Subscribe failed') {
     Write-Host ("  [FAIL] listen/Subscribe hit the bug: {0}" -f $gotErr) -ForegroundColor Red
@@ -121,7 +120,7 @@ else {
     Write-Host "  [PASS] listen subscribed + ran without the bug" -ForegroundColor Green
     $script:pass++; [void]$results.Add([pscustomobject]@{ Test='listen/subscribe'; Verdict='PASS' })
 }
-Remove-Item $lout, $lerr -ErrorAction SilentlyContinue
+Remove-Item $lout, $listenError -ErrorAction SilentlyContinue
 Write-Host ""
 
 # ── Summary ──

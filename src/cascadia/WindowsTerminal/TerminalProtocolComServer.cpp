@@ -174,10 +174,14 @@ static std::string _guidStr(const winrt::guid& g)
     return winrt::to_string(winrt::hstring{ ws });
 }
 
-// Allocate a BSTR from a UTF-8 std::string.
+// Allocate a BSTR from a UTF-8 std::string. Throws E_OUTOFMEMORY on allocation
+// failure so the (CATCH_RETURN-wrapped) caller returns a failure HRESULT rather
+// than S_OK with a null out-param.
 static BSTR _bstr(const std::string& utf8)
 {
-    return ::SysAllocString(winrt::to_hstring(utf8).c_str());
+    BSTR b = ::SysAllocString(winrt::to_hstring(utf8).c_str());
+    THROW_IF_NULL_ALLOC(b);
+    return b;
 }
 
 // Serialize a Json::Value to a compact BSTR.
