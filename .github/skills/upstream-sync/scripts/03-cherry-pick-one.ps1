@@ -222,7 +222,9 @@ if ($unhandled.Count -gt 0) {
 git cherry-pick --continue --no-edit 2>&1 | ForEach-Object { [Console]::Error.WriteLine($_) }
 if ($LASTEXITCODE -ne 0) {
     # Could still be empty after Tier-0.
-    $staged = git diff --cached --name-only
+    $stagedOut = git diff --cached --name-only 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "git diff --cached --name-only failed after cherry-pick --continue: $(($stagedOut | Out-String).Trim())" }
+    $staged = @($stagedOut | Where-Object { $_ -and $_.Trim() })
     if (-not $staged) {
         git cherry-pick --skip | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "git cherry-pick --skip failed after an empty Tier-0 continuation." }

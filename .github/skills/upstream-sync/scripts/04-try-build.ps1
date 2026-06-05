@@ -116,17 +116,21 @@ try {
     $psi.UseShellExecute        = $false
     $psi.CreateNoWindow         = $true
 
-    $proc       = [System.Diagnostics.Process]::Start($psi)
-    $baseWriter = $null
-    $writer     = $null
+    $proc            = New-Object System.Diagnostics.Process
+    $proc.StartInfo  = $psi
+    $baseWriter      = $null
+    $writer          = $null
 
     try {
         # Tee stdout/stderr to the log file as the build runs. The synchronized
         # wrapper serializes concurrent stdout/stderr DataReceived callbacks.
+        # Open the log + register handlers *before* Start() so the earliest
+        # build banner (razzle preamble, MSBuild startup) cannot be lost.
         $baseWriter = [System.IO.StreamWriter]::new($logPath, $false, [System.Text.UTF8Encoding]::new($false))
         $writer = [System.IO.TextWriter]::Synchronized($baseWriter)
         $proc.add_OutputDataReceived({ param($s,$e) if ($null -ne $e.Data) { $writer.WriteLine($e.Data) } })
         $proc.add_ErrorDataReceived({  param($s,$e) if ($null -ne $e.Data) { $writer.WriteLine($e.Data) } })
+        [void]$proc.Start()
         $proc.BeginOutputReadLine()
         $proc.BeginErrorReadLine()
 
@@ -174,7 +178,11 @@ try {
     } | ConvertTo-Json -Depth 4
 }
 catch {
-    Write-Error $_.Exception.Message
-    Write-Error $_.ScriptStackTrace
+    # $ErrorActionPreference='Stop' turns Write-Error into a terminating
+    # error, which would shadow the original exception. Emit diagnostics
+    # straight to stderr instead so we preserve the original record on
+    # the rethrow below.
+    [Console]::Error.WriteLine($_.Exception.Message)
+    [Console]::Error.WriteLine($_.ScriptStackTrace)
     throw
 }
