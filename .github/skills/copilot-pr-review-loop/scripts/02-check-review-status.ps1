@@ -57,7 +57,8 @@ $ErrorActionPreference = 'Stop'
 if (-not $Owner -or -not $Repo) {
     $repoJson = gh repo view --json owner,name
     if ($LASTEXITCODE -ne 0) {
-        throw "gh repo view failed. Pass -Owner and -Repo explicitly."
+        $repoErr = gh repo view --json owner,name 2>&1
+        throw "gh repo view failed. Pass -Owner and -Repo explicitly. Error: $repoErr"
     }
     $repoInfo = $repoJson | ConvertFrom-Json
     if (-not $Owner) { $Owner = $repoInfo.owner.login }
@@ -88,8 +89,11 @@ $d = $null
 do {
     $ghArgs = @('api', 'graphql', '-f', "query=$q", '-f', "o=$Owner", '-f', "r=$Repo", '-F', "n=$PrNumber")
     if ($after) { $ghArgs += @('-f', "after=$after") }
-    $j = gh @ghArgs 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "GraphQL snapshot failed (exit $LASTEXITCODE): $j" }
+    $j = gh @ghArgs
+    if ($LASTEXITCODE -ne 0) {
+        $err = gh @ghArgs 2>&1
+        throw "GraphQL snapshot failed (exit $LASTEXITCODE): $err"
+    }
     $d = $j | ConvertFrom-Json
     if ($d.errors) {
         $msgs = ($d.errors | ForEach-Object { $_.message }) -join '; '

@@ -123,10 +123,11 @@ if (-not $open) {
 foreach ($t in $open) {
     $c = $t.comments.nodes[0]
     $body = $c.body
+    $path = if ($null -ne $c.line -and $c.line -ne '') { "$($c.path):$($c.line)" } else { $c.path }
     [pscustomobject]@{
         ThreadId   = $t.id
         Author     = $c.author.login
-        Path       = "$($c.path):$($c.line)"
+        Path       = $path
         CreatedAt  = $c.createdAt
         Body       = $body -replace "`r?`n", ' '
     }

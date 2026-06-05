@@ -125,9 +125,17 @@ if (-not $beforeTs) { $beforeTs = '' }
 # ---------- trigger via GraphQL requestReviewsByLogin ----------
 
 $prIdQuery = "query{repository(owner:`"$Owner`",name:`"$Repo`"){pullRequest(number:$PrNumber){id}}}"
-$prNodeId = gh api graphql -f "query=$prIdQuery" --jq '.data.repository.pullRequest.id' 2>&1
-if ($LASTEXITCODE -ne 0) { throw "PR node id query failed: $prNodeId" }
-$prNodeId = ($prNodeId | Out-String).Trim()
+$prIdResp = gh api graphql -f "query=$prIdQuery"
+if ($LASTEXITCODE -ne 0) {
+    $prIdErr = gh api graphql -f "query=$prIdQuery" 2>&1
+    throw "PR node id query failed: $prIdErr"
+}
+$prIdJson = $prIdResp | ConvertFrom-Json
+if ($prIdJson.errors) {
+    $msgs = ($prIdJson.errors | ForEach-Object { $_.message }) -join '; '
+    throw "PR node id query returned GraphQL errors: $msgs"
+}
+$prNodeId = [string]$prIdJson.data.repository.pullRequest.id
 if ([string]::IsNullOrWhiteSpace($prNodeId) -or $prNodeId -eq 'null') {
     throw "Failed to resolve PR node id for $Owner/$Repo PR #$PrNumber. GraphQL returned '$prNodeId'."
 }
