@@ -92,19 +92,28 @@ obvious fix may violate a project rule.
 Common cases:
 
 - **Spell-check / dictionary findings**: many projects (including
-    `microsoft/intelligent-terminal`) follow this order: (1) **reword
-    the document** for genuine English misspellings; (2) add a regex
-    to `.github/actions/spelling/patterns/patterns.txt` (e.g.
-    `\bLOCALE_[A-Z][A-Z0-9_]+\b`) for OS API constants and code
-    identifier families — preferred because one regex covers all
-    future identifiers in the family; (3) add real dictionary words
-    (names, APIs) to `allow/` files; (4) use `expect/expect.txt`
-    sparingly for one-off project-specific terms that no reasonable
-    regex covers. Adding everything to `expect.txt` unboundedly is
-    the anti-pattern — it hides real typos. Check the project's
-    spelling config conventions and recent commits to patterns.txt /
-    expect.txt before adding any allowlist entry.
-- **Lint suppressions / `// NOLINT` / `# noqa`**: most projects only
+  `microsoft/intelligent-terminal`) follow this priority order:
+  1. **Reword the document** to use plain English when the finding is
+     a genuine misspelling or an avoidable jargon term — this is the
+     preferred fix.
+  2. **Add a regex to `.github/actions/spelling/patterns/patterns.txt`**
+     for OS API constants and code identifier *families* (e.g.
+     `\bLOCALE_[A-Z][A-Z0-9_]+\b`). Preferred over per-word entries
+     because one regex covers all future identifiers in the family.
+  3. **Add stable real words** (names, APIs, product terms that will
+     recur) to the `allow/` files — these are dictionary supplements
+     and persist for the life of the project.
+  4. **Use `expect/expect.txt` ONLY for transient, one-off non-words**
+     that no reasonable regex covers and that aren't real dictionary
+     words. Per this repo's own `expect/README.md`: "These terms are
+     things which temporarily exist in the project, but which aren't
+     necessarily words." Growing `expect.txt` unboundedly with stable
+     terms hides real typos and is the anti-pattern.
+
+  Always check the project's spelling config READMEs and recent
+  commits to `patterns.txt` / `allow/` / `expect.txt` before adding any
+  entry, so your fix matches the project's convention.
+- **Lint suppressions / inline ignore directives**: most projects only
   accept suppressions with an inline rationale comment. Bare
   suppressions get pushed back.
 - **License headers / file boilerplate**: project-specific format,

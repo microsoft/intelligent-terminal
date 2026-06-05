@@ -71,12 +71,20 @@ agent owns sequencing, commits, and the final mutating
 - **NEVER post `@copilot please review` (or any @copilot mention) as a
   PR comment** to trigger a code review. That summons the Copilot
   **Coding Agent** (which makes commits), not the reviewer bot. It will
-  not produce a review. The only valid triggers are the three
-  mechanisms tried by [scripts/01-request-review.ps1](scripts/01-request-review.ps1):
-  `gh pr edit --add-reviewer`, REST POST `requested_reviewers`, and
-  REST DELETE+POST cycle — all verified via the `copilot_work_started`
-  event in the issue timeline. If all three fail, push a substantive
-  commit and retry — do not fall back to @-mentions.
+  not produce a review. The valid triggers are the API mechanisms in
+  [scripts/01-request-review.ps1](scripts/01-request-review.ps1):
+  REST POST `requested_reviewers[]=Copilot` (primary), `gh pr edit
+  --add-reviewer Copilot` (best-effort fallback), and REST DELETE+POST
+  (only when Copilot is in `requested_reviewers` but stuck without a
+  `copilot_work_started` event for >5 min — never while a review is in
+  flight). All are verified via the `copilot_work_started` event in
+  the issue timeline. If none works, push a substantive commit and
+  retry — do not fall back to @-mentions.
+- **The most reliable trigger is pushing a substantive commit.** Most
+  repos auto-assign Copilot on `synchronize`. When `01-request-review.ps1`
+  fails (quiet-period after dismissal, silent server-side drop, Copilot
+  not enabled), the recommended remedy is to commit a real change
+  (non-whitespace, non-comment-only) and rely on auto-assignment.
 - **HTTP 200 / exit 0 from a re-request call is NOT proof Copilot
   accepted it.** The server can silently drop trivial-diff re-reviews.
   The only authoritative signal is a `copilot_work_started` event newer
@@ -153,8 +161,9 @@ agent owns sequencing, commits, and the final mutating
   current HEAD (default 35 min timeout — accounts for small-diff
   suppression).
 - [scripts/02-list-open-threads.ps1](scripts/02-list-open-threads.ps1) —
-  fetch unresolved Copilot review threads (outdated threads included
-  by default; reply + resolve every one).
+  fetch unresolved PR review threads from **all reviewers** (Copilot,
+  humans, github-advanced-security, etc.); outdated threads included
+  by default; reply + resolve every one.
 - [scripts/06-reply-and-resolve.ps1](scripts/06-reply-and-resolve.ps1) — post a
   reply and resolve in one call.
 - [scripts/09-cleanup-outdated.ps1](scripts/09-cleanup-outdated.ps1) —

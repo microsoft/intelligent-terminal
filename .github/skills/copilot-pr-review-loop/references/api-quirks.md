@@ -23,29 +23,53 @@ The `botLogins` argument was removed from the GraphQL schema. Do not waste
 time trying variants of it. The previous GraphQL bot-id approach (`BOT_kg...`)
 also returns `NOT_FOUND` for the Copilot reviewer.
 
-## ❌ REST `requested_reviewers` with bot login — HTTP 422
+## ⚠️ REST `requested_reviewers` with `reviewers[]=Copilot` — usually accepted, sometimes silently dropped
 
 ```bash
 gh api -X POST /repos/<owner>/<repo>/pulls/<n>/requested_reviewers \
-    -F 'reviewers[]=copilot-pull-request-reviewer'
+    -f 'reviewers[]=Copilot'
 ```
 
-Returns HTTP 422. The REST endpoint enforces that requested reviewers be
-repository collaborators, and bots are not collaborators.
+**This is currently the most reliable trigger.** Use `-f` (not `-F`)
+so `Copilot` is sent as a string. Capital "C" is required; the bot
+login `copilot-pull-request-reviewer` returns HTTP 422 because bots
+are not collaborators.
 
-Note: some related repositories have reported success with
-`-F 'reviewers[]=Copilot'` (capital C, no `-pull-request-reviewer` suffix)
-on the REST endpoint. This is inconsistent across orgs — treat it as a
-fallback, not a primary path.
+Caveats:
 
-## ✅ `gh pr edit --add-reviewer` — WORKS
+- The endpoint can return HTTP 201 success while **silently dropping**
+  the Copilot bot from `requested_reviewers`. Always verify by reading
+  the POST response body's `requested_reviewers` field AND/OR polling
+  the endpoint for ~10s. Server-side drops have been observed
+  immediately after a `review_request_removed` event (quiet-period
+  after dismissal), when Copilot Code Review is not enabled on the
+  repo, and for some private user-owned repos without a Copilot
+  subscription.
+- HTTP success is NOT sufficient — wait for a `copilot_work_started`
+  event in the issue timeline to confirm the bot actually picked up
+  the work. That is the only authoritative signal.
+
+## ⚠️ `gh pr edit --add-reviewer Copilot` — best-effort fallback only
 
 ```bash
-gh pr edit <pr-number> --add-reviewer copilot-pull-request-reviewer
+gh pr edit <pr-number> --add-reviewer Copilot
 ```
 
-This is the only consistently working method to trigger a fresh Copilot
-review. It is idempotent — re-running it queues another review.
+Behavior is inconsistent across `gh` CLI versions and account types.
+On current `gh` (verified against intelligent-terminal and personal
+repos), this returns:
+
+> 'Copilot' not found
+> exit 1
+
+for both `Copilot` and `copilot-pull-request-reviewer`. Older versions
+and some account configurations may succeed. Keep this as a fallback
+attempted AFTER the REST POST, never as the primary path.
+
+(Previous editions of this document called `gh pr edit --add-reviewer
+copilot-pull-request-reviewer` "the only consistently working method".
+That claim no longer holds. The REST POST + event-log verification is
+the canonical flow.)
 
 ## ✅ GraphQL `addPullRequestReviewThreadReply` + `resolveReviewThread` — WORKS
 

@@ -27,7 +27,7 @@
          a. REST POST `requested_reviewers[]=Copilot`. Verified by
             reading the POST response body's `requested_reviewers` and
             polling `requested_reviewers` for ~10s (the POST can return
-            HTTP 201 while silently dropping Copilot — cooldown after
+            HTTP 201 while silently dropping Copilot — quiet-period after
             dismissal, Copilot not enabled on repo, bot not a
             collaborator).
          b. `gh pr edit --add-reviewer Copilot` as best-effort
@@ -91,20 +91,32 @@ $repoArg = "$Owner/$Repo"
 # actually picks up the request server-side. A review_requested event
 # without a follow-up copilot_work_started means the bot saw the request
 # but declined to queue a review.
+#
+# Pagination note: the REST events endpoint returns events oldest-first,
+# 100 per page. We MUST --paginate (which fetches all pages) so the
+# newest events are in the result; otherwise on PRs with >100 events the
+# latest copilot_work_started will be silently missed and the
+# verification logic will spin / falsely report "no event".
 function Get-LatestCopilotWorkStarted {
-    $json = gh api "repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100" `
+    $json = gh api --paginate "repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100" `
         --jq '[.[] | select(.event=="copilot_work_started") | .created_at] | sort | .[-1] // ""'
     if ($LASTEXITCODE -ne 0) {
         throw "gh api events failed (exit $LASTEXITCODE) while snapshotting copilot_work_started events."
     }
-    return $json.Trim()
+    # --paginate concatenates jq output from each page; take the last line which is the newest.
+    $lines = $json -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+    if (-not $lines -or $lines.Count -eq 0) { return '' }
+    # Each page's --jq emitted a single timestamp; take the maximum across all pages.
+    ($lines | Sort-Object | Select-Object -Last 1)
 }
 
 function Get-LatestReviewRequested {
-    $json = gh api "repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100" `
+    $json = gh api --paginate "repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100" `
         --jq '[.[] | select(.event=="review_requested" and (.requested_reviewer.login // "" | test("^(?i)copilot"))) | .created_at] | sort | .[-1] // ""'
     if ($LASTEXITCODE -ne 0) { return '' }
-    return $json.Trim()
+    $lines = $json -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+    if (-not $lines -or $lines.Count -eq 0) { return '' }
+    ($lines | Sort-Object | Select-Object -Last 1)
 }
 
 function Get-PrStateSnapshot {
@@ -237,7 +249,7 @@ if ($stuckPending) {
 # Mechanism 1: REST POST reviewers[]=Copilot
 # Verify by reading the response body's requested_reviewers AND by
 # polling. The POST can return HTTP 201 while silently dropping
-# Copilot (cooldown after recent dismissal, Copilot not enabled on
+# Copilot (quiet-period after recent dismissal, Copilot not enabled on
 # repo, bot not a collaborator, etc.).
 $postBody = gh api -X POST "repos/$Owner/$Repo/pulls/$PrNumber/requested_reviewers" -f "reviewers[]=Copilot" 2>&1
 $postExit = $LASTEXITCODE
@@ -262,14 +274,26 @@ if ($postAccepted) {
         Write-Host "Copilot review requested on PR #$PrNumber via REST POST (work started at $afterTs)."
         exit 0
     }
-    Write-Host "Copilot was added to requested_reviewers but did not emit copilot_work_started within 30s. Run scripts/02-wait-for-review.ps1 — it will still wait."
-    exit 0
+    # The REST API confirmed Copilot is in requested_reviewers, but no
+    # copilot_work_started event fired within 30s. This is ambiguous:
+    # the bot may simply be slow to pick up the request, OR it may have
+    # dropped the request silently (rare but observed). We MUST NOT exit
+    # 0 here — the script's contract is "verified by copilot_work_started
+    # event". Exit 0 with a warning sends the caller into a 35-min wait
+    # for a review that may never arrive ("wait for nothing").
+    #
+    # Try the gh pr edit fallback below; if THAT also fails, throw with
+    # diagnostics. The caller can then make an informed decision (push a
+    # substantive commit, wait longer, etc.) rather than blindly trusting
+    # an unverified trigger.
+    Write-Host "WARNING: Copilot is in requested_reviewers but no copilot_work_started event observed within 30s. Trying fallback mechanism."
 }
 
 # Mechanism 2: gh pr edit --add-reviewer Copilot
 # Best-effort fallback. Known to return "not found" in many gh CLI
-# versions (the bot is not a regular collaborator), but it occasionally
-# succeeds on accounts where the REST path is silently dropped.
+# versions for BOTH 'Copilot' and 'copilot-pull-request-reviewer' logins
+# (the bot is not a regular collaborator). Kept as a fallback because
+# behavior varies across gh-cli versions and account types.
 $mech2Stderr = (gh pr edit $PrNumber --repo $repoArg --add-reviewer Copilot 2>&1 | Out-String)
 $tried += "gh pr edit --add-reviewer Copilot (exit=$LASTEXITCODE)"
 
@@ -279,6 +303,27 @@ if ($afterTs) {
     exit 0
 }
 
+# If the REST POST was accepted (Copilot in requested_reviewers) but no
+# copilot_work_started event yet, throw a SPECIFIC diagnostic rather
+# than the generic one — this is a different situation (bot might just
+# be slow) and deserves its own next-step guidance.
+if ($postAccepted) {
+    throw @'
+Copilot was successfully added to requested_reviewers, but no
+copilot_work_started event landed within ~50 seconds. The bot may be
+slow to pick up the request, or may have silently dropped it. The
+script's contract is "verified by copilot_work_started event" -- exiting
+0 here would send the caller into a long wait for a review that may
+never arrive.
+
+Recommended next steps (try in order):
+  * Wait 2-5 min and rerun this script -- the bot may simply be slow.
+  * Push a substantive commit -- repo auto-assign on synchronize is
+    the most reliable trigger.
+  * Verify Copilot Code Review is enabled on the repo + your account.
+'@
+}
+
 throw @'
 Copilot review trigger: all mechanisms attempted, none produced a
 copilot_work_started event within the timeout.
@@ -286,10 +331,10 @@ copilot_work_started event within the timeout.
 
 
 Most likely causes (in order of frequency):
-  * Cooldown after a recent dismissal of Copilot from this PR. After
+  * Quiet-period after a recent dismissal of Copilot from this PR. After
     a `review_request_removed` event, GitHub typically suppresses
     re-adds for several minutes. Wait 5-10 min and rerun; or push a
-    substantive new commit to bypass the cooldown.
+    substantive new commit to bypass the quiet period.
   * Trivial / small diff suppressed by Copilot before any review has
     run. Push a substantive (non-whitespace, non-comment-only) commit
     and retry — this is also the canonical remedy on initial PR

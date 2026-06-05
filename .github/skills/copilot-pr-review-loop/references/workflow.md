@@ -45,22 +45,42 @@ sequencing, the `git commit`/`git push`, and the final
 
 ## 1. Request a Copilot review
 
-Run [scripts/01-request-review.ps1](../scripts/01-request-review.ps1) — it tries the
-three known trigger mechanisms in order (`gh pr edit --add-reviewer`,
-REST POST, REST DELETE+POST) and verifies success by watching the issue
-event log for a new `copilot_work_started` event within ~30 seconds.
+Run [scripts/01-request-review.ps1](../scripts/01-request-review.ps1). It first
+snapshots state (current HEAD, latest `copilot_work_started`, whether
+Copilot is currently a requested reviewer, whether Copilot already
+reviewed this HEAD), then takes the safest applicable action:
+
+- **AlreadyReviewed** — Copilot has already submitted a review at the
+  current HEAD. Nothing to trigger; the script exits 0.
+- **AlreadyInFlight** — a recent `copilot_work_started` event landed
+  for the current HEAD with no follow-up review yet. The script does
+  NOT re-trigger; doing so would risk cancelling the in-flight review.
+  Exits 0; move to step 2 to wait for submission.
+- **Stuck-pending re-arm** — Copilot is in `requested_reviewers` but
+  no `copilot_work_started` has fired for >5 min after the request.
+  The script issues a DELETE+POST cycle to re-arm. This is the ONLY
+  path that ever deletes — it never runs while a review is in flight.
+- **Fresh trigger** — Copilot is not currently a reviewer. The script
+  tries REST POST `requested_reviewers[]=Copilot` first (verified by
+  reading the response body and polling `requested_reviewers` for
+  ~10s), then `gh pr edit --add-reviewer Copilot` as best-effort
+  fallback. Both are then verified by polling the issue event log for
+  a `copilot_work_started` event newer than the snapshot.
+
 HTTP / exit status alone is NOT sufficient — the server can silently
-drop trivial-diff re-reviews while returning success. See
-[api-quirks.md](api-quirks.md).
+drop re-reviews while returning success. See [api-quirks.md](api-quirks.md).
 
 ```powershell
 pwsh ../scripts/01-request-review.ps1 -PrNumber <pr-number>
 ```
 
-If all three mechanisms fail (no `copilot_work_started` event), the
-script throws with diagnostic guidance. The usual cause is Copilot
-suppressing a re-review of an unchanged HEAD — push a substantive new
-commit and retry.
+If no `copilot_work_started` event lands (or no review was needed in
+the first place), the script throws with actionable diagnostics. The
+most common cause when re-triggering after a recent dismissal is a
+short server-side quiet-period; the canonical remedy in any "trigger
+failed" case is to push a substantive (non-whitespace,
+non-comment-only) commit — most repos auto-assign Copilot on
+`synchronize` and that path is the most reliable.
 
 **DO NOT** post `@copilot please review` (or any @copilot mention) as a
 PR comment. That summons the Copilot **Coding Agent** (which makes
