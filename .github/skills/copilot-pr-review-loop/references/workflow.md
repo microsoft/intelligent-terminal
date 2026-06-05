@@ -60,8 +60,7 @@ that field has stale-cache behavior), then returns one of these outcomes:
      `requestReviews`), `botLogins` (not `userLogins`), and the
      `copilot-pull-request-reviewer` slug (not `Copilot`).
   2. **FALLBACK: REST POST** `requested_reviewers[]=Copilot`,
-     verified by reading the response body's `requested_reviewers`
-     and polling.
+     verified by polling for a `copilot_work_started` event.
   3. **FALLBACK: `gh pr edit --add-reviewer Copilot`**. Known to
      return "not found" on current gh CLI for many accounts; kept
      as last-ditch.

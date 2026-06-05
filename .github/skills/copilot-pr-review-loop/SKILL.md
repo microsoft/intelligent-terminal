@@ -63,7 +63,7 @@ resumable checklist, is in [references/workflow.md](references/workflow.md).
 ```
 Request review + verify pickup → Agent-level wait + status check → List
 open threads → Triage → Fix → Build/test → Reply + resolve → Commit +
-push → Convergence check → Loop → Cleanup outdated (final, once)
+push → Convergence check → Cleanup outdated (final, once)
 ```
 
 Terminate when a review with `commit.oid == current HEAD` returns "no new

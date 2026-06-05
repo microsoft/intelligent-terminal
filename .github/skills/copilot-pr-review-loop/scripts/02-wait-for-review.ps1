@@ -73,16 +73,10 @@ function Get-ReviewStatus {
 $start = Get-Date
 $initial = Get-ReviewStatus
 if (-not $ExpectedHeadOid) { $ExpectedHeadOid = $initial.HeadOid }
-if (-not $SinceTimestamp) {
-    $SinceTimestamp = if ($initial.LatestCopilotReview) {
-        $initial.LatestCopilotReview.submittedAt
-    } else {
-        '1970-01-01T00:00:00Z'
-    }
-}
-$sinceDt = ToUtcDt $SinceTimestamp
+$sinceDt = if ($SinceTimestamp) { ToUtcDt $SinceTimestamp } else { $null }
 
-Write-Host "[baseline] expectedHead=$(Short $ExpectedHeadOid) since=$SinceTimestamp timeout=${TimeoutMinutes}min poll=${PollSeconds}s"
+$sinceDisplay = if ($SinceTimestamp) { $SinceTimestamp } else { '(none)' }
+Write-Host "[baseline] expectedHead=$(Short $ExpectedHeadOid) since=$sinceDisplay timeout=${TimeoutMinutes}min poll=${PollSeconds}s"
 
 $deadline = $start.AddMinutes($TimeoutMinutes)
 $last = $initial
@@ -110,7 +104,7 @@ while ($true) {
     }
 
     $latestDt = if ($current.LatestCopilotReview) { ToUtcDt $current.LatestCopilotReview.submittedAt } else { $null }
-    $freshReviewAtHead = $current.ReviewAtHead -and $latestDt -and $latestDt -gt $sinceDt
+    $freshReviewAtHead = $current.ReviewAtHead -and (-not $sinceDt -or ($latestDt -and $latestDt -gt $sinceDt))
     if ($freshReviewAtHead) {
         $result = [ordered]@{
             Owner              = $current.Owner
