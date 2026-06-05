@@ -69,6 +69,7 @@ foob
 fooba
 footgun
 formedness
+forwardable
 FTCS
 gantt
 gfm
@@ -84,6 +85,8 @@ greenfield
 greppable
 haikus
 handover
+hashtable
+hashtables
 historicals
 hstrings
 https
