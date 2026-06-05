@@ -177,13 +177,7 @@ $beforeTs = Get-LatestCopilotWorkStarted
 $headOid  = $snapshot.HeadOid
 
 if ($snapshot.State -ne 'OPEN') {
-    @{
-        Status   = 'Error'
-        Detail   = "PR is not OPEN (state=$($snapshot.State))."
-        PrNumber = $PrNumber
-        HeadOid  = $headOid
-    } | ConvertTo-Json -Compress
-    exit 1
+    throw "PR #$PrNumber is not OPEN (state=$($snapshot.State), head=$headOid)."
 }
 
 # In-flight protection: if a copilot_work_started exists that's newer

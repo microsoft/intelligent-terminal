@@ -8,16 +8,16 @@ convergence conditions in step 9 hold, then run step 10 once.
 Track progress through one round with this list (copy into your scratch
 notes or session todos):
 
-- [ ] **1.** Request review — `pwsh scripts/01-request-review.ps1 -PrNumber <n>`. Returns JSON immediately with `Status: TriggerLanded | InFlight` on success, or throws on failure. NEVER blocks waiting for the actual review submission — that's the agent's job (see step 2).
-- [ ] **2.** Wait at the agent level, then snapshot — schedule a check 3-5 minutes after step 1, then call `pwsh scripts/02-check-review-status.ps1 -PrNumber <n>`. Returns single-shot JSON with `ReviewAtHead`, `NoNewComments`, `OpenThreadCount`, `Converged` (all booleans). If `ReviewAtHead == false` after 5 min, wait another few minutes and call again — the bot usually responds in 3-15 min total. **Do NOT use a blocking wait script** — that approach was deprecated; the agent's own scheduling is the right place for the wait loop.
-- [ ] **3.** List open threads — `pwsh scripts/02-list-open-threads.ps1 -PrNumber <n>` (prints every unresolved thread — reply + resolve them all)
+- [ ] **1.** Request review — `pwsh ../scripts/01-request-review.ps1 -PrNumber <n>`. Returns JSON immediately with `Status: TriggerLanded | InFlight` on success, or throws on failure. NEVER blocks waiting for the actual review submission — that's the agent's job (see step 2).
+- [ ] **2.** Wait at the agent level, then snapshot — schedule a check 3-5 minutes after step 1, then call `pwsh ../scripts/02-check-review-status.ps1 -PrNumber <n>`. Returns single-shot JSON with `ReviewAtHead`, `NoNewComments`, `OpenThreadCount`, `Converged` (all booleans). If `ReviewAtHead == false` after 5 min, wait another few minutes and call again — the bot usually responds in 3-15 min total. **Do NOT use a blocking wait script** — that approach was deprecated; the agent's own scheduling is the right place for the wait loop.
+- [ ] **3.** List open threads — `pwsh ../scripts/02-list-open-threads.ps1 -PrNumber <n>` (prints every unresolved thread — reply + resolve them all)
 - [ ] **4.** Triage each finding using [03-triage-criteria.md](03-triage-criteria.md)
 - [ ] **5.** Apply fixes — one sub-agent per independent change
 - [ ] **6.** Build + run affected tests (no unverified pushes)
-- [ ] **7.** Reply + resolve each thread using [06-reply-templates.md](06-reply-templates.md) → `pwsh scripts/06-reply-and-resolve.ps1`
+- [ ] **7.** Reply + resolve each thread using [06-reply-templates.md](06-reply-templates.md) → `pwsh ../scripts/06-reply-and-resolve.ps1`
 - [ ] **8.** Commit + push the round's changes (one focused commit per round)
-- [ ] **9.** Convergence check — call `02-check-review-status.ps1`; converged iff its JSON shows `Converged: true` (which is set when ALL THREE of `ReviewAtHead && NoNewComments && OpenThreadCount==0` hold).
-- [ ] **10.** (once at end of loop) Cleanup outdated — `pwsh scripts/09-cleanup-outdated.ps1 -PrNumber <n>` (safety net only — most loops converge with nothing to clean)
+- [ ] **9.** Convergence check — call `pwsh ../scripts/02-check-review-status.ps1 -PrNumber <n>`; converged iff its JSON shows `Converged: true` (which is set when ALL THREE of `ReviewAtHead && NoNewComments && OpenThreadCount==0` hold).
+- [ ] **10.** (once at end of loop) Cleanup outdated — `pwsh ../scripts/09-cleanup-outdated.ps1 -PrNumber <n>` (safety net only — most loops converge with nothing to clean)
 
 If step 9 fails on any condition, loop back to step 1. If step 9 passes
 on all three, run step 10 once and you're done. Print the review's
