@@ -27,6 +27,9 @@
     <ClCompile>
       <PreprocessorDefinitions>_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <!-- Pick up the MIDL-generated classic-COM header IAgentChannel.h that
+           OpenConsoleProxy emits into its sibling IntDir. -->
+      <AdditionalIncludeDirectories>$(IntDir)..\OpenConsoleProxy;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -46,6 +49,13 @@
   <ItemGroup>
     <ProjectReference Include="$(OpenConsoleDir)src\cascadia\TerminalProtocol\TerminalProtocol.vcxproj">
       <Project>{F1A2B3C4-D5E6-4F7A-8B9C-0D1E2F3A4B5D}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <!-- Build dependency — OpenConsoleProxy must build first so IAgentChannel.h
+         (the classic-COM PoC header) exists before we compile. Build-order only;
+         the proxy/stub itself is loaded at runtime via the package manifest. -->
+    <ProjectReference Include="$(OpenConsoleDir)src\host\proxy\Host.Proxy.vcxproj">
+      <Project>{71CC9D78-BA29-4D93-946F-BEF5D9A3A6EF}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
   </ItemGroup>

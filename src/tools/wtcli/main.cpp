@@ -8,6 +8,10 @@
 #include "Formatting.h"
 #include "wtcli_functions.h"
 
+// Classic-COM PoC transport. Generated from src/host/proxy/IAgentChannel.idl;
+// found via the OpenConsoleProxy IntDir added to this project's include path.
+#include "IAgentChannel.h"
+
 #include <CLI/CLI.hpp>
 
 #include <chrono>
@@ -33,6 +37,45 @@ struct EventCallback : winrt::implements<EventCallback, Protocol::IProtocolEvent
 
 private:
     std::function<void(winrt::hstring const&)> _handler;
+};
+
+// ── PocSink — a *pure classic-COM* event sink for the IAgentChannel PoC ──
+// Hand-rolled IUnknown (no cppwinrt/WinRT) so the experiment unambiguously
+// exercises the classic proxy/stub marshaling path, not MBM.
+struct PocSink : IAgentChannelSink
+{
+    LONG _ref{ 1 };
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override
+    {
+        if (!ppv)
+            return E_POINTER;
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(IAgentChannelSink))
+        {
+            *ppv = static_cast<IAgentChannelSink*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppv = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&_ref); }
+
+    ULONG STDMETHODCALLTYPE Release() override
+    {
+        const auto r = InterlockedDecrement(&_ref);
+        if (r == 0)
+            delete this;
+        return r;
+    }
+
+    HRESULT STDMETHODCALLTYPE OnEvent(BSTR eventJson) override
+    {
+        printf("[poc event] %ls\n", eventJson ? eventJson : L"");
+        fflush(stdout);
+        return S_OK;
+    }
 };
 
 // ── Helpers ──
@@ -795,6 +838,57 @@ int main()
         WaitForSingleObject(s_stopEvent, INFINITE);
         server.Unsubscribe();
         CloseHandle(s_stopEvent);
+    });
+
+    // ── poc-listen (classic-COM transport PoC) ──
+    // Activates IAgentChannel via classic CoCreateInstance (NOT
+    // winrt::create_instance/MBM), does a Ping round-trip, subscribes a classic
+    // sink, and prints the events the server pushes back. The whole path is
+    // marshaled by the OpenConsoleProxy proxy/stub, so it never touches the
+    // WinRT activation catalog.
+    auto* pocListenCmd = app.add_subcommand("poc-listen", "PoC: classic-COM IAgentChannel subscribe + event callback");
+    pocListenCmd->callback([&]() {
+        // CLSID_AgentChannelPoc (Dev) — must match Package-Dev.appxmanifest's
+        // com:Class and the server's __declspec(uuid).
+        const CLSID clsid = { 0x4E1F8A92, 0x6C3D, 0x4B7A, { 0x8E, 0x5F, 0x0A, 0x1B, 0x2C, 0x3D, 0x4E, 0x6F } };
+
+        winrt::com_ptr<IAgentChannel> channel;
+        auto hr = CoCreateInstance(clsid, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(IAgentChannel), channel.put_void());
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "[poc] CoCreateInstance failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+
+        // Plain request/response.
+        BSTR in = ::SysAllocString(L"hello");
+        BSTR pong = nullptr;
+        if (SUCCEEDED(channel->Ping(in, &pong)) && pong)
+        {
+            printf("[poc ping] %ls\n", pong);
+            ::SysFreeString(pong);
+        }
+        ::SysFreeString(in);
+
+        // Event callback over classic COM.
+        auto* sink = new PocSink();
+        hr = channel->Subscribe(sink);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "[poc] Subscribe failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            sink->Release();
+            exitCode = 1;
+            return;
+        }
+
+        printf("[poc] subscribed; waiting for events...\n");
+        fflush(stdout);
+        // The server fires 5 events at 500ms intervals; wait long enough to get them.
+        Sleep(5000);
+
+        channel->Unsubscribe();
+        sink->Release();
     });
 
     // ── Default (no subcommand) ──

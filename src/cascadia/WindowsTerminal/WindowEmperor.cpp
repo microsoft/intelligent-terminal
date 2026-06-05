@@ -16,6 +16,7 @@
 
 #include "AppHost.h"
 #include "TerminalProtocolComServer.h"
+#include "CAgentChannelPoc.h"
 #include "resource.h"
 #include "VirtualDesktopUtils.h"
 #include "../../types/inc/User32Utils.hpp"
@@ -38,6 +39,7 @@ WindowEmperor::~WindowEmperor()
 {
     // Revoke COM class factory before destroying resources.
     LOG_IF_FAILED(TerminalProtocolComServer::s_StopListening());
+    LOG_IF_FAILED(CAgentChannelPoc::s_StopListening());
 }
 
 #ifdef _WIN64
@@ -1669,6 +1671,13 @@ void WindowEmperor::_initializeProtocolServer()
             SetEnvironmentVariableW(L"WT_COM_CLSID", _comClsid.c_str());
         }
     }
+
+    // Classic-COM PoC channel (IAgentChannel), registered alongside the WinRT
+    // protocol server. Marshaled via the OpenConsoleProxy proxy/stub, so it
+    // avoids the WinRT MBM activation catalog implicated in the combase crash.
+    // The Dev CLSID is fixed + manifest-declared, so clients don't need a
+    // discovery env var (unlike WT_COM_CLSID).
+    LOG_IF_FAILED(CAgentChannelPoc::s_StartListening());
 
     OutputDebugStringA(fmt::format("WT Protocol Server started\n  WT_COM_CLSID={}\n",
                                    winrt::to_string(_comClsid))
