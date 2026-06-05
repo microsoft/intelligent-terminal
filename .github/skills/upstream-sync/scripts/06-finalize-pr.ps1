@@ -88,19 +88,24 @@ $title = "chore(upstream): sync microsoft/terminal up to $shortTo"
 # Retry up to 3 times with a short delay: `gh pr create` on Windows occasionally fails
 # with "Head sha can't be blank" right after a push (see SKILL.md gotcha).
 $prUrl = $null
-for ($attempt = 1; $attempt -le 3; $attempt++) {
-    $prUrl = gh pr create -R microsoft/intelligent-terminal --base main --head $branch --title $title --body-file $bodyPath 2>&1 | Select-Object -Last 1
-    if ($LASTEXITCODE -eq 0 -and $prUrl -match '^https://github.com/') { break }
-    Write-Warning "gh pr create attempt $attempt failed: $prUrl"
-    Start-Sleep -Seconds 5
+try {
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $prUrl = gh pr create -R microsoft/intelligent-terminal --base main --head $branch --title $title --body-file $bodyPath 2>&1 | Select-Object -Last 1
+        if ($LASTEXITCODE -eq 0 -and $prUrl -match '^https://github.com/') { break }
+        Write-Warning "gh pr create attempt $attempt failed: $prUrl"
+        Start-Sleep -Seconds 5
+    }
+    if ($LASTEXITCODE -ne 0 -or $prUrl -notmatch '^https://github.com/') {
+        throw "gh pr create did not return a PR URL after 3 attempts. Last output: $prUrl"
+    }
 }
-if ($LASTEXITCODE -ne 0 -or $prUrl -notmatch '^https://github.com/') {
-    throw "gh pr create did not return a PR URL after 3 attempts. Last output: $prUrl"
+finally {
+    # Always clean up the temp PR body file — even if `gh pr create` failed
+    # after all retries, the temp file should not leak in %TEMP%.
+    Remove-Item -LiteralPath $bodyPath -Force -ErrorAction SilentlyContinue
 }
 
 $Ctx.PrUrl = $prUrl.Trim()
-
-Remove-Item -LiteralPath $bodyPath -Force -ErrorAction SilentlyContinue
 
 # Backfill PR URL into state.last_run AND state.history[0] (best-effort
 # follow-up commit) BEFORE arming auto-merge. If auto-merge is already

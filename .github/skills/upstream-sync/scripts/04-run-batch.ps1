@@ -146,12 +146,26 @@ try {
         # open. List all open PRs (--limit 200 covers the corner case
         # where a repo has more than the default 30 open) and filter
         # client-side by headRefName.
-        $existingJson = gh pr list --repo microsoft/intelligent-terminal --state open --limit 200 --json number,headRefName,url 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            # `gh` missing / not authenticated / network-blocked. Don't
-            # silently continue and waste a full pick + scan + build
-            # only to fail later in 06-finalize-pr.ps1 — fail fast.
-            Exit-Hard "gh pr list failed (exit $LASTEXITCODE): $existingJson. The existing-PR gate requires gh to be installed and authenticated. Re-run with -Force to bypass (at your own risk), or with -DryRun / -PushDirectToMain to skip the gate."
+        #
+        # Capture stdout (JSON) and stderr separately: merging them with
+        # `2>&1` breaks ConvertFrom-Json when `gh` emits any warning or
+        # progress text on stderr even at exit 0 (e.g. version-update
+        # notice, deprecation warning). stderr is only used for the
+        # failure message.
+        $errFile = [System.IO.Path]::GetTempFileName()
+        try {
+            $existingJson = gh pr list --repo microsoft/intelligent-terminal --state open --limit 200 --json number,headRefName,url 2>$errFile
+            $ghExit = $LASTEXITCODE
+            if ($ghExit -ne 0) {
+                # `gh` missing / not authenticated / network-blocked. Don't
+                # silently continue and waste a full pick + scan + build
+                # only to fail later in 06-finalize-pr.ps1 — fail fast.
+                $errText = if (Test-Path $errFile) { (Get-Content -Raw -LiteralPath $errFile) } else { '' }
+                Exit-Hard "gh pr list failed (exit $ghExit): $errText. The existing-PR gate requires gh to be installed and authenticated. Re-run with -Force to bypass (at your own risk), or with -DryRun / -PushDirectToMain to skip the gate."
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
         }
         if ($existingJson) {
             $existing = @($existingJson | ConvertFrom-Json) | Where-Object { $_.headRefName -like 'upstream-sync/*' }
