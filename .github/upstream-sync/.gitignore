@@ -1,6 +1,7 @@
 build-logs/
 
-# Local-only reports — see references/reporting.md for retention model.
+# Local-only reports — see .github/skills/upstream-sync/references/reporting.md
+# for the retention model.
 # - 'ok' and 'stuck*' reports get committed (orchestrator stages them).
 # - no-op / dry-run / skipped-* reports are diagnostic-only and stay
 #   local. Without ignoring them, the next scheduled run would fail at

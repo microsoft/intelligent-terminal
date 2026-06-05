@@ -85,7 +85,7 @@ $title = "chore(upstream): sync microsoft/terminal up to $shortTo"
 # so --head takes the bare branch name. `--head OWNER:BRANCH` would tell gh to
 # look on a fork owned by OWNER, which is wrong for this scheduler.
 #
-# Retry once after a short delay: `gh pr create` on Windows occasionally fails
+# Retry up to 3 times with a short delay: `gh pr create` on Windows occasionally fails
 # with "Head sha can't be blank" right after a push (see SKILL.md gotcha).
 $prUrl = $null
 for ($attempt = 1; $attempt -le 3; $attempt++) {
