@@ -181,14 +181,16 @@ try {
 
 $deadline = (Get-Date).AddSeconds($VerifySeconds)
 $afterTs = ''
-while ((Get-Date) -lt $deadline) {
-    Start-Sleep -Seconds 5
+do {
     $r = Invoke-Gh -GhArgs @('api','--paginate',"repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100",'--jq','[.[] | select(.event=="copilot_work_started") | .created_at] | sort | .[-1] // ""')
     if ($r.ExitCode -eq 0) {
         $now = (@($r.Stdout -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }) | Sort-Object | Select-Object -Last 1)
         if ($now -and [string]::CompareOrdinal($now, $beforeTs) -gt 0) { $afterTs = $now; break }
     }
-}
+    if ((Get-Date) -ge $deadline) { break }
+    $remaining = [int]($deadline - (Get-Date)).TotalSeconds
+    Start-Sleep -Seconds ([Math]::Min(5, [Math]::Max(1, $remaining)))
+} while ((Get-Date) -lt $deadline)
 
 if (-not $afterTs) {
     throw @"

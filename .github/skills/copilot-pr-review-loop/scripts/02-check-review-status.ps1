@@ -108,19 +108,11 @@ $d = $null
 do {
     $ghArgs = @('api', 'graphql', '-f', "query=$q", '-f', "o=$Owner", '-f', "r=$Repo", '-F', "n=$PrNumber")
     if ($after) { $ghArgs += @('-f', "after=$after") }
-    $psi = [System.Diagnostics.ProcessStartInfo]::new('gh')
-    foreach ($arg in $ghArgs) { $null = $psi.ArgumentList.Add($arg) }
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $j = $proc.StandardOutput.ReadToEnd()
-    $err = $proc.StandardError.ReadToEnd()
-    $proc.WaitForExit()
-    if ($proc.ExitCode -ne 0) {
-        throw "GraphQL snapshot failed (exit $($proc.ExitCode)): $err $j"
+    $r = Invoke-Gh -GhArgs $ghArgs
+    if ($r.ExitCode -ne 0) {
+        throw "GraphQL snapshot failed (exit $($r.ExitCode)): $($r.Stderr) $($r.Stdout)"
     }
-    $d = $j | ConvertFrom-Json
+    $d = $r.Stdout | ConvertFrom-Json
     if ($d.errors) {
         $msgs = ($d.errors | ForEach-Object { $_.message }) -join '; '
         throw "GraphQL snapshot returned errors: $msgs"
