@@ -92,6 +92,54 @@ namespace winrt::TerminalApp::implementation
             }
             return out;
         }
+
+        // Snapshot which non-WSL shells the user has at least one
+        // profile for. MUST be called on the UI thread for the same
+        // reason as _SnapshotWslDistroNames — _settings.AllProfiles() is
+        // an observable live vector.
+        //
+        // Used to gate Install: writing a shell-integration block for
+        // a shell the user has no profile for would pollute their HOME
+        // with a file they will never source. WSL is not part of this
+        // snapshot because the per-distro list above is already the
+        // gate for WSL bash.
+        struct ShellPresence
+        {
+            bool pwsh{ false };
+            bool windowsPowerShell{ false };
+            bool bash{ false };
+        };
+        inline ShellPresence _SnapshotShellPresence(const CascadiaSettings& settings)
+        {
+            ShellPresence out{};
+            if (!settings)
+            {
+                return out;
+            }
+            namespace SI = ::Microsoft::Terminal::ShellIntegration;
+            for (const auto& profile : settings.AllProfiles())
+            {
+                std::wstring_view src{ profile.Source() };
+                std::wstring_view cmd{ profile.Commandline() };
+                if (!out.pwsh && SI::_ProfileMatchesShell(SI::Target::Pwsh, src, cmd))
+                {
+                    out.pwsh = true;
+                }
+                if (!out.windowsPowerShell && SI::_ProfileMatchesShell(SI::Target::WindowsPowerShell, src, cmd))
+                {
+                    out.windowsPowerShell = true;
+                }
+                if (!out.bash && SI::_ProfileMatchesShell(SI::Target::Bash, src, cmd))
+                {
+                    out.bash = true;
+                }
+                if (out.pwsh && out.windowsPowerShell && out.bash)
+                {
+                    break;
+                }
+            }
+            return out;
+        }
     }
     TermControl TerminalPage::_senderOrActiveControl(const IInspectable& sender)
     {
@@ -2029,10 +2077,12 @@ namespace winrt::TerminalApp::implementation
         const auto weak = get_weak();
         const auto dispatcher = Dispatcher();
 
-        // Snapshot WSL distros on the UI thread BEFORE we go background.
+        // Snapshot WSL distros AND which non-WSL shells the user has
+        // profiles for, on the UI thread BEFORE we go background.
         // _settings.AllProfiles() is an observable vector; iterating it
         // concurrently with a settings reload would be unsafe.
         const auto wslDistros = _SnapshotWslDistroNames(_settings);
+        const auto shellPresence = _SnapshotShellPresence(_settings);
 
         co_await winrt::resume_background();
 
@@ -2064,13 +2114,43 @@ namespace winrt::TerminalApp::implementation
             desiredAtRun = _shellIntegrationDesiredEnabled.load(std::memory_order_acquire);
             if (desiredAtRun)
             {
-                const auto pwshResult = SI::InstallForTarget(SI::Target::Pwsh);
-                const auto wpResult = SI::InstallForTarget(SI::Target::WindowsPowerShell);
+                // Profile-gated install: only write the integration
+                // block for shells the user actually has a profile for.
+                // A user with only "Developer PowerShell for VS" (which
+                // uses Windows PowerShell) and no pwsh profile should
+                // not get a pwsh profile block written. The success
+                // verdict treats a skipped shell as "already configured"
+                // for the UI's all-installed/any-failure summary so we
+                // don't flag the user's missing-shell as a failure.
+                SI::InstallResult pwshResult{};
+                SI::InstallResult wpResult{};
+                if (shellPresence.pwsh)
+                {
+                    pwshResult = SI::InstallForTarget(SI::Target::Pwsh);
+                }
+                else
+                {
+                    pwshResult.success = true;
+                    pwshResult.alreadyInstalled = true;
+                }
+                if (shellPresence.windowsPowerShell)
+                {
+                    wpResult = SI::InstallForTarget(SI::Target::WindowsPowerShell);
+                }
+                else
+                {
+                    wpResult.success = true;
+                    wpResult.alreadyInstalled = true;
+                }
                 // Bash + WSL are best-effort here too — their failures
                 // do not gate the "all installed" / "any failure" UI
                 // verdict. Users without Git Bash or without a (running)
-                // WSL distro should not see error dialogs.
-                (void)SI::InstallForTarget(SI::Target::Bash);
+                // WSL distro should not see error dialogs. Profile-gated
+                // for the same reason as pwsh/Windows PowerShell.
+                if (shellPresence.bash)
+                {
+                    (void)SI::InstallForTarget(SI::Target::Bash);
+                }
                 for (const auto& distName : wslDistros)
                 {
                     (void)SI::InstallWslBash(distName);
@@ -2165,10 +2245,12 @@ namespace winrt::TerminalApp::implementation
     {
         auto weak = get_weak();
 
-        // Snapshot WSL distros on the UI thread BEFORE going background.
-        // _settings.AllProfiles() is an observable vector and must not
-        // be iterated concurrently with a settings reload.
+        // Snapshot WSL distros AND non-WSL shell presence on the UI
+        // thread BEFORE going background. _settings.AllProfiles() is
+        // an observable vector and must not be iterated concurrently
+        // with a settings reload.
         const auto wslDistros = _SnapshotWslDistroNames(_settings);
+        const auto shellPresence = _SnapshotShellPresence(_settings);
 
         co_await winrt::resume_background();
         auto self = weak.get();
@@ -2190,9 +2272,22 @@ namespace winrt::TerminalApp::implementation
         namespace SI = ::Microsoft::Terminal::ShellIntegration;
         if (enabled)
         {
-            SI::InstallForTarget(SI::Target::Pwsh);
-            SI::InstallForTarget(SI::Target::WindowsPowerShell);
-            SI::InstallForTarget(SI::Target::Bash);
+            // Profile-gated install: only write to shells the user has
+            // a profile for. A user keeping only "Developer PowerShell
+            // for VS" (which uses Windows PowerShell) and no pwsh
+            // profile must not get pwsh integration written.
+            if (shellPresence.pwsh)
+            {
+                SI::InstallForTarget(SI::Target::Pwsh);
+            }
+            if (shellPresence.windowsPowerShell)
+            {
+                SI::InstallForTarget(SI::Target::WindowsPowerShell);
+            }
+            if (shellPresence.bash)
+            {
+                SI::InstallForTarget(SI::Target::Bash);
+            }
             for (const auto& distName : wslDistros)
             {
                 SI::InstallWslBash(distName);
@@ -2200,6 +2295,10 @@ namespace winrt::TerminalApp::implementation
         }
         else
         {
+            // Uninstall is NOT gated on shellPresence — we always sweep
+            // all targets so a profile the user deleted after a prior
+            // install is still cleaned up. Uninstall is idempotent when
+            // no block is present.
             SI::UninstallForTarget(SI::Target::Pwsh);
             SI::UninstallForTarget(SI::Target::WindowsPowerShell);
             SI::UninstallForTarget(SI::Target::Bash);

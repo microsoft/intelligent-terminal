@@ -27,6 +27,7 @@
 #pragma once
 
 #include "ShellIntegrationCommon.h"
+#include "ShellIntegrationProfileGate.h"
 #include "PowerShellShellIntegration.h"
 #include "BashShellIntegration.h"
 #include "WslShellIntegration.h"
