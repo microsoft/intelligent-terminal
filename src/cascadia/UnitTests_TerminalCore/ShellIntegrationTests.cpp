@@ -1389,10 +1389,13 @@ void ShellIntegrationTests::Wsl_UninstallWslBash_RejectsUnsafeDistroName()
 // ───────────────────────────────────────────────────────────────────
 
 // Minimal profile double for AnyProfileUsesShell. The template only
-// requires .Source() and .Commandline(); we expose them as wstring
-// so the wstring_view{ rvalue } construction in the helper extends
-// the temporary's lifetime through the call (same pattern as the
-// production code's `const auto src = profile.Source();` line).
+// requires .Source() and .Commandline(); we expose them as wstring.
+// AnyProfileUsesShell does `const auto src = profile.Source();` which
+// MOVES the rvalue into a named local, extending its lifetime through
+// the wstring_view{ src } construction below. The wstring_view itself
+// does NOT extend the temporary's lifetime — that's a common
+// misconception. The lifetime extension lives in the production
+// helper, not in wstring_view's constructor.
 namespace
 {
     struct MockProfile

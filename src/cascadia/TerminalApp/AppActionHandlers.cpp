@@ -119,17 +119,22 @@ namespace winrt::TerminalApp::implementation
             namespace SI = ::Microsoft::Terminal::ShellIntegration;
             for (const auto& profile : settings.AllProfiles())
             {
-                std::wstring_view src{ profile.Source() };
-                std::wstring_view cmd{ profile.Commandline() };
-                if (!out.pwsh && SI::_ProfileMatchesShell(SI::Target::Pwsh, src, cmd))
+                // Hold the hstring values in named locals so their lifetime
+                // extends through the wstring_view uses below — wstring_view
+                // is non-owning and a temporary hstring would dangle.
+                const auto src = profile.Source();
+                const auto cmd = profile.Commandline();
+                const std::wstring_view srcSv{ src };
+                const std::wstring_view cmdSv{ cmd };
+                if (!out.pwsh && SI::_ProfileMatchesShell(SI::Target::Pwsh, srcSv, cmdSv))
                 {
                     out.pwsh = true;
                 }
-                if (!out.windowsPowerShell && SI::_ProfileMatchesShell(SI::Target::WindowsPowerShell, src, cmd))
+                if (!out.windowsPowerShell && SI::_ProfileMatchesShell(SI::Target::WindowsPowerShell, srcSv, cmdSv))
                 {
                     out.windowsPowerShell = true;
                 }
-                if (!out.bash && SI::_ProfileMatchesShell(SI::Target::Bash, src, cmd))
+                if (!out.bash && SI::_ProfileMatchesShell(SI::Target::Bash, srcSv, cmdSv))
                 {
                     out.bash = true;
                 }
