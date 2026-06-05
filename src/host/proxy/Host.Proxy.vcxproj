@@ -44,8 +44,8 @@
       <MinimumTargetSystem>NT100</MinimumTargetSystem>
       <OutputDirectory>$(IntDir)</OutputDirectory>
     </Midl>
-    <Midl Include="IAgentChannel.idl">
-      <HeaderFileName>IAgentChannel.h</HeaderFileName>
+    <Midl Include="ITerminalProtocol.idl">
+      <HeaderFileName>ITerminalProtocol.h</HeaderFileName>
       <MinimumTargetSystem>NT100</MinimumTargetSystem>
       <OutputDirectory>$(IntDir)</OutputDirectory>
     </Midl>
@@ -53,7 +53,7 @@
   <ItemGroup>
     <ClInclude Include="$(IntDir)\IConsoleHandoff.h" />
     <ClInclude Include="$(IntDir)\ITerminalHandoff.h" />
-    <ClInclude Include="$(IntDir)\IAgentChannel.h" />
+    <ClInclude Include="$(IntDir)\ITerminalProtocol.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="$(IntDir)\dlldata.c" />
@@ -61,8 +61,8 @@
     <ClCompile Include="$(IntDir)\IConsoleHandoff_p.c" />
     <ClCompile Include="$(IntDir)\ITerminalHandoff_i.c" />
     <ClCompile Include="$(IntDir)\ITerminalHandoff_p.c" />
-    <ClCompile Include="$(IntDir)\IAgentChannel_i.c" />
-    <ClCompile Include="$(IntDir)\IAgentChannel_p.c" />
+    <ClCompile Include="$(IntDir)\ITerminalProtocol_i.c" />
+    <ClCompile Include="$(IntDir)\ITerminalProtocol_p.c" />
   </ItemGroup>
   <ItemDefinitionGroup Condition="'$(WindowsTerminalBranding)'=='Release'">
     <ClCompile>

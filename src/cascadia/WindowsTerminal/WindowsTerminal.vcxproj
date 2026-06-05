@@ -57,7 +57,6 @@
     <ClInclude Include="VirtualDesktopUtils.h" />
     <ClInclude Include="WindowEmperor.h" />
     <ClInclude Include="TerminalProtocolComServer.h" />
-    <ClInclude Include="CAgentChannelPoc.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -70,7 +69,6 @@
     <ClCompile Include="VirtualDesktopUtils.cpp" />
     <ClCompile Include="WindowEmperor.cpp" />
     <ClCompile Include="TerminalProtocolComServer.cpp" />
-    <ClCompile Include="CAgentChannelPoc.cpp" />
     <ClCompile Include="icon.cpp" />
   </ItemGroup>
   <ItemGroup>
