@@ -48,10 +48,22 @@ $findingsForHash = switch ($Kind) {
 $findingsHash = Get-FindingsHash $findingsForHash
 
 # Establish base/head for this batch (best-effort; tolerate detached states).
-$baseRaw = git rev-parse origin/main 2>$null
-$base = if ($LASTEXITCODE -eq 0 -and $baseRaw) { $baseRaw.Trim() } else { $null }
+# `base` must be the *pre-pick* origin/main, not its current tip, because
+# origin/main may have advanced while the run was in progress. The merge-base
+# of the sync tip and origin/main recovers the branch's original starting
+# point reliably.
 $headRaw = git rev-parse HEAD 2>$null
 $head = if ($LASTEXITCODE -eq 0 -and $headRaw) { $headRaw.Trim() } else { $null }
+$base = $null
+if ($head) {
+    $baseRaw = git merge-base HEAD origin/main 2>$null
+    if ($LASTEXITCODE -eq 0 -and $baseRaw) { $base = $baseRaw.Trim() }
+}
+if (-not $base) {
+    # Fallback: use origin/main tip if merge-base failed (e.g. no upstream ref).
+    $baseRaw = git rev-parse origin/main 2>$null
+    if ($LASTEXITCODE -eq 0 -and $baseRaw) { $base = $baseRaw.Trim() }
+}
 
 # Push the sync branch so the human can resume on it (even toolchain-missing —
 # the picks are still useful artifacts for whoever owns the host).
