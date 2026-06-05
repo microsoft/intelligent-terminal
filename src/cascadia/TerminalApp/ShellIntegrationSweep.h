@@ -98,7 +98,12 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
     // the UI thread — settings.AllProfiles() is an observable vector
     // and iterating concurrently with a reload is unsafe. Deduped
     // (multiple WT profiles for the same distro touch it once).
-    // Empty / malformed extracts are dropped.
+    // Empty / malformed extracts AND names that fail the same
+    // IsSafeDistroName allow-list used by Wsl::Install are dropped
+    // — queuing an unsafe name would just produce a noisy
+    // InstallWslBash error later. Failing closed at snapshot time
+    // keeps the install/uninstall sweep silent for malformed
+    // user-edited profiles.
     inline std::vector<std::wstring> SnapshotWslDistroNames(const CascadiaSettings& settings)
     {
         std::vector<std::wstring> out;
@@ -114,6 +119,14 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
                 auto name = ExtractWslDistroName(profile);
                 if (name.empty())
                 {
+                    continue;
+                }
+                if (!SI::Wsl::details::IsSafeDistroName(name))
+                {
+                    // User-edited profile with characters the WSL
+                    // installer's allow-list rejects (e.g. quotes,
+                    // pipes, leading dash). Skip silently rather than
+                    // surfacing an install error per-sweep.
                     continue;
                 }
                 if (seen.insert(name).second)
