@@ -18,6 +18,7 @@
 
 #include <wil/resource.h>
 
+#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -230,6 +231,23 @@ static BSTR Bstr(const std::string& s)
     return SysAllocString(winrt::to_hstring(s).c_str());
 }
 
+// Parse a base-10 unsigned 64-bit integer without throwing (unlike std::stoull,
+// which aborts wtcli on non-numeric input). Returns false on empty, non-numeric,
+// trailing-garbage, or overflowing input.
+static bool TryParseU64(const std::string& s, uint64_t& out)
+{
+    if (s.empty())
+        return false;
+    uint64_t v = 0;
+    const auto* first = s.data();
+    const auto* last = s.data() + s.size();
+    const auto [ptr, ec] = std::from_chars(first, last, v);
+    if (ec != std::errc{} || ptr != last)
+        return false;
+    out = v;
+    return true;
+}
+
 // ── Main ──
 
 int main()
@@ -277,7 +295,17 @@ int main()
     listTabsCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        uint64_t wid = listTabsWindowId.empty() ? GetFirstWindowId(server.get()) : std::stoull(listTabsWindowId);
+        uint64_t wid = 0;
+        if (listTabsWindowId.empty())
+        {
+            wid = GetFirstWindowId(server.get());
+        }
+        else if (!TryParseU64(listTabsWindowId, wid))
+        {
+            fprintf(stderr, "[wtcli] Invalid --window-id: %s\n", listTabsWindowId.c_str());
+            exitCode = 1;
+            return;
+        }
         Json::Value tabs;
         auto hr = CallJson([&](BSTR* j) { return server->ListTabs(wid, j); }, tabs);
         if (FAILED(hr)) { fprintf(stderr, "ListTabs failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
@@ -301,8 +329,25 @@ int main()
     listPanesCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        uint64_t wid = listPanesWindowId.empty() ? 0 : std::stoull(listPanesWindowId);
-        uint32_t tid = listPanesTabId.empty() ? UINT32_MAX : static_cast<uint32_t>(std::stoul(listPanesTabId));
+        uint64_t wid = 0;
+        if (!listPanesWindowId.empty() && !TryParseU64(listPanesWindowId, wid))
+        {
+            fprintf(stderr, "[wtcli] Invalid --window-id: %s\n", listPanesWindowId.c_str());
+            exitCode = 1;
+            return;
+        }
+        uint32_t tid = UINT32_MAX;
+        if (!listPanesTabId.empty())
+        {
+            uint64_t t = 0;
+            if (!TryParseU64(listPanesTabId, t) || t > UINT32_MAX)
+            {
+                fprintf(stderr, "[wtcli] Invalid --tab-id: %s\n", listPanesTabId.c_str());
+                exitCode = 1;
+                return;
+            }
+            tid = static_cast<uint32_t>(t);
+        }
         if (tid == UINT32_MAX)
         {
             if (wid == 0) wid = GetFirstWindowId(server.get());
