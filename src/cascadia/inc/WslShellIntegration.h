@@ -157,72 +157,63 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                 cmdLine.append(distName);
                 cmdLine += L" -e bash -c \"echo $HOME\"";
 
-                // WSL_UTF8=1 → wsl.exe relays child stdout as UTF-8.
-                // The variable only needs to be present at CreateProcessW
-                // time (the child inherits the parent env at spawn). Save
-                // the prior value once via size-probe-then-allocate so
-                // prior values of any length survive (a fixed buffer
-                // would silently fail to restore when the prior value
-                // exceeds the buffer).
+                // Pass WSL_UTF8=1 via a child-only environment block
+                // instead of mutating the process-wide environment.
+                // SetEnvironmentVariableW would let other threads in
+                // this process inherit WSL_UTF8=1 in any CreateProcess*
+                // they spawn during the 30-second window below — even
+                // a narrowed Set/restore window cannot eliminate that
+                // race. The child env block we hand to CreateProcessW
+                // via lpEnvironment is private to the wsl.exe spawn:
+                // no other thread sees WSL_UTF8, and we don't need
+                // any save/restore dance.
                 //
-                // Empty-value handling: GetEnvironmentVariableW(..., nullptr, 0)
-                // returns 1 (just the NUL terminator) when the variable
-                // exists but is set to an empty string, and 0 only when
-                // the variable is genuinely unset. We must distinguish
-                // those two cases so the restore doesn't accidentally
-                // delete an empty-but-set variable. The buffer-write
-                // call's "successful" return is `written < needed` and
-                // `written` may legally be 0 (for an empty value), so
-                // hadPrev is anchored on the size probe, not the read.
-                std::wstring prevVal;
-                bool hadPrev = false;
+                // WSL_UTF8=1 makes wsl.exe relay child stdout as UTF-8
+                // (otherwise the default is UTF-16LE for newer WSL).
+                std::wstring childEnv;
+                bool wslUtf8Replaced = false;
+                if (wchar_t* origEnvBlock = GetEnvironmentStringsW())
                 {
-                    const auto needed = GetEnvironmentVariableW(L"WSL_UTF8", nullptr, 0);
-                    if (needed > 0)
+                    for (wchar_t* p = origEnvBlock; *p != L'\0'; )
                     {
-                        // Variable exists (possibly empty).
-                        hadPrev = true;
-                        if (needed > 1)
+                        const std::wstring_view entry{ p };
+                        p += entry.size() + 1;
+                        // Strip any existing WSL_UTF8=... so we never
+                        // emit two definitions. Case-insensitive match
+                        // on the leading name (Windows env names are
+                        // case-insensitive).
+                        if (entry.size() >= 9 &&
+                            _wcsnicmp(entry.data(), L"WSL_UTF8=", 9) == 0)
                         {
-                            prevVal.resize(needed);
-                            const auto written = GetEnvironmentVariableW(L"WSL_UTF8", prevVal.data(), needed);
-                            if (written > 0 && written < needed)
-                            {
-                                prevVal.resize(written);
-                            }
-                            else
-                            {
-                                // Raced with another writer that just
-                                // changed/removed the value between the
-                                // probe and the read. Best-effort: treat
-                                // as no prior value rather than restoring
-                                // garbage.
-                                prevVal.clear();
-                                hadPrev = false;
-                            }
+                            wslUtf8Replaced = true;
+                            childEnv.append(L"WSL_UTF8=1");
                         }
-                        // needed == 1 → empty string; prevVal stays empty,
-                        // hadPrev stays true (so restore sets back to "").
+                        else
+                        {
+                            childEnv.append(entry);
+                        }
+                        childEnv.push_back(L'\0');
                     }
+                    FreeEnvironmentStringsW(origEnvBlock);
                 }
+                if (!wslUtf8Replaced)
+                {
+                    childEnv.append(L"WSL_UTF8=1");
+                    childEnv.push_back(L'\0');
+                }
+                childEnv.push_back(L'\0'); // env block terminates on \0\0
 
-                // Narrow the WSL_UTF8 window to JUST the spawn call so
-                // unrelated CreateProcess* calls in this process during
-                // the 30-second blocking wait below cannot accidentally
-                // inherit our flag.
                 PROCESS_INFORMATION pi{};
-                SetEnvironmentVariableW(L"WSL_UTF8", L"1");
                 const bool spawnOk = CreateProcessW(nullptr,
                                                     cmdLine.data(),
                                                     nullptr,
                                                     nullptr,
                                                     TRUE,
-                                                    CREATE_NO_WINDOW,
-                                                    nullptr,
+                                                    CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
+                                                    childEnv.data(),
                                                     nullptr,
                                                     &si,
                                                     &pi) != FALSE;
-                SetEnvironmentVariableW(L"WSL_UTF8", hadPrev ? prevVal.c_str() : nullptr);
                 if (!spawnOk)
                 {
                     return {};
@@ -280,16 +271,15 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
 
         // Per-process cache of distName → $HOME, populated lazily on
         // first access. Each distro pays the cold-start cost at most
-        // once per process. Cache entry value:
-        //   • non-empty string → cached home
-        //   • empty string → probe failed (distro stopped, transient
-        //     WSL startup race, or `$HOME` not readable). NOT cached:
-        //     a fresh Install/Uninstall call from the user (e.g. via
-        //     Settings UI or FRE retry) re-probes from scratch so the
-        //     user can recover from transient failures without
-        //     restarting Windows Terminal. Reconcile runs only on
-        //     settings changes, not in a tight loop, so this won't
-        //     thrash on a legitimately stopped distro.
+        // once per process per successful probe. Only successful (non-
+        // empty) probes are cached: a failed probe (distro stopped,
+        // transient WSL startup race, or `$HOME` not readable) is NOT
+        // memoized, so a fresh Install/Uninstall call from the user
+        // (e.g. via Settings UI or FRE retry) re-probes from scratch
+        // — the user can recover from transient failures without
+        // restarting Windows Terminal. Reconcile runs only on settings
+        // changes, not in a tight loop, so this won't thrash on a
+        // legitimately stopped distro.
         // Mutex protects both the map AND each individual probe so two
         // racing callers for the same distro don't both spawn wsl.exe.
         inline std::string GetWslHomeCached(std::wstring_view distName)
