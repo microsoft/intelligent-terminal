@@ -41,7 +41,7 @@ $banner = @"
 > Copilot / human review feedback (code-quality, logic, translation,
 > spelling-list migrations, doc nits) goes into a **follow-up PR** based on
 > this PR's head, not amended into the cherry-pick commits. Rationale and
-> mechanics: [``.github/skills/upstream-sync/references/follow-up-pr.md``](../blob/$($Ctx.Branch)/.github/skills/upstream-sync/references/follow-up-pr.md).
+> mechanics: [``.github/skills/upstream-sync/references/follow-up-pr.md``](../blob/main/.github/skills/upstream-sync/references/follow-up-pr.md).
 
 ---
 

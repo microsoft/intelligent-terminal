@@ -133,8 +133,10 @@ try {
     # would fail because the PR already exists for that branch. Worse,
     # under a per-day branch-name scheme the second run would open a
     # NEW PR with identical content. Bail early with a no-op report
-    # instead, unless -Force is given.
-    if (-not $Force) {
+    # instead, unless -Force is given. Skipped entirely under
+    # -PushDirectToMain, which never opens a PR and shouldn't require
+    # `gh` auth on the host.
+    if (-not $Force -and -not $PushDirectToMain) {
         # --limit 200: `gh pr list` defaults to 30. If a repo somehow has
         # 30+ open PRs and the upstream-sync one is older, the default
         # would miss it and we'd duplicate the branch / PR.
