@@ -291,18 +291,25 @@ namespace Microsoft::Terminal::ShellIntegration
             // with CP_ACP to widen correctly. If the conversion fails
             // (extremely rare), fall back to omitting the message — the
             // path + numeric error code is still actionable.
+            //
+            // We pass an explicit positive `cchSrc` (narrow.size())
+            // rather than -1 so the returned `needed` count does NOT
+            // include a trailing NUL. That avoids a 1-wchar overflow
+            // class of bug (resize(needed-1) + buffer of length
+            // `needed` with -1 input → writes past end).
             const auto narrow = ec.message();
             std::wstring widened;
             if (!narrow.empty())
             {
+                const int srcLen = static_cast<int>(narrow.size());
                 const int needed = MultiByteToWideChar(CP_ACP, 0,
-                                                       narrow.c_str(), -1,
+                                                       narrow.c_str(), srcLen,
                                                        nullptr, 0);
-                if (needed > 1) // includes NUL
+                if (needed > 0)
                 {
-                    widened.resize(needed - 1);
+                    widened.resize(needed);
                     MultiByteToWideChar(CP_ACP, 0,
-                                        narrow.c_str(), -1,
+                                        narrow.c_str(), srcLen,
                                         widened.data(), needed);
                 }
             }
