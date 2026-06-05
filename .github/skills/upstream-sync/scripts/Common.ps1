@@ -51,7 +51,7 @@ function ConvertTo-RepoRelativePath {
 function Read-State {
     $p = Get-StatePath
     if (-not (Test-Path $p)) {
-        throw "state.json not found at $p. Run scripts/00-bootstrap.ps1 first — see references/bootstrap.md."
+        throw "state.json not found at $p. Run .github/skills/upstream-sync/scripts/00-bootstrap.ps1 (from the repo root) first — see references/bootstrap.md."
     }
     return Get-Content -Raw -LiteralPath $p | ConvertFrom-Json
 }
