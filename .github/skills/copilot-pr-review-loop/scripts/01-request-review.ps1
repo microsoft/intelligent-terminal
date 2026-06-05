@@ -110,10 +110,20 @@ function Wait-ForCopilotWorkStarted {
 
 $beforeTs = Get-LatestCopilotWorkStarted
 $tried = @()
+$mech1Stderr = ''
 
 # Mechanism 1: gh pr edit
-gh pr edit $PrNumber --repo $repoArg --add-reviewer copilot-pull-request-reviewer 2>&1 | Out-Null
+$mech1Stderr = (gh pr edit $PrNumber --repo $repoArg --add-reviewer copilot-pull-request-reviewer 2>&1 | Out-String)
 $tried += "gh pr edit (exit=$LASTEXITCODE)"
+
+# Specific failure: Copilot Code Review is not enabled on this repo at all.
+# Detect this so we fail fast with a clear diagnostic instead of churning
+# through the REST fallbacks and emitting a confusing "suppression"
+# message for a problem that has nothing to do with suppression.
+if ($mech1Stderr -match "'copilot-pull-request-reviewer'\s+not\s+found" -or
+    $mech1Stderr -match "could not resolve to a User") {
+    throw "Copilot Code Review is not enabled on $repoArg (gh reported: $($mech1Stderr.Trim())). Enable it under repo Settings -> Code & automation -> Copilot, OR run the loop against a repo where Copilot review is already on. None of the trigger mechanisms can work until this is fixed."
+}
 
 $afterTs = Wait-ForCopilotWorkStarted -BeforeTs $beforeTs -TimeoutSeconds 20
 if ($afterTs) {
@@ -148,26 +158,27 @@ if ($afterTs) {
     exit 0
 }
 
-throw @"
-Copilot review re-request: tried $($tried.Count) mechanisms, none produced a
+throw @'
+Copilot review re-request: tried all 3 mechanisms, none produced a
 copilot_work_started event within the timeout.
-  Tried: $($tried -join ', ')
-  Latest copilot_work_started timestamp before: '$beforeTs'
-  Latest copilot_work_started timestamp after:  '$(Get-LatestCopilotWorkStarted)'
+'@ + "`n  Tried: $($tried -join ', ')" + "`n  Latest copilot_work_started timestamp before: '$beforeTs'" + "`n  Latest copilot_work_started timestamp after:  '$(Get-LatestCopilotWorkStarted)'" + @'
 
-Likely causes:
+
+Likely causes (in order of frequency):
+  * Trivial / small initial diff suppressed by Copilot before any review
+    has run. Push a substantive (non-whitespace, non-comment-only)
+    commit and retry.
   * Copilot has already reviewed the current HEAD and is suppressing a
-    redundant review. Push a substantive new commit and retry — empty
-    or trivial commits are typically suppressed.
+    redundant re-review. Push a substantive new commit and retry.
   * The PR is in a state that blocks bot review (draft, closed, merge
-    conflict, branch protection).
-  * Auth-scope issue — confirm `gh auth status` shows `repo` scope.
+    conflict, branch protection requiring approvals first).
+  * Auth-scope issue — confirm "gh auth status" shows the repo scope.
 
-ANTI-PATTERN — DO NOT DO THIS: posting `@copilot please review` (or any
+ANTI-PATTERN — DO NOT DO THIS: posting "@copilot please review" (or any
 @copilot mention) as a PR comment summons the Copilot **Coding Agent**
 (which makes commits), NOT the reviewer bot. It will not produce a
 review. This has been observed across multiple Copilot CLI sessions and
 is a confirmed waste of time. The three mechanisms tried above are the
 only valid triggers — if all three fail, push a substantive commit and
 retry; do not fall back to @-mentions.
-"@
+'@
