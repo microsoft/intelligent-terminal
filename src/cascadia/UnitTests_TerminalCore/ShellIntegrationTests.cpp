@@ -1425,11 +1425,11 @@ namespace
 void ShellIntegrationTests::ProfileGate_PwshSourceMatches()
 {
     // The dynamic generator's source is the strongest signal.
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::Pwsh,
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh,
                                         L"Windows.Terminal.PowershellCore",
                                         L"C:\\Program Files\\PowerShell\\7\\pwsh.exe"));
     // Source alone is enough — even with an unrelated commandline.
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::Pwsh,
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh,
                                         L"Windows.Terminal.PowershellCore",
                                         L""));
 }
@@ -1438,34 +1438,34 @@ void ShellIntegrationTests::ProfileGate_PwshCommandlineLeafExeMatches()
 {
     // WT-emitted quoted full path (the realistic form — paths with
     // spaces MUST be quoted in Windows commandlines).
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::Pwsh,
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh,
                                         L"",
                                         L"\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoLogo"));
     // Bare-leaf form: user with pwsh on PATH may write `pwsh -arg`.
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::Pwsh,
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh,
                                         L"",
                                         L"pwsh -WorkingDirectory ~"));
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::Pwsh, L"", L"pwsh.exe"));
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::Pwsh, L"", L"pwsh"));
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh, L"", L"pwsh.exe"));
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh, L"", L"pwsh"));
     // Case-insensitive.
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::Pwsh, L"", L"PWSH.EXE"));
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::Pwsh, L"", L"Pwsh"));
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh, L"", L"PWSH.EXE"));
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh, L"", L"Pwsh"));
     // Launch exe is cmd.exe; `pwsh` is just an arg — MUST NOT match.
     // This is the difference between any-token matching and launch-exe
     // matching: the user is running cmd, not pwsh.
-    VERIFY_IS_FALSE(_ProfileMatchesShell(Target::Pwsh,
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::Pwsh,
                                          L"",
                                          L"cmd.exe /c echo pwsh"));
     // Names whose leaf contains "pwsh" as a substring but doesn't
     // equal "pwsh" or "pwsh.exe" must NOT match (the matcher anchors
     // on the full leaf token, not any substring).
-    VERIFY_IS_FALSE(_ProfileMatchesShell(Target::Pwsh, L"", L"pwshell.exe"));
-    VERIFY_IS_FALSE(_ProfileMatchesShell(Target::Pwsh, L"", L"pwsh-preview.exe"));
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::Pwsh, L"", L"pwshell.exe"));
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::Pwsh, L"", L"pwsh-preview.exe"));
     // Unquoted path containing a space is malformed Windows commandline
     // (CommandLineToArgvW would split on the space). We don't match it
     // — the user's profile won't launch anyway. WT always emits the
     // quoted form for paths with spaces.
-    VERIFY_IS_FALSE(_ProfileMatchesShell(Target::Pwsh,
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::Pwsh,
                                          L"",
                                          L"C:\\Program Files\\PowerShell\\7\\pwsh.exe"));
 }
@@ -1473,19 +1473,19 @@ void ShellIntegrationTests::ProfileGate_PwshCommandlineLeafExeMatches()
 void ShellIntegrationTests::ProfileGate_WindowsPowerShellOnlyWhenNotPwsh()
 {
     // The classic Windows PowerShell profile.
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::WindowsPowerShell,
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::WindowsPowerShell,
                                         L"",
                                         L"powershell.exe"));
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::WindowsPowerShell,
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::WindowsPowerShell,
                                         L"",
                                         L"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"));
     // pwsh.exe lives under a folder containing "PowerShell" — naive
     // substring on "powershell" would mis-match. The anchor on the
     // leaf "powershell.exe" (no "pwsh.exe") prevents this.
-    VERIFY_IS_FALSE(_ProfileMatchesShell(Target::WindowsPowerShell,
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::WindowsPowerShell,
                                          L"Windows.Terminal.PowershellCore",
                                          L"C:\\Program Files\\PowerShell\\7\\pwsh.exe"));
-    VERIFY_IS_FALSE(_ProfileMatchesShell(Target::WindowsPowerShell,
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::WindowsPowerShell,
                                          L"",
                                          L"pwsh.exe"));
 }
@@ -1498,31 +1498,31 @@ void ShellIntegrationTests::ProfileGate_WindowsPowerShellWithDeveloperVsProfile(
     // deleted the default Windows PowerShell profile but kept the
     // VS Developer one, and we must still install for that shell.
     const auto cmd = LR"(C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -Command "&{Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell ...}")";
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::WindowsPowerShell, L"", cmd));
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::WindowsPowerShell, L"", cmd));
     // And does NOT trigger pwsh.
-    VERIFY_IS_FALSE(_ProfileMatchesShell(Target::Pwsh, L"", cmd));
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::Pwsh, L"", cmd));
 }
 
 void ShellIntegrationTests::ProfileGate_BashOnlyForGitBashNotWsl()
 {
     // Git Bash — quoted full path (the realistic form).
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::Bash,
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash,
                                         L"",
                                         L"\"C:\\Program Files\\Git\\bin\\bash.exe\" -i -l"));
     // Bare leaf — user with bash on PATH.
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::Bash, L"", L"bash"));
-    VERIFY_IS_TRUE(_ProfileMatchesShell(Target::Bash, L"", L"bash.exe -i"));
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash, L"", L"bash"));
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash, L"", L"bash.exe -i"));
     // WSL distro profile — uses wsl.exe. Must NOT match the Git Bash
     // target (it would be a duplicate install since WSL distros are
     // handled separately by per-distro iteration).
-    VERIFY_IS_FALSE(_ProfileMatchesShell(Target::Bash,
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::Bash,
                                          L"Windows.Terminal.Wsl",
                                          L"wsl.exe -d Ubuntu"));
     // Bare wsl too.
-    VERIFY_IS_FALSE(_ProfileMatchesShell(Target::Bash, L"", L"wsl -d Ubuntu"));
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::Bash, L"", L"wsl -d Ubuntu"));
     // Launch is wsl.exe; bash.exe later in args MUST NOT match Bash
     // (we anchor on the launch exe, not any token).
-    VERIFY_IS_FALSE(_ProfileMatchesShell(Target::Bash,
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::Bash,
                                          L"",
                                          L"wsl.exe -d Ubuntu -e bash.exe -l"));
 }

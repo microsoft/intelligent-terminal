@@ -341,9 +341,18 @@ namespace Microsoft::Terminal::ShellIntegration
                      formatFsError(L"Failed to create script directory", flavor.scriptDir, ec) };
         }
 
-        if (!std::filesystem::exists(profilePath))
         {
-            std::ofstream{ profilePath, std::ios::binary }; // touch
+            std::error_code existsEc;
+            // Use the non-throwing overload — std::filesystem::exists()
+            // without an error_code can throw filesystem_error on
+            // access failures (notably UNC providers like \\wsl$\... or
+            // a network filesystem timing out). The installer is best-
+            // effort and must NOT crash the app; treat any failure to
+            // determine existence as "doesn't exist" and try to create.
+            if (!std::filesystem::exists(profilePath, existsEc))
+            {
+                std::ofstream{ profilePath, std::ios::binary }; // touch
+            }
         }
 
         std::string contents;
@@ -369,10 +378,18 @@ namespace Microsoft::Terminal::ShellIntegration
         const bool found = lineStart != std::string::npos;
 
         if (found &&
-            std::string_view(contents.data() + lineStart, lineEnd - lineStart) == desiredBlock &&
-            std::filesystem::exists(scriptPath))
+            std::string_view(contents.data() + lineStart, lineEnd - lineStart) == desiredBlock)
         {
-            return { true, true, {} };
+            // Non-throwing exists() check for the script file — same
+            // reason as the profilePath check above: must not crash
+            // the app on transient UNC / network I/O failures. Treat a
+            // failed existence check as "missing" and proceed to
+            // rewrite the script.
+            std::error_code scriptExistsEc;
+            if (std::filesystem::exists(scriptPath, scriptExistsEc))
+            {
+                return { true, true, {} };
+            }
         }
 
         if (!contents.empty())

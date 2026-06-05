@@ -157,15 +157,15 @@ namespace winrt::TerminalApp::implementation
                 const auto cmd = profile.Commandline();
                 const std::wstring_view srcSv{ src };
                 const std::wstring_view cmdSv{ cmd };
-                if (!out.pwsh && SI::_ProfileMatchesShell(SI::Target::Pwsh, srcSv, cmdSv))
+                if (!out.pwsh && SI::ProfileMatchesShell(SI::Target::Pwsh, srcSv, cmdSv))
                 {
                     out.pwsh = true;
                 }
-                if (!out.windowsPowerShell && SI::_ProfileMatchesShell(SI::Target::WindowsPowerShell, srcSv, cmdSv))
+                if (!out.windowsPowerShell && SI::ProfileMatchesShell(SI::Target::WindowsPowerShell, srcSv, cmdSv))
                 {
                     out.windowsPowerShell = true;
                 }
-                if (!out.bash && SI::_ProfileMatchesShell(SI::Target::Bash, srcSv, cmdSv))
+                if (!out.bash && SI::ProfileMatchesShell(SI::Target::Bash, srcSv, cmdSv))
                 {
                     out.bash = true;
                 }

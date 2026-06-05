@@ -15,13 +15,13 @@
 //
 // This header exposes two pure functions:
 //
-//   * _ProfileMatchesShell(target, source, commandline) — pure,
+//   * ProfileMatchesShell(target, source, commandline) — pure,
 //     trivially unit-testable. Launch-exe leaf token matching with
 //     a source discriminator for the Pwsh dynamic generator; see
 //     the rules table at the function body.
 //
 //   * AnyProfileUsesShell<ProfilesT>(target, profiles) — template
-//     iterator that calls _ProfileMatchesShell on every profile in
+//     iterator that calls ProfileMatchesShell on every profile in
 //     the collection. Catches and ignores any per-profile exception
 //     (a profile whose Source() or Commandline() throws simply does
 //     not contribute to the result; it never tanks the whole gate).
@@ -59,7 +59,7 @@ namespace Microsoft::Terminal::ShellIntegration
         //     class of false positive.
         //   * `pwshell.exe` — launch leaf is pwshell.exe, not pwsh or
         //     pwsh.exe, no match ✓.
-        inline bool _CommandlineHasExeToken(std::wstring_view commandline, std::wstring_view leaf) noexcept
+        inline bool CommandlineHasExeToken(std::wstring_view commandline, std::wstring_view leaf) noexcept
         {
             if (leaf.empty())
             {
@@ -176,7 +176,7 @@ namespace Microsoft::Terminal::ShellIntegration
     // Returns false for any other target (e.g. a hypothetical future
     // shell flavor) — caller is responsible for adding a new branch
     // when registering a new Target.
-    inline bool _ProfileMatchesShell(Target target,
+    inline bool ProfileMatchesShell(Target target,
                                      std::wstring_view source,
                                      std::wstring_view commandline) noexcept
     {
@@ -187,7 +187,7 @@ namespace Microsoft::Terminal::ShellIntegration
             {
                 return true;
             }
-            return details::_CommandlineHasExeToken(commandline, L"pwsh");
+            return details::CommandlineHasExeToken(commandline, L"pwsh");
         case Target::WindowsPowerShell:
             // The launch-exe matcher compares the full leaf token
             // (`powershell` or `powershell.exe`) — a launch exe whose
@@ -196,14 +196,14 @@ namespace Microsoft::Terminal::ShellIntegration
             // discriminator is redundant. The substring-era matcher
             // needed it because pwsh.exe lives under a folder named
             // "PowerShell"; the launch-exe matcher anchors past that.
-            return details::_CommandlineHasExeToken(commandline, L"powershell");
+            return details::CommandlineHasExeToken(commandline, L"powershell");
         case Target::Bash:
             // Same reasoning as WindowsPowerShell: a launch exe with
             // leaf `bash(.exe)` cannot also have leaf `wsl(.exe)`, so
             // a `!HasExeToken(... "wsl")` check is redundant. WSL
             // distro profiles whose launch is wsl.exe naturally fail
             // the `bash` leaf check.
-            return details::_CommandlineHasExeToken(commandline, L"bash");
+            return details::CommandlineHasExeToken(commandline, L"bash");
         default:
             return false;
         }
@@ -228,7 +228,7 @@ namespace Microsoft::Terminal::ShellIntegration
                 {
                     const auto src = profile.Source();
                     const auto cmd = profile.Commandline();
-                    if (_ProfileMatchesShell(target,
+                    if (ProfileMatchesShell(target,
                                              std::wstring_view{ src },
                                              std::wstring_view{ cmd }))
                     {
