@@ -12,7 +12,9 @@
   Upstream HEAD SHA at fetch time.
 
 .PARAMETER Status
-  ok | no-op | stuck | skipped-locked
+  ok | no-op | dry-run | stuck | skipped-locked | skipped-pr-open
+  | stuck-static-scan | stuck-build-failed | stuck-build-inconclusive
+  | stuck-toolchain-missing
 
 .OUTPUTS
   Absolute path to the written report file.

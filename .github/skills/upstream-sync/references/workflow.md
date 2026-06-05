@@ -35,7 +35,7 @@ Oldest-first ordering is mandatory. Cherry-picking newest-first inverts
 dependencies and creates spurious conflicts.
 
 Script: [`02-compute-pending.ps1`](../scripts/02-compute-pending.ps1) emits
-a JSON array on stdout.
+a JSON object on stdout — see step 3 below for the full shape.
 
 ### 3. Detect & drop revert pairs
 
@@ -47,7 +47,8 @@ its body contains `This reverts commit <40-hex>`.
 - If `<40-hex>` is **outside** the pending range (already synced earlier)
   → keep the revert; it must land as a normal pick.
 
-Script: same `02-compute-pending.ps1` (returns `{ pending: [...], dropped_pairs: [[A,B],...] }`).
+Script: same `02-compute-pending.ps1`. Full return shape:
+`{ from: "<old_sha>", to: "<new_sha>", pending: [...], dropped_pairs: [[A,B],...], skipped_empty: [...] }`.
 
 ### 4. Drop upstream-empty commits
 
