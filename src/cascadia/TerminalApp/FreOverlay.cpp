@@ -29,9 +29,12 @@ namespace winrt::TerminalApp::implementation
         // the commandline (the value WSL itself consumes) over
         // `profile.Name()` — Name() defaults to distName but is a
         // free-text display field the user can rename; the
-        // commandline survives a rename. Falls back to Name() when
-        // the commandline parse fails (defensive — should never hit
-        // for a generator-created profile).
+        // commandline survives a rename. Returns an empty string when
+        // the commandline parse fails (fail-closed): we do NOT fall
+        // back to `profile.Name()` because using user-editable display
+        // text as a distro identifier could write integration to the
+        // wrong distro or produce a wsl.exe spawn failure. Callers
+        // (e.g. _SnapshotWslDistroNames) drop empty results.
         //
         // Caller is responsible for IsSafeWslDistroName validation
         // before passing the result to wsl.exe.

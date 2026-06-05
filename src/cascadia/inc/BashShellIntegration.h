@@ -10,8 +10,13 @@
 // Key differences from PowerShell:
 //   • No execution-policy gate (bash has no equivalent concept).
 //   • LF line endings only (bash files are never CRLF).
-//   • Script lives in a dedicated dir (~/.intelligent-terminal/), NOT
-//     next to .bashrc, so cleanup is a single directory removal.
+//   • Script lives in a dedicated dir (~/.intelligent-terminal/),
+//     NOT next to .bashrc. Uninstall removes the sourced BLOCK from
+//     ~/.bashrc — it intentionally leaves the versioned script files
+//     in ~/.intelligent-terminal/ in place to support side-by-side
+//     rollback (matches PowerShell's per-version $PROFILE-adjacent
+//     files). Users who want a full sweep can delete the directory
+//     by hand; the doc covers this.
 //   • The block guards on $BASH_VERSION + interactive-shell + script
 //     existence so the same .bashrc roams safely to machines that
 //     don't have IT installed, or to non-bash shells that happen to

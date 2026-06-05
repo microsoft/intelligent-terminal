@@ -41,8 +41,12 @@ namespace winrt::TerminalApp::implementation
         // WslDistroGenerator. Prefer the `-d <distName>` token in
         // the commandline (the value WSL itself consumes) over
         // profile.Name(), which is a free-text display field that
-        // the user can edit. Falls back to Name() when the
-        // commandline parse fails.
+        // the user can edit. Returns an empty string when the
+        // commandline parse fails (fail-closed): we do NOT fall
+        // back to profile.Name() because using user-editable display
+        // text as a distro identifier could write integration to the
+        // wrong distro or produce a wsl.exe spawn failure. Callers
+        // (e.g. _SnapshotWslDistroNames) drop empty results.
         //
         // (Duplicated from FreOverlay.cpp — small + symmetric.
         // Promote to a shared helper if a third call site arrives.)

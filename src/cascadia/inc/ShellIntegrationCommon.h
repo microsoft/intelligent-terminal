@@ -139,11 +139,18 @@ namespace Microsoft::Terminal::ShellIntegration
             return m;
         }
 
-        // Best-effort backup. Names the file `.bak.<YYYYMMDD-HHMMSS>.<hashHex>`
-        // next to the profile so a future writer never collides AND the
-        // hash makes it obvious when two backups are identical content.
-        // Never throws; never fails the caller — backup is a safety net,
-        // not a correctness gate.
+        // Best-effort backup. Names the file
+        // `.bak.<YYYYMMDD-HHMMSS>.<hashHex>` next to the profile.
+        // Collision policy: the timestamp is second-resolution and the
+        // hash narrows it further, but two backups of identical
+        // content written within the same second WILL collide on
+        // filename — the std::filesystem::copy_options::overwrite_existing
+        // flag means the second call wins. That's intentional: when
+        // contents are byte-identical, dropping the duplicate is fine.
+        // Two backups of DIFFERENT content within the same second still
+        // produce distinct filenames (different hash). Never throws;
+        // never fails the caller — backup is a safety net, not a
+        // correctness gate.
         inline void WriteBackup(const std::filesystem::path& profilePath, const std::string& contents) noexcept
         {
             try
