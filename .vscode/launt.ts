@@ -8,7 +8,7 @@
             "name": "Debug OpenConsole by Launching (x64, debug)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${ }\\bin\\x64\\debug\\openconsole.exe",
+            "program": "${workspaceFolder}\\bin\\x64\\debug\\openconsole.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
