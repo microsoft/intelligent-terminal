@@ -97,10 +97,14 @@ if ($state.last_run -and $state.history -and $state.history.Count -gt 0) {
     $state.history[0].main_head_sha = $mainHead
     Write-State $state
     git add -- (ConvertTo-RepoRelativePath (Get-StatePath)) | Out-Null
-    git commit -m "chore(upstream-sync): record main head $($mainHead.Substring(0,9))" | Out-Host
-    if ($LASTEXITCODE -eq 0) {
-        git push origin main | Out-Host
-        if ($LASTEXITCODE -ne 0) { Write-Warning "Backfill push failed (cosmetic only; sync content already on main)." }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "git add of state.json failed (LASTEXITCODE=$LASTEXITCODE); skipping main_head_sha backfill (cosmetic only; sync content already on main)."
+    } else {
+        git commit -m "chore(upstream-sync): record main head $($mainHead.Substring(0,9))" | Out-Host
+        if ($LASTEXITCODE -eq 0) {
+            git push origin main | Out-Host
+            if ($LASTEXITCODE -ne 0) { Write-Warning "Backfill push failed (cosmetic only; sync content already on main)." }
+        }
     }
 }
 

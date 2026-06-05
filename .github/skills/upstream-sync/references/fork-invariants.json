@@ -5,7 +5,7 @@
         {
             "id": "common-build-c4459-suppression",
             "path": "src/common.build.pre.props",
-            "must_contain_regex": "\\b4459\\b",
+            "must_contain_regex": "<DisableSpecificWarnings>[^<]*\\b4459\\b[^<]*</DisableSpecificWarnings>",
             "severity": "high",
             "reason": "Fork added C4459 (declaration of 'X' hides class member) suppression because TreatWarningAsError=true and fork-specific code triggers it. Upstream removed C4459 in the ATL/MFC cleanup; a take-upstream resolution drops it and the next build fails. See PR #220 audit (2026-06-04).",
             "introduced_in_fork_sha": "4bf2b6a45",

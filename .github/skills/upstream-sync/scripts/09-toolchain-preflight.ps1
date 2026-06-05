@@ -124,11 +124,11 @@ try {
     $ok = (-not $probeStale) -and ($missing.Count -eq 0) -and ($vsInstalls.Count -gt 0)
 
     $doc = [ordered] @{
-        required_toolsets  = @($required)
-        available_toolsets = @($available)
-        missing            = @($missing)
+        required_toolsets  = @($required  | Sort-Object)
+        available_toolsets = @($available | Sort-Object)
+        missing            = @($missing   | Sort-Object)
         vs_installs        = @($vsInstalls)
-        probed_files       = @($probed)
+        probed_files       = @($probed    | Sort-Object)
         probe_stale        = $probeStale
         ok                 = $ok
     }

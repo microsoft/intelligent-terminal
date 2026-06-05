@@ -124,10 +124,14 @@ if ($state.history -and $state.history.Count -gt 0) {
 }
 Write-State $state
 git add -- (ConvertTo-RepoRelativePath (Get-StatePath)) | Out-Null
-git commit -m "chore(upstream-sync): record PR url" | Out-Host
-if ($LASTEXITCODE -eq 0) {
-    git push origin $branch | Out-Host
-    if ($LASTEXITCODE -ne 0) { Write-Warning "Could not push pr_url backfill; PR is still open at $($Ctx.PrUrl)." }
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "git add of state.json failed (LASTEXITCODE=$LASTEXITCODE); skipping pr_url backfill commit. PR is still open at $($Ctx.PrUrl)."
+} else {
+    git commit -m "chore(upstream-sync): record PR url" | Out-Host
+    if ($LASTEXITCODE -eq 0) {
+        git push origin $branch | Out-Host
+        if ($LASTEXITCODE -ne 0) { Write-Warning "Could not push pr_url backfill; PR is still open at $($Ctx.PrUrl)." }
+    }
 }
 
 # Optional: arm GitHub auto-merge with the strategy that preserves per-commit
