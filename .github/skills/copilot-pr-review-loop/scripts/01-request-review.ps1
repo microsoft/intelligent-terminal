@@ -66,14 +66,24 @@ $ErrorActionPreference = 'Stop'
 # stderr into ConvertFrom-Json on success.
 function Invoke-Gh {
     param([Parameter(Mandatory)][string[]]$GhArgs)
-    $errFile = [IO.Path]::GetTempFileName()
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new('gh')
+    foreach ($arg in $GhArgs) { $null = $psi.ArgumentList.Add($arg) }
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $proc = [System.Diagnostics.Process]::Start($psi)
     try {
-        $out = & gh @GhArgs 2>$errFile
-        $ec = $LASTEXITCODE
-        $err = (Get-Content -Raw -LiteralPath $errFile -ErrorAction SilentlyContinue) ?? ''
-        [pscustomobject]@{ ExitCode = $ec; Stdout = ($out | Out-String); Stderr = $err }
+        $outTask = $proc.StandardOutput.ReadToEndAsync()
+        $errTask = $proc.StandardError.ReadToEndAsync()
+        $proc.WaitForExit()
+        [pscustomobject]@{
+            ExitCode = $proc.ExitCode
+            Stdout   = $outTask.GetAwaiter().GetResult()
+            Stderr   = $errTask.GetAwaiter().GetResult()
+        }
     } finally {
-        Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
+        $proc.Dispose()
     }
 }
 
