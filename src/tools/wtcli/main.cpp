@@ -130,13 +130,23 @@ static HRESULT CallJson(F&& call, Json::Value& out)
 {
     BSTR raw = nullptr;
     HRESULT hr = call(&raw);
-    if (SUCCEEDED(hr) && raw)
+    if (SUCCEEDED(hr))
     {
-        Json::CharReaderBuilder rb;
-        std::string errs;
-        auto s = winrt::to_string(winrt::hstring{ raw });
-        std::istringstream ss(s);
-        Json::parseFromStream(rb, ss, &out, &errs);
+        bool parsed = false;
+        if (raw)
+        {
+            Json::CharReaderBuilder rb;
+            std::string errs;
+            auto s = winrt::to_string(winrt::hstring{ raw });
+            std::istringstream ss(s);
+            parsed = Json::parseFromStream(rb, ss, &out, &errs);
+        }
+        // A success HRESULT with a null BSTR or malformed JSON is a broken
+        // server contract; surface it as an error so callers' FAILED(hr)
+        // checks fire immediately instead of proceeding with a
+        // default-constructed `out`.
+        if (!parsed)
+            hr = E_UNEXPECTED;
     }
     if (raw)
         SysFreeString(raw);
@@ -176,8 +186,19 @@ static GUID ResolveSessionId(ITerminalProtocol* server, const std::string& targe
         return GuidFromString(target);
 
     Json::Value info;
-    CallJson([&](BSTR* j) { return server->GetActivePane(j); }, info);
-    return GuidFromString(info["session_id"].asString());
+    const auto hr = CallJson([&](BSTR* j) { return server->GetActivePane(j); }, info);
+    if (FAILED(hr))
+    {
+        fprintf(stderr, "[wtcli] Could not resolve active pane (GetActivePane failed: 0x%08X)\n", static_cast<uint32_t>(hr));
+        return GUID{};
+    }
+    const auto sessionId = info["session_id"].asString();
+    if (sessionId.empty())
+    {
+        fprintf(stderr, "[wtcli] No active pane.\n");
+        return GUID{};
+    }
+    return GuidFromString(sessionId);
 }
 
 static uint64_t GetFirstWindowId(ITerminalProtocol* server)
@@ -721,14 +742,16 @@ int main()
             fprintf(stderr, "Subscribe failed: 0x%08X\n", static_cast<uint32_t>(hr));
             exitCode = 1;
             sink->Release();
-            CloseHandle(s_stopEvent);
             return;
         }
 
         WaitForSingleObject(s_stopEvent, INFINITE);
         server->Unsubscribe();
         sink->Release();
-        CloseHandle(s_stopEvent);
+        // s_stopEvent is intentionally NOT closed: it is static and still
+        // referenced by the registered Ctrl-C handler (a non-capturing lambda
+        // that can only reach it via the static), so closing it would leave the
+        // handler pointing at an invalid handle. It is reclaimed at process exit.
     });
 
     // ── Default (no subcommand) ──
