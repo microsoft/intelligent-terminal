@@ -13,7 +13,7 @@
   with a `skipped-locked` report and exits 0. Otherwise:
     1. Fetches upstream/main.
     2. Computes pending commits, dropping revert pairs and empties.
-    3. Creates branch upstream-sync/YYYY-MM-DD.
+    3. Creates a fresh sync branch upstream-sync/<date>-<utc-hhmmss>-<rand4> (per-run; no reuse).
     4. Cherry-picks one-by-one with Tier-0/Tier-1 auto-resolution.
        On cherry-pick conflict -> Tier-3 stuck path (07).
     5. Post-batch HARD GATES (in order, before any push/PR):

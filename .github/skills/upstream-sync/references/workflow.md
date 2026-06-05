@@ -74,11 +74,15 @@ pick and reset.)
 ### 5. Create the sync branch
 
 ```pwsh
-$branch = "upstream-sync/$(Get-Date -Format 'yyyy-MM-dd')"
-git switch -c $branch  # or "git switch $branch" if resuming
+# Branch name is per-run, never reused: date + UTC HHmmss + 4 random hex chars.
+# This guarantees a fresh branch for every run (no risk of replaying onto a
+# stale branch that GitHub didn't auto-delete after a rebase-merge).
+$branch = "upstream-sync/$((Get-Date).ToString('yyyy-MM-dd'))-$((Get-Date).ToUniversalTime().ToString('HHmmss'))-$(([guid]::NewGuid().ToString('N').Substring(0,4)))"
+git switch -c $branch
 ```
 
-If the branch already exists (resume from same-day run), reuse it.
+Resume = pick up the branch name from the run report or the open
+`upstream-sync-stuck` issue body, not by deriving from the date.
 
 ### 6. Cherry-pick loop
 
@@ -279,7 +283,8 @@ issue, the orchestrator:
 To clear the lock after the human has resolved the underlying issue:
 
 ```
-1. Resolve the conflict on the stuck branch (`upstream-sync/<date>`),
+1. Resolve the conflict on the stuck branch (the exact name is in the
+   stuck-issue body, e.g. `upstream-sync/2026-06-04-091512-a3f1`),
    keeping every `(cherry picked from commit <sha>)` trailer intact.
 2. Open a PR for the fix, merge it (rebase or merge — NOT squash).
 3. CLOSE the stuck issue. That's the lock-clear signal — no script.

@@ -27,7 +27,7 @@ conflict appears.
 
 ## Prerequisites
 
-- `git` 2.38+ (needed for `git cherry-pick --keep-redundant-commits`, used by `scripts/03-cherry-pick-one.ps1`) and `gh` CLI authenticated against `microsoft/intelligent-terminal`. The credential needs **push to topic branches** (`upstream-sync/<date>`) and **issue + label create** in the same repo (the stuck-lock is an open labeled issue, not a commit on `main`).
+- `git` 2.38+ (needed for `git cherry-pick --keep-redundant-commits`, used by `scripts/03-cherry-pick-one.ps1`) and `gh` CLI authenticated against `microsoft/intelligent-terminal`. The credential needs **push to topic branches matching `upstream-sync/*`** (the orchestrator uses `upstream-sync/<date>-<utc-hhmmss>-<rand4>` per run, e.g. `upstream-sync/2026-06-04-091512-a3f1`, so a fresh branch lands every time) and **issue + label create** in the same repo (the stuck-lock is an open labeled issue, not a commit on `main`).
 - PowerShell 7+ (`pwsh`) on PATH.
 - Windows build host with Visual Studio 2022, Windows SDK, `vswhere`, and the repo's `tools\razzle.cmd`/`bz` build environment for the default validation gates (or use `-SkipBuild` only for explicit dev/debug runs).
 - Remote named `upstream` pointing at `https://github.com/microsoft/terminal.git`
@@ -195,7 +195,7 @@ attribution the cherry-pick approach was chosen to preserve.
 - New worktree + branch `dev/<alias>/sync-<sync-pr-number>-review-fixes`
   off the sync PR's HEAD (see
   [branch-worktree-workflow](./references/follow-up-pr.md#worktree-setup)).
-- Base = the sync branch (e.g. `upstream-sync/2026-06-04`), **not**
+- Base = the sync branch (e.g. `upstream-sync/2026-06-04-091512-a3f1` — copy the exact name from the sync PR, since each run uses a fresh date+timestamp+random suffix), **not**
   `main`. The follow-up rides along with the sync PR.
 - One focused commit per concern (code-bugs / translations /
   spelling-cleanup / etc.) — same "audit trail per finding" rule as the

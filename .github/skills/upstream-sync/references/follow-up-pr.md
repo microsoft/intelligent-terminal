@@ -48,7 +48,7 @@ follow-up so the main worktree stays clean:
 
 ```pwsh
 $syncPr      = 220
-$syncBranch  = 'upstream-sync/2026-06-04'   # the sync PR's head
+$syncBranch  = 'upstream-sync/2026-06-04-091512-a3f1'   # the sync PR's head — copy the exact name from the PR, branches are date+UTC-HHmmss+random-hex per run
 $fixBranch   = "dev/$env:USERNAME/sync-$syncPr-review-fixes"
 $fixWorktree = "..\it-$syncPr`fix"
 
