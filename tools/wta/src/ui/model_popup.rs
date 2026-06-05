@@ -9,13 +9,13 @@
 //! in `App::handle_key`).
 
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState};
+use ratatui::widgets::{Clear, List, ListItem, ListState};
 
+use super::popup;
 use crate::app::AcpModelInfo;
 use crate::theme;
 
 const POPUP_MAX_VISIBLE: usize = 8;
-const POPUP_BORDER_HEIGHT: u16 = 2;
 /// Marker drawn next to the model the pane is currently on.
 const CURRENT_MARKER: &str = "● ";
 const CURRENT_PAD: &str = "  ";
@@ -37,18 +37,7 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
     }
 
     let visible = state.models.len().min(POPUP_MAX_VISIBLE) as u16;
-    let height = visible + POPUP_BORDER_HEIGHT;
-    let width = input_area.width;
-
-    // Prefer above; fall back to below if there's no room.
-    let area = if input_area.y >= height {
-        Rect::new(input_area.x, input_area.y - height, width, height)
-    } else {
-        let frame_area = frame.area();
-        let y = (input_area.y + input_area.height)
-            .min(frame_area.y + frame_area.height.saturating_sub(height));
-        Rect::new(input_area.x, y, width, height)
-    };
+    let area = popup::anchored_above(frame, input_area, visible);
 
     frame.render_widget(Clear, area);
 
@@ -73,14 +62,8 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
         })
         .collect();
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(theme::INPUT_BORDER)
-        .style(Style::default().bg(theme::INPUT_BG))
-        .title(t!("model_picker.title").into_owned());
-
     let list = List::new(items)
-        .block(block)
+        .block(popup::block(t!("model_picker.title").into_owned()))
         .highlight_style(theme::SELECTED)
         .highlight_symbol("> ");
 
