@@ -67,9 +67,11 @@ fn resolve_root(package_subdir: &[&str]) -> Option<PathBuf> {
 }
 
 /// Returns the current process's package family name (e.g.
-/// `IntelligentTerminal_rd9vj3e6a2mbr`), or `None` when the process has no
-/// package identity (unpackaged) or the OS call fails for any other reason.
-fn current_package_family_name() -> Option<std::ffi::OsString> {
+/// `IntelligentTerminal_rd9vj3e6a2mbr` for dev-sideload, or
+/// `Microsoft.IntelligentTerminal_8wekyb3d8bbwe` for the store family), or
+/// `None` when the process has no package identity (unpackaged) or the OS
+/// call fails for any other reason.
+pub(crate) fn current_package_family_name() -> Option<std::ffi::OsString> {
     use std::os::windows::ffi::OsStringExt;
     use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
     use windows_sys::Win32::Storage::Packaging::Appx::GetCurrentPackageFamilyName;
@@ -114,6 +116,70 @@ pub fn runtime_log_path(file_name: &str) -> PathBuf {
 
 pub fn master_pipe_file_path() -> Option<PathBuf> {
     intelligent_terminal_root().map(|root| root.join("master-pipe.txt"))
+}
+
+/// Resolve the C++ Windows Terminal app's `state.json`.
+///
+/// Resolution order:
+///
+/// 1. If the *current* process has package identity (the production case —
+///    `wta.exe` deployed inside CascadiaPackage), use
+///    [`current_package_family_name`] so we read the state.json belonging to
+///    our own install (dev-sideload **or** store) rather than guessing.
+///
+/// 2. When the process is unpackaged (dev tree: unpackaged `wta.exe`
+///    launched by a packaged WT via `TerminalPage::_DetectWtaPath`), scan
+///    the `Packages` subdirectory under `%LOCALAPPDATA%` (or `%APPDATA%`
+///    when `%LOCALAPPDATA%` is unset — mirrors `resolve_root`'s env-var
+///    fallback) for any directory whose name matches a *known* WT
+///    package family: `IntelligentTerminal_*` (dev sideload — suffix
+///    varies per signing cert) or `Microsoft.IntelligentTerminal_*`
+///    (store). Return the first one whose `state.json` exists.
+///
+/// Returns `None` when neither `%LOCALAPPDATA%` nor `%APPDATA%` is set or
+/// no candidate `state.json` exists on disk.
+pub fn wt_state_json_path() -> Option<PathBuf> {
+    let local = std::env::var_os("LOCALAPPDATA")
+        .or_else(|| std::env::var_os("APPDATA"))
+        .map(PathBuf::from)?;
+
+    if let Some(family) = current_package_family_name() {
+        let candidate = local
+            .join("Packages")
+            .join(family)
+            .join("LocalState")
+            .join("state.json");
+        return candidate.exists().then_some(candidate);
+    }
+
+    let packages = local.join("Packages");
+    // Collect matches, then pick deterministically by family priority:
+    // dev-sideload first (`IntelligentTerminal_*`), then store
+    // (`Microsoft.IntelligentTerminal_*`). `read_dir` enumeration order is
+    // unspecified, so without an explicit priority the choice between
+    // two installed families would non-deterministically vary across
+    // machines and runs. Dev wins because unpackaged wta is itself a
+    // dev-only scenario — devs running out-of-package overwhelmingly have
+    // the dev-sideload install.
+    let mut dev_match: Option<PathBuf> = None;
+    let mut store_match: Option<PathBuf> = None;
+    for entry in std::fs::read_dir(&packages).ok()?.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let candidate = entry.path().join("LocalState").join("state.json");
+        if !candidate.exists() {
+            continue;
+        }
+        if dev_match.is_none() && name.starts_with("IntelligentTerminal_") {
+            dev_match = Some(candidate);
+        } else if store_match.is_none() && name.starts_with("Microsoft.IntelligentTerminal_") {
+            store_match = Some(candidate);
+        }
+        if dev_match.is_some() && store_match.is_some() {
+            break;
+        }
+    }
+    dev_match.or(store_match)
 }
 
 #[cfg(test)]
