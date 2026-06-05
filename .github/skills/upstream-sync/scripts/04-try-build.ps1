@@ -100,7 +100,10 @@ try {
     $suffix  = [guid]::NewGuid().ToString('N').Substring(0,4)
     $logPath = Join-Path $LogDir "$stamp-$suffix.log"
 
-    $cmdLine = "/c `"cd /d `"$root`" && $BuildCommand`""
+    # WorkingDirectory is already $root via ProcessStartInfo below, so
+    # we don't need a `cd /d "<root>" &&` prefix — that nested quoting
+    # is brittle under cmd.exe (paths with spaces/quotes break it).
+    $cmdLine = "/c $BuildCommand"
     $started = Get-Date
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
