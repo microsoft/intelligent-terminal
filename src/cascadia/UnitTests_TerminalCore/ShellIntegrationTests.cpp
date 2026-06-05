@@ -993,8 +993,12 @@ void ShellIntegrationTests::Bash_ScriptContent_HasIdempotencyGuardAndOscSequence
     VERIFY_IS_TRUE(_Contains(script, "133;D;%s"));
     VERIFY_IS_TRUE(_Contains(script, "133;A"));
     VERIFY_IS_TRUE(_Contains(script, "133;B"));
-    // CWD reporting.
-    VERIFY_IS_TRUE(_Contains(script, "9;9;"));
+    // CWD reporting — unquoted form (the Terminal's 9;9 parser
+    // rejects payloads with embedded quotes, and Linux paths can
+    // contain `"`; the unquoted form parses cleanly regardless).
+    VERIFY_IS_TRUE(_Contains(script, "9;9;%s\\007"));
+    VERIFY_IS_FALSE(_Contains(script, "9;9;\"%s\""),
+                    L"Script must NOT wrap the CWD payload in quotes");
     // Preserves the user's existing PROMPT_COMMAND.
     VERIFY_IS_TRUE(_Contains(script, "__IT_SHELLINTEG_USER_PC"));
     // Preserves $? for that user hook so its `local ec=$?` still works.

@@ -109,7 +109,13 @@ __it_shellinteg_prompt() {
     # OSC 133;D;<ec>  — previous command finished
     # OSC 133;A       — prompt start
     # OSC 9;9;"cwd"   — current working directory
-    printf '\033]133;D;%s\007\033]133;A\007\033]9;9;"%s"\007' "$__ec" "${PWD:-}"
+    # OSC 9;9 unquoted form (no surrounding double quotes around the
+    # path). Linux paths can contain `"` (only `/` and NUL are
+    # forbidden), and Terminal's 9;9 parser rejects the quoted form
+    # when the payload contains embedded quotes — silently dropping
+    # CWD reporting for those directories. The unquoted form parses
+    # cleanly regardless of path contents.
+    printf '\033]133;D;%s\007\033]133;A\007\033]9;9;%s\007' "$__ec" "${PWD:-}"
     if [ -n "$__IT_SHELLINTEG_USER_PC" ]; then
         # Restore $? for the user's PROMPT_COMMAND so hooks like
         # `local ec=$?` at its top still see the real exit code

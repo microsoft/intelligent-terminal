@@ -59,7 +59,7 @@ Add the following to your `~/.bashrc`:
 ```bash
 __it_shellinteg_prompt() {
     local __ec=$?
-    printf '\033]133;D;%s\007\033]133;A\007\033]9;9;"%s"\007' "$__ec" "${PWD:-}"
+    printf '\033]133;D;%s\007\033]133;A\007\033]9;9;%s\007' "$__ec" "${PWD:-}"
 }
 PROMPT_COMMAND=__it_shellinteg_prompt
 PS1="${PS1:-}"'\[\033]133;B\007\]'
