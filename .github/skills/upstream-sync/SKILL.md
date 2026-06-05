@@ -53,7 +53,7 @@ Every persistent fact lives in the source that owns it:
 | What's the last-synced upstream commit? | Newest `(cherry picked from commit <sha>)` trailer on `origin/main` whose target is reachable from `upstream/main`. Derived inline by [`scripts/02-compute-pending.ps1`](./scripts/02-compute-pending.ps1). |
 | What's pending? | `git log --cherry-pick --right-only --no-merges origin/main...upstream/main`, then drop SHAs older than (or equal to) the watermark above. Patch-id-based, so a picked-then-reverted commit correctly re-appears. |
 | Is the scheduler locked? | Any OPEN issue with the `upstream-sync-stuck` label on `microsoft/intelligent-terminal`. Closing the issue IS the lock-clear signal. |
-| What does the lock mean? | A fenced ```yaml # wta-state``` block in the issue body carries `tier`, `kind`, `stuck_on_sha`/`findings_hash`, etc. |
+| What does the lock mean? | A fenced YAML block carrying `# wta-state` in the issue body holds `tier`, `kind`, `stuck_on_sha`/`findings_hash`, etc. |
 | Where do build logs go? | `Generated Files/upstream-sync/<YYYY-MM-DD>/` — gitignored by the repo root's `**/Generated Files/` rule. Never committed. |
 
 ### Why cherry-pick (and not rebase or merge)
@@ -207,11 +207,34 @@ and EXIT.
 
 ### 8. Finalize the PR
 
-Build a concise PR body (just YOU, the agent, composing markdown — there
-is no report file to inline):
+The agent (you) push the branch and open the PR directly with `git` and
+`gh`. There is no wrapper script — there's nothing here that needs more
+than `gh pr create` plus a body string you compose from the data you
+already have in `$picked` / `$build` / `$pending`.
+
+Compose the body:
 
 ```pwsh
-$body = @"
+$banner = @"
+> [!WARNING]
+> **DO NOT squash-merge this PR.** Squashing collapses every cherry-picked
+> upstream commit into one, destroying per-commit attribution, original
+> author dates, the ``(cherry picked from commit <sha>)`` trailers that the
+> NEXT upstream sync uses as its watermark, and ``git bisect`` resolution.
+> Merge with **"Rebase and merge"** (preferred — flat history, all
+> $($picked.Count) commit(s) land individually) or **"Create a merge commit"**.
+
+> [!NOTE]
+> **Review-fix policy.** Only build-blocking fixes belong on this branch
+> as **one** focused extra commit. All other Copilot / human review
+> feedback goes into a **follow-up PR** based on this PR's head. See
+> [``.github/skills/upstream-sync/references/follow-up-pr.md``](https://github.com/microsoft/intelligent-terminal/blob/main/.github/skills/upstream-sync/references/follow-up-pr.md).
+
+---
+
+"@
+
+$summary = @"
 Syncs **$($picked.Count)** commit(s) from microsoft/terminal up to ``$($upstreamSha.Substring(0,9))``.
 
 ## Picked
@@ -231,17 +254,38 @@ $( ($skippedEmpty | ForEach-Object { "- ``$($_.Substring(0,9))``" }) -join "`n" 
 ``04-try-build.ps1`` → ``$($build.kind)`` (exit $($build.exit_code), $($build.duration_ms) ms). Log: ``$($build.log_path)`` (gitignored).
 "@
 
-$prUrl = pwsh -NoProfile -File .github/skills/upstream-sync/scripts/05-finalize-pr.ps1 `
-    -Branch $branch `
-    -UpstreamHeadSha $upstreamSha `
-    -PickedCount $picked.Count `
-    -PrBody $body `
-    -AutoMergeStrategy 'none'   # or 'rebase' / 'merge' for hands-off; NEVER squash
+$bodyFile = New-TemporaryFile
+[System.IO.File]::WriteAllText($bodyFile, ($banner + $summary), (New-Object System.Text.UTF8Encoding($false)))
 ```
 
-Pass `-AutoMergeStrategy rebase` if the operator wants GitHub to merge the
-PR automatically once CI + approvals pass. **Never** pass `'squash'` —
-the script doesn't accept it and the PR body's banner shouts about it.
+Push and create the PR. `gh pr create` on Windows can occasionally fail
+with "Head sha can't be blank" right after a push — retry up to 3× with
+a short delay:
+
+```pwsh
+git push -u origin $branch
+
+$short = $upstreamSha.Substring(0,9)
+$title = "chore(upstream): sync microsoft/terminal up to $short"
+
+$prUrl = $null
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $prUrl = gh pr create -R microsoft/intelligent-terminal `
+        --base main --head $branch --title $title --body-file $bodyFile 2>&1 |
+        Select-Object -Last 1
+    if ($LASTEXITCODE -eq 0 -and $prUrl -match '^https://github.com/') { break }
+    Write-Warning "gh pr create attempt $attempt failed: $prUrl"
+    Start-Sleep -Seconds 5
+}
+Remove-Item -LiteralPath $bodyFile -Force
+if ($prUrl -notmatch '^https://github.com/') { throw "gh pr create did not return a URL after 3 attempts." }
+
+# Optional: arm GitHub auto-merge with rebase (NEVER squash).
+# Skip this if the operator wants to merge by hand.
+gh pr merge -R microsoft/intelligent-terminal $prUrl --rebase --auto --delete-branch
+```
+
+Surface `$prUrl` to the operator. Done.
 
 Surface `$prUrl` to the operator. Done.
 
@@ -335,16 +379,17 @@ attribution the cherry-pick approach was chosen to preserve.
 - If the sync PR merges first, rebase the follow-up onto `main` before
   it merges.
 
-The orchestrator's PR banner ([scripts/05-finalize-pr.ps1](./scripts/05-finalize-pr.ps1))
-spells this policy out to the first reviewer so they don't push back on
-deferred fixes.
+The PR body's banner (see [step 8](#8-finalize-the-pr)) spells this
+policy out to the first reviewer so they don't push back on deferred
+fixes.
 
 ## Gotchas
 
 - **Never squash-merge the sync PR.** Use **"Rebase and merge"**
   (preferred) or **"Create a merge commit"**. The PR body opens with a
-  banner reminding the reviewer; `-AutoMergeStrategy rebase` arms GitHub
-  auto-merge with the right strategy so a tired reviewer can't get it wrong.
+  banner reminding the reviewer; the step-8 recipe shows the
+  `gh pr merge --rebase --auto` invocation so a tired reviewer can't get
+  it wrong.
 - **Don't amend substantive review fixes into the sync PR.** Only
   build-blocking fixes get **one** extra commit on the sync branch. See
   [references/follow-up-pr.md](./references/follow-up-pr.md).
@@ -356,9 +401,9 @@ deferred fixes.
   handles this automatically — extend the list when you discover the
   next file with the same pattern.
 - **`gh pr create` on Windows can fail with "Head sha can't be blank"** if the
-  branch is freshly pushed and not yet visible. `05-finalize-pr.ps1`
-  retries 3× — do not "fix" the script to use `--head <owner>:<branch>`
-  (which would point `gh` at a fork).
+  branch is freshly pushed and not yet visible. The step-8 recipe wraps
+  the call in a 3× retry loop — do not "fix" the recipe to use
+  `--head <owner>:<branch>` (which would point `gh` at a fork).
 - **Do not run the orchestration twice while a stuck issue is open.** The
   step-1 preflight catches it, but a human bypassing that gate manually
   would overwrite the stuck branch and lose their in-progress resolution.
@@ -392,7 +437,7 @@ deferred fixes.
 | Stuck issue prevents new run | Resolve the conflict on the stuck branch, open a PR, merge it (keep the `(cherry picked from commit <sha>)` trailer!), then **close the stuck issue**. The next scheduler tick proceeds. |
 | Cherry-pick reports "empty commit" | Expected for upstream no-op commits and for fork-already-applied patches; `03-cherry-pick-one.ps1` returns `"skipped-empty"` and the agent's loop skips it. No action needed. |
 | Same file conflicts every run | Add it to the Tier-0 list in [references/03-known-conflicts.md](./references/03-known-conflicts.md) with the correct resolution strategy (`take-upstream`, `take-ours`, or `union`). |
-| `gh pr create` returns "Head sha can't be blank" | `05-finalize-pr.ps1` retries 3× automatically. On slow networks may need a manual second run. |
+| `gh pr create` returns "Head sha can't be blank" | The step-8 recipe retries 3× automatically. On slow networks, the operator may need a manual second run of the whole sync. |
 
 ## References
 
@@ -404,7 +449,6 @@ deferred fixes.
 - [scripts/02-compute-pending.ps1](./scripts/02-compute-pending.ps1) — derive watermark + pending list (no state file).
 - [scripts/03-cherry-pick-one.ps1](./scripts/03-cherry-pick-one.ps1) — cherry-pick one SHA with author/date pinning + Tier-0/Tier-1.
 - [scripts/04-try-build.ps1](./scripts/04-try-build.ps1) — run `bz no_clean`; log to `Generated Files/...`.
-- [scripts/05-finalize-pr.ps1](./scripts/05-finalize-pr.ps1) — push branch + open PR with squash-warning banner.
 - [scripts/06-open-stuck-issue.ps1](./scripts/06-open-stuck-issue.ps1) — Tier-3 stuck issue (mid-pick conflict).
 - [scripts/06b-open-build-stuck-issue.ps1](./scripts/06b-open-build-stuck-issue.ps1) — Tier-4 stuck issue (build failed after clean batch).
 - [scripts/Common.ps1](./scripts/Common.ps1) — the only two helpers shared by 2+ scripts.

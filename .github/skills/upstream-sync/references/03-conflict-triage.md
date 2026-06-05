@@ -89,12 +89,12 @@ Stage only if both agents agree `high`/`OK`. Otherwise, route to Tier 3.
 
 Anything not resolved by Tier 0–2:
 
-```pwsh
+~~~pwsh
 git cherry-pick --abort
 # Open the labeled stuck issue (06-open-stuck-issue.ps1) — issue body
-# carries the ```yaml # wta-state``` block with stuck_on_sha + branch.
+# carries the fenced YAML "# wta-state" block with stuck_on_sha + branch.
 # Surface the issue URL + branch to the operator and exit.
-```
+~~~
 
 The issue body (built by [`scripts/06-open-stuck-issue.ps1`](../scripts/06-open-stuck-issue.ps1)) **must** include:
 

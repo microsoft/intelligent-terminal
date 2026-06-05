@@ -72,7 +72,14 @@ if ($LASTEXITCODE -ne 0) { throw "Could not resolve upstream commit $Sha." }
 $prePickHead = (git rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw "Could not record pre-pick HEAD before cherry-picking $Sha." }
 
-$info = (git log -1 --format='%an%x09%ae%x09%aI%x09%cn%x09%ce%x09%cI' $fullSha) -split "`t"
+# Use ASCII unit separator (\x1F) as the delimiter — that byte is forbidden
+# in git ident strings, so it cannot collide with a tab inside an author
+# or committer name (git allows tabs in idents). Validate field count
+# defensively before binding to GIT_* env vars.
+$us   = [char]0x1F
+$info = (git log -1 --format="%an${us}%ae${us}%aI${us}%cn${us}%ce${us}%cI" $fullSha) -split $us
+if ($LASTEXITCODE -ne 0) { throw "git log failed resolving author/committer for $fullSha (exit $LASTEXITCODE)." }
+if ($info.Count -ne 6)   { throw "Unexpected field count parsing author/committer for ${fullSha}: got $($info.Count) (expected 6)." }
 
 # Capture caller's existing GIT_AUTHOR_* / GIT_COMMITTER_* env so the finally
 # block can restore them. Higher-level automation may have set these
