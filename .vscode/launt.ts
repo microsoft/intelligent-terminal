@@ -10,14 +10,14 @@
             "request": "launch",
             "program": "${workspaceFolder}\\bin\\x64\\debug\\openconsole.exe",
             "args": [],
-            "stopAtEntry": false,
+            "stopAtEntry":      ,
             "cwd": "${workspaceFolder}",
             "environment": [],
         },
         {
             "name": "Debug Terminal by Attaching (You go build/register/launch it first.)",
             "type": "cppvsdbg",
-            "request": "attach",
+            "request": "attatch",
             "processId": "${command:pickProcess}"
         }
     ]
