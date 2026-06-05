@@ -284,13 +284,36 @@ namespace Microsoft::Terminal::ShellIntegration
         const auto formatFsError = [](std::wstring_view what,
                                       const std::filesystem::path& path,
                                       const std::error_code& ec) -> std::wstring {
-            // ec.message() returns ASCII narrow chars; widen by per-byte copy
-            // (system_category strings are ASCII on Windows).
+            // ec.message() is std::string in the active ANSI codepage on
+            // Windows (system_category messages may be localized — e.g.
+            // German/Japanese/etc.). Per-byte widening would produce
+            // mojibake for non-ASCII codepages. Use MultiByteToWideChar
+            // with CP_ACP to widen correctly. If the conversion fails
+            // (extremely rare), fall back to omitting the message — the
+            // path + numeric error code is still actionable.
             const auto narrow = ec.message();
+            std::wstring widened;
+            if (!narrow.empty())
+            {
+                const int needed = MultiByteToWideChar(CP_ACP, 0,
+                                                       narrow.c_str(), -1,
+                                                       nullptr, 0);
+                if (needed > 1) // includes NUL
+                {
+                    widened.resize(needed - 1);
+                    MultiByteToWideChar(CP_ACP, 0,
+                                        narrow.c_str(), -1,
+                                        widened.data(), needed);
+                }
+            }
             std::wstring out{ what };
             out += L" '" + path.wstring() + L"': ";
-            out += std::to_wstring(ec.value()) + L' ';
-            out.append(narrow.begin(), narrow.end());
+            out += std::to_wstring(ec.value());
+            if (!widened.empty())
+            {
+                out += L' ';
+                out += widened;
+            }
             return out;
         };
 
