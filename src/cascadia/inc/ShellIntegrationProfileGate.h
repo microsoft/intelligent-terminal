@@ -43,7 +43,7 @@ namespace Microsoft::Terminal::ShellIntegration
         // Case-insensitive substring match on UTF-16 code units. ASCII
         // fold only — sufficient for matching "pwsh.exe" / "powershell.exe"
         // / "bash.exe" / "wsl.exe" in commandlines (those are ASCII).
-        inline bool _IciContains(std::wstring_view haystack, std::wstring_view needle) noexcept
+        inline bool _CaseInsensitiveContains(std::wstring_view haystack, std::wstring_view needle) noexcept
         {
             if (needle.empty())
             {
@@ -111,13 +111,13 @@ namespace Microsoft::Terminal::ShellIntegration
             {
                 return true;
             }
-            return details::_IciContains(commandline, L"pwsh.exe");
+            return details::_CaseInsensitiveContains(commandline, L"pwsh.exe");
         case Target::WindowsPowerShell:
-            return details::_IciContains(commandline, L"powershell.exe") &&
-                   !details::_IciContains(commandline, L"pwsh.exe");
+            return details::_CaseInsensitiveContains(commandline, L"powershell.exe") &&
+                   !details::_CaseInsensitiveContains(commandline, L"pwsh.exe");
         case Target::Bash:
-            return details::_IciContains(commandline, L"bash.exe") &&
-                   !details::_IciContains(commandline, L"wsl.exe");
+            return details::_CaseInsensitiveContains(commandline, L"bash.exe") &&
+                   !details::_CaseInsensitiveContains(commandline, L"wsl.exe");
         default:
             return false;
         }
