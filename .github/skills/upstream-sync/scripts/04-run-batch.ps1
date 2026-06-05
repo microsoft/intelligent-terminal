@@ -4,24 +4,29 @@
   scheduler on a weekly/daily cadence.
 
 .DESCRIPTION
-  Reads state.json. If the stuck-lock (Tier-3 stuck_on_sha OR Tier-4
-  stuck_validation) is set, writes a skipped-locked report and exits 0.
-  Otherwise:
+  No state.json. Everything is derived from authoritative sources:
+    * last-synced watermark        -> Get-LastSyncedUpstreamSha (origin/main trailers)
+    * pending list                 -> Get-PendingUpstreamShas (git log --cherry-pick)
+    * stuck-lock                   -> Get-StuckIssues (open upstream-sync-stuck labeled issues)
+
+  If any open `upstream-sync-stuck` labeled issue exists, this run skips
+  with a `skipped-locked` report and exits 0. Otherwise:
     1. Fetches upstream/main.
     2. Computes pending commits, dropping revert pairs and empties.
     3. Creates branch upstream-sync/YYYY-MM-DD.
     4. Cherry-picks one-by-one with Tier-0/Tier-1 auto-resolution.
-       On cherry-pick conflict → Tier-3 stuck path (07).
+       On cherry-pick conflict -> Tier-3 stuck path (07).
     5. Post-batch HARD GATES (in order, before any push/PR):
-         a. Toolchain preflight (09)  — missing toolset = infra stuck.
-         b. Static breakage scan (08) — duplicate resw / fork invariants.
-         c. Try-build (10)            — razzle + bz no_clean.
-       Any failure → Tier-4 stuck path (07b).
-    6. Writes a report.
-    7. On success → pushes branch, opens PR (exit 0).
-       On Tier-3 → pushes branch, opens issue, sets lock (exit 10).
-       On Tier-4 → pushes branch, opens issue (except infra), sets lock (exit 10).
-       On no-op  → exits 0 with a "no-op" report.
+         a. Toolchain preflight (09)  - missing toolset = infra stuck.
+         b. Static breakage scan (08) - duplicate resw / fork invariants.
+         c. Try-build (10)            - razzle + bz no_clean.
+       Any failure -> Tier-4 stuck path (07b).
+    6. Writes a transient report under `Generated Files/upstream-sync/<date>/`
+       (gitignored; never committed).
+    7. On success -> pushes branch, opens PR (exit 0).
+       On Tier-3  -> pushes branch, opens labeled issue (exit 10).
+       On Tier-4  -> pushes branch, opens labeled issue (except infra), (exit 10).
+       On no-op   -> exits 0 with a "no-op" report.
 
 .PARAMETER DryRun
   Compute & report only; do not create the branch or pick anything.
@@ -30,7 +35,7 @@
   Reserved: enable LLM-assisted Tier-2 conflict resolution (NOT YET IMPLEMENTED).
 
 .PARAMETER Force
-  Override the stuck-lock (Tier-3 OR Tier-4). DANGEROUS — clobbers the
+  Override the stuck-lock (Tier-3 OR Tier-4). DANGEROUS - clobbers the
   in-progress branch. Use only when you know the lock is stale.
 
 .PARAMETER MaxPicks
@@ -51,7 +56,7 @@
   Skip steps 5a + 5c. Default: build. Schedulers MUST build.
 
 .PARAMETER AllowInconclusiveBuild
-  Don't treat a build timeout as Tier-4 stuck — proceed with a warning
+  Don't treat a build timeout as Tier-4 stuck - proceed with a warning
   in the report. Dev opt-in only; schedulers should leave it off so
   hung builds don't escape into unproven PRs.
 
@@ -65,8 +70,8 @@
 .OUTPUTS
   Writes status to stdout. Exit codes:
     0  = success (PR opened) OR no-op OR skipped-locked
-    10 = stuck (Tier-3 or Tier-4) — NOT an error
-    20 = hard failure (git/gh broken) — alarm-worthy
+    10 = stuck (Tier-3 or Tier-4) - NOT an error
+    20 = hard failure (git/gh broken) - alarm-worthy
 #>
 [CmdletBinding()]
 param(
@@ -108,85 +113,71 @@ function Invoke-Tier4Stuck {
 try {
     $ctx = New-RunContext
 
-    # Fast-forward local main from origin BEFORE reading state.json. The
-    # single-active-lock and last_synced_upstream_sha invariants live on
-    # origin/main; a stale local clone would let this scheduler proceed
-    # past a stuck-lock set by a concurrent run on another host or by
-    # the operator's `clear-stuck.ps1` reverse (defeating the whole
-    # safety model). Worktree cleanliness is checked first so that an
-    # unrelated dirty file can't block the FF unexpectedly mid-script.
+    # Fast-forward local main from origin BEFORE any state-derivation calls
+    # so Get-LastSyncedUpstreamSha / Get-PendingUpstreamShas see the
+    # authoritative refs. A stale local clone would otherwise compute a
+    # wrong pending list (or repeat picks already on origin/main from a
+    # concurrent run on another host). Worktree cleanliness is checked
+    # first so an unrelated dirty file can't block the FF mid-script.
     Assert-CleanWorktree
     git switch main 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) { Exit-Hard "git switch main failed." }
     git pull --ff-only origin main 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) { Exit-Hard "git pull --ff-only origin main failed." }
 
-    $state = Read-State
+    # --- Stuck-lock gate ---
+    # Derived from open `upstream-sync-stuck` labeled issues. Any open
+    # issue with that label blocks the scheduler until a human closes it
+    # (the close acts as the "lock cleared" signal - no clear-stuck.ps1
+    # needed). The gate ALSO needs `upstream` fetched so that the report's
+    # range / watermark fields can be computed even when we skip.
+    Ensure-UpstreamRemote
+    git fetch upstream main --no-tags 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { Exit-Hard "git fetch upstream main failed." }
 
-    # --- Stuck-lock gate (Tier-3 OR Tier-4) ---
-    $stuckTier3 = [bool] $state.stuck_on_sha
-    $stuckTier4 = [bool] $state.stuck_validation
-    if (($stuckTier3 -or $stuckTier4) -and -not $Force) {
-        $lockDesc = if ($stuckTier3) {
-            "Tier-3 at $($state.stuck_on_sha) (issue: $($state.stuck_issue_url))"
-        } else {
-            $v = $state.stuck_validation
-            "Tier-4 $($v.kind) [hash $($v.findings_hash)] (issue: $($v.issue_url))"
+    if (-not $Force) {
+        $stuck = Get-StuckIssues
+        if ($stuck.Count -gt 0) {
+            $first = $stuck[0]
+            $meta  = Get-StuckMetaFromIssue -Issue $first
+            $lockDesc = if ($meta -and ($meta.PSObject.Properties.Name -contains 'tier')) {
+                "$($meta.tier) at $($first.url)"
+            } else {
+                "labeled issue $($first.url)"
+            }
+            Write-Host "Stuck-lock set ($lockDesc). Skipping. Close the issue to clear the lock." -ForegroundColor Yellow
+            $fromSha = try { Get-LastSyncedUpstreamSha } catch { '(unknown)' }
+            $reportPath = & "$PSScriptRoot/05-write-report.ps1" -Ctx $ctx -From $fromSha -To $fromSha -Status 'skipped-locked'
+            Write-Host "Skip report: $reportPath"
+            exit 0
         }
-        Write-Host "Stuck-lock set: $lockDesc. Skipping." -ForegroundColor Yellow
-        $reportPath = & "$PSScriptRoot/05-write-report.ps1" -Ctx $ctx -From $state.last_synced_upstream_sha -To $state.last_synced_upstream_sha -Status 'skipped-locked'
-        Write-Host "Skip report: $reportPath"
-        exit 0
     }
 
     # --- Existing-PR gate ---
-    # Schedulers run unattended. If a prior run already opened an
-    # upstream-sync PR that hasn't merged yet, our baseline (origin/main)
-    # is unchanged, so we'd recompute the SAME pending range and then
-    # either (a) collide on branch creation or (b) 06-finalize-pr.ps1
-    # would fail because the PR already exists for that branch. Worse,
-    # under a per-day branch-name scheme the second run would open a
-    # NEW PR with identical content. Bail early with a no-op report
-    # instead, unless -Force is given. Skipped entirely under
-    # -PushDirectToMain, which never opens a PR and shouldn't require
-    # `gh` auth on the host.
-    # Skip the existing-PR gate when there's nothing to publish anyway:
-    # -PushDirectToMain never opens a PR, and -DryRun stops well before
-    # 06-finalize-pr.ps1 — neither should require `gh` auth on the host.
+    # Don't open a second concurrent upstream-sync PR. Same stderr-temp-file
+    # pattern as everywhere else: a gh banner on stderr must not be merged
+    # into stdout (would break ConvertFrom-Json on the JSON payload).
     if (-not $Force -and -not $PushDirectToMain -and -not $DryRun) {
-        # Drop the GitHub `head:` search qualifier — it matches exact
-        # branch names, not prefixes, so `head:upstream-sync/` would
-        # return nothing even when an `upstream-sync/2026-06-04` PR is
-        # open. List all open PRs (--limit 200 covers the corner case
-        # where a repo has more than the default 30 open) and filter
-        # client-side by headRefName.
-        #
-        # Capture stdout (JSON) and stderr separately: merging them with
-        # `2>&1` breaks ConvertFrom-Json when `gh` emits any warning or
-        # progress text on stderr even at exit 0 (e.g. version-update
-        # notice, deprecation warning). stderr is only used for the
-        # failure message.
         $errFile = [System.IO.Path]::GetTempFileName()
+        $existingJson = $null
         try {
             $existingJson = gh pr list --repo microsoft/intelligent-terminal --state open --limit 200 --json number,headRefName,url 2>$errFile
             $ghExit = $LASTEXITCODE
             if ($ghExit -ne 0) {
-                # `gh` missing / not authenticated / network-blocked. Don't
-                # silently continue and waste a full pick + scan + build
-                # only to fail later in 06-finalize-pr.ps1 — fail fast.
-                $errText = if (Test-Path $errFile) { (Get-Content -Raw -LiteralPath $errFile) } else { '' }
+                $errText = if (Test-Path -LiteralPath $errFile) { (Get-Content -Raw -LiteralPath $errFile) } else { '' }
                 Exit-Hard "gh pr list failed (exit $ghExit): $errText. The existing-PR gate requires gh to be installed and authenticated. Re-run with -Force to bypass (at your own risk), or with -DryRun / -PushDirectToMain to skip the gate."
             }
         }
         finally {
-            Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
         }
         if ($existingJson) {
             $existing = @($existingJson | ConvertFrom-Json) | Where-Object { $_.headRefName -like 'upstream-sync/*' }
             if ($existing.Count -gt 0) {
                 $first = $existing[0]
                 Write-Host "An upstream-sync PR is already open: #$($first.number) ($($first.headRefName)) -> $($first.url). Skipping until it merges or is closed (use -Force to override)." -ForegroundColor Yellow
-                $reportPath = & "$PSScriptRoot/05-write-report.ps1" -Ctx $ctx -From $state.last_synced_upstream_sha -To $state.last_synced_upstream_sha -Status 'skipped-pr-open'
+                $fromSha = try { Get-LastSyncedUpstreamSha } catch { '(unknown)' }
+                $reportPath = & "$PSScriptRoot/05-write-report.ps1" -Ctx $ctx -From $fromSha -To $fromSha -Status 'skipped-pr-open'
                 Write-Host "Skip report: $reportPath"
                 exit 0
             }
@@ -194,13 +185,11 @@ try {
     }
 
     Assert-CleanWorktree
-    # main is already FF'd from origin above (before the stuck-lock + existing-PR
-    # gates); no need to re-pull here. Re-assert clean state in case the gates
-    # produced ephemeral artifacts on disk.
 
-    # --- 1. Fetch upstream ---
-    $toSha = (& "$PSScriptRoot/01-fetch-upstream.ps1").Trim()
-    $fromSha = $state.last_synced_upstream_sha
+    # --- 1. Resolve from/to (upstream already fetched above) ---
+    $toSha   = (git rev-parse upstream/main).Trim()
+    if ($LASTEXITCODE -ne 0) { Exit-Hard "git rev-parse upstream/main failed." }
+    $fromSha = Get-LastSyncedUpstreamSha
 
     if ($toSha -eq $fromSha) {
         Write-Host "Already at upstream HEAD ($toSha). No-op." -ForegroundColor Green
@@ -232,9 +221,7 @@ try {
         exit 0
     }
 
-    # Capture pre-pick base SHA (origin/main) — used as static-scan baseline.
-    # Trim defensively: native git output occasionally carries a trailing \r
-    # depending on shim, and an untrimmed SHA breaks `"$Base..$Head"` ranges.
+    # Capture pre-pick base SHA (origin/main) - used as static-scan baseline.
     $preBase = (git rev-parse origin/main).Trim()
     if ($LASTEXITCODE -ne 0) { Exit-Hard "Could not resolve origin/main for scan baseline." }
 
@@ -274,7 +261,7 @@ try {
                 if ($ctx.StuckPaths.Count -gt 0) {
                     Write-Warning "Stuck at $sha on paths: $($ctx.StuckPaths -join ', ')$errSuffix"
                 } else {
-                    Write-Warning "Stuck at $sha — no conflict paths reported$errSuffix"
+                    Write-Warning "Stuck at $sha - no conflict paths reported$errSuffix"
                 }
                 break
             }
@@ -301,7 +288,7 @@ try {
         $ctx.Preflight = $preflightJson | ConvertFrom-Json
         Write-Host "Required: $($ctx.Preflight.required_toolsets -join ', '); available: $($ctx.Preflight.available_toolsets -join ', ')"
         if (-not $ctx.Preflight.ok) {
-            Write-Warning "Toolchain preflight FAILED — missing: $($ctx.Preflight.missing -join ', ')"
+            Write-Warning "Toolchain preflight FAILED - missing: $($ctx.Preflight.missing -join ', ')"
             Invoke-Tier4Stuck -Ctx $ctx -Kind 'toolchain-missing' -FromSha $fromSha -ToSha $toSha
         }
     }
@@ -330,7 +317,7 @@ try {
             'build-failed'       { Invoke-Tier4Stuck -Ctx $ctx -Kind 'build-failed'       -FromSha $fromSha -ToSha $toSha }
             'build-inconclusive' {
                 if ($AllowInconclusiveBuild) {
-                    Write-Warning "Build inconclusive — proceeding (--AllowInconclusiveBuild)."
+                    Write-Warning "Build inconclusive - proceeding (--AllowInconclusiveBuild)."
                 } else {
                     Invoke-Tier4Stuck -Ctx $ctx -Kind 'build-inconclusive' -FromSha $fromSha -ToSha $toSha
                 }
@@ -346,15 +333,23 @@ try {
     Write-Host "Report: $reportPath"
 
     if ($PushDirectToMain) {
-        $mainHead = & "$PSScriptRoot/06b-finalize-direct.ps1" -Ctx $ctx -To $toSha -ReportPath $reportPath
+        # No more state.json -> no backfill commit needed. Just push the
+        # sync branch's commits directly onto main as a fast-forward.
+        git switch main | Out-Host
+        if ($LASTEXITCODE -ne 0) { Exit-Hard "git switch main failed before direct-push." }
+        git merge --ff-only $branch | Out-Host
+        if ($LASTEXITCODE -ne 0) { Exit-Hard "git merge --ff-only $branch failed (main moved during the run?)." }
+        git push origin main | Out-Host
+        if ($LASTEXITCODE -ne 0) { Exit-Hard "git push origin main failed; sync content is local only." }
+        $mainHead = (git rev-parse HEAD).Trim()
         Write-Host ""
-        Write-Host "✅ Sync fast-forwarded onto main at $($mainHead.Substring(0,9))" -ForegroundColor Green
+        Write-Host ("[OK] Sync fast-forwarded onto main at " + $mainHead.Substring(0,9)) -ForegroundColor Green
         exit 0
     }
 
     $prUrl = & "$PSScriptRoot/06-finalize-pr.ps1" -Ctx $ctx -To $toSha -ReportPath $reportPath -AutoMergeStrategy $AutoMergeStrategy
     Write-Host ""
-    Write-Host "✅ Sync PR opened: $prUrl" -ForegroundColor Green
+    Write-Host "[OK] Sync PR opened: $prUrl" -ForegroundColor Green
     exit 0
 }
 catch {

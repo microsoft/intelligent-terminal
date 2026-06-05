@@ -14,7 +14,7 @@
 
 .PARAMETER LogDir
   Where to write the full build log. Default:
-  <repo>/.github/upstream-sync/build-logs/.
+  `Generated Files/upstream-sync/<YYYY-MM-DD>/build-logs/` (gitignored).
 
 .OUTPUTS
   JSON on stdout:
@@ -48,10 +48,12 @@ param(
 . "$PSScriptRoot/Common.ps1"
 
 try {
-    $root = Get-RepoRoot
     if (-not $LogDir) {
-        $LogDir = Join-Path $root '.github/upstream-sync/build-logs'
+        # Default: per-day, per-skill artifact dir under the gitignored
+        # `Generated Files/` root. Get-GeneratedDir creates it on demand.
+        $LogDir = Get-GeneratedDir -Sub 'build-logs'
     }
+    $root = Get-RepoRoot
     if (-not (Test-Path -LiteralPath $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
 
     $stamp   = (Get-Date).ToString('yyyy-MM-ddTHHmmss')

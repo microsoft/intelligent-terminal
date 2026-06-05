@@ -89,9 +89,9 @@ Anything not resolved by Tier 0–2:
 
 ```pwsh
 git cherry-pick --abort
-# Set state.stuck_on_sha = <sha>, state.stuck_branch = <branch>
+# Open the labeled stuck issue (07-open-stuck-issue.ps1) — issue body
+# carries the ```yaml # wta-state``` block with stuck_on_sha + branch
 # Write the report with the conflict diagnostics
-# Open the GitHub issue (07-open-stuck-issue.ps1)
 # Exit with code 10
 ```
 
@@ -101,10 +101,9 @@ The report **must** include:
 - The list of conflicting paths with a one-line classification each
   (`semantic-overlap`, `deleted-by-us`, `binary-merge`, etc.).
 - The exact local branch name where the human picks up.
-- The exact resume command the human runs after they merge their fix:
-  ```
-  pwsh .github/skills/upstream-sync/scripts/clear-stuck.ps1 -ResolvedThroughSha <sha>
-  ```
+- The exact resume action: resolve on the stuck branch, merge a PR
+  that keeps the `(cherry picked from commit <sha>)` trailer, then
+  CLOSE the stuck issue (that's the lock-clear signal — no script).
 
 ## Tier 4 — Post-pick validation failed
 
@@ -133,11 +132,13 @@ historical real-world failures with zero false positives:
 - 4d distinguishes "this code is broken" from "this host can't even
   try to build it" — the latter must never open a GitHub issue.
 
-Tier-4 state lives in `state.stuck_validation` (separate from
-Tier-3's `state.stuck_on_sha`); either being set causes the
-scheduler to skip. Clear with [`clear-stuck.ps1`](../scripts/clear-stuck.ps1)
-(omit `-ResolvedThroughSha` to keep the watermark and re-attempt the
-same range; pass it to advance past the broken upstream batch).
+Tier-4 state lives in the body of an open `upstream-sync-stuck` labeled
+issue (separate per kind by `findings_hash`); any such open issue causes
+the scheduler to skip. Clear by **closing the issue** after the human
+resolves the validation failure — either by merging a fix PR (whose
+trailers will advance the watermark) or by fixing the underlying defect
+on `main` directly (the next run re-attempts the same range and
+re-validates). No script needed.
 
 The Tier-4 report includes a `findings_hash` (16-hex prefix). Re-runs
 that produce the same hash mean the underlying defect is unchanged;

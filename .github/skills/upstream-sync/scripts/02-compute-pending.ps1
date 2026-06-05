@@ -3,10 +3,11 @@
   Compute the pending cherry-pick list with revert-pair detection.
 
 .DESCRIPTION
-  Reads state.last_synced_upstream_sha, lists commits in
-  state.last_synced..upstream/main (oldest first), detects revert pairs
-  within the range and drops them, detects upstream-empty commits and
-  drops them, and emits the final pending list as JSON.
+  Reads the last-synced upstream watermark from origin/main's
+  `cherry picked from commit <sha>` trailers, lists commits in
+  watermark..upstream/main (oldest first), detects revert pairs within the
+  range and drops them, detects upstream-empty commits and drops them, and
+  emits the final pending list as JSON.
 
 .OUTPUTS
   JSON object on stdout:
@@ -23,10 +24,11 @@ param()
 
 . "$PSScriptRoot/Common.ps1"
 
-$state = Read-State
-$from  = [string]$state.last_synced_upstream_sha
-if (-not $from) { throw "state.last_synced_upstream_sha is empty. Run bootstrap." }
-
+# `git fetch upstream main` must have been run already (orchestrator calls
+# 01-fetch-upstream.ps1 before us). Get-LastSyncedUpstreamSha walks the
+# `cherry picked from commit <sha>` trailers on origin/main back to the most
+# recent one that resolves to a commit on upstream/main — no state.json.
+$from = Get-LastSyncedUpstreamSha
 $to = (git rev-parse upstream/main).Trim()
 if ($LASTEXITCODE -ne 0) { throw "git rev-parse upstream/main failed." }
 
@@ -35,10 +37,16 @@ if ($from -eq $to) {
     return
 }
 
-# Oldest-first list of full SHAs.
-$all = git log --reverse --format='%H' "$from..$to"
-if ($LASTEXITCODE -ne 0) { throw "git log failed." }
-$all = @($all | Where-Object { $_ })
+# Patch-id-aware list of full SHAs (oldest-first). Uses Get-PendingUpstreamShas
+# from Common.ps1, which wraps `git log --cherry-pick --right-only --no-merges`:
+# any upstream commit whose patch ID matches a commit already on origin/main is
+# excluded (so picked-then-reverted commits stay out unless their patch is no
+# longer on origin/main, in which case they correctly re-appear as pending).
+# The revert-pair detection below stays as defense-in-depth and as the source
+# of the `dropped_pairs` report field; in practice --cherry-pick already drops
+# most pairs, but a same-batch original+revert that wasn't yet on origin/main
+# at the time of computation is still useful to surface.
+$all = @(Get-PendingUpstreamShas -Since $from)
 
 # Build sha -> first line and body map (single git invocation per commit is fine for typical batch sizes).
 $info = @{}

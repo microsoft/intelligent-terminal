@@ -1,7 +1,15 @@
 <#
 .SYNOPSIS
-  Set the stuck-lock and open a GitHub issue. Pushes the stuck branch
-  to origin so the human can pick it up.
+  Tier-3 (cherry-pick stopped at a real merge conflict) stuck-issue opener.
+
+.DESCRIPTION
+  No state.json. The "lock" is the OPEN labeled issue itself - the next
+  scheduler run calls Get-StuckIssues and bails when this issue is found.
+  The issue body carries a fenced ```yaml # wta-state``` block with the
+  same metadata the old state.json held (tier, stuck_on_sha, branch,
+  findings_hash) so re-runs can reason about it.
+
+  Cleared by: a human closes the issue. That's it - no separate script.
 
 .PARAMETER Ctx
   Run context (must have StuckSha, StuckPaths, Branch set).
@@ -20,25 +28,44 @@ param(
 
 . "$PSScriptRoot/Common.ps1"
 
-if (-not $Ctx.StuckSha) { throw "Ctx.StuckSha is empty — nothing to escalate." }
+if (-not $Ctx.StuckSha) { throw "Ctx.StuckSha is empty - nothing to escalate." }
 
 # Push the stuck branch so the human can resume on it.
 git push -u origin $Ctx.Branch 2>&1 | Out-Host
-if ($LASTEXITCODE -ne 0) { Write-Warning "Could not push stuck branch — issue still being filed for visibility." }
+if ($LASTEXITCODE -ne 0) { Write-Warning "Could not push stuck branch - issue still being filed for visibility." }
 
 $shortSha = $Ctx.StuckSha.Substring(0,9)
 $subj = (git log -1 --format='%s' $Ctx.StuckSha).Trim()
 $title = "Upstream sync stuck at ${shortSha}: $subj"
 
-# Header prepended to report content.
+# Build the lock-state YAML block. Schedulers read this on the next run
+# via Get-StuckMetaFromIssue - it carries enough metadata to recognize a
+# re-issue of the same failure without re-spamming a new ticket.
+$stuckErrorVal = if ($Ctx.PSObject.Properties.Name -contains 'StuckError' -and $Ctx.StuckError) { $Ctx.StuckError } else { '' }
+$yamlBlock = Format-StuckYamlBlock @{
+    tier          = '3'
+    kind          = 'cherry-pick-conflict'
+    stuck_on_sha  = $Ctx.StuckSha
+    branch        = $Ctx.Branch
+    at            = Format-Iso8601 $Ctx.StartedAt
+    host          = $Ctx.Host
+    conflict_count = ($Ctx.StuckPaths | Measure-Object).Count
+    error         = $stuckErrorVal
+}
+
 $header = @"
-🛑 **Upstream sync stopped at a conflict that needs human judgment.**
+> [!CAUTION]
+> **Upstream sync stopped at a conflict that needs human judgment.**
+>
+> The scheduler will keep skipping its runs until this issue is **closed**.
+> Closing the issue IS the lock-clear signal - no separate script needed.
 
-The scheduler will keep skipping its runs until this issue is resolved
-and the stuck-lock is cleared. No alarm — the lock is intentional.
+**How to unblock:** follow "How to resume" in the report excerpt below,
+merge your manual-resolution PR (keeping the ``(cherry picked from commit
+<sha>)`` trailer - that's what the next sync run reads as its watermark),
+then close this issue.
 
-To unblock, follow "How to resume" in the report below, then close this
-issue after ``clear-stuck.ps1`` runs cleanly.
+$yamlBlock
 
 ---
 
@@ -47,72 +74,32 @@ $body = $header + (Get-Content -Raw -LiteralPath $ReportPath)
 $tmp  = New-TemporaryFile
 [System.IO.File]::WriteAllText($tmp, $body, (New-Object System.Text.UTF8Encoding($false)))
 
-# Ensure label exists (best-effort; ignore if already present).
-# -R is pinned for the same reason as the issue-create call below: an `upstream`
-# remote makes `gh` default to microsoft/terminal, where this account does not
-# have label-create permission.
+# Ensure label exists (best-effort). -R pinned because an `upstream` remote
+# can make `gh` default to microsoft/terminal where this account has no
+# label-create permission.
 gh label create 'upstream-sync-stuck' --color 'B60205' --description 'Upstream sync blocked on a manual conflict' -R microsoft/intelligent-terminal 2>$null | Out-Null
 
-# -R is explicit because the `upstream` remote can make gh default to microsoft/terminal.
-# Capture stderr to a separate temp file so a `gh` warning on stderr (version notice etc.)
-# can't displace the URL as the "last line" of merged output.
-$errFile  = [System.IO.Path]::GetTempFileName()
-$errText  = ''
+# Capture stderr to a separate temp file so a `gh` warning on stderr can't
+# displace the URL as the "last line" of merged output.
+$errFile = [System.IO.Path]::GetTempFileName()
+$errText = ''
+$issueUrl = $null
+$ghExit   = 0
 try {
     $issueUrl = gh issue create -R microsoft/intelligent-terminal --title $title --label 'upstream-sync-stuck' --body-file $tmp 2>$errFile | Select-Object -Last 1
     $ghExit   = $LASTEXITCODE
     if (Test-Path -LiteralPath $errFile) { $errText = (Get-Content -Raw -LiteralPath $errFile) }
 }
 finally {
-    Remove-Item $tmp     -Force -ErrorAction SilentlyContinue
-    Remove-Item $errFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $tmp     -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
 }
 if ($ghExit -ne 0 -or $issueUrl -notmatch '^https://github.com/') {
     throw "gh issue create failed (exit $ghExit): stdout='$issueUrl' stderr='$errText'"
 }
 $Ctx.IssueUrl = $issueUrl.Trim()
 
-# Set the stuck-lock on main (direct push — the lock is the gate; PR path is blocked).
-git switch main | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Could not switch to main before writing stuck-lock. Resolve manually and re-run; the stuck branch + issue are already in place." }
-git pull --ff-only origin main | Out-Host
-if ($LASTEXITCODE -ne 0) { throw "Could not fast-forward main before writing stuck-lock. Resolve manually and re-run; the stuck branch + issue are already in place." }
-
-$state = Read-State
-$state.stuck_on_sha    = $Ctx.StuckSha
-$state.stuck_branch    = $Ctx.Branch
-$state.stuck_at        = Format-Iso8601 $Ctx.StartedAt
-$state.stuck_issue_url = $Ctx.IssueUrl
-# Single active lock: clear the Tier-4 fields when promoting a Tier-3 lock so
-# the scheduler and humans see one stuck reason, not two.
-if ($state.PSObject.Properties.Name -contains 'stuck_validation') {
-    $state.stuck_validation = $null
-}
-$runSummary = [ordered] @{
-    at                 = Format-Iso8601 $Ctx.StartedAt
-    host               = $Ctx.Host
-    status             = 'stuck'
-    branch             = $Ctx.Branch
-    issue_url          = $Ctx.IssueUrl
-    stuck_on_sha       = $Ctx.StuckSha
-    picked_count       = $Ctx.Picked.Count
-}
-$state.last_run = $runSummary
-$state.history  = @($runSummary) + @($state.history) | Select-Object -First 20
-Write-State $state
-
-# Copy the report into main too (so the report is visible without checking out the stuck branch).
-$reportName = Split-Path -Leaf $ReportPath
-$reportOnMain = Join-Path (Get-ReportsDir) $reportName
-if ($ReportPath -ne $reportOnMain) {
-    Copy-Item -LiteralPath $ReportPath -Destination $reportOnMain -Force
-}
-
-git add -- (ConvertTo-RepoRelativePath (Get-StatePath)) (ConvertTo-RepoRelativePath $reportOnMain)
-if ($LASTEXITCODE -ne 0) { throw "git add of stuck state failed." }
-git commit -m "chore(upstream-sync): stuck at $shortSha (#$($Ctx.IssueUrl -replace '.*/',''))" | Out-Host
-if ($LASTEXITCODE -ne 0) { throw "git commit of stuck-lock failed — lock NOT set on origin/main. The next scheduled run will not see the lock; resolve manually." }
-git push origin main | Out-Host
-if ($LASTEXITCODE -ne 0) { throw "git push origin main failed — stuck-lock is local only. Push manually before the next scheduler tick or it will re-run over the conflict." }
-
+# That's it. The open labeled issue IS the lock - no state file to write,
+# no main-branch commit, nothing to push. The next scheduler run will see
+# the open issue via Get-StuckIssues and skip.
 return $Ctx.IssueUrl

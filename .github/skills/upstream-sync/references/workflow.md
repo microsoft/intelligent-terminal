@@ -4,12 +4,24 @@ This is the authoritative per-step procedure. The orchestrator is
 [`scripts/04-run-batch.ps1`](../scripts/04-run-batch.ps1); each step below
 maps to a script or an in-orchestrator function.
 
+## State model — derived, not stored
+
+There is **no `state.json`**. Every persistent fact is derived from an
+authoritative source on demand:
+
+| Fact | Source | Helper in [`scripts/Common.ps1`](../scripts/Common.ps1) |
+|---|---|---|
+| Last-synced upstream SHA | Newest `(cherry picked from commit <sha>)` trailer on `origin/main` whose target is reachable from `upstream/main` | `Get-LastSyncedUpstreamSha` |
+| Pending list | `git log --cherry-pick --right-only --no-merges <watermark>...upstream/main` (patch-id-aware; reverted picks reappear) | `Get-PendingUpstreamShas -Since <watermark>` |
+| Stuck-lock | Any OPEN issue with the `upstream-sync-stuck` label on `microsoft/intelligent-terminal` | `Get-StuckIssues` |
+| Stuck-lock metadata | Fenced ```yaml # wta-state``` block inside the issue body | `Get-StuckMetaFromIssue` |
+| Transient artifacts (reports, build logs) | `Generated Files/upstream-sync/<YYYY-MM-DD>/` (gitignored at repo root) | `Get-GeneratedDir [-Sub]` |
+
 ## Entry Conditions
 
-- `state.json` exists (bootstrap done — see [bootstrap.md](./bootstrap.md)).
 - Working tree is clean (`git status --porcelain` empty).
-- We are on `main` (or the script will `git switch main`).
-- `state.stuck_on_sha` is `null` AND `state.stuck_validation` is `null` (otherwise exit early — see "Stuck-lock" below).
+- We are on `main` (or the script will `git switch main` and `git pull --ff-only origin main`).
+- `Get-StuckIssues` returns empty (otherwise exit early — see "Stuck-lock" below).
 
 ## Steps
 
@@ -22,17 +34,20 @@ git fetch upstream main --no-tags
 
 Script: [`01-fetch-upstream.ps1`](../scripts/01-fetch-upstream.ps1).
 
-Writes a local "no-op" report and exits 0 (without updating `state.json`) if
-`git rev-parse upstream/main` equals `state.last_synced_upstream_sha`.
+If `git rev-parse upstream/main` equals `Get-LastSyncedUpstreamSha`, the
+orchestrator writes a local no-op report and exits 0.
 
 ### 2. Compute pending range
 
 ```pwsh
-git log --reverse --format='%H' "$last_synced..upstream/main"
+$since = Get-LastSyncedUpstreamSha
+git log --cherry-pick --right-only --no-merges --format='%H' --reverse "$since...upstream/main"
 ```
 
 Oldest-first ordering is mandatory. Cherry-picking newest-first inverts
-dependencies and creates spurious conflicts.
+dependencies and creates spurious conflicts. `--cherry-pick` compares
+patch IDs, so a commit that was picked then reverted on `origin/main`
+correctly re-appears here as pending.
 
 Script: [`02-compute-pending.ps1`](../scripts/02-compute-pending.ps1) emits
 a JSON object on stdout — see step 3 below for the full shape.
@@ -74,7 +89,8 @@ git cherry-pick --keep-redundant-commits -x <sha>
 ```
 
 - `-x` adds `(cherry picked from commit <sha>)` to the message — critical
-  for audit trail and for the next-run revert-pair detector.
+  for audit trail, for the next-run revert-pair detector, **and for
+  `Get-LastSyncedUpstreamSha` to derive the next watermark.** Never strip it.
 - `--keep-redundant-commits` lets us preserve no-op picks for traceability
   (we then `git reset --hard HEAD~1` if Tier-1 fires).
 
@@ -91,9 +107,9 @@ git cherry-pick --keep-redundant-commits -x <sha>
 3. **Tier 2 — trivial textual (opt-in via `-TryTier2`).** Delegate to a
    fresh sub-agent with the conflict text. Accept only `high` confidence.
    See [conflict-triage.md](./conflict-triage.md#tier-2-llm-assisted).
-4. **Tier 3 — semantic conflict.** Run `git cherry-pick --abort`. Set
-   the stuck-lock, write report, exit non-zero. The script that calls
-   us will then open the stuck issue.
+4. **Tier 3 — semantic conflict.** Run `git cherry-pick --abort`. Open
+   the labeled stuck issue, write report, exit 10. The next scheduler
+   tick sees the open labeled issue and skips.
 
 Script: [`03-cherry-pick-one.ps1`](../scripts/03-cherry-pick-one.ps1)
 handles one commit, returns a JSON status object. The orchestrator loops.
@@ -113,8 +129,9 @@ pwsh .github/skills/upstream-sync/scripts/09-toolchain-preflight.ps1
 
 Detects required `<PlatformToolset>` values from `src/common.build.*.props`
 and checks they exist under `<VS>\MSBuild\Microsoft\VC\<msbuild-ver>\Platforms\x64\PlatformToolsets\<toolset>`.
-If `ok=false`, this is **Tier-4d infra-stuck**: lock + NO GitHub issue
-(PR review cannot fix host provisioning). Skipped when `-SkipBuild` is set.
+If `ok=false`, this is **Tier-4d infra-stuck**: NO GitHub issue, NO lock
+(PR review cannot fix host provisioning; the next scheduler tick simply
+retries from a properly provisioned host). Skipped when `-SkipBuild` is set.
 
 #### 7b. Static breakage scan
 
@@ -132,7 +149,7 @@ loop. The scan:
   against the post-pick worktree.
 
 If `blocking=true` (any `critical` or `high` finding), this is **Tier-4a
-stuck**: lock + GitHub issue + exit 10. Skipped when `-SkipStaticScan`.
+stuck**: opens labeled issue + exit 10. Skipped when `-SkipStaticScan`.
 
 #### 7c. Try-build
 
@@ -146,14 +163,15 @@ pwsh .github/skills/upstream-sync/scripts/10-try-build.ps1 -BuildCommand 'tools\
 - `kind = build-inconclusive` (timeout) → **Tier-4c stuck**, unless
   `-AllowInconclusiveBuild` (dev opt-in; never in a scheduler).
 
-Skipped when `-SkipBuild`. Logs land in `.github/upstream-sync/build-logs/`
-(git-ignored).
+Skipped when `-SkipBuild`. Logs land in
+`Generated Files/upstream-sync/<YYYY-MM-DD>/build-logs/` (gitignored).
 
 ### 8. Write report (always)
 
 Regardless of outcome (ok / no-op / dry-run / stuck / stuck-static-scan /
 stuck-build-failed / stuck-build-inconclusive / stuck-toolchain-missing),
-write `.github/upstream-sync/reports/YYYY-MM-DDTHHmm[-suffix].md` with:
+write `Generated Files/upstream-sync/<YYYY-MM-DD>/<timestamp>-<suffix>.md`
+with:
 
 - Run metadata (start, end, duration, host, status)
 - Counts: picked / dropped-pair / empty / known-conflict-resolved / stuck-at
@@ -162,7 +180,9 @@ write `.github/upstream-sync/reports/YYYY-MM-DDTHHmm[-suffix].md` with:
 - If stuck (Tier-3): the conflicting commit, the conflicting paths, what was attempted, the exact resume command
 - If stuck (Tier-4): the validation findings, the build log tail, the exact resume command
 
-Template: [`reporting.md`](./reporting.md).
+Reports are **transient** — never committed. The stuck issue body
+(step 9b/9c) inlines the parts of the report a reviewer needs without
+fetching the local file.
 
 Script: [`05-write-report.ps1`](../scripts/05-write-report.ps1).
 
@@ -173,13 +193,13 @@ git push -u origin $branch
 gh pr create -R microsoft/intelligent-terminal --base main --head $branch --title "chore(upstream): sync up to $shortSha" --body-file $reportPath
 ```
 
-Update `state.last_synced_upstream_sha = upstream/main` and commit
-`state.json` + the report into the sync branch (amend the last pick or
-add a trailing commit titled `chore(upstream-sync): update state`).
+No state-file commit. The `(cherry picked from commit <sha>)` trailer on
+each cherry-pick IS the watermark — once the PR merges, the trailer is
+on `origin/main` and the next run's `Get-LastSyncedUpstreamSha` finds it.
 
 Script: [`06-finalize-pr.ps1`](../scripts/06-finalize-pr.ps1).
 
-### 9b. Stuck path (Tier-3) — open issue + set lock
+### 9b. Stuck path (Tier-3) — open labeled issue
 
 ```pwsh
 gh issue create -R microsoft/intelligent-terminal --label upstream-sync-stuck `
@@ -187,19 +207,19 @@ gh issue create -R microsoft/intelligent-terminal --label upstream-sync-stuck `
   --body-file $reportPath
 ```
 
-Set `state.stuck_on_sha = <sha>` and `state.stuck_branch = $branch`.
-Commit `state.json` and the report on `main` (yes, directly — this is the
-lock, and the PR path is blocked). The next scheduled run sees the lock
-and exits.
+The issue body carries a fenced ```yaml # wta-state``` block with
+`tier`, `kind=cherry-pick-conflict`, `stuck_on_sha`, `branch`, `at`,
+`host` so a future run's `Get-StuckMetaFromIssue` can read the lock
+context. Nothing is committed to `main`.
 
 Script: [`07-open-stuck-issue.ps1`](../scripts/07-open-stuck-issue.ps1).
 
-### 9c. Stuck path (Tier-4) — open issue + set lock
+### 9c. Stuck path (Tier-4) — open labeled issue
 
-For Tier-4a/b/c, the same flow as 9b but the issue title carries the
-validation kind and findings hash; `state.stuck_validation` is set
-instead of `state.stuck_on_sha`. For Tier-4d (toolchain-missing), only
-the lock is set — NO issue is opened.
+For Tier-4a/b/c, same flow as 9b — open the labeled issue with a
+`# wta-state` block carrying `tier=4`, `kind`, `findings_hash`,
+`picked_count`. For Tier-4d (toolchain-missing), NO issue is opened
+(infra problem); the next scheduler tick simply retries.
 
 Script: [`07b-open-validation-stuck-issue.ps1`](../scripts/07b-open-validation-stuck-issue.ps1).
 
@@ -248,28 +268,36 @@ fixes.
 
 ## Stuck-Lock
 
-When **either** `state.stuck_on_sha` (Tier-3) **or** `state.stuck_validation`
-(Tier-4) is non-null, the orchestrator:
+When `Get-StuckIssues` returns any OPEN `upstream-sync-stuck` labeled
+issue, the orchestrator:
 
-1. Logs `"stuck-lock set: <description>; skipping run"`.
-2. Writes a `reports/YYYY-MM-DDTHHmm-skipped.md` noting the skip.
-3. Exits 0 (the scheduler should not retry on the same lock).
+1. Logs `"stuck-lock set (<tier> at <url>); skipping run"`.
+2. Writes a transient `<timestamp>-skipped.md` under
+   `Generated Files/upstream-sync/<date>/` noting the skip.
+3. Exits 0 (the scheduler should not alarm).
 
 To clear the lock after the human has resolved the underlying issue:
 
-```pwsh
-# Tier-3: -ResolvedThroughSha is REQUIRED and advances the watermark.
-pwsh .github/skills/upstream-sync/scripts/clear-stuck.ps1 -ResolvedThroughSha <sha>
-
-# Tier-4: -ResolvedThroughSha is OPTIONAL. Omit it to keep the watermark
-# and have the next run re-attempt the same range (recommended when the
-# fix lands as a separate PR on main — the next sync will pick up the
-# upstream batch atop the now-fixed main and re-validate).
-pwsh .github/skills/upstream-sync/scripts/clear-stuck.ps1
+```
+1. Resolve the conflict on the stuck branch (`upstream-sync/<date>`),
+   keeping every `(cherry picked from commit <sha>)` trailer intact.
+2. Open a PR for the fix, merge it (rebase or merge — NOT squash).
+3. CLOSE the stuck issue. That's the lock-clear signal — no script.
 ```
 
-This sets `state.last_synced_upstream_sha` (when advanced), clears the
-appropriate lock fields, and commits `state.json` on `main`.
+The next scheduler tick:
+- `Get-LastSyncedUpstreamSha` re-derives the watermark from the merged
+  PR's trailers (advancing past the resolved batch — for Tier-3 by the
+  exact resolved commit; for Tier-4 by whatever extra trailers the fix
+  PR carried).
+- `Get-StuckIssues` returns empty (the issue is closed).
+- The run proceeds from the new watermark.
+
+For Tier-4 where the operator wants to **re-attempt the same range**
+(e.g. because the fix landed as a separate PR on `main` that doesn't
+itself carry trailers), simply close the issue without merging a sync
+fix: the next run will recompute pending against the same watermark and
+re-validate.
 
 ## Sub-Agent Delegation Map
 

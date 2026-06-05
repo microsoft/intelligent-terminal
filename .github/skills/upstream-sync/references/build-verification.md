@@ -30,7 +30,7 @@ Outcomes:
 | Outcome             | Behavior                                               |
 |---------------------|--------------------------------------------------------|
 | All toolsets found  | Continue to static scan + build.                       |
-| Required missing    | Tier-4 **infra-stuck** — separate kind from code-stuck. Does NOT open a stuck issue (it's a host problem, not a code problem). |
+| Required missing    | Tier-4 **infra-stuck** — separate kind from code-stuck. Does NOT open a stuck issue, does NOT set a lock (no labeled issue to gate on). The next scheduler tick simply retries; provision the host before then. |
 | Skipped (`-SkipBuild`) | Preflight not run. Caller accepts risk.             |
 
 **The preflight does NOT auto-bump v143→v145.** That recipe is
@@ -55,11 +55,13 @@ the generated Tier-4 diagnostics include the build log path and tail.
 
 Output:
 
-- Full build log → `.github/upstream-sync/build-logs/<timestamp>.log`
-  (gitignored — these are big and noisy).
+- Full build log → `Generated Files/upstream-sync/<YYYY-MM-DD>/build-logs/<timestamp>.log`
+  (gitignored — these are big and noisy; the gitignore is the repo root's
+  `**/Generated Files/` rule).
 - Last ~200 lines → captured into the run report and any Tier-4 stuck
-  issue.
-- Exit code + duration → state.json.
+  issue body.
+- Exit code + duration → embedded in the Tier-4 stuck-issue YAML block
+  (and the run report) when the build is the failing gate.
 
 Timeout:
 
@@ -86,8 +88,8 @@ If a flaky build (unrelated env issue, transient toolchain glitch)
 trips the gate:
 
 1. The stuck issue gives a clear log tail.
-2. A human can `clear-stuck.ps1 -ResolvedThroughSha <pick-tip>` after
-   re-running the build locally to confirm it's a transient.
+2. A human can re-run the build locally to confirm it's a transient,
+   then **close the stuck issue** to clear the lock.
 3. The next scheduler tick will re-attempt the same pick range.
 
 Distinguishing transient-build from real-pick-broke-build is left to
@@ -96,6 +98,7 @@ of a manual cross-check is small (~once per N runs).
 
 ## Build artifacts
 
-`.github/upstream-sync/build-logs/` is **not** committed (added to
-`.gitignore` by the skill PR). Build artifacts under `bin/`, `obj/`,
-etc. follow the repo's existing `.gitignore`.
+`Generated Files/upstream-sync/<YYYY-MM-DD>/build-logs/` is **not**
+committed — the repo root's `**/Generated Files/` gitignore rule
+covers it. Build artifacts under `bin/`, `obj/`, etc. follow the
+repo's existing `.gitignore`.

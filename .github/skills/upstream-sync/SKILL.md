@@ -16,25 +16,80 @@ conflict appears.
 - User asks to "sync upstream", "pull from microsoft/terminal", "catch up to upstream", or "run upstream sync".
 - A scheduler (Task Scheduler, cron, GitHub Actions) invokes
   [`scripts/04-run-batch.ps1`](./scripts/04-run-batch.ps1) on a weekly/daily cadence.
-- The previous run left a stuck-lock and the human has finished resolving
-  the conflict — use [`scripts/clear-stuck.ps1`](./scripts/clear-stuck.ps1) and re-run.
+- The previous run left an `upstream-sync-stuck` labeled issue open and the
+  human has finished resolving the conflict — **close the issue** (that IS
+  the lock-clear signal) and re-run.
 
 ## When NOT to Use This Skill
 
 - The user wants a **one-shot rebase** of a single feature branch onto upstream — that's a normal `git rebase`, not this skill.
-- The fork has never been initialized (`state.json` missing) — first do the one-time bootstrap from [references/bootstrap.md](./references/bootstrap.md).
-- A stuck-lock is set — do not re-run; resolve the conflict on the stuck branch first.
+- An `upstream-sync-stuck` labeled issue is open on `microsoft/intelligent-terminal` — do not re-run; resolve the conflict on the stuck branch first, then close the issue.
 
 ## Prerequisites
 
-- `git` 2.38+ (needed for `git cherry-pick --keep-redundant-commits`, used by `scripts/03-cherry-pick-one.ps1`) and `gh` CLI authenticated against `microsoft/intelligent-terminal`. The credential **must also be able to push directly to `main`** (i.e. bypass branch protection if the branch is protected): `07-open-stuck-issue.ps1`, `07b-open-validation-stuck-issue.ps1`, and `clear-stuck.ps1` write the stuck-lock + report into `state.json` on `main` via a direct push. Without that permission, unattended runs will fail mid-stuck-handling with a generic git push error.
+- `git` 2.38+ (needed for `git cherry-pick --keep-redundant-commits`, used by `scripts/03-cherry-pick-one.ps1`) and `gh` CLI authenticated against `microsoft/intelligent-terminal`. The credential needs **push to topic branches** (`upstream-sync/<date>`) and **issue + label create** in the same repo (the stuck-lock is an open labeled issue, not a commit on `main`).
 - PowerShell 7+ (`pwsh`) on PATH.
 - Windows build host with Visual Studio 2022, Windows SDK, `vswhere`, and the repo's `tools\razzle.cmd`/`bz` build environment for the default validation gates (or use `-SkipBuild` only for explicit dev/debug runs).
 - Remote named `upstream` pointing at `https://github.com/microsoft/terminal.git`
   (the scripts create it if missing).
-- `state.json` initialized once (see [references/bootstrap.md](./references/bootstrap.md)).
+- **No `state.json` to bootstrap.** Watermark comes from the
+  `(cherry picked from commit <sha>)` trailers on `origin/main`. If
+  the fork has never used `cherry-pick -x` (or trailers were stripped),
+  see "First-time sync" below for the one-time operator step.
 
-## Why Cherry-Pick (Not Rebase, Not Merge)
+## State model (no `state.json`)
+
+Every persistent fact lives in the source that owns it:
+
+| Question | Source of truth |
+|---|---|
+| What's the last-synced upstream commit? | Newest `(cherry picked from commit <sha>)` trailer on `origin/main` whose target is reachable from `upstream/main`. Computed by `Get-LastSyncedUpstreamSha` in `scripts/Common.ps1`. |
+| What's pending? | `git log --cherry-pick --right-only --no-merges <watermark>...upstream/main`. Patch-id-based, so a picked-then-reverted commit correctly re-appears. |
+| Is the scheduler locked? | Any OPEN issue with the `upstream-sync-stuck` label on `microsoft/intelligent-terminal`. Closing the issue IS the lock-clear signal. |
+| What does the lock mean? | A fenced ```yaml # wta-state``` block in the issue body carries `tier`, `kind`, `stuck_on_sha`/`findings_hash`, etc. (parsed by `Get-StuckMetaFromIssue`). |
+| Where do reports + build logs go? | `Generated Files/upstream-sync/<YYYY-MM-DD>/` — gitignored by the repo root's `**/Generated Files/` rule. Never committed. |
+
+### First-time sync
+
+If the fork has no `(cherry picked from commit <sha>)` trailer on
+`origin/main` yet, `Get-LastSyncedUpstreamSha` will throw. To seed,
+the operator commits an **empty seed commit** carrying the trailer
+in its message — the same format `cherry-pick -x` would emit, written
+by hand exactly once:
+
+```pwsh
+git remote add upstream https://github.com/microsoft/terminal.git
+git fetch upstream main --no-tags
+git switch main
+# Pick an upstream SHA you consider "already in this fork" (typically the
+# commit the fork was originally branched from). Write the trailer EXACTLY
+# as cherry-pick -x would so Get-LastSyncedUpstreamSha picks it up.
+$seedSha = '<40-char-upstream-sha-already-in-fork>'
+git commit --allow-empty -m "chore(upstream): seed upstream-sync watermark" -m "(cherry picked from commit $seedSha)"
+git push origin main
+```
+
+That one merged trailer becomes the watermark. From then on, every
+run extends it. No script needed — the bootstrap is just one
+`commit --allow-empty` ever.
+
+### Squash-merge recovery (don't do this, but if you did)
+
+The PR banner shouts "do not squash" and `-AutoMergeStrategy rebase`
+locks in the safe path. If a reviewer squash-merges anyway:
+
+- The squash commit's body usually concatenates every cherry-picked
+  message, so it contains MANY `(cherry picked from commit <sha>)`
+  trailers. `Get-LastSyncedUpstreamSha` matches the FIRST one it sees
+  via regex, which is the oldest cherry-pick in the squashed batch.
+  That means the watermark moves backward, and the next sync run
+  re-picks everything between the oldest and newest commits of the
+  squashed batch.
+- The recovery is the same as a first-time seed: commit an empty
+  watermark commit on `main` carrying the trailer for the upstream
+  HEAD that was actually merged, and push.
+
+
 
 | Approach | Why rejected / chosen |
 |---|---|
@@ -62,7 +117,7 @@ same names; a take-upstream resolution silently dropping a fork-specific
 warning suppression; etc. — see PR #220 audit). Before any push or PR,
 the orchestrator now runs three hard gates:
 
-1. **Toolchain preflight** ([`scripts/09-toolchain-preflight.ps1`](./scripts/09-toolchain-preflight.ps1)) — verifies the host has the `PlatformToolset` versions the repo requires. Missing → **Tier-4d infra-stuck** (lock set, NO GitHub issue — PR review can't fix host provisioning).
+1. **Toolchain preflight** ([`scripts/09-toolchain-preflight.ps1`](./scripts/09-toolchain-preflight.ps1)) — verifies the host has the `PlatformToolset` versions the repo requires. Missing → **Tier-4d infra-stuck**: NO GitHub issue is opened and NO lock is set (PR review can't fix host provisioning). The next scheduler tick simply retries; if this host keeps tripping it, run from a properly provisioned host instead.
 2. **Static breakage scan** ([`scripts/08-static-scan.ps1`](./scripts/08-static-scan.ps1)) — baseline-diffs `.resw` files for newly-duplicated `<data name>` keys, and regex-checks fork invariants from [`references/fork-invariants.json`](./references/fork-invariants.json). Blocking → **Tier-4a stuck**.
 3. **Try-build** ([`scripts/10-try-build.ps1`](./scripts/10-try-build.ps1)) — runs `tools\razzle.cmd && bz no_clean` with a 45-minute wall-clock cap. Build failed → **Tier-4b stuck**; timeout → **Tier-4c stuck** (unless `-AllowInconclusiveBuild`).
 
@@ -109,9 +164,10 @@ pwsh .github/skills/upstream-sync/scripts/04-run-batch.ps1 -BuildTimeoutMinutes 
 The cherry-pick loop pins both author and committer identity/dates to the
 upstream commit so audit timestamps match the original commit-by-commit history.
 
-Resumability is built into the state file — re-running after a successful
-run is a fast no-op (nothing pending), and re-running while the stuck-lock
-is set exits early without touching the branch.
+Resumability is built into the trailer model — re-running after a successful
+run is a fast no-op (the new merged commits extend the watermark, so the
+pending-list is empty), and re-running while a stuck-issue is open exits
+early without touching the branch.
 
 ### After-PR review handling — fix-in-PR vs. follow-up PR
 
@@ -182,18 +238,24 @@ deferred fixes.
   branch is freshly pushed and not yet visible. The same-repo finalize script
   intentionally uses `--head <branch>` plus a 5s retry — do not "fix" it to
   `--head <owner>:<branch>`, which would point `gh` at a fork.
-- **Do not run the scheduler twice while stuck.** The lock in
-  `state.json` makes the second run a no-op, but a human running the
-  script manually with `-Force` will overwrite the stuck branch and lose
-  their in-progress resolution. The `-Force` flag is documented but
+- **Do not run the scheduler twice while a stuck issue is open.** The
+  open labeled issue makes the second run a no-op, but a human running
+  the script manually with `-Force` will overwrite the stuck branch and
+  lose their in-progress resolution. The `-Force` flag is documented but
   intentionally not the default.
 - **Cherry-pick over `git revert` style commits is intentional, not skipped.**
   We only skip revert-pairs where **both** sides are inside the pending
   range. A revert of a commit we already merged last week must land as a
   normal pick — otherwise the fork diverges silently.
-- **Always commit `state.json` and `reports/`** so the next scheduler
-  invocation (possibly on a different machine) starts from the right
-  checkpoint. The finalize PR includes the state update.
+- **Never strip the `(cherry picked from commit <sha>)` trailer** when
+  hand-resolving a stuck pick. That trailer IS the watermark the next
+  sync run reads. A squash-merge or `--no-commit` workflow that drops
+  the trailer breaks the next sync as effectively as deleting a
+  `state.json` used to.
+- **Reports and build logs live under `Generated Files/upstream-sync/<date>/`.**
+  This directory is gitignored at the repo root (`**/Generated Files/`).
+  Do not check these in — they're transient diagnostics, and the issue
+  body inlines the parts that matter for review.
 - **Prefer the PR path.** The default workflow always opens a PR so CI and
   human review checkpoint the upstream batch. Use `-PushDirectToMain` only
   for an explicit admin/bypass run where skipping PR latency is intentional.
@@ -203,12 +265,19 @@ deferred fixes.
   manifest, re-normalize before staging — see
   [references/conflict-triage.md](./references/conflict-triage.md#line-endings).
 
+- **Single-host scheduler.** The stuck-lock (open labeled issue) is a
+  read-then-check gate, not an atomic lease — two hosts running on the
+  same tick can both observe "no open issue" and proceed in parallel.
+  Run the scheduler from ONE host. For multi-host fan-out, layer atomic
+  locking on top (GitHub Actions `concurrency: upstream-sync` group is
+  the easiest).
+
 ## Troubleshooting
 
 | Issue | Solution |
 |---|---|
-| `state.json` is missing | Run the one-time bootstrap — see [references/bootstrap.md](./references/bootstrap.md). Do not guess the baseline SHA. |
-| Stuck-lock prevents new run | Resolve the conflict on the stuck branch, open a PR, merge, then run [`scripts/clear-stuck.ps1`](./scripts/clear-stuck.ps1) and re-run the batch. |
+| `Get-LastSyncedUpstreamSha` throws "No 'cherry picked from commit' trailer ..." | The fork has never used `cherry-pick -x` for an upstream commit yet. Run the one-time seeding pick described in [State model — First-time sync](#first-time-sync). |
+| Stuck issue prevents new run | Resolve the conflict on the stuck branch, open a PR, merge it (keep the `(cherry picked from commit <sha>)` trailer!), then **close the stuck issue**. The next scheduler tick proceeds. |
 | Cherry-pick reports "empty commit" | Expected for upstream no-op commits and for fork-already-applied patches; the loop auto-resets and marks them skipped. No action needed. |
 | Same file conflicts every run | Add it to the Tier-0 list in [references/known-conflicts.md](./references/known-conflicts.md) with the correct resolution strategy (`take-upstream`, `take-ours`, or `union`). |
 | `gh pr create` returns "Head sha can't be blank" | Retry — the finalize script already does, but on slow networks may need a manual second run. |
@@ -217,14 +286,11 @@ deferred fixes.
 ## References
 
 - [references/workflow.md](./references/workflow.md) — full per-step procedure with exit codes and delegation map.
-- [references/state-schema.md](./references/state-schema.md) — `state.json` shape and field semantics.
-- [references/bootstrap.md](./references/bootstrap.md) — one-time baseline-SHA discovery and initialization.
 - [references/conflict-triage.md](./references/conflict-triage.md) — Tier 0/1/2/3/4 resolution rubric with examples.
 - [references/known-conflicts.md](./references/known-conflicts.md) — files that always need a fixed resolution.
 - [references/static-scan.md](./references/static-scan.md) — post-pick static breakage scan rules.
 - [references/fork-invariants.json](./references/fork-invariants.json) — fork-specific patterns that must survive any upstream pick.
 - [references/build-verification.md](./references/build-verification.md) — try-build pipeline + toolchain preflight policy.
 - [references/follow-up-pr.md](./references/follow-up-pr.md) — fix-in-PR vs. follow-up PR rubric and worktree workflow for handling post-PR review.
-- [references/reporting.md](./references/reporting.md) — report template and stuck-issue template.
 - [scripts/04-run-batch.ps1](./scripts/04-run-batch.ps1) — the scheduler entrypoint.
-- [scripts/clear-stuck.ps1](./scripts/clear-stuck.ps1) — clear the stuck-lock after human resolution.
+- [scripts/Common.ps1](./scripts/Common.ps1) — derived-state helpers (`Get-LastSyncedUpstreamSha`, `Get-PendingUpstreamShas`, `Get-StuckIssues`, `Get-GeneratedDir`).

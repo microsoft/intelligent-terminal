@@ -1,16 +1,26 @@
 <#
 .SYNOPSIS
-  Push the sync branch and open a PR. Commits state.json + report onto
-  the branch first so the merge atomically advances last_synced.
+  Push the sync branch and open a PR. No state file, no extra commits.
+
+.DESCRIPTION
+  The branch already carries the cherry-picked commits (each with its
+  `(cherry picked from commit <sha>)` trailer - that IS the watermark
+  the next run reads). We just push it and open the PR. No state.json
+  to commit, no pr_url backfill commit, no extra round-trip after PR
+  creation.
 
 .PARAMETER Ctx
   Run context from 04-run-batch.ps1.
 
 .PARAMETER To
-  Upstream HEAD SHA at fetch time (becomes new last_synced_upstream_sha).
+  Upstream HEAD SHA at fetch time (used only in the PR title).
 
 .PARAMETER ReportPath
-  Absolute path to the report markdown to use as the PR body.
+  Absolute path to the report markdown to use as the PR body. The report
+  itself is NOT committed - just inlined into the PR body text.
+
+.PARAMETER AutoMergeStrategy
+  rebase | merge | none. Passed to `gh pr merge --auto`.
 
 .OUTPUTS
   PR URL on stdout (and writes Ctx.PrUrl).
@@ -25,23 +35,26 @@ param(
 
 . "$PSScriptRoot/Common.ps1"
 
-# Prepend the squash-warning banner to the report so it lands as the
-# first thing reviewers see in the PR body.
+# Prepend the squash-warning + review-policy banner to the report so it
+# lands as the first thing reviewers see.
 $banner = @"
-> ⚠️ **DO NOT squash-merge this PR.** Squashing collapses every cherry-picked
+> [!WARNING]
+> **DO NOT squash-merge this PR.** Squashing collapses every cherry-picked
 > upstream commit into one, destroying per-commit attribution, original
-> author dates, and ``git bisect`` resolution. Merge with **"Rebase and
-> merge"** (preferred — flat history, all $($Ctx.Picked.Count) commits land
-> individually) or **"Create a merge commit"** (also preserves per-commit
-> content).
->
-> 📝 **Review-fix policy.** Only build-blocking fixes (compile errors, dedup
+> author dates, the ``(cherry picked from commit <sha>)`` trailers that the
+> NEXT upstream sync uses as its watermark, and ``git bisect`` resolution.
+> Merge with **"Rebase and merge"** (preferred - flat history, all
+> $($Ctx.Picked.Count) commits land individually) or **"Create a merge
+> commit"** (also preserves per-commit content).
+
+> [!NOTE]
+> **Review-fix policy.** Only build-blocking fixes (compile errors, dedup
 > of conflicts surfaced at build time, CI gate failures on this PR itself)
-> belong here — as **one** focused extra commit on this branch. All other
+> belong here - as **one** focused extra commit on this branch. All other
 > Copilot / human review feedback (code-quality, logic, translation,
 > spelling-list migrations, doc nits) goes into a **follow-up PR** based on
-> this PR's head, not amended into the cherry-pick commits. Rationale and
-> mechanics: [``.github/skills/upstream-sync/references/follow-up-pr.md``](https://github.com/microsoft/intelligent-terminal/blob/main/.github/skills/upstream-sync/references/follow-up-pr.md).
+> this PR's head. Rationale and mechanics:
+> [``.github/skills/upstream-sync/references/follow-up-pr.md``](https://github.com/microsoft/intelligent-terminal/blob/main/.github/skills/upstream-sync/references/follow-up-pr.md).
 
 ---
 
@@ -50,53 +63,29 @@ $bodyPath = New-TemporaryFile
 $bodyContent = $banner + (Get-Content -Raw -LiteralPath $ReportPath)
 [System.IO.File]::WriteAllText($bodyPath, $bodyContent, (New-Object System.Text.UTF8Encoding($false)))
 
-$branch = $Ctx.Branch
+$branch  = $Ctx.Branch
 $shortTo = $To.Substring(0,9)
 
-# Update state.json with new baseline and run summary, plus commit the report.
-$state = Read-State
-$state.last_synced_upstream_sha = $To
-$runSummary = [ordered] @{
-    at                 = Format-Iso8601 $Ctx.StartedAt
-    host               = $Ctx.Host
-    status             = 'ok'
-    branch             = $branch
-    pr_url             = $null   # filled in after PR creation
-    picked_count       = $Ctx.Picked.Count
-    dropped_pair_count = $Ctx.DroppedPairs.Count
-    empty_count        = $Ctx.SkippedEmpty.Count
-    tier0_resolutions  = $Ctx.Tier0.Count
-}
-$state.last_run = $runSummary
-$state.history  = @($runSummary) + @($state.history) | Select-Object -First 20
-Write-State $state
-
-git add -- (ConvertTo-RepoRelativePath (Get-StatePath)) (ConvertTo-RepoRelativePath $ReportPath)
-if ($LASTEXITCODE -ne 0) { throw "git add of state.json + report failed." }
-git commit -m "chore(upstream-sync): advance baseline to $shortTo" | Out-Host
-if ($LASTEXITCODE -ne 0) { throw "git commit of state-update failed; aborting without push so baseline is not lost." }
-
+# Push the sync branch (cherry-pick commits already have their `-x`
+# trailers; those trailers ARE the watermark - nothing else to commit).
 git push -u origin $branch | Out-Host
-if ($LASTEXITCODE -ne 0) { throw "git push failed for $branch." }
+if ($LASTEXITCODE -ne 0) {
+    Remove-Item -LiteralPath $bodyPath -Force -ErrorAction SilentlyContinue
+    throw "git push failed for $branch."
+}
 
 $title = "chore(upstream): sync microsoft/terminal up to $shortTo"
 
-# Same-repo PR: branch was pushed to origin (= microsoft/intelligent-terminal),
-# so --head takes the bare branch name. `--head OWNER:BRANCH` would tell gh to
-# look on a fork owned by OWNER, which is wrong for this scheduler.
-#
-# Retry up to 3 times with a short delay: `gh pr create` on Windows occasionally fails
-# with "Head sha can't be blank" right after a push (see SKILL.md gotcha).
-$prUrl = $null
+# Same-repo PR: `--head` takes the bare branch name. Retry up to 3 times
+# with a short delay - `gh pr create` on Windows occasionally fails with
+# "Head sha can't be blank" right after a push.
+$prUrl   = $null
 $errFile = [System.IO.Path]::GetTempFileName()
 try {
     for ($attempt = 1; $attempt -le 3; $attempt++) {
-        # Capture stderr separately: merging via `2>&1` can let a `gh` warning
-        # (version notice, deprecation, etc.) become the last line, after
-        # which `Select-Object -Last 1` returns the warning text and the URL
-        # match fails even though the PR was successfully created. The temp
-        # file is reused across retries (overwritten each call); cleanup runs
-        # in the outer finally.
+        # Capture stderr to a separate temp file: a `gh` version-update /
+        # deprecation notice on stderr can otherwise become the last line
+        # of merged output, breaking URL match.
         Set-Content -LiteralPath $errFile -Value '' -NoNewline
         $prUrl = gh pr create -R microsoft/intelligent-terminal --base main --head $branch --title $title --body-file $bodyPath 2>$errFile | Select-Object -Last 1
         if ($LASTEXITCODE -eq 0 -and $prUrl -match '^https://github.com/') { break }
@@ -110,44 +99,15 @@ try {
     }
 }
 finally {
-    # Always clean up the temp PR body file and stderr-capture file — even if
-    # `gh pr create` failed after all retries, neither temp file should leak.
     Remove-Item -LiteralPath $bodyPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $errFile  -Force -ErrorAction SilentlyContinue
 }
 
 $Ctx.PrUrl = $prUrl.Trim()
 
-# Backfill PR URL into state.last_run AND state.history[0] (best-effort
-# follow-up commit) BEFORE arming auto-merge. If auto-merge is already
-# satisfied (all checks green, approvals in place) it can merge and delete
-# the remote branch immediately, after which `git push origin $branch`
-# would recreate a deleted upstream-sync/<date> branch as an orphan with
-# the pr_url commit on top. Keeping the same run summary object in
-# last_run and history[0] in sync so 'sessions' reports and bug-reports
-# can find the PR link from either field. If this push fails the PR is
-# still open and the baseline is still advanced on the branch — the only
-# loss is the pr_url field in state, which is recoverable from the PR
-# itself.
-$state.last_run.pr_url = $Ctx.PrUrl
-if ($state.history -and $state.history.Count -gt 0) {
-    $state.history[0].pr_url = $Ctx.PrUrl
-}
-Write-State $state
-git add -- (ConvertTo-RepoRelativePath (Get-StatePath)) | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning "git add of state.json failed (LASTEXITCODE=$LASTEXITCODE); skipping pr_url backfill commit. PR is still open at $($Ctx.PrUrl)."
-} else {
-    git commit -m "chore(upstream-sync): record PR url" | Out-Host
-    if ($LASTEXITCODE -eq 0) {
-        git push origin $branch | Out-Host
-        if ($LASTEXITCODE -ne 0) { Write-Warning "Could not push pr_url backfill; PR is still open at $($Ctx.PrUrl)." }
-    }
-}
-
-# Optional: arm GitHub auto-merge with the strategy that preserves per-commit
-# history. 'rebase' is the recommended default when auto-merge is enabled —
-# it lands all N commits flatly on main once CI + approvals pass.
+# Optional: arm GitHub auto-merge with a strategy that preserves per-commit
+# history. 'rebase' is the recommended default - it lands all N commits
+# flatly on main once CI + approvals pass. Never squash.
 if ($AutoMergeStrategy -ne 'none') {
     $strategyFlag = "--$AutoMergeStrategy"
     gh pr merge -R microsoft/intelligent-terminal $Ctx.PrUrl $strategyFlag --auto --delete-branch | Out-Host
