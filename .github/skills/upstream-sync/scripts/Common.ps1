@@ -134,10 +134,16 @@ function Get-LastSyncedUpstreamSha {
     foreach ($c in $commits) {
         $body = git log -1 --format='%B' $c 2>$null
         if ($body -match '\(cherry picked from commit ([0-9a-f]{7,40})\)') {
-            $upstreamSha = $matches[1]
-            $null = git merge-base --is-ancestor $upstreamSha upstream/main 2>$null
+            $rawSha = $matches[1]
+            # Resolve to full 40-char SHA first so the ancestry check below
+            # works against a canonical object name (an abbreviated or ambiguous
+            # prefix could cause `git merge-base --is-ancestor` to fail and
+            # silently skip an otherwise-valid watermark candidate).
+            $fullSha = $null
+            try { $fullSha = Resolve-FullCommitSha $rawSha } catch { continue }
+            $null = git merge-base --is-ancestor $fullSha upstream/main 2>$null
             if ($LASTEXITCODE -eq 0) {
-                return (Resolve-FullCommitSha $upstreamSha)
+                return $fullSha
             }
         }
     }
@@ -224,7 +230,7 @@ function Get-StuckMetaFromIssue {
     if ($Issue.body -notmatch $pattern) { return $null }
     $yaml = $matches[1]
     $h = [ordered] @{}
-    foreach ($l in $yaml -split "`r?`n") {
+    foreach ($l in $yaml -split '\r?\n') {
         if ($l -match "^\s*([a-z_][a-z0-9_]*)\s*:\s*'((?:[^']|'')*)'\s*$") {
             $h[$matches[1]] = $matches[2] -replace "''", "'"
         } elseif ($l -match '^\s*([a-z_][a-z0-9_]*)\s*:\s*(.+?)\s*$') {
@@ -247,7 +253,7 @@ function Format-StuckYamlBlock {
     $lines = @('```yaml', $script:WtaStateFence)
     foreach ($k in $Fields.Keys) {
         $raw = "$($Fields[$k])"
-        $folded = $raw -replace "`r?`n", ' '
+        $folded = $raw -replace '\r?\n', ' '
         $escaped = $folded -replace "'", "''"
         $lines += ("{0}: '{1}'" -f $k, $escaped)
     }
@@ -274,7 +280,11 @@ function New-RunContext {
     [pscustomobject] @{
         StartedAt        = Get-Date
         Host             = $env:COMPUTERNAME
-        Branch           = "upstream-sync/$((Get-Date).ToString('yyyy-MM-dd'))"
+        # Branch name carries date + UTC timestamp + 4 random hex chars so
+        # repeated runs on the same day - or two consecutive runs after a
+        # rebase-merge that didn't auto-delete the previous branch - never
+        # check out a stale branch and replay already-merged commits.
+        Branch           = "upstream-sync/$((Get-Date).ToString('yyyy-MM-dd'))-$((Get-Date).ToUniversalTime().ToString('HHmmss'))-$(([guid]::NewGuid().ToString('N').Substring(0,4)))"
         Picked           = @()
         Pending          = @()
         DroppedPairs     = @()

@@ -160,7 +160,7 @@ if ($Status -eq 'stuck' -and $Ctx.StuckSha) {
         }
         $lines.Add("")
     }
-    $lines.Add("**Pickup branch:** ``$($Ctx.Branch)`` (pushed to origin)")
+    $lines.Add("**Pickup branch:** ``$($Ctx.Branch)`` (push attempted - run ````git ls-remote --heads origin $($Ctx.Branch)```` to verify it landed)")
     $lines.Add("")
     $lines.Add("**How to resume:**")
     $lines.Add("")
@@ -235,7 +235,7 @@ if ($Status -like 'stuck-*') {
             $lines.Add("")
         }
     }
-    $lines.Add("**Pickup branch:** ``$($Ctx.Branch)`` (pushed to origin)")
+    $lines.Add("**Pickup branch:** ``$($Ctx.Branch)`` (push attempted - run ````git ls-remote --heads origin $($Ctx.Branch)```` to verify it landed)")
     $lines.Add("")
     if ($kind -eq 'toolchain-missing') {
         $lines.Add("**How to resume (infra-only - no PR needed):**")

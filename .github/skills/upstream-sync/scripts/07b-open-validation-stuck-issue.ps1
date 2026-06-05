@@ -105,7 +105,7 @@ $header = @"
 > The scheduler will keep skipping its runs until this issue is **closed**.
 > Closing the issue IS the lock-clear signal - no separate script needed.
 
-Sync branch: ``$($Ctx.Branch)`` (pushed to origin).
+Sync branch: ``$($Ctx.Branch)`` (push attempted - run ``git ls-remote --heads origin $($Ctx.Branch)`` to verify it landed).
 Findings hash: ``$findingsHash`` (re-runs of the same broken batch will match).
 
 $yamlBlock
