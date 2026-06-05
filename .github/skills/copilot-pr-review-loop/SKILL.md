@@ -120,11 +120,7 @@ agent owns sequencing, commits, and the final mutating
   step 2 — do NOT re-invoke that script for convergence, it will time
   out) AND the open-threads list is empty. A stale review on an
   earlier commit lets a regression slip through unreviewed.
-- **Use `gh pr edit --add-reviewer copilot-pull-request-reviewer`** as
-  the first trigger mechanism. The GraphQL `requestReviews` mutation
-  rejects the Copilot bot login, and REST `requested_reviewers` returns
-  HTTP 422
-  because bots are not repository collaborators.
+- **Use the trigger flow in [scripts/01-request-review.ps1](scripts/01-request-review.ps1).** REST POST `requested_reviewers[]=Copilot` (capital C, sent with `-f`) is the primary mechanism; `gh pr edit --add-reviewer Copilot` is a best-effort fallback. Both can return HTTP success while the bot is silently dropped — `copilot_work_started` event in the issue timeline is the only authoritative success signal. See [references/api-quirks.md](references/api-quirks.md).
 - **`git stash push -m` must come before `--`.** The form
   `git stash push -- <paths> -m <msg>` parses `<msg>` as a path and
   silently produces a stash with no message.
@@ -158,8 +154,8 @@ agent owns sequencing, commits, and the final mutating
 
 | Issue | Solution |
 |-------|----------|
-| `gh api` request to add Copilot reviewer returns HTTP 422 | Use `gh pr edit --add-reviewer copilot-pull-request-reviewer` (see [api-quirks.md](references/api-quirks.md)) |
-| No new review after ~10 minutes | Re-run the request — `scripts/01-request-review.ps1` is idempotent |
+| Trigger fails with `'Copilot' not found` (gh pr edit) or POST returns 201 but Copilot disappears from `requested_reviewers` | Push a substantive (non-whitespace) commit — repo auto-assign on `synchronize` is the most reliable trigger. Persistent failure across both mechanisms after a substantive commit indicates Copilot Code Review is not enabled on the repo or account (Settings → Code & automation → Copilot, or account-level Copilot Pro/Pro+). |
+| No new review after ~10 minutes | Re-run the request — `scripts/01-request-review.ps1` is safe to re-run (it's idempotent and protects in-flight reviews). |
 | Outdated-but-unresolved threads appear in the open-threads list | This is **expected** since the filter switch — outdated threads can still be actionable. Reply + resolve them like any other open thread. Use `-ExcludeOutdated` only if you specifically want "what's actionable on current lines". `09-cleanup-outdated.ps1` is a safety net for threads that became outdated after your last fetch, not the primary mechanism. |
 | Unsure whether to fix or decline a finding | Apply the rubric in [references/03-triage-criteria.md](references/03-triage-criteria.md) |
 | Need a reply that conveys "fixed", "declined", or "drift" | Use a template from [references/06-reply-templates.md](references/06-reply-templates.md) |

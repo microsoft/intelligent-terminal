@@ -8,8 +8,8 @@ convergence conditions in step 9 hold, then run step 10 once.
 Track progress through one round with this list (copy into your scratch
 notes or session todos):
 
-- [ ] **1.** Request review — `scripts/01-request-review.ps1 -PrNumber <n>` (verifies `copilot_work_started` event landed; will throw if all 3 mechanisms fail)
-- [ ] **2.** Wait for review submission — `scripts/02-wait-for-review.ps1 -PrNumber <n>` (default 35-min timeout; blocks until a Copilot review against current HEAD is submitted, or returns `ReviewCompleted` / `HeadAdvanced` / `TimedOut` / `Error`)
+- [ ] **1.** Request review — `scripts/01-request-review.ps1 -PrNumber <n>` (snapshots state, protects in-flight reviews, throws on failure). Exit 0 with the message *"Copilot has already submitted a review at the current HEAD"* means **skip directly to step 3** — there is no new review to wait for, and step 2 would time out.
+- [ ] **2.** Wait for review submission — `scripts/02-wait-for-review.ps1 -PrNumber <n>` (default 35-min timeout; blocks until a Copilot review against current HEAD is submitted, or returns `ReviewCompleted` / `HeadAdvanced` / `TimedOut` / `Error`). On `ReviewCompleted` the JSON includes `NoNewComments` (boolean) and `BodyHead` so convergence condition (b) can be read mechanically.
 - [ ] **3.** List open threads — `scripts/02-list-open-threads.ps1 -PrNumber <n>` (outdated threads included by default — reply + resolve them too)
 - [ ] **4.** Triage each finding using [03-triage-criteria.md](03-triage-criteria.md)
 - [ ] **5.** Apply fixes — one sub-agent per independent change
@@ -17,8 +17,8 @@ notes or session todos):
 - [ ] **7.** Reply + resolve each thread using [06-reply-templates.md](06-reply-templates.md) → `scripts/06-reply-and-resolve.ps1`
 - [ ] **8.** Commit + push the round's changes (one focused commit per round)
 - [ ] **9.** Convergence check (ALL THREE must hold):
-  - (a) latest Copilot review's `commit.oid` equals current PR HEAD SHA
-  - (b) that review's body is the *"generated no new comments"* form
+  - (a) latest Copilot review's `commit.oid` equals current PR HEAD SHA (= `LatestReview.commit.oid` from step 2's `ReviewCompleted` JSON)
+  - (b) that review's body is the *"generated no new comments"* form (= `NoNewComments` flag in the same JSON)
   - (c) step 3 (`02-list-open-threads.ps1` with no `-ExcludeOutdated`) returns empty
 - [ ] **10.** (once at end of loop) Cleanup outdated — `scripts/09-cleanup-outdated.ps1 -PrNumber <n>` (safety net only — most loops converge with nothing to clean)
 

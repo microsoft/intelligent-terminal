@@ -133,9 +133,16 @@ query($o:String!,$r:String!,$n:Int!){
 }
 '@
     $j = gh api graphql -f "query=$q" -f "o=$Owner" -f "r=$Repo" -F "n=$PrNumber" 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "GraphQL snapshot failed: $j" }
+    if ($LASTEXITCODE -ne 0) { throw "GraphQL snapshot failed (exit $LASTEXITCODE): $j" }
     $d = $j | ConvertFrom-Json
+    # gh api graphql can exit 0 with HTTP 200 while returning a top-level
+    # `errors` array. Check explicitly or the next line dereferences null.
+    if ($d.errors) {
+        $msgs = ($d.errors | ForEach-Object { $_.message }) -join '; '
+        throw "GraphQL snapshot returned errors: $msgs"
+    }
     $pr = $d.data.repository.pullRequest
+    if (-not $pr) { throw "GraphQL snapshot: PR #$PrNumber not found in $Owner/$Repo." }
     $copilotPending = $false
     foreach ($n in $pr.reviewRequests.nodes) {
         if ($n.requestedReviewer.login -match '^(?i)copilot') { $copilotPending = $true; break }
@@ -192,20 +199,31 @@ $headOid = $snapshot.HeadOid
 
 # Case (a): already reviewed current HEAD
 if ($snapshot.LatestCopilotReview -and $snapshot.LatestCopilotReview.commit.oid -eq $headOid) {
-    Write-Host "Copilot has already submitted a review at the current HEAD ($($headOid.Substring(0,7))) on $($snapshot.LatestCopilotReview.submittedAt). Nothing to trigger. Run scripts/02-list-open-threads.ps1 to see open threads."
+    Write-Host "Copilot has already submitted a review at the current HEAD ($($headOid.Substring(0,7))) on $($snapshot.LatestCopilotReview.submittedAt). Nothing to trigger. Run scripts/02-list-open-threads.ps1 to see open threads. NOTE: do NOT proceed to scripts/02-wait-for-review.ps1 -- it would wait for a newer review that was not requested."
     exit 0
 }
 
-# Case (b): in-flight review against current HEAD
-# Heuristic: a work_started event happened recently AND it's newer than (or
-# equal to) the latest review_requested AND no Copilot review exists at the
-# current HEAD yet. Treat as in-flight — DO NOT TRIGGER.
+# Case (b): in-flight review against the CURRENT HEAD.
+# All three conditions must hold to treat as in-flight:
+#   1. A copilot_work_started event landed recently (<12 min ago).
+#   2. That work_started came AFTER the latest Copilot review_requested
+#      event -- otherwise it's stale from a previous request that was
+#      since superseded (e.g. HEAD advanced after the work_started).
+#   3. No Copilot review exists at the current HEAD yet -- otherwise
+#      it's case (a) above.
+# Skipping any of these can recreate "wait for nothing": e.g. if HEAD
+# advanced after a stale work_started, we'd skip the trigger and step 2
+# would wait for a review that was never requested for this HEAD.
 $workStartedRecent = $false
+$workStartedAfterRequest = $true   # default true so the check passes when there's no review_requested record at all
 if ($beforeTs) {
     $workStartedAge = (Get-Date) - [datetime]$beforeTs
     $workStartedRecent = $workStartedAge.TotalMinutes -lt 12
+    if ($lastReqAt) {
+        $workStartedAfterRequest = [datetime]$beforeTs -ge [datetime]$lastReqAt
+    }
 }
-if ($workStartedRecent) {
+if ($workStartedRecent -and $workStartedAfterRequest) {
     Write-Host "Copilot is already reviewing the current HEAD ($($headOid.Substring(0,7))). Last copilot_work_started: $beforeTs (~$([int]$workStartedAge.TotalSeconds)s ago). NOT re-triggering — in-flight reviews must not be cancelled. Run scripts/02-wait-for-review.ps1 to wait for the submission."
     exit 0
 }

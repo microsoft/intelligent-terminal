@@ -124,6 +124,7 @@ query($owner:String!,$repo:String!,$pr:Int!){
           author{login}
           state
           submittedAt
+          body
           commit{oid}
         }
       }
@@ -201,6 +202,8 @@ $result = [ordered]@{
     ExpectedHead   = $ExpectedHeadOid
     Since          = $SinceTimestamp
     LatestReview   = $null
+    NoNewComments  = $false   # convergence condition (b); set on ReviewCompleted
+    BodyHead       = $null    # first 300 chars of review body for visibility
     ElapsedSec     = 0
     Detail         = $null
 }
@@ -221,10 +224,17 @@ while ((Get-Date) -lt $deadline) {
 
     $latest = $current.LatestCopilotReview
     if ($latest -and [datetime]$latest.submittedAt -gt $sinceDt -and $latest.commit.oid -eq $ExpectedHeadOid) {
-        $result.Status       = 'ReviewCompleted'
-        $result.LatestReview = $latest
-        $result.Detail       = "Copilot submitted review at $($latest.submittedAt) (state=$($latest.state)) against head $($ExpectedHeadOid.Substring(0,7))."
-        $result.ElapsedSec   = [int]((Get-Date) - $start).TotalSeconds
+        $result.Status         = 'ReviewCompleted'
+        $result.LatestReview   = $latest
+        # Convergence condition (b) requires checking whether the review body
+        # is the "generated no new comments" form. Expose this as a boolean
+        # so callers can mechanically verify all three conditions from the
+        # returned JSON without re-querying GitHub.
+        $bodyText              = if ($latest.body) { $latest.body } else { '' }
+        $result.NoNewComments  = ($bodyText -match '(?i)generated no new comments|generated\s+0\s+comments|reviewed\s+\d+\s+out\s+of\s+\d+\s+changed\s+files\s+in\s+this\s+pull\s+request\s+and\s+generated\s+no\s+new\s+comments')
+        $result.BodyHead       = if ($bodyText.Length -gt 300) { $bodyText.Substring(0, 300) } else { $bodyText }
+        $result.Detail         = "Copilot submitted review at $($latest.submittedAt) (state=$($latest.state)) against head $($ExpectedHeadOid.Substring(0,7)). NoNewComments=$($result.NoNewComments)."
+        $result.ElapsedSec     = [int]((Get-Date) - $start).TotalSeconds
         Write-Host "[done] $($result.Detail)"
         $result | ConvertTo-Json -Depth 5
         return
