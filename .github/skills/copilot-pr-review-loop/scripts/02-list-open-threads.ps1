@@ -4,18 +4,9 @@
 
 .DESCRIPTION
     Fetches review threads via the GraphQL API and prints every thread
-    that is still `isResolved: false` — including threads marked
-    `isOutdated: true` (e.g. because a prior round's fix shifted the
-    cited lines). Each entry carries an `IsOutdated` column so triage
-    can see the distinction at a glance.
-
-    Why outdated threads are NOT filtered out: a thread that was
-    actionable when Copilot posted it can BECOME outdated mid-round
-    when your own fix shifts its cited lines. Filtering on
-    `!isOutdated` would silently drop those threads from the per-round
-    list, leaving them unresolved in the PR UI even after the
-    underlying code is fixed. Reply + resolve every unresolved thread,
-    outdated or not.
+    that is still `isResolved: false`. There is intentionally no body
+    truncation and no secondary filter: the current unresolved thread
+    state is the source of truth for convergence.
 
     Threads from all reviewers (Copilot, humans, other bots) are
     included; the loop's triage step decides what to do with each.
@@ -30,17 +21,6 @@
 .PARAMETER PrNumber
     The pull request number.
 
-.PARAMETER MaxBodyLength
-    Truncate each comment body to this many characters when printing.
-    Defaults to 400.
-
-.PARAMETER ExcludeOutdated
-    Suppress threads whose code has since been rewritten
-    (`isOutdated: true`). Off by default — outdated-but-unresolved
-    threads still need a reply + resolve in the current round. Pass
-    this flag only when you specifically want the legacy filter
-    (e.g. for a quick scan of "what's actionable on current lines").
-
 .EXAMPLE
     pwsh 02-list-open-threads.ps1 -PrNumber 122
 
@@ -53,11 +33,7 @@ param(
     [string]$Repo,
 
     [Parameter(Mandatory = $true)]
-    [int]$PrNumber,
-
-    [int]$MaxBodyLength = 400,
-
-    [switch]$ExcludeOutdated
+    [int]$PrNumber
 )
 
 $ErrorActionPreference = 'Stop'
@@ -107,7 +83,6 @@ query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
         nodes {
           id
           isResolved
-          isOutdated
           comments(first: 1) {
             nodes {
               author { login }
@@ -138,10 +113,7 @@ do {
 
 $threads = $all
 
-$open = $threads | Where-Object {
-    -not $_.isResolved -and
-    (-not $ExcludeOutdated -or -not $_.isOutdated)
-}
+$open = $threads | Where-Object { -not $_.isResolved }
 
 if (-not $open) {
     Write-Output 'No open threads.'
@@ -151,14 +123,10 @@ if (-not $open) {
 foreach ($t in $open) {
     $c = $t.comments.nodes[0]
     $body = $c.body
-    if ($body.Length -gt $MaxBodyLength) {
-        $body = $body.Substring(0, $MaxBodyLength) + '...'
-    }
     [pscustomobject]@{
         ThreadId   = $t.id
         Author     = $c.author.login
         Path       = "$($c.path):$($c.line)"
-        IsOutdated = $t.isOutdated
         CreatedAt  = $c.createdAt
         Body       = $body -replace "`r?`n", ' '
     }

@@ -10,7 +10,7 @@ notes or session todos):
 
 - [ ] **1.** Request review — `scripts/01-request-review.ps1 -PrNumber <n>` (snapshots state via GraphQL `reviews(last:50)`, protects in-flight reviews, throws on failure). The script ALWAYS attempts to trigger a fresh review when invoked — re-request is a first-class supported flow. The only case where it exits without triggering is when a copilot_work_started event is genuinely in flight (recent, newer than latest review_requested, newer than latest Copilot review submittedAt). If you see that message, skip directly to step 2 to wait for the in-flight review.
 - [ ] **2.** Wait for review submission — `scripts/02-wait-for-review.ps1 -PrNumber <n>` (default 35-min timeout; blocks until a Copilot review against current HEAD is submitted, or returns `ReviewCompleted` / `HeadAdvanced` / `TimedOut` / `Error`). On `ReviewCompleted` the JSON includes `NoNewComments` (boolean) and `BodyHead` so convergence condition (b) can be read mechanically.
-- [ ] **3.** List open threads — `scripts/02-list-open-threads.ps1 -PrNumber <n>` (outdated threads included by default — reply + resolve them too)
+- [ ] **3.** List open threads — `scripts/02-list-open-threads.ps1 -PrNumber <n>` (prints every unresolved thread — reply + resolve them all)
 - [ ] **4.** Triage each finding using [03-triage-criteria.md](03-triage-criteria.md)
 - [ ] **5.** Apply fixes — one sub-agent per independent change
 - [ ] **6.** Build + run affected tests (no unverified pushes)
@@ -19,7 +19,7 @@ notes or session todos):
 - [ ] **9.** Convergence check (ALL THREE must hold):
   - (a) latest Copilot review's `commit.oid` equals current PR HEAD SHA (= `LatestReview.commit.oid` from step 2's `ReviewCompleted` JSON)
   - (b) that review's body is the *"generated no new comments"* form (= `NoNewComments` flag in the same JSON)
-  - (c) step 3 (`02-list-open-threads.ps1` with no `-ExcludeOutdated`) returns empty
+  - (c) step 3 (`02-list-open-threads.ps1`) returns empty
 - [ ] **10.** (once at end of loop) Cleanup outdated — `scripts/09-cleanup-outdated.ps1 -PrNumber <n>` (safety net only — most loops converge with nothing to clean)
 
 If step 9 fails on any condition, loop back to step 1. If step 9 passes
@@ -131,10 +131,9 @@ that's how false-done declarations creep in.
 pwsh ../scripts/02-list-open-threads.ps1 -PrNumber <pr-number>
 ```
 
-Outdated threads (`isOutdated: true`) are **included by default** —
-they still appear in the PR UI as unresolved and still need reply +
-resolve. Pass `-ExcludeOutdated` only for the "what's actionable on
-current lines" view; never use that flag to declare convergence.
+The script emits every unresolved thread and does not truncate comment
+bodies. There is no "actionable-only" or "not outdated" mode; current
+unresolved thread state is the source of truth for convergence.
 
 `-Owner` / `-Repo` default to the current repo via `gh repo view`.
 
@@ -226,8 +225,7 @@ You are done ONLY when all three conditions hold simultaneously:
 2. **The review body is the "generated no new comments" form.** Quote
    the body in your task-complete message.
 
-3. **`02-list-open-threads.ps1` returns empty** (with no
-   `-ExcludeOutdated` — outdated-but-unresolved threads count).
+3. **`02-list-open-threads.ps1` returns empty**.
 
 If any one is false, the loop is not done. Print the
 `commit.oid` + `submittedAt` in your completion message — proof, not

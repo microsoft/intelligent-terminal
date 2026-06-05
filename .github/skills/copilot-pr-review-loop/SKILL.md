@@ -74,8 +74,7 @@ true simultaneously for convergence:
    (A "no new comments" review against an older commit is stale — it
    did not see your most recent fix.)
 2. That review's body is the "generated no new comments" form.
-3. The open-threads list (`02-list-open-threads.ps1`, no
-   `-ExcludeOutdated`) returns empty.
+3. The open-threads list (`02-list-open-threads.ps1`) returns empty.
 
 If any one is false, the loop is not done. Do **not** call
 `task_complete` until all three are verified — print the review's
@@ -159,10 +158,10 @@ agent owns sequencing, commits, and the final mutating
 |-------|----------|
 | Trigger fails with `'Copilot' not found` (gh pr edit) or POST returns 201 but Copilot disappears from `requested_reviewers` | Push a substantive (non-whitespace) commit — repo auto-assign on `synchronize` is the most reliable trigger. Persistent failure across both mechanisms after a substantive commit indicates Copilot Code Review is not enabled on the repo or account (Settings → Code & automation → Copilot, or account-level Copilot Pro/Pro+). |
 | No new review after `02-wait-for-review.ps1`'s default 35-min timeout | Quiet-period after recent dismissal or trivial-diff suppression. Push a substantive commit (auto-assign on `synchronize` is the most reliable trigger). Do not blindly re-run `01-request-review.ps1` — read its exit message first. |
-| Outdated-but-unresolved threads appear in the open-threads list | This is **expected** since the filter switch — outdated threads can still be actionable. Reply + resolve them like any other open thread. Use `-ExcludeOutdated` only if you specifically want "what's actionable on current lines". `09-cleanup-outdated.ps1` is a safety net for threads that became outdated after your last fetch, not the primary mechanism. |
+| Outdated-but-unresolved threads appear in the open-threads list | This is expected: current unresolved state is the source of truth. Reply + resolve them like any other open thread. `09-cleanup-outdated.ps1` is only a final safety net, not the primary mechanism. |
 | Unsure whether to fix or decline a finding | Apply the rubric in [references/03-triage-criteria.md](references/03-triage-criteria.md) |
 | Need a reply that conveys "fixed", "declined", or "drift" | Use a template from [references/06-reply-templates.md](references/06-reply-templates.md) |
-| `list-open-threads` still shows resolved-looking threads | Filter is `!isResolved` only (and excludes `isOutdated` only when `-ExcludeOutdated` is passed) — the script already does this; resolved-looking but still-open threads usually mean someone resolved the GitHub UI conversation without the GraphQL `resolveReviewThread` mutation completing |
+| `list-open-threads` still shows resolved-looking threads | The script lists every `!isResolved` thread. Resolved-looking but still-open threads usually mean someone resolved the GitHub UI conversation without the GraphQL `resolveReviewThread` mutation completing. |
 
 ## References
 
@@ -183,9 +182,8 @@ agent owns sequencing, commits, and the final mutating
   current HEAD (default 35 min timeout — accounts for small-diff
   suppression).
 - [scripts/02-list-open-threads.ps1](scripts/02-list-open-threads.ps1) —
-  fetch unresolved PR review threads from **all reviewers** (Copilot,
-  humans, github-advanced-security, etc.); outdated threads included
-  by default; reply + resolve every one.
+  fetch every unresolved PR review thread from **all reviewers** (Copilot,
+  humans, github-advanced-security, etc.); reply + resolve every one.
 - [scripts/06-reply-and-resolve.ps1](scripts/06-reply-and-resolve.ps1) — post a
   reply and resolve in one call.
 - [scripts/09-cleanup-outdated.ps1](scripts/09-cleanup-outdated.ps1) —

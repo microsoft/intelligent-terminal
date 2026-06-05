@@ -21,6 +21,12 @@
     user has been bitten by this exact false-done pattern; treat both
     checks as hard gates.
 
+    This script does not decide whether review comments are still open or
+    actionable. It reports whether the Copilot review has not started,
+    started but not finished, or finished after the expected commit. Use
+    02-list-open-threads.ps1 as the source of truth for comments from any
+    reviewer.
+
     Timing notes (verified empirically against Copilot reviewer bot):
       - Typical review: 3-6 min after `copilot_work_started`.
       - Suppression / batching can push small-diff reviews to 15-30+ min.
@@ -31,9 +37,8 @@
     Status values returned in JSON:
       - ReviewCompleted    : A new Copilot review at the expected HEAD landed.
       - TimedOut           : Deadline passed with no fresh review at HEAD.
-                             Caller should NOT blindly retry — verify the
-                             trigger event log and consider pushing a
-                             substantive commit before re-triggering.
+                             The ReviewProgress field distinguishes
+                             NoReviewStarted from ReviewStartedNotCompleted.
       - HeadAdvanced       : The PR HEAD changed during the wait — someone
                              pushed. Caller should re-snapshot and re-wait.
       - Error              : Unrecoverable API/auth error.
@@ -149,6 +154,17 @@ query($owner:String!,$repo:String!,$pr:Int!){
           body
           commit{oid}
         }
+
+        function Get-LatestCopilotWorkStarted {
+            $json = gh api --paginate "repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100" `
+                --jq '[.[] | select(.event=="copilot_work_started") | .created_at] | sort | .[-1] // ""' 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "gh api events failed (exit $LASTEXITCODE) while fetching copilot_work_started events: $json"
+            }
+            $lines = $json -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+            if (-not $lines -or $lines.Count -eq 0) { return '' }
+            ($lines | Sort-Object | Select-Object -Last 1)
+        }
       }
     }
   }
@@ -249,6 +265,8 @@ $result = [ordered]@{
     ExpectedHead   = $ExpectedHeadOid
     Since          = $SinceTimestamp
     LatestReview   = $null
+    LatestWorkStarted = $null
+    ReviewProgress = 'Unknown'
     NoNewComments  = $false   # convergence condition (b); set on ReviewCompleted
     BodyHead       = $null    # first 300 chars of review body for visibility
     ElapsedSec     = 0
@@ -274,6 +292,8 @@ while ((Get-Date) -lt $deadline) {
     if ($latest -and $latestDt -gt $sinceDt -and $latest.commit.oid -eq $ExpectedHeadOid) {
         $result.Status         = 'ReviewCompleted'
         $result.LatestReview   = $latest
+        $result.LatestWorkStarted = Get-LatestCopilotWorkStarted
+        $result.ReviewProgress = 'ReviewStartedAndCompleted'
         # Convergence condition (b) requires checking whether the review body
         # is the "generated no new comments" form. Expose this as a boolean
         # so callers can mechanically verify all three conditions from the
@@ -295,6 +315,15 @@ while ((Get-Date) -lt $deadline) {
 }
 
 $result.Status     = 'TimedOut'
-$result.Detail     = "No Copilot review submission at HEAD $(Short $ExpectedHeadOid) within $TimeoutMinutes min. Do NOT blindly retry — first verify the copilot_work_started event for the trigger that should have produced this review; if it landed, the bot is suppressing the submission (small / trivial diff). Remedy: push a substantive new commit (not whitespace), then re-run 01-request-review.ps1 + 02-wait-for-review.ps1 against the new HEAD."
+$latestWorkStarted = Get-LatestCopilotWorkStarted
+$result.LatestWorkStarted = $latestWorkStarted
+$latestWorkStartedDt = ToUtcDt $latestWorkStarted
+if ($latestWorkStartedDt -and $latestWorkStartedDt -gt $sinceDt) {
+    $result.ReviewProgress = 'ReviewStartedNotCompleted'
+    $result.Detail = "Copilot review started at $latestWorkStarted but no review submission at HEAD $(Short $ExpectedHeadOid) landed within $TimeoutMinutes min. Do NOT blindly retry; the bot may still be suppressing or delaying the submission. Remedy: push a substantive new commit (not whitespace), then re-run 01-request-review.ps1 + 02-wait-for-review.ps1 against the new HEAD."
+} else {
+    $result.ReviewProgress = 'NoReviewStarted'
+    $result.Detail = "No copilot_work_started event newer than '$SinceTimestamp' and no Copilot review submission at HEAD $(Short $ExpectedHeadOid) landed within $TimeoutMinutes min. Re-run 01-request-review.ps1; if it cannot produce a verified pickup event, push a substantive new commit and retry."
+}
 $result.ElapsedSec = [int]((Get-Date) - $start).TotalSeconds
 $result | ConvertTo-Json -Depth 5

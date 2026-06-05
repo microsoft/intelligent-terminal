@@ -150,7 +150,7 @@ up to ~10 minutes. There is no progress signal on the in-flight review,
 and polling more often than every ~3 minutes wastes API budget without
 making the review arrive sooner.
 
-## ⚠️ `isOutdated` ≠ `isResolved` — outdated threads still need replies
+## ⚠️ `isOutdated` ≠ `isResolved` — unresolved state is the source of truth
 
 A review thread can be `isOutdated: true` (Copilot's comment points at
 lines that have since changed) while still `isResolved: false`. These
@@ -162,10 +162,8 @@ threads:
   `!isOutdated` would silently drop those threads from the per-round
   triage, leaving the PR's open-conversations list non-empty even
   after the underlying code is fixed.
-- `scripts/02-list-open-threads.ps1` therefore includes outdated
-  threads in its output by default (with an `IsOutdated` column for
-  triage), and exposes a `-ExcludeOutdated` opt-out only for the
-  legacy "what's actionable on current lines" use case.
+- `scripts/02-list-open-threads.ps1` therefore lists every unresolved
+  thread with no `isOutdated` filter and no body truncation.
 - `scripts/09-cleanup-outdated.ps1` remains a safety net for the rare
   case where an outdated thread slips past the per-round loop entirely
   (e.g. it became outdated only AFTER your last `02-list-open-threads`
@@ -175,12 +173,10 @@ threads:
 ## ⚠️ The "no new comments" review is not enough to declare convergence
 
 A Copilot review summary that says *"generated no new comments"* is
-necessary but not sufficient. You also need the open-thread list (filtered
-for `!isResolved` — **outdated-but-unresolved threads count**, since they
-can still be actionable per the policy above) to be empty. Otherwise, an
-unresolved thread from an earlier round will keep the PR in review-pending
-state. `-ExcludeOutdated` is an optional view for "what's actionable on
-current lines" only; it must not be used to declare convergence.
+necessary but not sufficient. You also need the open-thread list (every
+`!isResolved` thread, regardless of whether GitHub marks the cited diff
+line outdated) to be empty. Otherwise, an unresolved thread from an
+earlier round will keep the PR in review-pending state.
 
 ## ⚠️ `git stash push` argument order gotcha
 
