@@ -11,7 +11,7 @@
     Output JSON fields:
       - HeadOid           : current PR HEAD SHA
       - State             : PR state (OPEN/CLOSED/MERGED)
-      - LatestCopilotReview: {state, submittedAt, commit:{oid}, body}
+      - LatestCopilotReview: {state, submittedAt, commitOid, bodyHead}
                             or null if Copilot has never reviewed
       - ReviewAtHead       : true iff latest Copilot review's commit.oid == HeadOid
       - NoNewComments      : true iff the latest review body matches

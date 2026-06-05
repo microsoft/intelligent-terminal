@@ -19,9 +19,10 @@ Returns:
 
 > InputObject 'RequestReviewsInput' doesn't accept argument 'botLogins'
 
-The `botLogins` argument was removed from the GraphQL schema. Do not waste
-time trying variants of it. The previous GraphQL bot-id approach (`BOT_kg...`)
-also returns `NOT_FOUND` for the Copilot reviewer.
+The `botLogins` argument is not accepted by `RequestReviewsInput` on the
+`requestReviews` mutation. Do not waste time trying variants of that mutation.
+The previous GraphQL bot-id approach (`BOT_kg...`) also returns `NOT_FOUND`
+for the Copilot reviewer.
 
 ## ✅ GraphQL `requestReviewsByLogin` with `botLogins` — PRIMARY trigger
 

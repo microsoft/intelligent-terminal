@@ -50,10 +50,10 @@ that field has stale-cache behavior), then returns one of these outcomes:
   event exists and is newer than the latest Copilot review's
   submittedAt. Triggering again would risk cancelling the in-flight
   review. Move to step 2 to wait for the submission.
-- **Trigger** (default path, runs whenever the script is invoked and
-  the in-flight protection didn't fire). The script attempts three
-  mechanisms in order, verifying each via the `copilot_work_started`
-  event:
+- **TriggerLanded** (default success path, returned when the in-flight
+  protection didn't fire and a trigger attempt produced a
+  `copilot_work_started` event). The script attempts three mechanisms in
+  order:
   1. **PRIMARY: GraphQL `requestReviewsByLogin`** with
      `botLogins:["copilot-pull-request-reviewer"]`. Empirically the
      most reliable. Three traps: use `requestReviewsByLogin` (not
