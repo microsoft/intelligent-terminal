@@ -91,10 +91,17 @@ $d = $null
 do {
     $ghArgs = @('api', 'graphql', '-f', "query=$q", '-f', "o=$Owner", '-f', "r=$Repo", '-F', "n=$PrNumber")
     if ($after) { $ghArgs += @('-f', "after=$after") }
-    $j = gh @ghArgs
-    if ($LASTEXITCODE -ne 0) {
-        $err = gh @ghArgs 2>&1
-        throw "GraphQL snapshot failed (exit $LASTEXITCODE): $err"
+    $psi = [System.Diagnostics.ProcessStartInfo]::new('gh')
+    foreach ($arg in $ghArgs) { $null = $psi.ArgumentList.Add($arg) }
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $j = $proc.StandardOutput.ReadToEnd()
+    $err = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    if ($proc.ExitCode -ne 0) {
+        throw "GraphQL snapshot failed (exit $($proc.ExitCode)): $err $j"
     }
     $d = $j | ConvertFrom-Json
     if ($d.errors) {

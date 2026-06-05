@@ -176,7 +176,7 @@ while ((Get-Date) -lt $deadline) {
         --jq '[.[] | select(.event=="copilot_work_started") | .created_at] | sort | .[-1] // ""' 2>&1
     if ($LASTEXITCODE -eq 0) {
         $now = (@($now -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }) | Sort-Object | Select-Object -Last 1)
-        if ($now -and $now -ne $beforeTs) { $afterTs = $now; break }
+        if ($now -and [string]::CompareOrdinal($now, $beforeTs) -gt 0) { $afterTs = $now; break }
     }
 }
 
