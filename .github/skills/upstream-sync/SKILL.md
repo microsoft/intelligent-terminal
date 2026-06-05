@@ -187,10 +187,18 @@ if ($LASTEXITCODE -ne 0 -and $labelOutText -notmatch 'already exists') {
 $author      = git log -1 --format='%an <%ae>' $sha
 $subject     = git log -1 --format='%s' $sha
 $shortSha    = $sha.Substring(0,9)
-$pathLines   = ($pick.conflict_paths | ForEach-Object { "- ``$_``" }) -join "`n"
+$hasConflicts = $pick.conflict_paths -and $pick.conflict_paths.Count -gt 0
+$pathLines   = if ($hasConflicts) {
+    ($pick.conflict_paths | ForEach-Object { "- ``$_``" }) -join "`n"
+} else { '_(none — cherry-pick failed without producing unmerged paths)_' }
+$headline = if ($hasConflicts) {
+    'Upstream sync stopped at a conflict that needs human judgment.'
+} else {
+    'Upstream sync stopped on a non-conflict cherry-pick failure (e.g. merge commit without `-m`, unsupported git option, hook failure).'
+}
 $body = @"
 > [!CAUTION]
-> Upstream sync stopped at a conflict that needs human judgment.
+> $headline
 > **Close this issue when resolved — that IS the lock-clear signal.**
 
 **Stuck on:** ``$sha`` — $subject

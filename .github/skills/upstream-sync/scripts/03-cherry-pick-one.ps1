@@ -145,12 +145,26 @@ if ($pickCode -eq 0) {
 # mid-cherry-pick. Abort and surface a controlled stuck result.
 $conflicts = Get-ConflictPaths
 if (-not $conflicts -or $conflicts.Count -eq 0) {
-    Write-Warning "git cherry-pick exited $pickCode with no conflict paths — likely a non-conflict failure (e.g. merge commit without -m). Aborting and marking stuck.`nLast git output:`n$pickTail"
-    git cherry-pick --abort 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "git cherry-pick --abort failed after a non-conflict failure; repository may still be mid-cherry-pick." }
+    Write-Warning "git cherry-pick exited $pickCode with no conflict paths — likely a non-conflict failure (e.g. merge commit without -m, unsupported git option). Aborting and marking stuck.`nLast git output:`n$pickTail"
+    # If cherry-pick failed *before* starting (bad args / unsupported
+    # option / old git), --abort itself fails with "no cherry-pick or
+    # revert in progress". That's benign here — there is nothing to
+    # clean up. Capture and surface the abort outcome in the stuck
+    # result instead of throwing, so the operator still gets the JSON.
+    $abortOut = git cherry-pick --abort 2>&1
+    $abortCode = $LASTEXITCODE
+    $abortNote = ''
+    if ($abortCode -ne 0) {
+        $abortText = ($abortOut | Out-String).Trim()
+        if ($abortText -match 'no cherry-pick or revert in progress') {
+            $abortNote = ' (no in-progress cherry-pick to abort — failed before starting)'
+        } else {
+            $abortNote = " (cherry-pick --abort also failed: exit $abortCode; $abortText)"
+        }
+    }
     $result.status = 'stuck'
     $result.conflict_paths = @()
-    $result.error = "git cherry-pick exited $pickCode with no conflict paths. Last output: $pickTail"
+    $result.error = "git cherry-pick exited $pickCode with no conflict paths$abortNote. Last output: $pickTail"
     $result | ConvertTo-Json -Compress
     return
 }
