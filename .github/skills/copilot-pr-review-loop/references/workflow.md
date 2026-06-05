@@ -8,7 +8,7 @@ convergence conditions in step 9 hold, then run step 10 once.
 Track progress through one round with this list (copy into your scratch
 notes or session todos):
 
-- [ ] **1.** Request review — `scripts/01-request-review.ps1 -PrNumber <n>` (snapshots state, protects in-flight reviews, throws on failure). Exit 0 with the message *"Copilot has already submitted a review at the current HEAD"* means **skip directly to step 3** — there is no new review to wait for, and step 2 would time out.
+- [ ] **1.** Request review — `scripts/01-request-review.ps1 -PrNumber <n>` (snapshots state via GraphQL `reviews(last:50)`, protects in-flight reviews, throws on failure). The script ALWAYS attempts to trigger a fresh review when invoked — re-request is a first-class supported flow. The only case where it exits without triggering is when a copilot_work_started event is genuinely in flight (recent, newer than latest review_requested, newer than latest Copilot review submittedAt). If you see that message, skip directly to step 2 to wait for the in-flight review.
 - [ ] **2.** Wait for review submission — `scripts/02-wait-for-review.ps1 -PrNumber <n>` (default 35-min timeout; blocks until a Copilot review against current HEAD is submitted, or returns `ReviewCompleted` / `HeadAdvanced` / `TimedOut` / `Error`). On `ReviewCompleted` the JSON includes `NoNewComments` (boolean) and `BodyHead` so convergence condition (b) can be read mechanically.
 - [ ] **3.** List open threads — `scripts/02-list-open-threads.ps1 -PrNumber <n>` (outdated threads included by default — reply + resolve them too)
 - [ ] **4.** Triage each finding using [03-triage-criteria.md](03-triage-criteria.md)
@@ -45,27 +45,38 @@ sequencing, the `git commit`/`git push`, and the final
 
 ## 1. Request a Copilot review
 
-Run [scripts/01-request-review.ps1](../scripts/01-request-review.ps1). It first
-snapshots state (current HEAD, latest `copilot_work_started`, whether
-Copilot is currently a requested reviewer, whether Copilot already
-reviewed this HEAD), then takes the safest applicable action:
+Run [scripts/01-request-review.ps1](../scripts/01-request-review.ps1). It snapshots
+state via the GraphQL `reviews(last:50)` connection (NOT `latestReviews` —
+that field has stale-cache behavior), then takes one of two paths:
 
-- **AlreadyReviewed** — Copilot has already submitted a review at the
-  current HEAD. Nothing to trigger; the script exits 0.
-- **AlreadyInFlight** — a recent `copilot_work_started` event landed
-  for the current HEAD with no follow-up review yet. The script does
-  NOT re-trigger; doing so would risk cancelling the in-flight review.
-  Exits 0; move to step 2 to wait for submission.
+- **AlreadyInFlight (exit 0, no trigger)** — a recent `copilot_work_started`
+  event exists AND it's newer than the latest review_requested AND
+  newer than the latest Copilot review's submittedAt. Triggering again
+  would risk cancelling the in-flight review. Move to step 2 to wait
+  for the submission.
 - **Stuck-pending re-arm** — Copilot is in `requested_reviewers` but
   no `copilot_work_started` has fired for >5 min after the request.
   The script issues a DELETE+POST cycle to re-arm. This is the ONLY
   path that ever deletes — it never runs while a review is in flight.
-- **Fresh trigger** — Copilot is not currently a reviewer. The script
-  tries REST POST `requested_reviewers[]=Copilot` first (verified by
-  reading the response body and polling `requested_reviewers` for
-  ~10s), then `gh pr edit --add-reviewer Copilot` as best-effort
-  fallback. Both are then verified by polling the issue event log for
-  a `copilot_work_started` event newer than the snapshot.
+- **Trigger** (default path, runs whenever the script is invoked and
+  the in-flight protection didn't fire). The script attempts three
+  mechanisms in order, verifying each via the `copilot_work_started`
+  event:
+  1. **PRIMARY: GraphQL `requestReviewsByLogin`** with
+     `botLogins:["copilot-pull-request-reviewer"]`. Empirically the
+     most reliable. Three traps: use `requestReviewsByLogin` (not
+     `requestReviews`), `botLogins` (not `userLogins`), and the
+     `copilot-pull-request-reviewer` slug (not `Copilot`).
+  2. **FALLBACK: REST POST** `requested_reviewers[]=Copilot`,
+     verified by reading the response body's `requested_reviewers`
+     and polling.
+  3. **FALLBACK: `gh pr edit --add-reviewer Copilot`**. Known to
+     return "not found" on current gh CLI for many accounts; kept
+     as last-ditch.
+
+Re-request is supported as a first-class flow — the script does NOT
+silently skip when Copilot has already reviewed; it issues the same
+mutation and verifies via the event log.
 
 HTTP / exit status alone is NOT sufficient — the server can silently
 drop re-reviews while returning success. See [api-quirks.md](api-quirks.md).
@@ -74,11 +85,9 @@ drop re-reviews while returning success. See [api-quirks.md](api-quirks.md).
 pwsh ../scripts/01-request-review.ps1 -PrNumber <pr-number>
 ```
 
-If no `copilot_work_started` event lands (or no review was needed in
-the first place), the script throws with actionable diagnostics. The
-most common cause when re-triggering after a recent dismissal is a
-short server-side quiet-period; the canonical remedy in any "trigger
-failed" case is to push a substantive (non-whitespace,
+If no `copilot_work_started` event lands, the script throws with
+actionable diagnostics. The canonical remedy when triggers are
+silently dropped is to push a substantive (non-whitespace,
 non-comment-only) commit — most repos auto-assign Copilot on
 `synchronize` and that path is the most reliable.
 

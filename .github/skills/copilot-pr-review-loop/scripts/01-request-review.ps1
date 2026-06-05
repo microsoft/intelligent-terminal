@@ -4,38 +4,55 @@
     request actually landed.
 
 .DESCRIPTION
-    Triggers a Copilot review safely and verifies the trigger landed.
-    Safety is the primary design constraint — the previous version of
-    this script cancelled in-flight reviews via a blanket DELETE+POST
-    fallback. This version protects in-flight work.
+    Triggers a Copilot review and verifies the trigger landed via the
+    `copilot_work_started` event in the issue timeline. Safety is the
+    primary design constraint — protects in-flight reviews from
+    cancellation, never silently skips when the caller invokes the
+    script.
 
     Flow:
-      1. SNAPSHOT current state: PR head SHA, latest Copilot
-         `copilot_work_started` event, latest Copilot
-         `review_requested` event, whether Copilot is currently in
-         `requested_reviewers`, latest Copilot review's commit OID.
-      2. EARLY RETURN if Copilot has already submitted a review at the
-         current HEAD (nothing to trigger).
-      3. EARLY RETURN if a recent `copilot_work_started` exists at the
-         current HEAD without a follow-up review — that means a review
-         is in flight. Triggering again would cancel it.
-      4. RE-ARM if Copilot is in `requested_reviewers` but stuck (no
-         work_started after the request for >5 min) — DELETE+POST the
-         reviewer. This is the ONLY path that ever deletes; it never
-         runs while a review is in flight.
-      5. FRESH TRIGGER otherwise:
-         a. REST POST `requested_reviewers[]=Copilot`. Verified by
-            reading the POST response body's `requested_reviewers` and
-            polling `requested_reviewers` for ~10s (the POST can return
-            HTTP 201 while silently dropping Copilot — quiet-period after
-            dismissal, Copilot not enabled on repo, bot not a
-            collaborator).
-         b. `gh pr edit --add-reviewer Copilot` as best-effort
-            fallback. Known to return "not found" in many gh CLI
-            versions but occasionally succeeds.
+      1. SNAPSHOT current state via GraphQL `reviews(last:50)` (NOT
+         `latestReviews` — that field has stale-cache behavior). Reads
+         PR head SHA, latest Copilot `copilot_work_started` event,
+         latest Copilot `review_requested` event, whether Copilot is
+         currently in `requested_reviewers`, and latest Copilot
+         review's commit OID + submittedAt.
+      2. IN-FLIGHT PROTECTION: if a recent `copilot_work_started`
+         exists AND it's newer than the latest review_requested AND
+         newer than the latest Copilot review's submittedAt, treat as
+         in-flight and exit 0. Triggering again would cancel the
+         in-flight review.
+      3. STUCK-PENDING RE-ARM: if Copilot is in requested_reviewers
+         but no work_started has fired for >5 min after the request,
+         issue DELETE+POST. This is the ONLY path that ever deletes,
+         and never runs while a review is in flight.
+      4. FRESH TRIGGER (always tried unless in-flight protection
+         fired):
+         a. PRIMARY: GraphQL `requestReviewsByLogin` with
+            `botLogins:["copilot-pull-request-reviewer"]`. Empirically
+            (2026-06-05) the most reliable trigger across personal
+            and org repos. Three traps to avoid: use
+            `requestReviewsByLogin` (not `requestReviews`), `botLogins`
+            (not `userLogins`), `copilot-pull-request-reviewer` slug
+            (not `Copilot` display login).
+         b. FALLBACK: REST POST `requested_reviewers[]=Copilot`,
+            verified by reading response body's `requested_reviewers`
+            and polling. The POST can return HTTP 201 while silently
+            dropping Copilot on some account/repo combinations.
+         c. FALLBACK: `gh pr edit --add-reviewer Copilot`. Known to
+            return "not found" on current gh CLI for many accounts;
+            kept as last-ditch best-effort.
+
          The `copilot_work_started` event in the issue timeline is the
-         authoritative success signal — HTTP / exit status alone is
-         insufficient.
+         authoritative success signal in all cases — HTTP / exit status
+         alone is insufficient.
+
+    Re-request is a first-class supported flow: invoking the script on
+    a PR Copilot has already reviewed will issue the same mutation,
+    request a new review, and verify via the event log. The script
+    does NOT silently skip when Copilot has already reviewed — doing
+    so would be the "wait for nothing" failure mode this script exists
+    to prevent.
 
     If nothing triggers a `copilot_work_started` event, the script
     throws with actionable diagnostics. The canonical remedy when
@@ -153,14 +170,22 @@ function Get-LatestReviewRequested {
 }
 
 function Get-PrStateSnapshot {
-    # Returns a hashtable with: HeadOid, CopilotPending, LatestReviewAtHead, LatestReviewAt
+    # Returns a hashtable with: HeadOid, CopilotPending, LatestCopilotReview.
+    #
+    # IMPORTANT: We use `reviews(last: 50)` instead of `latestReviews`.
+    # `latestReviews` is documented as "latest per user" but empirically
+    # exhibits stale-cache behavior — a fresh Copilot review can be
+    # absent from `latestReviews` for several minutes while the regular
+    # `reviews` connection (and REST /reviews) reflects it immediately.
+    # The stale view causes the in-flight / already-reviewed checks to
+    # operate against an obsolete commit OID. Always use `reviews`.
     $q = @'
 query($o:String!,$r:String!,$n:Int!){
   repository(owner:$o,name:$r){
     pullRequest(number:$n){
       headRefOid
       reviewRequests(first:50){nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login}}}}
-      latestReviews(first:50){nodes{author{login} submittedAt commit{oid}}}
+      reviews(last:50){nodes{author{login} submittedAt commit{oid}}}
     }
   }
 }
@@ -180,7 +205,7 @@ query($o:String!,$r:String!,$n:Int!){
     foreach ($n in $pr.reviewRequests.nodes) {
         if ($n.requestedReviewer.login -match '^(?i)copilot') { $copilotPending = $true; break }
     }
-    $copilotReviews = @($pr.latestReviews.nodes | Where-Object { $_.author.login -match '^(?i)copilot' })
+    $copilotReviews = @($pr.reviews.nodes | Where-Object { $_.author.login -match '^(?i)copilot' })
     $latest = if ($copilotReviews.Count -gt 0) { $copilotReviews | Sort-Object submittedAt -Descending | Select-Object -First 1 } else { $null }
     @{
         HeadOid              = $pr.headRefOid
@@ -328,9 +353,13 @@ if ($stuckPending) {
 #   - field `botLogins` (NOT `userLogins`)
 #   - slug `copilot-pull-request-reviewer` (the App slug, NOT `Copilot`)
 $prIdQuery = "query{repository(owner:`"$Owner`",name:`"$Repo`"){pullRequest(number:$PrNumber){id}}}"
-$prNodeId = (gh api graphql -f "query=$prIdQuery" --jq '.data.repository.pullRequest.id' 2>&1).Trim()
-if (-not $prNodeId -or $prNodeId -match 'error|Error|null|^$') {
-    throw "Could not resolve GraphQL node id for $Owner/$Repo PR #$PrNumber. gh output: $prNodeId"
+$prIdResp = gh api graphql -f "query=$prIdQuery" --jq '.data.repository.pullRequest.id' 2>&1
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not resolve GraphQL node id for $Owner/$Repo PR #$PrNumber (gh exit $LASTEXITCODE): $prIdResp"
+}
+$prNodeId = ($prIdResp | Out-String).Trim()
+if (-not $prNodeId -or $prNodeId -match '^(null|error|Error)$' -or $prNodeId -eq '') {
+    throw "Could not resolve GraphQL node id for $Owner/$Repo PR #$PrNumber. Empty/invalid response: $prIdResp"
 }
 $mutation = 'mutation($p:ID!){requestReviewsByLogin(input:{pullRequestId:$p,botLogins:["copilot-pull-request-reviewer"]}){pullRequest{number}}}'
 $mutResp = gh api graphql -f "query=$mutation" -f "p=$prNodeId" 2>&1

@@ -96,13 +96,16 @@ agent owns sequencing, commits, and the final mutating
   **Coding Agent** (which makes commits), not the reviewer bot. It will
   not produce a review. The valid triggers are the API mechanisms in
   [scripts/01-request-review.ps1](scripts/01-request-review.ps1):
-  REST POST `requested_reviewers[]=Copilot` (primary), `gh pr edit
-  --add-reviewer Copilot` (best-effort fallback), and REST DELETE+POST
-  (only when Copilot is in `requested_reviewers` but stuck without a
-  `copilot_work_started` event for >5 min — never while a review is in
-  flight). All are verified via the `copilot_work_started` event in
-  the issue timeline. If none works, push a substantive commit and
-  retry — do not fall back to @-mentions.
+  **(1) GraphQL `requestReviewsByLogin` with `botLogins:["copilot-pull-request-reviewer"]`
+  (primary)** — empirically the most reliable across personal/org repos;
+  **(2) REST POST `requested_reviewers[]=Copilot`** (fallback);
+  **(3) `gh pr edit --add-reviewer Copilot`** (last-ditch fallback).
+  Plus a stuck-pending re-arm path that uses REST DELETE+POST, only
+  when Copilot is in `requested_reviewers` without a `copilot_work_started`
+  event for >5 min — never while a review is in flight. All are
+  verified via the `copilot_work_started` event in the issue timeline.
+  If none works, push a substantive commit and retry — do not fall
+  back to @-mentions.
 - **The most reliable trigger is pushing a substantive commit.** Most
   repos auto-assign Copilot on `synchronize`. When `01-request-review.ps1`
   fails (quiet-period after dismissal, silent server-side drop, Copilot

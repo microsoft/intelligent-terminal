@@ -125,13 +125,23 @@ function Short {
 function Get-PrReviewSnapshot {
     param([string]$Owner, [string]$Repo, [int]$PrNumber)
 
+    # IMPORTANT: We use `reviews(last: 50)` instead of `latestReviews`.
+    # `latestReviews` is documented as "latest per user" but empirically
+    # exhibits stale-cache behavior: a fresh Copilot review can be
+    # absent from `latestReviews` for several minutes after submission
+    # while the standard `reviews` connection (and REST /reviews) shows
+    # it immediately. Using the stale view causes the wait/convergence
+    # logic to see an outdated commit OID and either falsely declare
+    # convergence on the wrong commit or TimeOut waiting for a review
+    # that already exists. The `reviews(last: N)` form is the
+    # authoritative source.
     $query = @'
 query($owner:String!,$repo:String!,$pr:Int!){
   repository(owner:$owner,name:$repo){
     pullRequest(number:$pr){
       headRefOid
       state
-      latestReviews(first:50){
+      reviews(last:50){
         nodes{
           author{login}
           state
@@ -149,7 +159,7 @@ query($owner:String!,$repo:String!,$pr:Int!){
     $pr = $data.data.repository.pullRequest
     if (-not $pr) { throw "PR #$PrNumber not found in $Owner/$Repo." }
 
-    $copilotReviews = @($pr.latestReviews.nodes | Where-Object {
+    $copilotReviews = @($pr.reviews.nodes | Where-Object {
         $_.author.login -match '^(?i)copilot(-pull-request-reviewer)?$'
     })
 

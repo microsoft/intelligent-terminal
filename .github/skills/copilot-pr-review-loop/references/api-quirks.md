@@ -23,17 +23,48 @@ The `botLogins` argument was removed from the GraphQL schema. Do not waste
 time trying variants of it. The previous GraphQL bot-id approach (`BOT_kg...`)
 also returns `NOT_FOUND` for the Copilot reviewer.
 
-## ⚠️ REST `requested_reviewers` with `reviewers[]=Copilot` — usually accepted, sometimes silently dropped
+## ✅ GraphQL `requestReviewsByLogin` with `botLogins` — PRIMARY trigger
+
+```graphql
+mutation($p: ID!) {
+  requestReviewsByLogin(input: {
+    pullRequestId: $p,
+    botLogins: ["copilot-pull-request-reviewer"]
+  }) {
+    pullRequest { number }
+  }
+}
+```
+
+**This is the most reliable trigger** — verified empirically against
+personal repos without Copilot Pro AND org repos with Copilot
+Enterprise (2026-06-05). Works for both initial-add and re-request
+(no special re-request mutation needed).
+
+Three traps that cost us ~2 hours of session time before discovery:
+1. Mutation is `requestReviewsByLogin`, NOT `requestReviews`. The
+   latter no longer accepts bots (the `botLogins` field was removed).
+2. Field is `botLogins`, NOT `userLogins`. The userLogins field
+   returns `Could not resolve user with login 'Copilot'` for the bot.
+3. Slug is `copilot-pull-request-reviewer` (the App slug). The
+   display login `Copilot` returns `Could not resolve bot with slug 'Copilot'`.
+
+Verify success via `copilot_work_started` event in the issue timeline.
+HTTP success / exit 0 alone is not sufficient — GraphQL can return
+HTTP 200 with a non-error response while the bot is silently dropped
+in some edge cases.
+
+## ⚠️ REST `requested_reviewers` with `reviewers[]=Copilot` — FALLBACK only
 
 ```bash
 gh api -X POST /repos/<owner>/<repo>/pulls/<n>/requested_reviewers \
     -f 'reviewers[]=Copilot'
 ```
 
-**This is currently the most reliable trigger.** Use `-f` (not `-F`)
-so `Copilot` is sent as a string. Capital "C" is required; the bot
-login `copilot-pull-request-reviewer` returns HTTP 422 because bots
-are not collaborators.
+Kept as a fallback after the GraphQL primary. Use `-f` (not `-F`) so
+`Copilot` is sent as a string. Capital "C" is required; the bot
+login `copilot-pull-request-reviewer` returns HTTP 422 here because
+bots are not collaborators of this endpoint's view.
 
 Caveats:
 
@@ -49,7 +80,11 @@ Caveats:
   event in the issue timeline to confirm the bot actually picked up
   the work. That is the only authoritative signal.
 
-## ⚠️ `gh pr edit --add-reviewer Copilot` — best-effort fallback only
+(Previous editions called this "currently the most reliable trigger".
+That changed with the discovery of `requestReviewsByLogin` — REST
+POST is now a fallback only.)
+
+## ⚠️ `gh pr edit --add-reviewer Copilot` — last-ditch fallback
 
 ```bash
 gh pr edit <pr-number> --add-reviewer Copilot
@@ -64,12 +99,30 @@ repos), this returns:
 
 for both `Copilot` and `copilot-pull-request-reviewer`. Older versions
 and some account configurations may succeed. Keep this as a fallback
-attempted AFTER the REST POST, never as the primary path.
+attempted AFTER the GraphQL primary and REST POST, never as the
+primary path.
 
-(Previous editions of this document called `gh pr edit --add-reviewer
-copilot-pull-request-reviewer` "the only consistently working method".
-That claim no longer holds. The REST POST + event-log verification is
-the canonical flow.)
+## ⚠️ GraphQL `latestReviews` — stale cache, do NOT use for convergence
+
+```graphql
+# DO NOT USE — stale cache behavior:
+pullRequest(number:$pr){ latestReviews(first:50){ nodes{ ... } } }
+
+# USE INSTEAD — always current:
+pullRequest(number:$pr){ reviews(last:50){ nodes{ ... } } }
+```
+
+Empirically (2026-06-05), `latestReviews` is a "latest per user"
+projection that exhibits stale-cache behavior — a fresh Copilot review
+can be absent from `latestReviews` for several minutes after submission
+while the standard `reviews` connection (and REST `/reviews`) reflects
+it immediately. Using `latestReviews` for the in-flight check or
+convergence verification causes the script to operate against an
+obsolete commit OID — either falsely declaring convergence on the
+wrong commit or timing out waiting for a review that already exists.
+
+Both `01-request-review.ps1` and `02-wait-for-review.ps1` use
+`reviews(last:50)` filtered to Copilot, never `latestReviews`.
 
 ## ✅ GraphQL `addPullRequestReviewThreadReply` + `resolveReviewThread` — WORKS
 
