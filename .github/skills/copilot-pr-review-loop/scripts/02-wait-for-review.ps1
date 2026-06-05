@@ -60,10 +60,10 @@ function ToUtcDt {
 
 function Get-ReviewStatus {
     $script = Join-Path $PSScriptRoot '02-check-review-status.ps1'
-    $args = @('-NoProfile', '-NonInteractive', '-File', $script, '-PrNumber', $PrNumber)
+    $args = @('-File', $script, '-PrNumber', $PrNumber)
     if ($Owner) { $args += @('-Owner', $Owner) }
     if ($Repo) { $args += @('-Repo', $Repo) }
-    $json = pwsh @args
+    $json = pwsh -NoProfile -NonInteractive @args
     if ($LASTEXITCODE -ne 0) {
         throw "02-check-review-status.ps1 failed (exit $LASTEXITCODE): $json"
     }
