@@ -96,7 +96,12 @@ namespace Microsoft::Terminal::ShellIntegration
     //           must NOT be matched as Git Bash (they're covered by
     //           the Wsl-source iteration on the caller side).
     //
-    // Matching is case-insensitive on the leaf .exe and source string.
+    // Commandline matching is case-insensitive (substring on the leaf
+    // .exe). The source-string check is case-SENSITIVE because the WT
+    // dynamic-profile generators emit `Source` values with a fixed
+    // canonical case (e.g. exactly "Windows.Terminal.PowershellCore");
+    // see LegacyProfileGeneratorNamespaces.h. A case-insensitive source
+    // match would be unnecessary work.
     // Returns false for any other target (e.g. a hypothetical future
     // shell flavor) — caller is responsible for adding a new branch
     // when registering a new Target.
