@@ -41,8 +41,8 @@ namespace Microsoft::Terminal::ShellIntegration
     namespace details
     {
         // Case-insensitive substring match on UTF-16 code units. ASCII
-        // fold only — sufficient for matching "pwsh.exe" / "powershell.exe"
-        // / "bash.exe" / "wsl.exe" in commandlines (those are ASCII).
+        // fold only — sufficient for matching shell-leaf strings in
+        // commandlines (those are ASCII).
         inline bool _CaseInsensitiveContains(std::wstring_view haystack, std::wstring_view needle) noexcept
         {
             if (needle.empty())
@@ -75,32 +75,135 @@ namespace Microsoft::Terminal::ShellIntegration
             }
             return false;
         }
+
+        // Returns true if the LAUNCH executable in `commandline` is
+        // exactly `<leaf>` or `<leaf>.exe` (case-insensitive, leaf
+        // compared after stripping the directory portion). The launch
+        // exe is the first whitespace/quote-delimited token of the
+        // commandline.
+        //
+        // Why "launch executable only" not "any token":
+        //   * `pwsh -WorkingDirectory ~` — bare leaf, matches Pwsh ✓
+        //   * `C:\Program Files\PowerShell\7\pwsh.exe -NoLogo` — leaf
+        //     is pwsh.exe after path strip, matches Pwsh ✓
+        //   * `cmd.exe /c echo pwsh` — launch exe is cmd.exe; the
+        //     `pwsh` in the arg list MUST NOT match Pwsh (the user is
+        //     running cmd.exe and just happens to print the string
+        //     "pwsh"). Plain "any-token" matching would mis-classify
+        //     this. Anchoring on the launch exe avoids that whole
+        //     class of false positive.
+        //   * `mypwsh.exe` — launch leaf is mypwsh.exe, not pwsh or
+        //     pwsh.exe, no match ✓.
+        inline bool _CommandlineHasExeToken(std::wstring_view commandline, std::wstring_view leaf) noexcept
+        {
+            if (leaf.empty())
+            {
+                return false;
+            }
+            // Skip leading whitespace.
+            size_t start = 0;
+            while (start < commandline.size() &&
+                   (commandline[start] == L' ' || commandline[start] == L'\t'))
+            {
+                ++start;
+            }
+            // Honor an opening quote — the launch exe path may contain
+            // spaces (e.g. "C:\Program Files\...\pwsh.exe").
+            bool quoted = false;
+            if (start < commandline.size() && commandline[start] == L'"')
+            {
+                quoted = true;
+                ++start;
+            }
+            // First token ends at the matching close-quote OR
+            // whitespace OR end-of-string.
+            size_t end = start;
+            while (end < commandline.size())
+            {
+                const wchar_t c = commandline[end];
+                if (quoted ? (c == L'"') : (c == L' ' || c == L'\t'))
+                {
+                    break;
+                }
+                ++end;
+            }
+            if (end <= start)
+            {
+                return false;
+            }
+            // Strip directory portion of the launch exe: leaf is the
+            // substring after the last `\` or `/`.
+            size_t leafStart = start;
+            for (size_t i = start; i < end; ++i)
+            {
+                if (commandline[i] == L'\\' || commandline[i] == L'/')
+                {
+                    leafStart = i + 1;
+                }
+            }
+            const std::wstring_view leafToken = commandline.substr(leafStart, end - leafStart);
+            const auto fold = [](wchar_t c) noexcept -> wchar_t {
+                return (c >= L'A' && c <= L'Z') ? static_cast<wchar_t>(c + (L'a' - L'A')) : c;
+            };
+            const auto equalsCi = [&](std::wstring_view a, std::wstring_view b) noexcept -> bool {
+                if (a.size() != b.size()) return false;
+                for (size_t i = 0; i < a.size(); ++i)
+                {
+                    if (fold(a[i]) != fold(b[i])) return false;
+                }
+                return true;
+            };
+            if (equalsCi(leafToken, leaf))
+            {
+                return true; // bare-leaf form
+            }
+            // Try with .exe suffix.
+            if (leafToken.size() == leaf.size() + 4)
+            {
+                constexpr std::wstring_view dotExe{ L".exe" };
+                bool exeMatch = true;
+                for (size_t i = 0; i < leaf.size(); ++i)
+                {
+                    if (fold(leafToken[i]) != fold(leaf[i])) { exeMatch = false; break; }
+                }
+                if (exeMatch)
+                {
+                    for (size_t i = 0; i < dotExe.size(); ++i)
+                    {
+                        if (fold(leafToken[leaf.size() + i]) != fold(dotExe[i])) { exeMatch = false; break; }
+                    }
+                    if (exeMatch) return true; // <leaf>.exe form
+                }
+            }
+            return false;
+        }
     }
 
     // Returns true if the given (source, commandline) pair represents a
     // profile that uses `target`.
     //
-    // Matching strategy (intentionally simple — substring + one source
-    // discriminator — to avoid over-engineering this gate):
+    // Matching strategy (intentionally simple — token-bounded leaf
+    // match + one source discriminator — to avoid over-engineering this
+    // gate while still recognizing both the path-with-.exe and bare
+    // forms a user may legitimately set in their profile commandline):
     //
     //   * Pwsh: source == "Windows.Terminal.PowershellCore" OR
-    //           commandline contains "pwsh.exe".
-    //   * WindowsPowerShell: commandline contains "powershell.exe" AND
-    //           does NOT contain "pwsh.exe". pwsh.exe installs under
+    //           commandline contains the leaf token "pwsh"
+    //           (matches both `pwsh.exe` and bare `pwsh`).
+    //   * WindowsPowerShell: commandline contains leaf token
+    //           "powershell" AND does NOT contain leaf token
+    //           "pwsh". pwsh.exe installs under
     //           "...\\PowerShell\\7\\pwsh.exe" so a bare "powershell"
-    //           substring match would mis-classify it — the NOT-pwsh
-    //           discriminator (plain case-insensitive substring, not
-    //           a regex word-boundary check) is what distinguishes
-    //           the two leaf .exes here. Two substring tests are the
-    //           full extent of the matcher.
-    //   * Bash (Git Bash): commandline contains "bash.exe" AND does
-    //           NOT contain "wsl.exe". WSL distro profiles use
-    //           "wsl.exe -d <distro>" or `wsl.exe ~ -d <distro>` and
-    //           must NOT be matched as Git Bash (they're covered by
-    //           the Wsl-source iteration on the caller side).
+    //           token match would mis-classify it — the NOT-pwsh
+    //           discriminator distinguishes the two leaf .exes.
+    //   * Bash (Git Bash): commandline contains leaf token "bash"
+    //           AND does NOT contain leaf token "wsl". WSL distro
+    //           profiles use "wsl.exe -d <distro>" (or "wsl -d ...")
+    //           and must NOT be matched as Git Bash (they're covered
+    //           by the Wsl-source iteration on the caller side).
     //
-    // Commandline matching is case-insensitive (substring on the leaf
-    // .exe). The source-string check is case-SENSITIVE because the WT
+    // Commandline matching is case-insensitive (token-bounded leaf).
+    // The source-string check is case-SENSITIVE because the WT
     // dynamic-profile generators emit `Source` values with a fixed
     // canonical case (e.g. exactly "Windows.Terminal.PowershellCore");
     // see LegacyProfileGeneratorNamespaces.h. A case-insensitive source
@@ -119,13 +222,13 @@ namespace Microsoft::Terminal::ShellIntegration
             {
                 return true;
             }
-            return details::_CaseInsensitiveContains(commandline, L"pwsh.exe");
+            return details::_CommandlineHasExeToken(commandline, L"pwsh");
         case Target::WindowsPowerShell:
-            return details::_CaseInsensitiveContains(commandline, L"powershell.exe") &&
-                   !details::_CaseInsensitiveContains(commandline, L"pwsh.exe");
+            return details::_CommandlineHasExeToken(commandline, L"powershell") &&
+                   !details::_CommandlineHasExeToken(commandline, L"pwsh");
         case Target::Bash:
-            return details::_CaseInsensitiveContains(commandline, L"bash.exe") &&
-                   !details::_CaseInsensitiveContains(commandline, L"wsl.exe");
+            return details::_CommandlineHasExeToken(commandline, L"bash") &&
+                   !details::_CommandlineHasExeToken(commandline, L"wsl");
         default:
             return false;
         }

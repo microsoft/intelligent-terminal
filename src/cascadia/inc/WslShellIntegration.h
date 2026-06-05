@@ -170,10 +170,22 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                 //
                 // WSL_UTF8=1 makes wsl.exe relay child stdout as UTF-8
                 // (otherwise the default is UTF-16LE for newer WSL).
+                //
+                // Fallback: if GetEnvironmentStringsW() fails (very rare
+                // — only under low-memory pressure) we cannot safely
+                // build a child env block (passing one with only
+                // WSL_UTF8=1 would drop SystemRoot/Path and break the
+                // wsl.exe spawn). In that case, pass nullptr to inherit
+                // the parent env without the WSL_UTF8 override. Newer
+                // WSL may then emit UTF-16LE stdout; the IsSafeHome
+                // validator below rejects that and we return empty
+                // (same as any other probe failure), which the cache
+                // policy treats as retryable.
+                bool useChildEnv = false;
                 std::wstring childEnv;
-                bool wslUtf8Replaced = false;
                 if (wchar_t* origEnvBlock = GetEnvironmentStringsW())
                 {
+                    bool wslUtf8Replaced = false;
                     for (wchar_t* p = origEnvBlock; *p != L'\0'; )
                     {
                         const std::wstring_view entry{ p };
@@ -195,22 +207,25 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                         childEnv.push_back(L'\0');
                     }
                     FreeEnvironmentStringsW(origEnvBlock);
+                    if (!wslUtf8Replaced)
+                    {
+                        childEnv.append(L"WSL_UTF8=1");
+                        childEnv.push_back(L'\0');
+                    }
+                    childEnv.push_back(L'\0'); // env block terminates on \0\0
+                    useChildEnv = true;
                 }
-                if (!wslUtf8Replaced)
-                {
-                    childEnv.append(L"WSL_UTF8=1");
-                    childEnv.push_back(L'\0');
-                }
-                childEnv.push_back(L'\0'); // env block terminates on \0\0
 
                 PROCESS_INFORMATION pi{};
+                const DWORD creationFlags = CREATE_NO_WINDOW |
+                                            (useChildEnv ? CREATE_UNICODE_ENVIRONMENT : 0u);
                 const bool spawnOk = CreateProcessW(nullptr,
                                                     cmdLine.data(),
                                                     nullptr,
                                                     nullptr,
                                                     TRUE,
-                                                    CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
-                                                    childEnv.data(),
+                                                    creationFlags,
+                                                    useChildEnv ? childEnv.data() : nullptr,
                                                     nullptr,
                                                     &si,
                                                     &pi) != FALSE;
