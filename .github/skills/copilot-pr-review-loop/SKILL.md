@@ -123,7 +123,7 @@ agent owns sequencing, commits, and the final mutating
   step 2 — do NOT re-invoke that script for convergence, it will time
   out) AND the open-threads list is empty. A stale review on an
   earlier commit lets a regression slip through unreviewed.
-- **Use the trigger flow in [scripts/01-request-review.ps1](scripts/01-request-review.ps1).** REST POST `requested_reviewers[]=Copilot` (capital C, sent with `-f`) is the primary mechanism; `gh pr edit --add-reviewer Copilot` is a best-effort fallback. Both can return HTTP success while the bot is silently dropped — `copilot_work_started` event in the issue timeline is the only authoritative success signal. See [references/api-quirks.md](references/api-quirks.md).
+- **Use the trigger flow in [scripts/01-request-review.ps1](scripts/01-request-review.ps1).** GraphQL `requestReviewsByLogin` with `botLogins:["copilot-pull-request-reviewer"]` is primary; REST POST `requested_reviewers[]=Copilot` and `gh pr edit --add-reviewer Copilot` are fallbacks. Any trigger can return success while the bot is silently dropped — `copilot_work_started` event in the issue timeline is the only authoritative success signal. See [references/api-quirks.md](references/api-quirks.md).
 - **`git stash push -m` must come before `--`.** The form
   `git stash push -- <paths> -m <msg>` parses `<msg>` as a path and
   silently produces a stash with no message.

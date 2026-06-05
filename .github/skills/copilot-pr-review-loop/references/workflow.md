@@ -212,7 +212,10 @@ You are done ONLY when all three conditions hold simultaneously:
    stale — it did not see your most recent fix. Verify with:
 
    ```powershell
-   gh pr view <n> --json headRefOid,latestReviews --jq '{head:.headRefOid, latest:(.latestReviews[] | select(.author.login|test("^(?i)copilot")) | {submittedAt,state,commit:.commit.oid})}'
+   gh api graphql `
+     -f owner=<owner> -f repo=<repo> -F pr=<n> `
+     -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){headRefOid reviews(last:50){nodes{author{login} submittedAt state commit{oid}}}}}}' `
+     --jq '{head:.data.repository.pullRequest.headRefOid, latest:(.data.repository.pullRequest.reviews.nodes | map(select(.author.login|test("^(?i)copilot"))) | sort_by(.submittedAt) | last | {submittedAt,state,commit:.commit.oid})}'
    ```
 
    Or re-read the `LatestReview` field from the `ReviewCompleted` JSON

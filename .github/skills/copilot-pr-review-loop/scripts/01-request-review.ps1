@@ -1,83 +1,86 @@
 <#
 .SYNOPSIS
-    Re-request a Copilot code review on a pull request and verify the
-    request actually landed.
+    Ensure Copilot is reviewing the given PR. Single contract — single
+    success/failure outcome.
 
 .DESCRIPTION
-    Triggers a Copilot review and verifies the trigger landed via the
-    `copilot_work_started` event in the issue timeline. Safety is the
-    primary design constraint — protects in-flight reviews from
-    cancellation, never silently skips when the caller invokes the
-    script.
+    This script has ONE job: ensure Copilot is actively reviewing the
+    PR by the time it returns successfully. The caller does not need
+    to know how that happens.
 
-    Flow:
-      1. SNAPSHOT current state via GraphQL `reviews(last:50)` (NOT
-         `latestReviews` — that field has stale-cache behavior). Reads
-         PR head SHA, latest Copilot `copilot_work_started` event,
-         latest Copilot `review_requested` event, whether Copilot is
-         currently in `requested_reviewers`, and latest Copilot
-         review's commit OID + submittedAt.
-      2. IN-FLIGHT PROTECTION: if a recent `copilot_work_started`
-         exists AND it's newer than the latest review_requested AND
-         newer than the latest Copilot review's submittedAt, treat as
-         in-flight and exit 0. Triggering again would cancel the
-         in-flight review.
-      3. STUCK-PENDING RE-ARM: if Copilot is in requested_reviewers
-         but no work_started has fired for >5 min after the request,
-         issue DELETE+POST. This is the ONLY path that ever deletes,
-         and never runs while a review is in flight.
-      4. FRESH TRIGGER (always tried unless in-flight protection
-         fired):
-         a. PRIMARY: GraphQL `requestReviewsByLogin` with
-            `botLogins:["copilot-pull-request-reviewer"]`. Empirically
-            (2026-06-05) the most reliable trigger across personal
-            and org repos. Three traps to avoid: use
-            `requestReviewsByLogin` (not `requestReviews`), `botLogins`
-            (not `userLogins`), `copilot-pull-request-reviewer` slug
-            (not `Copilot` display login).
-         b. FALLBACK: REST POST `requested_reviewers[]=Copilot`,
-            verified by reading response body's `requested_reviewers`
-            and polling. The POST can return HTTP 201 while silently
-            dropping Copilot on some account/repo combinations.
-         c. FALLBACK: `gh pr edit --add-reviewer Copilot`. Known to
-            return "not found" on current gh CLI for many accounts;
-            kept as last-ditch best-effort.
+    Success contract (exit 0):
+      - Copilot has picked up review work for the current PR head. This is
+        proven by a `copilot_work_started` event that is still in flight,
+        or by a new `copilot_work_started` event produced by this
+        invocation.
 
-         The `copilot_work_started` event in the issue timeline is the
-         authoritative success signal in all cases — HTTP / exit status
-         alone is insufficient.
+    Failure contract (throw, exit 1):
+      - All trigger mechanisms attempted, none produced a verifiable
+        `copilot_work_started` event. The thrown message lists what
+        was tried and the most likely remedy (usually: push a
+        substantive commit and retry).
 
-    Re-request is a first-class supported flow: invoking the script on
-    a PR Copilot has already reviewed will issue the same mutation,
-    request a new review, and verify via the event log. The script
-    does NOT silently skip when Copilot has already reviewed — doing
-    so would be the "wait for nothing" failure mode this script exists
-    to prevent.
+    The caller can retry on failure. Two retries against the same
+    HEAD with no in-between change are unlikely to behave differently
+    — the canonical remedy is push-substantive-commit.
 
-    If nothing triggers a `copilot_work_started` event, the script
-    throws with actionable diagnostics. The canonical remedy when
-    triggers are silently dropped is to push a substantive new commit
-    (not whitespace / not comment-only) and retry — repo-level
-    auto-assignment fires on `synchronize` and is generally reliable.
+    Verification is always via the `copilot_work_started` event in
+    the issue timeline. The script does not wait for Copilot to submit a
+    completed review; that is the caller's job. HTTP / exit status alone
+    is not trusted because the server can return success while silently
+    dropping the bot.
 
-    DO NOT post `@copilot please review` (or any @copilot mention) as a
-    PR comment as a workaround. That summons the Copilot **Coding
-    Agent** (which makes commits), not the reviewer bot — it is a
-    confirmed waste of time and has been observed across multiple
-    Copilot CLI sessions. The only valid triggers are the API
-    mechanisms above.
+    Behavior by current PR state:
+      - Copilot review already in flight for current HEAD (recent
+        work_started, newer than latest review_requested AND newer
+        than latest Copilot review submittedAt) → exit 0 without
+        triggering. Cancelling an in-flight review costs another full
+        review cycle.
+      - Copilot in `requested_reviewers` but stuck (no work_started
+        for >5 min after the request) → DELETE+POST to re-arm. This
+        is the ONLY path that ever deletes.
+      - Otherwise → trigger via, in order:
+        (1) GraphQL `requestReviewsByLogin` with
+            `botLogins:["copilot-pull-request-reviewer"]` — primary
+        (2) REST POST `requested_reviewers[]=Copilot` — fallback
+        (3) `gh pr edit --add-reviewer Copilot` — last-ditch
 
-.PARAMETER Owner
-    Repository owner (org or user). Defaults to the current repo's owner.
+    Three GraphQL traps that took ~2 hours of session time to find,
+    documented to save future sessions:
+      - Mutation is `requestReviewsByLogin` (NOT `requestReviews`)
+      - Field is `botLogins` (NOT `userLogins`)
+      - Slug is `copilot-pull-request-reviewer` (NOT `Copilot`)
 
-.PARAMETER Repo
-    Repository name. Defaults to the current repo's name.
+    Re-request is a first-class supported flow — the script does NOT
+    silently skip when Copilot has already reviewed; it issues the
+    trigger and verifies via the event log. The original "wait for
+    nothing" failure mode this script was built to kill was caused
+    by silent re-request skips + unverified triggers.
+
+    DO NOT post `@copilot please review` (or any @copilot mention) as
+    a PR comment as a workaround. That summons the Copilot **Coding
+    Agent** (which makes commits), not the reviewer bot. The valid
+    triggers are the API mechanisms above.
 
 .PARAMETER PrNumber
-    The pull request number to re-request review on.
+    The pull request number. The only required parameter.
+
+.PARAMETER Owner
+    Repository owner. OPTIONAL — auto-resolved from `gh repo view`
+    when omitted. You only need to pass this when running outside the
+    target repo's worktree.
+
+.PARAMETER Repo
+    Repository name. OPTIONAL — auto-resolved from `gh repo view`.
+    Same auto-resolve as Owner.
 
 .EXAMPLE
-    pwsh 01-request-review.ps1 -PrNumber 122
+    # Canonical usage — from inside the target repo's worktree.
+    pwsh 01-request-review.ps1 -PrNumber 236
+
+.EXAMPLE
+    # Cross-repo — only when not running from inside the target repo.
+    pwsh 01-request-review.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 236
 #>
 [CmdletBinding()]
 param(
