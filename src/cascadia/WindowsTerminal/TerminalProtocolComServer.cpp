@@ -358,6 +358,15 @@ void TerminalProtocolComServer::s_NotifyEventToComClients(const std::string& eve
         }
     }
 
+    // TODO: event fan-out runs on the UI/STA thread (ProtocolVtSequenceReceived
+    // is raised there), and each OnEvent below is a SYNCHRONOUS cross-process
+    // call. A slow or blocked subscriber (e.g. wtcli's stdout pipe full because
+    // wta isn't draining it) therefore stalls the terminal UI thread, and the
+    // cost is serial across all subscribers. For high event volume this should
+    // be moved off the UI thread — queue events and drain them on a dedicated
+    // background MTA thread (mind ordering, back-pressure, and subscriber
+    // add/remove thread-safety), and/or give OnEvent a timeout. Tracked as
+    // follow-up; not addressed in the WinRT->classic-COM migration.
     for (auto& ref : sinks)
     {
         // Resolve the agile reference to a sink proxy valid on THIS thread,
