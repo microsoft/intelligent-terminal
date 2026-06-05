@@ -152,9 +152,13 @@ unset __it_shellinteg_b
     }
 
     // Build the .bashrc block. The eol parameter is ignored (bash files
-    // are always LF; the descriptor sets forceLf=true so the surrounding
-    // driver also writes LF). We keep the signature so the same generic
-    // driver can call us.
+    // are always LF). The descriptor sets forceLf=true so the driver
+    // uses "\n" for the line endings IT writes — i.e. the trailing
+    // newline after our appended block, and any joining around an
+    // in-place replace. Pre-existing CRLF in the user's content
+    // OUTSIDE our block is preserved as-is; the installer never
+    // normalizes the whole file. We keep the signature so the same
+    // generic driver can call us.
     inline std::string BuildBlock(std::string_view /*eol*/)
     {
         const auto fileName = til::u16u8(ScriptFileName());

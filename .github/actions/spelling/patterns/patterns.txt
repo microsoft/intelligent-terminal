@@ -323,7 +323,7 @@ env_remove\("[A-Z_]+"\)
 
 # src/cascadia/inc/BashShellIntegration.h - private namespace for the bash shell-integration script (variables we set in the user's bash environment)
 \b__IT_SHELLINTEG_[A-Z_]+\b
-\b__it_shellinteg_[a-z_]+\b
+\b__it_[a-z_]+\b
 
 # bash terminology referenced in shell-integration script comments (`set -u` / nounset)
 \bnounset\b
