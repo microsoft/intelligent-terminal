@@ -9199,23 +9199,17 @@ fn set_welcome_shown_in_state() {
     let _ = std::fs::write(&path, &updated);
 }
 
-/// Find the packaged app's state.json.
+/// Find the packaged WT app's state.json.
+///
+/// Delegates to `runtime_paths::wt_state_json_path`, which:
+/// - prefers `GetCurrentPackageFamilyName` when wta itself is packaged
+///   (production: dev-sideload **or** store family — both resolve correctly), and
+/// - falls back to scanning the `Packages` subdirectory under
+///   `%LOCALAPPDATA%` (or `%APPDATA%` when `%LOCALAPPDATA%` is unset)
+///   for either known WT family prefix when wta is unpackaged (dev tree
+///   launched by packaged WT via `TerminalPage::_DetectWtaPath`).
 fn find_state_json() -> Option<std::path::PathBuf> {
-    let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
-    let packages_dir = std::path::Path::new(&local_app_data).join("Packages");
-    if let Ok(entries) = std::fs::read_dir(&packages_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if name_str.starts_with("IntelligentTerminal_") {
-                let candidate = entry.path().join("LocalState").join("state.json");
-                if candidate.exists() {
-                    return Some(candidate);
-                }
-            }
-        }
-    }
-    None
+    crate::runtime_paths::wt_state_json_path()
 }
 
 fn truncate(s: &str, max: usize) -> String {
