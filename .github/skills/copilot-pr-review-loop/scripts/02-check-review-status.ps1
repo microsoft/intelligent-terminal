@@ -84,15 +84,39 @@ if (-not $Owner -or -not $Repo) {
     if (-not $Repo)  { $Repo  = $repoInfo.name }
 }
 
-# GraphQL call: head SHA + state + reviews + paginated thread counts.
-# Uses `reviews(last:100)` not `latestReviews` (stale-cache behavior).
-$q = @'
-query($o:String!,$r:String!,$n:Int!,$after:String){
+# Query A (once): PR head/state/reviews. Reviews are not paginated
+# here — `reviews(last:100)` is the most recent 100 reviews, sufficient
+# for finding the latest Copilot review.
+$qHead = @'
+query($o:String!,$r:String!,$n:Int!){
   repository(owner:$o,name:$r){
     pullRequest(number:$n){
       headRefOid
       state
       reviews(last:100){nodes{author{login} state submittedAt body commit{oid}}}
+    }
+  }
+}
+'@
+
+$r = Invoke-Gh -GhArgs @('api','graphql','-f',"query=$qHead",'-f',"o=$Owner",'-f',"r=$Repo",'-F',"n=$PrNumber")
+if ($r.ExitCode -ne 0) {
+    throw "GraphQL head query failed (exit $($r.ExitCode)): $($r.Stderr) $($r.Stdout)"
+}
+$d = $r.Stdout | ConvertFrom-Json
+if ($d.errors) {
+    $msgs = ($d.errors | ForEach-Object { $_.message }) -join '; '
+    throw "GraphQL head query returned errors: $msgs"
+}
+$pr = $d.data.repository.pullRequest
+if (-not $pr) { throw "PR #$PrNumber not found in $Owner/$Repo." }
+
+# Query B (paginated): reviewThreads only — separated so we don't
+# re-fetch the full review bodies on every page.
+$qThreads = @'
+query($o:String!,$r:String!,$n:Int!,$after:String){
+  repository(owner:$o,name:$r){
+    pullRequest(number:$n){
       reviewThreads(first:100, after:$after){
         pageInfo{endCursor hasNextPage}
         nodes{isResolved}
@@ -104,30 +128,23 @@ query($o:String!,$r:String!,$n:Int!,$after:String){
 
 $after = $null
 $allThreads = @()
-$d = $null
 do {
-    $ghArgs = @('api', 'graphql', '-f', "query=$q", '-f', "o=$Owner", '-f', "r=$Repo", '-F', "n=$PrNumber")
+    $ghArgs = @('api', 'graphql', '-f', "query=$qThreads", '-f', "o=$Owner", '-f', "r=$Repo", '-F', "n=$PrNumber")
     if ($after) { $ghArgs += @('-f', "after=$after") }
     $r = Invoke-Gh -GhArgs $ghArgs
     if ($r.ExitCode -ne 0) {
-        throw "GraphQL snapshot failed (exit $($r.ExitCode)): $($r.Stderr) $($r.Stdout)"
+        throw "GraphQL threads query failed (exit $($r.ExitCode)): $($r.Stderr) $($r.Stdout)"
     }
-    $d = $r.Stdout | ConvertFrom-Json
-    if ($d.errors) {
-        $msgs = ($d.errors | ForEach-Object { $_.message }) -join '; '
-        throw "GraphQL snapshot returned errors: $msgs"
+    $tdata = $r.Stdout | ConvertFrom-Json
+    if ($tdata.errors) {
+        $msgs = ($tdata.errors | ForEach-Object { $_.message }) -join '; '
+        throw "GraphQL threads query returned errors: $msgs"
     }
-    $pagePr = $d.data.repository.pullRequest
-    if (-not $pagePr) { throw "PR #$PrNumber not found in $Owner/$Repo." }
+    $pagePr = $tdata.data.repository.pullRequest
+    if (-not $pagePr) { throw "PR #$PrNumber not found in $Owner/$Repo (threads page)." }
     $allThreads += $pagePr.reviewThreads.nodes
     $after = $pagePr.reviewThreads.pageInfo.endCursor
 } while ($pagePr.reviewThreads.pageInfo.hasNextPage)
-
-if (-not $d) {
-    throw "GraphQL snapshot returned no data for $Owner/$Repo PR #$PrNumber."
-}
-$pr = $d.data.repository.pullRequest
-if (-not $pr) { throw "PR #$PrNumber not found in $Owner/$Repo." }
 
 $copilotReviews = @($pr.reviews.nodes | Where-Object { $_.author.login -match '(?i)^(copilot-pull-request-reviewer(\[bot\])?|copilot(\[bot\])?)$' })
 $latest = if ($copilotReviews.Count -gt 0) { $copilotReviews | Sort-Object submittedAt -Descending | Select-Object -First 1 } else { $null }

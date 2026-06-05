@@ -99,16 +99,17 @@ agent owns sequencing, commits, and the final mutating
   not produce a review. The valid triggers are the API mechanisms in
   [scripts/01-request-review.ps1](scripts/01-request-review.ps1):
   GraphQL `requestReviewsByLogin` with
-  `botLogins:["copilot-pull-request-reviewer"]` — empirically the most
-  reliable across personal/org repos. The trigger is verified via the
-  `copilot_work_started` event in the issue timeline.
-  If none works, push a substantive commit and retry — do not fall
-  back to @-mentions.
-- **The most reliable trigger is pushing a substantive commit.** Most
-  repos auto-assign Copilot on `synchronize`. When `01-request-review.ps1`
-  fails (quiet-period after dismissal, silent server-side drop, Copilot
-  not enabled), the recommended remedy is to commit a real change
-  (non-whitespace, non-comment-only) and rely on auto-assignment.
+  `botLogins:["copilot-pull-request-reviewer"]` — empirically the
+  most reliable **API** trigger across personal/org repos. The
+  trigger is verified via the `copilot_work_started` event in the
+  issue timeline. If none works, push a substantive commit and
+  retry — do not fall back to @-mentions.
+- **Pushing a substantive commit is the most reliable overall
+  fallback.** Most repos auto-assign Copilot on `synchronize`. When
+  `01-request-review.ps1` fails (quiet-period after dismissal, silent
+  server-side drop, Copilot not enabled), the recommended remedy is
+  to commit a real change (non-whitespace, non-comment-only) and rely
+  on auto-assignment.
 - **HTTP 200 / exit 0 from a re-request call is NOT proof Copilot
   accepted it.** The server can silently drop trivial-diff re-reviews.
   The only authoritative signal is a `copilot_work_started` event newer

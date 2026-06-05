@@ -55,6 +55,7 @@ param(
     [string]$Owner,
     [string]$Repo,
 
+    [ValidateRange(1, 600)]
     [int]$VerifySeconds = 30
 )
 
