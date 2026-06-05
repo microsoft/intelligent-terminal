@@ -8,7 +8,7 @@ convergence conditions in step 9 hold, then run step 10 once.
 Track progress through one round with this list (copy into your scratch
 notes or session todos):
 
-- [ ] **1.** Request review — `pwsh scripts/01-request-review.ps1 -PrNumber <n>`. Returns JSON immediately with `Status: TriggerLanded | InFlight | Error`. NEVER blocks waiting for the actual review submission — that's the agent's job (see step 2).
+- [ ] **1.** Request review — `pwsh scripts/01-request-review.ps1 -PrNumber <n>`. Returns JSON immediately with `Status: TriggerLanded | InFlight` on success, or throws on failure. NEVER blocks waiting for the actual review submission — that's the agent's job (see step 2).
 - [ ] **2.** Wait at the agent level, then snapshot — schedule a check 3-5 minutes after step 1, then call `pwsh scripts/02-check-review-status.ps1 -PrNumber <n>`. Returns single-shot JSON with `ReviewAtHead`, `NoNewComments`, `OpenThreadCount`, `Converged` (all booleans). If `ReviewAtHead == false` after 5 min, wait another few minutes and call again — the bot usually responds in 3-15 min total. **Do NOT use a blocking wait script** — that approach was deprecated; the agent's own scheduling is the right place for the wait loop.
 - [ ] **3.** List open threads — `pwsh scripts/02-list-open-threads.ps1 -PrNumber <n>` (prints every unresolved thread — reply + resolve them all)
 - [ ] **4.** Triage each finding using [03-triage-criteria.md](03-triage-criteria.md)
@@ -44,17 +44,12 @@ sequencing, the `git commit`/`git push`, and the final
 
 Run [scripts/01-request-review.ps1](../scripts/01-request-review.ps1). It snapshots
 state via the GraphQL `reviews(last:50)` connection (NOT `latestReviews` —
-that field has stale-cache behavior), then returns one of three outcomes:
+that field has stale-cache behavior), then returns one of these outcomes:
 
-- **AlreadyInFlight (exit 0, no trigger)** — a recent `copilot_work_started`
-  event exists AND it's newer than the latest review_requested AND
-  newer than the latest Copilot review's submittedAt. Triggering again
-  would risk cancelling the in-flight review. Move to step 2 to wait
-  for the submission.
-- **Stuck-pending re-arm** — Copilot is in `requested_reviewers` but
-  no `copilot_work_started` has fired for >5 min after the request.
-  The script issues a DELETE+POST cycle to re-arm. This is the ONLY
-  path that ever deletes — it never runs while a review is in flight.
+- **InFlight (exit 0, no trigger)** — a recent `copilot_work_started`
+  event exists and is newer than the latest Copilot review's
+  submittedAt. Triggering again would risk cancelling the in-flight
+  review. Move to step 2 to wait for the submission.
 - **Trigger** (default path, runs whenever the script is invoked and
   the in-flight protection didn't fire). The script attempts three
   mechanisms in order, verifying each via the `copilot_work_started`

@@ -18,8 +18,8 @@
 
     Failure contract (throw, exit 1):
       - All trigger mechanisms attempted, no verifiable
-        copilot_work_started event. JSON Detail explains likely cause
-        (quiet-period, repo config, etc.). Caller should push a
+        copilot_work_started event. The thrown error explains likely
+        cause (quiet-period, repo config, etc.). Caller should push a
         substantive commit and retry.
 
     Trigger mechanisms attempted (in order, until one verifies):
@@ -216,6 +216,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "Failed to resolve PR node id (exit $LASTEXITCODE): $prIdResp"
 }
 $prNodeId = ($prIdResp | Out-String).Trim()
+if ([string]::IsNullOrWhiteSpace($prNodeId) -or $prNodeId -eq 'null') {
+    throw "Failed to resolve PR node id for $Owner/$Repo PR #$PrNumber. GraphQL returned '$prNodeId'."
+}
 $mut = 'mutation($p:ID!){requestReviewsByLogin(input:{pullRequestId:$p,botLogins:["copilot-pull-request-reviewer"]}){pullRequest{number}}}'
 $mutResp = gh api graphql -f "query=$mut" -f "p=$prNodeId" 2>&1
 $mutExit = $LASTEXITCODE

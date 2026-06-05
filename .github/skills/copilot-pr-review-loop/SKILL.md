@@ -99,10 +99,8 @@ agent owns sequencing, commits, and the final mutating
   (primary)** — empirically the most reliable across personal/org repos;
   **(2) REST POST `requested_reviewers[]=Copilot`** (fallback);
   **(3) `gh pr edit --add-reviewer Copilot`** (last-ditch fallback).
-  Plus a stuck-pending re-arm path that uses REST DELETE+POST, only
-  when Copilot is in `requested_reviewers` without a `copilot_work_started`
-  event for >5 min — never while a review is in flight. All are
-  verified via the `copilot_work_started` event in the issue timeline.
+  All trigger attempts are verified via the `copilot_work_started` event
+  in the issue timeline.
   If none works, push a substantive commit and retry — do not fall
   back to @-mentions.
 - **The most reliable trigger is pushing a substantive commit.** Most

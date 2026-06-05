@@ -23,7 +23,7 @@
       2. Schedule a check N minutes later
       3. Call this script (02-check-review-status.ps1)
       4. If ReviewAtHead && NoNewComments && OpenThreadCount==0 → converged
-      5. Otherwise → fetch threads via 02-list-open-threads.ps1, triage, fix, repeat
+      5. Otherwise, fetch threads via 02-list-open-threads.ps1, triage, fix, repeat
 
 .PARAMETER PrNumber
     The pull request number. The only required parameter.
@@ -64,26 +64,45 @@ if (-not $Owner -or -not $Repo) {
     if (-not $Repo)  { $Repo  = $repoInfo.name }
 }
 
-# Single GraphQL call: head SHA + state + reviews + thread counts.
+# GraphQL call: head SHA + state + reviews + paginated thread counts.
 # Uses `reviews(last:50)` not `latestReviews` (stale-cache behavior).
 $q = @'
-query($o:String!,$r:String!,$n:Int!){
+query($o:String!,$r:String!,$n:Int!,$after:String){
   repository(owner:$o,name:$r){
     pullRequest(number:$n){
       headRefOid
       state
       reviews(last:50){nodes{author{login} state submittedAt body commit{oid}}}
-      reviewThreads(first:100){nodes{isResolved}}
+      reviewThreads(first:100, after:$after){
+        pageInfo{endCursor hasNextPage}
+        nodes{isResolved}
+      }
     }
   }
 }
 '@
-$j = gh api graphql -f "query=$q" -f "o=$Owner" -f "r=$Repo" -F "n=$PrNumber" 2>&1
-if ($LASTEXITCODE -ne 0) { throw "GraphQL snapshot failed (exit $LASTEXITCODE): $j" }
-$d = $j | ConvertFrom-Json
-if ($d.errors) {
-    $msgs = ($d.errors | ForEach-Object { $_.message }) -join '; '
-    throw "GraphQL snapshot returned errors: $msgs"
+
+$after = $null
+$allThreads = @()
+$d = $null
+do {
+    $ghArgs = @('api', 'graphql', '-f', "query=$q", '-f', "o=$Owner", '-f', "r=$Repo", '-F', "n=$PrNumber")
+    if ($after) { $ghArgs += @('-f', "after=$after") }
+    $j = gh @ghArgs 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "GraphQL snapshot failed (exit $LASTEXITCODE): $j" }
+    $d = $j | ConvertFrom-Json
+    if ($d.errors) {
+        $msgs = ($d.errors | ForEach-Object { $_.message }) -join '; '
+        throw "GraphQL snapshot returned errors: $msgs"
+    }
+    $pagePr = $d.data.repository.pullRequest
+    if (-not $pagePr) { throw "PR #$PrNumber not found in $Owner/$Repo." }
+    $allThreads += $pagePr.reviewThreads.nodes
+    $after = $pagePr.reviewThreads.pageInfo.endCursor
+} while ($pagePr.reviewThreads.pageInfo.hasNextPage)
+
+if (-not $d) {
+    throw "GraphQL snapshot returned no data for $Owner/$Repo PR #$PrNumber."
 }
 $pr = $d.data.repository.pullRequest
 if (-not $pr) { throw "PR #$PrNumber not found in $Owner/$Repo." }
@@ -101,7 +120,7 @@ if ($latest) {
     $bodyHead = if ($bodyText.Length -gt 300) { $bodyText.Substring(0, 300) } else { $bodyText }
 }
 
-$openCount = ($pr.reviewThreads.nodes | Where-Object { -not $_.isResolved }).Count
+$openCount = ($allThreads | Where-Object { -not $_.isResolved }).Count
 
 $result = [ordered]@{
     PrNumber            = $PrNumber
@@ -120,6 +139,7 @@ $result = [ordered]@{
     ReviewAtHead    = $reviewAtHead
     NoNewComments   = $noNewComments
     OpenThreadCount = $openCount
+    ReviewThreadsComplete = $true
     Converged       = ($reviewAtHead -and $noNewComments -and $openCount -eq 0)
 }
 $result | ConvertTo-Json -Depth 5
