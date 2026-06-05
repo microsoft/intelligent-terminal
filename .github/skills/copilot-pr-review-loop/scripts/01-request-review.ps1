@@ -243,15 +243,14 @@ function Wait-ForCopilotInReviewRequests {
 
 # === PRE-CHECKS ===
 # Before triggering anything, snapshot the current state. We need to handle:
-#   (a) Copilot has ALREADY reviewed the current HEAD — nothing to do.
-#   (b) Copilot is mid-review of the current HEAD (work_started landed but
+#   (a) Copilot is mid-review of the current HEAD (work_started landed but
 #       no review submitted yet) — do NOT trigger again; the in-flight
 #       review will land. Triggering again risks cancellation (e.g. via
 #       the DELETE+POST fallback) which kills the in-flight review and
 #       costs another full review cycle.
-#   (c) Copilot is queued but stuck (in requested_reviewers without a
+#   (b) Copilot is queued but stuck (in requested_reviewers without a
 #       follow-up work_started for >5 min) — re-trigger via DELETE+POST.
-#   (d) Copilot is not in requested_reviewers at all — try fresh triggers.
+#   (c) Copilot is not in requested_reviewers at all — try fresh triggers.
 
 $snapshot = Get-PrStateSnapshot
 $beforeTs = Get-LatestCopilotWorkStarted
