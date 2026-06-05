@@ -883,6 +883,8 @@ mod tests {
             attention_reason: None,
             log_path:         None,
             origin:           SessionOrigin::default(),
+            synthetic:         false,
+            synthetic_cli_pid: None,
         };
         assert_eq!(cli_suffix_for(&s, true),  "· codex");
         assert_eq!(cli_suffix_for(&s, false), String::new());

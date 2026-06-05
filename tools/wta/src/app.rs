@@ -1302,6 +1302,21 @@ pub enum AppEvent {
     MasterMutationCompleted {
         request_id: u64,
     },
+    /// PID-fallback scanner tick. Posted every ~3s by the background
+    /// task spawned in `run_acp_tui_mode`. Handler calls
+    /// `pid_pane_scanner::scan_tab` against the helper's owner tab,
+    /// runs the two-tick gate, and emits
+    /// `SessionEvent::PidScannerDetected` / `PidScannerLost` into the
+    /// local `agent_sessions` registry. See module-level docs on
+    /// `crate::pid_pane_scanner` for the full design rationale.
+    PidPaneScanTick,
+    /// Result of a single PID-fallback scan. The tick handler dispatches
+    /// the actual `wt_list_panes` + Win32 child-walk on a spawned task
+    /// so it doesn't block the event loop; the task posts back this
+    /// variant with the raw bindings. The reducer-side state machine
+    /// (`pid_scan_pending` / `pid_scan_confirmed`) is then advanced on
+    /// the main task, keeping App's `&mut self` mutations single-writer.
+    PidPaneScanResult(Vec<crate::pid_pane_scanner::PaneCliBinding>),
 }
 
 // --- Per-tab session storage ---
@@ -2033,6 +2048,32 @@ pub struct App {
     /// the bootstrap RPC hasn't returned yet. Tracked as an Atomic so
     /// the bootstrap task can flip it from a non-`&mut self` context.
     pub alive_loaded: std::sync::Arc<std::sync::atomic::AtomicBool>,
+
+    // ── PID-fallback scanner state (Class C, helper-local) ─────────────
+    //
+    // Two-tick confirmation gate. The scanner runs every ~3s; we only
+    // promote a sighting to a real `PidScannerDetected` event after we
+    // see the same `(pane_guid, cli_source, cli_pid)` triple in *two*
+    // consecutive scans. This eliminates one-shot CLI invocations like
+    // `copilot --version` or shell completions that briefly spawn a
+    // child process without representing an interactive session.
+    //
+    // `pid_scan_pending`   — bindings seen for the first time this round
+    // `pid_scan_confirmed` — bindings that have been Detected
+    //
+    // On each tick:
+    //   1. Compute `current = scan_tab(...)`
+    //   2. Drop any pending entries not in current (transient)
+    //   3. Promote pending → confirmed when current matches pending
+    //   4. New current entries (not in pending, not in confirmed) →
+    //      pending, no event yet
+    //   5. Diff `confirmed` against `current` (restricted to entries
+    //      that are either confirmed or promoting this tick) to emit
+    //      Detected / Lost events into the reducer
+    //
+    // Both maps key on the lowercased pane GUID — matches `active_by_pane`.
+    pub(crate) pid_scan_pending:   HashMap<String, (crate::agent_sessions::CliSource, u32)>,
+    pub(crate) pid_scan_confirmed: HashMap<String, (crate::agent_sessions::CliSource, u32)>,
 }
 
 /// How long the "Press Ctrl+C again to close pane" arm stays live. Long
@@ -2131,6 +2172,8 @@ pub(crate) fn session_info_to_agent_session(
         attention_reason: info.attention_reason.clone(),
         log_path: None,
         origin,
+        synthetic: false,
+        synthetic_cli_pid: None,
     }
 }
 
@@ -2222,6 +2265,8 @@ impl App {
             alive: crate::session_registry::InMemoryRegistry::shared(),
             alive_loaded: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             shell_mgr,
+            pid_scan_pending:   HashMap::new(),
+            pid_scan_confirmed: HashMap::new(),
         }
     }
 
@@ -3672,6 +3717,220 @@ impl App {
         self.event_tx = Some(tx);
     }
 
+    /// PID-fallback scan tick (Class C).
+    ///
+    /// Snapshots the panes in the helper's owner tab and, off the
+    /// event loop, walks each shell-pane's child-process tree for a
+    /// tracked CLI exe. The result comes back as
+    /// `AppEvent::PidPaneScanResult`, which is what actually advances
+    /// the two-tick gate and emits reducer events. Decoupling tick
+    /// → snapshot → reduce keeps `&mut self` mutations single-writer
+    /// even though the snapshot is async.
+    ///
+    /// No-ops when:
+    ///   * the helper has no owner tab id yet (e.g. headless `wta run`
+    ///     or pre-pane-discovery startup),
+    ///   * there is no `event_tx` to post the result back into the loop,
+    ///   * `WTA_PID_SCAN=0` (opt-out, captured at process start; see
+    ///     `pid_scan_enabled` env check in `run_acp_tui_mode`).
+    fn handle_pid_pane_scan_tick(&mut self) {
+        // owner_tab_id is the helper's anchored tab GUID — the same one
+        // we pass to wt_list_panes when discovering pane identity at
+        // startup. Without it we can't scope the scan, so we bail.
+        let Some(tab_id) = self.owner_tab_id.clone() else {
+            return;
+        };
+        let Some(tx) = self.event_tx.clone() else {
+            return;
+        };
+        let shell_mgr = std::sync::Arc::clone(&self.shell_mgr);
+
+        // Snapshot the set of panes already bound by a *real* (non-synthetic)
+        // session — hook-driven Class B or the helper's own ACP session.
+        // These panes are off-limits to the scanner: the existing owner is
+        // authoritative and we don't want to create a competing synthetic row.
+        //
+        // Synthetic-owned panes are deliberately NOT in this set — we need
+        // the scanner to keep observing them so that `pid_scan_confirmed`
+        // gets refreshed each tick. Otherwise a synthetic pane would drop
+        // out of `confirmed` on its very next tick and we'd emit a spurious
+        // `PidScannerLost`.
+        let bound_panes: std::collections::HashSet<String> = self
+            .agent_sessions
+            .iter_sorted()
+            .into_iter()
+            .filter(|s| !s.synthetic)
+            .filter_map(|s| s.pane_session_id.clone())
+            .map(|p| p.to_ascii_lowercase())
+            .collect();
+
+        tokio::task::spawn_local(async move {
+            let started = std::time::Instant::now();
+            let result = crate::pid_pane_scanner::scan_tab(
+                &shell_mgr,
+                &tab_id,
+                |pane| bound_panes.contains(pane),
+            )
+            .await;
+            match result {
+                Ok(bindings) => {
+                    tracing::trace!(
+                        target: "pid_pane_scanner",
+                        tab_id = %tab_id,
+                        bound_panes = bound_panes.len(),
+                        bindings = bindings.len(),
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "scan_tab complete",
+                    );
+                    let _ = tx.send(AppEvent::PidPaneScanResult(bindings));
+                }
+                Err(err) => {
+                    // wt_list_panes can fail transiently during WT
+                    // startup or after a window close; the next tick
+                    // will retry. Don't escalate.
+                    tracing::debug!(
+                        target: "pid_pane_scanner",
+                        tab_id = %tab_id,
+                        error = %err,
+                        "scan_tab failed (transient — will retry next tick)",
+                    );
+                }
+            }
+        });
+    }
+
+    /// Apply a single scan's bindings through the two-tick confirmation
+    /// gate and into the local `agent_sessions` reducer.
+    ///
+    /// Two-tick gate (filters one-shot invocations like `copilot --version`):
+    ///   1. For each binding in `current`:
+    ///      * if it's already in `confirmed` with the same (cli, pid):
+    ///        leave confirmed alone, drop from pending if present.
+    ///      * if it's in `pending` with the same (cli, pid): promote to
+    ///        confirmed this tick.
+    ///      * if it's in `confirmed` with a *different* (cli, pid):
+    ///        promote the new pair to confirmed (PID change).
+    ///      * otherwise: insert into `pending`, don't emit yet.
+    ///   2. For each pane in `confirmed` *not* in `current`: remove
+    ///      from confirmed (it's gone).
+    ///   3. Drop stale pending entries whose pane is no longer present
+    ///      (transient sightings the user never invested in).
+    ///   4. Diff `previous_confirmed` (snapshotted at step 0) against
+    ///      `confirmed` and emit Detected / Lost events.
+    fn handle_pid_pane_scan_result(
+        &mut self,
+        bindings: Vec<crate::pid_pane_scanner::PaneCliBinding>,
+    ) {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+
+        // Snapshot confirmed for the diff at the end.
+        let previous_confirmed = self.pid_scan_confirmed.clone();
+
+        // Pass 1: promote pending → confirmed, refresh existing confirmed,
+        // accumulate first-sightings into pending.
+        let mut new_pending: HashMap<String, (CliSource, u32)> = HashMap::new();
+        let mut new_confirmed: HashMap<String, (CliSource, u32)> = HashMap::new();
+        for b in &bindings {
+            let pane = b.pane_guid.clone();
+            let now_pair = (b.cli_source.clone(), b.cli_pid);
+
+            if let Some(prev) = self.pid_scan_confirmed.get(&pane) {
+                if prev == &now_pair {
+                    // Stable — carry confirmed forward, drop any pending.
+                    new_confirmed.insert(pane, now_pair);
+                } else {
+                    // Confirmed pane reported a different (cli, pid).
+                    // Promote immediately — the row was already real
+                    // last tick, so a single observation of the new
+                    // value is enough to act on (same logic as today's
+                    // hook flow rebind).
+                    new_confirmed.insert(pane, now_pair);
+                }
+            } else if let Some(pend) = self.pid_scan_pending.get(&pane) {
+                if pend == &now_pair {
+                    // Second consecutive matching sighting → promote.
+                    new_confirmed.insert(pane, now_pair);
+                } else {
+                    // Pending sighting changed before promotion — reset
+                    // pending with the new value, defer to next tick.
+                    new_pending.insert(pane, now_pair);
+                }
+            } else {
+                new_pending.insert(pane, now_pair);
+            }
+        }
+
+        self.pid_scan_pending   = new_pending;
+        self.pid_scan_confirmed = new_confirmed;
+
+        // Note: confirmed panes absent from `bindings` simply weren't
+        // copied into `new_confirmed` above, so they drop out
+        // automatically. The diff in pass 3 turns those into Lost events.
+
+        // Pass 3: diff previous_confirmed against the new confirmed
+        // and emit events. Build the current view for the differ from
+        // the *new confirmed* set so we don't emit Detected for panes
+        // that are still in pending.
+        let synthesized_current: Vec<crate::pid_pane_scanner::PaneCliBinding> = self
+            .pid_scan_confirmed
+            .iter()
+            .map(|(pane, (cli, pid))| crate::pid_pane_scanner::PaneCliBinding {
+                pane_guid:  pane.clone(),
+                cli_source: cli.clone(),
+                cli_pid:    *pid,
+            })
+            .collect();
+
+        let (events, _) =
+            crate::pid_pane_scanner::diff_snapshots(&previous_confirmed, &synthesized_current);
+
+        if events.is_empty() {
+            return;
+        }
+        tracing::debug!(
+            target: "pid_pane_scanner",
+            event_count = events.len(),
+            pending = self.pid_scan_pending.len(),
+            confirmed = self.pid_scan_confirmed.len(),
+            "applying scan-diff events to local registry",
+        );
+        for ev in events {
+            // Final guard: a pane that ended up bound to a real row
+            // between scan dispatch and result handling must not get
+            // Detected — the reducer would refuse anyway, but logging
+            // a redundant event muddies the trace. Lost still goes
+            // through; the reducer guards that path independently.
+            if let SessionEvent::PidScannerDetected { ref pane_guid, .. } = ev {
+                if self.agent_sessions.is_agent_pane(pane_guid)
+                    && !self.is_synthetic_pane(pane_guid)
+                {
+                    tracing::trace!(
+                        target: "pid_pane_scanner",
+                        pane = %pane_guid,
+                        "skipping Detected: pane is now bound to a non-synthetic row",
+                    );
+                    continue;
+                }
+            }
+            self.agent_sessions.apply(ev);
+        }
+    }
+
+    /// True iff `pane_guid` is bound to a synthetic row in the local
+    /// `agent_sessions` registry. Used by the scan-result handler to
+    /// distinguish "scanner is the current owner" (re-emit is fine)
+    /// from "real hook/ACP row took over" (skip).
+    fn is_synthetic_pane(&self, pane_guid: &str) -> bool {
+        let pane_lc = pane_guid.to_ascii_lowercase();
+        self.agent_sessions
+            .iter_sorted()
+            .into_iter()
+            .any(|s| {
+                s.synthetic
+                    && s.pane_session_id.as_deref() == Some(pane_lc.as_str())
+            })
+    }
+
     /// First-call: spawn a blocking task to scan `~/.copilot`, `~/.claude`,
     /// `~/.gemini` for historical agent sessions and merge the result into
     /// `agent_sessions` via `AppEvent::HistoricalSessionsLoaded`. Subsequent
@@ -4376,6 +4635,8 @@ impl App {
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
+            AppEvent::PidPaneScanTick => "pid_pane_scan_tick",
+            AppEvent::PidPaneScanResult(_) => "pid_pane_scan_result",
         }
     }
 
@@ -5136,6 +5397,12 @@ impl App {
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
+            }
+            AppEvent::PidPaneScanTick => {
+                self.handle_pid_pane_scan_tick();
+            }
+            AppEvent::PidPaneScanResult(bindings) => {
+                self.handle_pid_pane_scan_result(bindings);
             }
             AppEvent::WtEvent {
                 method,

@@ -218,6 +218,23 @@ pub struct AgentSession {
     /// Provenance for this session — populated for historical rows from
     /// the agent-pane origin index. See [`SessionOrigin`].
     pub origin:            SessionOrigin,
+    /// True for rows synthesised by the PID-based pane scanner (Class C):
+    /// the user started an agent CLI directly in a shell pane without
+    /// hooks installed, so there's no real ACP `session_id` yet. The key
+    /// is `pane:<lowercase-guid>`. The row exists purely so the user can
+    /// see and Enter-focus the pane from the session management view —
+    /// it is NOT persisted to
+    /// disk and gets REMOVED (not demoted to Ended) when the scanner
+    /// notices the CLI exited, or when a real hook-driven
+    /// `SessionStarted` arrives carrying a real sid for the same pane
+    /// (preventing dead `pane:<guid>` tombstones in the session management view).
+    pub synthetic:         bool,
+    /// PID of the CLI process matched by the PID scanner, only set for
+    /// `synthetic == true` rows. Used by the reducer to detect "same
+    /// pane, fresh CLI invocation" so a re-run of `copilot` after
+    /// `/exit` re-emits a Detected row without flicker. None for all
+    /// non-synthetic rows.
+    pub synthetic_cli_pid: Option<u32>,
 }
 
 impl AgentSession {
@@ -283,6 +300,38 @@ pub enum SessionEvent {
     /// (Claude/Copilot's typical fast path), the row already has the
     /// pane GUID and this event is a no-op for the same key+pane.
     ResumePaneAssigned { key: AgentKey, pane_session_id: String },
+    /// PID-based scanner detected an agent CLI (`copilot` / `claude` /
+    /// `gemini`) running in a plain shell pane that has no real ACP
+    /// session_id bound to it yet. Inserts a synthetic row keyed
+    /// `pane:<guid>` so the session management view can surface and focus the pane. Replaced
+    /// (the synthetic row is removed) when a real hook-driven
+    /// `SessionStarted` later arrives with a real sid for the same pane.
+    ///
+    /// `cli_pid` is the PID of the matched CLI process (not the shell
+    /// PID) — stored so the reducer can detect "same pane, new CLI
+    /// invocation" as a fresh detection.
+    PidScannerDetected { pane_guid: String, cli_source: CliSource, cli_pid: u32 },
+    /// PID-based scanner no longer sees the CLI running under the given
+    /// shell pane. Removes the synthetic row entirely (no tombstone in
+    /// session management view). No-op for non-synthetic rows — real hook-bound rows keep
+    /// their own lifecycle via SessionStopped/PaneClosed.
+    PidScannerLost { pane_guid: String },
+}
+
+/// Title displayed in the session management view for PID-scanner synthetic rows.
+/// Kept distinct
+/// from real-row titles (which are derived from CLI output / cwd /
+/// session) so users can tell at a glance that the row is a
+/// scanner-detected, hook-less standalone.
+pub fn synthetic_title(cli: &CliSource) -> String {
+    let name = match cli {
+        CliSource::Claude     => "claude",
+        CliSource::Codex      => "codex",
+        CliSource::Copilot    => "copilot",
+        CliSource::Gemini     => "gemini",
+        CliSource::Unknown(s) => s.as_str(),
+    };
+    format!("(detected) {name}")
 }
 
 /// Returns `true` for tool names that represent the agent soliciting input
@@ -347,6 +396,10 @@ impl AgentSessionRegistry {
                 SessionEvent::PaneClosed { pane_session_id: pane_session_id.to_ascii_lowercase() },
             SessionEvent::ResumePaneAssigned { key, pane_session_id } =>
                 SessionEvent::ResumePaneAssigned { key, pane_session_id: pane_session_id.to_ascii_lowercase() },
+            SessionEvent::PidScannerDetected { pane_guid, cli_source, cli_pid } =>
+                SessionEvent::PidScannerDetected { pane_guid: pane_guid.to_ascii_lowercase(), cli_source, cli_pid },
+            SessionEvent::PidScannerLost { pane_guid } =>
+                SessionEvent::PidScannerLost { pane_guid: pane_guid.to_ascii_lowercase() },
             other => other,
         };
         match ev {
@@ -378,7 +431,27 @@ impl AgentSessionRegistry {
                 if pane_known {
                     if let Some(prev_key) = self.active_by_pane.get(&pane_session_id).cloned() {
                         if prev_key != key {
-                            if let Some(prev) = self.sessions.get_mut(&prev_key) {
+                            // Synthetic rows (PID-scanner Class C) must be
+                            // REMOVED entirely when a real hook-driven
+                            // session takes over the pane. Otherwise the
+                            // session management view
+                            // would carry a dead `pane:<guid>` tombstone
+                            // alongside the real row.
+                            let prev_synthetic = self.sessions
+                                .get(&prev_key)
+                                .map(|p| p.synthetic)
+                                .unwrap_or(false);
+                            if prev_synthetic {
+                                self.sessions.remove(&prev_key);
+                                self.active_by_pane.remove(&pane_session_id);
+                                tracing::info!(
+                                    target: "agent_session_registry",
+                                    prev_key = %prev_key,
+                                    new_key = %key,
+                                    pane = %pane_session_id,
+                                    "SessionStarted removed synthetic predecessor for reused pane",
+                                );
+                            } else if let Some(prev) = self.sessions.get_mut(&prev_key) {
                                 if prev.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
                                     prev.status            = AgentStatus::Ended;
                                     prev.pane_session_id   = None;
@@ -415,6 +488,8 @@ impl AgentSessionRegistry {
                     attention_reason:  None,
                     log_path:          None,
                     origin:            SessionOrigin::default(),
+                    synthetic:         false,
+                    synthetic_cli_pid: None,
                 });
                 // If we're rebinding to a different pane, drop the old pane's mapping first.
                 if let Some(old_pane) = entry.pane_session_id.take() {
@@ -670,6 +745,101 @@ impl AgentSessionRegistry {
                     self.active_by_pane.insert(pane_session_id, key);
                     self.dirty = true;
                 }
+            }
+
+            SessionEvent::PidScannerDetected { pane_guid, cli_source, cli_pid } => {
+                // If this pane is already bound to *any* session (real
+                // hook-driven row, in-progress resume, prior synthetic),
+                // do nothing: the hook flow is authoritative and we
+                // don't want to demote it. The scanner only fills the
+                // gap where no other source covers the pane.
+                if let Some(existing_key) = self.active_by_pane.get(&pane_guid) {
+                    // One exception: same synthetic key already owns this
+                    // pane. Update PID and CLI source if they changed
+                    // (the scanner's two-tick gate already filtered
+                    // ephemeral noise; a real PID change means a fresh
+                    // invocation in the same pane).
+                    let existing_key = existing_key.clone();
+                    if let Some(entry) = self.sessions.get_mut(&existing_key) {
+                        if entry.synthetic {
+                            let pid_changed   = entry.synthetic_cli_pid != Some(cli_pid);
+                            let cli_changed   = entry.cli_source != cli_source;
+                            if pid_changed || cli_changed {
+                                entry.cli_source        = cli_source;
+                                entry.synthetic_cli_pid = Some(cli_pid);
+                                entry.title             = synthetic_title(&entry.cli_source);
+                                entry.last_activity_at  = now;
+                                self.dirty              = true;
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                // Reuse `pane:<guid>` as the key. resolve_or_synthesize_key
+                // already produces this format for hook fallbacks, so a
+                // later real SessionStarted that arrives with a real sid
+                // will trigger the demote-previous branch above and
+                // remove this synthetic row cleanly.
+                let key: AgentKey = format!("pane:{pane_guid}");
+                let title = synthetic_title(&cli_source);
+                let entry = AgentSession {
+                    key:               key.clone(),
+                    cli_source:        cli_source.clone(),
+                    pane_session_id:   Some(pane_guid.clone()),
+                    window_id:         None,
+                    tab_id:            None,
+                    title,
+                    cwd:               PathBuf::new(),
+                    started_at:        now,
+                    last_activity_at:  now,
+                    status:            AgentStatus::Idle,
+                    last_error:        None,
+                    current_tool:      None,
+                    attention_reason:  None,
+                    log_path:          None,
+                    origin:            SessionOrigin::Unknown,
+                    synthetic:         true,
+                    synthetic_cli_pid: Some(cli_pid),
+                };
+                self.sessions.insert(key.clone(), entry);
+                self.active_by_pane.insert(pane_guid.clone(), key.clone());
+                self.dirty = true;
+                tracing::info!(
+                    target: "agent_session_registry",
+                    key = %key,
+                    pane = %pane_guid,
+                    cli = ?cli_source,
+                    cli_pid,
+                    "PidScannerDetected created synthetic row",
+                );
+            }
+
+            SessionEvent::PidScannerLost { pane_guid } => {
+                // Look up the key currently bound to this pane. We can
+                // only safely remove a row if it is synthetic — real
+                // hook-driven rows have their own lifecycle (PaneClosed,
+                // SessionStopped) and the scanner is not authoritative
+                // for them.
+                let Some(key) = self.active_by_pane.get(&pane_guid).cloned() else {
+                    return;
+                };
+                let is_synthetic = self.sessions
+                    .get(&key)
+                    .map(|s| s.synthetic)
+                    .unwrap_or(false);
+                if !is_synthetic {
+                    return;
+                }
+                self.sessions.remove(&key);
+                self.active_by_pane.remove(&pane_guid);
+                self.dirty = true;
+                tracing::info!(
+                    target: "agent_session_registry",
+                    key = %key,
+                    pane = %pane_guid,
+                    "PidScannerLost removed synthetic row",
+                );
             }
         }
     }
@@ -1271,6 +1441,8 @@ impl AgentSessionRegistry {
             attention_reason:  None,
             log_path:          Some(PathBuf::from("~/.gemini/logs/2026-05-03-1530.log")),
             origin:            SessionOrigin::default(),
+            synthetic:         false,
+            synthetic_cli_pid: None,
         });
 
         // Stagger last_activity_at so the order in the UI matches the
@@ -1804,6 +1976,8 @@ mod tests {
             attention_reason:  None,
             log_path:          None,
             origin:            SessionOrigin::default(),
+            synthetic:         false,
+            synthetic_cli_pid: None,
         }]);
         reg.apply(SessionEvent::ResumeDispatched { key: k("g") });
         assert_eq!(reg.sessions.get(&k("g")).unwrap().status, AgentStatus::Idle,
@@ -2017,6 +2191,8 @@ mod tests {
             attention_reason:  None,
             log_path:          None,
             origin:            SessionOrigin::default(),
+            synthetic:         false,
+            synthetic_cli_pid: None,
         };
 
         // Loaded set tries to overwrite live-1 + add hist-1.
@@ -2341,6 +2517,8 @@ mod tests {
             attention_reason: None,
             log_path: None,
             origin: SessionOrigin::Unknown,
+            synthetic: false,
+            synthetic_cli_pid: None,
         };
 
         let cases = [
@@ -2525,6 +2703,8 @@ mod tests {
             attention_reason: None,
             log_path: None,
             origin: SessionOrigin::AgentPane,
+            synthetic: false,
+            synthetic_cli_pid: None,
         }
     }
 
@@ -2918,5 +3098,230 @@ mod tests {
             None,
             "Historical rows must also be ineligible — no live target ⇒ no fallback",
         );
+    }
+
+    // ---- PID-scanner synthetic-row reducer tests ----------------------
+    //
+    // These cover the helper-local PID-fallback path (Class C). The
+    // scanner emits `PidScannerDetected` when it observes a tracked CLI
+    // exe under a shell pane's process tree and emits `PidScannerLost`
+    // when it disappears. The reducer must:
+    //   1. Create synthetic rows with `synthetic = true`, key
+    //      `pane:<lowercase guid>`, status Idle, empty cwd.
+    //   2. Delete synthetic rows on Lost (no Ended tombstone).
+    //   3. Yield to authoritative hook-driven SessionStarted by removing
+    //      the synthetic predecessor instead of demoting it.
+    //   4. No-op when a non-synthetic row already owns the pane.
+    //   5. Update PID / CLI in place when both observations are about
+    //      the same synthetic owner (no flicker).
+
+    fn pane_guid() -> String { "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE".to_string() }
+
+    fn synth_key_for(g: &str) -> AgentKey { format!("pane:{}", g.to_ascii_lowercase()) }
+
+    #[test]
+    fn pid_scanner_detected_creates_synthetic_row() {
+        let mut reg = AgentSessionRegistry::new();
+        let g = pane_guid();
+        reg.apply(SessionEvent::PidScannerDetected {
+            pane_guid:  g.clone(),
+            cli_source: CliSource::Copilot,
+            cli_pid:    1234,
+        });
+
+        let key = synth_key_for(&g);
+        let s = reg.sessions.get(&key).expect("synthetic row inserted");
+        assert!(s.synthetic, "row must be flagged synthetic");
+        assert_eq!(s.synthetic_cli_pid, Some(1234));
+        assert_eq!(s.cli_source, CliSource::Copilot);
+        assert_eq!(s.status, AgentStatus::Idle);
+        assert_eq!(s.origin, SessionOrigin::Unknown);
+        assert_eq!(s.cwd, PathBuf::new(), "synthetic rows have no recoverable cwd");
+        assert_eq!(s.pane_session_id.as_deref(), Some(g.to_ascii_lowercase().as_str()));
+        assert_eq!(s.title, synthetic_title(&CliSource::Copilot));
+        assert_eq!(
+            reg.active_by_pane.get(&g.to_ascii_lowercase()),
+            Some(&key),
+            "active_by_pane must be updated so Enter routes to the pane",
+        );
+    }
+
+    #[test]
+    fn pid_scanner_lost_removes_synthetic_row_entirely() {
+        let mut reg = AgentSessionRegistry::new();
+        let g = pane_guid();
+        reg.apply(SessionEvent::PidScannerDetected {
+            pane_guid:  g.clone(),
+            cli_source: CliSource::Claude,
+            cli_pid:    99,
+        });
+        let key = synth_key_for(&g);
+        assert!(reg.sessions.contains_key(&key));
+
+        reg.apply(SessionEvent::PidScannerLost { pane_guid: g.clone() });
+
+        assert!(
+            !reg.sessions.contains_key(&key),
+            "Lost must delete the row entirely (no Ended tombstone in the session management view)",
+        );
+        assert!(
+            !reg.active_by_pane.contains_key(&g.to_ascii_lowercase()),
+            "active_by_pane must release the pane so a real session can claim it later",
+        );
+    }
+
+    #[test]
+    fn pid_scanner_lost_is_noop_for_non_synthetic_rows() {
+        // A real hook-driven row claims the pane first. If the scanner
+        // later thinks it's gone (e.g. a transient hiccup before a
+        // tab_changed snapshot arrives), it must NOT remove the real
+        // row — only PaneClosed / SessionStopped own real-row lifecycle.
+        let mut reg = AgentSessionRegistry::new();
+        let g = pane_guid().to_ascii_lowercase();
+        reg.apply(SessionEvent::SessionStarted {
+            key:             k("real-sid"),
+            cli_source:      CliSource::Copilot,
+            pane_session_id: g.clone(),
+            cwd:             PathBuf::from("/work"),
+            title:           "copilot — real".into(),
+        });
+        assert!(reg.sessions.contains_key("real-sid"));
+
+        reg.apply(SessionEvent::PidScannerLost { pane_guid: g.clone() });
+
+        assert!(reg.sessions.contains_key("real-sid"), "real row must survive");
+        assert_eq!(reg.active_by_pane.get(&g), Some(&k("real-sid")));
+    }
+
+    #[test]
+    fn session_started_removes_synthetic_predecessor_on_same_pane() {
+        // Hook flow wins when both fire on the same pane. The synthetic
+        // row created by the scanner must be removed entirely (not
+        // demoted to Ended) so the session management view only shows the authoritative row.
+        let mut reg = AgentSessionRegistry::new();
+        let g = pane_guid().to_ascii_lowercase();
+        reg.apply(SessionEvent::PidScannerDetected {
+            pane_guid:  g.clone(),
+            cli_source: CliSource::Copilot,
+            cli_pid:    77,
+        });
+        let synth_key = synth_key_for(&g);
+        assert!(reg.sessions.contains_key(&synth_key));
+
+        reg.apply(SessionEvent::SessionStarted {
+            key:             k("real-sid"),
+            cli_source:      CliSource::Copilot,
+            pane_session_id: g.clone(),
+            cwd:             PathBuf::from("/work"),
+            title:           "copilot — real".into(),
+        });
+
+        assert!(
+            !reg.sessions.contains_key(&synth_key),
+            "synthetic predecessor must be removed (no Ended tombstone)",
+        );
+        let real = reg.sessions.get("real-sid").expect("real row created");
+        assert!(!real.synthetic);
+        assert_eq!(real.pane_session_id.as_deref(), Some(g.as_str()));
+        assert_eq!(reg.active_by_pane.get(&g), Some(&k("real-sid")));
+    }
+
+    #[test]
+    fn pid_scanner_detected_is_noop_when_pane_owned_by_real_row() {
+        // Mirror: real row arrives first. Subsequent scanner sightings
+        // must not touch the real row at all (no demote, no field
+        // overwrite). Scanner is the fallback, never the authority.
+        let mut reg = AgentSessionRegistry::new();
+        let g = pane_guid().to_ascii_lowercase();
+        reg.apply(SessionEvent::SessionStarted {
+            key:             k("real-sid"),
+            cli_source:      CliSource::Copilot,
+            pane_session_id: g.clone(),
+            cwd:             PathBuf::from("/work"),
+            title:           "copilot — real".into(),
+        });
+        let real_before = reg.sessions.get("real-sid").cloned().unwrap();
+
+        reg.apply(SessionEvent::PidScannerDetected {
+            pane_guid:  g.clone(),
+            cli_source: CliSource::Claude, // even mismatched CLI must not bleed in
+            cli_pid:    7777,
+        });
+
+        let real_after = reg.sessions.get("real-sid").expect("real row untouched");
+        assert!(!real_after.synthetic);
+        assert_eq!(real_after.cli_source, CliSource::Copilot, "cli must not be overwritten");
+        assert_eq!(real_after.synthetic_cli_pid, None);
+        assert_eq!(real_after.title, real_before.title);
+        let synth_key = synth_key_for(&g);
+        assert!(
+            !reg.sessions.contains_key(&synth_key),
+            "no synthetic row should be created alongside the real row",
+        );
+    }
+
+    #[test]
+    fn pid_scanner_detected_updates_existing_synthetic_in_place_on_pid_change() {
+        // The scanner re-emits Detected after a confirmed PID change
+        // (e.g. user `/exit`'d copilot and immediately re-ran it in the
+        // same pane). The reducer must update the existing synthetic
+        // row in place — no flicker (no remove + reinsert), and the
+        // key stays `pane:<guid>` so any UI bookkeeping survives.
+        let mut reg = AgentSessionRegistry::new();
+        let g = pane_guid().to_ascii_lowercase();
+        reg.apply(SessionEvent::PidScannerDetected {
+            pane_guid:  g.clone(),
+            cli_source: CliSource::Copilot,
+            cli_pid:    100,
+        });
+        let key = synth_key_for(&g);
+        assert_eq!(reg.sessions.get(&key).unwrap().synthetic_cli_pid, Some(100));
+
+        // Same pane, same CLI, different PID.
+        reg.apply(SessionEvent::PidScannerDetected {
+            pane_guid:  g.clone(),
+            cli_source: CliSource::Copilot,
+            cli_pid:    200,
+        });
+        let s = reg.sessions.get(&key).expect("row still present (no flicker)");
+        assert_eq!(s.synthetic_cli_pid, Some(200));
+        assert!(s.synthetic);
+        assert_eq!(reg.sessions.len(), 1, "must not have created a second row");
+
+        // Same pane, different CLI (npm wrapper would never report this
+        // in Phase A but the reducer should still cope correctly).
+        reg.apply(SessionEvent::PidScannerDetected {
+            pane_guid:  g.clone(),
+            cli_source: CliSource::Claude,
+            cli_pid:    200,
+        });
+        let s = reg.sessions.get(&key).unwrap();
+        assert_eq!(s.cli_source, CliSource::Claude);
+        assert_eq!(s.title, synthetic_title(&CliSource::Claude));
+    }
+
+    #[test]
+    fn pid_scanner_normalises_pane_guid_to_lowercase() {
+        // The pane_guid lives on the input border between OS APIs
+        // (which can return UPPERCASE GUIDs from wt_list_panes) and
+        // active_by_pane (always lowercase). Detected followed by Lost
+        // with mixed-case input must address the same row.
+        let mut reg = AgentSessionRegistry::new();
+        let g_upper = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE".to_string();
+        let g_lower = g_upper.to_ascii_lowercase();
+        reg.apply(SessionEvent::PidScannerDetected {
+            pane_guid:  g_upper.clone(),
+            cli_source: CliSource::Gemini,
+            cli_pid:    1,
+        });
+        assert!(reg.active_by_pane.contains_key(&g_lower));
+        assert!(!reg.active_by_pane.contains_key(&g_upper));
+
+        // Mixed-case Lost still finds the row.
+        reg.apply(SessionEvent::PidScannerLost {
+            pane_guid: "aAaAaAaA-bbbb-CCCC-dddd-EEEEEEEEEEEE".to_string(),
+        });
+        assert!(reg.sessions.is_empty());
+        assert!(reg.active_by_pane.is_empty());
     }
 }

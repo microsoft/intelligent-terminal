@@ -510,6 +510,8 @@ fn load_copilot(home: &Path) -> Vec<AgentSession> {
             attention_reason:  None,
             log_path:          Some(events),
             origin:            crate::agent_sessions::SessionOrigin::default(),
+            synthetic:         false,
+            synthetic_cli_pid: None,
         });
     }
     out.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
@@ -575,6 +577,8 @@ fn load_claude(home: &Path) -> Vec<AgentSession> {
                 attention_reason:  None,
                 log_path:          Some(path),
                 origin:            crate::agent_sessions::SessionOrigin::default(),
+                synthetic:         false,
+                synthetic_cli_pid: None,
             });
         }
     }
@@ -646,6 +650,8 @@ fn load_gemini(home: &Path) -> Vec<AgentSession> {
                 attention_reason:  None,
                 log_path:          Some(path),
                 origin:            crate::agent_sessions::SessionOrigin::default(),
+                synthetic:         false,
+                synthetic_cli_pid: None,
             });
         }
     }
@@ -702,6 +708,8 @@ fn load_codex(home: &Path) -> Vec<AgentSession> {
                         attention_reason:  None,
                         log_path:          Some(path),
                         origin:            crate::agent_sessions::SessionOrigin::default(),
+                        synthetic:         false,
+                        synthetic_cli_pid: None,
                     });
                 }
             }

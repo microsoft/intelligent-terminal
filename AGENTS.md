@@ -129,6 +129,40 @@ once the session later connects.
 
 **Diag log**: `wta-ensure-host.log` in the WTA log directory — shows event flow, classification, and autofix triggers.
 
+## PID-fallback pane mapping (Class C)
+
+For shell panes where the user launches `copilot` / `claude` / `gemini`
+**without** the PowerShell shell-integration hooks installed, each
+helper periodically walks its own tab's pane shell-PIDs and matches CLI
+exe names. Detected panes get a synthetic session management row labelled
+`"(detected) <cli>"` so Focus works and exit detection flips the row
+away on the next tick.
+
+- **Cadence**: 3s. Two consecutive matching sightings required before
+  a row appears (filters one-shots like `copilot --version`).
+- **Scope**: per-tab, helper-local — same per-tab visibility model as
+  hook Class B. The session management view in tab N won't show
+  PID-detected rows from tab M.
+- **Opt-out**: `WTA_PID_SCAN=0` env var disables the scanner entirely.
+- **Phase A limitation**: matches native exe basenames only
+  (`copilot.exe`, `copilot-cli.exe`, `claude.exe`, `gemini.exe`).
+  npm/npx-wrapped CLIs (e.g. `npx @anthropic-ai/claude-code`) appear
+  as `node.exe` and are NOT detected — Phase A.1 will add cmdline
+  inspection.
+- **Title prefix**: synthetic rows show `"(detected) <cli>"` to make
+  them visually distinct from real ACP / hook-bound sessions.
+- **Out of scope**: resumability. Phase A only surfaces the live
+  binding; reopening WTA discards synthetic rows (next scan re-derives).
+
+**Key code**: `tools/wta/src/pid_pane_scanner.rs`,
+`tools/wta/src/agent_sessions.rs` (`SessionEvent::PidScanner*` arms,
+`synthetic` field), `tools/wta/src/app.rs`
+(`handle_pid_pane_scan_tick`, `handle_pid_pane_scan_result`),
+`tools/wta/src/main.rs` (interval spawn in `run_acp_tui_mode`).
+
+**Trace target**: `pid_pane_scanner` (set `WTA_LOG=debug` to see
+scan ticks; `trace` adds per-tick bound-pane / binding counts).
+
 ## Hooks plugin auto-upgrade
 
 When IT is installed or upgraded, the bundled `wt-agent-hooks` plugin

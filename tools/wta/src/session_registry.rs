@@ -573,6 +573,17 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
                 key: key.clone(),
                 pane_session_id: pane_session_id.clone(),
             },
+            // PidScanner* events are helper-local and must never be
+            // forwarded to master via session_hook. The PID-fallback
+            // scanner emits them directly into the helper's local
+            // `agent_sessions.apply(...)` and stops there. Reaching this
+            // arm indicates a programming error in a future change.
+            SessionEvent::PidScannerDetected { .. } | SessionEvent::PidScannerLost { .. } => {
+                unreachable!(
+                    "PidScanner* events must not be forwarded via session_hook \
+                     (they are helper-local synthetic-row events)"
+                );
+            }
         }
     }
 }
@@ -1011,6 +1022,22 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
         other => other,
     };
 
+    // PidScanner* events are helper-local synthetic-row signals and have
+    // no representation in the master-side registry. Drop them here
+    // before the main match so the reducer stays focused on canonical
+    // hook + Class-A events.
+    if matches!(
+        &ev,
+        SessionEvent::PidScannerDetected { .. } | SessionEvent::PidScannerLost { .. }
+    ) {
+        tracing::trace!(
+            target: "session_registry",
+            event = ?ev,
+            "ignoring PidScanner* event in master-side registry (helper-local)"
+        );
+        return false;
+    }
+
     match ev {
         SessionEvent::SessionStarted { key, cli_source, pane_session_id, cwd, title } => {
             let sid = acp::SessionId::new(key.clone());
@@ -1220,6 +1247,13 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             entry.last_activity_at_ms = Some(now);
             state.active_by_pane.insert(pane_session_id, sid);
             true
+        }
+        // PidScanner* are dropped by the early-return guard above this
+        // match. This arm exists solely to keep the match exhaustive
+        // and to make a programming-error path loud rather than silent.
+        SessionEvent::PidScannerDetected { .. } | SessionEvent::PidScannerLost { .. } => {
+            debug_assert!(false, "PidScanner* event should have been filtered out earlier");
+            false
         }
     }
 }
@@ -2294,6 +2328,8 @@ mod tests {
             attention_reason: None,
             log_path: None,
             origin: SessionOrigin::AgentPane,
+            synthetic: false,
+            synthetic_cli_pid: None,
         };
         let info = agent_session_to_session_info(&s);
         assert_eq!(info.session_id.0.as_ref(), "hist-sid");
@@ -2325,6 +2361,8 @@ mod tests {
             attention_reason: None,
             log_path: None,
             origin: SessionOrigin::Unknown,
+            synthetic: false,
+            synthetic_cli_pid: None,
         };
         let info = agent_session_to_session_info(&s);
         assert_eq!(info.title, None, "empty title should map to None, not Some(\"\")");

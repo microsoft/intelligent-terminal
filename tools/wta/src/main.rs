@@ -17,6 +17,7 @@ mod logging;
 mod master;
 mod osc52;
 mod pane_context;
+mod pid_pane_scanner;
 mod protocol;
 mod rtl;
 mod runtime_paths;
@@ -2718,6 +2719,57 @@ async fn run_acp_app(
             // and CLI subcommands never construct an App that wires
             // `event_tx`, so they don't pay this cost.
             app_state.ensure_history_loaded();
+
+            // PID-fallback scanner (Class C). Gated by:
+            //   1. `pane_identity.is_some()` (set further down for the
+            //      WT-spawned path) — without an owner tab id we can't
+            //      scope `wt_list_panes`, so the scanner's tick handler
+            //      no-ops and posting wastes work.
+            //   2. `WTA_PID_SCAN=0` opt-out for users who'd rather
+            //      keep WT pristine of background process-tree walking.
+            //
+            // The interval task lives until the App quits (event_tx
+            // closes on drop, so `send` becomes an error and we break).
+            // 3-second cadence chosen to keep two-tick promotion under
+            // ~6s (matches the user expectation of "I ran `copilot`
+            // a moment ago — why isn't it in the session management view?") without hammering
+            // wt_list_panes.
+            let pid_scan_enabled =
+                std::env::var("WTA_PID_SCAN").map(|v| v != "0").unwrap_or(true);
+            if pid_scan_enabled && pane_identity.is_some() {
+                let scan_tx = event_tx.clone();
+                tokio::task::spawn(async move {
+                    let mut tick = tokio::time::interval(std::time::Duration::from_secs(3));
+                    tick.set_missed_tick_behavior(
+                        tokio::time::MissedTickBehavior::Skip,
+                    );
+                    // Burn the first tick (fires immediately on creation)
+                    // so we don't race the rest of helper startup.
+                    tick.tick().await;
+                    loop {
+                        tick.tick().await;
+                        if scan_tx.send(app::AppEvent::PidPaneScanTick).is_err() {
+                            tracing::debug!(
+                                target: "pid_pane_scanner",
+                                "event_tx closed; stopping PID scan loop",
+                            );
+                            break;
+                        }
+                    }
+                });
+                tracing::info!(
+                    target: "pid_pane_scanner",
+                    interval_secs = 3,
+                    "PID-fallback pane scanner enabled",
+                );
+            } else {
+                tracing::info!(
+                    target: "pid_pane_scanner",
+                    enabled = pid_scan_enabled,
+                    has_pane_identity = pane_identity.is_some(),
+                    "PID-fallback scanner disabled",
+                );
+            }
 
             // If in setup mode, store ACP params for deferred start after login.
             if let Some((prompt_rx, cancel_rx, new_session_rx, load_session_rx, drop_session_rx, rename_session_rx, restart_rx, master_ext_rx)) = deferred_channels {

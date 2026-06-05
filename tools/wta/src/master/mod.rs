@@ -2209,6 +2209,10 @@ fn session_event_key(event: &crate::agent_sessions::SessionEvent) -> Option<&str
         | SessionEvent::ResumeDispatched { key }
         | SessionEvent::ResumePaneAssigned { key, .. } => Some(key.as_str()),
         SessionEvent::PaneClosed { .. } | SessionEvent::ConnectionFailed { .. } => None,
+        // PidScanner* events are helper-local; they never reach master
+        // via session_hook. If one ever did, there's no real ACP key to
+        // refresh from disk — pretend it has no key.
+        SessionEvent::PidScannerDetected { .. } | SessionEvent::PidScannerLost { .. } => None,
     }
 }
 
