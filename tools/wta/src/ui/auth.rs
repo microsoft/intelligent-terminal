@@ -3,7 +3,9 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
 
-const DIM_TEXT: Style = Style::new().fg(Color::Rgb(153, 153, 153));
+// Dimmed default fg (not a fixed gray) so muted hints track the color scheme
+// and stay readable on light schemes (#234).
+const DIM_TEXT: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
 const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {

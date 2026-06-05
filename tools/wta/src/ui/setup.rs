@@ -8,8 +8,10 @@ const SPINNER: &[char] = &[
     '\u{2827}', '\u{2807}', '\u{280F}',
 ];
 
-// Figma: rgba(255,255,255,0.6) ≈ #999999
-const DIM_TEXT: Style = Style::new().fg(Color::Rgb(153, 153, 153));
+// Muted secondary text. Dimmed default fg (not a fixed gray) so it tracks the
+// color scheme and stays readable on light schemes (#234). Figma reference was
+// rgba(255,255,255,0.6) ≈ #999999, which only worked on a dark background.
+const DIM_TEXT: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
 const SELECTED_COLOR: Color = Color::Rgb(96, 205, 255);
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
@@ -31,7 +33,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Title — bold white with bullet
+    // Title — bold, scheme default foreground, with bullet
     lines.push(Line::from(vec![
         Span::styled(
             "\u{25CF} ",
