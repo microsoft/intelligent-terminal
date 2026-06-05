@@ -69,7 +69,9 @@
     pwsh 02-wait-for-review.ps1 -PrNumber 122
 
 .EXAMPLE
-    pwsh 02-wait-for-review.ps1 -PrNumber 122 -ExpectedHeadOid abc123 -TimeoutMinutes 40
+    # Wait against a specific commit (full 40-char SHA required — the
+    # comparison is exact-equality against the GraphQL commit.oid).
+    pwsh 02-wait-for-review.ps1 -PrNumber 122 -ExpectedHeadOid 7b88ffc4cc5d40ca5b307be50056adc54e7e20e0 -TimeoutMinutes 40
 #>
 [CmdletBinding()]
 param(
@@ -108,6 +110,16 @@ function Invoke-GhGraphQL {
         throw "GraphQL errors [$Context]: $msgs"
     }
     return $data
+}
+
+# Safe SHA truncation for log lines. Strings shorter than 7 chars
+# (short SHAs, partial inputs) are returned as-is rather than throwing,
+# so a display helper can never prevent emission of a status JSON.
+function Short {
+    param([string]$Sha)
+    if (-not $Sha) { return '(none)' }
+    if ($Sha.Length -le 7) { return $Sha }
+    return $Sha.Substring(0, 7)
 }
 
 function Get-PrReviewSnapshot {
@@ -214,7 +226,7 @@ function ToUtcDt {
 }
 
 $sinceDt = ToUtcDt $SinceTimestamp
-Write-Host "[baseline] expectedHead=$($ExpectedHeadOid.Substring(0,7)) since=$SinceTimestamp timeout=${TimeoutMinutes}min poll=${PollSeconds}s"
+Write-Host "[baseline] expectedHead=$(Short $ExpectedHeadOid) since=$SinceTimestamp timeout=${TimeoutMinutes}min poll=${PollSeconds}s"
 
 # ---------- poll loop ----------
 
@@ -240,7 +252,7 @@ while ((Get-Date) -lt $deadline) {
     if ($current.HeadOid -ne $ExpectedHeadOid) {
         $result.Status       = 'HeadAdvanced'
         $result.LatestReview = $current.LatestCopilotReview
-        $result.Detail       = "PR head advanced from $($ExpectedHeadOid.Substring(0,7)) to $($current.HeadOid.Substring(0,7)) during wait. Re-snapshot and re-wait (typically: re-run 01-request-review.ps1 then 02-wait-for-review.ps1)."
+        $result.Detail       = "PR head advanced from $(Short $ExpectedHeadOid) to $(Short $current.HeadOid) during wait. Re-snapshot and re-wait (typically: re-run 01-request-review.ps1 then 02-wait-for-review.ps1)."
         $result.ElapsedSec   = [int]((Get-Date) - $start).TotalSeconds
         Write-Host "[stop] $($result.Detail)"
         $result | ConvertTo-Json -Depth 5
@@ -259,7 +271,7 @@ while ((Get-Date) -lt $deadline) {
         $bodyText              = if ($latest.body) { $latest.body } else { '' }
         $result.NoNewComments  = ($bodyText -match '(?i)generated no new comments|generated\s+0\s+comments|reviewed\s+\d+\s+out\s+of\s+\d+\s+changed\s+files\s+in\s+this\s+pull\s+request\s+and\s+generated\s+no\s+new\s+comments')
         $result.BodyHead       = if ($bodyText.Length -gt 300) { $bodyText.Substring(0, 300) } else { $bodyText }
-        $result.Detail         = "Copilot submitted review at $($latest.submittedAt) (state=$($latest.state)) against head $($ExpectedHeadOid.Substring(0,7)). NoNewComments=$($result.NoNewComments)."
+        $result.Detail         = "Copilot submitted review at $($latest.submittedAt) (state=$($latest.state)) against head $(Short $ExpectedHeadOid). NoNewComments=$($result.NoNewComments)."
         $result.ElapsedSec     = [int]((Get-Date) - $start).TotalSeconds
         Write-Host "[done] $($result.Detail)"
         $result | ConvertTo-Json -Depth 5
@@ -268,11 +280,11 @@ while ((Get-Date) -lt $deadline) {
 
     $remaining = [int]($deadline - (Get-Date)).TotalSeconds
     $latestAt  = if ($latest) { $latest.submittedAt } else { '(none)' }
-    $latestOid = if ($latest -and $latest.commit) { $latest.commit.oid.Substring(0,7) } else { '(none)' }
+    $latestOid = if ($latest -and $latest.commit) { $(Short $latest.commit.oid) } else { '(none)' }
     Write-Host "[poll] no fresh review at HEAD yet (latestAt=$latestAt latestHead=$latestOid); ${remaining}s left"
 }
 
 $result.Status     = 'TimedOut'
-$result.Detail     = "No Copilot review submission at HEAD $($ExpectedHeadOid.Substring(0,7)) within $TimeoutMinutes min. Do NOT blindly retry — first verify the copilot_work_started event for the trigger that should have produced this review; if it landed, the bot is suppressing the submission (small / trivial diff). Remedy: push a substantive new commit (not whitespace), then re-run 01-request-review.ps1 + 02-wait-for-review.ps1 against the new HEAD."
+$result.Detail     = "No Copilot review submission at HEAD $(Short $ExpectedHeadOid) within $TimeoutMinutes min. Do NOT blindly retry — first verify the copilot_work_started event for the trigger that should have produced this review; if it landed, the bot is suppressing the submission (small / trivial diff). Remedy: push a substantive new commit (not whitespace), then re-run 01-request-review.ps1 + 02-wait-for-review.ps1 against the new HEAD."
 $result.ElapsedSec = [int]((Get-Date) - $start).TotalSeconds
 $result | ConvertTo-Json -Depth 5

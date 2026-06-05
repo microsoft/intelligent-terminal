@@ -155,7 +155,7 @@ agent owns sequencing, commits, and the final mutating
 | Issue | Solution |
 |-------|----------|
 | Trigger fails with `'Copilot' not found` (gh pr edit) or POST returns 201 but Copilot disappears from `requested_reviewers` | Push a substantive (non-whitespace) commit — repo auto-assign on `synchronize` is the most reliable trigger. Persistent failure across both mechanisms after a substantive commit indicates Copilot Code Review is not enabled on the repo or account (Settings → Code & automation → Copilot, or account-level Copilot Pro/Pro+). |
-| No new review after ~10 minutes | Re-run the request — `scripts/01-request-review.ps1` is safe to re-run (it's idempotent and protects in-flight reviews). |
+| No new review after `02-wait-for-review.ps1`'s default 35-min timeout | Quiet-period after recent dismissal or trivial-diff suppression. Push a substantive commit (auto-assign on `synchronize` is the most reliable trigger). Do not blindly re-run `01-request-review.ps1` — read its exit message first. |
 | Outdated-but-unresolved threads appear in the open-threads list | This is **expected** since the filter switch — outdated threads can still be actionable. Reply + resolve them like any other open thread. Use `-ExcludeOutdated` only if you specifically want "what's actionable on current lines". `09-cleanup-outdated.ps1` is a safety net for threads that became outdated after your last fetch, not the primary mechanism. |
 | Unsure whether to fix or decline a finding | Apply the rubric in [references/03-triage-criteria.md](references/03-triage-criteria.md) |
 | Need a reply that conveys "fixed", "declined", or "drift" | Use a template from [references/06-reply-templates.md](references/06-reply-templates.md) |
