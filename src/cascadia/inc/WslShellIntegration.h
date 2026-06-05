@@ -320,16 +320,26 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
     }
 
     // Build a Win32 UNC path for an arbitrary POSIX path inside a WSL
-    // distro: \\wsl$\<distName>\<posixPath-with-forward-slashes>.
-    // Forward slashes inside the post-distro part are preserved — the
-    // \\wsl$\ provider routes the lookup through the distro's vfs.
+    // distro: \\wsl$\<distName>\<posixPath-with-forward-slashes-converted-to-backslashes>.
+    // Both forward and backslash separators after the distro name are
+    // accepted by the Win32 file APIs (the \\wsl$\ provider routes the
+    // lookup through the distro's vfs either way), but we emit the
+    // canonical backslash form so the produced path matches what other
+    // Windows tools display and so it sails through any consumer that
+    // treats them differently. A leading `/` in the posix path is
+    // trimmed to avoid producing `\\wsl$\Ubuntu\\path` (double-sep).
     inline std::wstring UncPath(std::wstring_view distName, std::string_view posixPath)
     {
         std::wstring out{ L"\\\\wsl$\\" };
         out.append(distName);
+        if (!posixPath.empty() && posixPath.front() == '/')
+        {
+            posixPath.remove_prefix(1);
+        }
+        out.push_back(L'\\');
         for (const auto c : posixPath)
         {
-            out.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
+            out.push_back(c == '/' ? L'\\' : static_cast<wchar_t>(static_cast<unsigned char>(c)));
         }
         return out;
     }

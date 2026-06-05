@@ -1355,14 +1355,21 @@ void ShellIntegrationTests::Wsl_IsSafeWslHome_RejectsBadChars()
 
 void ShellIntegrationTests::Wsl_UncPath_BuildsExpectedFormat()
 {
-    VERIFY_ARE_EQUAL(std::wstring{ LR"(\\wsl$\Ubuntu/home/yeelam/.bashrc)" },
+    // Canonical UNC form: backslash separator between distro and the
+    // in-distro path, and forward slashes in the posix portion are
+    // converted to backslashes. Both forms work with the Win32 file
+    // APIs but the canonical form is what other Windows tools display.
+    VERIFY_ARE_EQUAL(std::wstring{ LR"(\\wsl$\Ubuntu\home\yeelam\.bashrc)" },
                      WslUncPath(L"Ubuntu", "/home/yeelam/.bashrc"));
-    VERIFY_ARE_EQUAL(std::wstring{ LR"(\\wsl$\Debian-12/root/.intelligent-terminal)" },
+    VERIFY_ARE_EQUAL(std::wstring{ LR"(\\wsl$\Debian-12\root\.intelligent-terminal)" },
                      WslUncPath(L"Debian-12", "/root/.intelligent-terminal"));
-    // Forward slashes inside the posix part are preserved — the
-    // \\wsl$\ provider routes the lookup through the distro's vfs.
-    VERIFY_ARE_EQUAL(std::wstring{ LR"(\\wsl$\Alpine/home/x/y/z)" },
+    VERIFY_ARE_EQUAL(std::wstring{ LR"(\\wsl$\Alpine\home\x\y\z)" },
                      WslUncPath(L"Alpine", "/home/x/y/z"));
+    // Path without a leading slash gets the single separator inserted
+    // (no double-backslash). Defensive — current callers always pass a
+    // leading slash.
+    VERIFY_ARE_EQUAL(std::wstring{ LR"(\\wsl$\Ubuntu\home\x)" },
+                     WslUncPath(L"Ubuntu", "home/x"));
 }
 
 void ShellIntegrationTests::Wsl_InstallWslBash_RejectsUnsafeDistroName()
