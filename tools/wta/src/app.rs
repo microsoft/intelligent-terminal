@@ -25,6 +25,20 @@ struct DeferredAcpParams {
     master_ext_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::MasterExtRequest>>,
     shell_mgr: Arc<crate::shell::ShellManager>,
     wt_connected: bool,
+    /// Pipe-mode marker. When `Some`, [`App::try_start_acp`] reconnects
+    /// via [`run_acp_client_over_pipe`] instead of the direct
+    /// [`run_acp_client`] path. Pre-stashed at boot in helper mode
+    /// (main.rs) so that a post-FRE-login reconnect goes back through
+    /// wta-master — without this, the reconnected helper would spawn
+    /// its own copilot CLI subprocess directly, master would never see
+    /// it, and ext-methods like `intellterm.wta/sessions/list` would
+    /// fail with "Method not found" (the ACP SDK forwards unknown
+    /// extensions to the agent with a `_` prefix, and the agent CLI
+    /// doesn't know about master-side extensions).
+    master_pipe_name: Option<String>,
+    /// Owner tab id for pipe-mode reconnect (mirrors the original
+    /// `--owner-tab-id` CLI arg). Unused in direct mode.
+    owner_tab_id: Option<String>,
 }
 
 mod turn_state;
@@ -2242,11 +2256,79 @@ impl App {
             master_ext_rx: Some(master_ext_rx),
             shell_mgr,
             wt_connected,
+            master_pipe_name: None,
+            owner_tab_id: None,
+        });
+    }
+
+    /// Stash pipe-mode launch parameters on App so that a post-FRE-login
+    /// reconnect via [`Self::try_start_acp`] goes back through
+    /// [`run_acp_client_over_pipe`] (talking to wta-master) instead of
+    /// the direct [`run_acp_client`] path (which would spawn its own
+    /// copilot CLI subprocess and bypass master entirely).
+    ///
+    /// The bug this guards against: in helper mode (`--connect-master`),
+    /// the initial `run_acp_client_over_pipe` task fails immediately with
+    /// `Authentication required` if the user is in FRE / not yet logged
+    /// in. The helper falls into the setup screen, the user logs in, and
+    /// `LoginComplete` fires `try_start_acp`. Without this pre-stash,
+    /// `LoginComplete` finds `deferred_acp.is_none()` and synthesizes a
+    /// direct-mode `DeferredAcpParams`, then `try_start_acp` calls
+    /// `run_acp_client` — bypassing master. The resulting helper:
+    ///   * never registers with master (no `HelperId` in master log),
+    ///   * gets `Method not found` for every `intellterm.wta/...`
+    ///     ext-request (the ACP SDK forwards them to the agent CLI
+    ///     prefixed with `_`, and the agent doesn't know them),
+    ///   * has `session_hook` events that go nowhere (the channel's
+    ///     receiver was already consumed by the dead pipe-mode task).
+    ///
+    /// All `_rx` fields are seeded `None`; `try_start_acp` creates fresh
+    /// channels on reconnect and re-binds the `_tx` halves on App, plus
+    /// re-creates the `session_hook` channel and re-binds
+    /// `self.session_hook_tx`.
+    pub fn set_master_pipe_acp_params(
+        &mut self,
+        pipe_name: String,
+        agent_cmd: String,
+        acp_model: Option<String>,
+        owner_tab_id: Option<String>,
+        shell_mgr: Arc<crate::shell::ShellManager>,
+        wt_connected: bool,
+    ) {
+        self.deferred_acp = Some(DeferredAcpParams {
+            agent_cmd,
+            acp_model,
+            prompt_rx: None,
+            cancel_rx: None,
+            new_session_rx: None,
+            load_session_rx: None,
+            drop_session_rx: None,
+            rename_session_rx: None,
+            restart_rx: None,
+            master_ext_rx: None,
+            shell_mgr,
+            wt_connected,
+            master_pipe_name: Some(pipe_name),
+            owner_tab_id,
         });
     }
 
     /// Try to start the ACP client if login just completed.
     /// Creates fresh channels if previous ones were consumed by a failed attempt.
+    ///
+    /// **Pipe-mode branch.** When `deferred_acp.master_pipe_name.is_some()`
+    /// (set at boot by [`Self::set_master_pipe_acp_params`] in helper
+    /// mode), we route the reconnect through
+    /// [`run_acp_client_over_pipe`] so the rebuilt helper talks to the
+    /// shared wta-master singleton — same as the cold-boot helper path.
+    /// We also rebuild the `session_hook` channel and re-bind the `_tx`
+    /// half on `self.session_hook_tx`, because the original receiver was
+    /// consumed (and dropped) by the dead initial pipe-mode task.
+    ///
+    /// **Direct-mode branch.** When `master_pipe_name.is_none()` we keep
+    /// the legacy behavior: spawn [`run_acp_client`], which runs its own
+    /// agent CLI subprocess. This is the FRE path for non-helper
+    /// invocations (`wta` launched without `--connect-master`).
     pub fn try_start_acp(&mut self) {
         if !self.pending_acp_start {
             return;
@@ -2303,31 +2385,93 @@ impl App {
                 params.restart_rx.take(),
                 params.master_ext_rx.take(),
             ) {
-                // Resolve the agent executable path (bare "copilot" may not
-                // be on PATH in packaged apps — use WinGet Links fallback).
-                let agent_cmd = resolve_agent_cmd(&params.agent_cmd);
                 let acp_model = params.acp_model.clone();
-                let owner_tab_id = self.tab_id.clone();
                 let event_tx = tx.clone();
                 let shell_mgr = Arc::clone(&params.shell_mgr);
                 let wt_connected = params.wt_connected;
+                let pipe_name_opt = params.master_pipe_name.clone();
+                let owner_tab_opt = params.owner_tab_id.clone();
 
-                tokio::task::spawn_local(crate::protocol::acp::client::run_acp_client(
-                    agent_cmd,
-                    acp_model,
-                    owner_tab_id,
-                    event_tx,
-                    prompt_rx,
-                    cancel_rx,
-                    new_session_rx,
-                    load_session_rx,
-                    drop_session_rx,
-                    rename_session_rx,
-                    restart_rx,
-                    master_ext_rx,
-                    shell_mgr,
-                    wt_connected,
-                ));
+                if let Some(pipe_name) = pipe_name_opt {
+                    // Pipe-mode reconnect (helper after FRE login).
+                    // Rebuild the session_hook channel — the original
+                    // rx was consumed and dropped with the dead initial
+                    // task, leaving `self.session_hook_tx` pointing at a
+                    // closed channel (every `publish_session_hook` call
+                    // logs "channel closed"). Reinstall a live tx so
+                    // hooks reach master again, and hand the matching
+                    // rx to the new pipe-mode task.
+                    let (shtx, shrx) = mpsc::unbounded_channel();
+                    self.session_hook_tx = Some(shtx);
+                    tracing::info!(
+                        target: "acp",
+                        pipe = %pipe_name,
+                        "try_start_acp: reconnecting via master pipe"
+                    );
+                    let event_tx_for_pipe = event_tx.clone();
+                    tokio::task::spawn_local(async move {
+                        if let Err(e) =
+                            crate::protocol::acp::client::run_acp_client_over_pipe(
+                                pipe_name,
+                                acp_model,
+                                owner_tab_opt,
+                                None, // initial_load_session_id: already handled by the dead initial task
+                                event_tx_for_pipe.clone(),
+                                prompt_rx,
+                                cancel_rx,
+                                new_session_rx,
+                                load_session_rx,
+                                drop_session_rx,
+                                rename_session_rx,
+                                restart_rx,
+                                shrx,
+                                master_ext_rx,
+                                shell_mgr,
+                                wt_connected,
+                            )
+                            .await
+                        {
+                            tracing::error!(
+                                target: "helper",
+                                error = %e,
+                                "run_acp_client_over_pipe failed on reconnect"
+                            );
+                            let failure = crate::protocol::acp::failure::classify_anyhow(
+                                &e,
+                                crate::protocol::acp::failure::HandshakeStage::Initialize,
+                            );
+                            let _ = event_tx_for_pipe.send(AppEvent::AgentError {
+                                session_id: None,
+                                failure,
+                                message: format!(
+                                    "helper ACP transport failed on reconnect: {e:#}"
+                                ),
+                            });
+                        }
+                    });
+                } else {
+                    // Direct-mode reconnect (non-helper FRE path).
+                    // Resolve the agent executable path (bare "copilot" may not
+                    // be on PATH in packaged apps — use WinGet Links fallback).
+                    let agent_cmd = resolve_agent_cmd(&params.agent_cmd);
+                    let owner_tab_id = self.tab_id.clone();
+                    tokio::task::spawn_local(crate::protocol::acp::client::run_acp_client(
+                        agent_cmd,
+                        acp_model,
+                        owner_tab_id,
+                        event_tx,
+                        prompt_rx,
+                        cancel_rx,
+                        new_session_rx,
+                        load_session_rx,
+                        drop_session_rx,
+                        rename_session_rx,
+                        restart_rx,
+                        master_ext_rx,
+                        shell_mgr,
+                        wt_connected,
+                    ));
+                }
             }
         }
     }
@@ -5984,6 +6128,8 @@ impl App {
                             master_ext_rx: None,
                             shell_mgr: Arc::clone(&self.shell_mgr),
                             wt_connected: self.wt_connected,
+                            master_pipe_name: None,
+                            owner_tab_id: None,
                         });
                     }
                     self.pending_acp_start = true;
@@ -9053,23 +9199,17 @@ fn set_welcome_shown_in_state() {
     let _ = std::fs::write(&path, &updated);
 }
 
-/// Find the packaged app's state.json.
+/// Find the packaged WT app's state.json.
+///
+/// Delegates to `runtime_paths::wt_state_json_path`, which:
+/// - prefers `GetCurrentPackageFamilyName` when wta itself is packaged
+///   (production: dev-sideload **or** store family — both resolve correctly), and
+/// - falls back to scanning the `Packages` subdirectory under
+///   `%LOCALAPPDATA%` (or `%APPDATA%` when `%LOCALAPPDATA%` is unset)
+///   for either known WT family prefix when wta is unpackaged (dev tree
+///   launched by packaged WT via `TerminalPage::_DetectWtaPath`).
 fn find_state_json() -> Option<std::path::PathBuf> {
-    let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
-    let packages_dir = std::path::Path::new(&local_app_data).join("Packages");
-    if let Ok(entries) = std::fs::read_dir(&packages_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if name_str.starts_with("IntelligentTerminal_") {
-                let candidate = entry.path().join("LocalState").join("state.json");
-                if candidate.exists() {
-                    return Some(candidate);
-                }
-            }
-        }
-    }
-    None
+    crate::runtime_paths::wt_state_json_path()
 }
 
 fn truncate(s: &str, max: usize) -> String {
