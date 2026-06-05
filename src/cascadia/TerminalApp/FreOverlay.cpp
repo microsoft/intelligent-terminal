@@ -79,11 +79,22 @@ namespace winrt::TerminalApp::implementation
             {
                 return out;
             }
+            // Multiple WT profiles can point at the same WSL distro
+            // (a user may duplicate "Ubuntu" with different startup
+            // commands, fonts, etc.). De-duplicate so each distro is
+            // touched exactly once per install/uninstall sweep — the
+            // per-distro path is also expensive (wsl.exe spawn, UNC
+            // mount, $HOME probe), so repeating it is doubly bad.
+            std::set<std::wstring> seen;
             for (const auto& profile : settings.AllProfiles())
             {
                 if (profile.Source() == L"Windows.Terminal.Wsl")
                 {
-                    out.emplace_back(_ExtractWslDistroName(profile));
+                    auto name = _ExtractWslDistroName(profile);
+                    if (seen.insert(name).second)
+                    {
+                        out.emplace_back(std::move(name));
+                    }
                 }
             }
             return out;

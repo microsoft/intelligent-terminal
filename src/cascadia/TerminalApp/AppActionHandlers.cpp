@@ -83,11 +83,22 @@ namespace winrt::TerminalApp::implementation
             {
                 return out;
             }
+            // Multiple WT profiles can point at the same WSL distro
+            // (a user may duplicate "Ubuntu" with different startup
+            // commands, fonts, etc.). De-duplicate so each distro is
+            // touched exactly once per install/uninstall sweep — the
+            // per-distro path is also expensive (wsl.exe spawn, UNC
+            // mount, $HOME probe), so repeating it is doubly bad.
+            std::set<std::wstring> seen;
             for (const auto& profile : settings.AllProfiles())
             {
                 if (profile.Source() == L"Windows.Terminal.Wsl")
                 {
-                    out.emplace_back(_ExtractWslDistroName(profile));
+                    auto name = _ExtractWslDistroName(profile);
+                    if (seen.insert(name).second)
+                    {
+                        out.emplace_back(std::move(name));
+                    }
                 }
             }
             return out;
@@ -2300,10 +2311,22 @@ namespace winrt::TerminalApp::implementation
         }
         else
         {
-            // Uninstall is NOT gated on shellPresence — we always sweep
-            // all targets so a profile the user deleted after a prior
-            // install is still cleaned up. Uninstall is idempotent when
-            // no block is present.
+            // Uninstall sweep policy:
+            //   * Non-WSL targets (Pwsh, WindowsPowerShell, Bash) are
+            //     NOT gated on shellPresence so a profile the user
+            //     deleted after a prior install is still cleaned up.
+            //     Uninstall is idempotent when no block is present.
+            //   * WSL is bounded by `wslDistros` (the CURRENT profile
+            //     list). If the user deleted a WSL distro profile
+            //     after install, the integration block inside that
+            //     distro's filesystem will NOT be cleaned up here.
+            //     That's intentional: WT profile deletion ≠ WSL distro
+            //     removal (the user may still use the distro via
+            //     `wsl.exe` directly), and we'd need to track
+            //     previously-installed distros across settings reloads
+            //     to do better — adds complexity for a rare edge case.
+            //     If the user re-adds the WT profile later, the next
+            //     reconcile/uninstall will clean it.
             SI::UninstallForTarget(SI::Target::Pwsh);
             SI::UninstallForTarget(SI::Target::WindowsPowerShell);
             SI::UninstallForTarget(SI::Target::Bash);

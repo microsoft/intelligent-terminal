@@ -104,7 +104,7 @@ __it_shellinteg_prompt() {
     # OSC 133;D;<ec>  — previous command finished
     # OSC 133;A       — prompt start
     # OSC 9;9;"cwd"   — current working directory
-    printf '\033]133;D;%s\007\033]133;A\007\033]9;9;"%s"\007' "$__ec" "$PWD"
+    printf '\033]133;D;%s\007\033]133;A\007\033]9;9;"%s"\007' "$__ec" "${PWD:-}"
     if [ -n "$__IT_SHELLINTEG_USER_PC" ]; then
         # Restore $? for the user's PROMPT_COMMAND so hooks like
         # `local ec=$?` at its top still see the real exit code
