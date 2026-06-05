@@ -60,15 +60,30 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Single-call helper: capture stdout + stderr separately in one invocation
+# so we never re-run gh just to recover stderr on failure, and never feed
+# stderr into ConvertFrom-Json on success.
+function Invoke-Gh {
+    param([Parameter(Mandatory)][string[]]$GhArgs)
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new('gh')
+    foreach ($arg in $GhArgs) { $null = $psi.ArgumentList.Add($arg) }
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $out = $proc.StandardOutput.ReadToEnd()
+    $err = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    [pscustomobject]@{ ExitCode = $proc.ExitCode; Stdout = $out; Stderr = $err }
+}
+
 # ---------- repo resolve ----------
 
 if (-not $Owner -or -not $Repo) {
-    $repoJson = gh repo view --json owner,name
-    if ($LASTEXITCODE -ne 0) {
-        $repoErr = gh repo view --json owner,name 2>&1
-        throw "gh repo view failed: $repoErr"
-    }
-    $repoInfo = $repoJson | ConvertFrom-Json
+    $r = Invoke-Gh -GhArgs @('repo','view','--json','owner,name')
+    if ($r.ExitCode -ne 0) { throw "gh repo view failed: $($r.Stderr)" }
+    $repoInfo = $r.Stdout | ConvertFrom-Json
     if (-not $Owner) { $Owner = $repoInfo.owner.login }
     if (-not $Repo)  { $Repo  = $repoInfo.name }
 }
@@ -87,9 +102,9 @@ query($o:String!,$r:String!,$n:Int!){
   }
 }
 '@
-$stateResp = gh api graphql -f "query=$stateQuery" -f "o=$Owner" -f "r=$Repo" -F "n=$PrNumber" 2>&1
-if ($LASTEXITCODE -ne 0) { throw "state query failed: $stateResp" }
-$stateData = $stateResp | ConvertFrom-Json
+$r = Invoke-Gh -GhArgs @('api','graphql','-f',"query=$stateQuery",'-f',"o=$Owner",'-f',"r=$Repo",'-F',"n=$PrNumber")
+if ($r.ExitCode -ne 0) { throw "state query failed: $($r.Stderr)" }
+$stateData = $r.Stdout | ConvertFrom-Json
 if ($stateData.errors) {
     throw "state query GraphQL errors: $(($stateData.errors | ForEach-Object {$_.message}) -join '; ')"
 }
@@ -119,21 +134,17 @@ if ($copilotPending) {
 
 # ---------- snapshot copilot_work_started before triggering ----------
 
-$beforeTs = gh api --paginate "repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100" `
-    --jq '[.[] | select(.event=="copilot_work_started") | .created_at] | sort | .[-1] // ""' 2>&1
-if ($LASTEXITCODE -ne 0) { throw "events query failed: $beforeTs" }
-$beforeTs = (@($beforeTs -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }) | Sort-Object | Select-Object -Last 1)
+$r = Invoke-Gh -GhArgs @('api','--paginate',"repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100",'--jq','[.[] | select(.event=="copilot_work_started") | .created_at] | sort | .[-1] // ""')
+if ($r.ExitCode -ne 0) { throw "events query failed: $($r.Stderr)" }
+$beforeTs = (@($r.Stdout -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }) | Sort-Object | Select-Object -Last 1)
 if (-not $beforeTs) { $beforeTs = '' }
 
 # ---------- trigger via GraphQL requestReviewsByLogin ----------
 
 $prIdQuery = "query{repository(owner:`"$Owner`",name:`"$Repo`"){pullRequest(number:$PrNumber){id}}}"
-$prIdResp = gh api graphql -f "query=$prIdQuery"
-if ($LASTEXITCODE -ne 0) {
-    $prIdErr = gh api graphql -f "query=$prIdQuery" 2>&1
-    throw "PR node id query failed: $prIdErr"
-}
-$prIdJson = $prIdResp | ConvertFrom-Json
+$r = Invoke-Gh -GhArgs @('api','graphql','-f',"query=$prIdQuery")
+if ($r.ExitCode -ne 0) { throw "PR node id query failed: $($r.Stderr)" }
+$prIdJson = $r.Stdout | ConvertFrom-Json
 if ($prIdJson.errors) {
     $msgs = ($prIdJson.errors | ForEach-Object { $_.message }) -join '; '
     throw "PR node id query returned GraphQL errors: $msgs"
@@ -144,10 +155,10 @@ if ([string]::IsNullOrWhiteSpace($prNodeId) -or $prNodeId -eq 'null') {
 }
 
 $mut = 'mutation($p:ID!){requestReviewsByLogin(input:{pullRequestId:$p,botLogins:["copilot-pull-request-reviewer"]}){pullRequest{number}}}'
-$mutResp = gh api graphql -f "query=$mut" -f "p=$prNodeId" 2>&1
-if ($LASTEXITCODE -ne 0) {
+$r = Invoke-Gh -GhArgs @('api','graphql','-f',"query=$mut",'-f',"p=$prNodeId")
+if ($r.ExitCode -ne 0) {
     throw @"
-GraphQL requestReviewsByLogin failed: $mutResp
+GraphQL requestReviewsByLogin failed: $($r.Stderr)
 
 Most likely causes:
   * Quiet-period after a recent dismissal of Copilot — wait 5-10 min, or push a substantive commit.
@@ -158,7 +169,7 @@ DO NOT post @copilot comments as a workaround — that summons the Coding Agent.
 "@
 }
 try {
-    $mutJson = $mutResp | ConvertFrom-Json
+    $mutJson = $r.Stdout | ConvertFrom-Json
     if ($mutJson.errors) {
         throw (($mutJson.errors | ForEach-Object { $_.message }) -join '; ')
     }
@@ -172,10 +183,9 @@ $deadline = (Get-Date).AddSeconds($VerifySeconds)
 $afterTs = ''
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 5
-    $now = gh api --paginate "repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100" `
-        --jq '[.[] | select(.event=="copilot_work_started") | .created_at] | sort | .[-1] // ""' 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        $now = (@($now -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }) | Sort-Object | Select-Object -Last 1)
+    $r = Invoke-Gh -GhArgs @('api','--paginate',"repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100",'--jq','[.[] | select(.event=="copilot_work_started") | .created_at] | sort | .[-1] // ""')
+    if ($r.ExitCode -eq 0) {
+        $now = (@($r.Stdout -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }) | Sort-Object | Select-Object -Last 1)
         if ($now -and [string]::CompareOrdinal($now, $beforeTs) -gt 0) { $afterTs = $now; break }
     }
 }

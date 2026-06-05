@@ -123,7 +123,7 @@ if (-not $open) {
 foreach ($t in $open) {
     $c = $t.comments.nodes[0]
     $body = $c.body
-    $path = if ($null -ne $c.line -and $c.line -ne '') { "$($c.path):$($c.line)" } else { $c.path }
+    $path = if ($null -ne $c.line) { "$($c.path):$($c.line)" } else { $c.path }
     [pscustomobject]@{
         ThreadId   = $t.id
         Author     = $c.author.login

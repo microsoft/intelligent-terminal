@@ -56,13 +56,30 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Single-call helper: capture stdout + stderr separately so we never
+# re-invoke gh just to recover stderr on failure, and never feed stderr
+# into ConvertFrom-Json on success.
+function Invoke-Gh {
+    param([Parameter(Mandatory)][string[]]$GhArgs)
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new('gh')
+    foreach ($arg in $GhArgs) { $null = $psi.ArgumentList.Add($arg) }
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $out = $proc.StandardOutput.ReadToEnd()
+    $err = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    [pscustomobject]@{ ExitCode = $proc.ExitCode; Stdout = $out; Stderr = $err }
+}
+
 if (-not $Owner -or -not $Repo) {
-    $repoJson = gh repo view --json owner,name
-    if ($LASTEXITCODE -ne 0) {
-        $repoErr = gh repo view --json owner,name 2>&1
-        throw "gh repo view failed. Pass -Owner and -Repo explicitly. Error: $repoErr"
+    $r = Invoke-Gh -GhArgs @('repo','view','--json','owner,name')
+    if ($r.ExitCode -ne 0) {
+        throw "gh repo view failed. Pass -Owner and -Repo explicitly. Error: $($r.Stderr)"
     }
-    $repoInfo = $repoJson | ConvertFrom-Json
+    $repoInfo = $r.Stdout | ConvertFrom-Json
     if (-not $Owner) { $Owner = $repoInfo.owner.login }
     if (-not $Repo)  { $Repo  = $repoInfo.name }
 }
