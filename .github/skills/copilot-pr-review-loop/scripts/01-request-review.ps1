@@ -188,7 +188,7 @@ $inFlight       = $false
 if ($beforeDt) {
     $ageMin = ((Get-Date).ToUniversalTime() - $beforeDt).TotalMinutes
     $consumed = $lastReviewDt -and $beforeDt -le $lastReviewDt
-    $inFlight = ($ageMin -lt 12) -and (-not $consumed)
+    $inFlight = ($ageMin -lt 35) -and (-not $consumed)
 }
 if ($inFlight) {
     @{
