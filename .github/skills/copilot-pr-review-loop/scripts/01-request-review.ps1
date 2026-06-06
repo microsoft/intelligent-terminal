@@ -59,7 +59,7 @@ function Get-LatestCopilotWorkStartedEvent {
     }
 
     $events = @($body | ConvertFrom-Json)
-    $latest = @($events | Where-Object { $_.event -eq 'copilot_work_started' } | Sort-Object id | Select-Object -Last 1)
+    $latest = $events | Where-Object { $_.event -eq 'copilot_work_started' } | Sort-Object id | Select-Object -Last 1
     if (-not $latest) { return [pscustomobject]@{ Id = 0L; CreatedAt = '' } }
     $createdAt = if ($latest.created_at -is [datetime]) {
         $latest.created_at.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')

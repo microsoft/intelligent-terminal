@@ -97,7 +97,8 @@ message.
   outdated ones.** Resolving without a reply leaves no record of why
   the issue was considered addressed; replying without resolving
   keeps the open-threads list non-empty and blocks convergence.
-- **Copilot threads are loop-owned; human / GHAS / other-bot
+- **Copilot threads are loop-owned; human / advanced-security /
+  other-bot
   threads default to escalate-to-user.** Auto-replying or auto-
   resolving a human review thread can hide unaddressed concerns and
   is socially wrong. The triage rubric explicitly distinguishes

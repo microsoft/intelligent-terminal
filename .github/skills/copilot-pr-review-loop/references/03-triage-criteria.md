@@ -65,8 +65,8 @@ repo's contributing docs, CI config, and recent commits — what looks
 like an obvious fix may violate a project rule:
 
 - **Spell-check / dictionary findings.** If the project uses a
-  spell-checker (`check-spelling`, `cspell`, `codespell`, `typos`,
-  etc.), inspect its config and recent commits to learn the local
+  spell-checker (`check-spelling`, `cspell`, `typos`, or similar),
+  inspect its config and recent commits to learn the local
   convention (reword the document, add a pattern/regex, extend a
   dictionary/allowlist, use an inline ignore). Follow that
   convention; don't invent a new mechanism.

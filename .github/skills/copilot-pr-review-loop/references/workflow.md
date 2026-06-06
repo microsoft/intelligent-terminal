@@ -34,7 +34,7 @@ the pushed commit SHA.
 | 1 — Request review | _(parent)_ | n/a | `01-request-review.ps1` JSON; record `WorkStartedAt` and the pre-trigger `LatestCopilotReview.submittedAt` as **baselines** for step 2 | — |
 | 2 — Wait for review | `general-purpose` | **20 min hard cap**, poll every ~3 min | `02-check-review-status.ps1` JSON + recommendation (`ready` \| `give-up-push-commit`); `ready` iff `LatestCopilotReview.submittedAt > baseline` AND `ReviewAtHead: true` | one bounded sub-agent, not extension-driven; on `give-up-push-commit`, parent falls back to a substantive commit |
 | 3 — List + categorize open threads | `explore` | 5 min | table of `{thread_id, file, line, author, severity, summary}` from `02-list-open-threads.ps1` | classify each row's `author` as `copilot` vs `human-or-bot` so triage can apply the correct policy |
-| 4 — Triage | `general-purpose` | 5 min per ≤5 threads (parent batches if more) | table of `{thread_id, fix \| decline \| escalate-to-user, one-line rationale}` per [03-triage-criteria.md](03-triage-criteria.md) | human / GHAS threads default to `escalate-to-user` unless the user explicitly scoped them in |
+| 4 — Triage | `general-purpose` | 5 min per ≤5 threads (parent batches if more) | table of `{thread_id, fix \| decline \| escalate-to-user, one-line rationale}` per [03-triage-criteria.md](03-triage-criteria.md) | human / advanced-security threads default to `escalate-to-user` unless the user explicitly scoped them in |
 | 5 — Apply fix (one per finding, parallel **max 5 concurrent**) | `general-purpose` | 5 min each | `{files_touched, one-line summary, status}` | parent merges and reconciles file conflicts before step 6; the 5-cap prevents fix-fanout chaos (overlapping edits, context blowup). If step 3 returned >5 findings, parent runs step 5 in waves of ≤5. |
 | 6 — Build + test per repo conventions | `task` | 10 min | pass/fail + failure excerpts; sub-agent first identifies the repo's build/test commands (`CONTRIBUTING.md`/`AGENTS.md`/`README`/`package.json`/`Makefile`/etc.) then runs them on the changed code | — |
 | 7 — Commit + push | _(parent)_ | n/a | parent runs `git commit` + `git push` directly | one focused commit per round; record the pushed SHA |
@@ -55,7 +55,7 @@ Command snippets assume your current directory is the skill root.
   immediately. Before this call, capture
   `baseline_submitted_at = <current LatestCopilotReview.submittedAt or null>`
   via `02-check-review-status.ps1` — step 2 uses this baseline to
-  distinguish the new review from any pre-existing one.
+  distinguish the new review from any preexisting one.
 
 - [ ] **2.** **Wait for review (sub-agent, one bounded run, 20-min
   hard cap, polls every ~3 min):** dispatch a `general-purpose`
@@ -113,7 +113,7 @@ Command snippets assume your current directory is the skill root.
   `ReviewAtHead && NoNewComments && OpenThreadCount == 0`). The
   sub-agent re-runs the snapshot AND independently re-queries HEAD
   vs. `LatestCopilotReview.commitOid` as a sanity check. If
-  converged → step 10. Otherwise loop back to step 1.
+  converged → step 10. Otherwise, loop back to step 1.
 
 - [ ] **10.** **(Once, after convergence) Cleanup outdated (parent):**
   `pwsh ./scripts/09-cleanup-outdated.ps1 -PrNumber <n>` — safety
