@@ -4,23 +4,26 @@
 // ShellIntegration.h
 //
 // Umbrella header for the shell-integration installer. Includes:
-//   • ShellIntegrationCommon.h     — types, markers, FlavorDescriptor + generic driver
-//   • PowerShellShellIntegration.h — PowerShell 5.1 / 7 flavor
+//   • ShellIntegrationCommon.h     — types, markers, IShellFlavor + orchestrator
+//   • PowerShellShellIntegration.h — PowerShell 5.1 / 7 flavors
 //   • BashShellIntegration.h       — Git Bash flavor
-//   • WslShellIntegration.h        — per-distro WSL bash flavor (delegates to Bash)
+//   • WslShellIntegration.h        — per-distro WSL bash flavor (derives from BashFlavor)
 //
-// Also defines the top-level dispatchers (InstallForTarget / UninstallForTarget)
-// keyed on Target, and provides flat-namespace aliases for every public
-// symbol callers and tests reference (kept to minimize churn in existing
-// code — anything `SI::Install`, `SI::InstallBash`, `SI::FindShellIntegrationBlock`
-// etc. still resolves here without touching call sites).
+// Also defines the top-level dispatchers (InstallForTarget /
+// UninstallForTarget) keyed on Target, and provides flat-namespace
+// aliases for every public symbol callers and tests reference (kept
+// to minimize churn in existing code — anything `SI::Install`,
+// `SI::InstallBash`, `SI::FindShellIntegrationBlock` etc. still
+// resolves here without touching call sites).
 //
 // Adding a new shell:
-//   1. Drop in <NewShell>ShellIntegration.h that builds a FlavorDescriptor
-//      and exposes Install / Uninstall / DiscoverProfilePath / etc.
+//   1. Drop in <NewShell>ShellIntegration.h that exposes a concrete
+//      IShellFlavor and Install / Uninstall / DiscoverProfilePath
+//      / etc.
 //   2. Include it below.
-//   3. Extend Target + the dispatchers if it has a natural single-target shape
-//      (like Bash), OR expose a per-instance API (like Wsl::Install(distName)).
+//   3. Extend Target + the dispatchers if it has a natural single-
+//      target shape (like Bash), OR expose a per-instance API (like
+//      Wsl::Install(distName)).
 //   4. Add per-flavor TEST_METHODs that delegate to the shared
 //      _RunScenario_* helpers in ShellIntegrationTests.cpp.
 
@@ -36,7 +39,10 @@ namespace Microsoft::Terminal::ShellIntegration
 {
     // ───────────────────────────────────────────────────────────────────
     // Top-level dispatchers — keyed on Target. Bash has no execution
-    // policy gate (no equivalent in bash); PS does.
+    // policy gate (no equivalent in bash); PS does — and the FRE relies
+    // on the policy-blocked InstallResult.executionPolicyBlocked flag
+    // to surface a specific dialog, so the gate MUST stay here in the
+    // umbrella dispatcher (Powershell::InstallForTarget owns it).
     // ───────────────────────────────────────────────────────────────────
 
     inline InstallResult InstallForTarget(Target target)
@@ -75,15 +81,17 @@ namespace Microsoft::Terminal::ShellIntegration
     {
         return Powershell::BuildBlock(profileSubdir, eol);
     }
-    // Free-function wrapper around FindBlockGeneric with the PS flavor
-    // (orphan-body recognizer + legacy regex). Used by tests that only
-    // care about the parser, not the full Install flow.
+    // Pure-parser wrapper. Tests assert on the byte range only — and
+    // since the orphan-recovery + legacy-form recognizers are stateless
+    // properties of the PowerShell flavor, we get them by constructing a
+    // throwaway flavor with a placeholder profile path (FindExisting
+    // doesn't read the path). Returns the legacy {npos, npos} sentinel
+    // form so the tests can structured-bind against it unchanged.
     inline std::pair<size_t, size_t> FindShellIntegrationBlock(std::string_view contents)
     {
-        FlavorDescriptor d{};
-        d.isOrphanBodyLine = &Powershell::IsOrphanBodyLine;
-        d.findLegacy = &Powershell::FindLegacyDotSource;
-        return FindBlockGeneric(contents, d);
+        Powershell::PowerShellFlavor flavor{ L"placeholder.ps1" };
+        const auto result = flavor.FindExistingScriptBlock(contents);
+        return result ? *result : std::pair{ std::string::npos, std::string::npos };
     }
 
     // Bash.
@@ -95,9 +103,9 @@ namespace Microsoft::Terminal::ShellIntegration
     inline std::string BuildShellIntegrationBashBlock() { return Bash::BuildBlock("\n"); }
     inline std::pair<size_t, size_t> FindShellIntegrationBashBlock(std::string_view contents)
     {
-        FlavorDescriptor d{};
-        d.isOrphanBodyLine = &Bash::IsOrphanBodyLine;
-        return FindBlockGeneric(contents, d);
+        Bash::BashFlavor flavor{ L"placeholder", L"placeholder" };
+        const auto result = flavor.FindExistingScriptBlock(contents);
+        return result ? *result : std::pair{ std::string::npos, std::string::npos };
     }
     inline InstallResult InstallBash(const std::wstring& profilePathW, const std::wstring& scriptDirW)
     {

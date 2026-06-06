@@ -3,16 +3,20 @@
 //
 // WslShellIntegration.h
 //
-// WSL flavor — per-distro bash shell integration. Reuses the Bash flavor
-// entirely; the only WSL-specific work is:
+// WSL flavor — per-distro bash shell integration. Exposes WslBashFlavor,
+// a concrete IShellFlavor that derives from BashFlavor. Construction
+// resolves the distro's $HOME (cached per process) and builds the
+// \\wsl$\<distro>\…\.bashrc + \\wsl$\<distro>\…\.intelligent-terminal\
+// UNC paths; everything downstream is identical to native bash —
+// ordinary fstream works transparently over the WSL UNC mount.
+//
+// The only WSL-specific work is:
 //   1. Validate the distro name (strict allow-list — defends the
 //      CreateProcessW command line against injection).
 //   2. Probe $HOME inside the distro via one bounded wsl.exe spawn,
-//      cached per-process so reconcile cycles after the first hit are
-//      free.
-//   3. Build a \\wsl$\<distro>\<wslHome>\... UNC path and delegate to
-//      Bash::Install / Bash::Uninstall — ordinary fstream works
-//      transparently over the WSL UNC mount.
+//      cached per-process so reconcile cycles after the first hit
+//      are free.
+//   3. Build the UNC paths.
 //
 // \\wsl$\ is Win10 1903+ (Build 18362); IT's WindowsTargetPlatformMinVersion
 // is 10.0.18362.0, so this works on every supported host. The first
@@ -385,31 +389,75 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         return out;
     }
 
-    // Install bash shell integration into a WSL distro.
+    // Concrete IShellFlavor for per-distro WSL bash. The constructor
+    // does the up-front validation (distro-name allow-list + $HOME
+    // probe) and stashes any error message; callers check Valid()
+    // before handing the instance to the orchestrator.
     //
-    // Flow:
-    //   1. Validate distro name (allow-list).
-    //   2. Probe $HOME inside the distro (cached per-process).
-    //   3. Build UNC paths for `.bashrc` and `.intelligent-terminal/`.
-    //   4. Delegate to Bash::Install — all the heavy lifting is shared.
+    // Reuses BashFlavor for every IShellFlavor method — once the UNC
+    // paths are resolved the install/uninstall flow IS native bash
+    // operating over the \\wsl$\ mount.
+    //
+    // Construction can block up to 30s on first use of a cold distro
+    // (the $HOME probe spins up the WSL2 VM). Subsequent constructions
+    // for the same distro hit the per-process cache.
+    class WslBashFlavor : public Bash::BashFlavor
+    {
+    public:
+        explicit WslBashFlavor(std::wstring distName) :
+            // Initialize the BashFlavor base with empty paths first,
+            // then patch them in the body once we've validated +
+            // probed. Empty paths are harmless: the orchestrator only
+            // runs after we check Valid() below.
+            Bash::BashFlavor{ {}, {} }
+        {
+            if (!details::IsSafeDistroName(distName))
+            {
+                _errorMessage = L"WSL distro name rejected (unsafe characters)";
+                return;
+            }
+            _distName = std::move(distName);
+            const auto home = details::GetWslHomeCached(_distName);
+            if (home.empty())
+            {
+                _errorMessage = L"Could not probe $HOME inside WSL distro";
+                return;
+            }
+            _profilePath = UncPath(_distName, home + "/.bashrc");
+            _scriptDir = std::filesystem::path{ UncPath(_distName, home + "/.intelligent-terminal") };
+            _valid = true;
+        }
+
+        bool Valid() const noexcept { return _valid; }
+        std::wstring_view ErrorMessage() const noexcept { return _errorMessage; }
+        std::wstring_view DistName() const noexcept { return _distName; }
+
+        std::wstring          ProfilePath() const override          { return _profilePath; }
+        std::filesystem::path ScriptDir() const override            { return _scriptDir; }
+        // Everything else (script filename / content / block / orphan
+        // recovery / line-ending policy) is inherited from BashFlavor.
+
+    private:
+        std::wstring _distName;
+        std::wstring _profilePath;
+        std::filesystem::path _scriptDir;
+        std::wstring _errorMessage;
+        bool _valid{ false };
+    };
+
+    // Install bash shell integration into a WSL distro.
     //
     // Synchronous — call from a background thread. The first call for
     // each distro can block up to 30s on a cold-start; subsequent calls
     // return immediately from the cache.
     inline InstallResult Install(const std::wstring& distName)
     {
-        if (!details::IsSafeDistroName(distName))
+        WslBashFlavor flavor{ distName };
+        if (!flavor.Valid())
         {
-            return { false, false, L"WSL distro name rejected (unsafe characters)" };
+            return { false, false, std::wstring{ flavor.ErrorMessage() } };
         }
-        const auto home = details::GetWslHomeCached(distName);
-        if (home.empty())
-        {
-            return { false, false, L"Could not probe $HOME inside WSL distro" };
-        }
-        const auto bashrcPath = UncPath(distName, home + "/.bashrc");
-        const auto scriptDir = UncPath(distName, home + "/.intelligent-terminal");
-        return Bash::Install(bashrcPath, scriptDir);
+        return orchestrator::Install(flavor);
     }
 
     inline InstallResult Uninstall(const std::wstring& distName)
@@ -418,8 +466,8 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         {
             return { false, false, L"WSL distro name rejected (unsafe characters)" };
         }
-        const auto home = details::GetWslHomeCached(distName);
-        if (home.empty())
+        WslBashFlavor flavor{ distName };
+        if (!flavor.Valid())
         {
             // If we can't reach the distro there's nothing to remove —
             // treat as already-uninstalled so a toggle-off reconcile
@@ -427,7 +475,6 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
             // is down.
             return { true, true, {} };
         }
-        const auto bashrcPath = UncPath(distName, home + "/.bashrc");
-        return Bash::Uninstall(bashrcPath);
+        return orchestrator::Uninstall(flavor);
     }
 }
