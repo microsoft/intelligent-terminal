@@ -1,5 +1,62 @@
 # Shared helpers for copilot-pr-review-loop scripts.
 # Dot-source with: `. "$PSScriptRoot/_lib.ps1"`
+#
+# Dot-sourcing runs the prerequisite check below; if `gh` is missing or
+# unauthenticated the script halts BEFORE doing any work, with a single
+# actionable error message the calling agent can pattern-match on.
+
+# Prerequisite check: gh CLI installed AND authenticated.
+# Fails fast with install/login instructions. Runs once per PowerShell
+# session (idempotent — re-dot-sourcing is a no-op after success).
+function Assert-GhReady {
+    if ($script:_GhReady) { return }
+
+    # 1. Installed?
+    $cmd = Get-Command gh -ErrorAction SilentlyContinue
+    if (-not $cmd) {
+        throw @'
+copilot-pr-review-loop: prerequisite missing — `gh` CLI is not on PATH.
+
+Install (one of):
+  - winget install --id GitHub.cli           (Windows)
+  - brew install gh                          (macOS)
+  - sudo apt install gh                      (Debian/Ubuntu — see https://cli.github.com for other distros)
+  - https://cli.github.com/                  (universal installer + download)
+
+Then `gh auth login` and re-run this command.
+'@
+    }
+
+    # 2. Authenticated? `gh auth status` exits non-zero when no account is
+    # logged in. Use raw call (not Invoke-Gh) so we don't recurse into the
+    # ready-check.
+    $errFile = [IO.Path]::GetTempFileName()
+    try {
+        $null = & gh auth status 2>$errFile
+        $ec = $LASTEXITCODE
+        if ($ec -ne 0) {
+            $err = ''
+            if ([System.IO.File]::Exists($errFile)) {
+                $err = [System.IO.File]::ReadAllText($errFile).Trim()
+            }
+            throw @"
+copilot-pr-review-loop: prerequisite missing — ``gh`` CLI is not authenticated.
+
+Run:
+  gh auth login
+
+Then re-run this command. (``gh auth status`` reported:
+  $err)
+"@
+        }
+    } finally {
+        if ([System.IO.File]::Exists($errFile)) {
+            [System.IO.File]::Delete($errFile)
+        }
+    }
+
+    $script:_GhReady = $true
+}
 
 # Single-invocation gh wrapper. Captures stdout + stderr separately (via
 # temp file) and returns ExitCode/Stdout/Stderr so callers never have to
@@ -63,3 +120,6 @@ function Resolve-RepoCoords {
         Repo  = if ($Repo)  { $Repo }  else { $info.name }
     }
 }
+
+# Run the prerequisite check as a side-effect of dot-sourcing.
+Assert-GhReady

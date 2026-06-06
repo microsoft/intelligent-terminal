@@ -28,22 +28,30 @@ has `gh` CLI authenticated and Copilot Code Review is enabled.
 
 ## Prerequisites
 
-- `gh` CLI authenticated against the target repository.
+- `gh` CLI installed and authenticated against the target repository.
 - PowerShell 7+ (`pwsh`) on PATH for the bundled scripts.
 - The repository must have Copilot Code Review enabled (repo or
   account-level Copilot Pro/Pro+); if not, the trigger step will
   cleanly throw and the loop cannot proceed.
 
+Every script dot-sources [scripts/_lib.ps1](scripts/_lib.ps1) which
+runs `Assert-GhReady` on load: if `gh` is missing OR `gh auth status`
+fails, the script halts **before any work** with a single actionable
+error message naming the install command and `gh auth login`. The
+agent should surface that message to the user verbatim and stop the
+loop — do not retry or work around it.
+
 ## Step-by-Step Workflow
 
 Ten steps per round. Steps are coordinated by the parent agent and
 **every substantive step is delegated to a fresh sub-agent with a
-≤5-minute budget**, so the parent never blocks on long-running work
-and each step gets a clean context. Sub-agents must summarize and
-return before their budget expires; the parent extends via
-`write_agent` when needed. Full procedure, per-step budgets, return
-contracts, and the extension protocol live in
-[references/workflow.md](references/workflow.md).
+bounded budget** (default ≤5 min; per-step exceptions in the
+delegation table in [references/workflow.md](references/workflow.md)),
+so the parent never blocks on long-running work and each step gets a
+clean context. Sub-agents must summarize and return before their
+budget expires; the parent extends via `write_agent` when needed.
+Full procedure, per-step budgets, return contracts, and the extension
+protocol live in [references/workflow.md](references/workflow.md).
 
 ```
 Request review → Wait for review (sub-agent) → List + categorize open
@@ -120,6 +128,8 @@ message.
 
 | Issue | Solution |
 |-------|----------|
+| Script throws `prerequisite missing — gh CLI is not on PATH` | Install `gh` (`winget install GitHub.cli` on Windows; `brew install gh` on macOS; package manager on Linux; or download from https://cli.github.com). Then `gh auth login`. Surface the message to the user and STOP the loop — do not retry. |
+| Script throws `prerequisite missing — gh CLI is not authenticated` | Run `gh auth login`. STOP the loop until the user completes auth. |
 | Trigger fails or no `copilot_work_started` event lands | Push a substantive (non-whitespace) commit — auto-assign on `synchronize` is the most reliable trigger. Persistent failure indicates Copilot Code Review may not be enabled on the repo / account (check repo Settings → Code & automation → Copilot, or account-level Copilot Pro/Pro+). |
 | No new review after waiting ~10 min | Quiet-period after recent dismissal or trivial-diff suppression. Push a substantive commit and retry. Do not blindly re-run `01-request-review.ps1` — it reports `InFlight` while Copilot is still a requested reviewer. |
 | Outdated-but-unresolved threads in the open list | Expected: unresolved state is the source of truth. Reply + resolve them like any other open thread. `09-cleanup-outdated.ps1` is only a final safety net. |

@@ -34,11 +34,9 @@ Three GraphQL traps:
    'Copilot'`.
 
 Verify success via a new `copilot_work_started` event in the issue
-timeline — HTTP 200 / exit 0 alone is not sufficient; the server can
-silently drop a request (quiet-period after dismissal, trivial-diff
-suppression, repo without Copilot enabled). `01-request-review.ps1`
-enforces this by comparing the event `id` (monotonic) before and
-after the trigger.
+timeline (see SKILL.md Gotchas "HTTP 200 / exit 0 is NOT proof").
+`01-request-review.ps1` enforces this by comparing the event `id`
+(monotonic) before and after the trigger.
 
 ### Other trigger paths — DO NOT USE
 
@@ -49,9 +47,8 @@ after the trigger.
   dropping the bot. Not used by the script.
 - **`gh pr edit --add-reviewer Copilot`** → returns `'Copilot' not
   found` on current `gh`. Not used by the script.
-- **`@copilot` PR comment** → summons the Copilot **Coding Agent**
-  (which makes commits), NOT the reviewer bot. Never produces a
-  code review.
+- **`@copilot` PR comment** → see SKILL.md Gotchas (summons the
+  Coding Agent, not the reviewer bot).
 
 ## GraphQL `latestReviews` — stale cache, do NOT use
 
