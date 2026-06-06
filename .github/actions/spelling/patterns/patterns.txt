@@ -325,8 +325,5 @@ env_remove\("[A-Z_]+"\)
 \b__IT_SHELLINTEG_[A-Z_]+\b
 \b__it_[a-z_]+\b
 
-# bash terminology referenced in shell-integration script comments (`set -u` / nounset)
-\bnounset\b
-
 # test fixture in ShellIntegrationTests.cpp — synthetic exe leaf used to test lookalike-rejection (pwsh + 'ell' suffix)
 \bpwshell\b

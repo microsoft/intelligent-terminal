@@ -22,7 +22,7 @@
 //     don't have IT installed, or to non-bash shells that happen to
 //     source .bashrc.
 //   • Every variable read in the script body uses ${VAR:-} defaulting
-//     so it sources cleanly even when the user has `set -u` (nounset).
+//     so it sources cleanly even when the user has `set -u` earlier.
 //
 // WSL bash uses this same flavor — see WslShellIntegration.h. Per-distro
 // installation just resolves the in-distro $HOME and writes via the
@@ -92,7 +92,7 @@ namespace Microsoft::Terminal::ShellIntegration::Bash
 # Compatible with bash 3.2+. Safe to source multiple times.
 # Silently no-ops in non-interactive shells and non-bash shells.
 # Every variable read uses ${VAR:-} defaulting so the script is safe
-# even when the user has `set -u` (nounset) earlier in their .bashrc.
+# even when the user has `set -u` earlier in their .bashrc.
 
 # Guard: bash only, interactive only, idempotent.
 [ -z "${BASH_VERSION:-}" ] && return 0 2>/dev/null
@@ -140,7 +140,7 @@ PROMPT_COMMAND=__it_shellinteg_prompt
 # Append OSC 133;B (command-input start) to PS1, AFTER the user prompt
 # expands. The \[ \] brackets tell readline these bytes are zero-width
 # so line-wrap math stays correct. The case guard makes re-sourcing
-# idempotent. ${PS1:-} defaulting handles the rare nounset case.
+# idempotent. ${PS1:-} defaulting handles the rare `set -u` case.
 __it_shellinteg_b=$'\033]133;B\007'
 case "${PS1:-}" in
     *"$__it_shellinteg_b"*) ;;

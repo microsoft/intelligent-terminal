@@ -1003,7 +1003,7 @@ void ShellIntegrationTests::Bash_ScriptContent_HasIdempotencyGuardAndOscSequence
     VERIFY_IS_TRUE(_Contains(script, "__IT_SHELLINTEG_USER_PC"));
     // Preserves $? for that user hook so its `local ec=$?` still works.
     VERIFY_IS_TRUE(_Contains(script, "(exit \"$__ec\")"));
-    // `set -u` (nounset) safety: every variable that might be unset
+    // `set -u` safety: every variable that might be unset
     // BEFORE we touch it must use ${VAR:-} defaulting. A user with
     // `set -u` earlier in .bashrc must not see "unbound variable" noise
     // from sourcing our script.

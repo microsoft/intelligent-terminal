@@ -137,7 +137,7 @@ The installer discovers WSL distros by iterating `_settings.AllProfiles()` and f
 
 ### `set -u` / strict bash mode
 
-The installed bash block uses `${VAR:-}` defaulting throughout (e.g. `${PROMPT_COMMAND:-}`, `${BASH_VERSION:-}`), so it's safe under `set -u` (`set -o nounset`). If you've added `set -u` to your `.bashrc` ABOVE the integration block and a prior `PROMPT_COMMAND` was undefined, the integration still works — earlier versions would have errored here.
+The installed bash block uses `${VAR:-}` defaulting throughout (e.g. `${PROMPT_COMMAND:-}`, `${BASH_VERSION:-}`), so it's safe under `set -u`. If you've added `set -u` to your `.bashrc` ABOVE the integration block and a prior `PROMPT_COMMAND` was undefined, the integration still works — earlier versions would have errored here.
 
 ### Multiple PowerShell versions
 
