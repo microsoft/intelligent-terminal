@@ -31,4 +31,4 @@ jobs:
           $wingetPackage = "Microsoft.IntelligentTerminal"
 
           & curl.exe -JLO https://aka.ms/wingetcreate/latest
-          & .\wingetcreate.exe update $wingetPackage -s -v $version -u $wingetRelevantAsset.browser_download_url
+          & .\wingetcreate.exe        $wingetPackage -s -v $version -u $wingetRelevantAsset.browser_download_url
