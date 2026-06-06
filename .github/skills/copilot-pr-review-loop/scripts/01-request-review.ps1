@@ -1,48 +1,25 @@
 <#
 .SYNOPSIS
-    Ensure Copilot is reviewing the PR. Single job, single mechanism.
+    Request a Copilot review on a PR and verify the trigger landed.
 
 .DESCRIPTION
-    ONE job: request Copilot review and verify the trigger landed.
+    Single mechanism: GraphQL `requestReviewsByLogin` with
+    `botLogins:["copilot-pull-request-reviewer"]`. See
+    references/api-quirks.md for the GraphQL traps and the
+    "@copilot mention is the Coding Agent, not the reviewer" pitfall.
 
-    Single mechanism (no fallbacks — empirically the most reliable):
-    GraphQL `requestReviewsByLogin` with
-    `botLogins:["copilot-pull-request-reviewer"]`. If this fails, the
-    script throws — the caller knows to push a substantive commit and
-    retry, NOT to combine more "best-effort" mechanisms that lie about
-    success.
+    Success contract (exit 0, single-line JSON):
+      - Status="InFlight"      — Copilot already a requested reviewer.
+      - Status="TriggerLanded" — mutation submitted and verified via a
+                                 new `copilot_work_started` event id.
 
-    Success contract (exit 0, JSON):
-      - Status="InFlight" — Copilot is currently a requested reviewer
-        on the PR. Nothing to do; caller waits.
-      - Status="TriggerLanded" — the script just triggered and
-        verified the copilot_work_started event landed.
+    Failure (throw, exit 1): mutation failed, or no new event landed
+    within -VerifySeconds. Caller should push a substantive commit and
+    retry (auto-assign on `synchronize` is the most reliable fallback).
 
-    Failure contract (throw, exit 1):
-      - GraphQL mutation failed, OR no copilot_work_started event
-        landed within the verification window. Caller should push a
-        substantive commit (auto-assign on synchronize is the most
-        reliable trigger).
-
-    Three GraphQL traps documented in api-quirks.md (took ~2h to find):
-      - Mutation is `requestReviewsByLogin` (NOT `requestReviews`)
-      - Field is `botLogins` (NOT `userLogins`)
-      - Slug is `copilot-pull-request-reviewer` (NOT `Copilot`)
-
-    DO NOT post `@copilot` PR comments — summons the Coding Agent.
-
-.PARAMETER PrNumber
-    PR number. The only required parameter.
-
-.PARAMETER Owner
-    Optional — auto-resolved from `gh repo view`.
-
-.PARAMETER Repo
-    Optional — auto-resolved from `gh repo view`.
-
-.PARAMETER VerifySeconds
-    Seconds to wait for copilot_work_started event after triggering.
-    Default 30. This is a verification poll, NOT a wait-for-review.
+.PARAMETER PrNumber       PR number (required).
+.PARAMETER Owner / .PARAMETER Repo   Optional; auto-resolved from `gh repo view`.
+.PARAMETER VerifySeconds  Verification poll window (1..600, default 30).
 
 .EXAMPLE
     pwsh 01-request-review.ps1 -PrNumber 236
@@ -60,32 +37,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-
-# Single-call helper: capture stdout + stderr separately in one invocation
-# so we never re-run gh just to recover stderr on failure, and never feed
-# stderr into ConvertFrom-Json on success.
-function Invoke-Gh {
-    param([Parameter(Mandatory)][string[]]$GhArgs)
-
-    $psi = [System.Diagnostics.ProcessStartInfo]::new('gh')
-    foreach ($arg in $GhArgs) { $null = $psi.ArgumentList.Add($arg) }
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    try {
-        $outTask = $proc.StandardOutput.ReadToEndAsync()
-        $errTask = $proc.StandardError.ReadToEndAsync()
-        $proc.WaitForExit()
-        [pscustomobject]@{
-            ExitCode = $proc.ExitCode
-            Stdout   = $outTask.GetAwaiter().GetResult()
-            Stderr   = $errTask.GetAwaiter().GetResult()
-        }
-    } finally {
-        $proc.Dispose()
-    }
-}
+. "$PSScriptRoot/_lib.ps1"
 
 function Get-LatestCopilotWorkStartedEvent {
     $eventsPath = "repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100"
@@ -119,13 +71,9 @@ function Get-LatestCopilotWorkStartedEvent {
 
 # ---------- repo resolve ----------
 
-if (-not $Owner -or -not $Repo) {
-    $r = Invoke-Gh -GhArgs @('repo','view','--json','owner,name')
-    if ($r.ExitCode -ne 0) { throw "gh repo view failed: $($r.Stderr)" }
-    $repoInfo = $r.Stdout | ConvertFrom-Json
-    if (-not $Owner) { $Owner = $repoInfo.owner.login }
-    if (-not $Repo)  { $Repo  = $repoInfo.name }
-}
+$coords = Resolve-RepoCoords -Owner $Owner -Repo $Repo
+$Owner = $coords.Owner
+$Repo  = $coords.Repo
 
 # ---------- state: is Copilot currently requested? ----------
 # Single GraphQL query: requested reviewers + head SHA, followed by

@@ -1,30 +1,10 @@
 # GitHub API Quirks (Verified)
 
-These are the API behaviors that matter for the Copilot review loop. They
-have all been verified empirically against the current API surface — read
-this before reaching for an alternative API.
+API behaviors that matter for the Copilot review loop. All verified
+against the current API surface — read this before reaching for an
+alternative API or modifying the bundled scripts.
 
-## ❌ GraphQL `requestReviews` with `botLogins` — REJECTED
-
-```graphql
-mutation {
-  requestReviews(input: {
-    pullRequestId: "PR_xxx",
-    botLogins: ["copilot-pull-request-reviewer"]
-  }) { ... }
-}
-```
-
-Returns:
-
-> InputObject 'RequestReviewsInput' doesn't accept argument 'botLogins'
-
-The `botLogins` argument is not accepted by `RequestReviewsInput` on the
-`requestReviews` mutation. Do not waste time trying variants of that mutation.
-The previous GraphQL bot-id approach (`BOT_kg...`) also returns `NOT_FOUND`
-for the Copilot reviewer.
-
-## ✅ GraphQL `requestReviewsByLogin` with `botLogins` — PRIMARY trigger
+## GraphQL trigger — `requestReviewsByLogin` is the supported path
 
 ```graphql
 mutation($p: ID!) {
@@ -37,99 +17,64 @@ mutation($p: ID!) {
 }
 ```
 
-**This is the most reliable trigger** — verified empirically against
-personal repos without Copilot Pro AND org repos with Copilot
-Enterprise (2026-06-05). Works for both initial-add and re-request
-(no special re-request mutation needed).
+Verified empirically against personal repos without Copilot Pro AND
+org repos with Copilot Enterprise. Works for both initial-add and
+re-request (no special re-request mutation).
 
-Three traps that cost us ~2 hours of session time before discovery:
-1. Mutation is `requestReviewsByLogin`, NOT `requestReviews`. The
-   latter's `RequestReviewsInput` no longer exposes a `botLogins`
-   field, so it can't request a bot reviewer — `botLogins` lives
-   only on `requestReviewsByLogin`, where it's the whole point.
-2. Field is `botLogins`, NOT `userLogins`. The userLogins field
-   returns `Could not resolve user with login 'Copilot'` for the bot.
-3. Slug is `copilot-pull-request-reviewer` (the App slug). The
-   display login `Copilot` returns `Could not resolve bot with slug 'Copilot'`.
+Three GraphQL traps:
 
-Verify success via `copilot_work_started` event in the issue timeline.
-HTTP success / exit 0 alone is not sufficient — GraphQL can return
-HTTP 200 with a non-error response while the bot is silently dropped
-in some edge cases.
+1. Mutation is **`requestReviewsByLogin`**, NOT `requestReviews`.
+   `RequestReviewsInput` (used by `requestReviews`) does not expose a
+   `botLogins` field, so it can't request a bot reviewer at all —
+   `botLogins` is the central field on `requestReviewsByLogin`.
+2. Field is **`botLogins`**, NOT `userLogins`. The latter returns
+   `Could not resolve user with login 'Copilot'`.
+3. Slug is **`copilot-pull-request-reviewer`** (the App slug). The
+   display login `Copilot` returns `Could not resolve bot with slug
+   'Copilot'`.
 
-## ⚠️ REST `requested_reviewers` with `reviewers[]=Copilot` — historical fallback only
+Verify success via a new `copilot_work_started` event in the issue
+timeline — HTTP 200 / exit 0 alone is not sufficient; the server can
+silently drop a request (quiet-period after dismissal, trivial-diff
+suppression, repo without Copilot enabled). `01-request-review.ps1`
+enforces this by comparing the event `id` (monotonic) before and
+after the trigger.
 
-```bash
-gh api -X POST /repos/<owner>/<repo>/pulls/<n>/requested_reviewers \
-    -f 'reviewers[]=Copilot'
-```
+### Other trigger paths — DO NOT USE
 
-Not used by the current `01-request-review.ps1` supported path, which stays
-GraphQL-only for reliability. If manually experimenting, use `-f` (not `-F`)
-so `Copilot` is sent as a string. Capital "C" is required; the bot login
-`copilot-pull-request-reviewer` returns HTTP 422 here because bots are not
-collaborators of this endpoint's view.
+- **`requestReviews` with `botLogins`** → input type rejects the
+  field. Don't try variants.
+- **REST `POST /pulls/<n>/requested_reviewers` with
+  `reviewers[]=Copilot`** → can return HTTP 201 while silently
+  dropping the bot. Not used by the script.
+- **`gh pr edit --add-reviewer Copilot`** → returns `'Copilot' not
+  found` on current `gh`. Not used by the script.
+- **`@copilot` PR comment** → summons the Copilot **Coding Agent**
+  (which makes commits), NOT the reviewer bot. Never produces a
+  code review.
 
-Caveats:
-
-- The endpoint can return HTTP 201 success while **silently dropping**
-  the Copilot bot from `requested_reviewers`. Always verify by reading
-  the POST response body's `requested_reviewers` field AND/OR polling
-  the endpoint for ~10s. Server-side drops have been observed
-  immediately after a `review_request_removed` event (quiet-period
-  after dismissal), when Copilot Code Review is not enabled on the
-  repo, and for some private user-owned repos without a Copilot
-  subscription.
-- HTTP success is NOT sufficient — wait for a `copilot_work_started`
-  event in the issue timeline to confirm the bot actually picked up
-  the work. That is the only authoritative signal.
-
-(Previous editions called this "currently the most reliable trigger".
-That changed with the discovery of `requestReviewsByLogin` — REST POST is
-now only a documented historical fallback, not the supported script path.)
-
-## ⚠️ `gh pr edit --add-reviewer Copilot` — historical last-ditch fallback
-
-```bash
-gh pr edit <pr-number> --add-reviewer Copilot
-```
-
-Behavior is inconsistent across `gh` CLI versions and account types.
-On current `gh` (verified against intelligent-terminal and personal
-repos), this returns:
-
-> 'Copilot' not found
-> exit 1
-
-for both `Copilot` and `copilot-pull-request-reviewer`. Older versions
-and some account configurations may succeed. The current supported script path
-does not call this; keep it only as historical context for manual debugging,
-never as the primary path.
-
-## ⚠️ GraphQL `latestReviews` — stale cache, do NOT use for convergence
+## GraphQL `latestReviews` — stale cache, do NOT use
 
 ```graphql
-# DO NOT USE — stale cache behavior:
-pullRequest(number:$pr){ latestReviews(first:50){ nodes{ ... } } }
+# DO NOT — stale projection:
+pullRequest(number:$pr){ latestReviews(first:50){ nodes{...} } }
 
 # USE INSTEAD — always current:
-pullRequest(number:$pr){ reviews(last:100){ nodes{ ... } } }
+pullRequest(number:$pr){ reviews(last:100){ nodes{...} } }
 ```
 
-Empirically (2026-06-05), `latestReviews` is a "latest per user"
-projection that exhibits stale-cache behavior — a fresh Copilot review
-can be absent from `latestReviews` for several minutes after submission
-while the standard `reviews` connection (and REST `/reviews`) reflects
-it immediately. Using `latestReviews` for the in-flight check or
-convergence verification causes the script to operate against an
-obsolete commit OID — either falsely declaring convergence on the
-wrong commit or timing out waiting for a review that already exists.
+`latestReviews` is a "latest per user" projection with stale-cache
+behavior: a fresh Copilot review can be absent for several minutes
+after submission, while `reviews(last:100)` reflects it immediately.
+Using `latestReviews` for in-flight or convergence checks causes the
+script to operate on an obsolete commit OID — either falsely
+declaring convergence or timing out for a review that already
+exists.
 
-`02-check-review-status.ps1` uses `reviews(last:100)` filtered to Copilot,
-never `latestReviews`. `01-request-review.ps1` does not need reviews for its
-trigger-only contract.
+`02-check-review-status.ps1` uses `reviews(last:100)` filtered
+client-side to the Copilot reviewer login.
 
-## ✅ GraphQL `addPullRequestReviewThreadReply` + `resolveReviewThread` — WORKS
+## Reply + resolve mutations — both work
 
 ```graphql
 mutation($tid: ID!, $body: String!) {
@@ -146,72 +91,43 @@ mutation($tid: ID!) {
 }
 ```
 
-Both return successfully against the current API.
+## `isOutdated` ≠ `isResolved` — current unresolved state is truth
 
-## ⚠️ Review latency — not improved by polling faster
-
-Copilot reviews typically post 3–6 minutes after the request, occasionally
-up to ~10 minutes. There is no progress signal on the in-flight review,
-and polling more often than every ~3 minutes wastes API budget without
-making the review arrive sooner.
-
-## ⚠️ `isOutdated` ≠ `isResolved` — unresolved state is the source of truth
-
-A review thread can be `isOutdated: true` (Copilot's comment points at
-lines that have since changed) while still `isResolved: false`. These
+A thread can be `isOutdated: true` (Copilot's comment points at lines
+that have since changed) while still `isResolved: false`. These
 threads:
 
-- **Still need a reply + resolve in the per-round loop.** A thread can
-  start out actionable when Copilot posts it and BECOME outdated
-  mid-round when your own fix shifts the cited lines. Filtering on
-  `!isOutdated` would silently drop those threads from the per-round
-  triage, leaving the PR's open-conversations list non-empty even
+- Still need reply + resolve in the per-round loop. A thread can
+  become outdated mid-round when your own fix shifts the cited
+  lines. Filtering on `!isOutdated` would silently drop those
+  threads, leaving the PR's open-conversations list non-empty even
   after the underlying code is fixed.
-- `scripts/02-list-open-threads.ps1` therefore lists every unresolved
-  thread with no `isOutdated` filter and no body truncation.
-- `scripts/09-cleanup-outdated.ps1` remains a safety net for the rare
-  case where an outdated thread slips past the per-round loop entirely
-  (e.g. it became outdated only AFTER your last `02-list-open-threads`
-  fetch). Most loops should reach convergence with nothing for step 9
-  to do.
+- `02-list-open-threads.ps1` therefore lists every unresolved
+  thread with no `isOutdated` filter.
+- `09-cleanup-outdated.ps1` is a safety net only — for the rare
+  case where a thread becomes outdated AFTER your last per-round
+  fetch.
 
-## ⚠️ The "no new comments" review is not enough to declare convergence
+## Review latency — don't poll faster than ~3 min
 
-A Copilot review summary that says *"generated no new comments"* is
-necessary but not sufficient. You also need the open-thread list (every
-`!isResolved` thread, regardless of whether GitHub marks the cited diff
-line outdated) to be empty. Otherwise, an unresolved thread from an
-earlier round will keep the PR in review-pending state.
+Copilot reviews typically post 3–6 minutes after the request,
+occasionally up to ~10 minutes. There is no progress signal;
+polling more often than every ~3 min wastes API budget without
+making the review arrive sooner.
 
-## ⚠️ `git stash push` argument order gotcha
-
-This works:
-
-```bash
-git stash push -m "local-build" -- src/path/a src/path/b
-```
-
-This silently does NOT honor the `-m`:
-
-```bash
-git stash push -- src/path/a src/path/b -m "local-build"
-```
-
-The `-m` MUST come before the `--` path separator.
-
-## ⚠️ `gh api graphql -F` coerces strings — use `-f` for `String!` variables
+## `gh api graphql -F` coerces strings — use `-f` for `String!`
 
 The `gh` CLI distinguishes its two flag forms:
 
-- `-F key=value` does **type inference** — a value that parses as int, bool, or null is sent as that JSON literal.
-- `-f key=value` always sends the value as a raw string.
+- `-F key=value` — type inference. Values parsing as int, bool, or
+  null are sent as that JSON literal.
+- `-f key=value` — always sends as raw string.
 
-For any GraphQL variable declared `String!` (e.g. `owner`, `repo`, `body`,
-`tid`, `after`), use `-f`. A reply body that happens to be `"true"`,
-`"null"`, or all digits will otherwise be silently coerced and the call
-fails because the receiver expects a string.
-
-Keep `-F` only for genuinely numeric or boolean variables (e.g. `pr: Int!`).
+For any GraphQL variable declared `String!` (e.g. `owner`, `repo`,
+`body`, `tid`, `after`), use **`-f`**. A reply body that happens to
+be `"true"`, `"null"`, or all digits would otherwise be coerced and
+the call fails with a type error. Keep `-F` only for genuinely
+numeric or boolean variables (e.g. `pr: Int!`).
 
 ```powershell
 # Wrong — body could be coerced
@@ -221,47 +137,28 @@ gh api graphql -f query=$q -F body=$Body
 gh api graphql -f query=$q -f body=$Body
 ```
 
+## Native `gh` exit codes bypass `$ErrorActionPreference`
 
-## ⚠️ Native `gh` exit codes bypass `$ErrorActionPreference`
+`gh` is a native executable, not a PowerShell cmdlet, so a non-zero
+exit does **not** throw even when `$ErrorActionPreference = 'Stop'`.
+Without an explicit check the script will print misleading success
+messages after a failed API call, and the loop will falsely declare
+convergence on auth issues, rate limits, or transient 5xx.
 
-`gh` (and any other native executable) is **not** a PowerShell cmdlet, so
-a non-zero exit code does **not** throw even when
-`$ErrorActionPreference = 'Stop'` is set. Without an explicit check the
-script will print misleading success messages (`"Replied to thread X"`,
-`"Resolved Y"`) after a failed API call, and the loop will falsely
-declare convergence on auth issues, rate limits, or transient 5xx.
+Additional trap: `gh api graphql` can exit 0 for an HTTP 200 whose
+JSON body carries a top-level `errors` array. Treat that as a failed
+call too.
 
-GraphQL has an additional trap: `gh api graphql` can exit 0 for an HTTP 200
-response whose JSON body contains a top-level `errors` array. Treat that as a
-failed call too.
+The shared helpers in [scripts/_lib.ps1](../scripts/_lib.ps1)
+(`Invoke-Gh` and `Invoke-GhGraphQL`) check both `$LASTEXITCODE` and
+the GraphQL `errors` array; all bundled scripts dot-source `_lib.ps1`
+and use these wrappers — do the same in any new script.
 
-Pattern — wrap every `gh api graphql` call, check the native exit code, then
-parse stdout and check `$data.errors` before printing success:
+## `git stash push` argument order
 
-```powershell
-function Invoke-GhGraphQL {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$Args,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Context
-    )
-
-    $json = gh api graphql @Args
-    if ($LASTEXITCODE -ne 0) {
-        throw "gh api graphql failed (exit $LASTEXITCODE) [$Context]."
-    }
-
-    $data = $json | ConvertFrom-Json
-    if ($data.errors) {
-        $msgs = ($data.errors | ForEach-Object { $_.message }) -join '; '
-        throw "GraphQL errors [$Context]: $msgs"
-    }
-
-    return $data
-}
+```bash
+git stash push -m "local-build" -- src/path/a src/path/b   # correct
+git stash push -- src/path/a src/path/b -m "local-build"   # SILENTLY drops -m
 ```
 
-For non-GraphQL `gh` commands (`gh pr edit`, `gh pr view`, etc.), still check
-`$LASTEXITCODE` immediately after each call.
+The `-m` MUST come before the `--` path separator.

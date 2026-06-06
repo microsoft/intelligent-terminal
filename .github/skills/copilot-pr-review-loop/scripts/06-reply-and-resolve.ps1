@@ -42,29 +42,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-
-function Invoke-GhGraphQL {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$Args,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Context
-    )
-
-    $json = gh api graphql @Args
-    if ($LASTEXITCODE -ne 0) {
-        throw "gh api graphql failed (exit $LASTEXITCODE) [$Context]."
-    }
-
-    $data = $json | ConvertFrom-Json
-    if ($data.errors) {
-        $msgs = ($data.errors | ForEach-Object { $_.message }) -join '; '
-        throw "GraphQL errors [$Context]: $msgs"
-    }
-
-    return $data
-}
+. "$PSScriptRoot/_lib.ps1"
 
 $replyMutation = @'
 mutation($tid: ID!, $body: String!) {
@@ -78,7 +56,7 @@ mutation($tid: ID!, $body: String!) {
 '@
 
 $replyArgs = @('-f', "query=$replyMutation", '-f', "tid=$ThreadId", '-f', "body=$Body")
-Invoke-GhGraphQL -Args $replyArgs -Context "reply to thread $ThreadId" | Out-Null
+Invoke-GhGraphQL -GhArgs $replyArgs -Context "reply to thread $ThreadId" | Out-Null
 Write-Output "Replied to thread $ThreadId"
 
 if (-not $NoResolve) {
@@ -90,6 +68,6 @@ mutation($tid: ID!) {
 }
 '@
     $resolveArgs = @('-f', "query=$resolveMutation", '-f', "tid=$ThreadId")
-    Invoke-GhGraphQL -Args $resolveArgs -Context "resolve thread $ThreadId" | Out-Null
+    Invoke-GhGraphQL -GhArgs $resolveArgs -Context "resolve thread $ThreadId" | Out-Null
     Write-Output "Resolved thread $ThreadId"
 }

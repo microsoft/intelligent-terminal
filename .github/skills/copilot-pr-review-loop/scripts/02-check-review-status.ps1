@@ -55,42 +55,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/_lib.ps1"
 
-# Single-call helper: capture stdout + stderr separately so we never
-# re-invoke gh just to recover stderr on failure, and never feed stderr
-# into ConvertFrom-Json on success.
-function Invoke-Gh {
-    param([Parameter(Mandatory)][string[]]$GhArgs)
-
-    $psi = [System.Diagnostics.ProcessStartInfo]::new('gh')
-    foreach ($arg in $GhArgs) { $null = $psi.ArgumentList.Add($arg) }
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    try {
-        $outTask = $proc.StandardOutput.ReadToEndAsync()
-        $errTask = $proc.StandardError.ReadToEndAsync()
-        $proc.WaitForExit()
-        [pscustomobject]@{
-            ExitCode = $proc.ExitCode
-            Stdout   = $outTask.GetAwaiter().GetResult()
-            Stderr   = $errTask.GetAwaiter().GetResult()
-        }
-    } finally {
-        $proc.Dispose()
-    }
-}
-
-if (-not $Owner -or -not $Repo) {
-    $r = Invoke-Gh -GhArgs @('repo','view','--json','owner,name')
-    if ($r.ExitCode -ne 0) {
-        throw "gh repo view failed. Pass -Owner and -Repo explicitly. Error: $($r.Stderr)"
-    }
-    $repoInfo = $r.Stdout | ConvertFrom-Json
-    if (-not $Owner) { $Owner = $repoInfo.owner.login }
-    if (-not $Repo)  { $Repo  = $repoInfo.name }
-}
+$coords = Resolve-RepoCoords -Owner $Owner -Repo $Repo
+$Owner = $coords.Owner
+$Repo  = $coords.Repo
 
 # Query A (once): PR head/state/reviews. Reviews are not paginated
 # here — `reviews(last:100)` is the most recent 100 reviews, sufficient

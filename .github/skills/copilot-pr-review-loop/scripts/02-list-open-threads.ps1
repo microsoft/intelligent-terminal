@@ -1,31 +1,23 @@
 <#
 .SYNOPSIS
-    List unresolved review threads on a pull request.
+    List unresolved review threads on a pull request (all reviewers).
 
 .DESCRIPTION
-    Fetches review threads via the GraphQL API and prints every thread
-    that is still `isResolved: false`. There is intentionally no body
-    truncation and no secondary filter: the current unresolved thread
-    state is the source of truth for convergence.
+    Fetches review threads via GraphQL (paginated) and prints every
+    thread that is still `isResolved: false`. Threads from all reviewers
+    (Copilot, humans, other bots) are included; the triage step decides
+    what to do with each.
 
-    Threads from all reviewers (Copilot, humans, other bots) are
-    included; the loop's triage step decides what to do with each.
+    Each thread's `comments(first:1)` is the originating review comment
+    — that's where `path`, `line`, and `body` come from. Reply chains
+    on the same thread are intentionally not surfaced here; this script
+    is the input to triage, not to reading conversation history.
 
-.PARAMETER Owner
-    Repository owner (org or user). Defaults to the current repo's owner
-    (resolved via `gh repo view`).
-
-.PARAMETER Repo
-    Repository name. Defaults to the current repo's name.
-
-.PARAMETER PrNumber
-    The pull request number.
+.PARAMETER Owner / .PARAMETER Repo   Optional; auto-resolved from `gh repo view`.
+.PARAMETER PrNumber                  The pull request number.
 
 .EXAMPLE
     pwsh 02-list-open-threads.ps1 -PrNumber 122
-
-.EXAMPLE
-    pwsh 02-list-open-threads.ps1 -Owner microsoft -Repo intelligent-terminal -PrNumber 122
 #>
 [CmdletBinding()]
 param(
@@ -37,39 +29,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/_lib.ps1"
 
-function Invoke-GhGraphQL {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$Args,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Context
-    )
-
-    $json = gh api graphql @Args
-    if ($LASTEXITCODE -ne 0) {
-        throw "gh api graphql failed (exit $LASTEXITCODE) [$Context]."
-    }
-
-    $data = $json | ConvertFrom-Json
-    if ($data.errors) {
-        $msgs = ($data.errors | ForEach-Object { $_.message }) -join '; '
-        throw "GraphQL errors [$Context]: $msgs"
-    }
-
-    return $data
-}
-
-if (-not $Owner -or -not $Repo) {
-    $repoJson = gh repo view --json owner,name
-    if ($LASTEXITCODE -ne 0) {
-        throw "gh repo view failed (exit $LASTEXITCODE). Pass -Owner and -Repo explicitly or run from inside a gh-detected repo."
-    }
-    $repoInfo = $repoJson | ConvertFrom-Json
-    if (-not $Owner) { $Owner = $repoInfo.owner.login }
-    if (-not $Repo)  { $Repo  = $repoInfo.name }
-}
+$coords = Resolve-RepoCoords -Owner $Owner -Repo $Repo
+$Owner = $coords.Owner
+$Repo  = $coords.Repo
 
 $query = @'
 query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
@@ -102,10 +66,10 @@ query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
 $all = @()
 $after = $null
 do {
-    $args = @('-f', "query=$query", '-f', "owner=$Owner", '-f', "repo=$Repo", '-F', "pr=$PrNumber")
-    if ($after) { $args += @('-f', "after=$after") }
+    $ghArgs = @('-f', "query=$query", '-f', "owner=$Owner", '-f', "repo=$Repo", '-F', "pr=$PrNumber")
+    if ($after) { $ghArgs += @('-f', "after=$after") }
 
-    $data = Invoke-GhGraphQL -Args $args -Context "list threads for $Owner/$Repo PR #$PrNumber"
+    $data = Invoke-GhGraphQL -GhArgs $ghArgs -Context "list threads for $Owner/$Repo PR #$PrNumber"
     $page = $data.data.repository.pullRequest.reviewThreads
     $all += $page.nodes
     $after = $page.pageInfo.endCursor
