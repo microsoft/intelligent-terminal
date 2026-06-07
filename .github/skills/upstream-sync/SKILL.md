@@ -141,7 +141,7 @@ Full rubric, worktree mechanics, PR-body template:
 | `02-compute-pending.ps1` throws "No 'cherry picked from commit' trailer …" | Fork has never used `cherry-pick -x` yet. Run the one-time [First-time sync](./references/recovery-procedures.md#first-time-sync-seeding-the-watermark). |
 | Stuck issue prevents new run | Resolve on the stuck branch, open + merge a PR (keep the trailer, don't squash), then **close the stuck issue**. The next scheduler tick proceeds. |
 | `03-cherry-pick-one.ps1` returns `"skipped-empty"` | Expected for upstream no-op commits and fork-already-applied patches. The loop skips and continues. |
-| Same file conflicts every run | Add it to [`references/03-known-conflicts.md`](./references/03-known-conflicts.md) with the right strategy (`take-upstream`, `take-ours`, `union`). |
+| Same file conflicts every run | Add it to [`references/03-known-conflicts.md`](./references/03-known-conflicts.md) with the right strategy (`take-upstream` or `take-ours`; `union` is reserved and currently escalates instead of auto-resolving). |
 | `gh pr create` returns "Head sha can't be blank" | Step 8 retries 3×. On slow networks, the operator may need a manual second run. |
 
 ## References

@@ -146,7 +146,7 @@ foreach ($sha in $all) {
     $subj = $info[$sha].subject
 
     $targetSha = $null
-    if ($body -match 'This reverts commit ([0-9a-f]{40})\b') {
+    if ($body -match 'This reverts commit ([0-9a-fA-F]{40})\b') {
         $targetSha = $Matches[1]
     } elseif ($subj -match '^Revert "') {
         # Fallback: match by quoted subject, but only against commits
