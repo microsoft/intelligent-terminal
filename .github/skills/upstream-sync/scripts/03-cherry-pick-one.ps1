@@ -49,10 +49,11 @@ function Get-KnownConflicts {
 function Get-ConflictPaths {
     # core.quotepath=off keeps non-ASCII paths in raw UTF-8 so Tier-0
     # path matching against 03-known-conflicts.md works without C-quoting.
+    # PowerShell already streams external-command stdout as string[]
+    # (one element per line), so iterate directly — no -split needed.
     $u = git -c core.quotepath=off diff --name-only --diff-filter=U 2>&1
     if ($LASTEXITCODE -ne 0) { throw "git diff --name-only --diff-filter=U failed: $u" }
-    if (-not $u) { return @() }
-    return @($u -split "`n" | ForEach-Object { $_.TrimEnd("`r") } | Where-Object { $_ })
+    return @($u | ForEach-Object { "$_".TrimEnd("`r") } | Where-Object { $_ })
 }
 
 $result = [ordered] @{
