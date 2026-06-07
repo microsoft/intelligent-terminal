@@ -13,7 +13,11 @@
       - HeadOid           : current PR HEAD SHA
       - State             : PR state (OPEN/CLOSED/MERGED)
       - LatestCopilotReview: {state, submittedAt, commitOid, bodyHead}
-                            or null if Copilot has never reviewed
+                            or null if no Copilot review is present
+                            in the most recent 100 reviews (very long
+                            PRs may have an older Copilot review outside
+                            this window — treat null as "no recent
+                            review", not "never reviewed")
       - ReviewAtHead       : true iff latest Copilot review's commit.oid == HeadOid
       - NoNewComments      : true iff the latest review body matches
                              "generated no new comments" / "generated 0 comments"

@@ -1,10 +1,10 @@
 # Copilot PR Review Loop — Workflow
 
-One round = ten steps. Loop steps 1–9 until convergence; run step 10 once
-when done. The **parent agent coordinates**; every substantive step is
-**delegated to a fresh sub-agent with a ≤5-minute budget**. Sub-agents
-return summary-and-progress before the budget expires so the parent can
-extend (via `write_agent`) or re-scope.
+Each **round** runs steps 1–9; **step 10** is a one-time cleanup
+after convergence. The parent agent coordinates; every substantive
+step is delegated to a fresh sub-agent with a bounded budget.
+Sub-agents return summary-and-progress before the budget expires so
+the parent can extend (via `write_agent`) or re-scope.
 
 Build, test, and lint commands are NOT prescribed here. Every step that
 needs them defers to the target repo's own conventions

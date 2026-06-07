@@ -43,14 +43,15 @@ loop — do not retry or work around it.
 
 ## Step-by-Step Workflow
 
-Ten steps per round. Steps are coordinated by the parent agent and
-**every substantive step is delegated to a fresh sub-agent with a
-bounded budget** (default ≤5 min; per-step exceptions in the
-delegation table in [references/workflow.md](references/workflow.md)),
-so the parent never blocks on long-running work and each step gets a
-clean context. Sub-agents must summarize and return before their
-budget expires; the parent extends via `write_agent` when needed.
-Full procedure, per-step budgets, return contracts, and the extension
+Each round runs steps 1–9; step 10 is a one-time cleanup after
+convergence. Steps are coordinated by the parent agent and **every
+substantive step is delegated to a fresh sub-agent with a bounded
+budget** (default ≤5 min; per-step exceptions in the delegation
+table in [references/workflow.md](references/workflow.md)), so the
+parent never blocks on long-running work and each step gets a clean
+context. Sub-agents must summarize and return before their budget
+expires; the parent extends via `write_agent` when needed. Full
+procedure, per-step budgets, return contracts, and the extension
 protocol live in [references/workflow.md](references/workflow.md).
 
 ```
@@ -115,7 +116,7 @@ message.
   `AGENTS.md`, `CONTRIBUTING.md`, and recent commits to similar
   files. Fan out multiple sub-agents in parallel when several axes
   need checking. Never invent generic answers that contradict repo
-  practice — that's the "elephant in school" antipattern.
+  practice — that's the "elephant in school" anti-pattern.
 - **Don't poll the review state faster than ~3 minutes.** There is
   no progress signal; faster polling only wastes API budget.
 - **Respect repo-specific spell-check / lint / format policies.**
