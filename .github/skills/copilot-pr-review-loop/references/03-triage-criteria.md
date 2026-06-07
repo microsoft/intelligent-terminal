@@ -60,9 +60,14 @@ who can decide it:
 ## Project-specific policy hooks
 
 Some findings are decided by **project policy**, not by general
-correctness reasoning. Before applying a generic "fix", inspect the
-repo's contributing docs, CI config, and recent commits — what looks
-like an obvious fix may violate a project rule:
+correctness reasoning. Before applying a generic "fix", **research
+the repo's own conventions first** — `.github/instructions/*.md`
+files (often have an `applyTo` glob that pins them to the changed
+file's path), `.github/skills/`, `AGENTS.md`, `CONTRIBUTING.md`, CI
+config, and recent commits to similar files. Fan out multiple
+`explore` sub-agents when several axes need checking (lint, format,
+spell-check, license header, etc.) — don't invent answers. What
+looks like an obvious fix may violate a project rule:
 
 - **Spell-check / dictionary findings.** If the project uses a
   spell-checker (`check-spelling`, `cspell`, `typos`, or similar),

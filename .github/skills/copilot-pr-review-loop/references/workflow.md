@@ -35,8 +35,8 @@ the pushed commit SHA.
 | 2 — Wait for review | `general-purpose` | **20 min hard cap**, poll every ~3 min | `02-check-review-status.ps1` JSON + recommendation (`ready` \| `give-up-push-commit`); `ready` iff `LatestCopilotReview.submittedAt > baseline` AND `ReviewAtHead: true` | one bounded sub-agent, not extension-driven; on `give-up-push-commit`, parent falls back to a substantive commit |
 | 3 — List + categorize open threads | `explore` | 5 min | table of `{thread_id, file, line, author, severity, summary}` from `02-list-open-threads.ps1` | classify each row's `author` as `copilot` vs `human-or-bot` so triage can apply the correct policy |
 | 4 — Triage | `general-purpose` | 5 min per ≤5 threads (parent batches if more) | table of `{thread_id, fix \| decline \| escalate-to-user, one-line rationale}` per [03-triage-criteria.md](03-triage-criteria.md) | human / advanced-security threads default to `escalate-to-user` unless the user explicitly scoped them in |
-| 5 — Apply fix (one per finding, parallel **max 5 concurrent**) | `general-purpose` | 5 min each | `{files_touched, one-line summary, status}` | parent merges and reconciles file conflicts before step 6; the 5-cap prevents fix-fanout chaos (overlapping edits, context blowup). If step 3 returned >5 findings, parent runs step 5 in waves of ≤5. |
-| 6 — Build + test per repo conventions | `task` | 10 min | pass/fail + failure excerpts; sub-agent first identifies the repo's build/test commands (`CONTRIBUTING.md`/`AGENTS.md`/`README`/`package.json`/`Makefile`/etc.) then runs them on the changed code | — |
+| 5 — Apply fix (one per finding, parallel **max 5 concurrent**) | `general-purpose` | 5 min each | `{files_touched, one-line summary, status}` | each fix sub-agent **first researches the repo's own conventions** for the area it's editing (`.github/instructions/*.md` matching the file's `applyTo` pattern, `.github/skills/`, `AGENTS.md`, `CONTRIBUTING.md`, neighbor-file patterns) — never invent a generic answer that contradicts repo practice. Parent merges and reconciles file conflicts before step 6; the 5-cap prevents fix-fanout chaos. If step 3 returned >5 findings, parent runs step 5 in waves of ≤5. |
+| 6 — Build + test per repo conventions | `task` (may fan out to several `explore` sub-agents for discovery) | 10 min | pass/fail + failure excerpts; **discovery first** — read `.github/instructions/*.md`, `AGENTS.md`, `CONTRIBUTING.md`, `README.md`, `package.json` scripts, `Makefile`, language tooling, AND recent CI workflow runs to learn the *actual* command set in use; THEN run those exact commands on the changed code | independent discovery axes (build tool / test runner / lint / spelling / format) can run as separate `explore` sub-agents in parallel; cache discovered commands per round |
 | 7 — Commit + push | _(parent)_ | n/a | parent runs `git commit` + `git push` directly | one focused commit per round; record the pushed SHA |
 | 8 — Draft + post replies | `general-purpose` drafts → _(parent)_ posts | draft 5 min | sub-agent returns `{thread_id, reply_body}` per open thread citing the pushed SHA; parent then runs `06-reply-and-resolve.ps1` for each | reply+resolve are mutations; the parent owns mutations |
 | 9 — Convergence verify | `explore` | 3 min | `02-check-review-status.ps1` JSON + independent HEAD-vs-`LatestCopilotReview.commitOid` sanity check | converged iff `Converged: true`; otherwise loop back to step 1 |
@@ -83,15 +83,27 @@ Command snippets assume your current directory is the skill root.
   per thread.
 
 - [ ] **5.** **Apply fixes (sub-agents, parallel — max 5 concurrent,
-  5-min budget each):** one sub-agent per independent fix. Parent
-  collects, reconciles file conflicts, and continues to step 6.
+  5-min budget each):** one sub-agent per independent fix. Each fix
+  sub-agent MUST first research the repo's own conventions for the
+  area it's editing — read `.github/instructions/*.md` files matching
+  the changed file's `applyTo` glob, `.github/skills/` for any
+  relevant skill, `AGENTS.md` / `CONTRIBUTING.md`, and the patterns
+  in neighboring files. If a fix would contradict repo practice,
+  push back in the reply instead of forcing it. Parent collects,
+  reconciles file conflicts, and continues to step 6.
 
-- [ ] **6.** **Build + test per the repo's conventions (sub-agent,
-  10-min budget):** the sub-agent FIRST discovers the repo's
-  build/test commands (`CONTRIBUTING.md`, `AGENTS.md`, `README`,
-  `package.json` scripts, `Makefile`, etc.), THEN runs them on the
-  changed code. Returns pass/fail + failure excerpts. Never push a
-  fix you haven't built and tested with the repo's own commands.
+- [ ] **6.** **Build + test per the repo's conventions (1+
+  sub-agents, 10-min budget total):** **research first, run second.**
+  Discovery sub-agents fan out (parallel `explore`) across the axes
+  the change touches — build tool, test runner, lint, format, spell-
+  check, license-header CI, etc. — by reading
+  `.github/instructions/*.md`, `AGENTS.md`, `CONTRIBUTING.md`,
+  `README`, `package.json` scripts, `Makefile`, language tooling,
+  and recent CI workflow runs. The build/test execution sub-agent
+  then runs exactly the discovered commands on the changed code and
+  returns pass/fail + failure excerpts. Never invent generic build
+  or test commands — if discovery turns up no convention, surface
+  that explicitly rather than guessing.
 
 - [ ] **7.** **Commit + push (parent):** one focused commit per
   round. Include the

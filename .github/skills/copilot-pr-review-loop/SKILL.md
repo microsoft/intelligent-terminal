@@ -109,6 +109,13 @@ message.
 - **Build/test/lint with the repo's own commands** (per its
   `CONTRIBUTING`/`AGENTS`/`README`) before pushing a fix. A broken
   build wastes the next full review cycle (3–10 minutes).
+- **Research the repo's own docs before generating any fix, build,
+  or test command.** Read `.github/instructions/*.md` (often with
+  `applyTo` globs pinning them to specific files), `.github/skills/`,
+  `AGENTS.md`, `CONTRIBUTING.md`, and recent commits to similar
+  files. Fan out multiple sub-agents in parallel when several axes
+  need checking. Never invent generic answers that contradict repo
+  practice — that's the "elephant in school" antipattern.
 - **Don't poll the review state faster than ~3 minutes.** There is
   no progress signal; faster polling only wastes API budget.
 - **Respect repo-specific spell-check / lint / format policies.**
