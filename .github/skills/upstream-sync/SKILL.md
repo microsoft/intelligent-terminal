@@ -49,7 +49,7 @@ the operator can audit in your transcript.
 - **No `state.json` to bootstrap.** Watermark comes from the
   `(cherry picked from commit <sha>)` trailers on `origin/main`. If
   the fork has never used `cherry-pick -x` (or trailers were stripped),
-  see [First-time sync](#first-time-sync) below for the one-time operator step.
+  see [First-time sync](./references/recovery-procedures.md#first-time-sync-seeding-the-watermark) for the one-time operator step.
 
 ## State Model (no state file)
 
@@ -407,99 +407,26 @@ gh pr merge -R microsoft/intelligent-terminal $prUrl --rebase --auto --delete-br
 
 Surface `$prUrl` to the operator. Done.
 
-### Direct-to-main (admin-only escape hatch)
+### Direct-to-main, first-time seed, squash-recovery
 
-If the operator explicitly says "skip the PR, push straight to main": after
-step 7 succeeds, skip step 8 and instead:
-
-```pwsh
-git switch main
-git merge --ff-only $branch
-git push origin main
-git branch -D $branch
-```
-
-This requires bypass-branch-protection rights. No PR, no review checkpoint —
-use only for explicit admin runs.
-
-### First-time sync
-
-If the fork has no `(cherry picked from commit <sha>)` trailer on
-`origin/main` yet, `02-compute-pending.ps1` will throw. To seed,
-the operator commits an **empty seed commit** carrying the trailer
-in its message — the same format `cherry-pick -x` would emit, written
-by hand exactly once:
-
-```pwsh
-git remote add upstream https://github.com/microsoft/terminal.git
-git fetch upstream main --no-tags
-git switch main
-# Pick an upstream SHA you consider "already in this fork" (typically the
-# commit the fork was originally branched from). Write the trailer EXACTLY
-# as cherry-pick -x would so the next sync picks it up.
-$seedSha = '<40-char-upstream-sha-already-in-fork>'
-git commit --allow-empty -m "chore(upstream): seed upstream-sync watermark" -m "(cherry picked from commit $seedSha)"
-git push origin main
-```
-
-That one merged trailer becomes the watermark. From then on, every
-run extends it. No script needed — the bootstrap is just one
-`commit --allow-empty` ever.
-
-### Squash-merge recovery (don't do this, but if you did)
-
-The PR banner shouts "do not squash" and `-AutoMergeStrategy rebase`
-locks in the safe path. If a reviewer squash-merges anyway:
-
-- The squash commit's body usually concatenates every cherry-picked
-  message, so it contains MANY `(cherry picked from commit <sha>)`
-  trailers. The watermark resolver matches the FIRST one it sees,
-  which is the oldest cherry-pick in the squashed batch. That means
-  the watermark moves backward, and the next sync run re-picks
-  everything between the oldest and newest commits of the squashed batch.
-- The recovery is the same as a first-time seed: commit an empty
-  watermark commit on `main` carrying the trailer for the upstream
-  HEAD that was actually merged, and push.
+Off-the-happy-path procedures (admin direct-push, seeding the
+watermark on a fresh fork, recovering from an accidental squash-merge)
+live in [`references/recovery-procedures.md`](./references/recovery-procedures.md).
+The agent does not drive them — each requires an explicit operator
+decision.
 
 ## After-PR review handling — fix-in-PR vs. follow-up PR
 
-Once the sync PR is open, Copilot and human reviewers will leave
-comments. The cherry-pick PR's commits must stay reviewable as
-"per-commit, faithful to upstream + minimal must-merge delta" so the
-reviewer can spot-check each upstream commit was applied correctly.
-That constraint shapes the response policy:
+Once the sync PR is open, reviewers (Copilot + humans) will comment.
+**Only build-blocking fixes** belong on the sync branch as **one**
+focused extra commit. Everything else — code-quality, logic-bug
+suggestions, translation corrections, spelling-allowlist migrations,
+doc nits, design feedback — goes to a **follow-up PR** that targets
+the sync branch (not `main`). The cherry-pick PR must stay reviewable
+as "per-commit, faithful to upstream + minimum must-merge delta".
 
-| Comment type | Where to fix |
-|---|---|
-| **Build-blocking** (compile error, dedup of resw/manifest collisions exposed only at build time, CI gate failure on the sync PR itself) | **One** focused extra commit on the sync branch. The cherry-pick PR is what's broken; the cherry-pick PR is what gets the fix. The build-then-finalize order in this file already lands this commit in the same PR as the picks. |
-| **Everything else** — code-quality findings, logic-bug suggestions, translation corrections, spelling-allowlist migrations, typo fixes, doc nits, design feedback | **Follow-up PR** on top of the cherry-pick PR (see [references/follow-up-pr.md](./references/follow-up-pr.md)) |
-
-**Why split.** A reviewer scanning the cherry-pick PR is auditing
-"did the sync engine faithfully apply the upstream batch?" Mixing
-substantive review feedback into the same PR forces them to mentally
-subtract those commits from every upstream-comparison check. Worse,
-amending or squashing in review fixes destroys the per-commit
-attribution the cherry-pick approach was chosen to preserve.
-
-**Follow-up PR shape** (template in
-[references/follow-up-pr.md](./references/follow-up-pr.md)):
-
-- New worktree + branch `dev/<alias>/sync-<sync-pr-number>-review-fixes`
-  off the sync PR's HEAD.
-- Base = the sync branch (e.g. `upstream-sync/2026-06-04-091512-a3f1` —
-  copy the exact name from the sync PR), **not** `main`. The follow-up
-  rides along with the sync PR.
-- One focused commit per concern (code-bugs / translations /
-  spelling-cleanup / etc.) — same "audit trail per finding" rule as the
-  Copilot PR review loop skill.
-- Reply + resolve every original thread on the sync PR pointing to the
-  follow-up PR number.
-- If the sync PR merges first, rebase the follow-up onto `main` before
-  it merges.
-
-The PR body's banner (see [step 8](#8-finalize-the-pr)) spells this
-policy out to the first reviewer so they don't push back on deferred
-fixes.
+Full rubric, worktree mechanics, and PR-body template:
+[`references/follow-up-pr.md`](./references/follow-up-pr.md).
 
 ## Gotchas
 
@@ -551,7 +478,7 @@ fixes.
 
 | Issue | Solution |
 |---|---|
-| `02-compute-pending.ps1` throws "No 'cherry picked from commit' trailer ..." | The fork has never used `cherry-pick -x` for an upstream commit yet. Run the one-time seeding pick described in [First-time sync](#first-time-sync). |
+| `02-compute-pending.ps1` throws "No 'cherry picked from commit' trailer ..." | The fork has never used `cherry-pick -x` for an upstream commit yet. Run the one-time seeding pick described in [First-time sync](./references/recovery-procedures.md#first-time-sync-seeding-the-watermark). |
 | Stuck issue prevents new run | Resolve the conflict on the stuck branch, open a PR, merge it (keep the `(cherry picked from commit <sha>)` trailer!), then **close the stuck issue**. The next scheduler tick proceeds. |
 | Cherry-pick reports "empty commit" | Expected for upstream no-op commits and for fork-already-applied patches; `03-cherry-pick-one.ps1` returns `"skipped-empty"` and the agent's loop skips it. No action needed. |
 | Same file conflicts every run | Add it to the Tier-0 list in [references/03-known-conflicts.md](./references/03-known-conflicts.md) with the correct resolution strategy (`take-upstream`, `take-ours`, or `union`). |
@@ -561,8 +488,8 @@ fixes.
 
 - [references/03-conflict-triage.md](./references/03-conflict-triage.md) — Tier 0/1/2/3 resolution rubric with examples.
 - [references/03-known-conflicts.md](./references/03-known-conflicts.md) — files that always need a fixed resolution.
-- [references/04-build-verification.md](./references/04-build-verification.md) — try-build pipeline expectations.
 - [references/follow-up-pr.md](./references/follow-up-pr.md) — fix-in-PR vs. follow-up PR rubric and worktree workflow.
+- [references/recovery-procedures.md](./references/recovery-procedures.md) — direct-to-main, first-time seed, squash-merge recovery.
 - [scripts/02-compute-pending.ps1](./scripts/02-compute-pending.ps1) — derive watermark + pending list (no state file).
 - [scripts/03-cherry-pick-one.ps1](./scripts/03-cherry-pick-one.ps1) — cherry-pick one SHA with author/date pinning + Tier-0/Tier-1.
 - [scripts/04-try-build.ps1](./scripts/04-try-build.ps1) — run `bz no_clean`; log to `Generated Files/...`.
