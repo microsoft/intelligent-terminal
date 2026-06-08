@@ -147,14 +147,13 @@ JSON body carries a top-level `errors` array. Treat that as a failed
 call too.
 
 The shared helpers in [scripts/_lib.ps1](../scripts/_lib.ps1)
-(`Invoke-Gh` and `Invoke-GhGraphQL`) run `gh` via
-`System.Diagnostics.ProcessStartInfo` and return the native exit
-code on the result object's `ExitCode` property (NOT via
-`$LASTEXITCODE` — the process-start path bypasses PowerShell's
-native-command machinery). They also parse the GraphQL `errors`
-array on the response body. All bundled scripts dot-source
-`_lib.ps1` and use these wrappers — do the same in any new
-script.
+(`Invoke-Gh` and `Invoke-GhGraphQL`) run `gh` via `& gh @args`
+with stderr redirected to a temp file (`2>$errFile`), then read
+`$LASTEXITCODE` and return `{ExitCode, Stdout, Stderr}`.
+`Invoke-GhGraphQL` additionally parses the GraphQL `errors` array
+on the response body and throws on either failure mode. All
+bundled scripts dot-source `_lib.ps1` and use these wrappers — do
+the same in any new script.
 
 ## `git stash push` argument order
 

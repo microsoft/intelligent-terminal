@@ -59,19 +59,19 @@
          03-list-open-threads.ps1, triage, fix, push, reply, repeat.
 
     Parsing the JSON: timestamps are emitted as plain ISO-8601 UTC
-    strings (e.g. `"2026-06-08T02:02:44Z"`). For PS 7.0–7.2 (or any
-    caller that wants to avoid PowerShell's auto re-binding of ISO
-    strings to `[datetime]` — which renders local culture on string
-    interpolation and breaks lexicographic baseline compares), extract
-    via regex on the raw JSON:
+    strings (e.g. `"2026-06-08T02:02:44Z"`). Extract via regex on the
+    raw JSON to avoid PowerShell's auto re-binding of ISO strings to
+    `[datetime]` (which renders local culture on string interpolation
+    and silently breaks lexicographic baseline compares):
 
         $snap = pwsh -NoProfile -File 02-check-review-status.ps1 -PrNumber <n>
         $baseline       = if ($snap -match '"submittedAt":"([^"]+)"')  { $Matches[1] } else { '' }
         $copilotPending = ($snap -match '"CopilotPending":true')
+        $mode           = if ($snap -match '"Mode":"([^"]+)"') { $Matches[1] } else { 'copilot' }
         $converged      = ($snap -match '"Converged":true')
 
-    PS 7.3+ alternative: pipe through `ConvertFrom-Json -DateKind String`
-    to keep `submittedAt` a String.
+    Works on any PowerShell version (5.1 + 7.x). No `[datetime]`
+    rebinding, no version-specific parameters.
 
 .PARAMETER PrNumber
     The pull request number. The only required parameter.

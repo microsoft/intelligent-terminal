@@ -116,10 +116,13 @@ message.
   all three. Open threads with our reply (escalate-to-user
   hand-offs, contested declines) are by design — they're awaiting
   the human merge owner, not the loop.
-- **Reply *and* resolve every open thread, including declines and
-  outdated ones.** Resolving without a reply leaves no record of why
-  the issue was considered addressed; replying without resolving
-  keeps the open-threads list non-empty and blocks convergence.
+- **Reply to every open thread; resolve only when the loop owns the
+  disposition** (`fix` or `decline`). For threads classified
+  `escalate-to-user`, reply with the analysis but leave the thread
+  OPEN (use `08-reply-and-resolve.ps1 -NoResolve`) so the human
+  merge owner can act on it. Resolving without a reply leaves no
+  record of why the issue was considered addressed; resolving an
+  escalated thread hides the hand-off from the human.
 - **Copilot threads are loop-owned; human / advanced-security /
   other-bot
   threads default to escalate-to-user.** Auto-replying or auto-
