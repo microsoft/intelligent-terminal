@@ -33,8 +33,11 @@ Three GraphQL traps:
    display login `Copilot` returns `Could not resolve bot with slug
    'Copilot'`.
 
-Verify success via a new `copilot_work_started` event in the issue
-timeline (see SKILL.md Gotchas "HTTP 200 / exit 0 is NOT proof").
+Verify success via a new `copilot_work_started` event on the issue's
+events feed — `GET /repos/{o}/{r}/issues/{n}/events` (see SKILL.md
+Gotchas "HTTP 200 / exit 0 is NOT proof"). Empirically this event
+type IS exposed on the `/events` endpoint (verified across 20+
+trigger rounds on PR 236); it is not timeline-only.
 `01-request-review.ps1` enforces this by comparing the event `id`
 (monotonic) before and after the trigger.
 

@@ -105,7 +105,8 @@ message.
   accepted it.** The server can silently drop a request (quiet-period
   after dismissal, trivial-diff suppression, repo without Copilot
   enabled). The authoritative signal is a `copilot_work_started`
-  event in the issue timeline newer than your request.
+  event on the issue (via `GET /repos/{o}/{r}/issues/{n}/events`)
+  newer than your request.
   `01-request-review.ps1` enforces this via event-`id` comparison —
   don't weaken it.
 - **A "no new comments" review is necessary but not sufficient for
