@@ -50,7 +50,12 @@ function Get-LatestCopilotWorkStartedEvent {
     $body = $m.Groups['body'].Value
 
     $lastPage = 1
-    $lastMatch = [regex]::Match($headers, 'page=(\d+)>; rel="last"')
+    # Link header looks like: `<https://api.github.com/...?per_page=100&page=4>; rel="last"`
+    # Param order is not guaranteed — `page=4` may appear before or after
+    # other query params. Match `page=<n>` inside the URL (allowing `?`
+    # or `&` separator) up to the closing angle bracket, then the
+    # `rel="last"` marker.
+    $lastMatch = [regex]::Match($headers, '<[^>]*[?&]page=(\d+)[^>]*>;\s*rel="last"')
     if ($lastMatch.Success) { $lastPage = [int]$lastMatch.Groups[1].Value }
     if ($lastPage -gt 1) {
         $r = Invoke-Gh -GhArgs @('api',"repos/$Owner/$Repo/issues/$PrNumber/events?per_page=100&page=$lastPage")
