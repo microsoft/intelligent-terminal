@@ -37,7 +37,6 @@ use clap::{Parser, Subcommand};
 use crossterm::{
     cursor::SetCursorStyle,
     execute,
-    style::Print,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::prelude::*;
@@ -1893,7 +1892,10 @@ async fn run_acp_tui_mode(
     // click-drag text selection working so users can highlight and copy
     // from the agent pane the way they would from any other terminal.
     execute!(stdout, EnterAlternateScreen)?;
-    execute!(stdout, Print("\x1b]11;#0c0c0c\x07"))?;
+    // Deliberately do NOT emit `OSC 11` to force a background color: the pane
+    // must inherit the profile's color scheme background so it tracks the
+    // user's theme like any other pane (#234). Cells render on the terminal's
+    // default (scheme) background; `Color::Reset` resolves to it.
     // Steady block (DECSCUSR Ps=2): solid filled rectangle, no blink.
     // Survives the alt-screen swap; restored on exit below.
     execute!(stdout, SetCursorStyle::SteadyBlock)?;
@@ -1917,9 +1919,6 @@ async fn run_acp_tui_mode(
     execute!(
         terminal.backend_mut(),
         SetCursorStyle::DefaultUserShape,
-        // OSC 111: reset bg to terminal default so the host shell isn't
-        // left with our override.
-        Print("\x1b]111\x07"),
         LeaveAlternateScreen
     )?;
     terminal.show_cursor()?;
