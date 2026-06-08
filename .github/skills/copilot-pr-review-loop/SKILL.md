@@ -22,7 +22,6 @@ installed and authenticated (see Prerequisites).
 
 ## When NOT to Use This Skill
 
-- Trivial PRs (typos, comment-only changes) — a single review is enough.
 - The PR is still under active design — wait until the structure is stable;
   otherwise findings churn round-over-round.
 - The user wants human reviewer feedback, not Copilot's.
@@ -30,11 +29,10 @@ installed and authenticated (see Prerequisites).
 ## Prerequisites
 
 - `gh` CLI installed and authenticated against the target repository.
-- PowerShell **7.3+** (`pwsh`) on PATH — the workflow uses
-  `ConvertFrom-Json -DateKind String` to keep the snapshot's ISO
-  timestamps as strings (default `ConvertFrom-Json` re-binds them to
-  `[datetime]`, which silently breaks lexicographic baseline
-  comparisons via local-culture interpolation).
+- PowerShell 7+ (`pwsh`) on PATH — any 7.x. The bundled scripts use
+  `System.Diagnostics.ProcessStartInfo.ArgumentList` which is .NET
+  Core / .NET 5+ only; Windows PowerShell 5.1 (running on .NET
+  Framework) is NOT supported.
 - The repository must have Copilot Code Review enabled (repo or
   account-level Copilot Pro/Pro+); if not, the trigger step will
   cleanly throw and the loop cannot proceed.

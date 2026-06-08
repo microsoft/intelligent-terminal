@@ -38,8 +38,8 @@ the pushed commit SHA.
 | 5 — Apply fix (one per finding, parallel **max 5 concurrent**) | `general-purpose` | 5 min each | `{files_touched, one-line summary, status}` | each fix sub-agent **first researches the repo's own conventions** for the area it's editing (`.github/instructions/*.md` matching the file's `applyTo` pattern, `.github/skills/`, `AGENTS.md`, `CONTRIBUTING.md`, neighbor-file patterns) — never invent a generic answer that contradicts repo practice. Parent merges and reconciles file conflicts before step 6; the 5-cap prevents fix-fanout chaos. If step 3 returned >5 findings, parent runs step 5 in waves of ≤5. |
 | 6 — Build + test per repo conventions | `task` (may fan out to several `explore` sub-agents for discovery) | 10 min | pass/fail + failure excerpts; **discovery first** — read `.github/instructions/*.md`, `AGENTS.md`, `CONTRIBUTING.md`, `README.md`, `package.json` scripts, `Makefile`, language tooling, AND recent CI workflow runs to learn the *actual* command set in use; THEN run those exact commands on the changed code | independent discovery axes (build tool / test runner / lint / spelling / format) can run as separate `explore` sub-agents in parallel; cache discovered commands per round |
 | 7 — Commit + push | _(parent)_ | n/a | parent runs `git commit` + `git push` directly | one focused commit per round; record the pushed SHA |
-| 8 — Draft + post replies | `general-purpose` drafts → _(parent)_ posts | draft 5 min | sub-agent returns `{thread_id, reply_body}` per open thread citing the pushed SHA; parent then runs `08-reply-and-resolve.ps1` for each | reply+resolve are mutations; the parent owns mutations |
-| 9 — Convergence verify | `explore` | 3 min | `02-check-review-status.ps1` JSON + independent HEAD-vs-`LatestCopilotReview.commitOid` sanity check | converged iff `Converged: true`; otherwise loop back to step 1 |
+| 8 — Reply (always) + resolve (conditional) | `general-purpose` drafts → _(parent)_ posts | draft 5 min | sub-agent returns `{thread_id, action, reply_body}` per open thread (`action ∈ fix/decline/escalate-to-user`); parent runs `08-reply-and-resolve.ps1` — `-NoResolve` on `escalate-to-user` so the thread stays open for the human, `resolve` on `fix`/`decline` | reply+resolve are mutations; the parent owns mutations. Escalated threads stay open *with our reply explaining the disposition* — they're hand-offs, not failures. |
+| 9 — Convergence verify | `explore` | 3 min | `02-check-review-status.ps1` JSON + independent HEAD-vs-`LatestCopilotReview.commitOid` sanity check | converged iff `Converged: true` (= `ReviewAtHead && NoNewComments && OpenThreadsAwaitingReply == 0`). Open threads may remain — those are explicit human hand-offs, not loop failures. Otherwise loop back to step 1. |
 | 10 — Cleanup outdated (once after convergence) | _(parent)_ | n/a | `10-cleanup-outdated.ps1` | safety net only |
 
 When the cap is reached and the work is still `partial`, the parent
@@ -53,20 +53,21 @@ step. Command snippets assume cwd is the skill root.
 
 | Step | Command | Notes |
 |------|---------|-------|
-| 1 | `pwsh ./scripts/02-check-review-status.ps1 -PrNumber <n> \| ConvertFrom-Json -DateKind String` to capture `baseline_submitted_at` + `CopilotPending`. If `CopilotPending: true` skip to step 2; else `pwsh ./scripts/01-request-review.ps1 -PrNumber <n>`. | `-DateKind String` (PS 7.3+) keeps `submittedAt` an ISO string so the lexicographic compare in step 2 works across the parent→sub-agent boundary. |
+| 1 | `$snap = pwsh ./scripts/02-check-review-status.ps1 -PrNumber <n>` → extract via regex (PS 7.0+ portable, no `[datetime]` rebinding): `$baseline = if ($snap -match '"submittedAt":"([^"]+)"') { $Matches[1] } else { '' }`; `$pending = ($snap -match '"CopilotPending":true')`. If `$pending` skip to step 2; else `pwsh ./scripts/01-request-review.ps1 -PrNumber <n>`. | Regex on raw JSON keeps `submittedAt` a string across the parent→sub-agent boundary on any PS 7.x. (PS 7.3+ may use `ConvertFrom-Json -DateKind String` instead.) |
 | 2 | Dispatch wait sub-agent — polls `02-check-review-status.ps1` every ~3 min; `ready` iff `submittedAt > baseline` AND `ReviewAtHead: true`. | Single bounded 20-min run. On `give-up-push-commit`, push a substantive commit (auto-assign on `synchronize` is the most reliable fallback). |
 | 3 | `pwsh ./scripts/03-list-open-threads.ps1 -PrNumber <n>` | Classify each row's `author`; default human / advanced-security to `escalate-to-user`. |
-| 4 | Triage sub-agent applies the rubric in [03-triage-criteria.md](03-triage-criteria.md). | Batch in waves of ≤5 threads per sub-agent. |
+| 4 | Triage sub-agent applies the rubric in [03-triage-criteria.md](03-triage-criteria.md), returning `fix \| decline \| escalate-to-user` per thread. | Batch in waves of ≤5 threads per sub-agent. |
 | 5 | Fix sub-agents, parallel, max 5 concurrent. | Each researches `.github/instructions/*.md` (matching `applyTo`), `.github/skills/`, `AGENTS.md`, `CONTRIBUTING.md`, neighbor files BEFORE writing the fix. |
 | 6 | Build/test sub-agent: discover commands from the same set of repo docs + recent CI runs, then run them. | Never invent generic commands; surface the gap if discovery turns up nothing. |
 | 7 | Parent: `git commit` + `git push`. | One focused commit per round; include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`. Record the pushed SHA. |
-| 8 | Drafting sub-agent returns `{thread_id, reply_body}` citing the step-7 SHA, using [06-reply-templates.md](06-reply-templates.md). Parent runs `pwsh ./scripts/08-reply-and-resolve.ps1 -ThreadId <id> -Body <text>` for each. | Reply+resolve are mutations; the parent owns mutations. |
-| 9 | Convergence sub-agent: `pwsh ./scripts/02-check-review-status.ps1 -PrNumber <n>` — converged iff `Converged: true`. | Re-query HEAD vs. `LatestCopilotReview.commitOid` as an independent sanity check. |
+| 8 | For each open thread: drafting sub-agent returns `{thread_id, action, reply_body}` (action ∈ `fix`/`decline`/`escalate-to-user`). Parent runs `pwsh ./scripts/08-reply-and-resolve.ps1 -ThreadId <id> -Body <text>` — add `-NoResolve` when action is `escalate-to-user` so the thread stays open for the human. | Reply is always posted; resolve only when the loop owns the disposition. Escalated threads with our reply are explicit hand-offs, not failures. |
+| 9 | Convergence sub-agent: `pwsh ./scripts/02-check-review-status.ps1 -PrNumber <n>` — converged iff `Converged: true` (= `ReviewAtHead && NoNewComments && OpenThreadsAwaitingReply == 0`). | `OpenThreadCount` may be > 0 if some threads are escalated-to-user hand-offs; that's by design. Re-query HEAD vs. `LatestCopilotReview.commitOid` as a sanity check. |
 | 10 | _(after convergence, once)_ `pwsh ./scripts/10-cleanup-outdated.ps1 -PrNumber <n>` | Safety net only; most loops converge with nothing to clean. |
 
 Print the proof of convergence (`HeadOid`, `LatestCopilotReview.commitOid`,
-`submittedAt`, `OpenThreadCount: 0`) in the `task_complete` message. Proof,
-not assertion.
+`submittedAt`, `OpenThreadsAwaitingReply: 0`, and the list of any open
+escalate-to-user threads if `OpenThreadCount > 0`) in the
+`task_complete` message. Proof, not assertion.
 
 ## Notes
 

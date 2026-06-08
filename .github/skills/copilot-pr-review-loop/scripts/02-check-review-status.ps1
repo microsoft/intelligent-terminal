@@ -21,12 +21,23 @@
       - ReviewAtHead       : true iff latest Copilot review's commit.oid == HeadOid
       - NoNewComments      : true iff the latest review body matches
                              "generated no new comments" / "generated 0 comments"
-      - OpenThreadCount    : number of unresolved review threads (from all reviewers)
+      - OpenThreadCount    : number of unresolved review threads (from all
+                             reviewers); informational — convergence does
+                             NOT require this to be zero
+      - OpenThreadsAwaitingReply: number of open threads where the
+                             authenticated user (`gh api user`) has not
+                             yet posted a comment. THIS is what drives
+                             convergence — threads we've already replied
+                             to may stay open deliberately as human
+                             hand-offs
       - CopilotPending     : true iff the Copilot reviewer bot is currently
                              listed in `requested_reviewers` on the PR (a
                              review is in flight; the caller should wait
                              rather than re-trigger)
-      - Converged          : true iff ReviewAtHead && NoNewComments && OpenThreadCount==0
+      - Converged          : true iff ReviewAtHead && NoNewComments &&
+                             OpenThreadsAwaitingReply == 0. The agent has
+                             done its work; any remaining open threads are
+                             explicit hand-offs to the human merge owner.
 
     Canonical agent loop (workflow.md):
       1. Call this script → capture LatestCopilotReview.submittedAt as
@@ -39,14 +50,19 @@
          03-list-open-threads.ps1, triage, fix, push, reply, repeat.
 
     Parsing the JSON: timestamps are emitted as plain ISO-8601 UTC
-    strings (e.g. `"2026-06-08T02:02:44Z"`). Pipe through
-    `ConvertFrom-Json -DateKind String` (PS 7.3+) — the default
-    `ConvertFrom-Json` would silently re-convert ISO timestamps to
-    `[datetime]` instances, and string interpolation on those renders
-    PowerShell's local culture (e.g. `06/08/2026 02:02:44`), which
-    breaks any lexicographic baseline comparison. Or extract with
-    `... --% --jq .LatestCopilotReview.submittedAt` via gh's
-    pass-through.
+    strings (e.g. `"2026-06-08T02:02:44Z"`). For PS 7.0–7.2 (or any
+    caller that wants to avoid PowerShell's auto re-binding of ISO
+    strings to `[datetime]` — which renders local culture on string
+    interpolation and breaks lexicographic baseline compares), extract
+    via regex on the raw JSON:
+
+        $snap = pwsh -NoProfile -File 02-check-review-status.ps1 -PrNumber <n>
+        $baseline       = if ($snap -match '"submittedAt":"([^"]+)"')  { $Matches[1] } else { '' }
+        $copilotPending = ($snap -match '"CopilotPending":true')
+        $converged      = ($snap -match '"Converged":true')
+
+    PS 7.3+ alternative: pipe through `ConvertFrom-Json -DateKind String`
+    to keep `submittedAt` a String.
 
 .PARAMETER PrNumber
     The pull request number. The only required parameter.
@@ -82,6 +98,16 @@ $coords = Resolve-RepoCoords -Owner $Owner -Repo $Repo
 $Owner = $coords.Owner
 $Repo  = $coords.Repo
 
+# Identity of the currently-authenticated gh user. Used below to
+# detect "the agent has already replied to this thread" and therefore
+# count it as our work-completed (the thread may still be open
+# deliberately as a human hand-off).
+$meR = Invoke-Gh -GhArgs @('api','user','--jq','.login')
+if ($meR.ExitCode -ne 0) {
+    throw "gh api user failed (exit $($meR.ExitCode)): $($meR.Stderr)"
+}
+$me = $meR.Stdout.Trim()
+
 # Query A (once): PR head/state/reviews. Reviews are not paginated
 # here — `reviews(last:100)` is the most recent 100 reviews, sufficient
 # for finding the latest Copilot review.
@@ -110,15 +136,22 @@ if ($d.errors) {
 $pr = $d.data.repository.pullRequest
 if (-not $pr) { throw "PR #$PrNumber not found in $Owner/$Repo." }
 
-# Query B (paginated): reviewThreads only — separated so we don't
-# re-fetch the full review bodies on every page.
+# Query B (paginated): reviewThreads — fetch isResolved AND the last
+# few comment authors per thread so we can compute
+# "is this open thread awaiting our reply, or have we already handed
+# it off?" The loop converges when WE have nothing more to do, not
+# when the open-thread count drops to zero (some threads stay open
+# deliberately as human hand-offs / escalated declines).
 $qThreads = @'
 query($o:String!,$r:String!,$n:Int!,$after:String){
   repository(owner:$o,name:$r){
     pullRequest(number:$n){
       reviewThreads(first:100, after:$after){
         pageInfo{endCursor hasNextPage}
-        nodes{isResolved}
+        nodes{
+          isResolved
+          comments(last:10){nodes{author{login}}}
+        }
       }
     }
   }
@@ -168,6 +201,29 @@ if ($latest) {
 $openThreads = @($allThreads | Where-Object { -not $_.isResolved })
 $openCount = $openThreads.Count
 
+# OpenThreadsAwaitingReply: open threads where the authenticated
+# user ($me) has NOT yet posted a comment. These are the threads
+# where the agent still owes a reply (fix-acknowledgement, decline-
+# with-rationale, or explicit escalate-to-user hand-off).
+#
+# Threads we've already replied to may still be `isResolved: false`
+# deliberately — e.g. an escalate-to-user reply left open for the
+# human to decide. Those count as "our work done", not as failures.
+$awaitingReply = @($openThreads | Where-Object {
+    $thread = $_
+    $repliedByMe = $false
+    if ($thread.comments -and $thread.comments.nodes) {
+        foreach ($c in $thread.comments.nodes) {
+            if ($c.author -and $c.author.login -and $c.author.login -eq $me) {
+                $repliedByMe = $true
+                break
+            }
+        }
+    }
+    -not $repliedByMe
+})
+$awaitingCount = $awaitingReply.Count
+
 # CopilotPending: is the Copilot reviewer bot currently in
 # `requested_reviewers`? Canonical signal for "review is in flight";
 # the wait sub-agent (workflow step 2) consults this so the trigger
@@ -206,10 +262,17 @@ $result = [ordered]@{
             bodyHead    = $bodyHead
         }
     } else { $null }
-    ReviewAtHead    = $reviewAtHead
-    NoNewComments   = $noNewComments
-    OpenThreadCount = $openCount
-    CopilotPending  = $copilotPending
-    Converged       = ($reviewAtHead -and $noNewComments -and $openCount -eq 0)
+    ReviewAtHead              = $reviewAtHead
+    NoNewComments             = $noNewComments
+    OpenThreadCount           = $openCount
+    OpenThreadsAwaitingReply  = $awaitingCount
+    CopilotPending            = $copilotPending
+    # Converged = "the agent has nothing more to do this round".
+    # Open threads may remain (escalate-to-user hand-offs, contested
+    # declines) — those are by design; the human owns the merge
+    # decision. The agent converges when the latest review is at
+    # HEAD, produced no new comments, AND every remaining open
+    # thread already has the agent's reply.
+    Converged                 = ($reviewAtHead -and $noNewComments -and $awaitingCount -eq 0)
 }
 $result | ConvertTo-Json -Depth 5 -Compress
