@@ -15,14 +15,17 @@ use crate::app::HistoryLoadState;
 use crate::session_registry::SessionInfo;
 use crate::ui::shimmer;
 
-// Figma palette — keep these in one place so the row renderer and any
-// future status indicators stay in sync with the design tokens.
-const ACCENT_CYAN: Color = Color::Rgb(0x60, 0xcd, 0xff); // Selected-row title / cursor
-const ACCENT_GREEN: Color = Color::Rgb(0x6c, 0xcb, 0x5f); // Active status badge
-const ACCENT_YELLOW: Color = Color::Rgb(0xfa, 0xe2, 0x46); // Waiting for input
-const ACCENT_RED: Color = Color::Rgb(0xff, 0x6b, 0x6b); // Error
+// Status accents use named ANSI colors (not fixed RGB from Figma) so they map
+// through the active color scheme and stay readable on light schemes too — a
+// hardcoded bright yellow/cyan washed out on a light background (#234).
+const ACCENT_CYAN: Color = Color::Cyan; // Selected-row title / cursor
+const ACCENT_GREEN: Color = Color::Green; // Active status badge
+const ACCENT_YELLOW: Color = Color::Yellow; // Waiting for input
+const ACCENT_RED: Color = Color::Red; // Error
+// Idle / timestamp: a fixed mid-gray reads as "muted" on both light and dark
+// backgrounds (a true middle gray, unlike ANSI 7/8 which flip per scheme).
 const SOFT_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
-const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // 54% white — timestamp
+const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // timestamp
 
 pub fn render(
     f: &mut Frame,

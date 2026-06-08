@@ -12,7 +12,9 @@ const SPINNER: &[char] = &[
 // color scheme and stays readable on light schemes (#234). Figma reference was
 // rgba(255,255,255,0.6) ≈ #999999, which only worked on a dark background.
 const DIM_TEXT: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
-const SELECTED_COLOR: Color = Color::Rgb(96, 205, 255);
+// Named ANSI (not fixed RGB) so the selection accent follows the color scheme
+// and stays readable on light schemes (#234).
+const SELECTED_COLOR: Color = Color::Cyan;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let setup = match &app.setup {
