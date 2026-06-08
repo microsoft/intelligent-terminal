@@ -94,6 +94,7 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
 
     BSTR rawAuth = nullptr;
     hr = server->Authenticate(nullptr, &rawAuth);
+    bool parsed = false;
     bool authenticated = false;
     std::string version;
     if (SUCCEEDED(hr) && rawAuth)
@@ -105,6 +106,7 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
         std::istringstream ss(s);
         if (Json::parseFromStream(rb, ss, &v, &errs))
         {
+            parsed = true;
             authenticated = v["authenticated"].asBool();
             version = v["protocol_version"].asString();
         }
@@ -115,6 +117,13 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     if (FAILED(hr))
     {
         fprintf(stderr, "[wtcli] Authentication failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        return nullptr;
+    }
+    if (!parsed)
+    {
+        // Success HRESULT but a null/malformed auth payload is a broken
+        // server contract — don't misreport it as a server rejection.
+        fprintf(stderr, "[wtcli] Authentication response missing or malformed (server contract error)\n");
         return nullptr;
     }
     if (!authenticated)
@@ -299,6 +308,14 @@ int main()
         if (listTabsWindowId.empty())
         {
             wid = GetFirstWindowId(server.get());
+            if (wid == 0)
+            {
+                // 0 is the server's "no filter" sentinel, not a real window id;
+                // bail rather than silently listing tabs for ALL windows.
+                fprintf(stderr, "[wtcli] Could not resolve a window (no windows or ListWindows failed)\n");
+                exitCode = 1;
+                return;
+            }
         }
         else if (!TryParseU64(listTabsWindowId, wid))
         {
@@ -350,8 +367,23 @@ int main()
         }
         if (tid == UINT32_MAX)
         {
-            if (wid == 0) wid = GetFirstWindowId(server.get());
+            if (wid == 0)
+            {
+                wid = GetFirstWindowId(server.get());
+                if (wid == 0)
+                {
+                    fprintf(stderr, "[wtcli] Could not resolve a window (no windows or ListWindows failed)\n");
+                    exitCode = 1;
+                    return;
+                }
+            }
             tid = GetFirstTabId(server.get(), wid);
+            if (tid == UINT32_MAX)
+            {
+                fprintf(stderr, "[wtcli] Could not resolve a tab (no tabs or ListTabs failed)\n");
+                exitCode = 1;
+                return;
+            }
         }
         Json::Value panes;
         auto hr = CallJson([&](BSTR* j) { return server->ListPanes(wid, tid, j); }, panes);
