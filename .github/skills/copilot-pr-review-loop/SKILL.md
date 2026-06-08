@@ -7,8 +7,9 @@ description: 'Drive a GitHub pull request through repeated rounds of Copilot cod
 
 Drive any GitHub pull request through repeated rounds of Copilot code
 review until a round produces no new comments **and** the open-threads
-list is empty. Repository-agnostic — works on any repo where the user
-has `gh` CLI authenticated and Copilot Code Review is enabled.
+list is empty. Repository-agnostic — works on any repo that has
+Copilot Code Review enabled, run from a machine with `gh` CLI
+installed and authenticated (see Prerequisites).
 
 ## When to Use This Skill
 
