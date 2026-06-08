@@ -38,6 +38,16 @@
       4. On convergence end the loop; otherwise fetch threads via
          03-list-open-threads.ps1, triage, fix, push, reply, repeat.
 
+    Parsing the JSON: timestamps are emitted as plain ISO-8601 UTC
+    strings (e.g. `"2026-06-08T02:02:44Z"`). Pipe through
+    `ConvertFrom-Json -DateKind String` (PS 7.3+) — the default
+    `ConvertFrom-Json` would silently re-convert ISO timestamps to
+    `[datetime]` instances, and string interpolation on those renders
+    PowerShell's local culture (e.g. `06/08/2026 02:02:44`), which
+    breaks any lexicographic baseline comparison. Or extract with
+    `... --% --jq .LatestCopilotReview.submittedAt` via gh's
+    pass-through.
+
 .PARAMETER PrNumber
     The pull request number. The only required parameter.
 
@@ -164,6 +174,22 @@ $copilotPending = @($pr.reviewRequests.nodes | Where-Object {
     $_.requestedReviewer.login -match '(?i)^copilot-pull-request-reviewer(\[bot\])?$'
 }).Count -gt 0
 
+# Force submittedAt to a stable ISO-8601 UTC string. ConvertFrom-Json
+# auto-converted the gh response's ISO string into [datetime], and
+# ConvertTo-Json would otherwise emit it with .NET's "o" format
+# (`2026-06-07T18:06:59.0000000Z`) — but more importantly, downstream
+# callers that pipe our JSON through `ConvertFrom-Json` again would
+# get another [datetime] which renders local culture on string
+# interpolation, silently breaking lexicographic baseline comparisons.
+# Emit a plain string so the round-trip is identity.
+$submittedAtIso = if ($latest -and $latest.submittedAt) {
+    if ($latest.submittedAt -is [datetime]) {
+        $latest.submittedAt.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    } else {
+        [string]$latest.submittedAt
+    }
+} else { $null }
+
 $result = [ordered]@{
     PrNumber            = $PrNumber
     Owner               = $Owner
@@ -173,7 +199,7 @@ $result = [ordered]@{
     LatestCopilotReview = if ($latest) {
         [ordered]@{
             state       = $latest.state
-            submittedAt = $latest.submittedAt
+            submittedAt = $submittedAtIso
             commitOid   = $latestCommitOid
             bodyHead    = $bodyHead
         }

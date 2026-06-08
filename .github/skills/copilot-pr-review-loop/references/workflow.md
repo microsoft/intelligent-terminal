@@ -61,6 +61,14 @@ Command snippets assume your current directory is the skill root.
   Both paths end with the same baseline that step 2 uses to
   distinguish the new review from any preexisting one.
 
+  **Parsing tip**: pipe the snapshot through
+  `ConvertFrom-Json -DateKind String` (PS 7.3+) so `submittedAt`
+  stays an ISO-8601 string. The default `ConvertFrom-Json` re-binds
+  ISO timestamps to `[datetime]` and string interpolation on those
+  renders PowerShell's local culture (e.g. `06/08/2026 02:02:44`),
+  which silently breaks the lexicographic baseline comparison the
+  wait sub-agent does in step 2.
+
 - [ ] **2.** **Wait for review (sub-agent, one bounded run, 20-min
   hard cap, polls every ~3 min):** dispatch a `general-purpose`
   sub-agent. The sub-agent polls
