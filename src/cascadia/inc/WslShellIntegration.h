@@ -110,8 +110,14 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         // Spawn `wsl.exe -d <distName> -e bash -c 'echo $HOME'` and
         // return the trimmed POSIX home dir (e.g. "/home/yeelam"), or
         // "" on any failure (no WSL, distro stopped + can't auto-start,
-        // bash missing, timeout, garbled output). Best-effort fail-shut:
-        // empty return → caller skips this distro silently.
+        // bash missing, timeout, garbled output).
+        //
+        // An empty return is treated as a probe FAILURE by the caller
+        // (WslBashFlavor ctor sets _valid=false and _errorMessage to
+        // "Could not probe $HOME inside WSL distro"), which surfaces
+        // in the post-install error dialog. The dialog body labels it
+        // per-distro (e.g. "WSL bash (Ubuntu): Could not probe $HOME
+        // inside WSL distro") so users can tell which distro failed.
         //
         // `WSL_UTF8=1` forces wsl.exe to relay bash stdout as UTF-8
         // instead of UTF-16LE (the legacy conhost behavior), so we can
