@@ -65,21 +65,17 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             ConnectionState::Disconnected => t!("input.placeholder.disconnected").into_owned(),
             ConnectionState::Failed(_) => t!("input.placeholder.disconnected").into_owned(),
         };
-        // Paint the first cell of the placeholder as "white block with
-        // black glyph" directly in the buffer. The WT block cursor lands
-        // on this exact cell (input is empty ⇒ cursor_pos == 0) and is
-        // alpha-overlaid onto an already-white cell — same color in, same
-        // color out — so the visible result is a stable white block with
-        // a readable black character. Setting only fg=Black wouldn't work:
-        // the glyph would be painted onto the black cell bg first (Black
-        // on Black = invisible) before the cursor overlay had anything to
-        // reveal.
-        //
+        // Paint the first cell of the placeholder as the caret using reverse
+        // video (swap the scheme's fg/bg) so it reads as a solid block in the
+        // scheme's own colors. A hardcoded white block was invisible on light
+        // schemes once the pane background follows the scheme (#234). The OS
+        // cursor stays hidden (`terminal.hide_cursor`), so this painted cell
+        // is the only caret.
         let mut placeholder_spans = vec![Span::styled(INPUT_PROMPT, theme::DIM)];
         let mut chars = placeholder.chars();
         if let Some(first) = chars.next() {
             let first_style = if input_active {
-                Style::new().fg(Color::Black).bg(Color::White)
+                Style::new().add_modifier(Modifier::REVERSED)
             } else {
                 theme::DIM
             };
@@ -162,9 +158,12 @@ fn push_caret_spans(spans: &mut Vec<Span<'static>>, line: &str, caret_col: usize
     if !before.is_empty() {
         spans.push(Span::styled(before, theme::INPUT_TEXT));
     }
+    // Reverse video so the caret block uses the scheme's own fg/bg and stays
+    // visible on light schemes too (a hardcoded white block vanished on a
+    // light background once the pane follows the scheme — #234).
     spans.push(Span::styled(
         caret_text,
-        Style::new().fg(Color::Black).bg(Color::White),
+        Style::new().add_modifier(Modifier::REVERSED),
     ));
     if !after.is_empty() {
         spans.push(Span::styled(after, theme::INPUT_TEXT));
