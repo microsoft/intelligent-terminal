@@ -209,11 +209,11 @@
                 <com:ExeServer DisplayName="OpenConsole" Executable="OpenConsole.exe">
                     <com:Class Id="FD0E53A3-EE5F-42EE-86DD-233F5A9FE85E"/>
                 </com:ExeServer>
-                <com:ExeServer DisplayName="WindowsTerminal" Executable="WindowsTerminal.exe">
+                <com:ExeServer DisplayName="IntelligentTerminal" Executable="WindowsTerminal.exe">
                     <com:Class Id="1FB14274-C0FC-43EB-B46B-10789AC76C1D"/>
                     <com:Class Id="B3F5A7C9-2D4E-4F6A-B7C8-D9E0F1A2B3C4"/> <!-- TerminalProtocolComServer (Preview) -->
                 </com:ExeServer>
-                <com:SurrogateServer DisplayName="WindowsTerminalShellExt">
+                <com:SurrogateServer DisplayName="IntelligentTerminalShellExt">
                     <com:Class Id="02db545a-3e20-46de-83a5-1329b1e88b6b" Path="WindowsTerminalShellExt.dll" ThreadingModel="STA"/>
                 </com:SurrogateServer>
             </com:ComServer>

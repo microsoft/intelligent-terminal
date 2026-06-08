@@ -120,11 +120,11 @@
                 <com:ExeServer DisplayName="OpenConsole" Executable="OpenConsole.exe">
                     <com:Class Id="04142D7E-503D-40B7-A170-212F6806F354"/>
                 </com:ExeServer>
-                <com:ExeServer DisplayName="WindowsTerminal" Executable="WindowsTerminal.exe">
+                <com:ExeServer DisplayName="IntelligentTerminal" Executable="WindowsTerminal.exe">
                     <com:Class Id="26B27C03-6354-4E19-9640-6E8D780A4675"/>
                     <com:Class Id="C4A6B8D0-3E5F-4A7B-C8D9-E0F1A2B3C4D5"/> <!-- TerminalProtocolComServer (Canary) -->
                 </com:ExeServer>
-                <com:SurrogateServer DisplayName="WindowsTerminalShellExt">
+                <com:SurrogateServer DisplayName="IntelligentTerminalShellExt">
                     <com:Class Id="6119575F-6918-4392-AF16-C2C627AF9416" Path="WindowsTerminalShellExt.dll" ThreadingModel="STA"/>
                 </com:SurrogateServer>
             </com:ComServer>
