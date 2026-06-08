@@ -980,17 +980,17 @@
     <value>Интеграција љуске је иницијализована</value>
   </data><data name="InitShellIntegrationSuccessMessage" xml:space="preserve">
     <value>Интеграција љуске је конфигурисана. Поново покрените PowerShell сесију или отворите нову картицу да би промене ступиле на снагу.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data><data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve">
     <value>Интеграција љуске је већ конфигурисана</value>
   </data><data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve">
     <value>Интеграција љуске је већ конфигурисана у вашем PowerShell профилу.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data><data name="InitShellIntegrationErrorTitle" xml:space="preserve">
     <value>Грешка интеграције љуске</value>
   </data><data name="InitShellIntegrationErrorMessage" xml:space="preserve">
     <value>Није успело иницијализовање интеграције љуске. Није могуће одредити путању до вашег PowerShell профила. Уверите се да је циљна љуска инсталирана.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment>
   </data><data name="AgentNotConfiguredTitle" xml:space="preserve">
     <value>ВИ агент није доступан</value>
   </data><data name="AgentNotConfiguredSubtitle" xml:space="preserve">

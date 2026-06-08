@@ -978,21 +978,21 @@
   </data>
   <data name="InitShellIntegrationSuccessMessage" xml:space="preserve">
     <value>Интеграция с оболочкой настроена. Перезапустите сеанс PowerShell или откройте новую вкладку, чтобы изменения вступили в силу.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve">
     <value>Интеграция с оболочкой уже настроена</value>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve">
     <value>Интеграция с оболочкой уже настроена в вашем профиле PowerShell.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve">
     <value>Ошибка интеграции с оболочкой</value>
   </data>
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve">
     <value>Не удалось инициализировать интеграцию с оболочкой. Не удалось определить путь к вашему профилю PowerShell. Убедитесь, что целевая оболочка установлена.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment>
   </data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve">
     <value>ИИ-агент недоступен</value>

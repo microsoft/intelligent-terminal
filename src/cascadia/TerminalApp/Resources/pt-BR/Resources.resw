@@ -978,21 +978,21 @@
   </data>
   <data name="InitShellIntegrationSuccessMessage" xml:space="preserve">
     <value>A integração de shell foi configurada. Reinicie sua sessão do PowerShell ou abra uma nova guia para que as alterações entrem em vigor.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve">
     <value>Integração de shell já configurada</value>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve">
     <value>A integração de shell já está configurada no seu perfil do PowerShell.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve">
     <value>Erro de integração de shell</value>
   </data>
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve">
     <value>Falha ao inicializar a integração de shell. Não foi possível determinar o caminho do seu perfil do PowerShell. Verifique se o shell de destino está instalado.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment>
   </data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve">
     <value>O agente de IA não está disponível</value>

@@ -1992,11 +1992,15 @@ namespace winrt::TerminalApp::implementation
         }
 
         bool desiredAtRun = true;
-        bool pwshAlready = false;
-        bool wpAlready = false;
-        bool pwshOk = false;
-        bool wpOk = false;
+        bool allAlreadyInstalled = false;
+        bool anyFailure = false;
         bool epBlocked = false;
+        // Collected failure details from EVERY failing flavor (pwsh, WinPS,
+        // bash, each WSL distro). Surfaced verbatim in the error dialog so
+        // the user sees the real reason ("Profile directory not writable",
+        // "Failed to write backup", etc.) instead of a guess. Empty when
+        // every flavor succeeded.
+        std::wstring failureDetails;
         {
             std::lock_guard<std::mutex> guard{ _shellIntegrationReconcileMutex };
             // Re-check after acquiring the lock. If a settings reload (toggle
@@ -2015,18 +2019,62 @@ namespace winrt::TerminalApp::implementation
                 // so the all-installed / any-failure UI verdict below
                 // doesn't flag a missing shell as a failure.
                 const auto results = ShellIntegrationSweep::RunInstall(shellPresence, wslDistros);
-                const auto& pwshResult = results.pwsh;
-                const auto& wpResult = results.windowsPowerShell;
-                pwshAlready = pwshResult.alreadyInstalled;
-                wpAlready = wpResult.alreadyInstalled;
-                pwshOk = pwshResult.success;
-                wpOk = wpResult.success;
-                epBlocked = pwshResult.executionPolicyBlocked || wpResult.executionPolicyBlocked;
+
+                // Aggregate verdict across ALL four flavors (pwsh, WinPS,
+                // bash, every WSL distro). The earlier two-flavor version
+                // silently dropped bash/WSL failures on the floor.
+                auto fold = [&](const auto& r, std::wstring_view label) {
+                    if (r.executionPolicyBlocked)
+                    {
+                        epBlocked = true;
+                    }
+                    if (!r.success)
+                    {
+                        anyFailure = true;
+                        if (!r.errorMessage.empty())
+                        {
+                            if (!failureDetails.empty())
+                            {
+                                failureDetails += L"\n";
+                            }
+                            failureDetails += L"• ";
+                            failureDetails += label;
+                            failureDetails += L": ";
+                            failureDetails += r.errorMessage;
+                        }
+                    }
+                };
+
+                bool sawAny = false;
+                auto consider = [&](const auto& r, std::wstring_view label) {
+                    sawAny = true;
+                    fold(r, label);
+                    if (!r.alreadyInstalled)
+                    {
+                        allAlreadyInstalled = false;
+                    }
+                };
+
+                allAlreadyInstalled = true; // becomes false on first non-alreadyInstalled below
+
+                if (shellPresence.pwsh)              { consider(results.pwsh,              L"PowerShell"); }
+                if (shellPresence.windowsPowerShell) { consider(results.windowsPowerShell, L"Windows PowerShell"); }
+                if (shellPresence.bash)              { consider(results.bash,              L"bash"); }
+                for (const auto& [distName, wslRes] : results.wsl)
+                {
+                    consider(wslRes, L"WSL bash (" + distName + L")");
+                }
+
+                if (!sawAny)
+                {
+                    // No profiles matched any supported shell. Treat as
+                    // "already installed" (nothing to do) so no dialog
+                    // fires — matches the prior single-flavor behavior
+                    // when both pwsh AND WinPS were absent.
+                    allAlreadyInstalled = true;
+                }
             }
         }
-
-        const bool allAlreadyInstalled = pwshAlready && wpAlready;
-        const bool anyFailure = !pwshOk || !wpOk;
 
         co_await wil::resume_foreground(dispatcher);
         if (auto strong = weak.get())
@@ -2078,9 +2126,20 @@ namespace winrt::TerminalApp::implementation
             }
             else if (anyFailure)
             {
+                // Append per-flavor failure details (collected above) so the
+                // user sees the actual reason — "Profile directory not
+                // writable", a WSL distro that isn't running, etc. — instead
+                // of a guess. Body intentionally not localized: orchestrator
+                // error strings are English-only diagnostics.
+                std::wstring body{ RS_(L"InitShellIntegrationErrorMessage") };
+                if (!failureDetails.empty())
+                {
+                    body += L"\n\n";
+                    body += failureDetails;
+                }
                 strong->_ShowShellIntegrationDialog(
                     RS_(L"InitShellIntegrationErrorTitle"),
-                    RS_(L"InitShellIntegrationErrorMessage"));
+                    winrt::hstring{ body });
             }
             else
             {
