@@ -146,7 +146,9 @@ do {
     $after = $pagePr.reviewThreads.pageInfo.endCursor
 } while ($pagePr.reviewThreads.pageInfo.hasNextPage)
 
-$copilotReviews = @($pr.reviews.nodes | Where-Object { $_.author.login -match '(?i)^copilot-pull-request-reviewer(\[bot\])?$' })
+$copilotReviews = @($pr.reviews.nodes | Where-Object {
+    $_.author -and $_.author.login -and $_.author.login -match '(?i)^copilot-pull-request-reviewer(\[bot\])?$'
+})
 $latest = if ($copilotReviews.Count -gt 0) { $copilotReviews | Sort-Object submittedAt -Descending | Select-Object -First 1 } else { $null }
 
 $reviewAtHead = $false
@@ -171,7 +173,7 @@ $openCount = $openThreads.Count
 # the wait sub-agent (workflow step 2) consults this so the trigger
 # step (01-request-review.ps1) can be skipped when already pending.
 $copilotPending = @($pr.reviewRequests.nodes | Where-Object {
-    $_.requestedReviewer.login -match '(?i)^copilot-pull-request-reviewer(\[bot\])?$'
+    $_.requestedReviewer -and $_.requestedReviewer.login -and $_.requestedReviewer.login -match '(?i)^copilot-pull-request-reviewer(\[bot\])?$'
 }).Count -gt 0
 
 # Force submittedAt to a stable ISO-8601 UTC string. ConvertFrom-Json

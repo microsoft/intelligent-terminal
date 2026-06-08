@@ -136,7 +136,9 @@ query($o:String!,$r:String!,$n:Int!,$after:String!){
     $pr.reviewRequests.pageInfo = $page.pageInfo
     $after = $page.pageInfo.endCursor
 }
-$copilotPendingRequests = @($reviewRequests | Where-Object { $_.requestedReviewer.login -match '(?i)^copilot-pull-request-reviewer(\[bot\])?$' })
+$copilotPendingRequests = @($reviewRequests | Where-Object {
+    $_.requestedReviewer -and $_.requestedReviewer.login -and $_.requestedReviewer.login -match '(?i)^copilot-pull-request-reviewer(\[bot\])?$'
+})
 $copilotPending = $copilotPendingRequests.Count -gt 0
 
 # If Copilot is currently in requested_reviewers, it's in-flight by definition.

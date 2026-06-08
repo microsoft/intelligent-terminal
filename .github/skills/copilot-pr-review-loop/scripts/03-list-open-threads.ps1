@@ -93,15 +93,17 @@ if (-not $open) {
 }
 
 foreach ($t in $open) {
-    $c = $t.comments.nodes[0]
+    $c = if ($t.comments -and $t.comments.nodes -and $t.comments.nodes.Count -gt 0) { $t.comments.nodes[0] } else { $null }
+    if (-not $c) { continue }  # malformed thread (no originating comment) — skip rather than crash
     $body = ($c.body -replace "`r?`n", ' ')
     if ($MaxBodyLength -gt 0 -and $body.Length -gt $MaxBodyLength) {
         $body = $body.Substring(0, $MaxBodyLength) + '…'
     }
     $path = if ($null -ne $c.line) { "$($c.path):$($c.line)" } else { $c.path }
+    $author = if ($c.author -and $c.author.login) { $c.author.login } else { '(deleted)' }
     [pscustomobject]@{
         ThreadId   = $t.id
-        Author     = $c.author.login
+        Author     = $author
         Path       = $path
         CreatedAt  = $c.createdAt
         Body       = $body
