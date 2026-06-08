@@ -82,7 +82,6 @@
         $snap = pwsh -NoProfile -File 02-check-review-status.ps1 -PrNumber <n>
         $baseline       = if ($snap -match '"submittedAt":"([^"]+)"')  { $Matches[1] } else { '' }
         $copilotPending = ($snap -match '"CopilotPending":true')
-        $mode           = if ($snap -match '"Mode":"([^"]+)"') { $Matches[1] } else { 'copilot' }
         $converged      = ($snap -match '"Converged":true')
 
     Works on any PowerShell version (5.1 + 7.x). No `[datetime]`
