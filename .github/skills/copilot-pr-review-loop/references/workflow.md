@@ -46,108 +46,27 @@ When the cap is reached and the work is still `partial`, the parent
 narrows the input (batch smaller in step 4 / split fix scope in step 5)
 or takes the step over itself.
 
-## Per-round checklist
+## Per-round commands
 
-Command snippets assume your current directory is the skill root.
+Quick reference — see the delegation map above for the contract per
+step. Command snippets assume cwd is the skill root.
 
-- [ ] **1.** **Request review (parent):**
-  FIRST call `pwsh ./scripts/02-check-review-status.ps1 -PrNumber <n>`
-  and capture `baseline_submitted_at = LatestCopilotReview.submittedAt`
-  (may be null) AND read `CopilotPending`.
-  - If `CopilotPending: true`, skip the trigger — Copilot is already
-    reviewing; go to step 2 with this baseline.
-  - Otherwise call `pwsh ./scripts/01-request-review.ps1 -PrNumber <n>`
-    to trigger and verify via the `copilot_work_started` event.
-  Both paths end with the same baseline that step 2 uses to
-  distinguish the new review from any preexisting one.
+| Step | Command | Notes |
+|------|---------|-------|
+| 1 | `pwsh ./scripts/02-check-review-status.ps1 -PrNumber <n> \| ConvertFrom-Json -DateKind String` to capture `baseline_submitted_at` + `CopilotPending`. If `CopilotPending: true` skip to step 2; else `pwsh ./scripts/01-request-review.ps1 -PrNumber <n>`. | `-DateKind String` (PS 7.3+) keeps `submittedAt` an ISO string so the lexicographic compare in step 2 works across the parent→sub-agent boundary. |
+| 2 | Dispatch wait sub-agent — polls `02-check-review-status.ps1` every ~3 min; `ready` iff `submittedAt > baseline` AND `ReviewAtHead: true`. | Single bounded 20-min run. On `give-up-push-commit`, push a substantive commit (auto-assign on `synchronize` is the most reliable fallback). |
+| 3 | `pwsh ./scripts/03-list-open-threads.ps1 -PrNumber <n>` | Classify each row's `author`; default human / advanced-security to `escalate-to-user`. |
+| 4 | Triage sub-agent applies the rubric in [03-triage-criteria.md](03-triage-criteria.md). | Batch in waves of ≤5 threads per sub-agent. |
+| 5 | Fix sub-agents, parallel, max 5 concurrent. | Each researches `.github/instructions/*.md` (matching `applyTo`), `.github/skills/`, `AGENTS.md`, `CONTRIBUTING.md`, neighbor files BEFORE writing the fix. |
+| 6 | Build/test sub-agent: discover commands from the same set of repo docs + recent CI runs, then run them. | Never invent generic commands; surface the gap if discovery turns up nothing. |
+| 7 | Parent: `git commit` + `git push`. | One focused commit per round; include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`. Record the pushed SHA. |
+| 8 | Drafting sub-agent returns `{thread_id, reply_body}` citing the step-7 SHA, using [06-reply-templates.md](06-reply-templates.md). Parent runs `pwsh ./scripts/08-reply-and-resolve.ps1 -ThreadId <id> -Body <text>` for each. | Reply+resolve are mutations; the parent owns mutations. |
+| 9 | Convergence sub-agent: `pwsh ./scripts/02-check-review-status.ps1 -PrNumber <n>` — converged iff `Converged: true`. | Re-query HEAD vs. `LatestCopilotReview.commitOid` as an independent sanity check. |
+| 10 | _(after convergence, once)_ `pwsh ./scripts/10-cleanup-outdated.ps1 -PrNumber <n>` | Safety net only; most loops converge with nothing to clean. |
 
-  **Parsing tip**: pipe the snapshot through
-  `ConvertFrom-Json -DateKind String` (PS 7.3+) so `submittedAt`
-  stays an ISO-8601 string. The default `ConvertFrom-Json` re-binds
-  ISO timestamps to `[datetime]` and string interpolation on those
-  renders PowerShell's local culture (e.g. `06/08/2026 02:02:44`),
-  which silently breaks the lexicographic baseline comparison the
-  wait sub-agent does in step 2.
-
-- [ ] **2.** **Wait for review (sub-agent, one bounded run, 20-min
-  hard cap, polls every ~3 min):** dispatch a `general-purpose`
-  sub-agent. The sub-agent polls
-  `pwsh ./scripts/02-check-review-status.ps1 -PrNumber <n>` and
-  returns `ready` ONLY when both
-  `LatestCopilotReview.submittedAt > baseline_submitted_at` AND
-  `ReviewAtHead: true`. On budget exhaustion, returns
-  `give-up-push-commit`; parent then pushes a substantive commit
-  (auto-assign on `synchronize` is the most reliable fallback).
-  A single 20-min run is deliberately preferred over 5-min
-  extensions — the parent has no useful work during a passive wait.
-
-- [ ] **3.** **List + categorize open threads (sub-agent, 5-min
-  budget):** `pwsh ./scripts/03-list-open-threads.ps1 -PrNumber <n>`
-  emits every unresolved thread from every reviewer. Sub-agent
-  classifies each row's `author` as `copilot` (loop-owned) vs
-  `human-or-other-bot` (default `escalate-to-user` in triage unless
-  the user explicitly scoped them in) and groups by file + severity.
-
-- [ ] **4.** **Triage (sub-agent, 5-min budget per ≤5 threads —
-  parent batches if more):** apply the rubric in
-  [03-triage-criteria.md](03-triage-criteria.md); return
-  `{thread_id, fix | decline | escalate-to-user, one-line rationale}`
-  per thread.
-
-- [ ] **5.** **Apply fixes (sub-agents, parallel — max 5 concurrent,
-  5-min budget each):** one sub-agent per independent fix. Each fix
-  sub-agent MUST first research the repo's own conventions for the
-  area it's editing — read `.github/instructions/*.md` files matching
-  the changed file's `applyTo` glob, `.github/skills/` for any
-  relevant skill, `AGENTS.md` / `CONTRIBUTING.md`, and the patterns
-  in neighboring files. If a fix would contradict repo practice,
-  push back in the reply instead of forcing it. Parent collects,
-  reconciles file conflicts, and continues to step 6.
-
-- [ ] **6.** **Build + test per the repo's conventions (1+
-  sub-agents, 10-min budget total):** **research first, run second.**
-  Discovery sub-agents fan out (parallel `explore`) across the axes
-  the change touches — build tool, test runner, lint, format, spell-
-  check, license-header CI, etc. — by reading
-  `.github/instructions/*.md`, `AGENTS.md`, `CONTRIBUTING.md`,
-  `README`, `package.json` scripts, `Makefile`, language tooling,
-  and recent CI workflow runs. The build/test execution sub-agent
-  then runs exactly the discovered commands on the changed code and
-  returns pass/fail + failure excerpts. Never invent generic build
-  or test commands — if discovery turns up no convention, surface
-  that explicitly rather than guessing.
-
-- [ ] **7.** **Commit + push (parent):** one focused commit per
-  round. Include the
-  `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
-  trailer when the fix came from a Copilot finding. Record the
-  pushed commit SHA — step 8 cites it.
-
-- [ ] **8.** **Reply + resolve, citing the pushed SHA (sub-agent
-  drafts, parent posts):** sub-agent drafts a reply per open thread
-  using [06-reply-templates.md](06-reply-templates.md) and returns
-  `{thread_id, reply_body}` pairs that quote the step-7 SHA. Parent
-  then runs
-  `pwsh ./scripts/08-reply-and-resolve.ps1 -ThreadId <id> -Body <text>`
-  for each. Reply + resolve are mutations — the parent owns mutations.
-
-- [ ] **9.** **Convergence check (sub-agent, 3-min budget):**
-  `pwsh ./scripts/02-check-review-status.ps1 -PrNumber <n>` is
-  converged iff its JSON shows `Converged: true` (=
-  `ReviewAtHead && NoNewComments && OpenThreadCount == 0`). The
-  sub-agent re-runs the snapshot AND independently re-queries HEAD
-  vs. `LatestCopilotReview.commitOid` as a sanity check. If
-  converged → step 10. Otherwise, loop back to step 1.
-
-- [ ] **10.** **(Once, after convergence) Cleanup outdated (parent):**
-  `pwsh ./scripts/10-cleanup-outdated.ps1 -PrNumber <n>` — safety
-  net for stale `isOutdated: true` Copilot threads. Most loops
-  converge with nothing to clean.
-
-Print the proof of convergence (HEAD SHA,
-`LatestCopilotReview.commitOid`, `submittedAt`,
-`OpenThreadCount: 0`) in your `task_complete` message. Proof, not
-assertion.
+Print the proof of convergence (`HeadOid`, `LatestCopilotReview.commitOid`,
+`submittedAt`, `OpenThreadCount: 0`) in the `task_complete` message. Proof,
+not assertion.
 
 ## Notes
 
