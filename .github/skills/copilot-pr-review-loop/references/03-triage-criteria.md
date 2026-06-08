@@ -27,9 +27,9 @@ who can decide it:
 
 | Reviewer | Default action |
 |----------|----------------|
-| `copilot-pull-request-reviewer` | Loop-owned — triage with the rubric below. |
+| `copilot-pull-request-reviewer` / `copilot-pull-request-reviewer[bot]` | Loop-owned — triage with the rubric below. (`03-list-open-threads.ps1` reports the raw `author.login`, which may carry the `[bot]` suffix on some surfaces; match both forms.) |
 | Human reviewer | **Default `escalate-to-user`** unless the user explicitly scoped them into the loop. Auto-replying or auto-resolving a human thread can hide unaddressed concerns and is socially wrong. |
-| `github-advanced-security` (other automated bots) | **Default `escalate-to-user`** unless the project has a documented suppression / fix convention you can follow. |
+| `github-advanced-security` / other automated bots | **Default `escalate-to-user`** unless the project has a documented suppression / fix convention you can follow. |
 
 ## Fix when the finding is...
 

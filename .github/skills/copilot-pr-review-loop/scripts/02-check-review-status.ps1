@@ -32,7 +32,7 @@
       1. Call this script → capture LatestCopilotReview.submittedAt as
          baseline AND read CopilotPending.
       2. If CopilotPending is true, skip the trigger step — Copilot is
-         already reviewing. Otherwise call 01-request-review.ps1.
+         already reviewing. Otherwise, call 01-request-review.ps1.
       3. Wait sub-agent polls this script until either submittedAt
          advances past baseline AND ReviewAtHead is true, OR Converged.
       4. On convergence end the loop; otherwise fetch threads via
