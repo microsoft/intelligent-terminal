@@ -19,13 +19,13 @@ Author(s):
 #include "ITerminalHandoff.h"
 
 #if defined(WT_BRANDING_RELEASE)
-#define __CLSID_CTerminalHandoff "ECC17785-94ED-4359-B545-0472B7D0275F"
+#define __CLSID_CTerminalHandoff "83D9C36B-160A-49C2-A222-A4A211A45B38"
 #elif defined(WT_BRANDING_PREVIEW)
-#define __CLSID_CTerminalHandoff "86633F1F-6454-40EC-89CE-DA4EBA977EE2"
+#define __CLSID_CTerminalHandoff "1FB14274-C0FC-43EB-B46B-10789AC76C1D"
 #elif defined(WT_BRANDING_CANARY)
-#define __CLSID_CTerminalHandoff "1706609C-A4CE-4C0D-B7D2-C19BF66398A5"
+#define __CLSID_CTerminalHandoff "26B27C03-6354-4E19-9640-6E8D780A4675"
 #else
-#define __CLSID_CTerminalHandoff "051F34EE-C1FD-4B19-AF75-9BA54648434C"
+#define __CLSID_CTerminalHandoff "AC7A517A-2E34-46C3-9A9F-CA20DAF2D8DF"
 #endif
 
 using NewHandoffFunction = HRESULT (*)(HANDLE* in, HANDLE* out, HANDLE signal, HANDLE reference, HANDLE server, HANDLE client, const TERMINAL_STARTUP_INFO* startupInfo);

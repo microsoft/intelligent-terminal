@@ -19,13 +19,13 @@ Author(s):
 #include "IConsoleHandoff.h"
 
 #if defined(WT_BRANDING_RELEASE)
-#define __CLSID_CConsoleHandoff "7ABAC0AD-3AEF-4556-ABE7-C1812594E071"
+#define __CLSID_CConsoleHandoff "9A0159CA-5632-4916-B4D5-052D9D5A6195"
 #elif defined(WT_BRANDING_PREVIEW)
-#define __CLSID_CConsoleHandoff "06EC847C-C0A5-46B8-92CB-7C92F6E35CD5"
+#define __CLSID_CConsoleHandoff "FD0E53A3-EE5F-42EE-86DD-233F5A9FE85E"
 #elif defined(WT_BRANDING_CANARY)
-#define __CLSID_CConsoleHandoff "A854D02A-F2FE-44A5-BB24-D03F4CF830D4"
+#define __CLSID_CConsoleHandoff "04142D7E-503D-40B7-A170-212F6806F354"
 #else
-#define __CLSID_CConsoleHandoff "1F9F2BF5-5BC3-4F17-B0E6-912413F1F451"
+#define __CLSID_CConsoleHandoff "47613D30-96E3-42C1-BAED-0281BDFB56CF"
 #endif
 
 using namespace Microsoft::WRL;

@@ -180,7 +180,7 @@
                 Description="Console host for Intelligent Terminal"
                 PublicFolder="Public">
                 <uap3:Properties>
-                    <Clsid>{1F9F2BF5-5BC3-4F17-B0E6-912413F1F451}</Clsid>
+                    <Clsid>{47613D30-96E3-42C1-BAED-0281BDFB56CF}</Clsid>
                 </uap3:Properties>
             </uap3:AppExtension>
         </uap3:Extension>
@@ -191,7 +191,7 @@
                 Description="AI-native terminal host"
                 PublicFolder="Public">
                 <uap3:Properties>
-                    <Clsid>{051F34EE-C1FD-4B19-AF75-9BA54648434C}</Clsid>
+                    <Clsid>{AC7A517A-2E34-46C3-9A9F-CA20DAF2D8DF}</Clsid>
                 </uap3:Properties>
             </uap3:AppExtension>
         </uap3:Extension>
@@ -206,10 +206,10 @@
         <com:Extension Category="windows.comServer">
             <com:ComServer>
                 <com:ExeServer DisplayName="OpenConsole" Executable="OpenConsole.exe">
-                    <com:Class Id="1F9F2BF5-5BC3-4F17-B0E6-912413F1F451"/>
+                    <com:Class Id="47613D30-96E3-42C1-BAED-0281BDFB56CF"/>
                 </com:ExeServer>
                 <com:ExeServer DisplayName="WindowsTerminal" Executable="WindowsTerminal.exe">
-                    <com:Class Id="051F34EE-C1FD-4B19-AF75-9BA54648434C"/>
+                    <com:Class Id="AC7A517A-2E34-46C3-9A9F-CA20DAF2D8DF"/>
                     <com:Class Id="D5B7C9E1-4F6A-4B8C-D9E0-F1A2B3C4D5E6"/> <!-- TerminalProtocolComServer (Dev) -->
                 </com:ExeServer>
                 <com:SurrogateServer DisplayName="WindowsTerminalShellExt">

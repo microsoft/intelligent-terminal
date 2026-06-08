@@ -181,7 +181,7 @@
                 Description="Console host built from microsoft/terminal open source repository"
                 PublicFolder="Public">
                 <uap3:Properties>
-                    <Clsid>{7ABAC0AD-3AEF-4556-ABE7-C1812594E071}</Clsid>
+                    <Clsid>{9A0159CA-5632-4916-B4D5-052D9D5A6195}</Clsid>
                 </uap3:Properties>
             </uap3:AppExtension>
         </uap3:Extension>
@@ -192,7 +192,7 @@
                 Description="Terminal host built from microsoft/terminal open source repository"
                 PublicFolder="Public">
                 <uap3:Properties>
-                    <Clsid>{ECC17785-94ED-4359-B545-0472B7D0275F}</Clsid>
+                    <Clsid>{83D9C36B-160A-49C2-A222-A4A211A45B38}</Clsid>
                 </uap3:Properties>
             </uap3:AppExtension>
         </uap3:Extension>
@@ -207,10 +207,10 @@
         <com:Extension Category="windows.comServer">
             <com:ComServer>
                 <com:ExeServer DisplayName="OpenConsole" Executable="OpenConsole.exe">
-                    <com:Class Id="7ABAC0AD-3AEF-4556-ABE7-C1812594E071"/>
+                    <com:Class Id="9A0159CA-5632-4916-B4D5-052D9D5A6195"/>
                 </com:ExeServer>
                 <com:ExeServer DisplayName="IntelligentTerminal" Executable="WindowsTerminal.exe">
-                    <com:Class Id="ECC17785-94ED-4359-B545-0472B7D0275F"/>
+                    <com:Class Id="83D9C36B-160A-49C2-A222-A4A211A45B38"/>
                     <com:Class Id="A2E4F6B8-1C3D-4E5F-A6B7-C8D9E0F1A2B3"/> <!-- TerminalProtocolComServer (Release) -->
                 </com:ExeServer>
                 <com:SurrogateServer DisplayName="IntelligentTerminalShellExt">
