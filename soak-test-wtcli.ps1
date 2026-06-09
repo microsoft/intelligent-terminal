@@ -6,12 +6,12 @@
   (so wtcli inherits WT_COM_CLSID and can activate the COM server).
 
   Each iteration runs a full cycle and records pass/fail per call type:
-    1. new-tab        — open a tab
-    2. split-pane     — open a pane
-    3. send-keys      — execute a harmless command (echo)
-    4. pane-status    — get process status (pane info)
-    5. active-pane    — get PaneInfo
-    6. kill-pane x2   — clean up the split pane and the tab (so we don't leak)
+    1. new-tab        - open a tab
+    2. split-pane     - open a pane
+    3. send-keys      - execute a harmless command (echo)
+    4. pane-status    - get process status (pane info)
+    5. active-pane    - get PaneInfo
+    6. kill-pane x2   - clean up the split pane and the tab (so we don't leak)
 
   Stops early if a crash signature (0x80010105 / 0xc0000005 / connection loss)
   appears, reporting how far it got. Writes a summary + a failures CSV.
@@ -34,7 +34,7 @@ param(
 
 $ErrorActionPreference = 'Continue'
 
-# ── Resolve wtcli (prefer PATH, else the installed package) ──
+# -- Resolve wtcli (prefer PATH, else the installed package) --
 $wtcli = (Get-Command wtcli.exe -ErrorAction SilentlyContinue).Source
 if (-not $wtcli) {
     $pkg = Get-AppxPackage *IntelligentTerminal* -ErrorAction SilentlyContinue |
@@ -66,7 +66,7 @@ Write-Host ""
 $wtPidsBefore = @(Get-Process WindowsTerminal -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
 Write-Host ("WindowsTerminal PIDs before: {0}" -f ($wtPidsBefore -join ', ')) -ForegroundColor DarkGray
 
-# ── per-call stats + failure log ──
+# -- per-call stats + failure log --
 $stats    = [ordered]@{}
 $failures = New-Object System.Collections.ArrayList
 $bugHits  = 0
@@ -113,10 +113,10 @@ function Get-SessionId {
     try { return ($JsonText.Trim() | ConvertFrom-Json).session_id } catch { return $null }
 }
 
-# ── Connectivity preflight ──
+# -- Connectivity preflight --
 $pre = Invoke-Wt -Iter 0 -Name 'preflight(info)' -WtArgs @('info')
 if (-not $pre.Ok) {
-    Write-Host "ERROR: preflight 'wtcli info' failed — aborting before the loop." -ForegroundColor Red
+    Write-Host "ERROR: preflight 'wtcli info' failed - aborting before the loop." -ForegroundColor Red
     Write-Host $pre.Out
     return
 }
@@ -124,7 +124,7 @@ if (-not $pre.Ok) {
 Add-Content -Path $logPath -Value "=== soak-test-wtcli $stamp : $Iterations iterations ==="
 $sw.Restart()   # time the loop itself
 
-# ── Main loop ──
+# -- Main loop --
 for ($i = 1; $i -le $Iterations; $i++) {
 
     # 1) open a tab
@@ -148,15 +148,15 @@ for ($i = 1; $i -le $Iterations; $i++) {
     $r = Invoke-Wt -Iter $i -Name 'send-keys' -WtArgs @('send-keys','-t',$tabSid,("{0}-{1}" -f $Command,$i),'Enter')
     if ($r.Bug) { $crashed = $true; $crashMsg = "bug signature on send-keys (iter $i)"; break }
 
-    # 4) get pane info — process status
+    # 4) get pane info - process status
     $r = Invoke-Wt -Iter $i -Name 'pane-status' -WtArgs @('pane-status','-t',$tabSid)
     if ($r.Bug) { $crashed = $true; $crashMsg = "bug signature on pane-status (iter $i)"; break }
 
-    # 5) get pane info — active pane (PaneInfo)
+    # 5) get pane info - active pane (PaneInfo)
     $r = Invoke-Wt -Iter $i -Name 'active-pane' -WtArgs @('--json','active-pane')
     if ($r.Bug) { $crashed = $true; $crashMsg = "bug signature on active-pane (iter $i)"; break }
 
-    # 6) clean up — kill the split pane, then the tab's pane (closes the tab)
+    # 6) clean up - kill the split pane, then the tab's pane (closes the tab)
     if ($splitSid) {
         $r = Invoke-Wt -Iter $i -Name 'kill-pane(split)' -WtArgs @('kill-pane','-t',$splitSid)
         if ($r.Bug) { $crashed = $true; $crashMsg = "bug signature on kill-pane(split) (iter $i)"; break }
@@ -181,7 +181,7 @@ for ($i = 1; $i -le $Iterations; $i++) {
 if ($sw) { $sw.Stop() }
 $completed = if ($crashed) { $i } elseif ($i) { $Iterations } else { 0 }
 
-# ── Summary ──
+# -- Summary --
 Write-Host ""
 Write-Host "############ SUMMARY ############" -ForegroundColor Magenta
 $rows = foreach ($k in $stats.Keys) {
