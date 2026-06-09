@@ -1,1 +1,84 @@
-//! Placeholder — implemented in Plan B Task 7.
+//! Bind a discovered session to its hosting WT pane.
+//!
+//! Strategy per the spec's finalized Decision #3:
+//!   * Copilot → `inuse.<pid>.lock` in the session dir (exact).
+//!   * Codex   → Restart Manager owner of the rollout file (exact).
+//!   * Claude/Gemini → cwd correlation: among live CLI processes, pick the
+//!     one whose working directory matches the session's cwd; ties (same cwd)
+//!     are left unresolved (returns None) to avoid a wrong bind.
+//! Once a pid is chosen, the pane GUID comes from `proc_bind::wt_session_for_pid`.
+
+use crate::proc_bind;
+use std::path::{Path, PathBuf};
+
+/// A candidate live CLI process for correlation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Candidate {
+    pub pid: u32,
+    pub cwd: PathBuf,
+}
+
+/// Pure core: pick the unique candidate whose cwd matches `target`. Returns
+/// `None` when there is no match OR more than one match (ambiguous — never
+/// guess). Comparison is case-insensitive with trailing separators ignored
+/// (Windows paths).
+pub fn correlate_by_cwd(candidates: &[Candidate], target: &Path) -> Option<u32> {
+    let norm = |p: &Path| {
+        p.to_string_lossy()
+            .trim_end_matches(['\\', '/'])
+            .to_lowercase()
+    };
+    let want = norm(target);
+    let mut hits = candidates.iter().filter(|c| norm(&c.cwd) == want);
+    let first = hits.next()?;
+    if hits.next().is_some() {
+        None // ambiguous: two same-cwd candidates
+    } else {
+        Some(first.pid)
+    }
+}
+
+/// Resolve the pane GUID hosting a Copilot session via its lock file, then PEB.
+pub fn bind_copilot(session_dir: &Path) -> Option<String> {
+    let pid = proc_bind::copilot_pid_from_lock(session_dir)?;
+    proc_bind::wt_session_for_pid(pid)
+}
+
+/// Resolve the pane GUID hosting a Codex session via Restart Manager, then PEB.
+pub fn bind_codex(rollout_path: &Path) -> Option<String> {
+    let pid = proc_bind::file_owner_pid(rollout_path)?;
+    proc_bind::wt_session_for_pid(pid)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cand(pid: u32, cwd: &str) -> Candidate {
+        Candidate { pid, cwd: PathBuf::from(cwd) }
+    }
+
+    #[test]
+    fn unique_cwd_match_binds() {
+        let cands = vec![cand(10, r"C:\Users\u\proj"), cand(20, r"C:\Users\u\other")];
+        assert_eq!(correlate_by_cwd(&cands, Path::new(r"C:\Users\u\proj")), Some(10));
+    }
+
+    #[test]
+    fn case_and_trailing_sep_insensitive() {
+        let cands = vec![cand(10, r"c:\users\u\proj\")];
+        assert_eq!(correlate_by_cwd(&cands, Path::new(r"C:\Users\U\Proj")), Some(10));
+    }
+
+    #[test]
+    fn ambiguous_same_cwd_returns_none() {
+        let cands = vec![cand(10, r"C:\p"), cand(20, r"C:\p")];
+        assert_eq!(correlate_by_cwd(&cands, Path::new(r"C:\p")), None);
+    }
+
+    #[test]
+    fn no_match_returns_none() {
+        let cands = vec![cand(10, r"C:\a")];
+        assert_eq!(correlate_by_cwd(&cands, Path::new(r"C:\b")), None);
+    }
+}
