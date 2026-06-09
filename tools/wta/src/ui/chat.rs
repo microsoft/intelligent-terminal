@@ -81,7 +81,7 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
     match msg {
         ChatMessage::Agent(t) | ChatMessage::Error(t) => dot_wrap_count(t, body_width) + 1,
         ChatMessage::User(t) => wrap_count(t, body_width) + 1,
-        ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
+        ChatMessage::System(t) => wrap_count(t, wrap_width) + 1,
         ChatMessage::ToolCall { .. } => 1,
         ChatMessage::Plan(entries) => 2 + entries.len(), // header + each entry + blank
         // Disclaimer is a single dim row — terminal min-width guarantees the
@@ -495,22 +495,6 @@ fn build_message_lines<'a>(
                 theme::DOT_ERROR,
                 theme::ERROR_STYLE,
             );
-            lines.push(Line::default());
-        }
-        ChatMessage::AgentEvent(text) => {
-            for (i, line_text) in text.lines().enumerate() {
-                if i == 0 {
-                    lines.push(Line::from(Span::styled(
-                        truncate_render_text(line_text),
-                        theme::AGENT_EVENT_HEADER,
-                    )));
-                } else {
-                    lines.push(Line::from(Span::styled(
-                        truncate_render_text(line_text),
-                        theme::AGENT_EVENT_DETAIL,
-                    )));
-                }
-            }
             lines.push(Line::default());
         }
         ChatMessage::Disclaimer => {

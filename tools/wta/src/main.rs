@@ -2658,11 +2658,6 @@ async fn run_acp_app(
                 .ok()
                 .filter(|s| !s.is_empty());
 
-            // ── env-gated raw agent_event chat logging (diagnostics) ──────
-            app_state.log_agent_events = std::env::var("WTA_LOG_AGENT_EVENT")
-                .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
-                .unwrap_or(false);
-
             // If a prompt was passed via CLI arg (e.g., from command palette creating
             // a new agent pane), delegate it to a new tab agent on startup.
             if let Some(ref initial_prompt) = cli.prompt {

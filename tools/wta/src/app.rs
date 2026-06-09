@@ -69,8 +69,7 @@ const MVP_SESSIONS_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
 ///
 /// Defaults to [`MVP_SESSIONS_ORIGIN_FILTER`]. The `WTA_SESSIONS_SHOW_AGENT_PANE`
 /// env var (set to `1` / `true`) flips a single helper to
-/// `OriginFilter::All` for debugging — matches the existing
-/// `WTA_LOG_AGENT_EVENT` / `WTA_SOURCE_*` convention. Each helper is
+/// `OriginFilter::All` for debugging. Each helper is
 /// a separate process so the override only affects the pane that
 /// launched with the env var set; the rest of the Terminal keeps the
 /// MVP default.
@@ -349,10 +348,6 @@ pub enum ChatMessage {
     },
     Plan(Vec<PlanEntry>),
     Error(String),
-    /// Informational WT event surfaced inline in the chat (e.g. shell exit
-    /// codes, OSC sequences). Distinct from `Error` so we can theme it
-    /// differently and skip autofix wiring.
-    AgentEvent(String),
     /// "Intelligent Terminal uses AI. Check for mistakes" disclaimer.
     /// Pushed on every agent-pane startup,
     /// no persistence gating — getting cleared by the next turn is fine,
@@ -1998,10 +1993,6 @@ pub struct App {
     pub source_session_id: Option<String>,
     /// Source pane working directory (set from `WTA_SOURCE_CWD`).
     pub source_cwd: Option<String>,
-    /// When true, surface raw `agent_event` payloads in the chat as
-    /// `ChatMessage::AgentEvent` for diagnostics. Controlled by the
-    /// `WTA_LOG_AGENT_EVENT` env var (1/true/yes).
-    pub log_agent_events: bool,
     /// Spinner tick counter used by Setup mode (per-tab `activity_frame`
     /// drives chat-mode spinners; this one is for the wizard view which
     /// has no tab context). Bumped from the Tick handler when in Setup.
@@ -2212,7 +2203,6 @@ impl App {
             last_dispatched_command: None,
             source_session_id: None,
             source_cwd: None,
-            log_agent_events: false,
             activity_frame: 0,
             close_pane_armed_at: None,
             transient_hint: None,
@@ -5125,34 +5115,6 @@ impl App {
                 params,
             } => {
                 tracing::debug!(target: "autofix", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
-
-                // Hook bridge events: fire-and-forget into the agent registry
-                // so the agent session view stays current. Unrelated to autofix /
-                // tab routing; runs before the same-pane skip because we want
-                // to record events from our own pane too.
-                if method == "agent_event" {
-                    let mut hook_events = Vec::new();
-                    let _ = route_agent_event_to_registry_with_hook_sink(
-                        &mut self.agent_sessions,
-                        pane_id.as_str(),
-                        &params,
-                        |event| hook_events.push(event),
-                    );
-                    for event in hook_events {
-                        self.publish_session_hook(event);
-                    }
-                    // Diagnostics aid: surface the raw event payload in the
-                    // active tab's chat so a developer can correlate hook
-                    // wire-format with registry behavior. Off by default.
-                    if self.log_agent_events {
-                        let detail = serde_json::to_string(&params)
-                            .unwrap_or_else(|_| "<unserializable>".to_string());
-                        self.current_tab_mut()
-                            .messages
-                            .push(ChatMessage::AgentEvent(detail));
-                    }
-                    return;
-                }
 
                 // autofix_execute is an inbound UI action ("run the armed
                 // fix now") from TerminalPage. pane_id is the failing
@@ -9589,167 +9551,6 @@ mod tests {
             s.cli_source,
             crate::agent_sessions::CliSource::Unknown(ref v) if v.is_empty()
         ));
-    }
-
-    #[test]
-    fn helper_agent_event_queues_session_hook_while_updating_local_registry() {
-        let mut app = test_app();
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        app.set_session_hook_tx(tx);
-
-        app.handle_event(AppEvent::WtEvent {
-            method: "agent_event".to_string(),
-            pane_id: "pane-hook".to_string(),
-            tab_id: Some("tab-1".to_string()),
-            params: json!({
-                "event": "agent.session.started",
-                "cli_source": "copilot",
-                "agent_session_id": "sid-hook",
-                "payload": {
-                    "cwd": r#"C:\repo\hook"#,
-                }
-            }),
-        });
-
-        let queued = rx.try_recv().expect("session_hook event queued");
-        assert_eq!(
-            queued,
-            crate::agent_sessions::SessionEvent::SessionStarted {
-                key: "sid-hook".to_string(),
-                cli_source: crate::agent_sessions::CliSource::Copilot,
-                pane_session_id: "pane-hook".to_string(),
-                cwd: std::path::PathBuf::from(r#"C:\repo\hook"#),
-                title: "hook".to_string(),
-            }
-        );
-        assert!(
-            app.agent_sessions.has_session(&"sid-hook".to_string()),
-            "local registry mutation remains in place"
-        );
-    }
-
-    #[test]
-    fn helper_agent_event_queues_synthetic_start_and_followup_hook() {
-        let mut app = test_app();
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        app.set_session_hook_tx(tx);
-
-        app.handle_event(AppEvent::WtEvent {
-            method: "agent_event".to_string(),
-            pane_id: "pane-tool".to_string(),
-            tab_id: Some("tab-1".to_string()),
-            params: json!({
-                "event": "agent.tool.starting",
-                "cli_source": "copilot",
-                "agent_session_id": "sid-tool",
-                "payload": {
-                    "cwd": r#"C:\repo\tool"#,
-                    "tool_name": "edit"
-                }
-            }),
-        });
-
-        assert!(matches!(
-            rx.try_recv().expect("synthetic SessionStarted queued"),
-            crate::agent_sessions::SessionEvent::SessionStarted { ref key, .. } if key == "sid-tool"
-        ));
-        assert_eq!(
-            rx.try_recv().expect("ToolStarting queued"),
-            crate::agent_sessions::SessionEvent::ToolStarting {
-                key: "sid-tool".to_string(),
-                tool_name: "edit".to_string(),
-            }
-        );
-    }
-
-    #[test]
-    fn helper_agent_event_without_agent_session_id_does_not_publish_synthetic_to_master() {
-        // Regression for the user-reported duplicate session management row:
-        //   "system32  Error                          29 minutes ago"
-        //   "Agent pane session b832a8d3: system32  Active · copilot"
-        //
-        // When an agent_event arrives with no agent_session_id (broken
-        // hook, race, or hook from a workspace shell pane that doesn't
-        // own an ACP session), the helper used to synthesize a
-        // `pane:<guid>` placeholder, apply it locally, AND publish it to
-        // master. Master then surfaced the placeholder as a separate
-        // session management row alongside the real session, both pointing
-        // at the same
-        // underlying pane — hence the duplicate.
-        //
-        // Fix: keep the synthetic placeholder local for helper
-        // bookkeeping (is_agent_pane / OSC handler), but DO NOT publish
-        // events with `pane:<guid>` keys to master.
-        let mut app = test_app();
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        app.set_session_hook_tx(tx);
-
-        // Tool event with NO agent_session_id, NO existing pane binding
-        // → resolve_or_synthesize_key returns "pane:<guid>", synthetic
-        // placeholder created locally, but nothing published to master.
-        app.handle_event(AppEvent::WtEvent {
-            method: "agent_event".to_string(),
-            pane_id: "pane-orphan".to_string(),
-            tab_id: Some("tab-1".to_string()),
-            params: json!({
-                "event": "agent.tool.starting",
-                "cli_source": "copilot",
-                "payload": {
-                    "cwd": r#"C:\repo\hook"#,
-                    "tool_name": "edit"
-                }
-            }),
-        });
-
-        assert!(
-            rx.try_recv().is_err(),
-            "synthetic pane:<guid> events must NOT be published to master"
-        );
-        // Local registry still has the placeholder for helper-side
-        // is_agent_pane / OSC handler bookkeeping.
-        assert!(app.agent_sessions.is_agent_pane("pane-orphan"));
-    }
-
-    #[test]
-    fn helper_agent_event_with_real_agent_session_id_still_publishes_to_master() {
-        // Defense against overcorrection: the synthetic-key gate above
-        // must not block legitimate events with real agent_session_ids.
-        let mut app = test_app();
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        app.set_session_hook_tx(tx);
-
-        app.handle_event(AppEvent::WtEvent {
-            method: "agent_event".to_string(),
-            pane_id: "pane-real".to_string(),
-            tab_id: Some("tab-1".to_string()),
-            params: json!({
-                "event": "agent.tool.starting",
-                "cli_source": "copilot",
-                "agent_session_id": "real-sid-deadbeef",
-                "payload": {
-                    "cwd": r#"C:\repo\hook"#,
-                    "tool_name": "edit"
-                }
-            }),
-        });
-
-        // Should publish at least one event (likely synthetic
-        // SessionStarted + ToolStarting). Both must have the REAL key.
-        let mut count = 0;
-        while let Ok(evt) = rx.try_recv() {
-            match evt {
-                crate::agent_sessions::SessionEvent::SessionStarted { key, .. } => {
-                    assert_eq!(key, "real-sid-deadbeef", "real session id preserved");
-                    count += 1;
-                }
-                crate::agent_sessions::SessionEvent::ToolStarting { key, .. } => {
-                    assert_eq!(key, "real-sid-deadbeef", "real session id preserved");
-                    count += 1;
-                }
-                other => panic!("unexpected event: {:?}", other),
-            }
-        }
-        assert!(count >= 1, "at least one real-keyed event must reach master");
     }
 
     fn test_app_with_master_rx() -> (
