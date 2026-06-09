@@ -61,9 +61,8 @@ namespace IntelligentTerminal
     // The current process's package version as `"Major.Minor.Build.Revision"`
     // (e.g. `"0.8.0.2"`), or an empty string when unpackaged. This is the
     // shared per-version key — wta's Rust `logging::package_version()` reads
-    // the same value via `GetCurrentPackageId`, so the Rust processes, this
-    // C++ logger, and (through `WTA_HOOK_LOG_DIR`) the PowerShell hooks all
-    // resolve to the same `logs\<pkgver>\` folder.
+    // the same value via `GetCurrentPackageId`, so the Rust processes and this
+    // C++ logger resolve to the same `logs\<pkgver>\` folder.
     inline std::wstring PackageVersionDir()
     {
         UINT32 length = 0;
