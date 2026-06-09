@@ -18,6 +18,7 @@
 //! blocks keep this module self-contained and version-independent. Every
 //! `unsafe` block is documented.
 
+use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 
 // ── Win32 FFI (inline; see module docs for why not windows-sys) ──────────
@@ -224,6 +225,134 @@ pub fn wt_session_for_pid(pid: u32) -> Option<String> {
     env_var_for_pid(pid, "WT_SESSION")
 }
 
+// ── Restart Manager FFI (rstrtmgr.dll) ───────────────────────────────────
+
+const ERROR_MORE_DATA: u32 = 234;
+const CCH_RM_MAX_APP_NAME: usize = 255;
+const CCH_RM_MAX_SVC_NAME: usize = 63;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Filetime {
+    low: u32,
+    high: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct RmUniqueProcess {
+    process_id: u32,
+    process_start_time: Filetime,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct RmProcessInfo {
+    process: RmUniqueProcess,
+    app_name: [u16; CCH_RM_MAX_APP_NAME + 1],
+    service_short_name: [u16; CCH_RM_MAX_SVC_NAME + 1],
+    application_type: i32,
+    app_status: u32,
+    ts_session_id: u32,
+    restartable: i32,
+}
+
+#[link(name = "rstrtmgr")]
+extern "system" {
+    fn RmStartSession(session_handle: *mut u32, flags: u32, session_key: *mut u16) -> u32;
+    fn RmRegisterResources(
+        session_handle: u32,
+        num_files: u32,
+        files: *const *const u16,
+        num_apps: u32,
+        apps: *const core::ffi::c_void,
+        num_services: u32,
+        service_names: *const *const u16,
+    ) -> u32;
+    fn RmGetList(
+        session_handle: u32,
+        proc_info_needed: *mut u32,
+        proc_info: *mut u32,
+        affected_apps: *mut RmProcessInfo,
+        reboot_reasons: *mut u32,
+    ) -> u32;
+    fn RmEndSession(session_handle: u32) -> u32;
+}
+
+/// Restart Manager: every process id currently holding `path` open. Empty
+/// vec if nothing holds it (the common case for append-then-close writers
+/// like Copilot/Claude/Gemini) or on any RM error. Used for Codex, which
+/// keeps its rollout file open for the whole session.
+pub fn file_holders(path: &Path) -> Vec<u32> {
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut session: u32 = 0;
+    // Session key buffer must be >= CCH_RM_SESSION_KEY+1 (33) wide chars.
+    let mut key = [0u16; 64];
+    // SAFETY: session out-param and key buffer are valid for the declared sizes.
+    let rc = unsafe { RmStartSession(&mut session, 0, key.as_mut_ptr()) };
+    if rc != 0 {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    let files = [wide.as_ptr()];
+    // SAFETY: one file resource; no apps/services (null + 0 counts).
+    let reg = unsafe {
+        RmRegisterResources(
+            session,
+            1,
+            files.as_ptr(),
+            0,
+            std::ptr::null(),
+            0,
+            std::ptr::null(),
+        )
+    };
+    if reg == 0 {
+        let mut needed: u32 = 0;
+        let mut count: u32 = 0;
+        let mut reason: u32 = 0;
+        // First call probes the required array length.
+        // SAFETY: null array with count 0 is the documented probe form.
+        let probe = unsafe {
+            RmGetList(session, &mut needed, &mut count, std::ptr::null_mut(), &mut reason)
+        };
+        if (probe == 0 || probe == ERROR_MORE_DATA) && needed > 0 {
+            // SAFETY: zeroed RmProcessInfo is valid POD; vec has `needed` slots.
+            let mut arr: Vec<RmProcessInfo> =
+                vec![unsafe { std::mem::zeroed() }; needed as usize];
+            count = needed;
+            // SAFETY: arr has capacity `count`; out-params valid.
+            let got = unsafe {
+                RmGetList(session, &mut needed, &mut count, arr.as_mut_ptr(), &mut reason)
+            };
+            if got == 0 {
+                for info in arr.iter().take(count as usize) {
+                    out.push(info.process.process_id);
+                }
+            }
+        }
+    }
+
+    // SAFETY: session is a handle returned by RmStartSession.
+    unsafe {
+        RmEndSession(session);
+    }
+    out
+}
+
+/// First process id holding `path` open, or `None`. Thin wrapper over
+/// [`file_holders`] for the common single-holder case (Codex).
+#[allow(dead_code)] // consumed by Plan B's session binder, not yet wired here
+pub fn file_owner_pid(path: &Path) -> Option<u32> {
+    file_holders(path).into_iter().next()
+}
+
 /// Parse Copilot's in-use marker. Copilot writes a zero-byte file named
 /// `inuse.<pid>.lock` into its session-state directory while a session is
 /// live; the owning process id is encoded in the file name. Returns the
@@ -326,5 +455,31 @@ mod tests {
         assert_eq!(got.as_deref(), Some("marker-value-42"));
         assert_eq!(got_ci.as_deref(), Some("marker-value-42"));
         assert_eq!(missing, None);
+    }
+
+    #[test]
+    fn file_holders_includes_current_process() {
+        let dir = tmp_dir("rm-hold");
+        let path = dir.join("held.jsonl");
+        std::fs::write(&path, b"{}\n").unwrap();
+        // Keep a read handle open for the duration of the query.
+        let _held = std::fs::File::open(&path).unwrap();
+        let holders = file_holders(&path);
+        assert!(
+            holders.contains(&std::process::id()),
+            "expected current pid {} among holders {:?}",
+            std::process::id(),
+            holders
+        );
+    }
+
+    #[test]
+    fn file_holders_empty_for_unheld_file() {
+        let dir = tmp_dir("rm-free");
+        let path = dir.join("free.jsonl");
+        std::fs::write(&path, b"{}\n").unwrap();
+        // No handle held -> Restart Manager reports no holders.
+        let holders = file_holders(&path);
+        assert!(holders.is_empty(), "expected no holders, got {:?}", holders);
     }
 }
