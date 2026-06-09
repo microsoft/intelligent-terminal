@@ -2033,9 +2033,8 @@ async fn run_acp_app(
                         // rename pass — `agent_event` envelopes from
                         // hook bridge still carried `session_id`.
                         // Without this fallback every hook event
-                        // arrived with `pane_id = ""`, and downstream
-                        // `route_agent_event_to_registry` collided all
-                        // sessions on the empty-string key in
+                        // arrived with `pane_id = ""`, causing all sessions
+                        // to collide on the empty-string key in
                         // `active_by_pane`, triggering spurious
                         // orphan-handover demotions whenever a second
                         // session started in the same window (e.g.

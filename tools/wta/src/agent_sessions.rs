@@ -41,17 +41,6 @@ pub enum CliSource {
 }
 
 impl CliSource {
-    pub fn parse(s: Option<&str>) -> Self {
-        match s.unwrap_or("").to_ascii_lowercase().as_str() {
-            "claude"  => Self::Claude,
-            "codex"   => Self::Codex,
-            "copilot" => Self::Copilot,
-            "gemini"  => Self::Gemini,
-            ""        => Self::Unknown(String::new()),
-            other     => Self::Unknown(other.to_string()),
-        }
-    }
-
     /// Map an `agent_registry` agent id (`"copilot"`, `"claude"`, `"codex"`, `"gemini"`,
     /// ...) to the matching `CliSource` variant. Returns `None` for agents
     /// the session registry does not track (e.g. `"unknown"`, or
@@ -441,7 +430,7 @@ impl AgentSessionRegistry {
                 // Preserve an existing title (e.g. one loaded from disk by the
                 // history loader) when the new event carries no replacement.
                 // Live synth titles are sent only for genuinely new sessions
-                // (route_agent_event_to_registry passes "" for resumed ones).
+                // (an empty title signals no update — preserve the stored title).
                 if !title.is_empty() {
                     entry.title        = title;
                 }
@@ -740,9 +729,8 @@ impl AgentSessionRegistry {
 
     /// Returns the [`AgentKey`] of the most-recently-active *live* session
     /// (status is `Idle` / `Working` / `Attention` / `Error`) whose
-    /// [`CliSource`] matches `cli`. Used as a last-resort fallback by
-    /// `route_agent_event_to_registry_with_hook_sink` when a hook event
-    /// arrives carrying neither an `agent_session_id` *nor* a
+    /// [`CliSource`] matches `cli`. Used as a last-resort fallback when a
+    /// hook event arrives carrying neither an `agent_session_id` *nor* a
     /// `pane_session_id` that resolves to a known live session.
     ///
     /// The motivating case is Copilot CLI's `Notification` hook (e.g.
@@ -2121,16 +2109,6 @@ mod tests {
             CliSource::from_agent_id("codex"),
             Some(CliSource::Codex),
         );
-    }
-
-    #[test]
-    fn cli_source_parse_round_trips_codex() {
-        // Wire format used by SessionHookCliSource::Known("Codex" | "codex")
-        // must parse back to the typed variant — otherwise Codex hook events
-        // would degrade to CliSource::Unknown after a serde round-trip.
-        // Note: CliSource has `pub fn parse(Option<&str>) -> Self` (not FromStr).
-        assert_eq!(CliSource::parse(Some("Codex")), CliSource::Codex);
-        assert_eq!(CliSource::parse(Some("codex")), CliSource::Codex);
     }
 
     #[test]
