@@ -419,6 +419,62 @@ pub fn file_owner_pid(path: &Path) -> Option<u32> {
     file_holders(path).into_iter().next()
 }
 
+// ── Toolhelp32 process enumeration (kernel32) ────────────────────────────
+
+const TH32CS_SNAPPROCESS: u32 = 0x0000_0002;
+const MAX_PATH: usize = 260;
+const INVALID_HANDLE_VALUE: isize = -1;
+
+#[repr(C)]
+struct ProcessEntry32W {
+    dw_size: u32,
+    cnt_usage: u32,
+    th32_process_id: u32,
+    th32_default_heap_id: usize,
+    th32_module_id: u32,
+    cnt_threads: u32,
+    th32_parent_process_id: u32,
+    pc_pri_class_base: i32,
+    dw_flags: u32,
+    sz_exe_file: [u16; MAX_PATH],
+}
+
+#[link(name = "kernel32")]
+extern "system" {
+    fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> isize;
+    fn Process32FirstW(snapshot: isize, entry: *mut ProcessEntry32W) -> i32;
+    fn Process32NextW(snapshot: isize, entry: *mut ProcessEntry32W) -> i32;
+}
+
+/// Every running process whose executable file name equals `exe_name`
+/// (case-insensitive, e.g. `"copilot.exe"` / `"node.exe"`). Empty on error.
+pub fn pids_for_exe(exe_name: &str) -> Vec<u32> {
+    let mut out = Vec::new();
+    // SAFETY: snapshot flag + pid 0 (all processes); returns INVALID_HANDLE_VALUE on failure.
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot == INVALID_HANDLE_VALUE {
+        return out;
+    }
+    // SAFETY: zeroed POD; dw_size must be set before Process32FirstW.
+    let mut entry: ProcessEntry32W = unsafe { std::mem::zeroed() };
+    entry.dw_size = std::mem::size_of::<ProcessEntry32W>() as u32;
+    let want = exe_name.to_ascii_lowercase();
+
+    // SAFETY: snapshot + entry valid; iterate until Process32NextW returns 0.
+    let mut ok = unsafe { Process32FirstW(snapshot, &mut entry) };
+    while ok != 0 {
+        let end = entry.sz_exe_file.iter().position(|&c| c == 0).unwrap_or(MAX_PATH);
+        let name = String::from_utf16_lossy(&entry.sz_exe_file[..end]);
+        if name.to_ascii_lowercase() == want {
+            out.push(entry.th32_process_id);
+        }
+        ok = unsafe { Process32NextW(snapshot, &mut entry) };
+    }
+    // SAFETY: snapshot is a handle from CreateToolhelp32Snapshot.
+    unsafe { CloseHandle(snapshot) };
+    out
+}
+
 /// Parse Copilot's in-use marker. Copilot writes a zero-byte file named
 /// `inuse.<pid>.lock` into its session-state directory while a session is
 /// live; the owning process id is encoded in the file name. Returns the
@@ -591,6 +647,17 @@ mod tests {
             dir.file_name().unwrap(),
             got
         );
+    }
+
+    #[test]
+    fn pids_for_exe_finds_spawned_cmd() {
+        let mut child = spawn_probe_child(&[], None);
+        let pid = child.id();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let pids = pids_for_exe("cmd.exe");
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(pids.contains(&pid), "expected {} in {:?}", pid, pids);
     }
 
     #[test]
