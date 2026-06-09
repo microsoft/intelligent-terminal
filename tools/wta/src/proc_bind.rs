@@ -180,6 +180,39 @@ fn read_remote_bytes(handle: isize, address: usize, len: usize) -> Option<Vec<u8
     }
 }
 
+// RTL_USER_PROCESS_PARAMETERS + 0x38 -> CurrentDirectory.DosPath (UNICODE_STRING)
+//   +0x38: Length (u16, bytes)   +0x40: Buffer (ptr to UTF-16)
+const RUPP_OFFSET_CURDIR_LENGTH: usize = 0x38;
+const RUPP_OFFSET_CURDIR_BUFFER: usize = 0x40;
+
+/// Read a process's current working directory from its PEB. `None` if the
+/// process is inaccessible or the path is empty.
+pub fn cwd_for_pid(pid: u32) -> Option<std::path::PathBuf> {
+    let handle = ProcHandle::open(pid)?;
+    let pbi = basic_information(handle.0)?;
+    let pp = read_remote_ptr(handle.0, pbi.peb_base_address + PEB_OFFSET_PROCESS_PARAMETERS)?;
+
+    // Length is the low u16 of the pointer-sized read at the UNICODE_STRING base.
+    let len_word = read_remote_ptr(handle.0, pp + RUPP_OFFSET_CURDIR_LENGTH)?;
+    let len_bytes = (len_word & 0xFFFF) as usize;
+    if len_bytes == 0 || len_bytes > 0x8000 {
+        return None;
+    }
+    let buf_ptr = read_remote_ptr(handle.0, pp + RUPP_OFFSET_CURDIR_BUFFER)?;
+    let raw = read_remote_bytes(handle.0, buf_ptr, len_bytes)?;
+    let utf16: Vec<u16> = raw
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    let s = String::from_utf16_lossy(&utf16);
+    let trimmed = s.trim_end_matches(['\\', '\0']);
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(std::path::PathBuf::from(trimmed))
+    }
+}
+
 /// Read and decode the full environment block of `pid` as a single string
 /// with embedded NUL separators (one `NAME=VALUE` entry per NUL-delimited
 /// segment). Returns `None` if the process can't be opened or the PEB walk
@@ -520,6 +553,30 @@ mod tests {
     fn find_env_value_empty_value() {
         let block = "EMPTY=\0X=1\0";
         assert_eq!(find_env_value(block, "EMPTY").as_deref(), Some(""));
+    }
+
+    #[test]
+    fn cwd_for_pid_reads_child_working_dir() {
+        let dir = tmp_dir("cwd-child");
+        // Canonicalize so the comparison is robust to short/long path forms.
+        let canonical = std::fs::canonicalize(&dir).unwrap();
+        let mut child = spawn_probe_child(&[], Some(&canonical));
+        let pid = child.id();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let got = cwd_for_pid(pid);
+        let _ = child.kill();
+        let _ = child.wait();
+        let got = got.expect("cwd_for_pid returned None");
+        // Compare case-insensitively on the final component to avoid
+        // \\?\ prefix / drive-letter-case differences.
+        assert!(
+            got.to_string_lossy().to_lowercase().contains(
+                &dir.file_name().unwrap().to_string_lossy().to_lowercase()
+            ),
+            "expected cwd containing {:?}, got {:?}",
+            dir.file_name().unwrap(),
+            got
+        );
     }
 
     #[test]
