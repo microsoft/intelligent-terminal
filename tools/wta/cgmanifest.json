@@ -554,6 +554,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "filetime",
+          "version": "0.2.29"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "finl_unicode",
           "version": "1.4.0"
         }
@@ -979,6 +988,15 @@
         "cargo": {
           "name": "normpath",
           "version": "1.5.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "notify",
+          "version": "6.1.1"
         }
       }
     },
@@ -2057,6 +2075,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "windows_x86_64_msvc",
+          "version": "0.48.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "windows-link",
           "version": "0.2.1"
         }
@@ -2067,7 +2094,25 @@
         "type": "cargo",
         "cargo": {
           "name": "windows-sys",
+          "version": "0.48.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "windows-sys",
           "version": "0.61.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "windows-targets",
+          "version": "0.48.5"
         }
       }
     },
