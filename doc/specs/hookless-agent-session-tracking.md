@@ -1,10 +1,3 @@
----
-author: @yuazha_microsoft
-created on: 2026-06-08
-last updated: 2026-06-08
-issue id: TBD
----
-
 # Hookless agent session tracking (Class-B, hook-free)
 
 ## Abstract
