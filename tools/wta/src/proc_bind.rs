@@ -20,6 +20,112 @@
 
 use std::path::Path;
 
+// ── Win32 FFI (inline; see module docs for why not windows-sys) ──────────
+
+/// Subset of `PROCESS_BASIC_INFORMATION` we read. Layout matches the OS
+/// struct on x64; we only touch `peb_base_address` and
+/// `inherited_from_unique_process_id`.
+#[allow(non_snake_case)]
+#[repr(C)]
+struct ProcessBasicInformation {
+    exit_status: i32,
+    peb_base_address: usize,
+    affinity_mask: usize,
+    base_priority: i32,
+    unique_process_id: usize,
+    inherited_from_unique_process_id: usize,
+}
+
+// PROCESS_QUERY_INFORMATION (0x0400) | PROCESS_VM_READ (0x0010). A superset
+// of QUERY_LIMITED_INFORMATION, sufficient for NtQueryInformationProcess and
+// ReadProcessMemory on same-user processes.
+const PROCESS_ACCESS: u32 = 0x0410;
+
+#[link(name = "ntdll")]
+extern "system" {
+    fn NtQueryInformationProcess(
+        handle: isize,
+        info_class: i32,
+        process_info: *mut core::ffi::c_void,
+        process_info_len: u32,
+        return_len: *mut u32,
+    ) -> i32;
+}
+
+#[link(name = "kernel32")]
+extern "system" {
+    fn OpenProcess(desired_access: u32, inherit: i32, pid: u32) -> isize;
+    fn CloseHandle(handle: isize) -> i32;
+    fn ReadProcessMemory(
+        handle: isize,
+        base_address: usize,
+        buffer: *mut core::ffi::c_void,
+        size: usize,
+        bytes_read: *mut usize,
+    ) -> i32;
+}
+
+/// RAII wrapper so we never leak a process handle across an early return.
+struct ProcHandle(isize);
+
+impl ProcHandle {
+    /// Open `pid` for query + VM read. Returns `None` if the process is
+    /// gone or access is denied (e.g. a different user / elevation).
+    fn open(pid: u32) -> Option<Self> {
+        // SAFETY: OpenProcess with a valid access mask; returns 0 on failure.
+        let h = unsafe { OpenProcess(PROCESS_ACCESS, 0, pid) };
+        if h == 0 {
+            None
+        } else {
+            Some(ProcHandle(h))
+        }
+    }
+}
+
+impl Drop for ProcHandle {
+    fn drop(&mut self) {
+        // SAFETY: self.0 is a handle from OpenProcess, closed exactly once.
+        unsafe {
+            CloseHandle(self.0);
+        }
+    }
+}
+
+/// Query `PROCESS_BASIC_INFORMATION` for an open handle.
+fn basic_information(handle: isize) -> Option<ProcessBasicInformation> {
+    // SAFETY: zeroed POD is a valid initial value; the struct is repr(C) and
+    // sized to match what NtQueryInformationProcess(0, ...) writes.
+    let mut pbi: ProcessBasicInformation = unsafe { std::mem::zeroed() };
+    let mut ret_len: u32 = 0;
+    let size = std::mem::size_of::<ProcessBasicInformation>() as u32;
+    // SAFETY: handle is valid; pbi/ret_len are valid out-params of the
+    // declared sizes; info_class 0 == ProcessBasicInformation.
+    let status = unsafe {
+        NtQueryInformationProcess(
+            handle,
+            0,
+            &mut pbi as *mut _ as *mut core::ffi::c_void,
+            size,
+            &mut ret_len,
+        )
+    };
+    if status == 0 {
+        Some(pbi)
+    } else {
+        None
+    }
+}
+
+/// The parent process id of `pid` (`InheritedFromUniqueProcessId`), or
+/// `None` if the process is gone / inaccessible. Note: Windows reuses pids,
+/// so a returned parent may have exited and been replaced — callers that
+/// walk the chain should bound their iterations.
+pub fn parent_pid(pid: u32) -> Option<u32> {
+    let handle = ProcHandle::open(pid)?;
+    let pbi = basic_information(handle.0)?;
+    Some(pbi.inherited_from_unique_process_id as u32)
+}
+
 /// Parse Copilot's in-use marker. Copilot writes a zero-byte file named
 /// `inuse.<pid>.lock` into its session-state directory while a session is
 /// live; the owning process id is encoded in the file name. Returns the
@@ -76,5 +182,35 @@ mod tests {
         let dir = tmp_dir("copilot-bad");
         std::fs::write(dir.join("inuse.notanumber.lock"), b"").unwrap();
         assert_eq!(copilot_pid_from_lock(&dir), None);
+    }
+
+    /// Spawn a long-lived child we can probe, inheriting `envs` and `cwd`.
+    /// `ping -n 30 127.0.0.1` sleeps ~29 s with no stdin needed; the test
+    /// kills it as soon as the assertion is done.
+    fn spawn_probe_child(
+        envs: &[(&str, &str)],
+        cwd: Option<&std::path::Path>,
+    ) -> std::process::Child {
+        let mut cmd = std::process::Command::new("cmd.exe");
+        cmd.args(["/c", "ping", "-n", "30", "127.0.0.1"]);
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+        for (k, v) in envs {
+            cmd.env(k, v);
+        }
+        if let Some(d) = cwd {
+            cmd.current_dir(d);
+        }
+        cmd.spawn().expect("spawn probe child")
+    }
+
+    #[test]
+    fn parent_pid_of_child_is_current_process() {
+        let mut child = spawn_probe_child(&[], None);
+        let child_pid = child.id();
+        let got = parent_pid(child_pid);
+        let _ = child.kill();
+        let _ = child.wait();
+        assert_eq!(got, Some(std::process::id()));
     }
 }
