@@ -86,7 +86,9 @@ if ($proc.HasExited) {
 Write-Host "Sending $BroadcastCount broadcast events ..." -ForegroundColor Cyan
 $sendFails = 0
 for ($i = 1; $i -le $BroadcastCount; $i++) {
-    $payload = '{"seq":' + $i + ',"marker":"' + $marker + '"}'
+    # Escape inner quotes as \" so the JSON survives PowerShell -> native-exe
+    # argument passing (otherwise the quotes are stripped and wtcli rejects it).
+    $payload = '{\"seq\":' + $i + ',\"marker\":\"' + $marker + '\"}'
     $o = (& $wtcli send-event -e wtcli.test.ping $payload 2>&1 | Out-String)
     if ($LASTEXITCODE -ne 0 -or $o -match '0x80010105|0xc0000005') {
         $sendFails++
