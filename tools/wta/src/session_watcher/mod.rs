@@ -249,19 +249,20 @@ mod tests {
         // One complete record + a half-written second record (no newline yet).
         std::fs::write(
             &path,
-            b"{\"type\":\"tool.execution_start\",\"data\":{\"toolName\":\"bash\"}}\n{\"type\":\"tool.execu",
+            b"{\"type\":\"tool.execution_start\",\"data\":{\"toolName\":\"bash\"}}\n{\"type\":\"assistant.turn",
         )
         .unwrap();
         let mut progress = std::collections::HashMap::new();
         let first = process_change(&path, &mut progress);
         assert_eq!(first.len(), 1, "only the complete line should classify");
         assert!(matches!(first[0].event, SessionEvent::ToolStarting { .. }));
-        // Complete the partial record.
+        // Complete the partial record (turn_end → ToolCompleted under the
+        // turn-based Copilot model).
         std::fs::OpenOptions::new()
             .append(true)
             .open(&path)
             .unwrap()
-            .write_all(b"tion_complete\",\"data\":{\"success\":true}}\n")
+            .write_all(b"_end\",\"data\":{\"turnId\":\"0\"}}\n")
             .unwrap();
         let second = process_change(&path, &mut progress);
         assert_eq!(second.len(), 1, "the completed record must now classify (not be lost)");
