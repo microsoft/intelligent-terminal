@@ -17,6 +17,7 @@ mod logging;
 mod master;
 mod osc52;
 mod pane_context;
+mod proc_bind;
 mod protocol;
 mod rtl;
 mod runtime_paths;
