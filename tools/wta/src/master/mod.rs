@@ -2138,14 +2138,19 @@ async fn handle_session_hook(
 /// changed state, broadcast `sessions/changed` so helpers refetch. Mirrors
 /// `handle_session_hook` but for the in-process file watcher (no ext-request
 /// round-trip). `SessionStarted` synthesis + pane binding happens in
-/// `ensure_watched_session_row` before the activity event is applied.
+/// `ensure_watched_session_row` before the activity event is applied; the
+/// post-apply title refresh upgrades the synthetic (cwd-basename / empty)
+/// title from the CLI's on-disk artefacts, same as the hook path.
 async fn apply_watcher_event(
     state: &MasterStateInner,
     emitted: crate::session_watcher::Emitted,
 ) {
     ensure_watched_session_row(state, &emitted).await;
+    let key = emitted.key.clone();
     let applied = state.registry.apply_event(emitted.event).await;
-    if applied {
+    let title_upgraded =
+        try_refresh_title_from_disk(&state.registry, &acp::SessionId::new(key)).await;
+    if applied || title_upgraded {
         broadcast_ext_to_helpers(
             state,
             crate::session_registry::build_sessions_changed_notification(),
@@ -2155,20 +2160,59 @@ async fn apply_watcher_event(
 }
 
 /// Ensure master's registry has a row for the event's session key, creating a
-/// minimal one on first sight. Pane binding is added in Plan C Task 3.
+/// minimal one (with a best-effort pane binding) on first sight. Binding per
+/// the spec's Decision #3: Copilot=lock, Codex=Restart Manager,
+/// Claude=cwd-correlation, Gemini=unbound (cwd not path-encoded). All resolver
+/// calls are best-effort — a failed bind never blocks row creation, it just
+/// leaves `pane_session_id = None`.
 async fn ensure_watched_session_row(
     state: &MasterStateInner,
     emitted: &crate::session_watcher::Emitted,
 ) {
+    use crate::agent_sessions::CliSource;
     let sid = acp::SessionId::new(emitted.key.clone());
-    if state.registry.lookup(&sid).await.is_none() {
-        let mut info =
-            crate::session_registry::SessionInfo::new(sid, std::path::PathBuf::new());
-        info.cli_source = Some(emitted.cli.clone());
-        info.status = Some(crate::agent_sessions::AgentStatus::Idle);
-        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
-        state.registry.upsert(info).await;
+    if state.registry.lookup(&sid).await.is_some() {
+        return;
     }
+
+    let home = std::env::var("USERPROFILE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+
+    let (pane, cwd): (Option<String>, std::path::PathBuf) = match &emitted.cli {
+        CliSource::Copilot => {
+            let dir = crate::history_loader::copilot_session_dir_for_key(&home, &emitted.key);
+            let pane = crate::session_watcher::bind::bind_copilot(&dir);
+            (pane, emitted.cwd.clone().unwrap_or_default())
+        }
+        CliSource::Codex => {
+            match crate::history_loader::find_codex_rollout_by_id(&home, &emitted.key) {
+                Some(path) => (
+                    crate::session_watcher::bind::bind_codex(&path),
+                    emitted.cwd.clone().unwrap_or_default(),
+                ),
+                None => (None, emitted.cwd.clone().unwrap_or_default()),
+            }
+        }
+        CliSource::Claude => match &emitted.cwd {
+            Some(cwd) => (
+                crate::session_watcher::bind::bind_by_cwd(&emitted.cli, cwd),
+                cwd.clone(),
+            ),
+            None => (None, std::path::PathBuf::new()),
+        },
+        // Gemini's cwd is not path-encoded (MVP: unbound); Unknown likewise.
+        CliSource::Gemini | CliSource::Unknown(_) => {
+            (None, emitted.cwd.clone().unwrap_or_default())
+        }
+    };
+
+    let mut info = crate::session_registry::SessionInfo::new(sid, cwd);
+    info.cli_source = Some(emitted.cli.clone());
+    info.status = Some(crate::agent_sessions::AgentStatus::Idle);
+    info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+    info.pane_session_id = pane;
+    state.registry.upsert(info).await;
 }
 
 /// Master-side WT event subscriber. Bridges `connection_state`

@@ -823,7 +823,7 @@ pub fn codex_title_for_key(home: &Path, key: &str) -> Option<String> {
 /// The filename suffix `<id>.jsonl` is a fast pre-filter; we still verify
 /// `payload.id == id` to guard against renamed files or UUID-prefix
 /// collisions.
-fn find_codex_rollout_by_id(home: &Path, id: &str) -> Option<PathBuf> {
+pub(crate) fn find_codex_rollout_by_id(home: &Path, id: &str) -> Option<PathBuf> {
     let root = home.join(".codex").join("sessions");
     let Ok(years) = fs::read_dir(&root) else { return None };
     for y in years.flatten() {

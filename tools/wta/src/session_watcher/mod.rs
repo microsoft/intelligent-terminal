@@ -40,6 +40,9 @@ use crate::agent_sessions::{CliSource, SessionEvent};
 pub struct Emitted {
     pub cli: CliSource,
     pub key: String,
+    /// Path-encoded session cwd when available (Claude only today; `None`
+    /// for Copilot/Codex/Gemini). Consumed by master pane-binding.
+    pub cwd: Option<PathBuf>,
     pub event: SessionEvent,
 }
 
@@ -85,7 +88,7 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                 classify_gemini::classify_snapshot(&val, &key, entry.gemini_msgs);
             entry.gemini_msgs = new_len;
             for event in events {
-                out.push(Emitted { cli: disc.cli.clone(), key: key.clone(), event });
+                out.push(Emitted { cli: disc.cli.clone(), key: key.clone(), cwd: disc.cwd.clone(), event });
             }
         }
         _ => {
@@ -118,7 +121,7 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                     _ => Vec::new(),
                 };
                 for event in events {
-                    out.push(Emitted { cli: disc.cli.clone(), key: disc.key.clone(), event });
+                    out.push(Emitted { cli: disc.cli.clone(), key: disc.key.clone(), cwd: disc.cwd.clone(), event });
                 }
             }
         }

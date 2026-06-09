@@ -9,12 +9,11 @@
 //!
 //! Once a pid is chosen, the pane GUID comes from `proc_bind::wt_session_for_pid`.
 
+use crate::agent_sessions::CliSource;
 use crate::proc_bind;
 use std::path::{Path, PathBuf};
 
 /// A candidate live CLI process for correlation.
-// Consumed by Plan C (master wiring); unused within Plan B.
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Candidate {
     pub pid: u32,
@@ -25,8 +24,6 @@ pub struct Candidate {
 /// `None` when there is no match OR more than one match (ambiguous — never
 /// guess). Comparison is case-insensitive with trailing separators ignored
 /// (Windows paths).
-// Consumed by Plan C (master wiring); unused within Plan B.
-#[allow(dead_code)]
 pub fn correlate_by_cwd(candidates: &[Candidate], target: &Path) -> Option<u32> {
     let norm = |p: &Path| {
         p.to_string_lossy()
@@ -44,18 +41,47 @@ pub fn correlate_by_cwd(candidates: &[Candidate], target: &Path) -> Option<u32> 
 }
 
 /// Resolve the pane GUID hosting a Copilot session via its lock file, then PEB.
-// Consumed by Plan C (master wiring); unused within Plan B.
-#[allow(dead_code)]
 pub fn bind_copilot(session_dir: &Path) -> Option<String> {
     let pid = proc_bind::copilot_pid_from_lock(session_dir)?;
     proc_bind::wt_session_for_pid(pid)
 }
 
 /// Resolve the pane GUID hosting a Codex session via Restart Manager, then PEB.
-// Consumed by Plan C (master wiring); unused within Plan B.
-#[allow(dead_code)]
 pub fn bind_codex(rollout_path: &Path) -> Option<String> {
     let pid = proc_bind::file_owner_pid(rollout_path)?;
+    proc_bind::wt_session_for_pid(pid)
+}
+
+/// Process exe names to enumerate per CLI when correlating by cwd. Copilot
+/// (lock) and Codex (Restart Manager) bind exactly and need no enumeration.
+fn exe_names(cli: &CliSource) -> &'static [&'static str] {
+    match cli {
+        CliSource::Claude => &["claude.exe"],
+        CliSource::Gemini => &["node.exe"], // gemini runs as a node bundle
+        _ => &[],
+    }
+}
+
+/// Gather live candidate processes for a cwd-correlated CLI: `(pid, cwd)` for
+/// every matching exe that has a readable working directory.
+pub fn gather_candidates(cli: &CliSource) -> Vec<Candidate> {
+    let mut out = Vec::new();
+    for name in exe_names(cli) {
+        for pid in proc_bind::pids_for_exe(name) {
+            if let Some(cwd) = proc_bind::cwd_for_pid(pid) {
+                out.push(Candidate { pid, cwd });
+            }
+        }
+    }
+    out
+}
+
+/// Resolve the pane GUID hosting `cli`'s session, given the session's cwd
+/// (path-encoded; available for Claude). Returns `None` when there is no
+/// unique cwd match. For Copilot/Codex use [`bind_copilot`]/[`bind_codex`].
+pub fn bind_by_cwd(cli: &CliSource, session_cwd: &Path) -> Option<String> {
+    let candidates = gather_candidates(cli);
+    let pid = correlate_by_cwd(&candidates, session_cwd)?;
     proc_bind::wt_session_for_pid(pid)
 }
 
@@ -98,5 +124,19 @@ mod tests {
     fn no_match_returns_none() {
         let cands = vec![cand(10, r"C:\a")];
         assert_eq!(correlate_by_cwd(&cands, Path::new(r"C:\b")), None);
+    }
+
+    #[test]
+    fn gather_candidates_empty_for_cli_without_exe_names() {
+        // Copilot/Codex bind by lock/RM, not cwd — no exe names to enumerate,
+        // so this is deterministic regardless of what's running.
+        assert!(gather_candidates(&CliSource::Copilot).is_empty());
+        assert!(gather_candidates(&CliSource::Codex).is_empty());
+    }
+
+    #[test]
+    fn bind_by_cwd_none_without_candidates() {
+        // No exe_names -> no candidates -> never binds, regardless of cwd.
+        assert_eq!(bind_by_cwd(&CliSource::Copilot, Path::new(r"C:\whatever")), None);
     }
 }
