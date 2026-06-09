@@ -448,6 +448,19 @@ enum Command {
         action: SessionsAction,
     },
 
+    /// Diagnostics: exercise the proc_bind binding primitives.
+    BindProbe {
+        /// PID to read parent pid + WT_SESSION env from.
+        #[arg(long)]
+        pid: Option<u32>,
+        /// File path to query Restart Manager holders of.
+        #[arg(long)]
+        file: Option<String>,
+        /// Copilot session-state dir to read `inuse.<pid>.lock` from.
+        #[arg(long)]
+        lock_dir: Option<String>,
+    },
+
     /// One-shot ACP handshake to read an agent's advertised model list.
     /// Spawned by the Settings UI when the user picks a new ACP agent so
     /// the model dropdown can populate before any real agent pane is
@@ -858,6 +871,12 @@ async fn main() -> Result<()> {
 
         // ── ACP model list probe ──
         Some(Command::ProbeModels { agent }) => run_probe_models(&agent).await,
+
+        // ── proc_bind diagnostics ──
+        Some(Command::BindProbe { pid, file, lock_dir }) => {
+            run_bind_probe(pid, file, lock_dir);
+            Ok(())
+        }
 
         // ── No subcommand = ACP TUI mode (default), or one of the
         //    singleton-service modes ──
@@ -1968,6 +1987,23 @@ async fn connect_to_wt_protocol(
     use shell::wt_channel::CliChannel;
     let channel = CliChannel::connect().await?;
     Ok(channel.with_debug_sender(debug_tx))
+}
+
+/// Print the result of each `proc_bind` primitive for the given inputs.
+/// Pure diagnostics — used to validate binding against live agent CLIs.
+fn run_bind_probe(pid: Option<u32>, file: Option<String>, lock_dir: Option<String>) {
+    if let Some(pid) = pid {
+        println!("parent_pid({pid})        = {:?}", proc_bind::parent_pid(pid));
+        println!("wt_session_for_pid({pid}) = {:?}", proc_bind::wt_session_for_pid(pid));
+    }
+    if let Some(file) = file {
+        let p = std::path::Path::new(&file);
+        println!("file_holders({file})     = {:?}", proc_bind::file_holders(p));
+    }
+    if let Some(dir) = lock_dir {
+        let p = std::path::Path::new(&dir);
+        println!("copilot_pid_from_lock({dir}) = {:?}", proc_bind::copilot_pid_from_lock(p));
+    }
 }
 
 /// Show Windows Terminal protocol connection info and pane identity.
