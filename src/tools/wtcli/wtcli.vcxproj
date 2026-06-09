@@ -37,20 +37,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Reference Include="Microsoft.Terminal.Protocol">
-      <HintPath>$(OpenConsoleCommonOutDir)TerminalProtocol\Microsoft.Terminal.Protocol.winmd</HintPath>
-      <IsWinMDFile>true</IsWinMDFile>
-      <Private>false</Private>
-      <CopyLocalSatelliteAssemblies>false</CopyLocalSatelliteAssemblies>
-    </Reference>
-  </ItemGroup>
-  <!-- Build dependency — ensures TerminalProtocol builds first so the .winmd and
-       C++/WinRT projection headers exist before we compile. -->
-  <ItemGroup>
-    <ProjectReference Include="$(OpenConsoleDir)src\cascadia\TerminalProtocol\TerminalProtocol.vcxproj">
-      <Project>{F1A2B3C4-D5E6-4F7A-8B9C-0D1E2F3A4B5D}</Project>
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-    </ProjectReference>
     <!-- Build dependency — OpenConsoleProxy must build first so
          ITerminalProtocol.h exists before we compile. Build-order only; the
          proxy/stub itself is loaded at runtime via the package manifest. -->
@@ -61,11 +47,4 @@
   </ItemGroup>
   <Import Project="$(OpenConsoleDir)src\cppwinrt.build.post.props" />
   <Import Project="$(OpenConsoleDir)src\common.nugetversions.targets" />
-
-  <!-- Copy the .winmd to wtcli's output directory for MBM discovery at runtime. -->
-  <Target Name="CopyProtocolWinMD" AfterTargets="Build">
-    <Copy SourceFiles="$(OpenConsoleCommonOutDir)TerminalProtocol\Microsoft.Terminal.Protocol.winmd"
-          DestinationFolder="$(OutDir)"
-          SkipUnchangedFiles="true" />
-  </Target>
 </Project>

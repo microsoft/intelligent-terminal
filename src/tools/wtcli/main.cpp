@@ -776,9 +776,25 @@ int main()
     sendEventCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        auto resolvedSessionId = !sendEventPaneTarget.empty()
-            ? sendEventPaneTarget
-            : GuidToString(ResolveSessionId(server.get(), ""));
+        std::string resolvedSessionId;
+        if (!sendEventPaneTarget.empty())
+        {
+            resolvedSessionId = sendEventPaneTarget;
+        }
+        else
+        {
+            // Fall back to the active pane as the event source. If there is no
+            // active pane, bail rather than sending with an all-zero GUID,
+            // which would silently misroute the event.
+            const auto activeSid = ResolveSessionId(server.get(), "");
+            if (IsEqualGUID(activeSid, GUID{}))
+            {
+                fprintf(stderr, "[wtcli] send-event: no --pane given and no active pane to use as the event source.\n");
+                exitCode = 1;
+                return;
+            }
+            resolvedSessionId = GuidToString(activeSid);
+        }
         Json::Value evt;
         if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, evt))
         {
