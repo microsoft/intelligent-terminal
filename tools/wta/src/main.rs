@@ -2,7 +2,6 @@
 extern crate rust_i18n;
 
 mod agent_check;
-mod agent_hooks_installer;
 mod agent_pane_origin;
 mod agent_registry;
 mod agent_sessions;
@@ -435,14 +434,6 @@ enum Command {
         cwd: Option<String>,
     },
 
-    /// Manage the wt-agent-hooks bridge for supported CLI agents
-    /// (Copilot / Claude / Gemini). See `agent_hooks_installer` for
-    /// what each action does.
-    Hooks {
-        #[command(subcommand)]
-        action: HooksAction,
-    },
-
     /// Inspect sessions known to the shared wta-master.
     Sessions {
         #[command(subcommand)]
@@ -522,54 +513,6 @@ impl SessionsOriginArg {
             SessionsOriginArg::Shell => agent_sessions::OriginFilter::ShellOnly,
             SessionsOriginArg::AgentPane => agent_sessions::OriginFilter::AgentPaneOnly,
             SessionsOriginArg::All => agent_sessions::OriginFilter::All,
-        }
-    }
-}
-
-/// Subcommands for `wta hooks`.
-#[derive(Subcommand, Debug)]
-enum HooksAction {
-    /// (Re-)install the wt-agent-hooks bridge. Installs for all supported
-    /// CLIs by default, or a single CLI with `--cli`.
-    Install {
-        /// Which CLI to install for. Default: `all`.
-        #[arg(long, value_enum, default_value_t = HooksCliFilter::All)]
-        cli: HooksCliFilter,
-    },
-
-    /// Print per-CLI install state. Returns JSON with `--json`,
-    /// or a human-readable table by default.
-    Status,
-
-    /// Uninstall the bridge for one or all CLIs. Best-effort: missing
-    /// CLIs are skipped at info level. With `--json` returns a structured
-    /// per-CLI result report.
-    Uninstall {
-        /// Which CLI(s) to uninstall for. Default: `all`.
-        #[arg(long, value_enum, default_value_t = HooksCliFilter::All)]
-        cli: HooksCliFilter,
-    },
-}
-
-/// `--cli` filter for `wta hooks uninstall`.
-#[derive(Copy, Clone, Debug, clap::ValueEnum)]
-enum HooksCliFilter {
-    All,
-    Copilot,
-    Claude,
-    Gemini,
-    Codex,
-}
-
-impl HooksCliFilter {
-    fn into_scope(self) -> agent_hooks_installer::CliScope {
-        use agent_hooks_installer::{CliKind, CliScope};
-        match self {
-            HooksCliFilter::All => CliScope::All,
-            HooksCliFilter::Copilot => CliScope::One(CliKind::Copilot),
-            HooksCliFilter::Claude => CliScope::One(CliKind::Claude),
-            HooksCliFilter::Gemini => CliScope::One(CliKind::Gemini),
-            HooksCliFilter::Codex => CliScope::One(CliKind::Codex),
         }
     }
 }
@@ -865,13 +808,6 @@ async fn main() -> Result<()> {
             }
         },
 
-        // ── Manage agent hooks (install/status/uninstall) ──
-        Some(Command::Hooks { action }) => match action {
-            HooksAction::Install { cli } => run_hooks_install(cli),
-            HooksAction::Status => run_hooks_status(json_mode),
-            HooksAction::Uninstall { cli } => run_hooks_uninstall(cli, json_mode),
-        },
-
         // ── ACP model list probe ──
         Some(Command::ProbeModels { agent }) => run_probe_models(&agent).await,
 
@@ -943,9 +879,6 @@ fn process_label(cli: &Cli) -> String {
         None => "main".to_string(),
         Some(Command::Delegate { .. }) => "delegate".to_string(),
         Some(Command::ProbeModels { .. }) => "probe".to_string(),
-        Some(Command::Hooks {
-            action: HooksAction::Install { .. },
-        }) => "install-hooks".to_string(),
         // All other subcommands are short-lived wtcli-style clients.
         Some(_) => "cli".to_string(),
     }
@@ -995,155 +928,6 @@ async fn run_probe_models(agent: &str) -> Result<()> {
     // Flush the file appender — process::exit skips the guard drop.
     logging::shutdown_flush();
     std::process::exit(0);
-}
-
-// ─── Hooks subcommand handlers ──────────────────────────────────────────────
-
-fn run_hooks_install(cli: HooksCliFilter) -> Result<()> {
-    // Logging is initialized in `main()`; the install attempt is observable in
-    // %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.
-    let scope = cli.into_scope();
-    agent_hooks_installer::ensure_installed_scoped(scope);
-
-    // Verify the install actually landed by checking on-disk status.
-    // ensure_installed_scoped is fire-and-forget (silent on failure),
-    // so we inspect the result independently.
-    let report = agent_hooks_installer::status();
-    let failed: Vec<&str> = report
-        .clis
-        .iter()
-        .filter(|c| {
-            let in_scope = match scope {
-                agent_hooks_installer::CliScope::All => true,
-                agent_hooks_installer::CliScope::One(kind) => c.name == kind.name(),
-            };
-            // A CLI is "failed" if it's in scope, present on the machine
-            // (cli_found), but hooks are not installed.
-            in_scope && c.binary_on_path && !c.plugin_installed
-        })
-        .map(|c| c.name)
-        .collect();
-
-    if failed.is_empty() {
-        println!("{}", t!("hooks.install_attempted"));
-        Ok(())
-    } else {
-        let names = failed.join(", ");
-        tracing::error!(target: "agent_hooks", clis = %names, "hooks install verification failed");
-        anyhow::bail!("hooks installation failed for: {}", names)
-    }
-}
-
-fn run_hooks_status(json_mode: bool) -> Result<()> {
-    let report = agent_hooks_installer::status();
-    if json_mode {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&report)
-                .unwrap_or_else(|_| serde_json::to_string(&report).unwrap_or_default())
-        );
-    } else {
-        format_hooks_status_human(&report);
-    }
-    Ok(())
-}
-
-fn run_hooks_uninstall(cli: HooksCliFilter, json_mode: bool) -> Result<()> {
-    let report = agent_hooks_installer::uninstall(cli.into_scope());
-    if json_mode {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&report)
-                .unwrap_or_else(|_| serde_json::to_string(&report).unwrap_or_default())
-        );
-    } else {
-        format_hooks_uninstall_human(&report);
-    }
-    Ok(())
-}
-
-fn format_hooks_status_human(r: &agent_hooks_installer::StatusReport) {
-    let path_suffix = r
-        .bundle_source
-        .path
-        .as_deref()
-        .map(|p| format!(" ({})", p))
-        .unwrap_or_default();
-    println!(
-        "{}",
-        t!(
-            "hooks.bundle_source",
-            source = r.bundle_source.kind,
-            path_suffix = path_suffix,
-        )
-    );
-    println!();
-    for c in &r.clis {
-        let summary = if !c.binary_on_path {
-            t!("hooks.cli_not_on_path").into_owned()
-        } else if c.plugin_installed && c.plugin_enabled && c.marketplace_path_valid {
-            t!("hooks.installed").into_owned()
-        } else if c.plugin_installed && !c.marketplace_path_valid {
-            t!("hooks.marketplace_path_stale").into_owned()
-        } else if c.plugin_installed {
-            t!("hooks.installed_but_disabled").into_owned()
-        } else {
-            t!("hooks.not_installed").into_owned()
-        };
-        let detail = format!(
-            "marketplace={}, path_valid={}, plugin={}, enabled={}{}",
-            yn(c.marketplace_registered),
-            yn(c.marketplace_path_valid),
-            yn(c.plugin_installed),
-            yn(c.plugin_enabled),
-            c.detection_fallback
-                .map(|m| format!(", detection={}", m))
-                .unwrap_or_default(),
-        );
-        println!("  {:<10} {:<28}  ({})", c.name, summary, detail);
-        if let Some(p) = c.marketplace_path.as_deref() {
-            println!("    path: {}", p);
-        }
-    }
-}
-
-fn format_hooks_uninstall_human(r: &agent_hooks_installer::UninstallReport) {
-    for c in &r.clis {
-        let summary = if !c.attempted {
-            t!("hooks.uninstall_skipped").into_owned()
-        } else {
-            let plugin = c
-                .plugin_uninstalled
-                .map(|b| if b { "ok" } else { "failed" })
-                .unwrap_or("-");
-            let mkt = c
-                .marketplace_removed
-                .map(|b| if b { "ok" } else { "failed" })
-                .unwrap_or("-");
-            format!(
-                "plugin={} marketplace={} staging={}",
-                plugin,
-                mkt,
-                if c.staging_dir_removed {
-                    "ok"
-                } else {
-                    "failed"
-                },
-            )
-        };
-        println!("  {:<10} {}", c.name, summary);
-        for m in &c.messages {
-            println!("    \u{00b7} {}", m);
-        }
-    }
-}
-
-fn yn(b: bool) -> &'static str {
-    if b {
-        "yes"
-    } else {
-        "no"
-    }
 }
 
 // ─── Helper: connect to WT COM protocol (no debug channel, no ShellManager) ─────────
@@ -2549,25 +2333,6 @@ async fn run_acp_app(
                 );
                 let _ = event_tx.send(app::AppEvent::PreflightComplete(preflight_result));
             }
-
-            // ── install-hooks request channel ─────────────────────────────
-            // The Settings UI / in-TUI install button signals via this
-            // channel; main.rs runs `agent_hooks_installer::ensure_installed`
-            // off the UI thread so the TUI stays responsive.
-            let (install_req_tx, mut install_req_rx) =
-                tokio::sync::mpsc::unbounded_channel::<()>();
-            tokio::task::spawn_local(async move {
-                while let Some(()) = install_req_rx.recv().await {
-                    tracing::info!(target: "install_hooks", "received install request");
-                    // Run the (potentially slow, IO-bound) installer on the
-                    // blocking pool so we don't park the LocalSet.
-                    let _ = tokio::task::spawn_blocking(|| {
-                        agent_hooks_installer::ensure_installed();
-                    })
-                    .await;
-                }
-            });
-            app_state.set_install_request_tx(install_req_tx);
 
             // Wire the agent_event channel so dispatch_resume's split-pane
             // background callback can post AgentSessionEvent (specifically
