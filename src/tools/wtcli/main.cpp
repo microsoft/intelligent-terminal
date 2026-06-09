@@ -828,25 +828,28 @@ int main()
         if (!jsonMode)
             fprintf(stderr, "Listening for events... (Ctrl-C to stop)\n");
 
-        auto sink = new EventSink([&](const std::string& eventUtf8) {
+        // EventSink is born with _ref == 1, so attach() (adopt, no AddRef) hands
+        // that reference to the com_ptr. RAII then Releases on every exit path --
+        // exception-safe and robust against future early-returns, no manual
+        // Release to forget.
+        winrt::com_ptr<ITerminalProtocolEventSink> sink;
+        sink.attach(new EventSink([&](const std::string& eventUtf8) {
             if (!wtcli::MatchesEventFilter(eventUtf8, listenTarget, listenEventFilter))
                 return;
             printf("%s\n", eventUtf8.c_str());
             fflush(stdout);
-        });
+        }));
 
-        auto hr = server->Subscribe(sink);
+        auto hr = server->Subscribe(sink.get());
         if (FAILED(hr))
         {
             fprintf(stderr, "Subscribe failed: 0x%08X\n", static_cast<uint32_t>(hr));
             exitCode = 1;
-            sink->Release();
             return;
         }
 
         WaitForSingleObject(s_stopEvent, INFINITE);
         server->Unsubscribe();
-        sink->Release();
         // s_stopEvent is intentionally NOT closed: it is static and still
         // referenced by the registered Ctrl-C handler (a non-capturing lambda
         // that can only reach it via the static), so closing it would leave the
