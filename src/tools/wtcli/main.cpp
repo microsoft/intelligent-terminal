@@ -820,6 +820,12 @@ int main()
         if (!server) { exitCode = 1; return; }
 
         static HANDLE s_stopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!s_stopEvent)
+        {
+            fprintf(stderr, "[wtcli] listen: failed to create stop event (0x%08X)\n", GetLastError());
+            exitCode = 1;
+            return;
+        }
         SetConsoleCtrlHandler([](DWORD) -> BOOL {
             SetEvent(s_stopEvent);
             return TRUE;
