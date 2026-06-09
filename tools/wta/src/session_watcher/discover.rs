@@ -38,9 +38,18 @@ pub fn identify(path: &Path) -> Option<Discovered> {
 
     // Codex: rollout-<ts>-<UUID>.jsonl
     if name.starts_with("rollout-") && name.ends_with(".jsonl") {
-        // key is the trailing UUID after the last '-'.
+        // rollout-<iso-ts>-<uuid>.jsonl — the UUID is the last 5
+        // hyphen-delimited groups (8-4-4-4-12); the ISO timestamp before it
+        // also contains hyphens, so we can't just split on the last '-'.
         let stem = name.trim_end_matches(".jsonl");
-        let key = stem.rsplit('-').next()?.to_string();
+        let parts: Vec<&str> = stem.split('-').collect();
+        let key = if parts.len() >= 5 {
+            parts[parts.len() - 5..].join("-")
+        } else {
+            // Unexpected shape — fall back to the whole stem so we still
+            // produce *some* stable key rather than dropping the session.
+            stem.to_string()
+        };
         return Some(Discovered {
             cli: CliSource::Codex,
             key,
@@ -92,13 +101,11 @@ mod tests {
     }
 
     #[test]
-    fn codex_path() {
-        let p = Path::new(
-            r"C:\Users\u\.codex\sessions\2026\06\08\rollout-2026-06-08T21-29-13-019ea76c-4c47.jsonl",
-        );
+    fn codex_path_uses_full_uuid_key() {
+        let p = Path::new(r"C:\Users\u\.codex\sessions\2026\06\08\rollout-2026-06-08T21-29-13-019ea76c-4c47-7da1-9c47-5f814a9e3640.jsonl");
         let d = identify(p).unwrap();
         assert_eq!(d.cli, CliSource::Codex);
-        assert_eq!(d.key, "4c47");
+        assert_eq!(d.key, "019ea76c-4c47-7da1-9c47-5f814a9e3640");
     }
 
     #[test]

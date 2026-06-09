@@ -67,6 +67,14 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
             let Ok(text) = std::fs::read_to_string(path) else {
                 return out;
             };
+            // Canonical key = header `sessionId` (the filename only carries the
+            // first 8 hex chars). Fall back to the path-derived key if absent.
+            let key = text
+                .lines()
+                .next()
+                .and_then(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+                .and_then(|v| v.get("sessionId").and_then(|s| s.as_str()).map(str::to_string))
+                .unwrap_or_else(|| disc.key.clone());
             let Some(last) = text.lines().rev().find(|l| !l.trim().is_empty()) else {
                 return out;
             };
@@ -74,22 +82,28 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                 return out;
             };
             let (events, new_len) =
-                classify_gemini::classify_snapshot(&val, &disc.key, entry.gemini_msgs);
+                classify_gemini::classify_snapshot(&val, &key, entry.gemini_msgs);
             entry.gemini_msgs = new_len;
             for event in events {
-                out.push(Emitted {
-                    cli: disc.cli.clone(),
-                    key: disc.key.clone(),
-                    event,
-                });
+                out.push(Emitted { cli: disc.cli.clone(), key: key.clone(), event });
             }
         }
         _ => {
-            let Ok((text, new_off)) = read_appended(path, entry.offset) else {
+            let from = entry.offset;
+            let Ok((text, len)) = read_appended(path, from) else {
                 return out;
             };
-            entry.offset = new_off;
-            for line in text.lines() {
+            if len < from {
+                // File shrank/rotated — resync to the new end, drop nothing
+                // further this tick.
+                entry.offset = len;
+                return out;
+            }
+            // Only consume through the last newline; a trailing partial line is
+            // a record still being written — leave its bytes for the next tick.
+            let consumed = text.rfind('\n').map(|i| i + 1).unwrap_or(0);
+            entry.offset = from + consumed as u64;
+            for line in text[..consumed].lines() {
                 let line = line.trim();
                 if line.is_empty() {
                     continue;
@@ -104,11 +118,7 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                     _ => Vec::new(),
                 };
                 for event in events {
-                    out.push(Emitted {
-                        cli: disc.cli.clone(),
-                        key: disc.key.clone(),
-                        event,
-                    });
+                    out.push(Emitted { cli: disc.cli.clone(), key: disc.key.clone(), event });
                 }
             }
         }
@@ -223,5 +233,35 @@ mod tests {
         // No new bytes -> no duplicate events.
         let second = process_change(&path, &mut progress);
         assert!(second.is_empty());
+    }
+
+    #[test]
+    fn process_change_does_not_lose_a_partial_line() {
+        let dir = std::env::temp_dir()
+            .join(format!("wta-partial-{}", std::process::id()))
+            .join("session-state")
+            .join("sess-partial");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("events.jsonl");
+        // One complete record + a half-written second record (no newline yet).
+        std::fs::write(
+            &path,
+            b"{\"type\":\"tool.execution_start\",\"data\":{\"toolName\":\"bash\"}}\n{\"type\":\"tool.execu",
+        )
+        .unwrap();
+        let mut progress = std::collections::HashMap::new();
+        let first = process_change(&path, &mut progress);
+        assert_eq!(first.len(), 1, "only the complete line should classify");
+        assert!(matches!(first[0].event, SessionEvent::ToolStarting { .. }));
+        // Complete the partial record.
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(b"tion_complete\",\"data\":{\"success\":true}}\n")
+            .unwrap();
+        let second = process_change(&path, &mut progress);
+        assert_eq!(second.len(), 1, "the completed record must now classify (not be lost)");
+        assert!(matches!(second[0].event, SessionEvent::ToolCompleted { .. }));
     }
 }
