@@ -1676,6 +1676,16 @@ async fn delegate_with_context(
         .first()
         .ok_or_else(|| anyhow::anyhow!("no delegate agent configured"))?;
 
+    // Pin a session id we choose, so the launched CLI writes its session under a
+    // known id and we can bind it to the pane without hooks. Only for agents that
+    // advertise `--session-id` (Copilot/Claude/Gemini); `None` otherwise. The
+    // command builder appends the flag using the same registry lookup, so the
+    // pinned id and the actual launch flag always agree.
+    let resolved_exe = runtime.commandline.split_whitespace().next().unwrap_or("");
+    let pinned_session_id: Option<String> = crate::agent_registry::lookup_profile(resolved_exe)
+        .new_session_id_flag
+        .map(|_| uuid::Uuid::new_v4().to_string());
+
     let commandline = match prompt {
         // Prompt present → enrich it with the active pane's recent output and
         // bake it into the new tab's agent CLI (the `?<prompt>` path).
@@ -1710,10 +1720,18 @@ async fn delegate_with_context(
                 _ => prompt.to_string(),
             };
 
-            crate::coordinator::build_delegate_commandline(runtime, &full_prompt)?
+            crate::coordinator::build_delegate_launch_commandline_with_session(
+                runtime,
+                Some(&full_prompt),
+                pinned_session_id.as_deref(),
+            )?
         }
         // No prompt → open the delegate agent interactively in the new tab.
-        _ => crate::coordinator::build_delegate_interactive_commandline(runtime)?,
+        _ => crate::coordinator::build_delegate_launch_commandline_with_session(
+            runtime,
+            None,
+            pinned_session_id.as_deref(),
+        )?,
     };
 
     // The commandline bakes in the user prompt (`-i "<prompt>"`); keep it out
@@ -1721,9 +1739,22 @@ async fn delegate_with_context(
     tracing::debug!(cwd, "delegate_with_context: launching");
     tracing::trace!(target: "delegate.content", commandline, cwd, "delegate_with_context commandline");
 
-    shell_mgr
+    let create_resp = shell_mgr
         .wt_create_tab(Some(&commandline), cwd, None)
         .await?;
+    let pane_guid = create_resp
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    tracing::info!(
+        target: "delegate",
+        pane_guid = ?pane_guid,
+        pinned = ?pinned_session_id,
+        "delegate tab created",
+    );
+
+    // Phase 5 will register (pinned_session_id, pane_guid) with master here so
+    // the session is born bound to the pane without hooks.
 
     Ok(())
 }

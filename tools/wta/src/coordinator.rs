@@ -663,24 +663,6 @@ fn lookup_delegate_agent<'a>(
         .ok_or_else(|| anyhow!("no delegate agent configured"))
 }
 
-/// Build the full commandline for launching a delegate agent with a prompt.
-pub fn build_delegate_commandline(
-    runtime: &DelegateAgentRuntime,
-    input: &str,
-) -> Result<String> {
-    build_delegate_launch_commandline_with_session(runtime, Some(input), None)
-}
-
-/// Build the commandline for launching a delegate agent interactively, with
-/// no startup prompt. The agent's own CLI/TUI fills the new tab and waits for
-/// user input. Used by the "open background agent" hotkey (Alt+Shift+B), the
-/// no-prompt sibling of `?<prompt>` delegation.
-pub fn build_delegate_interactive_commandline(
-    runtime: &DelegateAgentRuntime,
-) -> Result<String> {
-    build_delegate_launch_commandline_with_session(runtime, None, None)
-}
-
 /// Build the delegate launch command line, optionally pinning a session id.
 /// When `session_id` is `Some` and the resolved agent advertises
 /// `new_session_id_flag`, append `<flag> <session_id>` so WTA controls the id
@@ -1098,7 +1080,7 @@ fn extract_balanced_json_object(text: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_delegate_interactive_commandline, build_delegate_launch_commandline,
+        build_delegate_launch_commandline,
         build_delegate_launch_commandline_with_session, default_delegate_agent_runtimes,
         parse_autofix_response, parse_recommendation_set, resolve_created_pane_id,
         validate_recommendation_set_for_coordinator_target, AutofixDecision, DelegateAgentRuntime,
@@ -1215,7 +1197,8 @@ mod tests {
         .find(|runtime| runtime.id == "copilot")
         .expect("copilot runtime should exist");
 
-        let commandline = build_delegate_interactive_commandline(&runtime).unwrap();
+        let commandline =
+            build_delegate_launch_commandline_with_session(&runtime, None, None).unwrap();
 
         // May be wrapped as "cmd /c copilot ..." if copilot.exe isn't on PATH.
         assert!(commandline.contains("copilot"));
