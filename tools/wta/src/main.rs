@@ -1257,6 +1257,77 @@ async fn fetch_sessions_from_master(
     Ok(parsed.sessions)
 }
 
+/// Best-effort: register a WTA-launched CLI session with `wta-master` as a
+/// *born-bound* row — bound to its pane, with no hooks involved. Reuses the
+/// existing `intellterm.wta/session_hook` path with a `SessionStarted` event,
+/// which the master reducer turns into a Class-B (`origin = Unknown`) row whose
+/// `pane_session_id` is the pane we just created. Silent no-op when master is
+/// unreachable: without master there is no registry to populate, so dropping
+/// the registration is harmless (the tab still opened).
+async fn register_launched_session_with_master(
+    session_id: &str,
+    pane_session_id: &str,
+    cli_id: &str,
+    cwd: Option<&str>,
+) {
+    let event = crate::agent_sessions::SessionEvent::SessionStarted {
+        key: session_id.to_string(),
+        cli_source: crate::agent_sessions::CliSource::from(
+            crate::session_registry::SessionHookCliSource::Known(cli_id.to_string()),
+        ),
+        pane_session_id: pane_session_id.to_string(),
+        cwd: cwd.map(std::path::PathBuf::from).unwrap_or_default(),
+        // Empty title: the master refreshes the row's title from the CLI's
+        // on-disk session artefacts once they appear.
+        title: String::new(),
+    };
+    let req = session_registry::build_session_hook_request(&event);
+
+    // Own LocalSet so the `spawn_local` transport works regardless of how the
+    // delegate's runtime was set up (mirrors `run_sessions_list`).
+    let local = tokio::task::LocalSet::new();
+    let result: Result<()> = local
+        .run_until(async move {
+            let pipe_name = resolve_master_pipe(None).await?;
+            let pipe = open_master_pipe_for_cli(&pipe_name).await?;
+            let (read_half, write_half) = tokio::io::split(pipe);
+            let outgoing = write_half.compat_write();
+            let incoming = read_half.compat();
+            let (conn, handle_io) =
+                acp::ClientSideConnection::new(SessionsCliClient, outgoing, incoming, |fut| {
+                    tokio::task::spawn_local(fut);
+                });
+            tokio::task::spawn_local(async move {
+                let _ = handle_io.await;
+            });
+
+            conn.initialize(
+                acp::InitializeRequest::new(acp::ProtocolVersion::V1)
+                    .client_capabilities(acp::ClientCapabilities::new())
+                    .client_info(
+                        acp::Implementation::new("wta-delegate", env!("CARGO_PKG_VERSION"))
+                            .title("Windows Terminal Agent delegate"),
+                    ),
+            )
+            .await
+            .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+
+            conn.ext_method(req)
+                .await
+                .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+            Ok(())
+        })
+        .await;
+
+    if let Err(e) = result {
+        tracing::warn!(
+            target: "delegate",
+            error = %e,
+            "register born-bound session with master failed (best-effort)"
+        );
+    }
+}
+
 async fn resolve_master_pipe(master_override: Option<String>) -> Result<String> {
     if let Some(pipe) = master_override.filter(|s| !s.trim().is_empty()) {
         return Ok(pipe);
@@ -1753,8 +1824,13 @@ async fn delegate_with_context(
         "delegate tab created",
     );
 
-    // Phase 5 will register (pinned_session_id, pane_guid) with master here so
-    // the session is born bound to the pane without hooks.
+    // Born-bound registration: WTA created this tab and pinned the CLI's
+    // session id, so we know (session id, pane) at launch. Tell master to
+    // bind them with no hooks (best-effort). Only when both are known —
+    // i.e. a pinnable agent (Copilot/Claude/Gemini) whose tab was created.
+    if let (Some(sid), Some(pane)) = (pinned_session_id.as_deref(), pane_guid.as_deref()) {
+        register_launched_session_with_master(sid, pane, &runtime.id, cwd).await;
+    }
 
     Ok(())
 }
