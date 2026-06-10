@@ -439,7 +439,7 @@ async fn execute_choice(
                     None => format!("Opening {}.", target_label),
                 }));
                 let commandline = runtime
-                    .map(|runtime| build_delegate_launch_commandline(runtime, Some(input)))
+                    .map(|runtime| build_delegate_launch_commandline(runtime, Some(input), None))
                     .transpose()?;
                 let pane_id = match target {
                     OpenTarget::Tab => {
@@ -668,7 +668,7 @@ pub fn build_delegate_commandline(
     runtime: &DelegateAgentRuntime,
     input: &str,
 ) -> Result<String> {
-    build_delegate_launch_commandline(runtime, Some(input))
+    build_delegate_launch_commandline_with_session(runtime, Some(input), None)
 }
 
 /// Build the commandline for launching a delegate agent interactively, with
@@ -678,12 +678,25 @@ pub fn build_delegate_commandline(
 pub fn build_delegate_interactive_commandline(
     runtime: &DelegateAgentRuntime,
 ) -> Result<String> {
-    build_delegate_launch_commandline(runtime, None)
+    build_delegate_launch_commandline_with_session(runtime, None, None)
+}
+
+/// Build the delegate launch command line, optionally pinning a session id.
+/// When `session_id` is `Some` and the resolved agent advertises
+/// `new_session_id_flag`, append `<flag> <session_id>` so WTA controls the id
+/// the CLI writes its session under (enables hook-independent binding).
+pub fn build_delegate_launch_commandline_with_session(
+    runtime: &DelegateAgentRuntime,
+    input: Option<&str>,
+    session_id: Option<&str>,
+) -> Result<String> {
+    build_delegate_launch_commandline(runtime, input, session_id)
 }
 
 fn build_delegate_launch_commandline(
     runtime: &DelegateAgentRuntime,
     input: Option<&str>,
+    session_id: Option<&str>,
 ) -> Result<String> {
     let commandline = runtime.commandline.trim();
     if commandline.is_empty() {
@@ -693,10 +706,13 @@ fn build_delegate_launch_commandline(
     // always see the current PATH, not a stale snapshot from process startup.
     let resolved = resolve_commandline_executable(commandline);
 
+    // Resolve the agent profile once from the *unwrapped* exe so flag lookups
+    // (model, session id) see the real CLI — not a later `cmd /c` wrapper.
+    let exe = resolved.split_whitespace().next().unwrap_or("");
+    let profile = agent_registry::lookup_profile(exe);
+
     // If a model is configured, append --model <value> using the agent's model flags.
     let with_model = if let Some(ref model) = runtime.model {
-        let exe = resolved.split_whitespace().next().unwrap_or("");
-        let profile = agent_registry::lookup_profile(exe);
         if let Some(flag) = profile.model_flags.first() {
             format!("{} {} {}", resolved, flag, model)
         } else {
@@ -705,7 +721,16 @@ fn build_delegate_launch_commandline(
     } else {
         resolved.clone()
     };
-    let resolved_ref = with_model.as_str();
+
+    // Pin a caller-chosen session id when the agent supports it, so the launched
+    // CLI writes its session under a known id (enables hook-independent binding).
+    // Appended here — before any `cmd /c` wrap below — so the flag lands on the
+    // agent CLI, not on `cmd`.
+    let with_session = match (session_id, profile.new_session_id_flag) {
+        (Some(sid), Some(flag)) => format!("{} {} {}", with_model, flag, sid),
+        _ => with_model,
+    };
+    let resolved_ref = with_session.as_str();
 
     let raw = match input {
         // Interactive (no prompt): launch the bare agent CLI regardless of
@@ -1074,9 +1099,9 @@ fn extract_balanced_json_object(text: &str) -> Option<&str> {
 mod tests {
     use super::{
         build_delegate_interactive_commandline, build_delegate_launch_commandline,
-        default_delegate_agent_runtimes, parse_autofix_response,
-        parse_recommendation_set, resolve_created_pane_id,
-        validate_recommendation_set_for_coordinator_target, AutofixDecision,
+        build_delegate_launch_commandline_with_session, default_delegate_agent_runtimes,
+        parse_autofix_response, parse_recommendation_set, resolve_created_pane_id,
+        validate_recommendation_set_for_coordinator_target, AutofixDecision, DelegateAgentRuntime,
         DelegatePromptDelivery, OpenTarget, RecommendedAction,
     };
     use serde_json::json;
@@ -1103,7 +1128,8 @@ mod tests {
             .expect("copilot runtime should exist");
 
         let commandline =
-            build_delegate_launch_commandline(&runtime, Some("Fix the build and report back")).unwrap();
+            build_delegate_launch_commandline(&runtime, Some("Fix the build and report back"), None)
+                .unwrap();
 
         assert!(!commandline.contains("--model"));
         // May be wrapped as "cmd /c copilot ..." if copilot.exe isn't on PATH.
@@ -1168,6 +1194,7 @@ mod tests {
         let commandline = build_delegate_launch_commandline(
             &runtime,
             Some("Fix the Rust build error and run cargo build"),
+            None,
         )
         .unwrap();
 
@@ -1199,6 +1226,75 @@ mod tests {
     }
 
     #[test]
+    fn delegate_commandline_appends_pinned_session_id_for_copilot() {
+        let runtime = DelegateAgentRuntime {
+            id: "copilot".to_string(),
+            name: "Copilot".to_string(),
+            description: "Launches copilot as a delegate agent.".to_string(),
+            commandline: "copilot".to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        };
+
+        let commandline = build_delegate_launch_commandline_with_session(
+            &runtime,
+            Some("hi"),
+            Some("11111111-2222-3333-4444-555555555555"),
+        )
+        .unwrap();
+
+        assert!(commandline.contains("--session-id 11111111-2222-3333-4444-555555555555"));
+    }
+
+    #[test]
+    fn pinned_session_id_follows_agent_not_cmd_wrapper() {
+        // copilot may or may not be `cmd /c`-wrapped depending on whether
+        // copilot.exe vs copilot.cmd is on PATH. Either way the pinned flag must
+        // be present and positioned *after* the agent name — never lost to a
+        // first-token lookup that sees `cmd` instead of the agent.
+        let runtime = DelegateAgentRuntime {
+            id: "copilot".to_string(),
+            name: "Copilot".to_string(),
+            description: "Launches copilot as a delegate agent.".to_string(),
+            commandline: "copilot".to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        };
+
+        let commandline =
+            build_delegate_launch_commandline_with_session(&runtime, Some("hi"), Some("THEUUID"))
+                .unwrap();
+
+        assert!(
+            commandline.contains("--session-id THEUUID"),
+            "pinned flag missing: {commandline}"
+        );
+        let agent_pos = commandline.find("copilot").expect("agent name present");
+        let flag_pos = commandline.find("--session-id").unwrap();
+        assert!(
+            flag_pos > agent_pos,
+            "--session-id must follow the agent, not attach to a cmd wrapper: {commandline}"
+        );
+    }
+
+    #[test]
+    fn delegate_commandline_omits_session_id_when_unset() {
+        let runtime = DelegateAgentRuntime {
+            id: "copilot".to_string(),
+            name: "Copilot".to_string(),
+            description: "Launches copilot as a delegate agent.".to_string(),
+            commandline: "copilot".to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        };
+
+        let commandline =
+            build_delegate_launch_commandline_with_session(&runtime, Some("hi"), None).unwrap();
+
+        assert!(!commandline.contains("--session-id"));
+    }
+
+    #[test]
     fn delegate_launch_commandline_preserves_explicit_exe_path_with_startup_prompt() {
         let runtime = default_delegate_agent_runtimes(
             Some(
@@ -1212,7 +1308,8 @@ mod tests {
         .expect("copilot runtime should exist");
 
         let commandline =
-            build_delegate_launch_commandline(&runtime, Some("Inspect the repo and summarize")).unwrap();
+            build_delegate_launch_commandline(&runtime, Some("Inspect the repo and summarize"), None)
+                .unwrap();
 
         assert_eq!(
             commandline,
