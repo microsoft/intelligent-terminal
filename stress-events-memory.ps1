@@ -56,6 +56,31 @@ $ErrorActionPreference = 'Continue'
 # so the \" escaping works in both. Harmless (ignored) on 5.1.
 $PSNativeCommandArgumentPassing = 'Legacy'
 
+# -- Keep the machine awake for the whole run --
+# A long soak is worthless if the box sleeps mid-flood (the workers freeze while
+# wall-clock keeps advancing). ES_CONTINUOUS | ES_SYSTEM_REQUIRED tells Windows
+# to stay awake without changing the user's global power settings; cleared at the
+# end. NOTE: this does NOT override a laptop *lid-close* sleep -- keep the lid
+# open / stay plugged in for multi-hour runs.
+try {
+    Add-Type -ErrorAction Stop -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class SleepGuard {
+    [DllImport("kernel32.dll")]
+    public static extern uint SetThreadExecutionState(uint esFlags);
+}
+'@
+    $ES_CONTINUOUS       = [uint32]'0x80000000'
+    $ES_SYSTEM_REQUIRED  = [uint32]'0x00000001'
+    [void][SleepGuard]::SetThreadExecutionState($ES_CONTINUOUS -bor $ES_SYSTEM_REQUIRED)
+    $sleepGuardOn = $true
+    Write-Host "Sleep guard ON (system kept awake for the run)." -ForegroundColor DarkGray
+} catch {
+    $sleepGuardOn = $false
+    Write-Host "WARNING: could not arm sleep guard ($($_.Exception.Message)). Disable sleep manually for long runs." -ForegroundColor Yellow
+}
+
 # -- Resolve wtcli --
 $wtcli = (Get-Command wtcli.exe -ErrorAction SilentlyContinue).Source
 if (-not $wtcli) {
@@ -232,9 +257,22 @@ Add-Content -Path $logPath -Value "=== stress-events-memory $stamp : $($paneSids
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $nextSample = $SampleEverySec
 $crashed = $false
+# Sleep/suspend detection: each loop turn is ~250ms. If two consecutive turns are
+# seconds apart, the machine suspended (workers were frozen) -- the flood was NOT
+# continuous, so the soak result is INVALID even though it may look like a PASS.
+$prevElapsed = 0.0
+$sleptSec    = 0.0
 while ($sw.Elapsed.TotalSeconds -lt $DurationSec) {
     Start-Sleep -Milliseconds 250
-    $elapsed = [int]$sw.Elapsed.TotalSeconds
+    $now = $sw.Elapsed.TotalSeconds
+    if (($now - $prevElapsed) -gt 30) {
+        $gap = [math]::Round($now - $prevElapsed, 0)
+        $sleptSec += $gap
+        Write-Host ("  !! wall-clock jumped +{0}s at t={1}s -- machine likely SLEPT; flood was not continuous." -f $gap, [int]$now) -ForegroundColor Red
+        Add-Content -Path $logPath -Value "WALL-CLOCK JUMP +${gap}s at t=$([int]$now)s (suspend)"
+    }
+    $prevElapsed = $now
+    $elapsed = [int]$now
     if ($elapsed -ge $nextSample) {
         $m = Sample-Mem
         if (-not $m) { $crashed = $true; break }
@@ -325,14 +363,26 @@ Write-Host ("OS-bug signature   : {0}" -f $bugHit) -ForegroundColor $bColor
 $aColor = if ($wtAlive) { 'Green' } else { 'Red' }
 Write-Host ("WindowsTerminal OK : {0}" -f $wtAlive) -ForegroundColor $aColor
 
+$slept = $sleptSec -gt 60
+if ($slept) {
+    Write-Host ("Suspend detected   : machine slept ~{0}s during the run -- flood was NOT continuous." -f [int]$sleptSec) -ForegroundColor Red
+}
+
 $leaking = (($deltaP -gt $GrowthFailMB) -and ($grow2nd -gt ($GrowthFailMB / 2))) -or ($deltaH -gt $HandleFailDelta)
-$verdict = if ($wtAlive -and -not $bugHit -and -not $leaking) { 'PASS' } else { 'FAIL' }
-$summary = "RESULT=$verdict events=$events privateDeltaMB=$deltaP grow2ndHalfMB=$grow2nd handleDelta=$deltaH bug=$bugHit wtAlive=$wtAlive wtPrivD=$wtD wtcliPrivD=$wtcliD wtaPrivD=$wtaD helperSeen=$helperSeen"
+# A suspended run is INVALID, not PASS: the soak never actually ran continuously.
+$verdict = if ($slept) { 'INVALID' } elseif ($wtAlive -and -not $bugHit -and -not $leaking) { 'PASS' } else { 'FAIL' }
+$summary = "RESULT=$verdict events=$events privateDeltaMB=$deltaP grow2ndHalfMB=$grow2nd handleDelta=$deltaH bug=$bugHit wtAlive=$wtAlive wtPrivD=$wtD wtcliPrivD=$wtcliD wtaPrivD=$wtaD helperSeen=$helperSeen sleptSec=$([int]$sleptSec)"
 Add-Content -Path $logPath -Value $summary
+
+# Release the sleep guard so the machine can sleep normally again.
+if ($sleepGuardOn) { [void][SleepGuard]::SetThreadExecutionState([uint32]'0x80000000') }
 Write-Host ""
 if ($verdict -eq 'PASS') {
     Write-Host "[OK] $summary" -ForegroundColor Green
     Write-Host "     Memory/handles plateaued -- no unbounded growth under the event flood." -ForegroundColor Green
+} elseif ($verdict -eq 'INVALID') {
+    Write-Host "[!]  $summary" -ForegroundColor Yellow
+    Write-Host "     Machine slept mid-run -- this is NOT a valid soak. Disable sleep / keep the lid open and re-run." -ForegroundColor Yellow
 } else {
     Write-Host "[X]  $summary" -ForegroundColor Red
     if ($leaking) { Write-Host "     Memory or handles kept climbing -- possible leak; inspect the CSV curve." -ForegroundColor Yellow }
