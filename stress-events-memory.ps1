@@ -43,6 +43,10 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+# PowerShell 7.3+ keeps backslashes in native args (\" stays \"), breaking the
+# JSON we pass to wtcli; PS 5.1 strips them. 'Legacy' makes 7.x behave like 5.1
+# so the \" escaping works in both. Harmless (ignored) on 5.1.
+$PSNativeCommandArgumentPassing = 'Legacy'
 
 # -- Resolve wtcli --
 $wtcli = (Get-Command wtcli.exe -ErrorAction SilentlyContinue).Source
@@ -141,6 +145,7 @@ $shared  = [hashtable]::Synchronized(@{ Events = [long]0 })       # live counter
 # One worker per pane: its own loop, its own IntervalMs timer.
 $worker = {
     param([string]$wtcli, [string]$sid, [string]$eventType, [int]$intervalMs, [string]$marker, $stop, $results, $shared)
+    $PSNativeCommandArgumentPassing = 'Legacy'   # runspace scope: keep \" working on PS 7.x
     $sent = 0; $fail = 0; $bug = $false; $firstErr = ''
     while (-not $stop.WaitOne(0)) {
         $payload = '{\"t\":\"token\",\"seq\":' + $sent + ',\"marker\":\"' + $marker + '\"}'
