@@ -966,11 +966,11 @@
   <data name="CmdPalAgentForegroundPrompt" xml:space="preserve"><value>Chiedi all'agente...</value></data>
   <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve"><value>Esegui attività dell'agente in background...</value></data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve"><value>Integrazione della shell inizializzata</value></data>
-  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>L'integrazione della shell è stata configurata. Riavvia la sessione di PowerShell o apri una nuova scheda affinché le modifiche abbiano effetto.</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>L'integrazione della shell è stata configurata. Avrà effetto solo nelle nuove sessioni shell (PowerShell, bash o WSL bash).</value><comment>{Locked="PowerShell","bash","WSL bash"}</comment></data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve"><value>Integrazione della shell già configurata</value></data>
-  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>L'integrazione della shell è già configurata nel tuo profilo PowerShell.</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>L'integrazione della shell è già configurata per le shell rilevate nel tuo sistema (PowerShell, bash o WSL bash).</value><comment>{Locked="PowerShell","bash","WSL bash"}</comment></data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve"><value>Errore di integrazione della shell</value></data>
-  <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>Impossibile inizializzare l'integrazione della shell. Non è stato possibile determinare il percorso del profilo di PowerShell. Assicurati che la shell di destinazione sia installata.</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>Impossibile inizializzare l'integrazione della shell. Esamina i dettagli seguenti e riprova.</value><comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>Agente AI non disponibile</value></data>
   <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>Nessun agente AI trovato. Installa un agente (ad es. copilot, gemini) e assicurati che sia nel PATH, oppure configurane uno in Impostazioni &gt; Agenti AI.</value><comment>{Locked="PATH","copilot","gemini"}</comment></data>
   <!-- ═══ FRE Welcome Page ═══ -->

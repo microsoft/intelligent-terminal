@@ -26,54 +26,33 @@
     The pull request number.
 
 .EXAMPLE
-    pwsh 09-cleanup-outdated.ps1 -PrNumber 122
+    pwsh 10-cleanup-outdated.ps1 -PrNumber 122
 
 .EXAMPLE
-    pwsh 09-cleanup-outdated.ps1 -PrNumber 122 -WhatIf
+    pwsh 10-cleanup-outdated.ps1 -PrNumber 122 -DryRun
 #>
-[CmdletBinding(SupportsShouldProcess = $true)]
+[CmdletBinding()]
 param(
     [string]$Owner,
     [string]$Repo,
 
     [Parameter(Mandatory = $true)]
-    [int]$PrNumber
+    [int]$PrNumber,
+
+    # Print what would be resolved without making any GraphQL
+    # mutation. Uses an explicit switch (not the PowerShell
+    # SupportsShouldProcess / -WhatIf machinery) so the helper's
+    # internal `2>` redirect doesn't inherit a WhatIfPreference and
+    # print cosmetic "Performing the operation Output to File" noise.
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/_lib.ps1"
 
-function Invoke-GhGraphQL {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$Args,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Context
-    )
-
-    $json = gh api graphql @Args
-    if ($LASTEXITCODE -ne 0) {
-        throw "gh api graphql failed (exit $LASTEXITCODE) [$Context]."
-    }
-
-    $data = $json | ConvertFrom-Json
-    if ($data.errors) {
-        $msgs = ($data.errors | ForEach-Object { $_.message }) -join '; '
-        throw "GraphQL errors [$Context]: $msgs"
-    }
-
-    return $data
-}
-
-if (-not $Owner -or -not $Repo) {
-    $repoJson = gh repo view --json owner,name
-    if ($LASTEXITCODE -ne 0) {
-        throw "gh repo view failed (exit $LASTEXITCODE). Pass -Owner and -Repo explicitly or run from inside a gh-detected repo."
-    }
-    $repoInfo = $repoJson | ConvertFrom-Json
-    if (-not $Owner) { $Owner = $repoInfo.owner.login }
-    if (-not $Repo)  { $Repo  = $repoInfo.name }
-}
+$coords = Resolve-RepoCoords -Owner $Owner -Repo $Repo
+$Owner = $coords.Owner
+$Repo  = $coords.Repo
 
 $query = @'
 query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
@@ -101,10 +80,10 @@ query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
 $all = @()
 $after = $null
 do {
-    $args = @('-f', "query=$query", '-f', "owner=$Owner", '-f', "repo=$Repo", '-F', "pr=$PrNumber")
-    if ($after) { $args += @('-f', "after=$after") }
+    $ghArgs = @('-f', "query=$query", '-f', "owner=$Owner", '-f', "repo=$Repo", '-F', "pr=$PrNumber")
+    if ($after) { $ghArgs += @('-f', "after=$after") }
 
-    $data = Invoke-GhGraphQL -Args $args -Context "list outdated threads for $Owner/$Repo PR #$PrNumber"
+    $data = Invoke-GhGraphQL -GhArgs $ghArgs -Context "list outdated threads for $Owner/$Repo PR #$PrNumber"
     $page = $data.data.repository.pullRequest.reviewThreads
     $all += $page.nodes
     $after = $page.pageInfo.endCursor
@@ -134,9 +113,11 @@ mutation($tid: ID!) {
 '@
 
 foreach ($t in $targets) {
-    if ($PSCmdlet.ShouldProcess($t.id, 'Resolve outdated Copilot thread')) {
+    if ($DryRun) {
+        Write-Output "Would resolve $($t.id) (DryRun)"
+    } else {
         $resolveArgs = @('-f', "query=$resolveMutation", '-f', "tid=$($t.id)")
-        Invoke-GhGraphQL -Args $resolveArgs -Context "resolve outdated thread $($t.id)" | Out-Null
+        Invoke-GhGraphQL -GhArgs $resolveArgs -Context "resolve outdated thread $($t.id)" | Out-Null
         Write-Output "Resolved $($t.id)"
     }
 }

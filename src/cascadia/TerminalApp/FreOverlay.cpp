@@ -11,6 +11,7 @@
 #include "../inc/ShellIntegration.h"
 #include "../inc/RtlHelper.h"
 #include "AgentPaneLog.h"
+#include "ShellIntegrationSweep.h"
 #include "WindowsPackageManagerFactory.h"
 
 #include <winrt/Windows.UI.Xaml.Documents.h>
@@ -1094,10 +1095,26 @@ namespace winrt::TerminalApp::implementation
             if (!self) co_return;
 
             _agentPaneLog("[FRE] Installing shell integration");
+
+            // Snapshot WSL distros AND non-WSL shell presence on the UI
+            // thread BEFORE resuming on a background thread —
+            // _settings.AllProfiles() is an observable vector and
+            // iterating it concurrently with a settings reload is unsafe.
+            const auto wslDistros = ShellIntegrationSweep::SnapshotWslDistroNames(_settings);
+            const auto shellPresence = ShellIntegrationSweep::SnapshotShellPresence(_settings);
+
             co_await winrt::resume_background();
-            namespace SI = ::Microsoft::Terminal::ShellIntegration;
-            const auto pwsh7Result = SI::InstallForTarget(SI::Target::Pwsh);
-            const auto windowsPsResult = SI::InstallForTarget(SI::Target::WindowsPowerShell);
+            // Profile-gated install: a user keeping only "Developer
+            // PowerShell for VS" (Windows PowerShell) and no pwsh
+            // profile must not get a pwsh integration block written.
+            // RunInstall reports a skipped shell as
+            // success-already-installed so the FRE failure verdict
+            // (below) doesn't flag a missing shell as a failure.
+            const auto results = ShellIntegrationSweep::RunInstall(shellPresence, wslDistros);
+            const auto& pwsh7Result = results.pwsh;
+            const auto& windowsPsResult = results.windowsPowerShell;
+            const auto& bashResult = results.bash;
+            const auto& wslResults = results.wsl;
 
             {
                 std::string detail = "[FRE] Shell integration: pwsh7=";
@@ -1108,9 +1125,30 @@ namespace winrt::TerminalApp::implementation
                 detail += windowsPsResult.success ? "ok" : "FAILED";
                 if (!windowsPsResult.success && !windowsPsResult.errorMessage.empty())
                     detail += " (" + winrt::to_string(winrt::hstring{ windowsPsResult.errorMessage }) + ")";
+                detail += " bash=";
+                detail += bashResult.success ? "ok" : "FAILED";
+                if (!bashResult.success && !bashResult.errorMessage.empty())
+                    detail += " (" + winrt::to_string(winrt::hstring{ bashResult.errorMessage }) + ")";
+                for (const auto& [distName, r] : wslResults)
+                {
+                    detail += " wsl(" + winrt::to_string(winrt::hstring{ distName }) + ")=";
+                    detail += r.success ? "ok" : "FAILED";
+                    if (!r.success && !r.errorMessage.empty())
+                        detail += " (" + winrt::to_string(winrt::hstring{ r.errorMessage }) + ")";
+                }
                 _agentPaneLog(detail);
             }
 
+            // Shell integration is treated as failed when EITHER
+            // PowerShell host's install fails. Both hosts are part of
+            // the user's primary shell family and the install is
+            // best-effort idempotent — if pwsh7 isn't installed,
+            // InstallForTarget returns success-with-empty-error
+            // because the file write succeeds harmlessly; only a real
+            // write failure or an execution-policy block reaches here.
+            // Bash and WSL failures are NOT counted here: users
+            // without Git Bash or without (running) WSL would
+            // otherwise see false-alarm errors on every FRE / Save.
             if (!pwsh7Result.success || !windowsPsResult.success)
             {
                 shellIntegFailed = true;

@@ -320,3 +320,10 @@ env_remove\("[A-Z_]+"\)
 
 # GitHub GraphQL node ID prefix for PullRequestReviewThread
 \bPRRT_[A-Za-z0-9_-]+\b
+
+# src/cascadia/inc/BashShellIntegration.h - private namespace for the bash shell-integration script (variables we set in the user's bash environment)
+\b__IT_SHELLINTEG_[A-Z_]+\b
+\b__it_(si|pc_[a-z]+|shellinteg_[a-z]+)\b
+
+# test fixture in ShellIntegrationTests.cpp — synthetic exe leaf used to test lookalike-rejection (pwsh + 'ell' suffix)
+\bpwshell\b

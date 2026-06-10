@@ -1,166 +1,94 @@
-# Copilot PR Review Loop — Full Workflow
+# Copilot PR Review Loop — Workflow
 
-Detailed procedure for one round of the loop. Repeat until both convergence
-conditions in step 8 hold, then run step 9 once.
+Each **round** runs steps 1–9; **step 10** is a one-time cleanup
+after convergence. The parent agent coordinates; every substantive
+step is delegated to a fresh sub-agent with a bounded budget.
+Sub-agents return summary-and-progress before the budget expires so
+the parent can extend (via `write_agent`) or re-scope.
 
-## Per-round checklist
+Build, test, and lint commands are NOT prescribed here. Every step that
+needs them defers to the target repo's own conventions
+(`CONTRIBUTING.md`, `AGENTS.md`, `README`, `package.json` /
+`Makefile` / language tooling, etc.). Discover and follow the repo's
+existing practice — never invent build commands.
 
-Track progress through one round with this list (copy into your scratch
-notes or session todos):
+## Time-boxing & extension protocol
 
-- [ ] **1.** Request review — `scripts/01-request-review.ps1 -PrNumber <n>`
-- [ ] **2.** Wait, then list open threads — `scripts/02-list-open-threads.ps1 -PrNumber <n>`
-- [ ] **3.** Triage each finding using [03-triage-criteria.md](03-triage-criteria.md)
-- [ ] **4.** Apply fixes — one sub-agent per independent change
-- [ ] **5.** Build + run affected tests (no unverified pushes)
-- [ ] **6.** Reply + resolve each thread using [06-reply-templates.md](06-reply-templates.md) → `scripts/06-reply-and-resolve.ps1`
-- [ ] **7.** Commit + push the round's changes (one focused commit per round)
-- [ ] **8.** Convergence check: latest review says *"no new comments"* **and** step 2 returns empty
-- [ ] **9.** (once at end of loop) Cleanup outdated — `scripts/09-cleanup-outdated.ps1 -PrNumber <n>`
-
-If step 8 fails, loop back to step 1. If step 8 passes, run step 9 once
-and you're done.
+| Concept | Rule |
+|---------|------|
+| Default budget | 5 minutes per sub-agent invocation |
+| Sub-agent must return | `status` ∈ {`complete`, `partial`, `blocked`} + `next_action` + `needs_extension_minutes` (0 if none). Always summarize progress before the budget expires — never silently overrun. |
+| Extension | parent only extends when `status: partial` AND `next_action` is concrete; sends `write_agent "continue for N min"` with `N = min(needs_extension_minutes, 10)` |
+| Extension cap (default) | 2 extensions per step; step 6 (build/test) up to 2× for slow suites. Step 2 (wait) is a single bounded sub-agent — see step 2 — not extension-driven. |
+| Parent never blocks | step 1 (request), step 7 (commit + push), step 8 reply/resolve mutations, and the `task_complete` decision stay in the parent |
 
 ## Sub-agent delegation map
 
-Most steps below are best executed by a **fresh sub-agent** (via the
-`task` tool), not directly by the parent agent. The parent owns
-sequencing, the `git commit`/`git push`, and the final
-`reply-and-resolve` call after replies have been reviewed.
+Canonical order per round: **request → wait → list → triage → fix →
+build → commit + push → reply + resolve (citing pushed SHA) →
+convergence check**. Reply/resolve runs AFTER push so replies can cite
+the pushed commit SHA.
 
-| Step | Sub-agent role | Why |
-|------|----------------|-----|
-| 2 — List open threads | Categorize each finding by file/severity | One-shot, deterministic; useful as a fresh read of what's outstanding |
-| 3 — Triage | Apply the rubric in [03-triage-criteria.md](03-triage-criteria.md), return fix/decline per thread | Fresh judgment, not contaminated by the implementer's intent |
-| 4 — Fix | One sub-agent per independent fix; run in parallel where possible | Parallelism; isolated context per fix |
-| 5 — Build & test | Run the project's build + unit tests, return only failures | Keeps long build output out of the parent context |
-| 6 — Reply drafting | Draft replies using [06-reply-templates.md](06-reply-templates.md) | Consistency; avoids drift between replies on related threads |
-| 8 — Convergence check | Re-run step 2's script and re-list, compare to expected empty set | Independent verification of the convergence condition |
+| Step | Agent type | Budget | Returns | Notes |
+|------|------------|--------|---------|-------|
+| 1 — Request review | _(parent)_ | n/a | call `02-check-review-status.ps1` first; capture `LatestCopilotReview.submittedAt` as **baseline** for step 2 and read `CopilotPending`. **If `CopilotPending: true`** skip the trigger and go to step 2 directly. **Otherwise** run `01-request-review.ps1`. If `01` throws because Copilot isn't a valid reviewer (Copilot Code Review not enabled on the repo / account), fall back to single-iteration: skip step 2, jump to step 3, run steps 3–8 once, and pass `-SingleIteration` to `02-check-review-status.ps1` on step 9 so convergence ignores the stale-review checks. | `01-request-review.ps1` keeps its own InFlight short-circuit as a safety net, but the canonical "is Copilot pending?" signal lives in `02-check-review-status.ps1`. Single-iteration mode is the agent's decision after the trigger fails, NOT an auto-detected state. |
+| 2 — Wait for review | `general-purpose` | **20 min hard cap**, poll every ~3 min | `02-check-review-status.ps1` JSON + recommendation (`ready` \| `give-up-push-commit`); `ready` iff `LatestCopilotReview.submittedAt > baseline` AND `ReviewAtHead: true` | one bounded sub-agent, not extension-driven; on `give-up-push-commit`, parent falls back to a substantive commit |
+| 3 — List + categorize open threads | `explore` | 5 min | table of `{thread_id, file, line, author, severity, summary}` from `03-list-open-threads.ps1` | classify each row's `author` as `copilot` vs `human-or-bot` so triage can apply the correct policy |
+| 4 — Triage | `general-purpose` | 5 min per ≤5 threads (parent batches if more) | table of `{thread_id, fix \| decline \| escalate-to-user, one-line rationale}` per [03-triage-criteria.md](03-triage-criteria.md) | human / advanced-security threads default to `escalate-to-user` unless the user explicitly scoped them in |
+| 5 — Apply fix (one per finding, parallel **max 5 concurrent**) | `general-purpose` | 5 min each | `{files_touched, one-line summary, status}` | each fix sub-agent **first researches the repo's own conventions** for the area it's editing (`.github/instructions/*.md` matching the file's `applyTo` pattern, `.github/skills/`, `AGENTS.md`, `CONTRIBUTING.md`, neighbor-file patterns) — never invent a generic answer that contradicts repo practice. Parent merges and reconciles file conflicts before step 6; the 5-cap prevents fix-fanout chaos. If step 3 returned >5 findings, parent runs step 5 in waves of ≤5. |
+| 6 — Build + test per repo conventions | `task` (may fan out to several `explore` sub-agents for discovery) | 10 min | pass/fail + failure excerpts; **discovery first** — read `.github/instructions/*.md`, `AGENTS.md`, `CONTRIBUTING.md`, `README.md`, `package.json` scripts, `Makefile`, language tooling, AND recent CI workflow runs to learn the *actual* command set in use; THEN run those exact commands on the changed code | independent discovery axes (build tool / test runner / lint / spelling / format) can run as separate `explore` sub-agents in parallel; cache discovered commands per round |
+| 7 — Commit + push | _(parent)_ | n/a | parent runs `git commit` + `git push` directly | one focused commit per round; record the pushed SHA |
+| 8 — Reply (always) + resolve (conditional) | `general-purpose` drafts → _(parent)_ posts | draft 5 min | sub-agent returns `{thread_id, action, reply_body}` per open thread (`action ∈ fix/decline/escalate-to-user`); parent runs `08-reply-and-resolve.ps1` — `-NoResolve` on `escalate-to-user` so the thread stays open for the human, `resolve` on `fix`/`decline` | reply+resolve are mutations; the parent owns mutations. Escalated threads stay open *with our reply explaining the disposition* — they're hand-offs, not failures. |
+| 9 — Convergence verify | `explore` | 3 min | `02-check-review-status.ps1` JSON + independent HEAD-vs-`LatestCopilotReview.commitOid` sanity check | converged iff `Converged: true`. In normal (Copilot-driven) mode that means `ReviewAtHead && NoNewComments && OpenThreadsAwaitingReply == 0`; in single-iteration mode (pass `-SingleIteration`), it simplifies to `OpenThreadsAwaitingReply == 0` since the stale-review checks can never advance without a new Copilot review. Open threads may remain — those are explicit human hand-offs, not loop failures. Otherwise, loop back to step 1. |
+| 10 — Cleanup outdated (once after convergence) | _(parent)_ | n/a | `10-cleanup-outdated.ps1` | safety net only |
 
-## 1. Request a Copilot review
+When the cap is reached and the work is still `partial`, the parent
+narrows the input (batch smaller in step 4 / split fix scope in step 5)
+or takes the step over itself.
 
-Use the `gh pr edit --add-reviewer` form — the only consistently working
-mechanism. The GraphQL `requestReviews` mutation no longer accepts the
-Copilot bot login, and REST `requested_reviewers` rejects bots with HTTP
-422. See [api-quirks.md](api-quirks.md) for details.
+## Per-round commands
 
-```powershell
-pwsh ../scripts/01-request-review.ps1 -PrNumber <pr-number>
-```
+Quick reference — see the delegation map above for the contract per
+step. Command snippets assume cwd is the skill root.
 
-The script is idempotent — re-running it triggers a fresh review.
+| Step | Command | Notes |
+|------|---------|-------|
+| 1 | `$snap = pwsh ./scripts/02-check-review-status.ps1 -PrNumber <n>` → extract via regex (works on any PS 5.1 / 7.x, no `[datetime]` rebinding): `$baseline = if ($snap -match '"submittedAt":"([^"]+)"') { $Matches[1] } else { '' }`; `$pending = ($snap -match '"CopilotPending":true')`. **If `$pending`** skip to step 2. **Else** `pwsh ./scripts/01-request-review.ps1 -PrNumber <n>`; if it throws because Copilot isn't a valid reviewer, fall back to single-iteration (skip step 2, jump to step 3). | Regex on raw JSON keeps `submittedAt` a string across the parent→sub-agent boundary on any PS version. Single-iteration is the agent's decision after 01 fails. |
+| 2 | Dispatch wait sub-agent — polls `02-check-review-status.ps1` every ~3 min; `ready` iff `submittedAt > baseline` AND `ReviewAtHead: true`. **Skipped in single-iteration mode** (no Copilot review to wait for). | Single bounded 20-min run. On `give-up-push-commit`, push a substantive commit (auto-assign on `synchronize` is the most reliable fallback). |
+| 3 | `pwsh ./scripts/03-list-open-threads.ps1 -PrNumber <n>` | Classify each row's `author`; default human / advanced-security to `escalate-to-user`. |
+| 4 | Triage sub-agent applies the rubric in [03-triage-criteria.md](03-triage-criteria.md), returning `fix \| decline \| escalate-to-user` per thread. | Batch in waves of ≤5 threads per sub-agent. |
+| 5 | Fix sub-agents, parallel, max 5 concurrent. | Each researches `.github/instructions/*.md` (matching `applyTo`), `.github/skills/`, `AGENTS.md`, `CONTRIBUTING.md`, neighbor files BEFORE writing the fix. |
+| 6 | Build/test sub-agent: discover commands from the same set of repo docs + recent CI runs, then run them. | Never invent generic commands; surface the gap if discovery turns up nothing. |
+| 7 | Parent: `git commit` + `git push`. | One focused commit per round; include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`. Record the pushed SHA. |
+| 8 | For each open thread: drafting sub-agent returns `{thread_id, action, reply_body}` (action ∈ `fix`/`decline`/`escalate-to-user`). Parent runs `pwsh ./scripts/08-reply-and-resolve.ps1 -ThreadId <id> -Body <text>` — add `-NoResolve` when action is `escalate-to-user` so the thread stays open for the human. | Reply is always posted; resolve only when the loop owns the disposition. Escalated threads with our reply are explicit hand-offs, not failures. |
+| 9 | Convergence sub-agent: `pwsh ./scripts/02-check-review-status.ps1 -PrNumber <n>` (add `-SingleIteration` if you ran the single-iteration fallback at step 1) — converged iff `Converged: true`. | In normal mode `Converged` = `ReviewAtHead && NoNewComments && OpenThreadsAwaitingReply == 0`; in `-SingleIteration` mode it's just `OpenThreadsAwaitingReply == 0`. `OpenThreadCount` may be > 0 if some threads are escalated-to-user hand-offs; that's by design. Re-query HEAD vs. `LatestCopilotReview.commitOid` as a sanity check. |
+| 10 | _(after convergence, once)_ `pwsh ./scripts/10-cleanup-outdated.ps1 -PrNumber <n>` | Safety net only; most loops converge with nothing to clean. |
 
-## 2. Wait, then fetch open threads
+Print the proof of convergence (`HeadOid`, `LatestCopilotReview.commitOid`,
+`submittedAt`, `OpenThreadsAwaitingReply: 0`, and the list of any open
+escalate-to-user threads if `OpenThreadCount > 0`) in the
+`task_complete` message. Proof, not assertion.
 
-Copilot typically posts a new review within 3–6 minutes; allow up to 10.
+## Notes
 
-**Do not block the agent foreground with `Start-Sleep`.** If the parent
-agent is running interactively, end the turn after step 1 and resume in a
-later turn (or schedule a reminder). If you are running headless or in a
-script, use a background mechanism — `Start-Job`, a separate shell, or
-the scheduling layer of your runtime — rather than holding the foreground
-for 6 minutes doing nothing.
-
-When you come back, fetch the open threads:
-
-```powershell
-pwsh ../scripts/02-list-open-threads.ps1 -PrNumber <pr-number>
-```
-
-`-Owner` / `-Repo` default to the current repo via `gh repo view`, so
-they're optional when you run from inside a worktree of the target repo.
-
-Don't poll faster than ~3 minutes — there is no progress signal and faster
-polling only wastes API budget.
-
-## 3. Triage each finding
-
-Apply the decision rubric in [03-triage-criteria.md](03-triage-criteria.md). The
-short version:
-
-- **Fix** real correctness bugs (use-after-free, races that drop user
-  intent, gating logic that skips legitimate transitions, missing link
-  dependencies), and documentation/test-plan drift from implemented
-  behavior.
-- **Decline** purely hypothetical races needing cross-class plumbing,
-  style/naming nits, and abstraction suggestions that don't pay for
-  themselves at current scale.
-
-Always **state your reasoning** in the reply, whether you fix or decline.
-This makes the PR self-documenting and gives the next Copilot review
-visible context.
-
-## 4. Implement fixes — one focused commit per round
-
-Keep commits granular: one commit per review round (or per finding if a
-round has multiple unrelated findings). This makes the PR history narrate
-the review evolution and keeps `git bisect` honest.
-
-For projects with **uncommitted local-build patches** (e.g. toolchain
-overrides held out of the PR), stash before committing and restore after:
-
-```powershell
-git stash push -m "local-build" -- <paths-to-stash>
-git add <files-you-changed>
-git commit -m "Short title" `
-           -m "Body explaining the finding and the fix" `
-           -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
-git push
-git stash pop
-```
-
-Always include the Copilot `Co-authored-by` trailer when the fix came from
-a Copilot finding.
-
-## 5. Build and test before pushing
-
-Never push a fix you haven't compiled. If the project has unit tests for
-the changed code, re-run them. A fix that breaks the build wastes another
-full review cycle.
-
-## 6. Reply to and resolve each thread
-
-Reply first (explain what you did, cite the commit SHA), then resolve. Use
-the templates in [06-reply-templates.md](06-reply-templates.md).
-
-```powershell
-pwsh ../scripts/06-reply-and-resolve.ps1 `
-    -ThreadId <thread-id> `
-    -Body "Did X because Y. Fixed in <commit-sha>."
-```
-
-For **declined** findings, the reply explains why you're not fixing it —
-then still resolve the thread. Leaving threads open without explanation
-clutters the PR and signals you're avoiding the feedback.
-
-## 7. Request the next round and loop
-
-Go back to step 1. Each round, Copilot sees:
-
-- the new diff,
-- your replies on prior threads,
-- the updated PR description.
-
-Your replies actively shape what the next round will surface — declining a
-finding with strong reasoning typically prevents Copilot from re-raising it.
-
-## 8. Convergence
-
-You are done when **both** conditions hold:
-
-- A review returns: *"Copilot reviewed N out of N changed files in this
-  pull request and generated no new comments."*
-- The open-threads list (step 2) is empty.
-
-A single condition is not enough. A "no new comments" review can still
-coexist with an open thread from a prior round if you forgot to resolve it.
-
-## 9. Cleanup outdated Copilot threads (final, once)
-
-Even after convergence, the PR may show old `isOutdated: true` Copilot
-threads still listed as open. They are already addressed by later commits,
-but they clutter the conversation tab. Batch-resolve them:
-
-```powershell
-pwsh ../scripts/09-cleanup-outdated.ps1 -Owner <owner> -Repo <repo> -PrNumber <pr-number>
-```
+- **Re-request is first-class.** `01-request-review.ps1` does not
+  silently skip when Copilot has already reviewed; it issues the
+  same mutation and verifies via a new `copilot_work_started` event.
+- **HTTP / exit status alone is not sufficient.** GitHub can return
+  HTTP 200 while silently dropping a re-review request. See
+  [api-quirks.md](api-quirks.md).
+- **Outdated threads still need reply + resolve.** They show up in
+  the PR UI as unresolved until you explicitly close them; step 10
+  is a safety net, not the primary mechanism.
+- **Reopened / revisit requests reset the thread to step 4.** If a
+  declined finding is reopened by the user (or by a follow-up
+  Copilot review), pull it back into triage with the prior rationale
+  as input rather than re-running the whole loop.
+- **Resumability after interruption.** On restart, snapshot HEAD,
+  the latest Copilot review's `commit.oid` + `submittedAt`, the
+  open-threads list, and any uncommitted local changes. Discard
+  cached triage / drafts if HEAD or the open-threads set changed.
+- **Local-build patches.** For projects with uncommitted local-build
+  patches held out of the PR: `git stash push -m "local-build" --
+  <paths>` before committing, `git stash pop` after. Note `-m` must
+  come BEFORE `--` (see [api-quirks.md](api-quirks.md)).

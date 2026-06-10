@@ -986,22 +986,22 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Shell Integration Initialized</value>
   </data>
   <data name="InitShellIntegrationSuccessMessage" xml:space="preserve">
-    <value>Shell integration has been configured. Please restart your PowerShell session or open a new tab for the changes to take effect.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Shell integration has been configured. It will only take effect in new shell sessions (PowerShell, bash, or WSL bash).</value>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve">
     <value>Shell Integration Already Configured</value>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve">
-    <value>Shell integration is already configured in your PowerShell profile.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Shell integration is already configured for the shells detected on your system (PowerShell, bash, or WSL bash).</value>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve">
     <value>Shell Integration Error</value>
   </data>
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve">
-    <value>Failed to initialize shell integration. Could not determine your PowerShell profile path. Make sure the target shell is installed.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Failed to initialize shell integration. Review the details below and try again.</value>
+    <comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell execution policy is blocking scripts.</value>

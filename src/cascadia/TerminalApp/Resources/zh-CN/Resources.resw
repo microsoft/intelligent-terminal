@@ -984,22 +984,22 @@
     <value>Shell 集成已初始化</value>
   </data>
   <data name="InitShellIntegrationSuccessMessage" xml:space="preserve">
-    <value>已配置 Shell 集成。请重启你的 PowerShell 会话，或打开一个新标签页以使更改生效。</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Shell 集成已配置。只对新的 shell 会话 (PowerShell、bash 或 WSL bash) 生效。</value>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve">
     <value>Shell 集成已配置</value>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve">
-    <value>你的 PowerShell 配置文件中已配置 Shell 集成。</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Shell 集成已针对系统中检测到的 shell 配置 (PowerShell、bash 或 WSL bash)。</value>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve">
     <value>Shell 集成错误</value>
   </data>
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve">
-    <value>初始化 Shell 集成失败。无法确定你的 PowerShell 配置文件路径。请确保已安装目标 shell。</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>初始化 Shell 集成失败。请查看以下详细信息，然后重试。</value>
+    <comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment>
   </data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve">
     <value>智能体不可用</value>

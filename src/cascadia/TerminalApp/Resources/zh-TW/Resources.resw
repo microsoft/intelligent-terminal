@@ -966,11 +966,11 @@
   <data name="CmdPalAgentForegroundPrompt" xml:space="preserve"><value>詢問 AI 智能體...</value><comment>Placeholder text shown in the command palette search box when in agent foreground prompt mode.</comment></data>
   <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve"><value>在背景執行 AI 智能體工作...</value><comment>Placeholder text shown in the command palette search box when in agent background task mode.</comment></data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve"><value>Shell 整合已初始化</value></data>
-  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>Shell 整合已完成設定。請重新啟動您的 PowerShell 工作階段，或開啟新的索引標籤，讓變更生效。</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>Shell 整合已設定。只會對新的 shell 工作階段 (PowerShell、bash 或 WSL bash) 生效。</value><comment>{Locked="PowerShell","bash","WSL bash"}</comment></data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve"><value>Shell 整合已完成設定</value></data>
-  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>Shell 整合已在您的 PowerShell 設定檔中完成設定。</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>Shell 整合已針對系統上偵測到的 shell 設定 (PowerShell、bash 或 WSL bash)。</value><comment>{Locked="PowerShell","bash","WSL bash"}</comment></data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve"><value>Shell 整合錯誤</value></data>
-  <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>初始化 Shell 整合失敗。無法判斷您的 PowerShell 設定檔路徑。請確認已安裝目標 Shell。</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>無法初始化 Shell 整合。請檢閱下方的詳細資料，然後再試一次。</value><comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>AI 智能體無法使用</value></data>
   <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>找不到任何 AI 智能體。請安裝智能體（例如 copilot、gemini），並確認它位於您的 PATH 中，或在 [設定] &gt; [AI 智能體] 中進行設定。</value><comment>{Locked="PATH","copilot","gemini"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>

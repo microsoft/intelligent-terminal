@@ -967,11 +967,11 @@
   <data name="CmdPalAgentForegroundPrompt" xml:space="preserve"><value>エージェントに質問...</value><comment>Placeholder text shown in the command palette search box when in agent foreground prompt mode.</comment></data>
   <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve"><value>エージェント タスクをバックグラウンドで実行...</value><comment>Placeholder text shown in the command palette search box when in agent background task mode.</comment></data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve"><value>シェル統合が初期化されました</value></data>
-  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>シェル統合が構成されました。変更を有効にするには、PowerShell セッションを再起動するか、新しいタブを開いてください。</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>シェル統合が構成されました。新しいシェル セッション (PowerShell、bash、または WSL bash) でのみ有効になります。</value><comment>{Locked="PowerShell","bash","WSL bash"}</comment></data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve"><value>シェル統合は既に構成されています</value></data>
-  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>シェル統合は既に PowerShell プロファイルで構成されています。</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>シェル統合は、システムで検出されたシェル (PowerShell、bash、または WSL bash) に対して既に構成されています。</value><comment>{Locked="PowerShell","bash","WSL bash"}</comment></data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve"><value>シェル統合エラー</value></data>
-  <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>シェル統合を初期化できませんでした。PowerShell プロファイルのパスを特定できませんでした。対象のシェルがインストールされていることを確認してください。</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>シェル統合を初期化できませんでした。以下の詳細を確認して、もう一度お試しください。</value><comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>AI エージェントは利用できません</value></data>
   <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>AI エージェントが見つかりませんでした。エージェント (例: copilot、gemini) をインストールし、それが PATH に含まれていることを確認するか、[設定] &gt; [AI エージェント] で構成してください。</value><comment>{Locked="PATH","copilot","gemini"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>

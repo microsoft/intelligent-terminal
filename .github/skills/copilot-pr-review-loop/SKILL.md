@@ -5,9 +5,14 @@ description: 'Drive a GitHub pull request through repeated rounds of Copilot cod
 
 # Copilot PR Review Loop
 
-A workflow for driving a pull request through repeated rounds of GitHub
-Copilot code review until a round produces no new comments and the
-open-threads list is empty.
+Drive any GitHub pull request through repeated rounds of Copilot code
+review until the agent has done its job — every Copilot finding has
+a reply from the agent (fix-acknowledgement, decline-with-rationale,
+or explicit escalate-to-user hand-off). Remaining open threads, if
+any, are deliberate hand-offs to the human merge owner — they're
+not loop failures. Repository-agnostic — works on any repo that has
+Copilot Code Review enabled, run from a machine with `gh` CLI
+installed and authenticated (see Prerequisites).
 
 ## When to Use This Skill
 
@@ -20,98 +25,182 @@ open-threads list is empty.
 
 ## When NOT to Use This Skill
 
-- Trivial PRs (typos, comment-only changes) — a single review is enough.
 - The PR is still under active design — wait until the structure is stable;
   otherwise findings churn round-over-round.
 - The user wants human reviewer feedback, not Copilot's.
 
 ## Prerequisites
 
-- `gh` CLI authenticated against the target repository.
-- PowerShell 7+ (`pwsh`) on PATH for the bundled scripts.
+- `gh` CLI installed and authenticated against the target repository.
+- PowerShell on PATH — Windows PowerShell 5.1+ (`powershell.exe`) or
+  PowerShell 7+ (`pwsh`). Both are tested.
+- Copilot Code Review is the primary use case (`01-request-review.ps1`
+  uses GraphQL `requestReviewsByLogin` to trigger Copilot). It is
+  **NOT a hard requirement** — if `01-request-review.ps1` fails
+  because Copilot isn't enabled on the repo / account, the agent can
+  still drive existing review threads (human, advanced-security, etc.)
+  to completion by running steps 3–8 once as a single iteration; just
+  skip the trigger + wait. There is no auto-detect for "Copilot
+  unavailable" — the agent makes that decision after the trigger
+  fails (the script can't reliably tell "Copilot disabled" from
+  "Copilot enabled but not yet triggered" from API state alone).
 
-## Step-by-Step Workflows
+Every script dot-sources [scripts/_lib.ps1](scripts/_lib.ps1) which
+runs `Assert-GhReady` on load: if `gh` is missing OR `gh auth status`
+fails, the script halts **before any work** with a single actionable
+error message naming the install command and `gh auth login`. The
+agent should surface that message to the user verbatim and stop the
+loop — do not retry or work around it.
 
-The loop has nine steps. Run steps 1–7 each round; check convergence at
-step 8; run step 9 once when the loop terminates. Full procedure, with
-commands, rationale, the per-step sub-agent delegation table, and a
-resumable checklist, is in [references/workflow.md](references/workflow.md).
+## Step-by-Step Workflow
+
+Each round runs steps 1–9; step 10 is a one-time cleanup after
+convergence. The parent agent coordinates; every substantive step is
+delegated to a fresh sub-agent with a bounded budget (default ≤5 min;
+per-step exceptions in the delegation table in
+[references/workflow.md](references/workflow.md)), so the parent
+never blocks on long-running work and each step gets a clean context.
+Sub-agents must summarize and return before their budget expires; the
+parent extends via `write_agent` when needed. Full procedure,
+per-step budgets, return contracts, and the extension protocol live
+in [references/workflow.md](references/workflow.md).
+
+**Single-iteration fallback (Copilot unavailable)**: when
+`01-request-review.ps1` throws because Copilot Code Review isn't
+enabled on the repo / account (the GraphQL mutation reports the bot
+isn't a valid reviewer), the agent skips step 2 and runs steps 3–8
+once, then calls `02-check-review-status.ps1 -SingleIteration` for
+the convergence check (which then ignores the stale-review checks
+that can't advance without a new Copilot review). `Converged: true`
+when `OpenThreadsAwaitingReply == 0`. Re-iteration happens only when
+a human posts new comments later — re-run the skill at that point.
 
 ```
-Request review → Wait → List open threads → Triage → Fix → Build/test →
-Reply + resolve → Loop → Cleanup outdated (final, once)
+Request review → Wait for review (sub-agent) → List + categorize open
+threads → Triage (sub-agent) → Fix (sub-agents, parallel) → Build/test
+per the repo's own conventions → Commit + push → Reply + resolve
+(citing pushed SHA) → Convergence check → Cleanup outdated (final, once)
 ```
 
-Terminate when a review returns "no new comments" **and** the open-threads
-list is empty. A single condition is not enough — a "no new comments"
-review can still coexist with a stale open thread you forgot to resolve.
+**Build, test, and lint commands are NOT prescribed here.** Each
+step that runs them defers to the target repo's own conventions —
+`CONTRIBUTING.md`, `AGENTS.md`, `README`, `package.json`/`Makefile`/
+language-specific tooling, or whatever the repo uses. The skill's job
+is the review loop; the repo's job is to tell us how it's built.
 
-**Delegate substantive steps to a fresh sub-agent.** Each round's triage,
-fix-drafting, and reply-drafting benefit from a clean context (no
-implementer bias, parallelizable, less noise in the parent). The parent
-agent owns sequencing, commits, and the final mutating
-`reply-and-resolve` calls. The per-step delegation map is in
-[references/workflow.md](references/workflow.md#sub-agent-delegation-map).
+Convergence is computed by [scripts/02-check-review-status.ps1](scripts/02-check-review-status.ps1)
+as a single `Converged: true` boolean. Do **not** call `task_complete`
+until it returns true; print the proof (`HeadOid`,
+`LatestCopilotReview.commitOid`, `submittedAt`) in the completion
+message.
 
 ## Gotchas
 
-- **Use `gh pr edit --add-reviewer copilot-pull-request-reviewer`** to
-  request a Copilot review. The GraphQL `requestReviews` mutation rejects
-  the Copilot bot login, and REST `requested_reviewers` returns HTTP 422
-  because bots are not repository collaborators.
-- **`git stash push -m` must come before `--`.** The form
-  `git stash push -- <paths> -m <msg>` parses `<msg>` as a path and
-  silently produces a stash with no message.
-- **`gh api graphql -F` type-coerces strings.** Use `-f key=value` for any
-  `String!` variable (`owner`, `repo`, `body`, `tid`, `after`); reserve
-  `-F` for numeric/boolean variables. A reply body that happens to be
-  `"true"` or all digits otherwise fails silently with a type error. See
-  [references/api-quirks.md](references/api-quirks.md).
-- **Reply *and* resolve every thread, including declines.** Resolving
-  without a reply leaves no record of why the issue was considered
-  addressed; replying without resolving keeps the open-threads list
-  non-empty and blocks convergence.
+- **NEVER post `@copilot please review` (or any `@copilot` mention)
+  as a PR comment** to trigger a code review. That summons the Copilot
+  **Coding Agent** (which makes commits), not the reviewer bot, and
+  will not produce a review. Use [scripts/01-request-review.ps1](scripts/01-request-review.ps1)
+  (GraphQL `requestReviewsByLogin`); if it can't land the trigger,
+  push a substantive commit (auto-assign on `synchronize` is the most
+  reliable fallback) — never fall back to `@`-mentions.
+- **HTTP 200 / exit 0 from the trigger call is NOT proof Copilot
+  accepted it.** The server can silently drop a request (quiet-period
+  after dismissal, trivial-diff suppression, repo without Copilot
+  enabled). The authoritative signal is a `copilot_work_started`
+  event on the issue (via `GET /repos/{o}/{r}/issues/{n}/events`)
+  newer than your request.
+  `01-request-review.ps1` enforces this via event-`id` comparison —
+  don't weaken it.
+- **A "no new comments" review is necessary but not sufficient for
+  convergence.** It must ALSO be at the current `HEAD` SHA AND every
+  open thread must have a reply from the agent
+  (`OpenThreadsAwaitingReply == 0`). A stale review on an earlier
+  commit lets a regression slip through unreviewed; an open Copilot
+  thread the agent hasn't replied to means the loop hasn't done its
+  job yet. `02-check-review-status.ps1`'s `Converged` flag enforces
+  all three. Open threads with our reply (escalate-to-user
+  hand-offs, contested declines) are by design — they're awaiting
+  the human merge owner, not the loop.
+- **Reply to every open thread; resolve only when the loop owns the
+  disposition** (`fix` or `decline`). For threads classified
+  `escalate-to-user`, reply with the analysis but leave the thread
+  OPEN (use `08-reply-and-resolve.ps1 -NoResolve`) so the human
+  merge owner can act on it. Resolving without a reply leaves no
+  record of why the issue was considered addressed; resolving an
+  escalated thread hides the hand-off from the human.
+- **Copilot threads are loop-owned; human / advanced-security /
+  other-bot
+  threads default to escalate-to-user.** Auto-replying or auto-
+  resolving a human review thread can hide unaddressed concerns and
+  is socially wrong. The triage rubric explicitly distinguishes
+  reviewer types.
 - **One focused commit per round, not one per PR.** Bundling rounds
-  destroys the audit trail of which finding drove which change and breaks
-  `git bisect`.
-- **Don't push a fix you haven't compiled.** A broken build wastes the
-  next full review cycle (3–10 minutes).
-- **Don't poll for the new review faster than ~3 minutes.** There is no
-  progress signal; faster polling only wastes API budget.
-- **Spell-check / format-check findings follow project-specific policies.**
-  Some repos reword text rather than adding to an allowlist; check the
-  project's spelling config conventions before adding entries.
-- **Push back with written rationale** when a finding would over-engineer
-  the design for a hypothetical edge case. Auto-accepting every Copilot
-  suggestion erodes the design.
+  destroys the audit trail of which finding drove which change and
+  breaks `git bisect`.
+- **Build/test/lint with the repo's own commands** (per its
+  `CONTRIBUTING`/`AGENTS`/`README`) before pushing a fix. A broken
+  build wastes the next full review cycle (3–10 minutes).
+- **Research the repo's own docs before generating any fix, build,
+  or test command.** Read `.github/instructions/*.md` (often with
+  `applyTo` globs pinning them to specific files), `.github/skills/`,
+  `AGENTS.md`, `CONTRIBUTING.md`, and recent commits to similar
+  files. Fan out multiple sub-agents in parallel when several axes
+  need checking. Never invent generic answers that contradict repo
+  practice — that's the "elephant in school" anti-pattern.
+- **Don't poll the review state faster than ~3 minutes.** There is
+  no progress signal; faster polling only wastes API budget.
+- **Respect repo-specific spell-check / lint / format policies.**
+  Some repos prefer rewording over allowlist entries; some have a
+  patterns/regex file; some accept inline-ignore directives. Inspect
+  the repo's existing config and recent commits before applying a
+  generic Copilot suggestion.
+- **Push back with written rationale** when a Copilot finding would
+  over-engineer the design for a hypothetical edge case. Auto-accepting
+  every suggestion erodes the design.
+- **Scripting traps** (`gh api graphql -F` type-coercion, `git stash
+  push -m` positional parsing, the three GraphQL traps for the
+  reviewer mutation) are documented in
+  [references/api-quirks.md](references/api-quirks.md). Read before
+  modifying any script.
 
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| `gh api` request to add Copilot reviewer returns HTTP 422 | Use `gh pr edit --add-reviewer copilot-pull-request-reviewer` (see [api-quirks.md](references/api-quirks.md)) |
-| No new review after ~10 minutes | Re-run the request — `scripts/01-request-review.ps1` is idempotent |
-| Outdated threads still appear in the open-threads list | Run [scripts/09-cleanup-outdated.ps1](scripts/09-cleanup-outdated.ps1) once at convergence |
-| Unsure whether to fix or decline a finding | Apply the rubric in [references/03-triage-criteria.md](references/03-triage-criteria.md) |
-| Need a reply that conveys "fixed", "declined", or "drift" | Use a template from [references/06-reply-templates.md](references/06-reply-templates.md) |
-| `list-open-threads` still shows resolved-looking threads | Filter is `!isResolved && !isOutdated` only — the script already does this; resolved-looking but still-open threads usually mean someone resolved the GitHub UI conversation without the GraphQL `resolveReviewThread` mutation completing |
+| Script throws `prerequisite missing — gh CLI is not on PATH` | Install `gh` (`winget install GitHub.cli` on Windows; `brew install gh` on macOS; package manager on Linux; or download from https://cli.github.com). Then `gh auth login`. Surface the message to the user and STOP the loop — do not retry. |
+| Script throws `prerequisite missing — gh CLI is not authenticated` | Run `gh auth login`. STOP the loop until the user completes auth. |
+| Trigger fails or no `copilot_work_started` event lands | Push a substantive (non-whitespace) commit — auto-assign on `synchronize` is the most reliable trigger. Persistent failure indicates Copilot Code Review may not be enabled on the repo / account (check repo Settings → Code & automation → Copilot, or account-level Copilot Pro/Pro+). |
+| No new review after waiting ~10 min | Quiet-period after recent dismissal or trivial-diff suppression. Push a substantive commit and retry. Do not blindly re-run `01-request-review.ps1` — it reports `InFlight` while Copilot is still a requested reviewer. |
+| Outdated-but-unresolved threads in the open list | Expected: unresolved state is the source of truth. Reply + resolve them like any other open thread. `10-cleanup-outdated.ps1` is only a final safety net. |
+| Unsure whether to fix or decline a finding | See [references/03-triage-criteria.md](references/03-triage-criteria.md). |
+| Need a reply phrasing for "fixed", "declined", or "drift" | See [references/06-reply-templates.md](references/06-reply-templates.md). |
 
 ## References
 
-- [references/workflow.md](references/workflow.md) — full nine-step
-  procedure with commands and rationale.
+- [references/workflow.md](references/workflow.md) — ten-step
+  procedure with per-step sub-agent budgets, return contracts, and
+  the extension protocol.
 - [references/03-triage-criteria.md](references/03-triage-criteria.md) —
   fix-vs-decline decision rubric.
-- [references/api-quirks.md](references/api-quirks.md) — verified GitHub
-  API dead-ends; read before scripting any Copilot reviewer interaction.
-- [references/06-reply-templates.md](references/06-reply-templates.md) — reply
-  patterns for accepted fixes, declined-with-rationale findings, and
-  description-update acknowledgements.
-- [scripts/01-request-review.ps1](scripts/01-request-review.ps1) — re-request a
-  Copilot review on a PR.
-- [scripts/02-list-open-threads.ps1](scripts/02-list-open-threads.ps1) — fetch
-  open, non-outdated Copilot review threads.
-- [scripts/06-reply-and-resolve.ps1](scripts/06-reply-and-resolve.ps1) — post a
-  reply and resolve in one call.
-- [scripts/09-cleanup-outdated.ps1](scripts/09-cleanup-outdated.ps1) —
-  batch-resolve outdated Copilot threads at convergence.
+- [references/api-quirks.md](references/api-quirks.md) — verified
+  GitHub API behavior, dead-ends, and the GraphQL traps for the
+  reviewer mutation.
+- [references/06-reply-templates.md](references/06-reply-templates.md) —
+  reply patterns for accepted fixes, declined-with-rationale
+  findings, and description-update acknowledgements.
+- [scripts/_lib.ps1](scripts/_lib.ps1) — shared helpers (`Invoke-Gh`,
+  `Invoke-GhGraphQL`, `Resolve-RepoCoords`); dot-sourced by every
+  script.
+- [scripts/01-request-review.ps1](scripts/01-request-review.ps1) —
+  trigger Copilot review and verify pickup via the
+  `copilot_work_started` event.
+- [scripts/02-check-review-status.ps1](scripts/02-check-review-status.ps1) —
+  single-shot snapshot of the PR's Copilot review state; emits
+  `Converged: true` only when all three conditions hold.
+- [scripts/03-list-open-threads.ps1](scripts/03-list-open-threads.ps1) —
+  every unresolved PR review thread from **all reviewers** (Copilot,
+  humans, github-advanced-security, etc.).
+- [scripts/08-reply-and-resolve.ps1](scripts/08-reply-and-resolve.ps1) —
+  post a reply and resolve in one call.
+- [scripts/10-cleanup-outdated.ps1](scripts/10-cleanup-outdated.ps1) —
+  safety net for outdated Copilot threads.
