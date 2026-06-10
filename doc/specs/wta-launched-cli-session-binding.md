@@ -1,10 +1,5 @@
 # Hook-Independent Pane ↔ Session Binding for WTA-Launched CLI Sessions
 
-> Status: **Draft — design approved 2026-06-10.** Base branch: **`main`**.
-> Intended to merge **independently and ahead of** the hookless watcher work
-> (`dev/yuazha/hookless-agent-session-tracking`). Next step: implementation plan
-> (writing-plans).
-
 ## Context & problem
 
 Intelligent Terminal classifies agent sessions by `SessionOrigin`
@@ -19,13 +14,9 @@ Intelligent Terminal classifies agent sessions by `SessionOrigin`
   `WT_SESSION` (the pane GUID), so today's binding is exact — but it depends on
   hooks.
 
-The wider "de-hook" effort removes hooks. Once they are gone, Class-B binding
-must be reconstructed. The hookless branch does that for **user-typed** sessions
-with a file watcher + per-CLI pid heuristics (exact for Copilot/Codex, but
-ambiguous cwd-correlation for Claude/Gemini).
-
-A subset of Class-B sessions are **not** user-typed — **WTA launches them
-itself**:
+The wider "de-hook" effort aims to stop relying on hooks for that binding. The
+easiest part to tackle first is the subset of Class-B sessions that are **not**
+user-typed — the ones **WTA launches itself**:
 
 - **(a)** `?<prompt>` delegation and the no-prompt background-agent action
   (`openBackgroundAgent`, Alt+Shift+B) → `wta delegate` opens a new tab whose
@@ -45,26 +36,22 @@ de-hook work, so it ships **first, on `main`**.
 For WTA-launched CLI sessions whose agent supports `--session-id`
 (**Copilot / Claude / Gemini**), establish the `(session id → pane GUID)`
 binding **at launch, with no hooks**, by registering a *born-bound* session row
-directly into the `wta-master` registry. Independently mergeable on `main`,
-ahead of the hookless watcher.
+directly into the `wta-master` registry. Independently mergeable on `main`.
 
 ## Non-goals
 
 - **Not removing hooks.** This branch coexists with `main`'s hooks; it only adds
   a hook-independent binding *source* for the WTA-launched, pinnable subset.
-- **No watcher.** No dependency on the hookless `session_watcher` (which does not
-  exist on `main`).
+- **No new background scanning.** Binding is established synchronously at launch;
+  nothing polls processes or tails session files.
 - **No `SessionOrigin` / UI change.** Sessions stay `Unknown` (Class B); no
   change to `OriginFilter`, `/sessions` rendering or Enter/Resume routing,
   registry serialization, or `history_loader`.
 - **Codex is out of scope.** It cannot pin `--session-id`, so it keeps using
   `main`'s existing Codex hook (`wt-agent-hooks/codex/.../send-event.ps1`)
-  unchanged. Codex's hook-independent binding arrives later via the hookless
-  watcher (Restart Manager, already exact for Codex).
-- **User-typed (non-WTA-launched) sessions** are likewise untouched here — they
-  stay on hooks until the hookless branch.
-- Not fixing CLI resume addressability (Gemini `--resume` is index-based; Codex
-  has no resume flag) — a pre-existing property of `ResumeCliFlag`.
+  unchanged.
+- **User-typed (non-WTA-launched) sessions** are untouched here — they stay on
+  the existing hook path.
 
 ## Scope: which launches
 
@@ -86,9 +73,8 @@ launches are left on the existing path.
 | Gemini  | yes | `~/.gemini/tmp/<cwd-slug>/chats/session-<ts>-<uuid[0:8]>.jsonl` (full uuid in content) | partial — only `uuid[0:8]` in the name |
 | Codex   | no | `rollout-<ts>-<uuid>.jsonl` | n/a (cannot choose the id) |
 
-(The Gemini filename caveat is irrelevant on this branch — we never discover the
-file here; we register by the full pinned uuid. It matters only for the hookless
-watcher's later reconciliation.)
+(The Gemini filename caveat is irrelevant here: we register by the full pinned
+uuid — this feature never discovers the file by name.)
 
 **2. `create_tab` / `split_pane` return the new pane's identity:**
 `TabCreationResult { UInt32 TabId; Guid SessionId; UInt64 WindowId; UInt32 Pid }`
@@ -105,7 +91,7 @@ At each in-scope launch:
 1. id  = (a,b) generate a v4 UUID  |  (c) the resume key
 2. cmd = <cli> ... <new_session_id_flag> <id>          (flag from agent_registry)
 3. TabCreationResult = COM create_tab / split_pane(cmd)   -> pane GUID + Pid
-4. tell wta-master:  RegisterLaunchedSession { id, cli, cwd, pane_guid }
+4. register the session with wta-master   { id, cli, cwd, pane_guid }
        -> master upserts a SessionInfo with
             pane_session_id = pane_guid,
             cli_source      = cli,
@@ -114,6 +100,11 @@ At each in-scope launch:
 ```
 
 No file discovery, no hooks, no PEB read — the row is **born bound** to the pane.
+
+> **As built:** that "register" step is the existing
+> `intellterm.wta/session_hook` ext-method with a `SessionStarted` event — the
+> master reducer already turns it into a born-bound Class-B row, so no new
+> message type was needed.
 
 **Precedent**: master already records `(session_id, pane_session_id)` for Class A
 agent panes (`agent_pane_origin.rs` v2), and the registry already carries the
@@ -136,11 +127,16 @@ unknown/custom). The launch path only does born-bound registration when this is
 
 ### Transport
 
-- **(b)/(c)** originate in a helper, already connected to master → send
-  `RegisterLaunchedSession` over the existing pipe.
-- **(a)** originates in the short-lived `wta delegate` process → connect to the
-  master pipe (`master-pipe.txt` rendezvous), send, exit. Master not running →
-  no-op (no registry to populate; harmless).
+- **(a)** runs in the short-lived `wta delegate` process. It opens its own
+  connection to the master pipe (`master-pipe.txt` rendezvous), registers, and
+  exits — the same transport `wta sessions list` already uses. Master not
+  running → no-op (no registry to populate; harmless).
+- **(c)** runs in the helper, which already creates the resume tab and binds its
+  pane (`ResumePaneAssigned`) — it is born-bound today, so no new transport is
+  needed.
+- **(b)** runs in the recommendation executor (`coordinator.rs`), which only
+  holds an `AppEvent` channel back to the app, **not** a direct master
+  connection — see *Deferred* below.
 
 ### Storage / lifetime
 
@@ -150,12 +146,12 @@ persisted to disk**. Conversation history still lives in the CLI's own session
 files and is reconstructed by `history_loader` as today; the pane binding is not
 needed after a restart.
 
-### Liveness — unchanged on this branch
+### Liveness — unchanged here
 
-`main`'s `SessionInfo` has no `bound_pid` field and no liveness reaper — that is a
-hookless-branch concept. A born-bound row's liveness continues via the existing
-source (hooks) until the hookless watcher lands. The `create_tab` Pid is captured
-for diagnostics/logging only; pid-based liveness is deferred to the hookless branch.
+`main`'s `SessionInfo` has no `bound_pid` field and no liveness reaper, so this
+feature does not change liveness: a born-bound row's Live/Ended state keeps
+coming from the existing hooks + WT pane events. The `create_tab` Pid is captured
+for diagnostics/logging only.
 
 ### Coexistence with hooks (on this branch)
 
@@ -166,13 +162,12 @@ registration is the part that keeps binding working once hooks are removed.
 
 ### Scope boundary — binding vs activity (decided: binding-only)
 
-This branch makes **binding** hook-independent. **Activity** (Working / Idle /
-Attention) for these sessions continues via the existing source (hooks on
-`main`) until the hookless watcher lands. So here a WTA-launched session is born
-**bound + Live with coarse status**; fine-grained activity still arrives via
-hooks. **Decided 2026-06-10: binding-only on this branch** — keeping it the
-smallest, most independent slice; activity is intentionally left to
-hooks/hookless.
+This feature makes **binding** hook-independent. **Activity** (Working / Idle /
+Attention) for these sessions still comes from the existing hook path. So a
+WTA-launched session is born **bound + Live with coarse status**; fine-grained
+activity arrives via hooks as today. **Decided 2026-06-10: binding-only** —
+keeping this the smallest, most independent slice; activity is intentionally
+left on the existing path.
 
 ## What is explicitly unchanged
 
@@ -189,14 +184,13 @@ registry serialization, `history_loader`, user-typed Class-B binding, and Codex.
 - **Pinnable CLI with hook also present** (this branch) → hook event merges into
   the born-bound row by id; consistent (same pane).
 - **Codex / user-typed** → untouched (existing hooks path).
-- **Gemini filename only carries `uuid[0:8]`** → irrelevant here (we register by
-  the full pinned uuid; no discovery). Becomes relevant only when the hookless
-  watcher must reconcile its discovered key to this row — deferred there.
+- **Gemini filename only carries `uuid[0:8]`** → irrelevant here: we register by
+  the full pinned uuid; this feature never discovers the file by name.
 
 ## Testing
 
 - **Unit**: `new_session_id_flag` per CLI; the launch→command builder (contains
-  `<flag> <uuid>` for pinnable agents, absent for Codex); `RegisterLaunchedSession`
+  `<flag> <uuid>` for pinnable agents, absent for Codex); the registration step
   upserts a `SessionInfo` with `pane_session_id` + `origin = Unknown`.
 - **Integration** (run 2026-06-10; keep as a documented manual test): each
   pinnable CLI launched headless with `--session-id <uuid>` writes its session
@@ -215,13 +209,26 @@ registry serialization, `history_loader`, user-typed Class-B binding, and Codex.
   (`initiated_by: User | Wta`). Not needed for the binding goal.
 - **On-disk launch-intent index.** Rejected: the binding is ephemeral (pane
   GUIDs are per-WT-run); the in-memory registry row suffices.
-- **Watcher-consults-intent join.** That is the *hookless-branch* design and
-  presumes a `session_watcher` that does not exist on `main`. Not applicable
-  here.
-- **Codex via `--session-id`.** Unsupported by the CLI; deferred to the hookless
-  watcher (Restart Manager, already exact).
+- **Codex via `--session-id`.** The CLI can't pin a chosen id on a new session,
+  so Codex isn't covered here; it stays on its existing path.
 
-## Open questions
+## Deferred: (b) the recommendation-open path
 
-- Should (a)'s `wta delegate` register over the master pipe, or be
-  re-architected to launch *through* master (larger change, deferred)?
+(a) and (c) are implemented; (b) is intentionally left for a follow-up — not
+because its logic differs, but because it's the awkward one to wire. The
+difference is **where the launch runs and what it can reach**:
+
+| Path | Runs in | Has at hand | Registering the binding |
+|---|---|---|---|
+| **(a)** `?delegate` / `Alt+Shift+B` | a dedicated, short-lived `wta delegate` process | creates the tab itself (gets the pane GUID); can open its own master connection | clean — **done** |
+| **(c)** `/sessions` resume | the helper (`dispatch_resume`) | already creates the tab and binds the pane (`ResumePaneAssigned`) | already born-bound — **nothing to add** |
+| **(b)** agent-pane recommendation `OpenAndSend{agent}` | the recommendation executor in `coordinator.rs` | creates the tab (gets the pane id) but only holds an `AppEvent` channel, **not** a master connection | a registration route must be chosen |
+
+So (b)'s extra cost is **plumbing, not logic**: its executor is embedded in the
+running helper alongside the recommendation's other actions, and it has no direct
+line to master. Registering its born-bound row means either (i) emitting an
+`AppEvent` that the app turns into the existing master publish, or (ii) giving the
+executor its own master sender like (a)'s. Threading that through without
+disturbing the recommendation's other steps is why (b) is deferred to its own
+change. It will reuse the exact same id-pinning and born-bound registration as
+(a); only the transport differs.
