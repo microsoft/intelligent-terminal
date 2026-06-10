@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <vector>
 
@@ -51,6 +52,7 @@ struct Factory : winrt::implements<Factory<T>, IClassFactory, winrt::no_module_l
 struct __declspec(uuid(__CLSID_TerminalProtocolServer))
 TerminalProtocolComServer : winrt::implements<TerminalProtocolComServer, Protocol::IProtocolServer>
 {
+    TerminalProtocolComServer();
     ~TerminalProtocolComServer();
 
     // ── IProtocolServer ──
@@ -98,9 +100,15 @@ TerminalProtocolComServer : winrt::implements<TerminalProtocolComServer, Protoco
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;
+    // Store the emperor's hidden HWND so MTA threads can PostMessage to the UI thread.
+    static void s_setEmperorHwnd(HWND hwnd) noexcept;
 
     static HRESULT s_StartListening();
     static HRESULT s_StopListening();
+
+    // Live COM object count (all objects, regardless of auth state).
+    // Used by WindowEmperor to decide when the process is truly idle.
+    static int32_t s_GetLiveObjectCount() noexcept;
 
     // Called from WindowEmperor after a new AppHost is appended to its
     // _windows vector. Re-runs the per-window page event registration so
@@ -129,6 +137,7 @@ private:
     void _addInstance();
     void _removeInstance();
     static void _ensurePageEventsRegistered();
+    static void s_notifyEmperorIdleCheck();
 
     // Dispatch an {method:"autofix_state"} payload to every window's
     // TerminalPage on its UI thread.
@@ -173,4 +182,6 @@ private:
     static void _dispatchRestartAgentPaneToPage(const winrt::hstring& eventJson);
 
     static WindowEmperor* s_emperor;
+    static std::atomic<HWND> s_emperorHwnd;
+    static std::atomic<int32_t> s_liveObjectCount;
 };

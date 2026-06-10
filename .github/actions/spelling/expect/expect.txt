@@ -2036,6 +2036,7 @@ IME
 CLDR
 doy
 Hinnant
+IDT
 LONGDATE
 MRT
 Uninstalls
