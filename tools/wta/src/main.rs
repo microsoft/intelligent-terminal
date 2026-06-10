@@ -1616,9 +1616,11 @@ async fn run_delegate(
     delegate_model: Option<&str>,
     cwd: Option<&str>,
 ) -> Result<()> {
-    // Log the prompt length, not the text — the prompt is user content.
-    tracing::info!(prompt_chars = prompt.map(|p| p.chars().count()), agent = agent_cmd, cwd, "run_delegate started");
-    tracing::trace!(target: "delegate.content", prompt = ?prompt, "run_delegate prompt");
+    // Log the prompt length, not the text — the prompt is user content. `cwd`
+    // is a filesystem path (carries the username / folder names), so it is
+    // personal data too: keep it on the trace-only content channel.
+    tracing::info!(prompt_chars = prompt.map(|p| p.chars().count()), agent = agent_cmd, "run_delegate started");
+    tracing::trace!(target: "delegate.content", prompt = ?prompt, cwd, "run_delegate prompt");
 
     let (debug_tx, _) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
     let channel = match connect_to_wt_protocol(debug_tx).await {
