@@ -1,6 +1,6 @@
 # Building Installers
 
-There are two installer types for distributing Intelligent Terminal.
+There are three installer types for distributing Intelligent Terminal.
 
 ## 1. MSIX ZIP Installer (Packaged)
 
