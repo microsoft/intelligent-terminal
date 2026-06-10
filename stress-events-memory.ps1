@@ -141,17 +141,17 @@ $shared  = [hashtable]::Synchronized(@{ Events = [long]0 })       # live counter
 # One worker per pane: its own loop, its own IntervalMs timer.
 $worker = {
     param([string]$wtcli, [string]$sid, [string]$eventType, [int]$intervalMs, [string]$marker, $stop, $results, $shared)
-    $sent = 0; $fail = 0; $bug = $false
+    $sent = 0; $fail = 0; $bug = $false; $firstErr = ''
     while (-not $stop.WaitOne(0)) {
         $payload = '{\"t\":\"token\",\"seq\":' + $sent + ',\"marker\":\"' + $marker + '\"}'
         $o = (& $wtcli send-event -e $eventType -p $sid $payload 2>&1 | Out-String)
         $sent++
-        if ($LASTEXITCODE -ne 0) { $fail++ }
+        if ($LASTEXITCODE -ne 0) { $fail++; if (-not $firstErr) { $firstErr = $o.Trim() } }
         if ($o -match '0x80010105|0xc0000005|server threw an exception') { $bug = $true }
         [System.Threading.Monitor]::Enter($shared); $shared.Events++; [System.Threading.Monitor]::Exit($shared)
         if ($stop.WaitOne($intervalMs)) { break }   # wait the cadence, or exit early on stop
     }
-    $results.Add([pscustomobject]@{ Sid = $sid; Sent = $sent; Fail = $fail; Bug = $bug })
+    $results.Add([pscustomobject]@{ Sid = $sid; Sent = $sent; Fail = $fail; Bug = $bug; FirstErr = $firstErr })
 }
 
 # -- Baseline before the flood --
@@ -224,6 +224,10 @@ $grow2nd = [math]::Round($final.PrivateMB - $midS.PrivateMB, 1)
 
 Write-Host ("Events sent        : {0}  ({1:n1}/s over {2:n0}s, {3} pane(s) concurrent)" -f $events, ($events / [math]::Max($sw.Elapsed.TotalSeconds,1)), $sw.Elapsed.TotalSeconds, $paneSids.Count)
 Write-Host ("send-event fails   : {0}" -f $sendFails)
+if ($sendFails -gt 0) {
+    Write-Host "send-event error(s), distinct:" -ForegroundColor Yellow
+    $results | Where-Object { $_.FirstErr } | Select-Object -ExpandProperty FirstErr | Sort-Object -Unique | ForEach-Object { Write-Host ("  | " + $_) -ForegroundColor Yellow }
+}
 Write-Host ("Private bytes      : baseline {0}MB -> final {1}MB  (delta {2:+0.0;-0.0;0}MB, peak {3}MB)" -f $baseline.PrivateMB, $final.PrivateMB, $deltaP, $peakP)
 Write-Host ("  2nd-half growth  : {0:+0.0;-0.0;0}MB  (flat = plateaued; large = still climbing)" -f $grow2nd)
 $hColor = if ($deltaH -gt $HandleFailDelta) { 'Red' } else { 'Green' }
