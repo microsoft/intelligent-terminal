@@ -590,7 +590,7 @@ fn install_for_claude(home: &Path) {
         tracing::warn!(
             target: "agent_hooks",
             err = %e,
-            path = %settings_path.display(),
+            path = %crate::logging::redact_user_path(&settings_path),
             "failed to strip legacy wta hooks from settings.json; non-fatal",
         );
     }
@@ -742,8 +742,8 @@ fn maybe_stage_bundle_for_codex(source: &Path) -> Option<PathBuf> {
         Ok(()) => {
             tracing::info!(
                 target: "agent_hooks",
-                source = %source.display(),
-                staged = %staged.display(),
+                source = %crate::logging::redact_user_path(&source),
+                staged = %crate::logging::redact_user_path(&staged),
                 "restaged codex bundle out of WindowsApps",
             );
             Some(staged)
@@ -752,8 +752,8 @@ fn maybe_stage_bundle_for_codex(source: &Path) -> Option<PathBuf> {
             tracing::warn!(
                 target: "agent_hooks",
                 err = %e,
-                source = %source.display(),
-                staged = %staged.display(),
+                source = %crate::logging::redact_user_path(&source),
+                staged = %crate::logging::redact_user_path(&staged),
                 "failed to restage codex bundle out of WindowsApps; using original path",
             );
             None
@@ -803,7 +803,7 @@ fn install_for_copilot(home: &Path) {
         tracing::warn!(
             target: "copilot_hooks",
             err = %e,
-            path = %settings_path.display(),
+            path = %crate::logging::redact_user_path(&settings_path),
             "failed to clean up stale wt-local marketplace entry; non-fatal",
         );
     }
@@ -852,13 +852,13 @@ fn install_for_copilot(home: &Path) {
             tracing::warn!(
                 target: "copilot_hooks",
                 err = %e,
-                path = %stale.display(),
+                path = %crate::logging::redact_user_path(&stale),
                 "failed to remove stale _direct folder; non-fatal",
             );
         } else {
             tracing::info!(
                 target: "copilot_hooks",
-                path = %stale.display(),
+                path = %crate::logging::redact_user_path(&stale),
                 "removed stale _direct plugin folder",
             );
         }
@@ -2078,19 +2078,29 @@ fn run_plugin_cli_capture_with_env(
         tracing::warn!(
             target: "agent_hooks",
             exe = exe,
+            status = ?output.status.code(),
+            "plugin CLI returned non-zero exit",
+        );
+        tracing::trace!(
+            target: "agent_hooks.content",
+            exe = exe,
             args = ?args,
             stdout = %stdout.trim(),
             stderr = %stderr.trim(),
-            status = ?output.status.code(),
-            "plugin CLI returned non-zero exit",
+            "plugin CLI non-zero output",
         );
     } else {
         tracing::info!(
             target: "agent_hooks",
             exe = exe,
+            "plugin CLI succeeded",
+        );
+        tracing::trace!(
+            target: "agent_hooks.content",
+            exe = exe,
             args = ?args,
             stdout = %stdout.trim(),
-            "plugin CLI succeeded",
+            "plugin CLI success output",
         );
     }
     Ok(CliRunOutcome {
@@ -2148,8 +2158,13 @@ fn run_plugin_cli_with_env(
             tracing::info!(
                 target: "agent_hooks",
                 exe = exe,
-                args = ?args,
                 "plugin CLI exited non-zero but matched idempotency substring; treating as success",
+            );
+            tracing::trace!(
+                target: "agent_hooks.content",
+                exe = exe,
+                args = ?args,
+                "plugin CLI idempotency-match args",
             );
             return Ok(());
         }
@@ -2231,8 +2246,8 @@ fn maybe_stage_bundle_for_claude(source: &Path) -> Option<PathBuf> {
         Ok(()) => {
             tracing::info!(
                 target: "agent_hooks",
-                source = %source.display(),
-                staged = %staged.display(),
+                source = %crate::logging::redact_user_path(&source),
+                staged = %crate::logging::redact_user_path(&staged),
                 "staged claude bundle out of WindowsApps to sidestep Node.js cpSync EPERM",
             );
             Some(staged)
@@ -2241,8 +2256,8 @@ fn maybe_stage_bundle_for_claude(source: &Path) -> Option<PathBuf> {
             tracing::warn!(
                 target: "agent_hooks",
                 err = %e,
-                source = %source.display(),
-                staged = %staged.display(),
+                source = %crate::logging::redact_user_path(&source),
+                staged = %crate::logging::redact_user_path(&staged),
                 "failed to stage claude bundle under LOCALAPPDATA; \
                  falling back to WindowsApps source (claude plugin install \
                  may fail with EPERM)",
@@ -2313,7 +2328,7 @@ fn cleanup_legacy_claude_hooks(settings_path: &Path) -> std::io::Result<()> {
             tracing::warn!(
                 target: "agent_hooks",
                 err = %e,
-                path = %settings_path.display(),
+                path = %crate::logging::redact_user_path(&settings_path),
                 "settings.json malformed; leaving untouched",
             );
             return Ok(());
@@ -2362,7 +2377,7 @@ fn cleanup_legacy_claude_hooks(settings_path: &Path) -> std::io::Result<()> {
     fs::write(settings_path, serialized)?;
     tracing::info!(
         target: "agent_hooks",
-        path = %settings_path.display(),
+        path = %crate::logging::redact_user_path(&settings_path),
         "stripped legacy wta hooks block",
     );
     Ok(())
@@ -2446,7 +2461,7 @@ fn cleanup_stale_copilot_marketplace(
             tracing::warn!(
                 target: "copilot_hooks",
                 err = %e,
-                path = %settings_path.display(),
+                path = %crate::logging::redact_user_path(&settings_path),
                 "settings.json malformed; leaving untouched",
             );
             return Ok(());
@@ -2500,9 +2515,9 @@ fn cleanup_stale_copilot_marketplace(
     fs::write(settings_path, serialized)?;
     tracing::info!(
         target: "copilot_hooks",
-        path = %settings_path.display(),
-        old = %old_path,
-        new = %expected_str,
+        path = %crate::logging::redact_user_path(&settings_path),
+        old = %crate::logging::redact_user_path(&old_path),
+        new = %crate::logging::redact_user_path(&expected_str),
         "rewrote stale wt-local marketplace path",
     );
     Ok(())
@@ -3181,7 +3196,7 @@ fn save_upgrade_state(path: &Path, state: &UpgradeState) {
             tracing::warn!(
                 target: "agent_hooks",
                 err = %e,
-                path = %parent.display(),
+                path = %crate::logging::redact_user_path(&parent),
                 "failed to create upgrade-state parent dir",
             );
             return;
@@ -3198,7 +3213,7 @@ fn save_upgrade_state(path: &Path, state: &UpgradeState) {
         tracing::warn!(
             target: "agent_hooks",
             err = %e,
-            path = %path.display(),
+            path = %crate::logging::redact_user_path(&path),
             "failed to write upgrade-state file",
         );
     }
@@ -3232,7 +3247,7 @@ fn cleanup_stale_claude_marketplace(
             tracing::warn!(
                 target: "agent_hooks",
                 err = %e,
-                path = %known_path.display(),
+                path = %crate::logging::redact_user_path(&known_path),
                 "known_marketplaces.json malformed; leaving untouched",
             );
             return Ok(());
@@ -3290,9 +3305,9 @@ fn cleanup_stale_claude_marketplace(
     fs::write(known_path, serialized)?;
     tracing::info!(
         target: "agent_hooks",
-        path = %known_path.display(),
-        old = %old_path,
-        new = %expected_str,
+        path = %crate::logging::redact_user_path(&known_path),
+        old = %crate::logging::redact_user_path(&old_path),
+        new = %crate::logging::redact_user_path(&expected_str),
         "rewrote stale wt-local marketplace path (claude)",
     );
     Ok(())

@@ -492,8 +492,14 @@ impl acp::Client for MasterClient {
             op = "write_text_file",
             helper_id = ?helper_id,
             session_id = ?sid,
-            path = ?args.path,
             "forwarding fs/write_text_file to helper"
+        );
+        tracing::trace!(
+            target: "master.content",
+            op = "write_text_file",
+            session_id = ?sid,
+            path = ?args.path,
+            "fs/write_text_file path"
         );
         forwarder.write_text_file(args).await
     }
@@ -510,8 +516,14 @@ impl acp::Client for MasterClient {
             op = "read_text_file",
             helper_id = ?helper_id,
             session_id = ?sid,
-            path = ?args.path,
             "forwarding fs/read_text_file to helper"
+        );
+        tracing::trace!(
+            target: "master.content",
+            op = "read_text_file",
+            session_id = ?sid,
+            path = ?args.path,
+            "fs/read_text_file path"
         );
         forwarder.read_text_file(args).await
     }
@@ -1289,7 +1301,7 @@ impl MasterPipeDiscoveryGuard {
                 if let Err(err) = std::fs::create_dir_all(parent) {
                     tracing::warn!(
                         target: "master",
-                        path = %path.display(),
+                        path = %crate::logging::redact_user_path(&path),
                         error = %err,
                         "failed to create master pipe discovery directory"
                     );
@@ -1302,14 +1314,14 @@ impl MasterPipeDiscoveryGuard {
             match std::fs::write(path, pipe_name) {
                 Ok(()) => tracing::info!(
                     target: "master",
-                    path = %path.display(),
+                    path = %crate::logging::redact_user_path(&path),
                     pipe_name = %pipe_name,
                     "master pipe discovery file written"
                 ),
                 Err(err) => {
                     tracing::warn!(
                         target: "master",
-                        path = %path.display(),
+                        path = %crate::logging::redact_user_path(&path),
                         error = %err,
                         "failed to write master pipe discovery file"
                     );
@@ -1339,7 +1351,7 @@ impl Drop for MasterPipeDiscoveryGuard {
             if let Err(err) = std::fs::remove_file(path) {
                 tracing::warn!(
                     target: "master",
-                    path = %path.display(),
+                    path = %crate::logging::redact_user_path(&path),
                     error = %err,
                     "failed to remove master pipe discovery file"
                 );
@@ -2289,8 +2301,14 @@ where
         tracing::info!(
             target: "session_hook",
             session_id = %sid.0,
-            new_title = %disk_title,
+            title_len = disk_title.len(),
             "upgraded synthetic title from on-disk session artefacts",
+        );
+        tracing::trace!(
+            target: "session_hook.content",
+            session_id = %sid.0,
+            new_title = %disk_title,
+            "upgraded synthetic title",
         );
     }
     upgraded
