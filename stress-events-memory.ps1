@@ -14,8 +14,16 @@
   Concurrency model: each pane gets its OWN worker thread (runspace) with its
   OWN ~500ms timer, all firing concurrently -- closer to real multi-agent
   traffic than a single sequential sweep. Meanwhile the main thread samples
-  WindowsTerminal private bytes / handles / threads to see if they plateau
-  (healthy) or keep climbing (leak).
+  THREE process families to see if they plateau (healthy) or keep climbing:
+    WindowsTerminal = the classic-COM server (event fan-out happens here)
+    wtcli           = the persistent `wtcli listen` COM EventSink the helper
+                      spawns (plus short-lived send-event processes in flight)
+    wta             = the helper that reads wtcli stdout and routes events into
+                      its session registry
+  To exercise the REAL helper path end to end, open one or more AGENT PANES
+  before running -- that is what puts a live wta.exe + its `wtcli listen`
+  subscriber on the event fan-out. With no agent pane open, only the server
+  side (WindowsTerminal) is exercised.
 
   PASS = no crash, WT alive, memory + handles plateau (no unbounded growth).
 
@@ -71,15 +79,50 @@ function Get-Json([string[]]$WtArgs) {
     try { return ($o | ConvertFrom-Json) } catch { return $null }
 }
 
-function Sample-WtMem {
-    $p = @(Get-Process WindowsTerminal -ErrorAction SilentlyContinue)
-    if ($p.Count -eq 0) { return $null }
+# Process families we watch (see header). Order matters for display.
+$ProcNames = @('WindowsTerminal', 'wtcli', 'wta')
+
+function Sample-Mem {
+    # WindowsTerminal vanishing == the crash we are guarding against, so a null
+    # return here is the crash signal the caller keys off.
+    if (@(Get-Process WindowsTerminal -ErrorAction SilentlyContinue).Count -eq 0) { return $null }
+    $per = [ordered]@{}
+    $tP = 0.0; $tW = 0.0; $tH = 0; $tT = 0; $tN = 0
+    foreach ($n in $ProcNames) {
+        $p = @(Get-Process $n -ErrorAction SilentlyContinue)
+        $priv = if ($p.Count) { [math]::Round((($p | Measure-Object PrivateMemorySize64 -Sum).Sum) / 1MB, 1) } else { 0.0 }
+        $work = if ($p.Count) { [math]::Round((($p | Measure-Object WorkingSet64 -Sum).Sum) / 1MB, 1) } else { 0.0 }
+        $hnd  = if ($p.Count) { [int](($p | Measure-Object HandleCount -Sum).Sum) } else { 0 }
+        $thr  = if ($p.Count) { [int](($p | ForEach-Object { $_.Threads.Count } | Measure-Object -Sum).Sum) } else { 0 }
+        $per[$n] = [pscustomobject]@{ Procs = $p.Count; PrivateMB = $priv; WorkingMB = $work; Handles = $hnd; Threads = $thr }
+        $tP += $priv; $tW += $work; $tH += $hnd; $tT += $thr; $tN += $p.Count
+    }
     [pscustomobject]@{
-        PrivateMB = [math]::Round((($p | Measure-Object PrivateMemorySize64 -Sum).Sum) / 1MB, 1)
-        WorkingMB = [math]::Round((($p | Measure-Object WorkingSet64 -Sum).Sum) / 1MB, 1)
-        Handles   = [int](($p | Measure-Object HandleCount -Sum).Sum)
-        Threads   = [int](($p | ForEach-Object { $_.Threads.Count } | Measure-Object -Sum).Sum)
-        Procs     = $p.Count
+        Per       = $per
+        PrivateMB = [math]::Round($tP, 1)
+        WorkingMB = [math]::Round($tW, 1)
+        Handles   = $tH
+        Threads   = $tT
+        Procs     = $tN
+    }
+}
+
+# Build one CSV/table row: totals plus a per-family breakdown.
+function New-SampleRow([int]$elapsed, [int]$events, $m) {
+    [pscustomobject]@{
+        ElapsedSec = $elapsed
+        Events     = $events
+        PrivateMB  = $m.PrivateMB
+        Handles    = $m.Handles
+        Threads    = $m.Threads
+        WT_Priv    = $m.Per.WindowsTerminal.PrivateMB
+        WT_Hnd     = $m.Per.WindowsTerminal.Handles
+        wtcli_Priv = $m.Per.wtcli.PrivateMB
+        wtcli_Hnd  = $m.Per.wtcli.Handles
+        wtcli_N    = $m.Per.wtcli.Procs
+        wta_Priv   = $m.Per.wta.PrivateMB
+        wta_Hnd    = $m.Per.wta.Handles
+        wta_N      = $m.Per.wta.Procs
     }
 }
 
@@ -160,10 +203,17 @@ $worker = {
 }
 
 # -- Baseline before the flood --
-$baseline = Sample-WtMem
+$baseline = Sample-Mem
 $samples  = New-Object System.Collections.ArrayList
-[void]$samples.Add([pscustomobject]@{ ElapsedSec = 0; Events = 0; PrivateMB = $baseline.PrivateMB; WorkingMB = $baseline.WorkingMB; Handles = $baseline.Handles; Threads = $baseline.Threads })
-Write-Host ("baseline: Private={0}MB Working={1}MB Handles={2} Threads={3} (WT procs={4})" -f $baseline.PrivateMB, $baseline.WorkingMB, $baseline.Handles, $baseline.Threads, $baseline.Procs) -ForegroundColor Cyan
+[void]$samples.Add((New-SampleRow 0 0 $baseline))
+Write-Host ("baseline (sum) : Private={0}MB  Handles={1}  Threads={2}" -f $baseline.PrivateMB, $baseline.Handles, $baseline.Threads) -ForegroundColor Cyan
+foreach ($n in $ProcNames) {
+    $b = $baseline.Per.$n
+    Write-Host ("   {0,-16} procs={1}  Private={2}MB  Handles={3}  Threads={4}" -f $n, $b.Procs, $b.PrivateMB, $b.Handles, $b.Threads) -ForegroundColor DarkCyan
+}
+if ($baseline.Per.wta.Procs -eq 0) {
+    Write-Host "   NOTE: no wta.exe running -- open an AGENT PANE to put the REAL helper on the event path." -ForegroundColor Yellow
+}
 
 # -- Start one concurrent worker per pane --
 $pool = [runspacefactory]::CreateRunspacePool(1, [Math]::Max($paneSids.Count, 1))
@@ -186,12 +236,16 @@ while ($sw.Elapsed.TotalSeconds -lt $DurationSec) {
     Start-Sleep -Milliseconds 250
     $elapsed = [int]$sw.Elapsed.TotalSeconds
     if ($elapsed -ge $nextSample) {
-        $m = Sample-WtMem
+        $m = Sample-Mem
         if (-not $m) { $crashed = $true; break }
         [System.Threading.Monitor]::Enter($shared); $ev = [int]$shared.Events; [System.Threading.Monitor]::Exit($shared)
-        [void]$samples.Add([pscustomobject]@{ ElapsedSec = $elapsed; Events = $ev; PrivateMB = $m.PrivateMB; WorkingMB = $m.WorkingMB; Handles = $m.Handles; Threads = $m.Threads })
+        [void]$samples.Add((New-SampleRow $elapsed $ev $m))
         $dP = $m.PrivateMB - $baseline.PrivateMB
-        Write-Host ("  t={0,4}s  events={1,7}  Private={2,7}MB ({3:+0.0;-0.0;0}MB)  Handles={4,6}  Threads={5}" -f $elapsed, $ev, $m.PrivateMB, $dP, $m.Handles, $m.Threads) -ForegroundColor Gray
+        Write-Host ("  t={0,4}s  ev={1,7}  Priv={2,6}MB ({3:+0.0;-0.0;0})  WT={4}MB/{5}h  wtcli={6}MB/{7}h(x{8})  wta={9}MB/{10}h(x{11})" -f `
+            $elapsed, $ev, $m.PrivateMB, $dP, `
+            $m.Per.WindowsTerminal.PrivateMB, $m.Per.WindowsTerminal.Handles, `
+            $m.Per.wtcli.PrivateMB, $m.Per.wtcli.Handles, $m.Per.wtcli.Procs, `
+            $m.Per.wta.PrivateMB, $m.Per.wta.Handles, $m.Per.wta.Procs) -ForegroundColor Gray
         $nextSample = $elapsed + $SampleEverySec
     }
 }
@@ -207,9 +261,9 @@ $events    = [int](($results | Measure-Object Sent -Sum).Sum)
 $sendFails = [int](($results | Measure-Object Fail -Sum).Sum)
 $bugHit    = @($results | Where-Object { $_.Bug }).Count -gt 0
 
-$final = Sample-WtMem
+$final = Sample-Mem
 if ($final) {
-    [void]$samples.Add([pscustomobject]@{ ElapsedSec = [int]$sw.Elapsed.TotalSeconds; Events = $events; PrivateMB = $final.PrivateMB; WorkingMB = $final.WorkingMB; Handles = $final.Handles; Threads = $final.Threads })
+    [void]$samples.Add((New-SampleRow ([int]$sw.Elapsed.TotalSeconds) $events $final))
 } else { $crashed = $true; $final = $baseline }
 
 # -- Analysis --
@@ -238,6 +292,34 @@ Write-Host ("  2nd-half growth  : {0:+0.0;-0.0;0}MB  (flat = plateaued; large = 
 $hColor = if ($deltaH -gt $HandleFailDelta) { 'Red' } else { 'Green' }
 Write-Host ("Handles            : baseline {0} -> final {1}  (delta {2:+0;-0;0})" -f $baseline.Handles, $final.Handles, $deltaH) -ForegroundColor $hColor
 Write-Host ("Threads            : baseline {0} -> final {1}  (delta {2:+0;-0;0})" -f $baseline.Threads, $final.Threads, $deltaT)
+
+# Per-family attribution: which side (server / COM-sink / helper) moved.
+Write-Host ""
+Write-Host "Per-process-family (baseline -> final):" -ForegroundColor Cyan
+$famRows = foreach ($n in $ProcNames) {
+    $b = $baseline.Per.$n; $f = $final.Per.$n
+    [pscustomobject]@{
+        Process   = $n
+        Procs     = ("{0}->{1}" -f $b.Procs, $f.Procs)
+        Priv_base = $b.PrivateMB
+        Priv_fin  = $f.PrivateMB
+        Priv_d    = [math]::Round($f.PrivateMB - $b.PrivateMB, 1)
+        Hnd_d     = $f.Handles - $b.Handles
+        Thr_d     = $f.Threads - $b.Threads
+    }
+}
+$famRows | Format-Table -AutoSize
+$helperSeen = ($baseline.Per.wta.Procs -gt 0) -or ($final.Per.wta.Procs -gt 0)
+if (-not $helperSeen) {
+    Write-Host "NOTE: no wta.exe seen the whole run -- the REAL helper path was NOT exercised." -ForegroundColor Yellow
+    Write-Host "      Open an agent pane and re-run to stress server + COM-sink + helper together." -ForegroundColor Yellow
+}
+Write-Host "(wtcli column = persistent listen subscriber + short-lived send-event procs; it fluctuates -- watch the trend, not the absolute.)" -ForegroundColor DarkGray
+
+$wtD    = [math]::Round($final.Per.WindowsTerminal.PrivateMB - $baseline.Per.WindowsTerminal.PrivateMB, 1)
+$wtcliD = [math]::Round($final.Per.wtcli.PrivateMB - $baseline.Per.wtcli.PrivateMB, 1)
+$wtaD   = [math]::Round($final.Per.wta.PrivateMB - $baseline.Per.wta.PrivateMB, 1)
+
 $bColor = if ($bugHit) { 'Red' } else { 'Green' }
 Write-Host ("OS-bug signature   : {0}" -f $bugHit) -ForegroundColor $bColor
 $aColor = if ($wtAlive) { 'Green' } else { 'Red' }
@@ -245,7 +327,7 @@ Write-Host ("WindowsTerminal OK : {0}" -f $wtAlive) -ForegroundColor $aColor
 
 $leaking = (($deltaP -gt $GrowthFailMB) -and ($grow2nd -gt ($GrowthFailMB / 2))) -or ($deltaH -gt $HandleFailDelta)
 $verdict = if ($wtAlive -and -not $bugHit -and -not $leaking) { 'PASS' } else { 'FAIL' }
-$summary = "RESULT=$verdict events=$events privateDeltaMB=$deltaP grow2ndHalfMB=$grow2nd handleDelta=$deltaH bug=$bugHit wtAlive=$wtAlive"
+$summary = "RESULT=$verdict events=$events privateDeltaMB=$deltaP grow2ndHalfMB=$grow2nd handleDelta=$deltaH bug=$bugHit wtAlive=$wtAlive wtPrivD=$wtD wtcliPrivD=$wtcliD wtaPrivD=$wtaD helperSeen=$helperSeen"
 Add-Content -Path $logPath -Value $summary
 Write-Host ""
 if ($verdict -eq 'PASS') {
