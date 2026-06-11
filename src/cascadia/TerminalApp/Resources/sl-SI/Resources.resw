@@ -220,51 +220,18 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Nastavljanje...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Namestitev {0} je blokiral pravilnik Upravitelja paketov za Windows. Če uporabljate upravljano napravo, se obrnite na skrbnika za IT.</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Ni bilo mogoče namestiti {0} (koda napake {1}). Za podrobnosti preverite dnevnik ali namestite {0} ročno.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Ni bilo mogoče namestiti {0}. Za podrobnosti preverite dnevnik ali namestite {0} ročno.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Namestitveni program za {0} je sporočil napako (koda {1}). Za podrobnosti preverite dnevnik ali namestite {0} ročno.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Med nameščanjem {0} ni bilo mogoče vzpostaviti stika z Upraviteljem paketov za Windows. Preverite internetno povezavo (VPN, posredniški strežnik ali požarni zid jo morda blokira) in poskusite znova.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ V tem sistemu ni na voljo združljivega namestitvenega programa za {0} (različica OS ali arhitektura morda ni podprta). Namestite {0} ročno.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} ni bilo mogoče najti v katalogu Upravitelja paketov za Windows. Poskusite osvežiti vire winget ali namestite {0} ročno.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Namestitev {0} je trajala dlje kot 20 minut. Intelligent Terminal je nehal čakati, vendar se namestitveni program morda še vedno izvaja v ozadju. Preverite Task Manager ali poskusite znova pozneje.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ Namestitev GitHub Copilot ni uspela. Preverite omrežno povezavo in poskusite znova.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Upravitelj paketov za Windows (winget) ni nameščen ali ni na voljo. Najprej ga namestite, nato poskusite znova.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Namestitev Node.js ni uspela. Preverite omrežno povezavo in poskusite znova.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
-  </data>
-
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Vklopljeno</value>
   </data>

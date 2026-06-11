@@ -107,49 +107,17 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Kei te whakarite...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ I āraia te tāutanga o {0} e tētahi kaupapahere Kaiwhakahaere Mōkī Windows. Mēnā kei runga koe i tētahi pūrere whakahaere, whakapā atu ki tō kaiwhakahaere IT.</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Kāore i taea te tāuta i a {0} (waehere hapa {1}). Tirohia te rangitaki mō ngā taipitopito, tāutahia rānei a {0} ā-ringa.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Kāore i taea te tāuta i a {0}. Tirohia te rangitaki mō ngā taipitopito, tāutahia rānei a {0} ā-ringa.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ I pūrongo te kaitāuta o {0} i tētahi hapa (waehere {1}). Tirohia te rangitaki mō ngā taipitopito, tāutahia rānei a {0} ā-ringa.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Kāore i taea te toro atu ki te Kaiwhakahaere Mōkī Windows i te wā e tāuta ana i a {0}. Tirohia tō hononga ipurangi (tērā pea kei te āraia e VPN, takawaenga, pātūahi rānei), kātahi ka ngana anō.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Kāore he kaitāuta hototahi mō {0} e wātea ana i tēnei pūnaha (kāore pea te putanga OS, te hoahoanga rānei e tautokona). Tāutahia a {0} ā-ringa.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ Kāore a {0} i kitea i te putumōhio Kaiwhakahaere Mōkī Windows. Whakamātauria te whakahou i ngā pūtake winget, tāutahia rānei a {0} ā-ringa.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Neke atu i te 20 meneti te tāuta i a {0}. Kua mutu te tatari a Intelligent Terminal, engari tērā pea kei te rere tonu te kaitāuta i muri. Tirohia te Task Manager, ngana anō rānei ā muri ake.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ I rahua te tāuta i a GitHub Copilot. Tirohia tō hononga whatuao ka ngana anō.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Kāore anō te Kaiwhakahaere Mōkī Windows (winget) kia tāutatia, kāore rānei i te wātea. Tāutahia i te tuatahi, kātahi ka ngana anō.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
-  </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ I rahua te tāuta i a Node.js. Tirohia tō hononga whatuao ka ngana anō.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Kā</value>

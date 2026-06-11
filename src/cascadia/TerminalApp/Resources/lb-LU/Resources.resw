@@ -107,49 +107,17 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Gëtt agestallt...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ D'Installatioun vu {0} gouf duerch eng Windows Package Manager-Politik blockéiert. Wann Dir op engem geréierte Gerät sidd, kontaktéiert Ären IT-Administrateur.</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ {0} konnt net installéiert ginn (Feelercode {1}). Kuckt am Log fir Detailer, oder installéiert {0} manuell.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ {0} konnt net installéiert ginn. Kuckt am Log fir Detailer, oder installéiert {0} manuell.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Den Installateur vu {0} huet e Feeler gemellt (Code {1}). Kuckt am Log fir Detailer, oder installéiert {0} manuell.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ De Windows Package Manager konnt wärend der Installatioun vu {0} net erreecht ginn. Iwwerpréift Är Internetverbindung (VPN, Proxy oder Firewall kéint se blockéieren) a probéiert et nach eng Kéier.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Kee kompatibelen Installateur fir {0} ass op dësem System verfügbar (d'Versioun vum Betribssystem oder d'Architektur gëtt eventuell net ënnerstëtzt). Installéiert {0} manuell.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} gouf net am Katalog vum Windows Package Manager fonnt. Probéiert d'winget-Quellen ze aktualiséieren, oder installéiert {0} manuell.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ D'Installatioun vu {0} huet méi laang wéi 20 Minutte gedauert. Intelligent Terminal huet opgehalen ze waarden, mee den Installateur leeft eventuell nach am Hannergrond. Kuckt am Task Manager, oder probéiert et méi spéit nach eng Kéier.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ GitHub Copilot konnt net installéiert ginn. Iwwerpréift Är Netzwierkverbindung a probéiert et nach eng Kéier.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ De Windows Package Manager (winget) ass net installéiert oder net verfügbar. Installéiert en als éischt a probéiert et dann nach eng Kéier.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
-  </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Node.js konnt net installéiert ginn. Iwwerpréift Är Netzwierkverbindung a probéiert et nach eng Kéier.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Un</value>

@@ -220,62 +220,18 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>સેટ અપ થઈ રહ્યું છે...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Windows Package Manager નીતિ દ્વારા {0} નું ઇન્સ્ટોલેશન અવરોધિત કરવામાં આવ્યું હતું. જો તમે મેનેજ્ડ ડિવાઇસ પર હો, તો તમારા IT એડમિનનો સંપર્ક કરો.</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy (group policy disabled the operation).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ {0} ઇન્સ્ટોલ કરી શકાયું નહીં (ભૂલ કોડ {1}). વિગતો માટે લૉગ જુઓ, અથવા {0} ને મેન્યુઅલી ઇન્સ્ટોલ કરો.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194". Shown for failure causes we don't have a more specific message for.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ {0} ઇન્સ્ટોલ કરી શકાયું નહીં. વિગતો માટે લૉગ જુઓ, અથવા {0} ને મેન્યુઅલી ઇન્સ્ટોલ કરો.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available (e.g. the catalog connect/search failed before an installer ever ran). {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ {0} ઇન્સ્ટોલરે ભૂલ રિપોર્ટ કરી (કોડ {1}). વિગતો માટે લૉગ તપાસો, અથવા {0} ને મેન્યુઅલી ઇન્સ્ટોલ કરો.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603). Shown when winget reached the install phase but the installer itself failed.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ {0} ઇન્સ્ટોલ કરતી વખતે Windows Package Manager સુધી પહોંચી શકાયું નહીં. તમારું ઇન્ટરનેટ કનેક્શન તપાસો (VPN, proxy, અથવા firewall તેને બ્લૉક કરી રહ્યાં હોઈ શકે છે) અને ફરી પ્રયાસ કરો.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name (FreOverlay_PackageDisplayName_Copilot or _Node). Shown when winget couldn't reach its catalog or the package download failed with a network-class HRESULT.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ આ સિસ્ટમ પર {0} માટે કોઈ સુસંગત ઇન્સ્ટોલર ઉપલબ્ધ નથી (OS વર્ઝન અથવા આર્કિટેક્ચર સપોર્ટેડ ન હોઈ શકે). {0} ને મેન્યુઅલી ઇન્સ્ટોલ કરો.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). Shown when winget returned NoApplicableInstallers — the manifest exists but no installer entry matches this OS/arch/scope.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ Windows Package Manager કૅટલોગમાં {0} મળ્યું નથી. winget સોર્સ રિફ્રેશ કરવાનો પ્રયાસ કરો, અથવા {0} ને મેન્યુઅલી ઇન્સ્ટોલ કરો.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice). Shown when no manifest with the requested package ID was returned from the catalog search.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ {0} ઇન્સ્ટોલ કરવામાં 20 મિનિટથી વધુ સમય લાગ્યો. Intelligent Terminal એ રાહ જોવાનું બંધ કર્યું, પરંતુ ઇન્સ્ટોલર હજી પણ બેકગ્રાઉન્ડમાં ચાલી રહ્યું હોઈ શકે છે. Task Manager તપાસો, અથવા પછીથી ફરી પ્રયાસ કરો.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name. Shown when our 20-minute hard timeout expired before the install completed.</comment>
-  </data>
-  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ session hooks ઇન્સ્ટોલ કરવામાં નિષ્ફળ. સેશન મેનેજમેન્ટ બંધ કરવામાં આવ્યું છે. તમે તેને ફરીથી સક્ષમ કરીને ફરી પ્રયાસ કરી શકો છો, અથવા તેના વિના ચાલુ રાખવા માટે સાચવો.</value>
-    <comment>{Locked="hooks"}</comment>
-  </data>
-  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ શેલ ઇન્ટિગ્રેશન ઇન્સ્ટોલ કરવામાં નિષ્ફળ. ભૂલ શોધ બંધ કરવામાં આવી છે. તમે તેને ફરીથી સક્ષમ કરીને ફરી પ્રયાસ કરી શકો છો, અથવા તેના વિના ચાલુ રાખવા માટે સાચવો.</value>
-  </data>
-  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ PowerShell એક્ઝિક્યુશન પોલિસી સ્ક્રિપ્ટ્સને અવરોધી રહી છે. ભૂલ શોધ બંધ કરી દીધી.</value>
-    <comment>{Locked="PowerShell"}</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ GitHub Copilot ઇન્સ્ટોલ કરવામાં નિષ્ફળ. તમારું નેટવર્ક તપાસો અને ફરી પ્રયાસ કરો.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows Package Manager (winget) ઇન્સ્ટોલ થયેલ નથી અથવા ઉપલબ્ધ નથી. પહેલાં તેને ઇન્સ્ટોલ કરો, પછી ફરી પ્રયાસ કરો.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Node.js ઇન્સ્ટોલ કરવામાં નિષ્ફળ. તમારું નેટવર્ક તપાસો અને ફરી પ્રયાસ કરો.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
-  </data>
-
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>ચાલુ</value>
   </data>
@@ -352,7 +308,12 @@
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal ને તમારા શેલને ઍક્સેસ કરવાની અને ભૂલોને આપમેળે શોધવાની પરવાનગી આપો.</value>
   </data>
-  <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ શેલ ઇન્ટિગ્રેશન ઇન્સ્ટોલ કરવામાં નિષ્ફળ. ભૂલ શોધ બંધ કરવામાં આવી છે. તમે તેને ફરીથી સક્ષમ કરીને ફરી પ્રયાસ કરી શકો છો, અથવા તેના વિના ચાલુ રાખવા માટે સાચવો.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks ઇન્સ્ટોલ કરવામાં નિષ્ફળ. સેશન મેનેજમેન્ટ બંધ કરવામાં આવ્યું છે. તમે તેને ફરીથી સક્ષમ કરીને ફરી પ્રયાસ કરી શકો છો, અથવા તેના વિના ચાલુ રાખવા માટે સાચવો.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>આને જાતે કેવી રીતે ઠીક કરવું તે જાણો</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
@@ -364,5 +325,9 @@
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell એક્ઝિક્યુશન પોલિસી સ્ક્રિપ્ટ્સને અવરોધી રહી છે.</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell એક્ઝિક્યુશન પોલિસી સ્ક્રિપ્ટ્સને અવરોધી રહી છે. ભૂલ શોધ બંધ કરી દીધી.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

@@ -107,49 +107,17 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Word opgestel...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Installering van {0} is deur 'n Windows-pakketbestuurderbeleid geblokkeer. As jy op 'n bestuurde toestel is, kontak jou IT-administrateur.</value>
-    <comment>FRE setup error. {0} is the package display name.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Kon nie {0} installeer nie (foutkode {1}). Sien die logboek vir besonderhede, of installeer {0} handmatig.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Kon nie {0} installeer nie. Sien die logboek vir besonderhede, of installeer {0} handmatig.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Die {0}-installeerder het ’n fout gerapporteer (kode {1}). Gaan die logboek na vir besonderhede, of installeer {0} handmatig.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Kon nie die Windows-pakketbestuurder bereik terwyl {0} geïnstalleer is nie. Kontroleer jou internetverbinding (VPN, instaanbediener of brandmuur blokkeer dit dalk) en probeer weer.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Geen versoenbare installeerder vir {0} is op hierdie stelsel beskikbaar nie (OS-weergawe of argitektuur word dalk nie ondersteun nie). Installeer {0} handmatig.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} is nie in die Windows-pakketbestuurderkatalogus gevind nie. Probeer winget-bronne verfris, of installeer {0} handmatig.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Installering van {0} het langer as 20 minute geneem. Intelligent Terminal het opgehou wag, maar die installeerder loop dalk nog in die agtergrond. Gaan Task Manager na, of probeer later weer.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ Kon nie GitHub Copilot installeer nie. Kontroleer jou netwerkverbinding en probeer weer.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows-pakketbestuurder (winget) is nie geïnstalleer nie of is nie beskikbaar nie. Installeer dit eers en probeer dan weer.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
-  </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Kon nie Node.js installeer nie. Kontroleer jou netwerkverbinding en probeer weer.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Aan</value>

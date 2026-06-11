@@ -1099,49 +1099,17 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Configurando...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ A instalação de {0} foi bloqueada por uma política do Gerenciador de Pacotes do Windows. Se você estiver em um dispositivo gerenciado, entre em contato com seu administrador de TI.</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Não foi possível instalar {0} (código de erro {1}). Confira o log para obter detalhes ou instale {0} manualmente.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Não foi possível instalar {0}. Confira o log para obter detalhes ou instale {0} manualmente.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ O instalador de {0} relatou um erro (código {1}). Confira o log para obter detalhes ou instale {0} manualmente.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Não foi possível acessar o Gerenciador de Pacotes do Windows ao instalar {0}. Verifique sua conexão com a Internet (VPN, proxy ou firewall podem estar bloqueando) e tente novamente.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Nenhum instalador compatível para {0} está disponível neste sistema (talvez a versão do sistema operacional ou a arquitetura não tenha suporte). Instale {0} manualmente.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} não foi encontrado no catálogo do Gerenciador de Pacotes do Windows. Tente atualizar as fontes do winget ou instale {0} manualmente.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ A instalação de {0} levou mais de 20 minutos. Intelligent Terminal parou de aguardar, mas o instalador ainda pode estar em execução em segundo plano. Verifique Task Manager ou tente novamente mais tarde.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ Falha ao instalar o GitHub Copilot. Verifique sua conexão de rede e tente novamente.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ O Gerenciador de Pacotes do Windows (winget) não está instalado ou não está disponível. Instale-o primeiro e tente novamente.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
-  </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Falha ao instalar o Node.js. Verifique sua conexão de rede e tente novamente.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
     <value>⚠ Falha ao instalar os hooks de sessão. O gerenciamento de sessões foi desativado. Você pode reativá-lo e tentar novamente, ou salvar para continuar sem ele.</value>

@@ -220,49 +220,17 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Menyiapkan...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Penginstalan {0} diblokir oleh kebijakan Windows Package Manager. Jika Anda menggunakan perangkat terkelola, hubungi admin IT Anda.</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Tidak dapat menginstal {0} (kode kesalahan {1}). Lihat log untuk detail, atau instal {0} secara manual.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Tidak dapat menginstal {0}. Lihat log untuk detail, atau instal {0} secara manual.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Penginstal {0} melaporkan kesalahan (kode {1}). Lihat log untuk detail, atau instal {0} secara manual.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Tidak dapat menjangkau Windows Package Manager saat menginstal {0}. Periksa koneksi internet Anda (VPN, proxy, atau firewall mungkin memblokirnya) dan coba lagi.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Tidak ada penginstal yang kompatibel untuk {0} yang tersedia di sistem ini (versi OS atau arsitektur mungkin tidak didukung). Instal {0} secara manual.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} tidak ditemukan di katalog Windows Package Manager. Coba refresh sumber winget, atau instal {0} secara manual.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Menginstal {0} memakan waktu lebih dari 20 menit. Intelligent Terminal berhenti menunggu, tetapi penginstal mungkin masih berjalan di latar belakang. Periksa Task Manager, atau coba lagi nanti.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ Gagal menginstal GitHub Copilot. Periksa jaringan Anda dan coba lagi.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows Package Manager (winget) tidak terinstal atau tidak tersedia. Instal terlebih dahulu, lalu coba lagi.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
-  </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Gagal menginstal Node.js. Periksa jaringan Anda dan coba lagi.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Aktif</value>

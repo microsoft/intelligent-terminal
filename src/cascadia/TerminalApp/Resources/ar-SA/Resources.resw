@@ -221,49 +221,17 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>جارٍ الإعداد...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ تم حظر تثبيت {0} بواسطة نهج مدير حزم Windows. إذا كنت تستخدم جهازًا مُدارًا، فاتصل بمسؤول تكنولوجيا المعلومات لديك.</value>
-    <comment>FRE setup error. {0} is the package display name.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ تعذر تثبيت {0} (رمز الخطأ {1}). راجع السجل للحصول على التفاصيل، أو ثبّت {0} يدويًا.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ تعذر تثبيت {0}. راجع السجل للحصول على التفاصيل، أو ثبّت {0} يدويًا.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ أبلغ مُثبّت {0} عن خطأ (الرمز {1}). راجع السجل للحصول على التفاصيل، أو ثبّت {0} يدويًا.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ تعذر الوصول إلى مدير حزم Windows أثناء تثبيت {0}. تحقق من اتصالك بالإنترنت (قد يكون VPN أو الوكيل أو جدار الحماية يحظره) ثم أعد المحاولة.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ لا يتوفر مُثبّت متوافق لـ {0} على هذا النظام (قد لا يكون إصدار نظام التشغيل أو البنية مدعومًا). ثبّت {0} يدويًا.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ لم يتم العثور على {0} في كتالوج مدير حزم Windows. حاول تحديث مصادر winget، أو ثبّت {0} يدويًا.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ استغرق تثبيت {0} أكثر من 20 دقيقة. توقف Intelligent Terminal عن الانتظار، ولكن قد يظل المُثبّت قيد التشغيل في الخلفية. تحقق من Task Manager، أو حاول مرة أخرى لاحقًا.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ فشل تثبيت GitHub Copilot. تحقق من شبكتك وأعد المحاولة.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ مدير حزم Windows (winget) غير مثبت أو غير متوفر. قم بتثبيته أولاً، ثم أعد المحاولة.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
-  </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ فشل تثبيت Node.js. تحقق من شبكتك وأعد المحاولة.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>تشغيل</value>

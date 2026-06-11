@@ -220,51 +220,18 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Nustatoma...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ „Windows“ paketų tvarkytuvo strategija užblokavo {0} diegimą. Jei naudojate valdomą įrenginį, kreipkitės į savo IT administratorių.</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Nepavyko įdiegti {0} (klaidos kodas {1}). Daugiau informacijos žr. žurnale arba įdiekite {0} rankiniu būdu.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Nepavyko įdiegti {0}. Daugiau informacijos žr. žurnale arba įdiekite {0} rankiniu būdu.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ {0} diegyklė pranešė apie klaidą (kodas {1}). Daugiau informacijos žr. žurnale arba įdiekite {0} rankiniu būdu.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Nepavyko pasiekti „Windows“ paketų tvarkytuvo diegiant {0}. Patikrinkite interneto ryšį (VPN, tarpinis serveris arba užkarda gali jį blokuoti) ir bandykite dar kartą.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Šioje sistemoje nėra suderinamos {0} diegyklės (OS versija arba architektūra gali būti nepalaikoma). Įdiekite {0} rankiniu būdu.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} nerasta „Windows“ paketų tvarkytuvo kataloge. Pabandykite atnaujinti winget šaltinius arba įdiekite {0} rankiniu būdu.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Diegiant {0} užtrukta ilgiau nei 20 minučių. Intelligent Terminal nustojo laukti, bet diegyklė vis dar gali veikti fone. Patikrinkite Task Manager arba bandykite dar kartą vėliau.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ Nepavyko įdiegti GitHub Copilot. Patikrinkite tinklo ryšį ir bandykite dar kartą.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ „Windows“ paketų tvarkytuvas (winget) neįdiegtas arba nepasiekiamas. Pirmiausia jį įdiekite, tada bandykite dar kartą.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Nepavyko įdiegti Node.js. Patikrinkite tinklo ryšį ir bandykite dar kartą.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
-  </data>
-
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Įjungta</value>
   </data>

@@ -220,51 +220,18 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Nastavování...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Instalace {0} byla zablokována zásadami Správce balíčků systému Windows. Pokud používáte spravované zařízení, kontaktujte správce IT.</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Nepodařilo se nainstalovat {0} (kód chyby {1}). Podrobnosti najdete v protokolu, nebo nainstalujte {0} ručně.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Nepodařilo se nainstalovat {0}. Podrobnosti najdete v protokolu, nebo nainstalujte {0} ručně.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Instalační program {0} oznámil chybu (kód {1}). Podrobnosti najdete v protokolu, nebo nainstalujte {0} ručně.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Při instalaci {0} se nepodařilo spojit se Správcem balíčků systému Windows. Zkontrolujte připojení k internetu (VPN, proxy server nebo brána firewall ho můžou blokovat) a zkuste to znovu.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ V tomto systému není k dispozici žádný kompatibilní instalační program pro {0} (verze operačního systému nebo architektura nemusí být podporovaná). Nainstalujte {0} ručně.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} se nenašel v katalogu Správce balíčků systému Windows. Zkuste aktualizovat zdroje winget nebo nainstalujte {0} ručně.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Instalace {0} trvala déle než 20 minut. Intelligent Terminal přestal čekat, ale instalační program může stále běžet na pozadí. Zkontrolujte Task Manager, nebo to zkuste znovu později.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ Nepodařilo se nainstalovat GitHub Copilot. Zkontrolujte síťové připojení a zkuste to znovu.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Správce balíčků systému Windows (winget) není nainstalovaný nebo není dostupný. Nejdřív ho nainstalujte a pak to zkuste znovu.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Nepodařilo se nainstalovat Node.js. Zkontrolujte síťové připojení a zkuste to znovu.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
-  </data>
-
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Zapnuto</value>
   </data>

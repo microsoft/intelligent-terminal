@@ -220,49 +220,17 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Орнатылуда...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ {0} орнатуын Windows Package Manager саясаты бұғаттады. Егер басқарылатын құрылғыда болсаңыз, IT әкімшісіне хабарласыңыз.</value>
-    <comment>FRE setup error. {0} is the package display name.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ {0} орнату мүмкін болмады (қате коды {1}). Мәліметтер үшін журналды қараңыз немесе {0} қолданбасын қолмен орнатыңыз.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ {0} орнату мүмкін болмады. Мәліметтер үшін журналды қараңыз немесе {0} қолданбасын қолмен орнатыңыз.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ {0} орнатқышы қате туралы хабарлады (код {1}). Мәліметтер үшін журналды тексеріңіз немесе {0} қолданбасын қолмен орнатыңыз.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ {0} орнату кезінде Windows Package Manager қызметіне қол жеткізу мүмкін болмады. Интернет қосылымыңызды тексеріңіз (VPN, прокси немесе брандмауэр оны бұғаттауы мүмкін) және қайталап көріңіз.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Бұл жүйеде {0} үшін үйлесімді орнатқыш жоқ (ОЖ нұсқасына немесе архитектураға қолдау көрсетілмеуі мүмкін). {0} қолданбасын қолмен орнатыңыз.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} Windows Package Manager каталогынан табылмады. winget көздерін жаңартып көріңіз немесе {0} қолданбасын қолмен орнатыңыз.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ {0} орнату 20 минуттан ұзаққа созылды. Intelligent Terminal күтуді тоқтатты, бірақ орнатқыш әлі де фонда жұмыс істеп тұруы мүмкін. Task Manager құралын тексеріңіз немесе кейінірек қайталап көріңіз.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ GitHub Copilot орнату сәтсіз аяқталды. Желіңізді тексеріп, қайталап көріңіз.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows Package Manager (winget) орнатылмаған немесе қолжетімді емес. Алдымен оны орнатып, содан кейін қайталап көріңіз.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
-  </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Node.js орнату сәтсіз аяқталды. Желіңізді тексеріп, қайталап көріңіз.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Қосулы</value>

@@ -1111,49 +1111,17 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>설정 중...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Windows 패키지 관리자 정책에 의해 {0} 설치가 차단되었습니다. 관리되는 디바이스를 사용 중인 경우 IT 관리자에게 문의하세요.</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ {0}을(를) 설치할 수 없습니다(오류 코드 {1}). 자세한 내용은 로그를 확인하거나 {0}을(를) 수동으로 설치하세요.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ {0}을(를) 설치할 수 없습니다. 자세한 내용은 로그를 확인하거나 {0}을(를) 수동으로 설치하세요.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ {0} 설치 관리자가 오류를 보고했습니다(코드 {1}). 자세한 내용은 로그를 확인하거나 {0}을(를) 수동으로 설치하세요.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ {0}을(를) 설치하는 동안 Windows 패키지 관리자에 연결할 수 없습니다. 인터넷 연결(VPN, 프록시 또는 방화벽이 차단하고 있을 수 있음)을 확인하고 다시 시도하세요.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ 이 시스템에서 {0}에 사용할 수 있는 호환 설치 관리자가 없습니다(OS 버전 또는 아키텍처가 지원되지 않을 수 있음). {0}을(를) 수동으로 설치하세요.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ Windows 패키지 관리자 카탈로그에서 {0}을(를) 찾을 수 없습니다. winget 원본을 새로 고치거나 {0}을(를) 수동으로 설치하세요.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ {0} 설치에 20분 넘게 걸렸습니다. Intelligent Terminal은 대기를 중지했지만 설치 관리자가 여전히 백그라운드에서 실행 중일 수 있습니다. Task Manager를 확인하거나 나중에 다시 시도하세요.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ GitHub Copilot 설치에 실패했습니다. 네트워크를 확인하고 다시 시도하세요.</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows 패키지 관리자(winget)가 설치되어 있지 않거나 사용할 수 없습니다. 먼저 설치한 다음 다시 시도하세요.</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
-  </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ Node.js 설치에 실패했습니다. 네트워크를 확인하고 다시 시도하세요.</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
     <value>⚠ session hooks를 설치하지 못했습니다. 세션 관리가 꺼졌습니다. 다시 사용하도록 설정하고 다시 시도하거나, 저장하여 이 기능 없이 계속할 수 있습니다.</value>

@@ -1113,49 +1113,17 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>正在设置...</value>
   </data>
-  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Windows 程序包管理器策略阻止了 {0} 的安装。如果你使用的是受管理设备，请联系 IT 管理员。</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ 无法安装 {0}（错误代码 {1}）。请查看日志了解详细信息，或手动安装 {0}。</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
-  </data>
-  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ 无法安装 {0}。请查看日志了解详细信息，或手动安装 {0}。</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ {0} 安装程序报告了错误（代码 {1}）。请查看日志了解详细信息，或手动安装 {0}。</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ 安装 {0} 时无法访问 Windows 程序包管理器。请检查 Internet 连接（VPN、代理或防火墙可能会阻止连接），然后重试。</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
-  </data>
-  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ 此系统上没有可用的 {0} 兼容安装程序（可能不支持 OS 版本或体系结构）。请手动安装 {0}。</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ 在 Windows 程序包管理器目录中找不到 {0}。请尝试刷新 winget 源，或手动安装 {0}。</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
-  </data>
-  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ 安装 {0} 花费的时间超过 20 分钟。Intelligent Terminal 已停止等待，但安装程序可能仍在后台运行。请查看 Task Manager，或稍后重试。</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
+    <value>⚠ 安装 GitHub Copilot 失败。请检查网络并重试。</value>
+    <comment>{Locked="GitHub Copilot"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows 程序包管理器 (winget) 未安装或不可用。请先安装它，然后重试。</value>
-    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
   </data>
-  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
-    <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
-  </data>
-  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
-    <value>Node.js (LTS)</value>
-    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
+    <value>⚠ 安装 Node.js 失败。请检查网络并重试。</value>
+    <comment>{Locked="Node.js"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
     <value>⚠ 安装 session hooks 失败。会话管理已关闭。您可以重新启用并重试，或保存以继续而不使用它。</value>
