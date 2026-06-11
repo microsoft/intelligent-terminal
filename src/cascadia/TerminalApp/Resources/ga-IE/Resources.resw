@@ -107,17 +107,49 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Ag socrú...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Theip ar GitHub Copilot a shuiteáil. Seiceáil do cheangal líonra agus bain triail eile as.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Chuir polasaí de chuid Bhainisteoir Pacáistí Windows bac ar shuiteáil {0}. Má tá gléas bainistithe in úsáid agat, déan teagmháil le do riarthóir TF.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Níorbh fhéidir {0} a shuiteáil (cód earráide {1}). Seiceáil an loga le haghaidh sonraí, nó suiteáil {0} de láimh.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Níorbh fhéidir {0} a shuiteáil. Seiceáil an loga le haghaidh sonraí, nó suiteáil {0} de láimh.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ Thuairiscigh suiteálaí {0} earráid (cód {1}). Seiceáil an loga le haghaidh sonraí, nó suiteáil {0} de láimh.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Níorbh fhéidir Bainisteoir Pacáistí Windows a bhaint amach agus {0} á shuiteáil. Seiceáil do cheangal idirlín (d'fhéadfadh VPN, seachfhreastalaí nó balla dóiteáin é a bhlocáil) agus bain triail eile as.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Níl aon suiteálaí comhoiriúnach do {0} ar fáil ar an gcóras seo (seans nach dtacaítear le leagan an chórais oibriúcháin nó leis an ailtireacht). Suiteáil {0} de láimh.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ Níor aimsíodh {0} i gcatalóg Bhainisteoir Pacáistí Windows. Bain triail as foinsí winget a athnuachan, nó suiteáil {0} de láimh.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Thóg suiteáil {0} níos mó ná 20 nóiméad. Stop Intelligent Terminal de bheith ag fanacht, ach d'fhéadfadh an suiteálaí a bheith fós ag rith sa chúlra. Seiceáil Task Manager, nó bain triail eile as níos déanaí.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Níl Bainisteoir Pacáistí Windows (winget) suiteáilte nó ar fáil. Suiteáil é ar dtús, ansin bain triail eile as.</value>
-    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Theip ar Node.js a shuiteáil. Seiceáil do cheangal líonra agus bain triail eile as.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Air</value>

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
   <resheader name="version"><value>2.0</value></resheader>
@@ -107,17 +107,49 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Կարգավորում...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot-ի տեղադրումը ձախողվեց։ Ստուգեք ցանցի հանգույցը և նորից փորձեք:</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ {0}-ի տեղադրումն արգելափակվել է Windows Package Manager-ի քաղաքականության կողմից։ Եթե կառավարելի սարքի վրա եք, կապվեք ձեր IT ադմինիստրատորի հետ։</value>
+    <comment>FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Չհաջողվեց տեղադրել {0}-ը (սխալի կոդը՝ {1})։ Մանրամասների համար դիտեք գրանցամատյանը, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Չհաջողվեց տեղադրել {0}-ը։ Մանրամասների համար դիտեք գրանցամատյանը, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0}-ի տեղադրիչը հաղորդեց սխալ (կոդ՝ {1})։ Ստուգեք գրանցամատյանը մանրամասների համար, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ {0}-ը տեղադրելիս չհաջողվեց կապ հաստատել Windows Package Manager-ի հետ։ Ստուգեք ինտերնետ կապը (VPN-ը, պրոքսին կամ հրապատը կարող են արգելափակել այն) և նորից փորձեք։</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Այս համակարգում {0}-ի համար համատեղելի տեղադրիչ հասանելի չէ (OS-ի տարբերակը կամ ճարտարապետությունը կարող է չաջակցվել)։ Տեղադրեք {0}-ը ձեռքով։</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0}-ը չի գտնվել Windows Package Manager-ի կատալոգում։ Փորձեք թարմացնել winget աղբյուրները, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0}-ի տեղադրումը տևեց ավելի քան 20 րոպե։ Intelligent Terminal-ը դադարեց սպասել, բայց տեղադրիչը կարող է դեռ աշխատել հետին պլանում։ Ստուգեք Task Manager-ը, կամ փորձեք ավելի ուշ։</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows Package Manager-ը (winget) տեղադրված չէ կամ հասանելի չէ։ Նախ տեղադրեք այն, ապա նորից փորձեք:</value>
-    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js-ի տեղադրումը ձախողվեց։ Ստուգեք ցանցի հանգույցը և նորից փորձեք:</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Միաց</value>

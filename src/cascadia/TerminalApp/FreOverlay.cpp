@@ -609,12 +609,37 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    IAsyncOperation<bool> FreOverlay::_WingetInstallAsync(winrt::hstring packageId)
+    IAsyncOperation<int32_t> FreOverlay::_WingetInstallAsync(winrt::hstring packageId)
     {
         using namespace winrt::Microsoft::Management::Deployment;
+        using Kind = FreWingetFailureKind;
+        auto encode = [](Kind k) noexcept { return static_cast<int32_t>(k); };
+
+        // Capture a weak reference so writes to _lastWinget* are safe even
+        // if the overlay is destroyed mid-await (e.g. user dismissed the
+        // window during a long install).
+        auto weak = get_weak();
+
+        // Helper: persist hr + installer error code to instance state, if
+        // the overlay is still alive. Read by _SaveAndInstallAsync right
+        // after our co_return to drive _ShowWingetProblem.
+        auto stash = [&weak](int32_t hr, uint32_t installerErr) {
+            if (auto self = weak.get())
+            {
+                self->_lastWingetHr = hr;
+                self->_lastWingetInstallerErrorCode = installerErr;
+            }
+        };
 
         // Copy packageId before switching threads (coroutine parameter safety)
         auto id = winrt::hstring{ packageId };
+
+        // Local diagnostic state. We write to the instance fields only via
+        // `stash(...)` immediately before each co_return, so the caller
+        // always sees consistent (kind, hr, installerErr) tuples and a
+        // stale value never leaks across calls.
+        int32_t hr = 0;
+        uint32_t installerErr = 0;
 
         co_await winrt::resume_background();
 
@@ -648,7 +673,17 @@ namespace winrt::TerminalApp::implementation
                     "[FRE] winget catalog connect failed: {} (status={})",
                     ConnectStatusName(connectResult.Status()),
                     static_cast<int>(connectResult.Status())));
-                co_return false;
+                // CatalogError during connect almost always means we
+                // couldn't reach the catalog server (DNS / TLS / proxy /
+                // firewall). The 1.8 contract doesn't expose
+                // ConnectResult.ExtendedErrorCode so we can't whitelist
+                // here — treat the catalog-error case as Network and
+                // anything else (SourceAgreementsNotAccepted, future
+                // statuses) as Generic.
+                stash(hr, installerErr);
+                co_return encode(connectResult.Status() == ConnectResultStatus::CatalogError
+                                     ? Kind::Network
+                                     : Kind::Generic);
             }
 
             // ── 3. Find the package by exact ID ──
@@ -669,12 +704,16 @@ namespace winrt::TerminalApp::implementation
                     "[FRE] winget FindPackages failed: {} (status={})",
                     FindStatusName(findResult.Status()),
                     static_cast<int>(findResult.Status())));
-                co_return false;
+                stash(hr, installerErr);
+                co_return encode(findResult.Status() == FindPackagesResultStatus::BlockedByPolicy
+                                     ? Kind::BlockedByPolicy
+                                     : Kind::Generic);
             }
             if (findResult.Matches().Size() == 0)
             {
                 _agentPaneLog("[FRE] winget package not found: " + winrt::to_string(id));
-                co_return false;
+                stash(hr, installerErr);
+                co_return encode(Kind::PackageNotFound);
             }
 
             const CatalogPackage package = findResult.Matches().GetAt(0).CatalogPackage();
@@ -709,9 +748,14 @@ namespace winrt::TerminalApp::implementation
                 }
                 if (elapsed > kInstallHardCapMs)
                 {
+                    // Cancel is best-effort — if the installer's already
+                    // running, it may keep going in the background. We
+                    // surface that nuance in the user-facing Timeout
+                    // message (see FreOverlay_InstallError_Timeout).
                     _agentPaneLog("[FRE] winget install: hard timeout after 20 min, cancelling");
                     installOp.Cancel();
-                    co_return false;
+                    stash(hr, installerErr);
+                    co_return encode(Kind::Timeout);
                 }
                 co_await winrt::resume_after(std::chrono::milliseconds(500));
             }
@@ -719,7 +763,9 @@ namespace winrt::TerminalApp::implementation
 
             const auto status = installResult.Status();
             const auto exHr = installResult.ExtendedErrorCode();
-            const auto installerErr = installResult.InstallerErrorCode();
+            const auto rawInstallerErr = installResult.InstallerErrorCode();
+            hr = static_cast<int32_t>(exHr);
+            installerErr = rawInstallerErr;
 
             if (status != InstallResultStatus::Ok)
             {
@@ -728,14 +774,53 @@ namespace winrt::TerminalApp::implementation
                     InstallStatusName(status),
                     static_cast<int>(status),
                     static_cast<uint32_t>(exHr),
-                    installerErr));
-                co_return false;
+                    rawInstallerErr));
+
+                Kind kind = Kind::Generic;
+                switch (status)
+                {
+                case InstallResultStatus::BlockedByPolicy:
+                    kind = Kind::BlockedByPolicy;
+                    break;
+                case InstallResultStatus::NoApplicableInstallers:
+                    kind = Kind::NoCompatibleInstaller;
+                    break;
+                case InstallResultStatus::DownloadError:
+                    // Network whitelist gates the user-facing "check your
+                    // VPN" message — anything else (hash/cert/disk/AV)
+                    // falls back to Generic so we don't send the user
+                    // chasing the wrong problem.
+                    kind = _IsNetworkLikeHResult(hr)
+                               ? Kind::Network
+                               : Kind::Generic;
+                    break;
+                case InstallResultStatus::InstallError:
+                    kind = Kind::InstallerFailed;
+                    break;
+                // CatalogError / InternalError / ManifestError /
+                // InvalidOptions / NoApplicableUpgrade /
+                // PackageAgreementsNotAccepted / unknown future values
+                // → Generic. CatalogError is a special case: it often
+                // has a winget-specific or network HRESULT attached
+                // (e.g. APPINSTALLER_CLI_ERROR_BLOCKED_BY_POLICY if the
+                // catalog is GP-blocked, or a WinINet DNS code if the
+                // source server is unreachable), so route through the
+                // full classifier instead of just the network check.
+                case InstallResultStatus::CatalogError:
+                    kind = _ClassifyWingetHResult(hr);
+                    break;
+                default:
+                    kind = Kind::Generic;
+                    break;
+                }
+                stash(hr, installerErr);
+                co_return encode(kind);
             }
 
             // Surface RebootRequired so the caller / log readers can see
             // it. GitHub.Copilot never sets this; some MSI-style packages
             // (e.g. Node.js LTS) theoretically might. We still return
-            // true because the install itself succeeded — the caller's
+            // Success because the install itself succeeded — the caller's
             // post-install steps (PATH refresh, hook install) may or may
             // not work fully until reboot, but that's the caller's call
             // and we shouldn't fail an otherwise-successful install.
@@ -744,21 +829,136 @@ namespace winrt::TerminalApp::implementation
                 _agentPaneLog("[FRE] winget install: ok (reboot required)");
             }
 
-            co_return true;
+            stash(0, 0); // success: clear any stale diagnostic state
+            co_return encode(Kind::Success);
         }
         catch (const winrt::hresult_error& e)
         {
+            hr = static_cast<int32_t>(e.code().value);
             _agentPaneLog(fmt::format(
                 "[FRE] winget exception: hr=0x{:08X} msg={}",
-                static_cast<uint32_t>(e.code().value),
+                static_cast<uint32_t>(hr),
                 winrt::to_string(e.message())));
-            co_return false;
+            stash(hr, installerErr);
+            // _ClassifyWingetHResult recognizes APPINSTALLER_CLI_ERROR_*
+            // codes (e.g. 0x8A15003A == BLOCKED_BY_POLICY), so a GP
+            // block surfaces as Kind::BlockedByPolicy with the
+            // actionable "contact IT admin" message instead of the
+            // generic "(error code 0x8A15003A)" fallback.
+            co_return encode(_ClassifyWingetHResult(hr));
         }
         catch (...)
         {
             LOG_CAUGHT_EXCEPTION();
-            co_return false;
+            stash(hr, installerErr);
+            co_return encode(Kind::Generic);
         }
+    }
+
+    // Conservative network-class HRESULT whitelist. We list the specific
+    // WinINet / WinHTTP / Winsock codes that genuinely indicate a network
+    // problem (DNS failure, connection refused/timed out, TLS handshake
+    // failure, etc.). We deliberately do NOT include:
+    //  * HTTP-status HRESULTs (0x80190xxx) — HTTP 404 / 403 / 5xx aren't
+    //    "check your VPN" situations, they mean the request reached the
+    //    server.
+    //  * RPC_E_* — those are COM/service activation failures, not network.
+    //  * Whole facility ranges — too easy to misclassify edge cases.
+    //
+    // Names in trailing comments are the macros from winhttp.h / wininet.h
+    // / winsock2.h, kept here so we don't need to pull those headers in.
+    bool FreOverlay::_IsNetworkLikeHResult(int32_t hr) noexcept
+    {
+        switch (static_cast<uint32_t>(hr))
+        {
+        // FACILITY_INTERNET (12xxx range) — WinINet & WinHTTP share these
+        case 0x80072EE2: // ERROR_INTERNET_TIMEOUT / ERROR_WINHTTP_TIMEOUT       (12002)
+        case 0x80072EE7: // ERROR_INTERNET_NAME_NOT_RESOLVED                    (12007)
+        case 0x80072EFD: // ERROR_INTERNET_CANNOT_CONNECT                       (12029)
+        case 0x80072EFE: // ERROR_INTERNET_CONNECTION_ABORTED                   (12030)
+        case 0x80072EFF: // ERROR_INTERNET_CONNECTION_RESET                     (12031)
+        case 0x80072F8F: // ERROR_INTERNET_SECURITY_CHANNEL_ERROR (TLS)         (12175)
+        // FACILITY_WIN32 (Winsock 100xx, mapped via HRESULT_FROM_WIN32)
+        case 0x80072742: // WSAENETDOWN          (10050)
+        case 0x80072743: // WSAENETUNREACH       (10051)
+        case 0x80072744: // WSAENETRESET         (10052)
+        case 0x80072745: // WSAECONNABORTED      (10053)
+        case 0x80072746: // WSAECONNRESET        (10054)
+        case 0x8007274C: // WSAETIMEDOUT         (10060)
+        case 0x8007274D: // WSAECONNREFUSED      (10061)
+        case 0x80072751: // WSAEHOSTUNREACH      (10065)
+        case 0x80072AF9: // WSAHOST_NOT_FOUND    (11001)
+        case 0x80072AFC: // WSANO_DATA           (11004)
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    // Map a raw HRESULT to the most-specific FreWingetFailureKind we can
+    // infer. Used in two places:
+    //  * the catch block of _WingetInstallAsync, where winget COM throws
+    //    APPINSTALLER_CLI_ERROR_* codes directly (this is how policy
+    //    blocks surface — winget throws 0x8A15003A *before* it ever
+    //    returns an InstallResult);
+    //  * the CatalogError install-status branch, where the structured
+    //    Status is generic but the ExtendedErrorCode tells us why.
+    //
+    // The match order matters. APPINSTALLER_CLI_ERROR_* codes are
+    // checked first because their meaning is unambiguous; the network
+    // whitelist comes last as a transport-level fallback.
+    //
+    // Code names come from
+    // https://github.com/microsoft/winget-cli/blob/master/src/AppInstallerSharedLib/Public/AppInstallerErrors.h
+    // and are kept here as comments so we don't need to take a header
+    // dependency on the winget-cli repo.
+    FreOverlay::FreWingetFailureKind FreOverlay::_ClassifyWingetHResult(int32_t hr) noexcept
+    {
+        using Kind = FreWingetFailureKind;
+        switch (static_cast<uint32_t>(hr))
+        {
+        // BlockedByPolicy family — group policy disabled winget or a
+        // specific source/feature. Triggered by setting
+        // HKLM\SOFTWARE\Policies\Microsoft\Windows\AppInstaller\EnableAppInstaller
+        // (and friends) to 0.
+        case 0x8A15003A: // APPINSTALLER_CLI_ERROR_BLOCKED_BY_POLICY
+        case 0x8A15001B: // APPINSTALLER_CLI_ERROR_MSSTORE_BLOCKED_BY_POLICY
+        case 0x8A15001C: // APPINSTALLER_CLI_ERROR_MSSTORE_APP_BLOCKED_BY_POLICY
+        case 0x8A15001D: // APPINSTALLER_CLI_ERROR_EXPERIMENTAL_FEATURE_DISABLED
+        case 0x8A15010F: // APPINSTALLER_CLI_ERROR_INSTALL_BLOCKED_BY_POLICY (install-phase variant of 0x8A15003A)
+            return Kind::BlockedByPolicy;
+
+        // Network / download failure codes that winget itself attaches
+        // (separate from the generic WinINet/Winsock whitelist below).
+        // INSTALL_NO_NETWORK is winget self-diagnosing "no network";
+        // DOWNLOAD_FAILED is the install-phase wrapper around any
+        // transport error during package download.
+        case 0x8A150008: // APPINSTALLER_CLI_ERROR_DOWNLOAD_FAILED
+        case 0x8A150107: // APPINSTALLER_CLI_ERROR_INSTALL_NO_NETWORK
+            return Kind::Network;
+
+        // Manifest was found but no installer entry matches this
+        // machine's OS / architecture / scope. Usually surfaces as
+        // InstallResultStatus::NoApplicableInstallers, but cover the
+        // exception form for older winget versions / unusual flows.
+        case 0x8A150010: // APPINSTALLER_CLI_ERROR_NO_APPLICABLE_INSTALLER
+            return Kind::NoCompatibleInstaller;
+
+        // No manifest with the requested package ID exists in any
+        // configured source. Usually surfaces as
+        // findResult.Matches().Size() == 0, but defensive coverage for
+        // the exception form.
+        case 0x8A150014: // APPINSTALLER_CLI_ERROR_NO_APPLICATIONS_FOUND
+            return Kind::PackageNotFound;
+        }
+
+        // No winget-specific match — fall back to the transport-level
+        // network whitelist (DNS / connect / TLS), then Generic.
+        if (_IsNetworkLikeHResult(hr))
+        {
+            return Kind::Network;
+        }
+        return Kind::Generic;
     }
 
 
@@ -802,14 +1002,6 @@ namespace winrt::TerminalApp::implementation
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorWingetMissing"));
             url += L"#1-winget-windows-package-manager";
             break;
-        case FreProblemKind::CopilotInstall:
-            ErrorText().Text(RS_(L"FreOverlay_InstallErrorCopilot"));
-            url += L"#31-github-copilot-cli";
-            break;
-        case FreProblemKind::NodeInstall:
-            ErrorText().Text(RS_(L"FreOverlay_InstallErrorNode"));
-            url += L"#2-nodejs-lts--shared-prerequisite";
-            break;
         case FreProblemKind::ShellIntegrationExecutionPolicy:
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegrationExecutionPolicy"));
             url += L"#4-powershell-shell-integration";
@@ -846,6 +1038,116 @@ namespace winrt::TerminalApp::implementation
             break;
         }
 
+        _FinalizeProblemDisplay(url);
+    }
+
+    // Render a winget install failure with package + failure-kind specific
+    // text. The mapping from FreWingetFailureKind → resource template is the
+    // user-facing half of the COM API rewrite: structured InstallResultStatus
+    // values become actionable, distinct messages instead of the previous
+    // one-size-fits-all "check your network and try again". The help-link
+    // URL is keyed on the package so it still deep-links to the right
+    // manual-setup section.
+    void FreOverlay::_ShowWingetProblem(FreWingetPackage package,
+                                        FreWingetFailureKind kind,
+                                        int32_t hr,
+                                        uint32_t installerErrorCode)
+    {
+        static constexpr std::wstring_view baseUrl{ L"https://aka.ms/intelligent-terminal-dependency" };
+        std::wstring url{ baseUrl };
+
+        // Per-package: URL anchor + display name. The display name is a
+        // localized resource (Copilot's name doesn't translate, but
+        // "Node.js (LTS)" might be punctuated differently in some
+        // locales — keep it loc-controlled either way).
+        winrt::hstring packageName;
+        switch (package)
+        {
+        case FreWingetPackage::Copilot:
+            url += L"#31-github-copilot-cli";
+            packageName = RS_(L"FreOverlay_PackageDisplayName_Copilot");
+            break;
+        case FreWingetPackage::Node:
+            url += L"#2-nodejs-lts--shared-prerequisite";
+            packageName = RS_(L"FreOverlay_PackageDisplayName_Node");
+            break;
+        }
+
+        // Pre-format the numeric codes in C++ instead of relying on
+        // resource-side format specs (`{1:08X}` is not portable across
+        // every resource consumer, and pre-formatting also guarantees
+        // ASCII hex digits regardless of the user's locale digit shape).
+        const winrt::hstring hrStr{ fmt::format(L"0x{:08X}", static_cast<uint32_t>(hr)) };
+        const winrt::hstring installerStr{ std::to_wstring(installerErrorCode) };
+
+        // RS_fmt requires literal keys (extracted at build time), so the
+        // template selection is a switch rather than a key-lookup.
+        std::wstring text;
+        switch (kind)
+        {
+        case FreWingetFailureKind::Network:
+            text = RS_fmt(L"FreOverlay_InstallError_Network", packageName);
+            break;
+        case FreWingetFailureKind::BlockedByPolicy:
+            text = RS_fmt(L"FreOverlay_InstallError_BlockedByPolicy", packageName);
+            break;
+        case FreWingetFailureKind::PackageNotFound:
+            text = RS_fmt(L"FreOverlay_InstallError_PackageNotFound", packageName);
+            break;
+        case FreWingetFailureKind::NoCompatibleInstaller:
+            text = RS_fmt(L"FreOverlay_InstallError_NoCompatibleInstaller", packageName);
+            break;
+        case FreWingetFailureKind::InstallerFailed:
+            // If the installer reported a specific exit code, surface it.
+            // Otherwise (winget said InstallError but InstallerErrorCode
+            // is 0 — installer crashed without an exit code, winget
+            // didn't capture one, etc.), claiming "reported error
+            // (code 0)" would mislead the user. Fall back to the
+            // Generic template with the HRESULT, or GenericNoCode if
+            // we also lack an HRESULT.
+            if (installerErrorCode != 0)
+            {
+                text = RS_fmt(L"FreOverlay_InstallError_InstallerFailed", packageName, installerStr);
+            }
+            else if (hr != 0)
+            {
+                text = RS_fmt(L"FreOverlay_InstallError_Generic", packageName, hrStr);
+            }
+            else
+            {
+                text = RS_fmt(L"FreOverlay_InstallError_GenericNoCode", packageName);
+            }
+            break;
+        case FreWingetFailureKind::Timeout:
+            text = RS_fmt(L"FreOverlay_InstallError_Timeout", packageName);
+            break;
+        case FreWingetFailureKind::Success:
+            // Caller shouldn't invoke us on Success — fall through to
+            // the no-code Generic template so a bug here surfaces a
+            // readable message instead of "error code 0x00000000".
+        case FreWingetFailureKind::Generic:
+        default:
+            // When hr == 0 we have no actionable error code to show
+            // (e.g. catalog connect / package search failed before any
+            // installer ran). Use the no-code template so users don't
+            // see the misleading "(error code 0x00000000)".
+            if (hr == 0)
+            {
+                text = RS_fmt(L"FreOverlay_InstallError_GenericNoCode", packageName);
+            }
+            else
+            {
+                text = RS_fmt(L"FreOverlay_InstallError_Generic", packageName, hrStr);
+            }
+            break;
+        }
+        ErrorText().Text(winrt::hstring{ text });
+
+        _FinalizeProblemDisplay(url);
+    }
+
+    void FreOverlay::_FinalizeProblemDisplay(const std::wstring& url)
+    {
         ErrorHelpRun().Text(RS_(L"FreOverlay_ErrorHelpLink"));
         ErrorHelpLink().NavigateUri(Uri{ winrt::hstring{ url } });
         ErrorPanel().Visibility(Visibility::Visible);
@@ -898,6 +1200,15 @@ namespace winrt::TerminalApp::implementation
     IAsyncAction FreOverlay::_SaveAndInstallAsync()
     {
         auto weak = get_weak();
+        // Capture the dispatcher while we're definitely on the UI thread.
+        // After any subsequent `co_await` that resumes on a background
+        // thread (e.g. _WingetInstallAsync, _InstallHooksAsync), calling
+        // `Dispatcher()` directly would implicitly dereference `this` —
+        // which is UB if the FRE overlay was destroyed mid-await (user
+        // closed the tab / window / quit the app during a long winget
+        // install). The captured value is a ref-counted CoreDispatcher,
+        // independent of `this`'s lifetime.
+        const auto dispatcher = Dispatcher();
 
         // 1. Read selections on the UI thread
         winrt::hstring agentId;
@@ -1004,37 +1315,51 @@ namespace winrt::TerminalApp::implementation
         if (needsCopilot)
         {
             _agentPaneLog("[FRE] Installing GitHub.Copilot via winget");
-            bool ok = co_await _WingetInstallAsync(L"GitHub.Copilot");
+            const auto kindInt = co_await _WingetInstallAsync(L"GitHub.Copilot");
             // Helper internally does co_await winrt::resume_background(),
             // so the continuation may resume on a thread-pool thread.
             // Hop back to the UI thread before any XAML access (the
-            // _ShowProblem call below touches ErrorText / ErrorPanel /
-            // toggles); without this, RPC_E_WRONG_THREAD is thrown and
+            // _ShowWingetProblem call below touches ErrorText / ErrorPanel
+            // / toggles); without this, RPC_E_WRONG_THREAD is thrown and
             // silently swallowed by IAsyncAction, leaving the
             // SavingOverlay stuck.
-            co_await winrt::resume_foreground(Dispatcher());
+            co_await winrt::resume_foreground(dispatcher);
             auto self = weak.get();
             if (!self) co_return;
-            _agentPaneLog("[FRE] Copilot install: " + std::string(ok ? "ok" : "FAILED"));
-            if (!ok)
+            const auto kind = static_cast<FreWingetFailureKind>(kindInt);
+            _agentPaneLog("[FRE] Copilot install: " +
+                          std::string(kind == FreWingetFailureKind::Success ? "ok" : "FAILED"));
+            if (kind != FreWingetFailureKind::Success)
             {
-                _ShowProblem(FreProblemKind::CopilotInstall);
+                // _lastWingetHr / _lastWingetInstallerErrorCode were
+                // populated by _WingetInstallAsync on this same instance;
+                // safe to read here because the Copilot install awaited
+                // above is the only writer in this sequential chain.
+                _ShowWingetProblem(FreWingetPackage::Copilot,
+                                   kind,
+                                   _lastWingetHr,
+                                   _lastWingetInstallerErrorCode);
                 co_return;
             }
         }
         if (needsNode)
         {
             _agentPaneLog("[FRE] Installing Node.js via winget");
-            bool ok = co_await _WingetInstallAsync(L"OpenJS.NodeJS.LTS");
+            const auto kindInt = co_await _WingetInstallAsync(L"OpenJS.NodeJS.LTS");
             // See note above for the Copilot install — same threading
             // concern applies here.
-            co_await winrt::resume_foreground(Dispatcher());
+            co_await winrt::resume_foreground(dispatcher);
             auto self = weak.get();
             if (!self) co_return;
-            _agentPaneLog("[FRE] Node.js install: " + std::string(ok ? "ok" : "FAILED"));
-            if (!ok)
+            const auto kind = static_cast<FreWingetFailureKind>(kindInt);
+            _agentPaneLog("[FRE] Node.js install: " +
+                          std::string(kind == FreWingetFailureKind::Success ? "ok" : "FAILED"));
+            if (kind != FreWingetFailureKind::Success)
             {
-                _ShowProblem(FreProblemKind::NodeInstall);
+                _ShowWingetProblem(FreWingetPackage::Node,
+                                   kind,
+                                   _lastWingetHr,
+                                   _lastWingetInstallerErrorCode);
                 co_return;
             }
         }
@@ -1096,7 +1421,7 @@ namespace winrt::TerminalApp::implementation
             // throws RPC_E_WRONG_THREAD, which IAsyncAction swallows —
             // the SavingOverlay would then be stuck with no error
             // surfaced.
-            co_await winrt::resume_foreground(Dispatcher());
+            co_await winrt::resume_foreground(dispatcher);
             self = weak.get();
             if (!self) co_return;
 
@@ -1189,7 +1514,7 @@ namespace winrt::TerminalApp::implementation
         {
             _agentPaneLog("[FRE] Showing problem: "
                 + std::string(shellIntegFailed ? "ShellIntegration" : "Hooks"));
-            co_await winrt::resume_foreground(Dispatcher());
+            co_await winrt::resume_foreground(dispatcher);
             auto self = weak.get();
             if (!self) co_return;
 
@@ -1200,7 +1525,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         // 6. Resume UI thread before touching controls / raising events
-        co_await winrt::resume_foreground(Dispatcher());
+        co_await winrt::resume_foreground(dispatcher);
         {
             auto self = weak.get();
             if (!self) co_return;
