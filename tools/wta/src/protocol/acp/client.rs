@@ -2452,7 +2452,17 @@ pub async fn run_acp_client_over_pipe(
     // bug: master used to register both the bootstrap and the loaded
     // sid (both bound to the same WT pane) and the session management view showed two
     // Live rows for the same agent pane.
-    let cwd = std::env::current_dir().unwrap_or_default();
+    // Seed the bootstrap session's cwd from the user's active (source) pane
+    // — e.g. a WSL pane reporting `/home/yeelam` via shell integration — so
+    // the agent starts where the user is, not in the helper's own process
+    // dir (`std::env::current_dir()` = `C:\WINDOWS\system32` for the packaged
+    // helper). Master converts this into the agent's namespace and falls
+    // back if it's unusable (see `cwd_format`). `None` (e.g. the active pane
+    // is the agent pane itself) falls through to the process cwd, which
+    // master then normalizes to `%USERPROFILE%`.
+    let cwd = resolve_active_pane_cwd(&shell_mgr, wt_connected)
+        .await
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     let (session_id, available_models, current_model_id, has_bootstrap) =
         if let Some(load_sid) = initial_load_session_id.as_deref() {
             // No bootstrap. AgentConnected fires with the to-be-loaded
