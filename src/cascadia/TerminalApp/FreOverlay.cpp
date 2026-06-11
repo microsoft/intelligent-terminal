@@ -607,35 +607,243 @@ namespace winrt::TerminalApp::implementation
             default: return "Unknown";
             }
         }
+
+        // Copy winget's own diagnostic logs from AppInstaller's DiagOutputDir
+        // into our per-version `winget\` subfolder, so the bug-report zip
+        // picks them up alongside `terminal-agent-pane.log`.
+        //
+        // Why this matters: our [FRE] log only records the final
+        // InstallResultStatus + HRESULT + InstallerErrorCode. The winget
+        // COM API internally writes a much more detailed trace (HTTP
+        // request URLs, retry attempts, hash/signature verification,
+        // installer-exec arguments, MSI verbose output) to its own log
+        // files. When `winget install GitHub.Copilot` fails on a user's
+        // box, that detailed trace is what tells us *why* — without it,
+        // bug reports come down to "install failed, here's a generic
+        // HRESULT". Colocating the logs gives us triage-grade diagnostics.
+        //
+        // Filtering: anything `.log` modified at or after `since` in the
+        // DiagOutputDir is copied. We avoid filename-prefix assumptions
+        // (winget has historically used `WinGet-*.log`, but a future
+        // release could add `WinGetCOM-*.log` or similar and we'd
+        // silently miss it).
+        //
+        // Defensive size caps: skip any single file larger than
+        // kPerFileCapBytes and abort the loop once kTotalCapBytes have
+        // been copied. Without these, a stale clock, an aggressive
+        // verbose-MSI run, or unrelated concurrent winget activity could
+        // dump tens of MB into our log folder.
+        //
+        // DiagOutputDir path is `Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\`
+        // hardcoded. This package family name has been stable for 5+
+        // years; if it ever moves, the helper logs "DiagOutputDir not
+        // found" and returns — no exception bubbles to the install
+        // coroutine.
+        //
+        // Timeout caveat: when the install path hits our 20-min hard
+        // cap, winget's underlying installer may still be running when
+        // we copy its log. The captured file may therefore be
+        // truncated (missing the very last entries). We do not delay
+        // copy on timeout because winget can keep writing for an
+        // arbitrary additional time — a bounded sleep would not
+        // reliably get the "final" log, just the "slightly less
+        // truncated" one. Engineers needing the absolutely final
+        // contents can grab the source files from DiagOutputDir
+        // directly post-mortem.
+        //
+        // noexcept-from-caller: every failure mode (env var missing,
+        // ACL deny, disk full, file lock race) is swallowed with a log
+        // line. The install flow never sees an exception from here.
+        static void _CopyWingetLogsSince(std::filesystem::file_time_type since) noexcept
+        {
+            try
+            {
+                // Defensive caps. Per-file cap protects against a single
+                // verbose-MSI log eating our disk; total cap is the
+                // ceiling across all files in this capture.
+                constexpr std::uintmax_t kPerFileCapBytes = 25ULL * 1024ULL * 1024ULL;  // 25 MB
+                constexpr std::uintmax_t kTotalCapBytes = 50ULL * 1024ULL * 1024ULL;    // 50 MB
+
+                wchar_t localAppData[MAX_PATH]{};
+                const DWORD lenWritten =
+                    GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH);
+                // Treat both "missing" (0) and "would have truncated"
+                // (>= MAX_PATH) as "give up" — a multi-thousand-char
+                // %LOCALAPPDATA% is unusual enough that capturing logs
+                // for that user isn't worth the extra alloc dance.
+                if (lenWritten == 0 || lenWritten >= MAX_PATH)
+                {
+                    return;
+                }
+                const std::filesystem::path diagDir =
+                    std::filesystem::path{ localAppData } /
+                    L"Packages" /
+                    L"Microsoft.DesktopAppInstaller_8wekyb3d8bbwe" /
+                    L"LocalState" /
+                    L"DiagOutputDir";
+
+                std::error_code ec;
+                if (!std::filesystem::exists(diagDir, ec) || ec)
+                {
+                    _agentPaneLog("[FRE] winget DiagOutputDir not present, skipping log capture");
+                    return;
+                }
+
+                const auto destDir = ::IntelligentTerminal::LogDirVersioned() / L"winget";
+                std::filesystem::create_directories(destDir, ec);
+                if (ec)
+                {
+                    return;
+                }
+
+                int copied = 0;
+                int skipped = 0;
+                std::uintmax_t totalBytes = 0;
+
+                // Iterate explicitly with `increment(ec)` instead of
+                // range-for: the latter's `operator++` can throw on
+                // filesystem races (file deleted mid-scan, antivirus
+                // contention), which would unwind out of our noexcept
+                // contract via the outer catch. Explicit increment lets
+                // us treat every iteration step as a soft failure that
+                // skips the entry and continues.
+                std::filesystem::directory_iterator it{ diagDir, ec };
+                const std::filesystem::directory_iterator end{};
+                if (ec)
+                {
+                    _agentPaneLog(fmt::format(
+                        "[FRE] winget log capture: failed to open DiagOutputDir ({})",
+                        ec.message()));
+                    return;
+                }
+                while (it != end)
+                {
+                    const auto entryPath = it->path();
+                    bool entryHandled = false;
+
+                    if (it->is_regular_file(ec) && !ec &&
+                        entryPath.extension() == L".log")
+                    {
+                        const auto mtime = std::filesystem::last_write_time(entryPath, ec);
+                        const auto fileSize = !ec ? std::filesystem::file_size(entryPath, ec) : 0;
+                        if (!ec && mtime >= since)
+                        {
+                            if (fileSize > kPerFileCapBytes)
+                            {
+                                _agentPaneLog(fmt::format(
+                                    "[FRE] winget log capture: skipping {} (size {} > per-file cap {})",
+                                    winrt::to_string(entryPath.filename().wstring()),
+                                    fileSize,
+                                    kPerFileCapBytes));
+                                ++skipped;
+                                entryHandled = true;
+                            }
+                            else if (totalBytes + fileSize > kTotalCapBytes)
+                            {
+                                _agentPaneLog(fmt::format(
+                                    "[FRE] winget log capture: total cap {} reached after {} files; stopping",
+                                    kTotalCapBytes,
+                                    copied));
+                                break;
+                            }
+                            else
+                            {
+                                std::filesystem::copy_file(
+                                    entryPath,
+                                    destDir / entryPath.filename(),
+                                    std::filesystem::copy_options::overwrite_existing,
+                                    ec);
+                                if (ec)
+                                {
+                                    ++skipped;
+                                }
+                                else
+                                {
+                                    ++copied;
+                                    totalBytes += fileSize;
+                                }
+                                entryHandled = true;
+                            }
+                        }
+                    }
+                    (void)entryHandled;
+                    ec.clear();
+
+                    it.increment(ec);
+                    if (ec)
+                    {
+                        // Soft-stop on iterator failure — better to
+                        // report partial capture than to throw.
+                        _agentPaneLog(fmt::format(
+                            "[FRE] winget log capture: iterator error ({}); stopping early",
+                            ec.message()));
+                        break;
+                    }
+                }
+
+                _agentPaneLog(fmt::format(
+                    "[FRE] winget log capture: copied={} skipped={} bytes={} dest={}",
+                    copied,
+                    skipped,
+                    totalBytes,
+                    winrt::to_string(destDir.wstring())));
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+            }
+        }
     }
 
     IAsyncOperation<int32_t> FreOverlay::_WingetInstallAsync(winrt::hstring packageId)
     {
         using namespace winrt::Microsoft::Management::Deployment;
         using Kind = FreWingetFailureKind;
-        auto encode = [](Kind k) noexcept { return static_cast<int32_t>(k); };
 
         // Capture a weak reference so writes to _lastWinget* are safe even
         // if the overlay is destroyed mid-await (e.g. user dismissed the
         // window during a long install).
         auto weak = get_weak();
 
-        // Helper: persist hr + installer error code to instance state, if
-        // the overlay is still alive. Read by _SaveAndInstallAsync right
-        // after our co_return to drive _ShowWingetProblem.
-        auto stash = [&weak](int32_t hr, uint32_t installerErr) {
+        // Snapshot the install start time before any winget work. Used as
+        // the cutoff for the post-install DiagOutputDir log capture so we
+        // pick up every log winget produced for this attempt — including
+        // long-running install logs that started 10+ minutes ago — and not
+        // logs from unrelated prior winget activity.
+        const auto installStartTime = std::filesystem::file_time_type::clock::now();
+
+        // Helper: persist diagnostic state to the instance (so the caller
+        // can read it after our co_return), capture any fresh winget logs
+        // from AppInstaller's DiagOutputDir on failure paths, and return
+        // the encoded kind. Called from EVERY co_return — the
+        // success/failure branch lives inside.
+        //
+        // Why only-on-failure for the log copy: the bug-report use case
+        // for the colocated winget logs is "install failed, we need
+        // triage details". Successful installs don't need the extra
+        // logs, and copying them anyway would (a) waste a few MB of
+        // disk per FRE run for no benefit, and (b) silently include any
+        // unrelated concurrent winget activity captured by the mtime
+        // window into the bug-report zip (e.g. URLs to private package
+        // sources the user happened to be browsing in another shell).
+        auto finish = [&weak, installStartTime](Kind k, int32_t hr, uint32_t installerErr) {
             if (auto self = weak.get())
             {
                 self->_lastWingetHr = hr;
                 self->_lastWingetInstallerErrorCode = installerErr;
             }
+            if (k != Kind::Success)
+            {
+                _CopyWingetLogsSince(installStartTime);
+            }
+            return static_cast<int32_t>(k);
         };
 
         // Copy packageId before switching threads (coroutine parameter safety)
         auto id = winrt::hstring{ packageId };
 
-        // Local diagnostic state. We write to the instance fields only via
-        // `stash(...)` immediately before each co_return, so the caller
+        // Local diagnostic state. Written to the instance fields only via
+        // `finish(...)` immediately before each co_return, so the caller
         // always sees consistent (kind, hr, installerErr) tuples and a
         // stale value never leaks across calls.
         int32_t hr = 0;
@@ -680,10 +888,10 @@ namespace winrt::TerminalApp::implementation
                 // here — treat the catalog-error case as Network and
                 // anything else (SourceAgreementsNotAccepted, future
                 // statuses) as Generic.
-                stash(hr, installerErr);
-                co_return encode(connectResult.Status() == ConnectResultStatus::CatalogError
+                co_return finish(connectResult.Status() == ConnectResultStatus::CatalogError
                                      ? Kind::Network
-                                     : Kind::Generic);
+                                     : Kind::Generic,
+                                 hr, installerErr);
             }
 
             // ── 3. Find the package by exact ID ──
@@ -704,16 +912,15 @@ namespace winrt::TerminalApp::implementation
                     "[FRE] winget FindPackages failed: {} (status={})",
                     FindStatusName(findResult.Status()),
                     static_cast<int>(findResult.Status())));
-                stash(hr, installerErr);
-                co_return encode(findResult.Status() == FindPackagesResultStatus::BlockedByPolicy
+                co_return finish(findResult.Status() == FindPackagesResultStatus::BlockedByPolicy
                                      ? Kind::BlockedByPolicy
-                                     : Kind::Generic);
+                                     : Kind::Generic,
+                                 hr, installerErr);
             }
             if (findResult.Matches().Size() == 0)
             {
                 _agentPaneLog("[FRE] winget package not found: " + winrt::to_string(id));
-                stash(hr, installerErr);
-                co_return encode(Kind::PackageNotFound);
+                co_return finish(Kind::PackageNotFound, hr, installerErr);
             }
 
             const CatalogPackage package = findResult.Matches().GetAt(0).CatalogPackage();
@@ -754,8 +961,7 @@ namespace winrt::TerminalApp::implementation
                     // message (see FreOverlay_InstallError_Timeout).
                     _agentPaneLog("[FRE] winget install: hard timeout after 20 min, cancelling");
                     installOp.Cancel();
-                    stash(hr, installerErr);
-                    co_return encode(Kind::Timeout);
+                    co_return finish(Kind::Timeout, hr, installerErr);
                 }
                 co_await winrt::resume_after(std::chrono::milliseconds(500));
             }
@@ -813,8 +1019,7 @@ namespace winrt::TerminalApp::implementation
                     kind = Kind::Generic;
                     break;
                 }
-                stash(hr, installerErr);
-                co_return encode(kind);
+                co_return finish(kind, hr, installerErr);
             }
 
             // Surface RebootRequired so the caller / log readers can see
@@ -829,8 +1034,7 @@ namespace winrt::TerminalApp::implementation
                 _agentPaneLog("[FRE] winget install: ok (reboot required)");
             }
 
-            stash(0, 0); // success: clear any stale diagnostic state
-            co_return encode(Kind::Success);
+            co_return finish(Kind::Success, 0, 0);
         }
         catch (const winrt::hresult_error& e)
         {
@@ -839,19 +1043,17 @@ namespace winrt::TerminalApp::implementation
                 "[FRE] winget exception: hr=0x{:08X} msg={}",
                 static_cast<uint32_t>(hr),
                 winrt::to_string(e.message())));
-            stash(hr, installerErr);
             // _ClassifyWingetHResult recognizes APPINSTALLER_CLI_ERROR_*
             // codes (e.g. 0x8A15003A == BLOCKED_BY_POLICY), so a GP
             // block surfaces as Kind::BlockedByPolicy with the
             // actionable "contact IT admin" message instead of the
             // generic "(error code 0x8A15003A)" fallback.
-            co_return encode(_ClassifyWingetHResult(hr));
+            co_return finish(_ClassifyWingetHResult(hr), hr, installerErr);
         }
         catch (...)
         {
             LOG_CAUGHT_EXCEPTION();
-            stash(hr, installerErr);
-            co_return encode(Kind::Generic);
+            co_return finish(Kind::Generic, hr, installerErr);
         }
     }
 
