@@ -1245,11 +1245,11 @@ mod tests {
         };
 
         let commandline =
-            build_delegate_launch_commandline_with_session(&runtime, Some("hi"), Some("THEUUID"))
+            build_delegate_launch_commandline_with_session(&runtime, Some("hi"), Some("11111111-2222-3333-4444-555555555555"))
                 .unwrap();
 
         assert!(
-            commandline.contains("--session-id THEUUID"),
+            commandline.contains("--session-id 11111111-2222-3333-4444-555555555555"),
             "pinned flag missing: {commandline}"
         );
         let agent_pos = commandline.find("copilot").expect("agent name present");
