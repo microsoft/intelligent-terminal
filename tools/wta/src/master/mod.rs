@@ -46,6 +46,7 @@ use std::sync::{Arc, OnceLock, Weak};
 /// helper sharing this master.
 const NOTIF_CHANNEL_CAPACITY: usize = 1024;
 const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
+const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 
 use acp::Agent as _;
 use acp::Client as _;
@@ -1301,6 +1302,8 @@ impl MasterPipeDiscoveryGuard {
                 if let Err(err) = std::fs::create_dir_all(parent) {
                     tracing::warn!(
                         target: "master",
+                        discovery_file = MASTER_PIPE_DISCOVERY_FILE,
+                        pipe_name = %pipe_name,
                         error = %err,
                         "failed to create master pipe discovery directory"
                     );
@@ -1313,12 +1316,15 @@ impl MasterPipeDiscoveryGuard {
             match std::fs::write(path, pipe_name) {
                 Ok(()) => tracing::info!(
                     target: "master",
+                    discovery_file = MASTER_PIPE_DISCOVERY_FILE,
                     pipe_name = %pipe_name,
                     "master pipe discovery file written"
                 ),
                 Err(err) => {
                     tracing::warn!(
                         target: "master",
+                        discovery_file = MASTER_PIPE_DISCOVERY_FILE,
+                        pipe_name = %pipe_name,
                         error = %err,
                         "failed to write master pipe discovery file"
                     );
@@ -1348,6 +1354,8 @@ impl Drop for MasterPipeDiscoveryGuard {
             if let Err(err) = std::fs::remove_file(path) {
                 tracing::warn!(
                     target: "master",
+                    discovery_file = MASTER_PIPE_DISCOVERY_FILE,
+                    pipe_name = %self.pipe_name,
                     error = %err,
                     "failed to remove master pipe discovery file"
                 );
