@@ -3133,12 +3133,6 @@ impl App {
                 key = %key,
                 "dispatch_resume: stored cwd is no longer a valid directory; falling back to profile default",
             );
-            tracing::trace!(
-                target: "agents_view.content",
-                key = %key,
-                cwd = %raw_cwd_string,
-                "dispatch_resume: invalid stored cwd",
-            );
         }
         let short_key: String = key.chars().take(8).collect();
         let launch_commandline = format!(
@@ -3154,8 +3148,6 @@ impl App {
             argv.push("-d".to_string());
             argv.push(cwd.clone());
         }
-        let cwd_string = valid_cwd.clone().unwrap_or_default();
-
         // Optimistic state flip: bump Historical/Ended -> Idle so a rapid
         // second Enter on the same row sees a non-terminal status and
         // skips this branch (idempotent: ResumeDispatched no-ops on live
@@ -3191,14 +3183,7 @@ impl App {
             cli = %cli_id,
             commandline = %commandline,
             launch_commandline = %launch_commandline,
-            has_cwd = !cwd_string.is_empty(),
             "dispatch_resume: new-tab scheduled",
-        );
-        tracing::trace!(
-            target: "agents_view.content",
-            key = %key,
-            cwd = %cwd_string,
-            "dispatch_resume: new-tab cwd",
         );
 
         #[cfg(test)]
@@ -3344,12 +3329,6 @@ impl App {
                 key = %key,
                 "dispatch_resume_in_agent_pane: stored cwd is no longer a valid directory; omitting from resume_in_new_agent_tab event",
             );
-            tracing::trace!(
-                target: "agents_view.content",
-                key = %key,
-                cwd = %raw_cwd_string,
-                "dispatch_resume_in_agent_pane: invalid stored cwd",
-            );
         }
         let cwd_string = valid_cwd.unwrap_or_default();
 
@@ -3375,14 +3354,7 @@ impl App {
         tracing::info!(
             target: "agents_view",
             key = %s.key,
-            has_cwd = !cwd_string.is_empty(),
             "dispatch_resume_in_agent_pane: resume_in_new_agent_tab event published",
-        );
-        tracing::trace!(
-            target: "agents_view.content",
-            key = %s.key,
-            cwd = %cwd_string,
-            "dispatch_resume_in_agent_pane: resume cwd",
         );
 
         #[cfg(test)]
@@ -5445,15 +5417,7 @@ impl App {
                         target: "acp_load_session",
                         tab_id,
                         session_id,
-                        has_cwd = cwd.is_some(),
                         "inbound load_session event from WT"
-                    );
-                    tracing::trace!(
-                        target: "acp_load_session.content",
-                        tab_id,
-                        session_id,
-                        cwd = ?cwd,
-                        "inbound load_session cwd"
                     );
                     if tab_id.is_empty() || session_id.is_empty() {
                         tracing::warn!(

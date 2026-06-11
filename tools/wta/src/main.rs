@@ -2571,11 +2571,6 @@ async fn run_acp_app(
                                             target: "acp_load_session",
                                             "--initial-load-cwd refers to a missing directory; dropping from load_session params",
                                         );
-                                        tracing::trace!(
-                                            target: "acp_load_session.content",
-                                            cwd = %s,
-                                            "--initial-load-cwd missing directory",
-                                        );
                                     }
                                     v
                                 });
@@ -2583,14 +2578,7 @@ async fn run_acp_app(
                                 target: "acp_load_session",
                                 session_id = sid,
                                 tab_id = %tab_id,
-                                has_cwd = cwd.is_some(),
                                 "queueing boot-time initial load_session via AppEvent::WtEvent"
-                            );
-                            tracing::trace!(
-                                target: "acp_load_session.content",
-                                session_id = sid,
-                                cwd = ?cwd,
-                                "initial load_session cwd"
                             );
                             let mut params = serde_json::Map::new();
                             params.insert(

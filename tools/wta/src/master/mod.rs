@@ -812,17 +812,9 @@ impl acp::Agent for HelperHandler {
             step = "helper→agent",
             op = "new_session",
             helper_id = ?self.helper_id,
-            has_cwd = !args.cwd.as_os_str().is_empty(),
             mcp_servers = args.mcp_servers.len(),
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
-        );
-        tracing::trace!(
-            target: "master.content",
-            step = "helper→agent",
-            op = "new_session",
-            cwd = ?args.cwd,
-            "new_session cwd"
         );
         let resp = self
             .forward_new_session_to_agent(
