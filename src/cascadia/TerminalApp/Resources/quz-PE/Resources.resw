@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
   <resheader name="version"><value>2.0</value></resheader>
@@ -108,35 +108,35 @@
     <value>Churachkan...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Installation of {0} was blocked by a Windows Package Manager policy. If you're on a managed device, contact your IT admin.</value>
+    <value>⚠ {0} churay Windows Package Manager kamachiywan hark'asqa karqa. Kamachisqa dispositivopi kaspa, IT admin-niykiman rimay.</value>
     <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Couldn't install {0} (error code {1}). See the log for details, or install {0} manually.</value>
+    <value>⚠ {0} mana churayta atirqanchu (pantay código {1}). Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Couldn't install {0}. See the log for details, or install {0} manually.</value>
+    <value>⚠ {0} mana churayta atirqanchu. Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ The {0} installer reported an error (code {1}). Check the log for details, or install {0} manually.</value>
+    <value>⚠ {0} installer pantayta willarqa (código {1}). Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Couldn't reach the Windows Package Manager while installing {0}. Check your internet connection (VPN, proxy, or firewall may be blocking it) and try again.</value>
+    <value>⚠ {0} churachkaspa Windows Package Manager-man mana chayakuyta atirqanchu. Internet tinkisqaykita qhaway (VPN, proxy utaq firewall hark'achkanman), chaymanta watiqmanta ruwarinapaq.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ No compatible installer for {0} is available on this system (OS version or architecture may not be supported). Install {0} manually.</value>
+    <value>⚠ Kay sistemapi {0}paq tinkuq installer mana kachkanchu (OS version utaq architecture yanapasqa mana kanmanchu). {0} makillawan churay.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} wasn't found in the Windows Package Manager catalog. Try refreshing winget sources, or install {0} manually.</value>
+    <value>⚠ {0} Windows Package Manager catalog nisqapi mana tarikusqachu. Ñawpaqta winget sources nisqakunata musuqyachiy, utaq {0} makillawan churay.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Installing {0} took longer than 20 minutes. Intelligent Terminal stopped waiting, but the installer may still be running in the background. Check Task Manager, or try again later.</value>
+    <value>⚠ {0} churay 20 minutomanta aswan unayta apakurqa. Intelligent Terminal suyayta saqirqa, ichaqa installerqa qhipa llamk'aypi hina purichkanman. Task Manager qhaway, utaq qhipaman watiqmanta ruwariy.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
