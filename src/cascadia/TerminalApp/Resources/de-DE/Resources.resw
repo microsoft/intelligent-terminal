@@ -1078,17 +1078,49 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Wird eingerichtet...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot konnte nicht installiert werden. Überprüfen Sie Ihre Netzwerkverbindung und versuchen Sie es erneut.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Die Installation von {0} wurde durch eine Windows-Paket-Manager-Richtlinie blockiert. Wenn Sie ein verwaltetes Gerät verwenden, wenden Sie sich an Ihren IT-Administrator.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ {0} konnte nicht installiert werden (Fehlercode {1}). Überprüfen Sie das Protokoll auf Details, oder installieren Sie {0} manuell.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ {0} konnte nicht installiert werden. Überprüfen Sie das Protokoll auf Details, oder installieren Sie {0} manuell.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ Das Installationsprogramm für {0} hat einen Fehler gemeldet (Code {1}). Überprüfen Sie das Protokoll auf Details, oder installieren Sie {0} manuell.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Der Windows-Paket-Manager konnte während der Installation von {0} nicht erreicht werden. Überprüfen Sie Ihre Internetverbindung (VPN, Proxy oder Firewall blockieren sie möglicherweise), und versuchen Sie es erneut.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Auf diesem System ist kein kompatibles Installationsprogramm für {0} verfügbar (Betriebssystemversion oder Architektur wird möglicherweise nicht unterstützt). Installieren Sie {0} manuell.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} wurde im Katalog des Windows-Paket-Managers nicht gefunden. Versuchen Sie, die winget-Quellen zu aktualisieren, oder installieren Sie {0} manuell.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Die Installation von {0} hat länger als 20 Minuten gedauert. Intelligent Terminal wartet nicht mehr, aber das Installationsprogramm wird möglicherweise noch im Hintergrund ausgeführt. Überprüfen Sie Task Manager, oder versuchen Sie es später erneut.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Der Windows-Paket-Manager (winget) ist nicht installiert oder nicht verfügbar. Installieren Sie ihn zuerst, und versuchen Sie es dann erneut.</value>
-    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js konnte nicht installiert werden. Überprüfen Sie Ihre Netzwerkverbindung und versuchen Sie es erneut.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
     <value>⚠ Sitzungs-hooks konnten nicht installiert werden. Die Sitzungsverwaltung wurde deaktiviert. Sie können sie erneut aktivieren und es noch einmal versuchen, oder speichern, um ohne sie fortzufahren.</value>

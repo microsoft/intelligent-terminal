@@ -11,11 +11,11 @@ Depending on which agent you pick, the first-run setup may need to download depe
 - Make sure you're on a stable, unrestricted internet connection before running the FRE.
 - If the FRE fails or times out, you can install the missing dependencies manually by following [`installing-dependencies.md`](./installing-dependencies.md), then re-open Intelligent Terminal — the FRE will detect what's already installed and skip those steps.
 
-## 2. Why won't Intelligent Terminal install on my Windows 10 machine?
+## 2. What Windows version does Intelligent Terminal require?
 
-**Symptom:** The package manifest sets `MinVersion="10.0.22621.6060"` (Windows 11 22H2), so the MSIX install is blocked on earlier OS builds. This release is Windows 11 only.
+The package manifest sets `MinVersion="10.0.19041.0"` (Windows 10, version 2004), matching upstream Windows Terminal. Intelligent Terminal installs on **Windows 10 2004 (build 19041) or later**, including all of Windows 11.
 
-**Workaround:** Use Windows 11 (22H2 or later). Windows 10 support is planned for a later release.
+**If the MSIX install is blocked:** your machine is on a Windows build older than 19041. Check your build with `winver`, then update via **Settings -> Windows Update**.
 
 ## 3. I installed a new agent CLI after the FRE — why isn't it tracked in agent session management?
 
@@ -89,4 +89,4 @@ In this release, **agent session management only tracks sessions for the agent C
 
 ---
 
-*Last updated: 2026-06-03. See the [release notes](https://github.com/microsoft/intelligent-terminal/releases) for items resolved in newer versions.*
+*Last updated: 2026-06-09. See the [release notes](https://github.com/microsoft/intelligent-terminal/releases) for items resolved in newer versions.*

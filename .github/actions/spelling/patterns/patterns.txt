@@ -248,6 +248,9 @@ ROY\sG\.\sBIV
 # COM/RPC HRESULT constants from rpcerror.h (e.g. RPC_E_SERVERFAULT)
 \bRPC_E_[A-Z][A-Z0-9_]+\b
 
+# combase/rpcss WinRT activation-catalog class names (referenced in comments)
+\bCWinRT[A-Za-z]+\b
+
 # AppX package
 _\d[0-9a-z]{12}['\.]
 

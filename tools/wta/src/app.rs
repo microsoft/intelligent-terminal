@@ -3131,7 +3131,6 @@ impl App {
             tracing::warn!(
                 target: "agents_view",
                 key = %key,
-                cwd = %raw_cwd_string,
                 "dispatch_resume: stored cwd is no longer a valid directory; falling back to profile default",
             );
         }
@@ -3149,8 +3148,6 @@ impl App {
             argv.push("-d".to_string());
             argv.push(cwd.clone());
         }
-        let cwd_string = valid_cwd.clone().unwrap_or_default();
-
         // Optimistic state flip: bump Historical/Ended -> Idle so a rapid
         // second Enter on the same row sees a non-terminal status and
         // skips this branch (idempotent: ResumeDispatched no-ops on live
@@ -3186,7 +3183,6 @@ impl App {
             cli = %cli_id,
             commandline = %commandline,
             launch_commandline = %launch_commandline,
-            cwd = %cwd_string,
             "dispatch_resume: new-tab scheduled",
         );
 
@@ -3331,7 +3327,6 @@ impl App {
             tracing::warn!(
                 target: "agents_view",
                 key = %key,
-                cwd = %raw_cwd_string,
                 "dispatch_resume_in_agent_pane: stored cwd is no longer a valid directory; omitting from resume_in_new_agent_tab event",
             );
         }
@@ -3359,7 +3354,6 @@ impl App {
         tracing::info!(
             target: "agents_view",
             key = %s.key,
-            cwd = %cwd_string,
             "dispatch_resume_in_agent_pane: resume_in_new_agent_tab event published",
         );
 
@@ -5423,7 +5417,6 @@ impl App {
                         target: "acp_load_session",
                         tab_id,
                         session_id,
-                        cwd = ?cwd,
                         "inbound load_session event from WT"
                     );
                     if tab_id.is_empty() || session_id.is_empty() {

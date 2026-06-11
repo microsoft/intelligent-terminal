@@ -72,6 +72,9 @@ pub struct AgentProfile {
     /// Flag the CLI uses to resume a session, e.g. `"--resume"` for Claude.
     /// Empty when resume is unsupported.
     pub resume_flag: &'static str,
+    /// Flag the CLI uses to pin a caller-chosen id on a NEW session,
+    /// e.g. "--session-id". `None` when unsupported.
+    pub new_session_id_flag: Option<&'static str>,
 }
 
 // ─── Registry ────────────────────────────────────────────────────────────────
@@ -91,6 +94,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         auth_check_command: "",
         auth_hint: "Run 'copilot' to launch the CLI, then type /login to sign in.",
         resume_flag: "--resume",
+        new_session_id_flag: Some("--session-id"),
     },
     AgentProfile {
         id: "claude",
@@ -109,6 +113,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         auth_check_command: "",
         auth_hint: "Run: claude login",
         resume_flag: "--resume",
+        new_session_id_flag: Some("--session-id"),
     },
     AgentProfile {
         id: "codex",
@@ -127,6 +132,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         // the command-synthesis template `format!("{cli} {flag} {key}")`
         // produces `codex resume <uuid>` which Codex CLI accepts.
         resume_flag: "resume",
+        new_session_id_flag: None,
         auth_hint: "Run: codex auth (or set OPENAI_API_KEY)",
     },
     AgentProfile {
@@ -143,6 +149,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         auth_check_command: "",
         auth_hint: "Authentication is handled in-protocol during connection.",
         resume_flag: "--resume",
+        new_session_id_flag: Some("--session-id"),
     },
 ];
 
@@ -160,6 +167,7 @@ pub const DEFAULT_PROFILE: AgentProfile = AgentProfile {
     auth_check_command: "",
     auth_hint: "",
     resume_flag: "",
+    new_session_id_flag: None,
 };
 
 /// Default ACP command used when no agent is configured.
@@ -514,6 +522,24 @@ mod tests {
             "Codex CLI uses `codex resume <id>` (subcommand form, no dash). \
              An empty resume_flag would make session_mgmt classify Codex rows \
              as Class B (not-resumable) and silently break F2 Enter."
+        );
+    }
+
+    #[test]
+    fn pinnable_agents_advertise_session_id_flag() {
+        let pinnable = ["copilot", "claude", "gemini"];
+        for id in pinnable {
+            let p = lookup_profile(id);
+            assert_eq!(
+                p.new_session_id_flag,
+                Some("--session-id"),
+                "{id} should pin via --session-id"
+            );
+        }
+        assert_eq!(
+            lookup_profile("codex").new_session_id_flag,
+            None,
+            "codex cannot pin"
         );
     }
 }
