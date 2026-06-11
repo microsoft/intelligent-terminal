@@ -647,6 +647,71 @@ fn is_cwd_error(e: &acp::Error) -> bool {
     crate::protocol::acp::cwd_format::looks_like_cwd_error(&hay)
 }
 
+/// Try each cwd in `attempts` in order via `forward`, retrying only when the
+/// error is a cwd rejection (see [`is_cwd_error`]) and another candidate
+/// remains. Returns the successful response paired with the cwd that worked,
+/// or the last error when all attempts are exhausted / a non-cwd error
+/// occurs. Pure orchestration over an injected `forward`, so it's unit-
+/// testable without a live agent connection.
+async fn try_session_cwds<R, F, Fut>(
+    attempts: &[std::path::PathBuf],
+    mut forward: F,
+) -> acp::Result<(R, std::path::PathBuf)>
+where
+    F: FnMut(std::path::PathBuf) -> Fut,
+    Fut: std::future::Future<Output = acp::Result<R>>,
+{
+    let mut last_err: Option<acp::Error> = None;
+    for (i, cwd) in attempts.iter().enumerate() {
+        match forward(cwd.clone()).await {
+            Ok(r) => return Ok((r, cwd.clone())),
+            Err(e) => {
+                let retryable = is_cwd_error(&e) && i + 1 < attempts.len();
+                tracing::warn!(
+                    target: "master",
+                    op = "new_session",
+                    attempt = i,
+                    cwd = %cwd.display(),
+                    retryable,
+                    error = %e,
+                    "new_session attempt failed"
+                );
+                last_err = Some(e);
+                if !retryable {
+                    break;
+                }
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(acp::Error::internal_error))
+}
+
+/// Forward one `session/new` to the agent with a hard timeout. Free function
+/// (not a method) so callers can hand it owned captures into `try_session_cwds`
+/// without borrowing `&self` across awaits.
+async fn forward_new_session(
+    conn: &acp::ClientSideConnection,
+    helper_id: HelperId,
+    args: acp::NewSessionRequest,
+    timeout: std::time::Duration,
+) -> acp::Result<acp::NewSessionResponse> {
+    let timeout_secs = timeout.as_secs();
+    tokio::time::timeout(timeout, conn.new_session(args))
+        .await
+        .map_err(|_| {
+            let message = format!("agent CLI session/new timed out after {timeout_secs}s");
+            tracing::error!(
+                target: "master",
+                step = "helper→agent",
+                op = "new_session",
+                ?helper_id,
+                timeout_secs,
+                "agent CLI session/new timed out"
+            );
+            acp::Error::new(-32603, message.clone()).data(serde_json::json!({ "message": message }))
+        })?
+}
+
 /// `acp::Agent` impl wired into one helper's `AgentSideConnection`.
 /// Each helper gets its own `HelperHandler` instance.
 struct HelperHandler {
@@ -722,23 +787,7 @@ impl HelperHandler {
         args: acp::NewSessionRequest,
         timeout: std::time::Duration,
     ) -> acp::Result<acp::NewSessionResponse> {
-        let timeout_secs = timeout.as_secs();
-        tokio::time::timeout(timeout, self.agent_conn.new_session(args))
-            .await
-            .map_err(|_| {
-                let message = format!("agent CLI session/new timed out after {timeout_secs}s");
-                tracing::error!(
-                    target: "master",
-                    step = "helper→agent",
-                    op = "new_session",
-                    helper_id = ?self.helper_id,
-                    timeout_secs,
-                    "agent CLI session/new timed out"
-                );
-                acp::Error::new(-32603, message.clone()).data(serde_json::json!({
-                    "message": message
-                }))
-            })?
+        forward_new_session(&self.agent_conn, self.helper_id, args, timeout).await
     }
 }
 
@@ -833,41 +882,18 @@ impl acp::Agent for HelperHandler {
         );
         let resp = {
             let timeout = std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS);
-            let mut last_err: Option<acp::Error> = None;
-            let mut ok: Option<acp::NewSessionResponse> = None;
-            let mut winning_cwd = args.cwd.clone();
-            for (i, cwd) in attempts.iter().enumerate() {
-                let mut try_args = args.clone();
-                try_args.cwd = cwd.clone();
-                match self.forward_new_session_to_agent(try_args, timeout).await {
-                    Ok(r) => {
-                        winning_cwd = cwd.clone();
-                        ok = Some(r);
-                        break;
-                    }
-                    Err(e) => {
-                        let retryable = is_cwd_error(&e) && i + 1 < attempts.len();
-                        tracing::warn!(
-                            target: "master",
-                            op = "new_session",
-                            attempt = i,
-                            cwd = %cwd.display(),
-                            retryable,
-                            error = %e,
-                            "new_session attempt failed"
-                        );
-                        last_err = Some(e);
-                        if !retryable {
-                            break;
-                        }
-                    }
-                }
-            }
+            let conn = Arc::clone(&self.agent_conn);
+            let helper_id = self.helper_id;
+            let base = args.clone();
+            let (resp, winning_cwd) = try_session_cwds(&attempts, move |cwd| {
+                let conn = Arc::clone(&conn);
+                let mut a = base.clone();
+                a.cwd = cwd;
+                async move { forward_new_session(&conn, helper_id, a, timeout).await }
+            })
+            .await?;
             args.cwd = winning_cwd;
-            match ok {
-                Some(r) => r,
-                None => return Err(last_err.unwrap_or_else(acp::Error::internal_error)),
-            }
+            resp
         };
         let cwd_for_registry = args.cwd.clone();
         let forwarder = self.forwarder_for_route("new_session")?;
@@ -2814,6 +2840,45 @@ mod tests {
         });
 
         Arc::new(client_conn)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn try_session_cwds_retries_only_on_cwd_errors() {
+        use std::cell::RefCell;
+        let attempts = vec![
+            PathBuf::from(r"C:\repo"),
+            PathBuf::from("/mnt/c/repo"),
+            PathBuf::from("/tmp"),
+        ];
+
+        // Fails the first attempt with a cwd-style error, succeeds on the 2nd.
+        let seen = RefCell::new(Vec::<PathBuf>::new());
+        let (resp, winning) = try_session_cwds(&attempts, |cwd| {
+            seen.borrow_mut().push(cwd.clone());
+            async move {
+                if cwd == PathBuf::from(r"C:\repo") {
+                    Err(acp::Error::new(-32603, "Directory path must be absolute: C:\\repo"))
+                } else {
+                    Ok(cwd.to_string_lossy().into_owned())
+                }
+            }
+        })
+        .await
+        .expect("should succeed on the second candidate");
+        assert_eq!(winning, PathBuf::from("/mnt/c/repo"));
+        assert_eq!(resp, "/mnt/c/repo");
+        assert_eq!(seen.borrow().len(), 2, "stops at first success");
+
+        // A non-cwd error is NOT retried: stops immediately and surfaces it.
+        let calls = RefCell::new(0u32);
+        let err = try_session_cwds::<String, _, _>(&attempts, |_cwd| {
+            *calls.borrow_mut() += 1;
+            async move { Err(acp::Error::new(-32000, "authentication required")) }
+        })
+        .await
+        .expect_err("non-cwd error should not be retried");
+        assert_eq!(*calls.borrow(), 1, "no retry on non-cwd error");
+        assert!(format!("{err}").contains("authentication"));
     }
 
     #[tokio::test(flavor = "current_thread")]

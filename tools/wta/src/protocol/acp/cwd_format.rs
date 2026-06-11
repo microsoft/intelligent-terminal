@@ -168,13 +168,22 @@ pub fn looks_like_cwd_error(haystack: &str) -> bool {
 
 // --- internals ---------------------------------------------------------
 
-/// `C:\Users\me` → `/mnt/c/Users/me`; bare `C:` → `/mnt/c`.
+/// `C:\Users\me` → `/mnt/c/Users/me`; bare `C:` → `/mnt/c`. Verbatim/device
+/// prefixes (`\\?\C:\…`, `\\.\C:\…`) are stripped first. A non-drive Windows
+/// path (true UNC like `\\server\share`) has no `/mnt` equivalent, so it
+/// defers to the safe POSIX floor `/tmp` rather than emitting a nonsense
+/// path like `/?/C:/foo`.
 fn windows_to_mnt(win: &str) -> String {
     let win = win.trim();
+    // Strip extended-length / device prefixes before drive parsing.
+    let win = win
+        .strip_prefix(r"\\?\")
+        .or_else(|| win.strip_prefix(r"\\.\"))
+        .unwrap_or(win);
     let bytes = win.as_bytes();
     if bytes.len() < 2 || !bytes[0].is_ascii_alphabetic() || bytes[1] != b':' {
-        // Not a drive path; best effort — just normalize separators.
-        return format!("/{}", win.replace('\\', "/").trim_start_matches('/'));
+        // True UNC / non-drive Windows path — no drive to map onto /mnt.
+        return "/tmp".to_string();
     }
     let drive = (bytes[0] as char).to_ascii_lowercase();
     let rest = &win[2..]; // after `C:`
@@ -330,6 +339,16 @@ mod tests {
             PathBuf::from("/mnt/q/official/repo")
         );
         assert_eq!(to_linux_format(Path::new(r"C:\")), PathBuf::from("/mnt/c"));
+        // extended-length \\?\C:\foo → /mnt/c/foo (prefix stripped)
+        assert_eq!(
+            to_linux_format(Path::new(r"\\?\C:\foo")),
+            PathBuf::from("/mnt/c/foo")
+        );
+        // true UNC has no /mnt mapping → safe POSIX floor
+        assert_eq!(
+            to_linux_format(Path::new(r"\\server\share")),
+            PathBuf::from("/tmp")
+        );
     }
 
     #[test]
