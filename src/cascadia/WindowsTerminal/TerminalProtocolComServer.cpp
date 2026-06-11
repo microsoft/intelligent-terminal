@@ -449,6 +449,7 @@ try
         "split_pane",
         "close_pane",
         "send_input",
+        "focus_pane",
         "set_session_variable",
         "subscribe",
         "unsubscribe",
