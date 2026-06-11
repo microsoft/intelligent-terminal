@@ -2073,26 +2073,11 @@ fn run_plugin_cli_capture_with_env(
             status = ?output.status.code(),
             "plugin CLI returned non-zero exit",
         );
-        tracing::trace!(
-            target: "agent_hooks.content",
-            exe = exe,
-            args = ?args,
-            stdout = %stdout.trim(),
-            stderr = %stderr.trim(),
-            "plugin CLI non-zero output",
-        );
     } else {
         tracing::info!(
             target: "agent_hooks",
             exe = exe,
             "plugin CLI succeeded",
-        );
-        tracing::trace!(
-            target: "agent_hooks.content",
-            exe = exe,
-            args = ?args,
-            stdout = %stdout.trim(),
-            "plugin CLI success output",
         );
     }
     Ok(CliRunOutcome {
@@ -2151,12 +2136,6 @@ fn run_plugin_cli_with_env(
                 target: "agent_hooks",
                 exe = exe,
                 "plugin CLI exited non-zero but matched idempotency substring; treating as success",
-            );
-            tracing::trace!(
-                target: "agent_hooks.content",
-                exe = exe,
-                args = ?args,
-                "plugin CLI idempotency-match args",
             );
             return Ok(());
         }

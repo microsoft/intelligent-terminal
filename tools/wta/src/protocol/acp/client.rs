@@ -929,13 +929,12 @@ fn truncate_for_prompt(text: &str, max_chars: usize) -> String {
 fn format_pane_context_summary(pane_context: Option<&PaneContext>) -> String {
     match pane_context {
         Some(context) => format!(
-            "pane_id={:?} tab_id={:?} window_id={:?} source_pane_id={:?} effective_source_pane_id={:?} cwd={:?}",
+            "pane_id={:?} tab_id={:?} window_id={:?} source_pane_id={:?} effective_source_pane_id={:?}",
             context.pane_id,
             context.tab_id,
             context.window_id,
             context.source_pane_id,
             context.effective_source_pane_id(),
-            context.cwd
         ),
         None => "none".to_string(),
     }
@@ -3331,7 +3330,6 @@ async fn run_inner(
     let cwd = active_pane_cwd
         .clone()
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    startup_probe.log(&format!("Using session cwd={}", cwd.display()));
     let session_future = conn.new_session(acp::NewSessionRequest::new(cwd));
     let session = tokio::time::timeout(std::time::Duration::from_secs(15), session_future)
         .await

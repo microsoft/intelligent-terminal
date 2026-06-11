@@ -424,11 +424,10 @@ async fn execute_choice(
                     .unwrap_or(DelegatePromptDelivery::LaunchThenSend);
                 let target_label = open_target_label(target);
                 coordinator_log(&format!(
-                    "open_and_send begin target={} parent={:?} agent={:?} cwd={:?} title={:?} direction={:?} delivery_mode={} input_chars={}",
+                    "open_and_send begin target={} parent={:?} agent={:?} title={:?} direction={:?} delivery_mode={} input_chars={}",
                     target_label,
                     parent,
                     agent,
-                    cwd,
                     title,
                     direction,
                     delegate_prompt_delivery_label(delivery_mode),
@@ -511,8 +510,8 @@ async fn execute_choice(
             } => {
                 let target_label = open_target_label(target);
                 coordinator_log(&format!(
-                    "open begin target={} parent={:?} cwd={:?} title={:?} direction={:?}",
-                    target_label, parent, cwd, title, direction
+                    "open begin target={} parent={:?} title={:?} direction={:?}",
+                    target_label, parent, title, direction
                 ));
                 let _ = event_tx.send(AppEvent::ExecutionInfo(format!(
                     "Opening {}.",

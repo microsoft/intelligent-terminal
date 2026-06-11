@@ -1616,11 +1616,9 @@ async fn run_delegate(
     delegate_model: Option<&str>,
     cwd: Option<&str>,
 ) -> Result<()> {
-    // Log the prompt length, not the text — the prompt is user content. `cwd`
-    // is a filesystem path (carries the username / folder names), so it is
-    // personal data too: keep it on the trace-only content channel.
+    // Log the prompt length, not the text — the prompt is user content.
     tracing::info!(prompt_chars = prompt.map(|p| p.chars().count()), agent = agent_cmd, "run_delegate started");
-    tracing::trace!(target: "delegate.content", prompt = ?prompt, cwd, "run_delegate prompt");
+    tracing::trace!(target: "delegate.content", prompt = ?prompt, "run_delegate prompt");
 
     let (debug_tx, _) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
     let channel = match connect_to_wt_protocol(debug_tx).await {
@@ -1720,8 +1718,8 @@ async fn delegate_with_context(
 
     // The commandline bakes in the user prompt (`-i "<prompt>"`); keep it out
     // of the debug log and only emit it at trace.
-    tracing::debug!(cwd, "delegate_with_context: launching");
-    tracing::trace!(target: "delegate.content", commandline, cwd, "delegate_with_context commandline");
+    tracing::debug!("delegate_with_context: launching");
+    tracing::trace!(target: "delegate.content", commandline, "delegate_with_context commandline");
 
     shell_mgr
         .wt_create_tab(Some(&commandline), cwd, None)

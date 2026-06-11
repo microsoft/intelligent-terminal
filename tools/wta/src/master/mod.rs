@@ -495,13 +495,6 @@ impl acp::Client for MasterClient {
             session_id = ?sid,
             "forwarding fs/write_text_file to helper"
         );
-        tracing::trace!(
-            target: "master.content",
-            op = "write_text_file",
-            session_id = ?sid,
-            path = ?args.path,
-            "fs/write_text_file path"
-        );
         forwarder.write_text_file(args).await
     }
 
@@ -518,13 +511,6 @@ impl acp::Client for MasterClient {
             helper_id = ?helper_id,
             session_id = ?sid,
             "forwarding fs/read_text_file to helper"
-        );
-        tracing::trace!(
-            target: "master.content",
-            op = "read_text_file",
-            session_id = ?sid,
-            path = ?args.path,
-            "fs/read_text_file path"
         );
         forwarder.read_text_file(args).await
     }
@@ -543,14 +529,6 @@ impl acp::Client for MasterClient {
             session_id = ?sid,
             args_len = args.args.len(),
             "forwarding terminal/create to helper"
-        );
-        // Command line can carry user/file content — trace only.
-        tracing::trace!(
-            target: "master.content",
-            session_id = ?sid,
-            command = %args.command,
-            args = ?args.args,
-            "create_terminal command"
         );
         forwarder.create_terminal(args).await
     }
@@ -2321,12 +2299,6 @@ where
             session_id = %sid.0,
             title_len = disk_title.chars().count(),
             "upgraded synthetic title from on-disk session artefacts",
-        );
-        tracing::trace!(
-            target: "session_hook.content",
-            session_id = %sid.0,
-            new_title = %disk_title,
-            "upgraded synthetic title",
         );
     }
     upgraded
