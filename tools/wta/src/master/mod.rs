@@ -2319,7 +2319,7 @@ where
         tracing::info!(
             target: "session_hook",
             session_id = %sid.0,
-            title_len = disk_title.len(),
+            title_len = disk_title.chars().count(),
             "upgraded synthetic title from on-disk session artefacts",
         );
         tracing::trace!(
