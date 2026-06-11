@@ -2090,7 +2090,7 @@ async fn handle_session_hook(
 
     tracing::info!(
         target: "session_hook",
-        event = ?event,
+        event = %crate::agent_sessions::session_event_log_summary(&event),
         "received helper session hook"
     );
 
@@ -2192,7 +2192,7 @@ async fn handle_master_wt_event(
         target: "master_wt_event",
         pane_id = %pane_id,
         state = %pane_state,
-        event = ?event,
+        event = %crate::agent_sessions::session_event_log_summary(&event),
         "applying WT connection_state event to master registry"
     );
     let applied = state.registry.apply_event(event).await;

@@ -1456,13 +1456,17 @@ fn acp_log_built_prompt(
         target: "acp",
         user_text_len = user_text.len(),
         pane_context = %format_pane_context_summary(pane_context),
-        prompt_source,
+        prompt_source = prompt_source_log_label(prompt_source),
         "planner_prompt_begin"
     );
     // Full assembled prompt = user text + captured terminal buffer + cwd.
     // Sensitive — trace only.
     acp_trace_content(&format!("planner_prompt_text:\n{}", prompt_text));
     tracing::debug!(target: "acp", "planner_prompt_end");
+}
+
+fn prompt_source_log_label(source: &str) -> &str {
+    source.split_once(':').map_or(source, |(kind, _)| kind)
 }
 
 /// Per-turn audit log: one structured info-level line per round.
@@ -2625,13 +2629,13 @@ pub async fn run_acp_client_over_pipe(
                     match conn_for_hook.ext_method(req).await {
                         Ok(response) => tracing::debug!(
                             target: "session_hook",
-                            event = ?event,
+                            event = %crate::agent_sessions::session_event_log_summary(&event),
                             response = %response.0.get(),
                             "session_hook sent to master"
                         ),
                         Err(err) => tracing::warn!(
                             target: "session_hook",
-                            event = ?event,
+                            event = %crate::agent_sessions::session_event_log_summary(&event),
                             error = ?err,
                             "session_hook ext-request to master failed"
                         ),
@@ -3150,10 +3154,7 @@ async fn run_inner(
     // packaged identity — that's the bug we saw where `cargo run` resolved
     // against C:\Users\<user> and failed to find Cargo.toml).
     let active_pane_cwd = resolve_active_pane_cwd(&shell_mgr, wt_connected).await;
-    startup_probe.log(&format!(
-        "resolved active pane cwd: {:?}",
-        active_pane_cwd.as_ref().map(|p| p.display().to_string())
-    ));
+    startup_probe.log("resolved active pane cwd");
 
     let spawned =
         crate::protocol::acp::spawn::spawn_agent_process(agent_cmd, active_pane_cwd.as_deref())?;
