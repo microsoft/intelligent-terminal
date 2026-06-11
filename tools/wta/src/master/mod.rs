@@ -201,13 +201,14 @@ struct MasterStateInner {
     /// don't recognize (e.g. `--agent codex` — tracked in CliSource::Unknown
     /// but not surfaced as a known session management filter).
     pub(crate) cli_source: Option<crate::agent_sessions::CliSource>,
-    /// The raw, user-configured agent launcher string (`cli.agent`), e.g.
-    /// `wsl.exe -d Ubuntu -- copilot --acp --stdio`. Kept verbatim (not the
-    /// normalized `cli_source`) so `new_session` / `load_session` can detect
-    /// a WSL launcher and translate the incoming Windows `cwd` into the
-    /// distro's POSIX namespace before forwarding to the agent CLI. See
-    /// `protocol::acp::wsl_path`.
-    pub(crate) agent_cmd: String,
+    /// The agent's working-directory namespace (Windows vs POSIX), learned
+    /// once at startup from the agent's own `session/list` cwds. Used by
+    /// `new_session` / `load_session` to convert the incoming cwd into a
+    /// form the agent accepts (e.g. a WSL agent needs `/mnt/c/…`, not
+    /// `C:\WINDOWS\system32`). `None` when the agent reports no sessions or
+    /// doesn't support `session/list` — callers then try both formats. See
+    /// `protocol::acp::cwd_format`.
+    pub(crate) cwd_format: OnceLock<Option<crate::protocol::acp::cwd_format::PathFormat>>,
     /// Per-helper crash-recovery metadata, keyed by `HelperId`.
     ///
     /// Populated/refreshed by the `new_session` + `load_session`
@@ -640,6 +641,20 @@ fn notification_kind(notif: &acp::SessionNotification) -> &'static str {
     }
 }
 
+/// True when an ACP error from `new_session` looks like a cwd rejection
+/// (bad namespace / nonexistent dir) — the signal to retry with the next
+/// candidate cwd. Matches the agent's own wording, e.g. copilot's
+/// "Directory path must be absolute" / "Directory does not exist or cannot
+/// be accessed". Any other error (auth, internal, …) is not retried.
+fn is_cwd_error(e: &acp::Error) -> bool {
+    let mut hay = e.message.clone();
+    if let Some(d) = &e.data {
+        hay.push(' ');
+        hay.push_str(&d.to_string());
+    }
+    crate::protocol::acp::cwd_format::looks_like_cwd_error(&hay)
+}
+
 /// `acp::Agent` impl wired into one helper's `AgentSideConnection`.
 /// Each helper gets its own `HelperHandler` instance.
 struct HelperHandler {
@@ -776,30 +791,68 @@ impl acp::Agent for HelperHandler {
         // in the same place as the routing entry.
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
-        // Rewrite the incoming cwd into something the agent CLI can accept.
-        // For a WSL agent this translates a Windows path (or junk
-        // `C:\WINDOWS\system32`) into the distro's POSIX namespace; for a
-        // native agent it swaps junk for `%USERPROFILE%`. Runs on a blocking
-        // thread because it may shell out to `wsl.exe`. See `wsl_path`.
-        let agent_cmd = self.state.agent_cmd.clone();
-        let raw_cwd = args.cwd.clone();
-        args.cwd = tokio::task::spawn_blocking(move || {
-            crate::protocol::acp::wsl_path::resolve_session_cwd(Some(&raw_cwd), &agent_cmd)
-        })
-        .await
-        .unwrap_or_else(|_| args.cwd.clone());
-        let cwd_for_registry = args.cwd.clone();
+        // Resolve a cwd the agent will accept. The incoming cwd is whatever
+        // the helper computed (often `std::env::current_dir()` =
+        // `C:\WINDOWS\system32` for the packaged helper); we drop junk down
+        // to %USERPROFILE%, then convert into the agent's namespace
+        // (Windows vs POSIX) learned at startup. `build_attempts` yields an
+        // ordered set we try in turn so a wrong/empty format guess
+        // self-corrects on the agent's own cwd-rejection error. See
+        // `cwd_format`.
+        use crate::protocol::acp::cwd_format;
+        let value = cwd_format::pick_value(Some(&args.cwd));
+        let target = self.state.cwd_format.get().copied().flatten();
+        let attempts = cwd_format::build_attempts(&value, target);
         tracing::info!(
             target: "master",
             step = "helper→agent",
             op = "new_session",
             helper_id = ?self.helper_id,
-            cwd = ?args.cwd,
+            incoming_cwd = ?args.cwd,
+            ?target,
+            attempts = ?attempts,
             mcp_servers = args.mcp_servers.len(),
             pane_session_id = ?wta_meta.pane_session_id,
-            "forwarding new_session"
+            "forwarding new_session (cwd attempts)"
         );
-        let resp = self.agent_conn.new_session(args).await?;
+        let resp = {
+            let mut last_err: Option<acp::Error> = None;
+            let mut ok: Option<acp::NewSessionResponse> = None;
+            let mut winning_cwd = args.cwd.clone();
+            for (i, cwd) in attempts.iter().enumerate() {
+                let mut try_args = args.clone();
+                try_args.cwd = cwd.clone();
+                match self.agent_conn.new_session(try_args).await {
+                    Ok(r) => {
+                        winning_cwd = cwd.clone();
+                        ok = Some(r);
+                        break;
+                    }
+                    Err(e) => {
+                        let retryable = is_cwd_error(&e) && i + 1 < attempts.len();
+                        tracing::warn!(
+                            target: "master",
+                            op = "new_session",
+                            attempt = i,
+                            cwd = %cwd.display(),
+                            retryable,
+                            error = %e,
+                            "new_session attempt failed"
+                        );
+                        last_err = Some(e);
+                        if !retryable {
+                            break;
+                        }
+                    }
+                }
+            }
+            args.cwd = winning_cwd;
+            match ok {
+                Some(r) => r,
+                None => return Err(last_err.unwrap_or_else(acp::Error::internal_error)),
+            }
+        };
+        let cwd_for_registry = args.cwd.clone();
         let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
@@ -905,15 +958,19 @@ impl acp::Agent for HelperHandler {
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let session_id = args.session_id.clone();
-        // Mirror `new_session`: a resumed WSL session must also carry a
-        // POSIX cwd, or the agent CLI rejects the Windows path.
-        let agent_cmd = self.state.agent_cmd.clone();
-        let raw_cwd = args.cwd.clone();
-        args.cwd = tokio::task::spawn_blocking(move || {
-            crate::protocol::acp::wsl_path::resolve_session_cwd(Some(&raw_cwd), &agent_cmd)
-        })
-        .await
-        .unwrap_or_else(|_| args.cwd.clone());
+        // Mirror `new_session`: a resumed session must carry a cwd in the
+        // agent's namespace. The session already exists (its original cwd was
+        // valid), so a single conversion to the detected format is enough —
+        // no multi-attempt ladder needed here. See `cwd_format`.
+        {
+            use crate::protocol::acp::cwd_format::{self, PathFormat};
+            let value = cwd_format::pick_value(Some(&args.cwd));
+            args.cwd = match self.state.cwd_format.get().copied().flatten() {
+                Some(PathFormat::Windows) => cwd_format::to_windows_format(&value),
+                Some(PathFormat::Posix) => cwd_format::to_linux_format(&value),
+                None => value,
+            };
+        }
         let cwd_for_registry = args.cwd.clone();
         tracing::info!(
             target: "master",
@@ -1540,7 +1597,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         wt,
         cached_init_resp: OnceLock::new(),
         cli_source,
-        agent_cmd: cli.agent.clone(),
+        cwd_format: OnceLock::new(),
         helper_meta: Mutex::new(HashMap::new()),
     });
 
@@ -1692,6 +1749,53 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // is idempotent on already-populated cells — we ignore the
     // returned Err.)
     let _ = inner.cached_init_resp.set(init_resp.clone());
+
+    // Detect the agent's cwd namespace (Windows vs POSIX) from its own
+    // session history, so `new_session` sends a cwd the agent will accept
+    // (a WSL agent needs `/mnt/c/…` or `/home/…`, never `C:\WINDOWS\system32`).
+    // Best-effort: capability-gated implicitly (agents without `session/list`
+    // return an error → None → callers try both formats). Empty history also
+    // yields None. See `cwd_format`.
+    let detected_format = match tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        agent_conn.list_sessions(acp::ListSessionsRequest::new()),
+    )
+    .await
+    {
+        Ok(Ok(resp)) => {
+            let cwds: Vec<String> = resp
+                .sessions
+                .iter()
+                .map(|s| s.cwd.to_string_lossy().into_owned())
+                .collect();
+            let fmt = crate::protocol::acp::cwd_format::detect_format(
+                cwds.iter().map(String::as_str),
+            );
+            tracing::info!(
+                target: "master",
+                ?fmt,
+                sessions = cwds.len(),
+                "detected agent cwd format from session/list"
+            );
+            fmt
+        }
+        Ok(Err(e)) => {
+            tracing::info!(
+                target: "master",
+                error = %e,
+                "session/list unavailable; agent cwd format unknown (will try both)"
+            );
+            None
+        }
+        Err(_) => {
+            tracing::warn!(
+                target: "master",
+                "session/list timed out; agent cwd format unknown (will try both)"
+            );
+            None
+        }
+    };
+    let _ = inner.cwd_format.set(detected_format);
 
     // 4. Open the named pipe and accept helper connections.
     let mut server = ServerOptions::new()
@@ -2566,7 +2670,7 @@ mod tests {
             wt: None,
             cached_init_resp: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
-            agent_cmd: "copilot".to_string(),
+            cwd_format: OnceLock::new(),
             helper_meta: Mutex::new(HashMap::new()),
         })
     }
@@ -3372,7 +3476,7 @@ mod tests {
             wt: Some(wt),
             cached_init_resp: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
-            agent_cmd: "copilot".to_string(),
+            cwd_format: OnceLock::new(),
             helper_meta: Mutex::new(HashMap::new()),
         })
     }

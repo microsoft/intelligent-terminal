@@ -3350,27 +3350,71 @@ async fn run_inner(
     // Create session — also with a timeout.
     let _ = event_tx.send(AppEvent::ConnectionStage("Creating session...".to_string()));
     startup_probe.log("Creating session");
-    // Resolve the cwd we hand the agent's `session/new`. For a WSL agent this
-    // translates the Windows pane cwd into the distro's POSIX namespace (or
-    // falls back to the distro `$HOME`); for a native agent it swaps a junk
-    // launcher dir for `%USERPROFILE%`. The *spawn* cwd above intentionally
-    // keeps the raw Windows path — the immediate child is `wsl.exe`, a Windows
-    // process, so its working directory must stay a Windows directory.
-    let cwd = {
-        let raw = active_pane_cwd.clone();
-        let agent_cmd_owned = agent_cmd.to_string();
-        tokio::task::spawn_blocking(move || {
-            crate::protocol::acp::wsl_path::resolve_session_cwd(raw.as_deref(), &agent_cmd_owned)
-        })
-        .await
-        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default())
+    // Resolve the cwd we hand the agent's `session/new`. Direct (non-master)
+    // path: detect the agent's namespace from its own `session/list`, pick a
+    // non-junk source value, and try it converted into that namespace — with
+    // the agent's own cwd-rejection error driving the fallback. Mirrors the
+    // master path (see `cwd_format`). The *spawn* cwd above intentionally
+    // keeps the raw Windows path — the child may be `wsl.exe`, a Windows
+    // process, whose working directory must stay a Windows directory.
+    use crate::protocol::acp::cwd_format;
+    let target_format = match tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        conn.list_sessions(acp::ListSessionsRequest::new()),
+    )
+    .await
+    {
+        Ok(Ok(resp)) => {
+            let cwds: Vec<String> = resp
+                .sessions
+                .iter()
+                .map(|s| s.cwd.to_string_lossy().into_owned())
+                .collect();
+            cwd_format::detect_format(cwds.iter().map(String::as_str))
+        }
+        _ => None,
     };
-    startup_probe.log(&format!("Using session cwd={}", cwd.display()));
-    let session_future = conn.new_session(acp::NewSessionRequest::new(cwd));
-    let session = tokio::time::timeout(std::time::Duration::from_secs(15), session_future)
-        .await
-        .map_err(|_| anyhow::anyhow!("new_session timed out after 15 s"))?
-        .map_err(|e| anyhow::anyhow!("new_session failed: {}", e))?;
+    let value = cwd_format::pick_value(active_pane_cwd.as_deref());
+    let attempts = cwd_format::build_attempts(&value, target_format);
+    startup_probe.log(&format!(
+        "session cwd format={:?} attempts={:?}",
+        target_format, attempts
+    ));
+    let session = {
+        let mut last_err: Option<anyhow::Error> = None;
+        let mut ok = None;
+        for (i, cwd) in attempts.iter().enumerate() {
+            let fut = conn.new_session(acp::NewSessionRequest::new(cwd.clone()));
+            match tokio::time::timeout(std::time::Duration::from_secs(15), fut).await {
+                Err(_) => {
+                    last_err = Some(anyhow::anyhow!("new_session timed out after 15 s"));
+                    break;
+                }
+                Ok(Ok(s)) => {
+                    ok = Some(s);
+                    break;
+                }
+                Ok(Err(e)) => {
+                    let retryable = cwd_format::looks_like_cwd_error(&format!(
+                        "{} {:?}",
+                        e.message, e.data
+                    )) && i + 1 < attempts.len();
+                    startup_probe.log(&format!(
+                        "new_session attempt {i} cwd={} failed (retryable={retryable}): {e}",
+                        cwd.display()
+                    ));
+                    last_err = Some(anyhow::anyhow!("new_session failed: {}", e));
+                    if !retryable {
+                        break;
+                    }
+                }
+            }
+        }
+        match ok {
+            Some(s) => s,
+            None => return Err(last_err.unwrap_or_else(|| anyhow::anyhow!("new_session failed"))),
+        }
+    };
 
     let session_id = session.session_id.clone();
     startup_probe.log(&format!("Session created: {}", session_id));

@@ -4,4 +4,4 @@ pub mod probe;
 pub mod prompt;
 pub mod soft_stop;
 pub(crate) mod spawn;
-pub mod wsl_path;
+pub mod cwd_format;
