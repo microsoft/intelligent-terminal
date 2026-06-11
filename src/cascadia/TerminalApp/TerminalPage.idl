@@ -106,6 +106,8 @@ namespace TerminalApp
 
         event Windows.Foundation.TypedEventHandler<Object, LaunchPositionRequest> RequestLaunchPosition;
 
+        event Windows.Foundation.TypedEventHandler<Object, WindowRequestedArgs> RequestNewWindow;
+
         // Terminal Protocol Bridge Methods
         UInt32 TabCount { get; };
         Windows.Foundation.IReference<UInt32> FocusedTabIndex { get; };
