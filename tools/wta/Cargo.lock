@@ -2683,7 +2683,6 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "unicode-width",
- "uuid",
  "which",
  "windows-sys",
 ]
