@@ -45,6 +45,7 @@ use std::sync::{Arc, OnceLock, Weak};
 /// back-pressure the agent CLI's I/O loop and freeze every other
 /// helper sharing this master.
 const NOTIF_CHANNEL_CAPACITY: usize = 1024;
+const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
 
 use acp::Agent as _;
 use acp::Client as _;
@@ -714,6 +715,30 @@ impl HelperHandler {
             acp::Error::internal_error().data(serde_json::json!("helper connection dropped"))
         })
     }
+
+    async fn forward_new_session_to_agent(
+        &self,
+        args: acp::NewSessionRequest,
+        timeout: std::time::Duration,
+    ) -> acp::Result<acp::NewSessionResponse> {
+        let timeout_secs = timeout.as_secs();
+        tokio::time::timeout(timeout, self.agent_conn.new_session(args))
+            .await
+            .map_err(|_| {
+                let message = format!("agent CLI session/new timed out after {timeout_secs}s");
+                tracing::error!(
+                    target: "master",
+                    step = "helper→agent",
+                    op = "new_session",
+                    helper_id = ?self.helper_id,
+                    timeout_secs,
+                    "agent CLI session/new timed out"
+                );
+                acp::Error::new(-32603, message.clone()).data(serde_json::json!({
+                    "message": message
+                }))
+            })?
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -799,7 +824,12 @@ impl acp::Agent for HelperHandler {
             cwd = ?args.cwd,
             "new_session cwd"
         );
-        let resp = self.agent_conn.new_session(args).await?;
+        let resp = self
+            .forward_new_session_to_agent(
+                args,
+                std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
+            )
+            .await?;
         let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
@@ -2553,6 +2583,60 @@ async fn handle_session_focus(
 mod tests {
     use super::*;
     use acp::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
+    use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+
+    struct NoopClient;
+
+    #[async_trait::async_trait(?Send)]
+    impl acp::Client for NoopClient {
+        async fn request_permission(
+            &self,
+            _args: acp::RequestPermissionRequest,
+        ) -> acp::Result<acp::RequestPermissionResponse> {
+            Err(acp::Error::method_not_found())
+        }
+
+        async fn session_notification(
+            &self,
+            _args: acp::SessionNotification,
+        ) -> acp::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct PendingNewSessionAgent;
+
+    #[async_trait::async_trait(?Send)]
+    impl acp::Agent for PendingNewSessionAgent {
+        async fn initialize(
+            &self,
+            _args: acp::InitializeRequest,
+        ) -> acp::Result<acp::InitializeResponse> {
+            Ok(acp::InitializeResponse::new(acp::ProtocolVersion::V1))
+        }
+
+        async fn authenticate(
+            &self,
+            _args: acp::AuthenticateRequest,
+        ) -> acp::Result<acp::AuthenticateResponse> {
+            Ok(acp::AuthenticateResponse::new())
+        }
+
+        async fn new_session(
+            &self,
+            _args: acp::NewSessionRequest,
+        ) -> acp::Result<acp::NewSessionResponse> {
+            futures::future::pending().await
+        }
+
+        async fn prompt(&self, _args: acp::PromptRequest) -> acp::Result<acp::PromptResponse> {
+            Err(acp::Error::method_not_found())
+        }
+
+        async fn cancel(&self, _args: acp::CancelNotification) -> acp::Result<()> {
+            Ok(())
+        }
+    }
 
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
@@ -2564,6 +2648,68 @@ mod tests {
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
             helper_meta: Mutex::new(HashMap::new()),
         })
+    }
+
+    fn client_connection_to_pending_new_session_agent() -> Arc<acp::ClientSideConnection> {
+        let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client_pipe);
+        let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+
+        let (_agent_conn, agent_io) = acp::AgentSideConnection::new(
+            PendingNewSessionAgent,
+            agent_write.compat_write(),
+            agent_read.compat(),
+            |fut| {
+                tokio::task::spawn_local(fut);
+            },
+        );
+        tokio::task::spawn_local(async move {
+            let _ = agent_io.await;
+        });
+
+        let (client_conn, client_io) = acp::ClientSideConnection::new(
+            NoopClient,
+            client_write.compat_write(),
+            client_read.compat(),
+            |fut| {
+                tokio::task::spawn_local(fut);
+            },
+        );
+        tokio::task::spawn_local(async move {
+            let _ = client_io.await;
+        });
+
+        Arc::new(client_conn)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn new_session_timeout_is_enforced_by_master_forwarder() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+                let handler = HelperHandler {
+                    helper_id: HelperId(1),
+                    agent_conn: client_connection_to_pending_new_session_agent(),
+                    state: make_state(),
+                    notif_tx,
+                    agent_side_slot: Arc::new(OnceLock::new()),
+                };
+
+                let err = handler
+                    .forward_new_session_to_agent(
+                        acp::NewSessionRequest::new(PathBuf::from(r"C:\repo")),
+                        std::time::Duration::from_millis(1),
+                    )
+                    .await
+                    .expect_err("master should return an ACP error when agent session/new hangs");
+
+                assert_eq!(err.code, acp::ErrorCode::InternalError);
+                assert!(
+                    format!("{err}").contains("agent CLI session/new timed out"),
+                    "error should identify master->agent session/new timeout: {err}"
+                );
+            })
+            .await;
     }
 
     #[test]

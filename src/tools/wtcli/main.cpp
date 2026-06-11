@@ -3,41 +3,72 @@
 
 #include <unknwn.h>
 #include <winrt/Windows.Foundation.h>
-#include <winrt/Microsoft.Terminal.Protocol.h>
 
 #include "Formatting.h"
 #include "wtcli_functions.h"
 
+// Classic-COM Terminal protocol. Generated from
+// src/host/proxy/ITerminalProtocol.idl; found via the OpenConsoleProxy IntDir
+// added to this project's include path. Marshaled by the OpenConsoleProxy
+// proxy/stub (NOT WinRT MBM), so activation/marshaling never hits the combase
+// WinRT activation catalog.
+#include "ITerminalProtocol.h"
+
 #include <CLI/CLI.hpp>
 
+#include <wil/resource.h>
+
+#include <charconv>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <functional>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
 
-namespace Protocol = winrt::Microsoft::Terminal::Protocol;
-
-// ── EventCallback — receives push-based events from Terminal ──
-
-struct EventCallback : winrt::implements<EventCallback, Protocol::IProtocolEventCallback>
+// ── EventSink — pure classic-COM event sink for `listen` ──
+struct EventSink : ITerminalProtocolEventSink
 {
-    EventCallback(std::function<void(winrt::hstring const&)> handler) :
+    LONG _ref{ 1 };
+    std::function<void(const std::string&)> _handler;
+
+    explicit EventSink(std::function<void(const std::string&)> handler) :
         _handler(std::move(handler)) {}
 
-    void OnEvent(winrt::hstring const& eventJson)
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override
+    {
+        if (!ppv)
+            return E_POINTER;
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(ITerminalProtocolEventSink))
+        {
+            *ppv = static_cast<ITerminalProtocolEventSink*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppv = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&_ref); }
+    ULONG STDMETHODCALLTYPE Release() override
+    {
+        const auto r = InterlockedDecrement(&_ref);
+        if (r == 0)
+            delete this;
+        return r;
+    }
+    HRESULT STDMETHODCALLTYPE OnEvent(BSTR eventJson) override
     {
         if (_handler)
-            _handler(eventJson);
+            _handler(eventJson ? winrt::to_string(winrt::hstring{ eventJson }) : std::string{});
+        return S_OK;
     }
-
-private:
-    std::function<void(winrt::hstring const&)> _handler;
 };
 
 // ── Helpers ──
 
-static Protocol::IProtocolServer ConnectToTerminal(Protocol::AuthResult* outAuth = nullptr)
+static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticated = nullptr, std::string* outVersion = nullptr)
 {
     wchar_t clsid[128]{};
     if (!GetEnvironmentVariableW(L"WT_COM_CLSID", clsid, ARRAYSIZE(clsid)))
@@ -53,47 +84,91 @@ static Protocol::IProtocolServer ConnectToTerminal(Protocol::AuthResult* outAuth
         return nullptr;
     }
 
-    try
+    winrt::com_ptr<ITerminalProtocol> server;
+    auto hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
+    if (FAILED(hr))
     {
-        auto server = winrt::create_instance<Protocol::IProtocolServer>(cls, CLSCTX_LOCAL_SERVER);
-        auto authResult = server.Authenticate(L"");
-        if (!authResult.Authenticated)
-        {
-            fprintf(stderr, "[wtcli] Authentication failed\n");
-            return nullptr;
-        }
-        if (outAuth)
-            *outAuth = authResult;
-        return server;
-    }
-    catch (const winrt::hresult_error& e)
-    {
-        fprintf(stderr, "[wtcli] Connection failed: 0x%08X %ls\n",
-                static_cast<uint32_t>(e.code()), e.message().c_str());
+        fprintf(stderr, "[wtcli] Connection failed: 0x%08X\n", static_cast<uint32_t>(hr));
         return nullptr;
     }
-}
 
-static winrt::guid ResolveSessionId(const Protocol::IProtocolServer& server, const std::string& target)
-{
-    if (!target.empty())
+    BSTR rawAuth = nullptr;
+    hr = server->Authenticate(nullptr, &rawAuth);
+    bool parsed = false;
+    bool authenticated = false;
+    std::string version;
+    if (SUCCEEDED(hr) && rawAuth)
     {
-        // Accept both plain and braced GUID formats
-        auto wstr = winrt::to_hstring(target);
-        std::wstring guidStr{ wstr };
-        if (!guidStr.empty() && guidStr[0] != L'{')
-            guidStr = L"{" + guidStr + L"}";
-        GUID g{};
-        if (SUCCEEDED(CLSIDFromString(guidStr.c_str(), &g)))
-            return winrt::guid{ g };
-        fprintf(stderr, "[wtcli] Invalid session ID: %s\n", target.c_str());
-        return {};
+        Json::Value v;
+        Json::CharReaderBuilder rb;
+        std::string errs;
+        auto s = winrt::to_string(winrt::hstring{ rawAuth });
+        std::istringstream ss(s);
+        if (Json::parseFromStream(rb, ss, &v, &errs))
+        {
+            parsed = true;
+            authenticated = v["authenticated"].asBool();
+            version = v["protocol_version"].asString();
+        }
     }
-    auto info = server.GetActivePane();
-    return info.SessionId;
+    if (rawAuth)
+        SysFreeString(rawAuth);
+
+    if (FAILED(hr))
+    {
+        fprintf(stderr, "[wtcli] Authentication failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        return nullptr;
+    }
+    if (!parsed)
+    {
+        // Success HRESULT but a null/malformed auth payload is a broken
+        // server contract — don't misreport it as a server rejection.
+        fprintf(stderr, "[wtcli] Authentication response missing or malformed (server contract error)\n");
+        return nullptr;
+    }
+    if (!authenticated)
+    {
+        fprintf(stderr, "[wtcli] Authentication rejected by server\n");
+        return nullptr;
+    }
+
+    if (outAuthenticated)
+        *outAuthenticated = authenticated;
+    if (outVersion)
+        *outVersion = version;
+    return server;
 }
 
-static std::string GuidToString(const winrt::guid& g)
+// Call a method that returns a JSON BSTR; parse into `out`. Returns the HRESULT.
+template<typename F>
+static HRESULT CallJson(F&& call, Json::Value& out)
+{
+    BSTR raw = nullptr;
+    HRESULT hr = call(&raw);
+    if (SUCCEEDED(hr))
+    {
+        bool parsed = false;
+        if (raw)
+        {
+            Json::CharReaderBuilder rb;
+            std::string errs;
+            auto s = winrt::to_string(winrt::hstring{ raw });
+            std::istringstream ss(s);
+            parsed = Json::parseFromStream(rb, ss, &out, &errs);
+        }
+        // A success HRESULT with a null BSTR or malformed JSON is a broken
+        // server contract; surface it as an error so callers' FAILED(hr)
+        // checks fire immediately instead of proceeding with a
+        // default-constructed `out`.
+        if (!parsed)
+            hr = E_UNEXPECTED;
+    }
+    if (raw)
+        SysFreeString(raw);
+    return hr;
+}
+
+static std::string GuidToString(const GUID& g)
 {
     wchar_t buf[40]{};
     StringFromGUID2(g, buf, ARRAYSIZE(buf));
@@ -103,20 +178,83 @@ static std::string GuidToString(const winrt::guid& g)
     return winrt::to_string(winrt::hstring{ ws });
 }
 
-static uint64_t GetFirstWindowId(const Protocol::IProtocolServer& server)
+static GUID GuidFromString(const std::string& target)
 {
-    auto windows = server.ListWindows();
-    if (windows.size() > 0)
-        return windows[0].WindowId;
+    auto wstr = winrt::to_hstring(target);
+    std::wstring guidStr{ wstr };
+    if (!guidStr.empty() && guidStr[0] != L'{')
+        guidStr = L"{" + guidStr + L"}";
+    GUID g{};
+    if (FAILED(CLSIDFromString(guidStr.c_str(), &g)))
+    {
+        if (!target.empty())
+            fprintf(stderr, "[wtcli] Invalid session ID: %s\n", target.c_str());
+        return GUID{};
+    }
+    return g;
+}
+
+// Resolve a session id: an explicit GUID string, or the active pane's id.
+static GUID ResolveSessionId(ITerminalProtocol* server, const std::string& target)
+{
+    if (!target.empty())
+        return GuidFromString(target);
+
+    Json::Value info;
+    const auto hr = CallJson([&](BSTR* j) { return server->GetActivePane(j); }, info);
+    if (FAILED(hr))
+    {
+        fprintf(stderr, "[wtcli] Could not resolve active pane (GetActivePane failed: 0x%08X)\n", static_cast<uint32_t>(hr));
+        return GUID{};
+    }
+    const auto sessionId = info["session_id"].asString();
+    if (sessionId.empty())
+    {
+        fprintf(stderr, "[wtcli] No active pane.\n");
+        return GUID{};
+    }
+    return GuidFromString(sessionId);
+}
+
+static uint64_t GetFirstWindowId(ITerminalProtocol* server)
+{
+    Json::Value windows;
+    CallJson([&](BSTR* j) { return server->ListWindows(j); }, windows);
+    if (windows.isArray() && !windows.empty())
+        return windows[0u]["window_id"].asUInt64();
     return 0;
 }
 
-static uint32_t GetFirstTabId(const Protocol::IProtocolServer& server, uint64_t windowId)
+static uint32_t GetFirstTabId(ITerminalProtocol* server, uint64_t windowId)
 {
-    auto tabs = server.ListTabs(windowId);
-    if (tabs.size() > 0)
-        return tabs[0].TabId;
+    Json::Value tabs;
+    CallJson([&](BSTR* j) { return server->ListTabs(windowId, j); }, tabs);
+    if (tabs.isArray() && !tabs.empty())
+        return tabs[0u]["tab_id"].asUInt();
     return UINT32_MAX;
+}
+
+// Allocate a BSTR from a UTF-8 std::string.
+static BSTR Bstr(const std::string& s)
+{
+    return SysAllocString(winrt::to_hstring(s).c_str());
+}
+
+// Parse a base-10 unsigned 64-bit integer without throwing (unlike std::stoull,
+// which aborts wtcli on non-numeric input). Returns false on empty, non-numeric,
+// trailing-garbage, or overflowing input.
+static bool TryParseU64(const std::string& s, uint64_t& out)
+{
+    if (s.empty())
+        return false;
+    uint64_t v = 0;
+    const auto* first = s.data();
+    const auto* last = s.data() + s.size();
+    const auto [ptr, ec] = std::from_chars(first, last, v);
+    if (ec != std::errc{} || ptr != last)
+        return false;
+    out = v;
+    return true;
 }
 
 // ── Main ──
@@ -128,13 +266,11 @@ int main()
     CLI::App app{ "wtcli — Windows Terminal CLI" };
     app.require_subcommand(0, 1);
 
-    // Global options
     bool jsonMode = false;
     int exitCode = 0;
     app.add_flag("--json", jsonMode, "Output raw JSON");
 
-    // Helper: connect to Windows Terminal
-    auto connect = [&]() -> Protocol::IProtocolServer {
+    auto connect = [&]() -> winrt::com_ptr<ITerminalProtocol> {
         auto server = ConnectToTerminal();
         if (!server)
             exitCode = 1;
@@ -146,26 +282,18 @@ int main()
     listWindowsCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        try
+        Json::Value windows;
+        auto hr = CallJson([&](BSTR* j) { return server->ListWindows(j); }, windows);
+        if (FAILED(hr)) { fprintf(stderr, "ListWindows failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
         {
-            auto windows = server.ListWindows();
-            if (jsonMode)
-            {
-                Json::Value arr(Json::objectValue);
-                Json::Value list(Json::arrayValue);
-                for (const auto& w : windows) list.append(WindowInfoToJson(w));
-                arr["windows"] = list;
-                PrintJson(arr);
-            }
-            else
-            {
-                FormatWindowsHuman(windows);
-            }
+            Json::Value arr(Json::objectValue);
+            arr["windows"] = windows;
+            PrintJson(arr);
         }
-        catch (const winrt::hresult_error& e)
+        else
         {
-            fprintf(stderr, "ListWindows failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
-            exitCode = 1;
+            FormatWindowsHuman(windows);
         }
     });
 
@@ -176,27 +304,37 @@ int main()
     listTabsCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        try
+        uint64_t wid = 0;
+        if (listTabsWindowId.empty())
         {
-            uint64_t wid = listTabsWindowId.empty() ? GetFirstWindowId(server) : std::stoull(listTabsWindowId);
-            auto tabs = server.ListTabs(wid);
-            if (jsonMode)
+            wid = GetFirstWindowId(server.get());
+            if (wid == 0)
             {
-                Json::Value arr(Json::objectValue);
-                Json::Value list(Json::arrayValue);
-                for (const auto& t : tabs) list.append(TabInfoToJson(t));
-                arr["tabs"] = list;
-                PrintJson(arr);
-            }
-            else
-            {
-                FormatTabsHuman(tabs);
+                // 0 is the server's "no filter" sentinel, not a real window id;
+                // bail rather than silently listing tabs for ALL windows.
+                fprintf(stderr, "[wtcli] Could not resolve a window (no windows or ListWindows failed)\n");
+                exitCode = 1;
+                return;
             }
         }
-        catch (const winrt::hresult_error& e)
+        else if (!TryParseU64(listTabsWindowId, wid))
         {
-            fprintf(stderr, "ListTabs failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
+            fprintf(stderr, "[wtcli] Invalid --window-id: %s\n", listTabsWindowId.c_str());
             exitCode = 1;
+            return;
+        }
+        Json::Value tabs;
+        auto hr = CallJson([&](BSTR* j) { return server->ListTabs(wid, j); }, tabs);
+        if (FAILED(hr)) { fprintf(stderr, "ListTabs failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value arr(Json::objectValue);
+            arr["tabs"] = tabs;
+            PrintJson(arr);
+        }
+        else
+        {
+            FormatTabsHuman(tabs);
         }
     });
 
@@ -208,33 +346,57 @@ int main()
     listPanesCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        try
+        uint64_t wid = 0;
+        if (!listPanesWindowId.empty() && !TryParseU64(listPanesWindowId, wid))
         {
-            uint64_t wid = listPanesWindowId.empty() ? 0 : std::stoull(listPanesWindowId);
-            uint32_t tid = listPanesTabId.empty() ? UINT32_MAX : static_cast<uint32_t>(std::stoul(listPanesTabId));
+            fprintf(stderr, "[wtcli] Invalid --window-id: %s\n", listPanesWindowId.c_str());
+            exitCode = 1;
+            return;
+        }
+        uint32_t tid = UINT32_MAX;
+        if (!listPanesTabId.empty())
+        {
+            uint64_t t = 0;
+            if (!TryParseU64(listPanesTabId, t) || t > UINT32_MAX)
+            {
+                fprintf(stderr, "[wtcli] Invalid --tab-id: %s\n", listPanesTabId.c_str());
+                exitCode = 1;
+                return;
+            }
+            tid = static_cast<uint32_t>(t);
+        }
+        if (tid == UINT32_MAX)
+        {
+            if (wid == 0)
+            {
+                wid = GetFirstWindowId(server.get());
+                if (wid == 0)
+                {
+                    fprintf(stderr, "[wtcli] Could not resolve a window (no windows or ListWindows failed)\n");
+                    exitCode = 1;
+                    return;
+                }
+            }
+            tid = GetFirstTabId(server.get(), wid);
             if (tid == UINT32_MAX)
             {
-                if (wid == 0) wid = GetFirstWindowId(server);
-                tid = GetFirstTabId(server, wid);
-            }
-            auto panes = server.ListPanes(wid, tid);
-            if (jsonMode)
-            {
-                Json::Value arr(Json::objectValue);
-                Json::Value list(Json::arrayValue);
-                for (const auto& p : panes) list.append(PaneInfoToJson(p));
-                arr["panes"] = list;
-                PrintJson(arr);
-            }
-            else
-            {
-                FormatPanesHuman(panes);
+                fprintf(stderr, "[wtcli] Could not resolve a tab (no tabs or ListTabs failed)\n");
+                exitCode = 1;
+                return;
             }
         }
-        catch (const winrt::hresult_error& e)
+        Json::Value panes;
+        auto hr = CallJson([&](BSTR* j) { return server->ListPanes(wid, tid, j); }, panes);
+        if (FAILED(hr)) { fprintf(stderr, "ListPanes failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
         {
-            fprintf(stderr, "ListPanes failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
-            exitCode = 1;
+            Json::Value arr(Json::objectValue);
+            arr["panes"] = panes;
+            PrintJson(arr);
+        }
+        else
+        {
+            FormatPanesHuman(panes);
         }
     });
 
@@ -243,19 +405,13 @@ int main()
     activePaneCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        try
-        {
-            auto info = server.GetActivePane();
-            if (jsonMode)
-                PrintJson(PaneInfoToJson(info));
-            else
-                FormatActivePaneHuman(info);
-        }
-        catch (const winrt::hresult_error& e)
-        {
-            fprintf(stderr, "GetActivePane failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
-            exitCode = 1;
-        }
+        Json::Value info;
+        auto hr = CallJson([&](BSTR* j) { return server->GetActivePane(j); }, info);
+        if (FAILED(hr)) { fprintf(stderr, "GetActivePane failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+            PrintJson(info);
+        else
+            FormatActivePaneHuman(info);
     });
 
     // ── capture-pane ──
@@ -270,26 +426,15 @@ int main()
     capturePaneCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        try
-        {
-            auto sessionId = ResolveSessionId(server, capturePaneTarget);
-            const auto sourceArg = captureLastPrompt ? L"last_prompt" : L"scrollback";
-            auto output = server.ReadPaneOutput(sessionId, sourceArg, captureMaxLines);
-            if (jsonMode)
-            {
-                PrintJson(PaneOutputToJson(output));
-            }
-            else
-            {
-                auto content = winrt::to_string(output.Content);
-                printf("%s\n", content.c_str());
-            }
-        }
-        catch (const winrt::hresult_error& e)
-        {
-            fprintf(stderr, "ReadPaneOutput failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
-            exitCode = 1;
-        }
+        auto sessionId = ResolveSessionId(server.get(), capturePaneTarget);
+        wil::unique_bstr src{ Bstr(captureLastPrompt ? "last_prompt" : "scrollback") };
+        Json::Value output;
+        auto hr = CallJson([&](BSTR* j) { return server->ReadPaneOutput(sessionId, src.get(), captureMaxLines, j); }, output);
+        if (FAILED(hr)) { fprintf(stderr, "ReadPaneOutput failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+            PrintJson(output);
+        else
+            printf("%s\n", output["content"].asString().c_str());
     });
 
     // ── pane-status ──
@@ -299,29 +444,14 @@ int main()
     paneStatusCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        try
-        {
-            auto sessionId = ResolveSessionId(server, paneStatusTarget);
-            auto status = server.GetProcessStatus(sessionId);
-            if (jsonMode)
-            {
-                Json::Value v;
-                v["session_id"] = GuidToString(status.SessionId);
-                v["state"] = winrt::to_string(status.State);
-                v["pid"] = static_cast<Json::UInt>(status.Pid);
-                if (status.HasExitCode) v["exit_code"] = status.ExitCode;
-                PrintJson(v);
-            }
-            else
-            {
-                FormatPaneStatusHuman(status);
-            }
-        }
-        catch (const winrt::hresult_error& e)
-        {
-            fprintf(stderr, "GetProcessStatus failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
-            exitCode = 1;
-        }
+        auto sessionId = ResolveSessionId(server.get(), paneStatusTarget);
+        Json::Value status;
+        auto hr = CallJson([&](BSTR* j) { return server->GetProcessStatus(sessionId, j); }, status);
+        if (FAILED(hr)) { fprintf(stderr, "GetProcessStatus failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+            PrintJson(status);
+        else
+            FormatPaneStatusHuman(status);
     });
 
     // ── new-tab ──
@@ -333,24 +463,16 @@ int main()
     newTabCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        try
-        {
-            auto result = server.CreateTab(
-                0, L"",
-                winrt::to_hstring(newTabCommand),
-                winrt::to_hstring(newTabTitle),
-                winrt::to_hstring(newTabCwd),
-                false, true);
-            if (jsonMode)
-                PrintJson(CreationResultToJson(result));
-            else
-                FormatCreatedTabHuman(result);
-        }
-        catch (const winrt::hresult_error& e)
-        {
-            fprintf(stderr, "CreateTab failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
-            exitCode = 1;
-        }
+        wil::unique_bstr profile{ Bstr("") }, command{ Bstr(newTabCommand) }, title{ Bstr(newTabTitle) }, cwd{ Bstr(newTabCwd) };
+        Json::Value result;
+        auto hr = CallJson([&](BSTR* j) {
+            return server->CreateTab(0, profile.get(), command.get(), title.get(), cwd.get(), false, true, j);
+        }, result);
+        if (FAILED(hr)) { fprintf(stderr, "CreateTab failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+            PrintJson(result);
+        else
+            FormatCreatedTabHuman(result);
     });
 
     // ── split-pane ──
@@ -367,34 +489,26 @@ int main()
     splitPaneCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        try
-        {
-            auto sessionId = ResolveSessionId(server, splitPaneTarget);
-            // --direction wins over the legacy boolean flags. If neither is
-            // given, send "automatic" so the COM server picks the longer
-            // dimension (matches the WT default for `splitPane`).
-            std::wstring dir;
-            if (!splitPaneDirection.empty())
-                dir = winrt::to_hstring(splitPaneDirection).c_str();
-            else if (splitHorizontal)
-                dir = L"down";
-            else if (splitVertical)
-                dir = L"right";
-            else
-                dir = L"automatic";
-            auto result = server.SplitPane(
-                sessionId, winrt::hstring{ dir }, static_cast<float>(splitSize),
-                L"", winrt::to_hstring(splitPaneCommand), true);
-            if (jsonMode)
-                PrintJson(CreationResultToJson(result));
-            else
-                FormatCreatedPaneHuman(result);
-        }
-        catch (const winrt::hresult_error& e)
-        {
-            fprintf(stderr, "SplitPane failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
-            exitCode = 1;
-        }
+        auto sessionId = ResolveSessionId(server.get(), splitPaneTarget);
+        std::string dir;
+        if (!splitPaneDirection.empty())
+            dir = splitPaneDirection;
+        else if (splitHorizontal)
+            dir = "down";
+        else if (splitVertical)
+            dir = "right";
+        else
+            dir = "automatic";
+        wil::unique_bstr dirB{ Bstr(dir) }, profile{ Bstr("") }, command{ Bstr(splitPaneCommand) };
+        Json::Value result;
+        auto hr = CallJson([&](BSTR* j) {
+            return server->SplitPane(sessionId, dirB.get(), static_cast<float>(splitSize), profile.get(), command.get(), true, j);
+        }, result);
+        if (FAILED(hr)) { fprintf(stderr, "SplitPane failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+            PrintJson(result);
+        else
+            FormatCreatedPaneHuman(result);
     });
 
     // ── kill-pane ──
@@ -404,26 +518,19 @@ int main()
     killPaneCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        try
+        auto sessionId = ResolveSessionId(server.get(), killPaneTarget);
+        auto hr = server->ClosePane(sessionId);
+        if (FAILED(hr)) { fprintf(stderr, "ClosePane failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
         {
-            auto sessionId = ResolveSessionId(server, killPaneTarget);
-            server.ClosePane(sessionId);
-            if (jsonMode)
-            {
-                Json::Value v;
-                v["ok"] = true;
-                v["session_id"] = GuidToString(sessionId);
-                PrintJson(v);
-            }
-            else
-            {
-                printf("Session %s closed.\n", GuidToString(sessionId).c_str());
-            }
+            Json::Value v;
+            v["ok"] = true;
+            v["session_id"] = GuidToString(sessionId);
+            PrintJson(v);
         }
-        catch (const winrt::hresult_error& e)
+        else
         {
-            fprintf(stderr, "ClosePane failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
-            exitCode = 1;
+            printf("Session %s closed.\n", GuidToString(sessionId).c_str());
         }
     });
 
@@ -441,25 +548,19 @@ int main()
     sendKeysCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        try
+        auto sessionId = ResolveSessionId(server.get(), sendKeysTarget);
+        auto text = sendKeysRaw
+            ? wtcli::JoinAsUtf16(sendKeysArgs)
+            : wtcli::TranslateKeys(sendKeysArgs);
+        wil::unique_bstr textB{ SysAllocString(text.c_str()) };
+        auto hr = server->SendInput(sessionId, textB.get());
+        if (FAILED(hr)) { fprintf(stderr, "SendInput failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
         {
-            auto sessionId = ResolveSessionId(server, sendKeysTarget);
-            auto text = sendKeysRaw
-                ? wtcli::JoinAsUtf16(sendKeysArgs)
-                : wtcli::TranslateKeys(sendKeysArgs);
-            server.SendInput(sessionId, text);
-            if (jsonMode)
-            {
-                Json::Value v;
-                v["ok"] = true;
-                v["session_id"] = GuidToString(sessionId);
-                PrintJson(v);
-            }
-        }
-        catch (const winrt::hresult_error& e)
-        {
-            fprintf(stderr, "SendInput failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
-            exitCode = 1;
+            Json::Value v;
+            v["ok"] = true;
+            v["session_id"] = GuidToString(sessionId);
+            PrintJson(v);
         }
     });
 
@@ -470,26 +571,19 @@ int main()
     focusPaneCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        try
+        auto sessionId = ResolveSessionId(server.get(), focusPaneTarget);
+        auto hr = server->FocusPane(sessionId);
+        if (FAILED(hr)) { fprintf(stderr, "FocusPane failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
         {
-            auto sessionId = ResolveSessionId(server, focusPaneTarget);
-            server.FocusPane(sessionId);
-            if (jsonMode)
-            {
-                Json::Value v;
-                v["ok"] = true;
-                v["session_id"] = GuidToString(sessionId);
-                PrintJson(v);
-            }
-            else
-            {
-                printf("Focused pane %s.\n", GuidToString(sessionId).c_str());
-            }
+            Json::Value v;
+            v["ok"] = true;
+            v["session_id"] = GuidToString(sessionId);
+            PrintJson(v);
         }
-        catch (const winrt::hresult_error& e)
+        else
         {
-            fprintf(stderr, "FocusPane failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
-            exitCode = 1;
+            printf("Focused pane %s.\n", GuidToString(sessionId).c_str());
         }
     });
 
@@ -501,33 +595,22 @@ int main()
         if (!server) { fprintf(stderr, "Connection failed.\n"); return; }
         printf("Connected and authenticated!\n\n");
 
-        try
+        Json::Value windows;
+        if (SUCCEEDED(CallJson([&](BSTR* j) { return server->ListWindows(j); }, windows)))
         {
-            auto windows = server.ListWindows();
             Json::Value arr(Json::objectValue);
-            Json::Value list(Json::arrayValue);
-            for (const auto& w : windows) list.append(WindowInfoToJson(w));
-            arr["windows"] = list;
+            arr["windows"] = windows;
             printf("list_windows:\n");
             PrintJson(arr);
         }
-        catch (const winrt::hresult_error&) {}
-
         printf("\n");
 
-        try
+        Json::Value caps;
+        if (SUCCEEDED(CallJson([&](BSTR* j) { return server->GetCapabilities(j); }, caps)))
         {
-            auto capsJson = server.GetCapabilities();
-            Json::Value cap;
-            Json::CharReaderBuilder rb;
-            std::string errs;
-            auto capsStr = winrt::to_string(capsJson);
-            std::istringstream ss(capsStr);
-            Json::parseFromStream(rb, ss, &cap, &errs);
             printf("get_capabilities:\n");
-            PrintJson(cap);
+            PrintJson(caps);
         }
-        catch (const winrt::hresult_error&) {}
     });
 
     // ── info ──
@@ -536,25 +619,13 @@ int main()
         wchar_t clsid[128]{};
         auto hasClsid = GetEnvironmentVariableW(L"WT_COM_CLSID", clsid, ARRAYSIZE(clsid)) > 0;
 
-        Protocol::AuthResult authResult{};
-        auto server = ConnectToTerminal(&authResult);
-        auto version = server ? winrt::to_string(authResult.ProtocolVersion) : std::string{};
+        std::string version;
+        auto server = ConnectToTerminal(nullptr, &version);
 
         Json::Value methods(Json::arrayValue);
         if (server)
         {
-            try
-            {
-                auto capsJson = server.GetCapabilities();
-                Json::Value cap;
-                Json::CharReaderBuilder rb;
-                std::string errs;
-                auto capsStr = winrt::to_string(capsJson);
-                std::istringstream ss(capsStr);
-                if (Json::parseFromStream(rb, ss, &cap, &errs) && cap.isArray())
-                    methods = cap;
-            }
-            catch (const winrt::hresult_error&) {}
+            CallJson([&](BSTR* j) { return server->GetCapabilities(j); }, methods);
         }
 
         if (jsonMode)
@@ -565,7 +636,7 @@ int main()
             v["connected"] = (server != nullptr);
             if (!version.empty())
                 v["protocol_version"] = version;
-            v["methods"] = methods;
+            v["methods"] = methods.isArray() ? methods : Json::Value(Json::arrayValue);
             PrintJson(v);
         }
         else
@@ -587,7 +658,7 @@ int main()
                 if (!version.empty())
                     printf("  Protocol:   %s\n", version.c_str());
                 printf("\n");
-                if (methods.size() > 0)
+                if (methods.isArray() && methods.size() > 0)
                 {
                     printf("  Methods:    %u supported\n", methods.size());
                     for (const auto& m : methods)
@@ -611,46 +682,44 @@ int main()
     waitForCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        // Parse target as GUID
-        auto sessionId = ResolveSessionId(server, waitForTarget);
+        auto sessionId = ResolveSessionId(server.get(), waitForTarget);
         auto start = std::chrono::steady_clock::now();
 
         while (true)
         {
-            try
+            Json::Value status;
+            auto hr = CallJson([&](BSTR* j) { return server->GetProcessStatus(sessionId, j); }, status);
+            if (FAILED(hr))
             {
-                auto status = server.GetProcessStatus(sessionId);
-                auto state = winrt::to_string(status.State);
-                if (state == "exited")
-                {
-                    if (jsonMode)
-                    {
-                        Json::Value v;
-                        v["state"] = state;
-                        v["exit_code"] = status.ExitCode;
-                        PrintJson(v);
-                    }
-                    else
-                    {
-                        printf("Process exited");
-                        if (status.HasExitCode)
-                            printf(" (code %d)", status.ExitCode);
-                        printf("\n");
-                    }
-                    return;
-                }
-            }
-            catch (const winrt::hresult_error& e)
-            {
-                fprintf(stderr, "GetProcessStatus failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
+                fprintf(stderr, "GetProcessStatus failed: 0x%08X\n", static_cast<uint32_t>(hr));
                 exitCode = 1;
+                return;
+            }
+            if (status["state"].asString() == "exited")
+            {
+                if (jsonMode)
+                {
+                    Json::Value v;
+                    v["state"] = "exited";
+                    if (status.isMember("exit_code"))
+                        v["exit_code"] = status["exit_code"].asInt();
+                    PrintJson(v);
+                }
+                else
+                {
+                    printf("Process exited");
+                    if (status.isMember("has_exit_code") ? status["has_exit_code"].asBool() : status.isMember("exit_code"))
+                        printf(" (code %d)", status["exit_code"].asInt());
+                    printf("\n");
+                }
                 return;
             }
 
             if (waitTimeout > 0)
             {
                 auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
-                    std::chrono::steady_clock::now() - start).count();
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
                 if (elapsed >= waitTimeout)
                 {
                     fprintf(stderr, "Timeout waiting for pane %s\n", waitForTarget.c_str());
@@ -669,7 +738,6 @@ int main()
     setEnvCmd->callback([&]() {
         wchar_t clsid[128]{};
         GetEnvironmentVariableW(L"WT_COM_CLSID", clsid, ARRAYSIZE(clsid));
-
         auto cl = winrt::to_string(winrt::hstring{ clsid });
 
         if (setEnvShell == "powershell" || setEnvShell == "pwsh")
@@ -687,29 +755,16 @@ int main()
     });
 
     // ── publish ──
-    // Low-level "pass this JSON through to IProtocolServer::SendEvent verbatim"
-    // escape hatch, for event shapes that don't fit the legacy send-event
-    // envelope (method=agent_event, params.event required). Examples:
-    // autofix_state updates from WTA that the COM server dispatches directly
-    // to TerminalPage rather than broadcasting.
+    // Low-level "pass this JSON through to SendEvent verbatim" escape hatch.
     std::string publishJson;
-    auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to IProtocolServer::SendEvent");
+    auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to SendEvent");
     publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})")->required();
     publishCmd->callback([&]() {
         auto server = connect();
-        if (!server)
-        {
-            return;
-        }
-        try
-        {
-            server.SendEvent(winrt::to_hstring(publishJson));
-        }
-        catch (const winrt::hresult_error& e)
-        {
-            fprintf(stderr, "publish failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
-            exitCode = 1;
-        }
+        if (!server) return;
+        wil::unique_bstr evt{ Bstr(publishJson) };
+        auto hr = server->SendEvent(evt.get());
+        if (FAILED(hr)) { fprintf(stderr, "publish failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; }
     });
 
     // ── send-event ──
@@ -720,30 +775,38 @@ int main()
     sendEventCmd->add_option("json", sendEventJson, "Event params as JSON object");
     sendEventCmd->callback([&]() {
         auto server = connect();
-        if (!server)
-            return;
-        try
+        if (!server) return;
+        std::string resolvedSessionId;
+        if (!sendEventPaneTarget.empty())
         {
-            Json::Value evt;
-            auto resolvedSessionId = !sendEventPaneTarget.empty()
-                ? sendEventPaneTarget
-                : GuidToString(ResolveSessionId(server, ""));
-            if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, evt))
+            resolvedSessionId = sendEventPaneTarget;
+        }
+        else
+        {
+            // Fall back to the active pane as the event source. If there is no
+            // active pane, bail rather than sending with an all-zero GUID,
+            // which would silently misroute the event.
+            const auto activeSid = ResolveSessionId(server.get(), "");
+            if (IsEqualGUID(activeSid, GUID{}))
             {
-                fprintf(stderr, "Invalid JSON for --json: value must be a JSON object (e.g. '{\"key\":\"val\"}')\n");
+                fprintf(stderr, "[wtcli] send-event: no --pane given and no active pane to use as the event source.\n");
                 exitCode = 1;
                 return;
             }
-
-            Json::StreamWriterBuilder wb;
-            wb["indentation"] = "";
-            server.SendEvent(winrt::to_hstring(Json::writeString(wb, evt)));
+            resolvedSessionId = GuidToString(activeSid);
         }
-        catch (const winrt::hresult_error& e)
+        Json::Value evt;
+        if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, evt))
         {
-            fprintf(stderr, "SendEvent failed: 0x%08X\n", static_cast<uint32_t>(e.code()));
+            fprintf(stderr, "Invalid JSON for --json: value must be a JSON object (e.g. '{\"key\":\"val\"}')\n");
             exitCode = 1;
+            return;
         }
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        wil::unique_bstr evtB{ Bstr(Json::writeString(wb, evt)) };
+        auto hr = server->SendEvent(evtB.get());
+        if (FAILED(hr)) { fprintf(stderr, "SendEvent failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; }
     });
 
     // ── listen ──
@@ -753,11 +816,16 @@ int main()
     listenCmd->add_option("-t,--target", listenTarget, "Filter by session ID (GUID)");
     listenCmd->add_option("--event", listenEventFilter, "Filter by event type (supports trailing wildcard, e.g. agent.*)");
     listenCmd->callback([&]() {
-        auto server = ConnectToTerminal();
+        auto server = connect();
         if (!server) { exitCode = 1; return; }
 
-        // Set up Ctrl-C handler to unblock the wait.
         static HANDLE s_stopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!s_stopEvent)
+        {
+            fprintf(stderr, "[wtcli] listen: failed to create stop event (0x%08X)\n", GetLastError());
+            exitCode = 1;
+            return;
+        }
         SetConsoleCtrlHandler([](DWORD) -> BOOL {
             SetEvent(s_stopEvent);
             return TRUE;
@@ -766,35 +834,32 @@ int main()
         if (!jsonMode)
             fprintf(stderr, "Listening for events... (Ctrl-C to stop)\n");
 
-        auto callback = winrt::make<EventCallback>([&](winrt::hstring const& eventJson) {
-            auto eventUtf8 = winrt::to_string(eventJson);
-
-            // Optionally filter by session_id and/or event type
+        // EventSink is born with _ref == 1, so attach() (adopt, no AddRef) hands
+        // that reference to the com_ptr. RAII then Releases on every exit path --
+        // exception-safe and robust against future early-returns, no manual
+        // Release to forget.
+        winrt::com_ptr<ITerminalProtocolEventSink> sink;
+        sink.attach(new EventSink([&](const std::string& eventUtf8) {
             if (!wtcli::MatchesEventFilter(eventUtf8, listenTarget, listenEventFilter))
-            {
                 return;
-            }
-
             printf("%s\n", eventUtf8.c_str());
             fflush(stdout);
-        });
+        }));
 
-        try
+        auto hr = server->Subscribe(sink.get());
+        if (FAILED(hr))
         {
-            server.Subscribe(callback);
-        }
-        catch (winrt::hresult_error const& e)
-        {
-            fprintf(stderr, "Subscribe failed: %ls\n", e.message().c_str());
+            fprintf(stderr, "Subscribe failed: 0x%08X\n", static_cast<uint32_t>(hr));
             exitCode = 1;
-            CloseHandle(s_stopEvent);
             return;
         }
 
-        // Block until Ctrl-C.
         WaitForSingleObject(s_stopEvent, INFINITE);
-        server.Unsubscribe();
-        CloseHandle(s_stopEvent);
+        server->Unsubscribe();
+        // s_stopEvent is intentionally NOT closed: it is static and still
+        // referenced by the registered Ctrl-C handler (a non-capturing lambda
+        // that can only reach it via the static), so closing it would leave the
+        // handler pointing at an invalid handle. It is reclaimed at process exit.
     });
 
     // ── Default (no subcommand) ──
@@ -802,12 +867,19 @@ int main()
         if (app.get_subcommands().empty())
         {
             printf("wtcli — Windows Terminal CLI\n\n");
-            printf("Usage: wtcli [--json] [--pipe-name NAME] <subcommand>\n\n");
+            printf("Usage: wtcli [--json] <subcommand>\n\n");
             printf("Run 'wtcli --help' for available subcommands.\n");
         }
     });
 
-    CLI11_PARSE(app, __argc, __argv);
+    try
+    {
+        app.parse(__argc, __argv);
+    }
+    catch (const CLI::ParseError& e)
+    {
+        return app.exit(e);
+    }
 
     return exitCode;
 }

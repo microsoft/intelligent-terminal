@@ -51,7 +51,7 @@ Read the [announcement blog post](https://devblogs.microsoft.com/commandline/ann
 ## Installing and running Intelligent Terminal
 
 > [!NOTE]
-> Intelligent Terminal requires Windows 11 22H2 or later (22621.6060+). You also need a supported agent CLI and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
+> Intelligent Terminal requires Windows 10 2004 (19041) or later. You also need a supported agent CLI and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
 
 ### Microsoft Store (recommended)
 
@@ -216,7 +216,21 @@ Building Intelligent Terminal is the same as building Windows Terminal. See the 
 
 ## Feedback
 
-Intelligent Terminal is in an experimental stage. If you have a feature request or find a bug, [submit an issue](https://github.com/microsoft/intelligent-terminal/issues) on the GitHub repository. When filing a bug, the **Report a bug (collect logs)** command in the Command Palette (<kbd>Ctrl+Shift+P</kbd>) bundles your diagnostic logs into a timestamped ZIP on your Desktop — attach it to the issue so we have full context.
+Intelligent Terminal is in an experimental stage. If you have a feature request or find a bug, [submit an issue](https://github.com/microsoft/intelligent-terminal/issues) on the GitHub repository.
+
+### Collecting Logs
+
+To help us investigate bugs, please collect and attach diagnostic logs when filing an issue:
+
+1. Open Command Palette with <kbd>Ctrl+Shift+P</kbd>
+2. Search for **Report a bug (collect logs)**
+
+<p align="center">
+  <img src="./images/intelligent-terminal-collect-logs.png" alt="Screenshot of Command Palette showing 'Report a bug (collect logs)' command">
+</p>
+
+3. A ZIP file containing your error logs will be generated and opened in File Explorer
+4. Attach the ZIP to your issue so we can investigate with full context
 
 Intelligent Terminal ships as a separate app and installs next to your existing Windows Terminal. If you don't want agents in your terminal, nothing changes for you. With this model, we can learn, experiment, and iterate with you, the community, on what this evolution might look like without breaking your existing Windows Terminal flows.
 
