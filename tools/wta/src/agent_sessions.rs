@@ -285,36 +285,6 @@ pub enum SessionEvent {
     ResumePaneAssigned { key: AgentKey, pane_session_id: String },
 }
 
-pub fn session_event_log_summary(event: &SessionEvent) -> String {
-    match event {
-        SessionEvent::SessionStarted {
-            key,
-            cli_source,
-            pane_session_id,
-            ..
-        } => format!(
-            "kind=SessionStarted key={key} cli_source={cli_source:?} pane_session_id={pane_session_id}"
-        ),
-        SessionEvent::ToolStarting { key, tool_name } => {
-            format!("kind=ToolStarting key={key} tool_name={tool_name}")
-        }
-        SessionEvent::ToolCompleted { key } => format!("kind=ToolCompleted key={key}"),
-        SessionEvent::Notification { key, .. } => format!("kind=Notification key={key}"),
-        SessionEvent::SessionStopped { key, .. } => format!("kind=SessionStopped key={key}"),
-        SessionEvent::ConnectionFailed {
-            pane_session_id, ..
-        } => format!("kind=ConnectionFailed pane_session_id={pane_session_id}"),
-        SessionEvent::PaneClosed { pane_session_id } => {
-            format!("kind=PaneClosed pane_session_id={pane_session_id}")
-        }
-        SessionEvent::ResumeDispatched { key } => format!("kind=ResumeDispatched key={key}"),
-        SessionEvent::ResumePaneAssigned {
-            key,
-            pane_session_id,
-        } => format!("kind=ResumePaneAssigned key={key} pane_session_id={pane_session_id}"),
-    }
-}
-
 /// Returns `true` for tool names that represent the agent soliciting input
 /// from the user (a clarifying question or a forced-choice prompt) rather
 /// than running an autonomous task. Such tools never auto-complete — they
