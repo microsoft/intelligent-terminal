@@ -21,9 +21,9 @@ SamplerState samplerState;
 // Terminal settings such as the resolution of the texture
 cbuffer PixelShaderSettings {
   // The number of seconds since the pixel shader was enabled
-  float  Time;
+  float1 Time;
   // UI Scale
-  float  Scale;
+  float2 Scale;
   // Resolution of the shaderTexture
   float2 Resolution;
   // Background color as rgba
@@ -84,9 +84,9 @@ SamplerState samplerState;
 // Terminal settings such as the resolution of the texture
 cbuffer PixelShaderSettings {
   // The number of seconds since the pixel shader was enabled
-  float  Time;
+  float1 Time;
   // UI Scale
-  float  Scale;
+  float2 Scale;
   // Resolution of the shaderTexture
   float2 Resolution;
   // Background color as rgba
@@ -114,7 +114,7 @@ float4 main(float4 pos : SV_POSITION, float2 tex : TEXCOORD) : SV_TARGET
 
 
     // ny is used to compute the rasterbar base color
-    float cola = ny*2.0*pi;
+    float colo = ny*2.0*pi;
     float3 col = 0.75+0.25*float3(sin(cola*0.111), sin(cola*0.222), sin(cola*0.333));
 
     // my is used to compute the rasterbar brightness
