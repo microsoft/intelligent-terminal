@@ -156,6 +156,7 @@ parallelizable
 passthrough
 peekable
 perlw
+pinnable
 pkgver
 postmodern
 Powerline
