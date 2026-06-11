@@ -107,17 +107,49 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Churachkan...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot churay mana allinchu karqa. Ñit'i llika t'inkiykita qhaway chaymanta watiqmanta ruwarinapaq.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ {0} churay Windows Package Manager kamachiywan hark'asqa karqa. Kamachisqa dispositivopi kaspa, IT admin-niykiman rimay.</value>
+    <comment>FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ {0} mana churayta atirqanchu (pantay código {1}). Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ {0} mana churayta atirqanchu. Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0} installer pantayta willarqa (código {1}). Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ {0} churachkaspa Windows Package Manager-man mana chayakuyta atirqanchu. Internet tinkisqaykita qhaway (VPN, proxy utaq firewall hark'achkanman), chaymanta watiqmanta ruwarinapaq.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Kay sistemapi {0}paq tinkuq installer mana kachkanchu (OS version utaq architecture yanapasqa mana kanmanchu). {0} makillawan churay.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} Windows Package Manager catalog nisqapi mana tarikusqachu. Ñawpaqta winget sources nisqakunata musuqyachiy, utaq {0} makillawan churay.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0} churay 20 minutomanta aswan unayta apakurqa. Intelligent Terminal suyayta saqirqa, ichaqa installerqa qhipa llamk'aypi hina purichkanman. Task Manager qhaway, utaq qhipaman watiqmanta ruwariy.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>⚠ Windows Package Manager (winget) mana churasqachu icha mana tarikuqchu. Ñawpaqta churaruy, chaymanta watiqmanta ruwarinapaq.</value>
-    <comment>{Locked="winget","PATH"} Error shown in the FRE setup overlay when a prerequisite install was attempted but the winget command is not on PATH.</comment>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js churay mana allinchu karqa. Ñit'i llika t'inkiykita qhaway chaymanta watiqmanta ruwarinapaq.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Kachkan</value>

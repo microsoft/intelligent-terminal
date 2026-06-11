@@ -45,6 +45,8 @@ use std::sync::{Arc, OnceLock, Weak};
 /// back-pressure the agent CLI's I/O loop and freeze every other
 /// helper sharing this master.
 const NOTIF_CHANNEL_CAPACITY: usize = 1024;
+const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
+const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 
 use acp::Agent as _;
 use acp::Client as _;
@@ -492,7 +494,6 @@ impl acp::Client for MasterClient {
             op = "write_text_file",
             helper_id = ?helper_id,
             session_id = ?sid,
-            path = ?args.path,
             "forwarding fs/write_text_file to helper"
         );
         forwarder.write_text_file(args).await
@@ -510,7 +511,6 @@ impl acp::Client for MasterClient {
             op = "read_text_file",
             helper_id = ?helper_id,
             session_id = ?sid,
-            path = ?args.path,
             "forwarding fs/read_text_file to helper"
         );
         forwarder.read_text_file(args).await
@@ -530,14 +530,6 @@ impl acp::Client for MasterClient {
             session_id = ?sid,
             args_len = args.args.len(),
             "forwarding terminal/create to helper"
-        );
-        // Command line can carry user/file content — trace only.
-        tracing::trace!(
-            target: "master.content",
-            session_id = ?sid,
-            command = %args.command,
-            args = ?args.args,
-            "create_terminal command"
         );
         forwarder.create_terminal(args).await
     }
@@ -702,6 +694,30 @@ impl HelperHandler {
             acp::Error::internal_error().data(serde_json::json!("helper connection dropped"))
         })
     }
+
+    async fn forward_new_session_to_agent(
+        &self,
+        args: acp::NewSessionRequest,
+        timeout: std::time::Duration,
+    ) -> acp::Result<acp::NewSessionResponse> {
+        let timeout_secs = timeout.as_secs();
+        tokio::time::timeout(timeout, self.agent_conn.new_session(args))
+            .await
+            .map_err(|_| {
+                let message = format!("agent CLI session/new timed out after {timeout_secs}s");
+                tracing::error!(
+                    target: "master",
+                    step = "helper→agent",
+                    op = "new_session",
+                    helper_id = ?self.helper_id,
+                    timeout_secs,
+                    "agent CLI session/new timed out"
+                );
+                acp::Error::new(-32603, message.clone()).data(serde_json::json!({
+                    "message": message
+                }))
+            })?
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -775,12 +791,16 @@ impl acp::Agent for HelperHandler {
             step = "helper→agent",
             op = "new_session",
             helper_id = ?self.helper_id,
-            cwd = ?args.cwd,
             mcp_servers = args.mcp_servers.len(),
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
         );
-        let resp = self.agent_conn.new_session(args).await?;
+        let resp = self
+            .forward_new_session_to_agent(
+                args,
+                std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
+            )
+            .await?;
         let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
@@ -1282,7 +1302,8 @@ impl MasterPipeDiscoveryGuard {
                 if let Err(err) = std::fs::create_dir_all(parent) {
                     tracing::warn!(
                         target: "master",
-                        path = %path.display(),
+                        discovery_file = MASTER_PIPE_DISCOVERY_FILE,
+                        pipe_name = %pipe_name,
                         error = %err,
                         "failed to create master pipe discovery directory"
                     );
@@ -1295,14 +1316,15 @@ impl MasterPipeDiscoveryGuard {
             match std::fs::write(path, pipe_name) {
                 Ok(()) => tracing::info!(
                     target: "master",
-                    path = %path.display(),
+                    discovery_file = MASTER_PIPE_DISCOVERY_FILE,
                     pipe_name = %pipe_name,
                     "master pipe discovery file written"
                 ),
                 Err(err) => {
                     tracing::warn!(
                         target: "master",
-                        path = %path.display(),
+                        discovery_file = MASTER_PIPE_DISCOVERY_FILE,
+                        pipe_name = %pipe_name,
                         error = %err,
                         "failed to write master pipe discovery file"
                     );
@@ -1332,7 +1354,8 @@ impl Drop for MasterPipeDiscoveryGuard {
             if let Err(err) = std::fs::remove_file(path) {
                 tracing::warn!(
                     target: "master",
-                    path = %path.display(),
+                    discovery_file = MASTER_PIPE_DISCOVERY_FILE,
+                    pipe_name = %self.pipe_name,
                     error = %err,
                     "failed to remove master pipe discovery file"
                 );
@@ -2019,6 +2042,34 @@ async fn handle_sessions_list(
     state: &MasterStateInner,
     params: &serde_json::value::RawValue,
 ) -> acp::Result<acp::ExtResponse> {
+    handle_sessions_list_with(state, params, |cli, key| {
+        crate::history_loader::lookup_title_for_session(cli, key)
+    })
+    .await
+}
+
+/// Testable inner of [`handle_sessions_list`]: the per-CLI disk title lookup is
+/// injected so tests can avoid touching `USERPROFILE`. Production uses the
+/// wrapper above pinned to `history_loader::lookup_title_for_session`.
+///
+/// Before returning the snapshot, opportunistically upgrade any row whose title
+/// is still synthetic (empty / cwd-basename) from the CLI's on-disk artefacts.
+/// This is what gets a title onto **born-bound** rows — e.g. `?<prompt>`
+/// delegate sessions, which register a single `SessionStarted` with an empty
+/// title at launch (before the CLI has written its generated `name:`) and, being
+/// hook-independent, receive no follow-up events to re-trigger
+/// `handle_session_hook`'s refresh. The `/sessions` view re-polls `sessions/list`
+/// every 5s, so refreshing here surfaces the title once the CLI writes it. The
+/// `is_synthetic` early-out inside `try_refresh_title_from_disk_with` keeps this
+/// cheap: a row is read from disk only while it still lacks a real title.
+async fn handle_sessions_list_with<F>(
+    state: &MasterStateInner,
+    params: &serde_json::value::RawValue,
+    lookup: F,
+) -> acp::Result<acp::ExtResponse>
+where
+    F: Fn(crate::agent_sessions::CliSource, &str) -> Option<String> + Copy,
+{
     crate::session_registry::parse_sessions_list_params(params).map_err(|err| {
         tracing::warn!(
             target: "master",
@@ -2028,6 +2079,13 @@ async fn handle_sessions_list(
         );
         acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
     })?;
+
+    for row in state.registry.snapshot().await {
+        // `try_refresh_title_from_disk_with` no-ops internally unless the title
+        // is still synthetic and a `cli_source` is present, so we can call it
+        // for every row without pre-filtering.
+        try_refresh_title_from_disk_with(&state.registry, &row.session_id, lookup).await;
+    }
 
     let mut sessions = state.registry.snapshot().await;
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
@@ -2282,7 +2340,7 @@ where
         tracing::info!(
             target: "session_hook",
             session_id = %sid.0,
-            new_title = %disk_title,
+            title_len = disk_title.chars().count(),
             "upgraded synthetic title from on-disk session artefacts",
         );
     }
@@ -2528,6 +2586,60 @@ async fn handle_session_focus(
 mod tests {
     use super::*;
     use acp::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
+    use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+
+    struct NoopClient;
+
+    #[async_trait::async_trait(?Send)]
+    impl acp::Client for NoopClient {
+        async fn request_permission(
+            &self,
+            _args: acp::RequestPermissionRequest,
+        ) -> acp::Result<acp::RequestPermissionResponse> {
+            Err(acp::Error::method_not_found())
+        }
+
+        async fn session_notification(
+            &self,
+            _args: acp::SessionNotification,
+        ) -> acp::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct PendingNewSessionAgent;
+
+    #[async_trait::async_trait(?Send)]
+    impl acp::Agent for PendingNewSessionAgent {
+        async fn initialize(
+            &self,
+            _args: acp::InitializeRequest,
+        ) -> acp::Result<acp::InitializeResponse> {
+            Ok(acp::InitializeResponse::new(acp::ProtocolVersion::V1))
+        }
+
+        async fn authenticate(
+            &self,
+            _args: acp::AuthenticateRequest,
+        ) -> acp::Result<acp::AuthenticateResponse> {
+            Ok(acp::AuthenticateResponse::new())
+        }
+
+        async fn new_session(
+            &self,
+            _args: acp::NewSessionRequest,
+        ) -> acp::Result<acp::NewSessionResponse> {
+            futures::future::pending().await
+        }
+
+        async fn prompt(&self, _args: acp::PromptRequest) -> acp::Result<acp::PromptResponse> {
+            Err(acp::Error::method_not_found())
+        }
+
+        async fn cancel(&self, _args: acp::CancelNotification) -> acp::Result<()> {
+            Ok(())
+        }
+    }
 
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
@@ -2539,6 +2651,68 @@ mod tests {
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
             helper_meta: Mutex::new(HashMap::new()),
         })
+    }
+
+    fn client_connection_to_pending_new_session_agent() -> Arc<acp::ClientSideConnection> {
+        let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client_pipe);
+        let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+
+        let (_agent_conn, agent_io) = acp::AgentSideConnection::new(
+            PendingNewSessionAgent,
+            agent_write.compat_write(),
+            agent_read.compat(),
+            |fut| {
+                tokio::task::spawn_local(fut);
+            },
+        );
+        tokio::task::spawn_local(async move {
+            let _ = agent_io.await;
+        });
+
+        let (client_conn, client_io) = acp::ClientSideConnection::new(
+            NoopClient,
+            client_write.compat_write(),
+            client_read.compat(),
+            |fut| {
+                tokio::task::spawn_local(fut);
+            },
+        );
+        tokio::task::spawn_local(async move {
+            let _ = client_io.await;
+        });
+
+        Arc::new(client_conn)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn new_session_timeout_is_enforced_by_master_forwarder() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+                let handler = HelperHandler {
+                    helper_id: HelperId(1),
+                    agent_conn: client_connection_to_pending_new_session_agent(),
+                    state: make_state(),
+                    notif_tx,
+                    agent_side_slot: Arc::new(OnceLock::new()),
+                };
+
+                let err = handler
+                    .forward_new_session_to_agent(
+                        acp::NewSessionRequest::new(PathBuf::from(r"C:\repo")),
+                        std::time::Duration::from_millis(1),
+                    )
+                    .await
+                    .expect_err("master should return an ACP error when agent session/new hangs");
+
+                assert_eq!(err.code, acp::ErrorCode::InternalError);
+                assert!(
+                    format!("{err}").contains("agent CLI session/new timed out"),
+                    "error should identify master->agent session/new timeout: {err}"
+                );
+            })
+            .await;
     }
 
     #[test]
@@ -3132,6 +3306,49 @@ mod tests {
             .expect("response parses");
 
         assert_eq!(parsed.sessions, vec![row]);
+    }
+
+    #[tokio::test]
+    async fn sessions_list_upgrades_synthetic_title_from_disk() {
+        // Born-bound rows (e.g. ?<prompt> delegate sessions) register a single
+        // SessionStarted with an empty title — before the CLI has written its
+        // generated `name:` — and, being hook-independent, get no follow-up
+        // events to re-trigger the per-hook title refresh. The /sessions view
+        // re-polls sessions/list every 5s, so the list handler must surface the
+        // CLI-generated title once it lands on disk.
+        use crate::session_registry::{self, SessionInfo};
+        use std::path::PathBuf;
+
+        let state = make_state();
+        let mut row = SessionInfo::new(
+            SessionId::new("born-bound"),
+            PathBuf::from("C:\\Windows\\system32"),
+        );
+        row.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
+        // title left None → synthetic, exactly as at born-bound launch time.
+        state.registry.upsert(row).await;
+
+        let req = session_registry::build_sessions_list_request();
+        let resp = handle_sessions_list_with(&state, &req.params, |cli, key| {
+            assert_eq!(cli, crate::agent_sessions::CliSource::Copilot);
+            assert_eq!(key, "born-bound");
+            Some("Implement Greeting Function".to_string())
+        })
+        .await
+        .expect("sessions/list succeeds");
+        let parsed =
+            session_registry::parse_sessions_list_response(&resp.0).expect("response parses");
+
+        let upgraded = parsed
+            .sessions
+            .iter()
+            .find(|s| s.session_id == SessionId::new("born-bound"))
+            .expect("born-bound row present in snapshot");
+        assert_eq!(
+            upgraded.title.as_deref(),
+            Some("Implement Greeting Function"),
+            "synthetic born-bound title should be upgraded from on-disk artefacts"
+        );
     }
 
     #[tokio::test]
