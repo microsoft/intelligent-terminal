@@ -45,6 +45,7 @@ use std::sync::{Arc, OnceLock, Weak};
 /// back-pressure the agent CLI's I/O loop and freeze every other
 /// helper sharing this master.
 const NOTIF_CHANNEL_CAPACITY: usize = 1024;
+const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
 
 use acp::Agent as _;
 use acp::Client as _;
@@ -780,7 +781,26 @@ impl acp::Agent for HelperHandler {
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
         );
-        let resp = self.agent_conn.new_session(args).await?;
+        let resp = tokio::time::timeout(
+            std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
+            self.agent_conn.new_session(args),
+        )
+        .await
+        .map_err(|_| {
+            tracing::error!(
+                target: "master",
+                step = "helper→agent",
+                op = "new_session",
+                helper_id = ?self.helper_id,
+                timeout_secs = SESSION_NEW_TIMEOUT_SECS,
+                "agent CLI session/new timed out"
+            );
+            acp::Error::internal_error().data(serde_json::json!({
+                "message": format!(
+                    "agent CLI session/new timed out after {SESSION_NEW_TIMEOUT_SECS}s"
+                )
+            }))
+        })??;
         let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.

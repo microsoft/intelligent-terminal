@@ -2113,13 +2113,9 @@ async fn handle_load_failure(
     });
     let mut new_req = acp::NewSessionRequest::new(cwd);
     inject_wta_pane_meta(&mut new_req.meta);
-    let fallback = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        conn.new_session(new_req),
-    )
-    .await;
+    let fallback = conn.new_session(new_req).await;
     match fallback {
-        Ok(Ok(resp)) => {
+        Ok(resp) => {
             let new_sid = resp.session_id.clone();
             tracing::info!(
                 target: "acp_load_session",
@@ -2163,7 +2159,7 @@ async fn handle_load_failure(
                 current_model_id,
             });
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             tracing::error!(
                 target: "acp_load_session",
                 tab = %tab_id,
@@ -2173,17 +2169,6 @@ async fn handle_load_failure(
             let _ = event_tx.send(AppEvent::TabError {
                 tab_id,
                 message: format!("Fallback new_session also failed: {}", e),
-            });
-        }
-        Err(_) => {
-            tracing::error!(
-                target: "acp_load_session",
-                tab = %tab_id,
-                "boot-time load fallback new_session timed out after 30s"
-            );
-            let _ = event_tx.send(AppEvent::TabError {
-                tab_id,
-                message: "Fallback new_session timed out after 30s.".to_string(),
             });
         }
     }
@@ -2483,21 +2468,14 @@ pub async fn run_acp_client_over_pipe(
             startup_probe.log("Creating session (over pipe)");
             let mut new_session_req = acp::NewSessionRequest::new(cwd.clone());
             inject_wta_pane_meta(&mut new_session_req.meta);
-            let session_future = conn.new_session(new_session_req);
-            let session =
-                tokio::time::timeout(std::time::Duration::from_secs(30), session_future)
-                    .await
-                    .map_err(|_| {
-                        anyhow::anyhow!("new_session over master pipe timed out after 30s")
-                    })?
-                    .map_err(|e| {
-                        // Attach the typed classification so an auth error
-                        // (or any ACP code) survives the `?`-collapse into
-                        // `anyhow` and can be recovered by `classify_anyhow`
-                        // downcast at the receiver (main.rs).
-                        anyhow::Error::new(AgentFailure::from_acp_error(&e))
-                            .context(format!("new_session over master pipe failed: {e}"))
-                    })?;
+            let session = conn.new_session(new_session_req).await.map_err(|e| {
+                // Attach the typed classification so an auth error
+                // (or any ACP code) survives the `?`-collapse into
+                // `anyhow` and can be recovered by `classify_anyhow`
+                // downcast at the receiver (main.rs).
+                anyhow::Error::new(AgentFailure::from_acp_error(&e))
+                    .context(format!("new_session over master pipe failed: {e}"))
+            })?;
 
             let session_id = session.session_id.clone();
             startup_probe.log(&format!("Session created (over pipe): {}", session_id));
