@@ -2042,34 +2042,6 @@ async fn handle_sessions_list(
     state: &MasterStateInner,
     params: &serde_json::value::RawValue,
 ) -> acp::Result<acp::ExtResponse> {
-    handle_sessions_list_with(state, params, |cli, key| {
-        crate::history_loader::lookup_title_for_session(cli, key)
-    })
-    .await
-}
-
-/// Testable inner of [`handle_sessions_list`]: the per-CLI disk title lookup is
-/// injected so tests can avoid touching `USERPROFILE`. Production uses the
-/// wrapper above pinned to `history_loader::lookup_title_for_session`.
-///
-/// Before returning the snapshot, opportunistically upgrade any row whose title
-/// is still synthetic (empty / cwd-basename) from the CLI's on-disk artefacts.
-/// This is what gets a title onto **born-bound** rows — e.g. `?<prompt>`
-/// delegate sessions, which register a single `SessionStarted` with an empty
-/// title at launch (before the CLI has written its generated `name:`) and, being
-/// hook-independent, receive no follow-up events to re-trigger
-/// `handle_session_hook`'s refresh. The `/sessions` view re-polls `sessions/list`
-/// every 5s, so refreshing here surfaces the title once the CLI writes it. The
-/// `is_synthetic` early-out inside `try_refresh_title_from_disk_with` keeps this
-/// cheap: a row is read from disk only while it still lacks a real title.
-async fn handle_sessions_list_with<F>(
-    state: &MasterStateInner,
-    params: &serde_json::value::RawValue,
-    lookup: F,
-) -> acp::Result<acp::ExtResponse>
-where
-    F: Fn(crate::agent_sessions::CliSource, &str) -> Option<String> + Copy,
-{
     crate::session_registry::parse_sessions_list_params(params).map_err(|err| {
         tracing::warn!(
             target: "master",
@@ -2079,13 +2051,6 @@ where
         );
         acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
     })?;
-
-    for row in state.registry.snapshot().await {
-        // `try_refresh_title_from_disk_with` no-ops internally unless the title
-        // is still synthetic and a `cli_source` is present, so we can call it
-        // for every row without pre-filtering.
-        try_refresh_title_from_disk_with(&state.registry, &row.session_id, lookup).await;
-    }
 
     let mut sessions = state.registry.snapshot().await;
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
@@ -3306,49 +3271,6 @@ mod tests {
             .expect("response parses");
 
         assert_eq!(parsed.sessions, vec![row]);
-    }
-
-    #[tokio::test]
-    async fn sessions_list_upgrades_synthetic_title_from_disk() {
-        // Born-bound rows (e.g. ?<prompt> delegate sessions) register a single
-        // SessionStarted with an empty title — before the CLI has written its
-        // generated `name:` — and, being hook-independent, get no follow-up
-        // events to re-trigger the per-hook title refresh. The /sessions view
-        // re-polls sessions/list every 5s, so the list handler must surface the
-        // CLI-generated title once it lands on disk.
-        use crate::session_registry::{self, SessionInfo};
-        use std::path::PathBuf;
-
-        let state = make_state();
-        let mut row = SessionInfo::new(
-            SessionId::new("born-bound"),
-            PathBuf::from("C:\\Windows\\system32"),
-        );
-        row.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
-        // title left None → synthetic, exactly as at born-bound launch time.
-        state.registry.upsert(row).await;
-
-        let req = session_registry::build_sessions_list_request();
-        let resp = handle_sessions_list_with(&state, &req.params, |cli, key| {
-            assert_eq!(cli, crate::agent_sessions::CliSource::Copilot);
-            assert_eq!(key, "born-bound");
-            Some("Implement Greeting Function".to_string())
-        })
-        .await
-        .expect("sessions/list succeeds");
-        let parsed =
-            session_registry::parse_sessions_list_response(&resp.0).expect("response parses");
-
-        let upgraded = parsed
-            .sessions
-            .iter()
-            .find(|s| s.session_id == SessionId::new("born-bound"))
-            .expect("born-bound row present in snapshot");
-        assert_eq!(
-            upgraded.title.as_deref(),
-            Some("Implement Greeting Function"),
-            "synthetic born-bound title should be upgraded from on-disk artefacts"
-        );
     }
 
     #[tokio::test]
