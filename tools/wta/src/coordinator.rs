@@ -688,10 +688,19 @@ fn build_delegate_launch_commandline(
     // always see the current PATH, not a stale snapshot from process startup.
     let resolved = resolve_commandline_executable(commandline);
 
-    // Resolve the agent profile once from the *unwrapped* exe so flag lookups
-    // (model, session id) see the real CLI — not a later `cmd /c` wrapper.
-    let exe = resolved.split_whitespace().next().unwrap_or("");
-    let profile = agent_registry::lookup_profile(exe);
+    // Identify the agent profile from the *raw* command line so flag lookups
+    // (model, session id) see the real CLI -- not a later `cmd /c` wrapper, and
+    // not the PATH-resolved exe (which may be a quoted path containing spaces
+    // that a naive whitespace split would mangle into `"C:\Program`).
+    // `resolve_agent_id_from_cmd` tokenizes correctly and also recognizes
+    // adapter launches (e.g. `npx -y @zed-industries/claude-code-acp` -> claude).
+    // Using the same raw command line that `delegate_with_context` inspects to
+    // decide whether to pin a session id keeps that decision and the flag we
+    // append here in agreement -- otherwise we could register a born-bound id
+    // that the CLI was never actually launched with.
+    let profile = agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(
+        commandline,
+    ));
 
     // If a model is configured, append --model <value> using the agent's model flags.
     let with_model = if let Some(ref model) = runtime.model {
@@ -1244,9 +1253,12 @@ mod tests {
             model: None,
         };
 
-        let commandline =
-            build_delegate_launch_commandline_with_session(&runtime, Some("hi"), Some("11111111-2222-3333-4444-555555555555"))
-                .unwrap();
+        let commandline = build_delegate_launch_commandline_with_session(
+            &runtime,
+            Some("hi"),
+            Some("11111111-2222-3333-4444-555555555555"),
+        )
+        .unwrap();
 
         assert!(
             commandline.contains("--session-id 11111111-2222-3333-4444-555555555555"),
@@ -1257,6 +1269,36 @@ mod tests {
         assert!(
             flag_pos > agent_pos,
             "--session-id must follow the agent, not attach to a cmd wrapper: {commandline}"
+        );
+    }
+
+    #[test]
+    fn pinned_session_id_appended_for_adapter_launch_command() {
+        // Regression for the agent-identification bug behind PR review: an
+        // adapter-style launch ("npx -y @zed-industries/claude-code-acp" ->
+        // claude) must still be recognized as a pinnable agent. The old
+        // `split_whitespace().next()` + lookup_profile saw "npx" ->
+        // DEFAULT_PROFILE -> no --session-id; `resolve_agent_id_from_cmd`
+        // resolves the adapter command to claude, which advertises the flag.
+        let runtime = DelegateAgentRuntime {
+            id: "claude".to_string(),
+            name: "Claude".to_string(),
+            description: "Launches claude as a delegate agent.".to_string(),
+            commandline: "npx -y @zed-industries/claude-code-acp".to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        };
+
+        let commandline = build_delegate_launch_commandline_with_session(
+            &runtime,
+            Some("hi"),
+            Some("11111111-2222-3333-4444-555555555555"),
+        )
+        .unwrap();
+
+        assert!(
+            commandline.contains("--session-id 11111111-2222-3333-4444-555555555555"),
+            "adapter launch must be identified as a pinnable agent: {commandline}"
         );
     }
 

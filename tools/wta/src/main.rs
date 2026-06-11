@@ -1261,9 +1261,9 @@ async fn fetch_sessions_from_master(
 /// *born-bound* row — bound to its pane, with no hooks involved. Reuses the
 /// existing `intellterm.wta/session_hook` path with a `SessionStarted` event,
 /// which the master reducer turns into a Class-B (`origin = Unknown`) row whose
-/// `pane_session_id` is the pane we just created. Silent no-op when master is
-/// unreachable: without master there is no registry to populate, so dropping
-/// the registration is harmless (the tab still opened).
+/// `pane_session_id` is the pane we just created. Best-effort: if master is
+/// unreachable there is no registry to populate, so the registration is
+/// dropped (logged at `warn`) and the tab still opens normally.
 async fn register_launched_session_with_master(
     session_id: &str,
     pane_session_id: &str,
@@ -1749,13 +1749,17 @@ async fn delegate_with_context(
 
     // Pin a session id we choose, so the launched CLI writes its session under a
     // known id and we can bind it to the pane without hooks. Only for agents that
-    // advertise `--session-id` (Copilot/Claude/Gemini); `None` otherwise. The
-    // command builder appends the flag using the same registry lookup, so the
-    // pinned id and the actual launch flag always agree.
-    let resolved_exe = runtime.commandline.split_whitespace().next().unwrap_or("");
-    let pinned_session_id: Option<String> = crate::agent_registry::lookup_profile(resolved_exe)
-        .new_session_id_flag
-        .map(|_| uuid::Uuid::new_v4().to_string());
+    // advertise `--session-id` (Copilot/Claude/Gemini); `None` otherwise. We
+    // identify the agent with `resolve_agent_id_from_cmd` (not a naive
+    // `split_whitespace`) so quoted/space-containing paths and adapter launches
+    // resolve correctly -- and so this decision matches the one the command
+    // builder makes when it appends the flag, keeping the pinned id and the
+    // actual launch flag in agreement.
+    let pinned_session_id: Option<String> = crate::agent_registry::lookup_profile_by_id(
+        crate::agent_registry::resolve_agent_id_from_cmd(&runtime.commandline),
+    )
+    .new_session_id_flag
+    .map(|_| uuid::Uuid::new_v4().to_string());
 
     let commandline = match prompt {
         // Prompt present → enrich it with the active pane's recent output and
