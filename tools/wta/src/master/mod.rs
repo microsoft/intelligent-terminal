@@ -1323,7 +1323,6 @@ impl MasterPipeDiscoveryGuard {
                 if let Err(err) = std::fs::create_dir_all(parent) {
                     tracing::warn!(
                         target: "master",
-                        path = %crate::logging::redact_user_path(&path),
                         error = %err,
                         "failed to create master pipe discovery directory"
                     );
@@ -1336,14 +1335,12 @@ impl MasterPipeDiscoveryGuard {
             match std::fs::write(path, pipe_name) {
                 Ok(()) => tracing::info!(
                     target: "master",
-                    path = %crate::logging::redact_user_path(&path),
                     pipe_name = %pipe_name,
                     "master pipe discovery file written"
                 ),
                 Err(err) => {
                     tracing::warn!(
                         target: "master",
-                        path = %crate::logging::redact_user_path(&path),
                         error = %err,
                         "failed to write master pipe discovery file"
                     );
@@ -1373,7 +1370,6 @@ impl Drop for MasterPipeDiscoveryGuard {
             if let Err(err) = std::fs::remove_file(path) {
                 tracing::warn!(
                     target: "master",
-                    path = %crate::logging::redact_user_path(&path),
                     error = %err,
                     "failed to remove master pipe discovery file"
                 );

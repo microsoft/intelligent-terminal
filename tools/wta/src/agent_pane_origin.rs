@@ -96,7 +96,6 @@ pub fn append_default(session_id: &str, pane_session_id: Option<&str>) {
         tracing::warn!(
             target: "agent_pane_origin",
             session_id = %session_id,
-            path = %crate::logging::redact_user_path(&path),
             error = %err,
             "failed to append origin record",
         );

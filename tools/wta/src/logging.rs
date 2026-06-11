@@ -38,43 +38,6 @@ pub(crate) fn default_filter_directive(debug_assertions: bool) -> &'static str {
     }
 }
 
-/// Replace the current user's home / app-data prefixes in a path with stable
-/// placeholders, so fixed tool / runtime paths can be logged at default levels
-/// without leaking the Windows username.
-///
-/// Only the user-profile prefix is personal in these paths (e.g.
-/// `C:\Users\<name>\AppData\Local\…\config.json`); the rest is a fixed,
-/// non-personal tool layout that stays useful for diagnostics. Use this for
-/// *known* tool/runtime paths only — for arbitrary paths the agent reads or
-/// writes (which can reveal user file/folder names beyond the prefix), keep
-/// the full path on a trace-only `*.content` target instead.
-///
-/// Prefixes are tried most-specific first (`LOCALAPPDATA` is itself under
-/// `USERPROFILE`) and matched case-insensitively (Windows paths).
-pub(crate) fn redact_user_path(path: impl AsRef<std::path::Path>) -> String {
-    let s = path.as_ref().to_string_lossy().into_owned();
-    for (var, placeholder) in [
-        ("LOCALAPPDATA", "%LOCALAPPDATA%"),
-        ("APPDATA", "%APPDATA%"),
-        ("USERPROFILE", "%USERPROFILE%"),
-    ] {
-        if let Some(prefix) = std::env::var_os(var) {
-            let prefix = prefix.to_string_lossy();
-            if prefix.is_empty() {
-                continue;
-            }
-            // `get(..len)` is None when `len` is not a char boundary, so this
-            // never panics on a non-ASCII username.
-            if let Some(head) = s.get(..prefix.len()) {
-                if head.eq_ignore_ascii_case(&prefix) {
-                    return format!("{placeholder}{}", &s[prefix.len()..]);
-                }
-            }
-        }
-    }
-    s
-}
-
 /// Root of the WTA log tree: `<local_root>/logs` (or a temp-dir fallback).
 fn logs_root() -> std::path::PathBuf {
     crate::runtime_paths::intelligent_terminal_local_root()
@@ -301,30 +264,6 @@ mod tests {
     #[test]
     fn release_build_default_is_info() {
         assert_eq!(default_filter_directive(false), "info");
-    }
-
-    #[test]
-    fn redact_user_path_strips_localappdata_prefix() {
-        let local = std::env::var_os("LOCALAPPDATA");
-        if let Some(local) = local {
-            let local = local.to_string_lossy().into_owned();
-            let full = std::path::Path::new(&local)
-                .join("IntelligentTerminal")
-                .join("master-pipe.txt");
-            let redacted = redact_user_path(&full);
-            assert!(
-                redacted.starts_with("%LOCALAPPDATA%"),
-                "expected placeholder prefix, got: {redacted}",
-            );
-            assert!(!redacted.contains(&local), "raw prefix leaked: {redacted}");
-            assert!(redacted.ends_with("master-pipe.txt"));
-        }
-    }
-
-    #[test]
-    fn redact_user_path_leaves_unrelated_paths_untouched() {
-        let p = std::path::Path::new(r"D:\unrelated\proj\file.rs");
-        assert_eq!(redact_user_path(p), r"D:\unrelated\proj\file.rs");
     }
 
     #[test]
