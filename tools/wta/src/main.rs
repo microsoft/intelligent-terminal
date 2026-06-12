@@ -974,8 +974,11 @@ fn run_hooks_install(cli: HooksCliFilter) -> Result<()> {
 
     // Verify the install actually landed by checking on-disk status.
     // ensure_installed_scoped is fire-and-forget (silent on failure),
-    // so we inspect the result independently.
-    let report = agent_hooks_installer::status();
+    // so we inspect the result independently. `status_scoped(scope)`
+    // skips the Node-CLI spawns for CLIs outside the requested scope —
+    // a `--cli copilot` install no longer pays for `claude plugin list`
+    // and `gemini extensions list` (each ~1-3s of Node startup).
+    let report = agent_hooks_installer::status_scoped(scope);
     let failed: Vec<&str> = report
         .clis
         .iter()
