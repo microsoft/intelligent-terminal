@@ -53,7 +53,7 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
 input.placeholder.connecting: "connecting..."
-input.placeholder.disconnected: "disconnect"
+input.placeholder.disconnected: "disconnected"
 # ── Pending prompt queue (src/ui/queued_hint.rs, src/app.rs) ───────────────
 # Indicator shown above the input box while one or more prompts are queued
 # waiting for the agent to finish the current turn. %{count} is the number

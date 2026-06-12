@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Vítejte v Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Vítejte v Inteligentní Terminál!"
 setup.title.agent_missing: "Agenta se nepodařilo najít"
 setup.title.agent_error: "Připojení k agentovi se nezdařilo"
 setup.title.switch_agent: "Přepnout agenta"
@@ -8,21 +8,21 @@ setup.title.not_available: "Agent není k dispozici"
 setup.title.sign_in: "Vyžadováno přihlášení"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Váš agent \"%{agent}\" není nainstalován. Postupujte podle níže uvedených kroků a nainstalujte ho. Chcete-li přepnout agenta, přejděte do Settings."
-setup.subtitle.agent_missing: "Váš agent \"%{agent}\" není nainstalován. Přeinstalujte ho ručně a zkuste to znovu. Chcete-li přepnout agenta, přejděte do Settings."
-setup.subtitle.copilot_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Postupujte podle níže uvedených kroků a přihlaste se. Chcete-li přepnout agenta, přejděte do Settings."
-setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Přihlaste se přes CLI agenta a zkuste to znovu. Chcete-li přepnout agenta, přejděte do Settings."
+setup.subtitle.copilot_missing: "Váš agent \"%{agent}\" není nainstalován. Postupujte podle níže uvedených kroků a nainstalujte ho. Chcete-li přepnout agenta, přejděte do Inteligentní Terminál Settings > Agent."
+setup.subtitle.agent_missing: "Váš agent \"%{agent}\" není nainstalován. Přeinstalujte ho ručně a zkuste to znovu. Chcete-li přepnout agenta, přejděte do Inteligentní Terminál Settings > Agent."
+setup.subtitle.copilot_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Postupujte podle níže uvedených kroků a přihlaste se. Chcete-li přepnout agenta, přejděte do Inteligentní Terminál Settings > Agent."
+setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje ověření. Přihlaste se přes agenta a pak vyberte \"Přihlásil/a jsem se\" níže. Chcete-li přepnout agenta, přejděte do Inteligentní Terminál Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Vyberte výchozí CLI agenta, které chcete používat v Intelligent Terminal. Můžete"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Vyberte výchozího agenta, kterého chcete používat v Inteligentní Terminál. Můžete"
 setup.description.fre_line2: "přejít do Settings a nakonfigurovat svůj pracovní prostor."
 
-setup.option.reinstall: "Přeinstalovat %{agent}"
-setup.option.reinstall_hint: "(Bude nainstalován automaticky)"
+setup.option.install: "Instalovat %{agent}"
+setup.option.install_hint: "(Bude nainstalován automaticky)"
 setup.option.signin: "Přihlásit se k %{agent}"
-setup.option.retry_detection: "Opakovat detekci"
-setup.option.retry_auth: "Přihlásil(a) jsem se — opakovat připojení"
-setup.option.retry_connection: "Opakovat připojení"
+setup.option.retry_detection: "Zkusit znovu"
+setup.option.retry_auth: "Přihlásil/a jsem se — zkusit se znovu připojit"
+setup.option.retry_connection: "Zkusit se znovu připojit"
 setup.option.switch_to: "Přepnout na %{agent}"
 setup.status.installing: "Instalace..."
 setup.status.install_failed: "Instalace se nezdařila: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Stiskněte Enter pro přihlášení, Esc pro návrat"  # {L
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Přemýšlím..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Vítejte v Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Vítejte v Inteligentní Terminál!"
+chat.welcome_disclaimer: "Inteligentní Terminál používá AI. Kontrolujte chyby."
 chat.plan_header: "Plán:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Automaticky diagnostikováno nedávné selhání příkazu"
+chat.turn_canceled: "(zrušeno)"
+chat.turn_executed: "→ provedeno: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Zeptejte se na cokoli, / pro příkazy.."  # {Locked="/"}
@@ -75,10 +79,17 @@ commands.help_title: " Nápověda "
 commands.help_header: "Příkazy lomítka — zadejte / do vstupního pole."
 commands.help_escape_hint: "  //text     Odešle doslovné '/' (obejde analyzátor příkazů)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Zavřít tuto nápovědu"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Zobrazit tento seznam příkazů"
+commands.clear.summary: "Vymazat historii chatu (zachová relaci)"
+commands.new.summary: "Spustit novou relaci ACP (zahodí historii)"  # {Locked="ACP"}
+commands.restart.summary: "Restartovat agenta"
+commands.stop.summary: "Zrušit probíhající výzvu"
+commands.sessions.summary: "Otevřít výběr historických relací (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ pro navigaci • Enter pro výběr • Esc pro zrušení)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ pro navigaci • ← → pro přepínání tlačítek • Enter pro výběr • Esc pro zrušení)"
 recommendations.button_run_command: "[ Spustit příkaz ]"
 recommendations.button_insert_in_terminal: "Vložit do terminálu"
 recommendations.button_open_in_new_tab: "Otevřít v nové kartě ↵"
@@ -115,25 +126,42 @@ agent.custom.auth_hint: "Ujistěte se, že %{name} je nainstalován a je v PATH.
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Načítání..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ pro navigaci • Enter pro spuštění relace v nové kartě • Shift+enter pro spuštění relace v panelu agenta • Esc pro ukončení)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ pro navigaci • Enter pro spuštění relace • Esc pro ukončení)"
 agents.status.active: "Aktivní"
 agents.status.waiting_for_input: "Čeká na vstup"
 agents.status.error: "Chyba"
 agents.status.idle: "Nečinný"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. zobrazit/skrýt panel agenta • Ctrl+Alt+/ zobrazit/skrýt relaci agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. zobrazit/skrýt panel agenta • Ctrl+Shift+/ zobrazit/skrýt relaci agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Spouštění agenta..."
 connection.reconnecting: "Opětovné připojování..."
+connection.connecting_activity: "Připojování k agentovi…"
+connection.lost: "Připojení k agentovi bylo ztraceno. Zadáním /restart se znovu připojíte."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Zrušeno."
 system.no_prompt_in_flight: "Žádný dotaz neprobíhá."
 system.authentication_failed: "Ověření se nezdařilo"
 system.command_copied_retry: "Příkaz zkopírován — spusťte ho v jiném terminálu a stiskněte Enter pro opakování"  # {Locked="Enter"}
+system.stopped_max_tokens: "Odpověď byla oříznuta po dosažení výstupního limitu modelu."
+system.stopped_max_turn_requests: "Agent se zastavil po dosažení limitu požadavků pro toto kolo."
+system.stopped_refusal: "Agent odmítl pokračovat v tomto požadavku."
+system.agent_busy: "Agent je na této kartě zaneprázdněn — počkejte, až aktuální výzva skončí."
+system.resuming_session: "Obnovuje se relace %{session_id}..."
+system.unknown_command: "Neznámý příkaz \"%{command}\" — odeslán jako výzva. Seznam zobrazíte zadáním /help."  # {Locked="/help"}
+system.busy_use_stop: "Počkejte, až aktuální výzva skončí, nebo nejdřív použijte /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nelze zaměřit relaci %{session_id}: vypadá jako živá, ale zatím není navázán žádný GUID podokna. Zkuste to znovu za chvíli."
+system.cannot_resume_no_load_session: "Nelze obnovit v podokně agenta: %{agent} neohlásil schopnost ACP `loadSession`. Stisknutím Enter (bez Shift) místo toho obnovíte relaci v novém terminálovém podokně."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nelze obnovit relaci %{agent}: tento agent nemá příznak ve stylu `--resume`. Stiskněte Shift+Enter a zkuste obnovit uvnitř podokna agenta přes ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nelze obnovit relaci %{session_id}: její zdrojový agent není této verzi WTA známý."
+system.cannot_resume_phantom_via_flag: "Nelze obnovit relaci %{agent} %{session_id}: byla spuštěna, ale nikdy neshromáždila žádnou konverzaci, takže samotný %{agent} by obnovení odmítl. Řádek se odebírá."
+system.cannot_resume_phantom_via_load: "Nelze obnovit relaci %{agent} %{session_id}: byla spuštěna, ale nikdy neshromáždila žádnou konverzaci, takže %{agent} by načtení odmítl. Řádek se odebírá."
+system.fallback.this_agent: "tento agent"
+system.fallback.connected_agent: "připojený agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nebyla nalezena žádná okna."
@@ -171,3 +199,25 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
+time.just_now: "právě teď"
+time.minute_singular: "před 1 minutou"
+time.minutes_other: "před %{count} minutami"
+time.hour_singular: "před 1 hodinou"
+time.hours_other: "před %{count} hodinami"
+time.day_singular: "před 1 dnem"
+time.days_other: "před %{count} dny"
+
+# ── Provedení doporučení (src/coordinator.rs) ───────────────────────────────
+system.choice_execution_failed: "Volba %{choice} selhala: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Vyberte model pro tento panel (/model <id> pro přímé přepnutí)"  # {Locked="/model","<id>"}
+model_picker.title: "Vyberte model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Připojený agent neohlásil žádné dostupné modely."
+system.model_set: "Model pro tento panel nastaven na %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Neznámý model %{model} — zadáním /model zobrazíte dostupný seznam."  # {Locked="%{model}","/model"}

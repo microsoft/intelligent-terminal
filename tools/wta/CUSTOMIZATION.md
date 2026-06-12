@@ -4,8 +4,8 @@
 
 Edit `agentCliPath` in the Terminal settings file you are using.
 
-Packaged Windows Terminal:
-- `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json`
+Packaged IntelligentTerminal:
+- `%LOCALAPPDATA%\Packages\Microsoft.IntelligentTerminal_8wekyb3d8bbwe\LocalState\settings.json`
 
 Portable/local IntelligentTerminal:
 - `%LOCALAPPDATA%\Programs\IntelligentTerminal\settings\settings.json`

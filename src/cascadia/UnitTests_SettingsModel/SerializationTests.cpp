@@ -463,10 +463,11 @@ namespace SettingsModelUnitTests
     void SerializationTests::CascadiaSettings()
     {
         static constexpr std::string_view settingsString{ R"({
-            "$help" : "https://aka.ms/intelligentterminal/docs",
-            "$schema" : "https://aka.ms/intelligentterminal/schema",
+            "$help" : "https://aka.ms/intelligent-terminal-docs",
+            "$schema" : "https://aka.ms/terminal-profiles-schema",
             "defaultProfile": "{61c54bbd-1111-5271-96e7-009a87ff44bf}",
             "disabledProfileSources": [ "Windows.Terminal.Wsl" ],
+            "safeUriSchemes": [ "vscode" ],
             "newTabMenu":
             [
                 {

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
   <resheader name="version"><value>2.0</value></resheader>
@@ -6,14 +6,14 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Nāu mai ki Intelligent Terminal</value>
+    <value>Nāu mai ki Iho Atamai</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Whakaritea tō kaitiaki mō-roto hei āwhina i a koe ki te whakamarama i ngā hapa, tuhi tono, me te wewete mahi i te wāhi e mahi ana koe. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>He atu kōrero mō Intelligent Terminal</value>
+    <value>He atu kōrero mō Iho Atamai</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -36,48 +36,44 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Nāu mai ki Intelligent Terminal</value>
+    <value>Nāu mai ki Iho Atamai</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Kōwhiria he aha hei whakarite ināianei. Ka taea e koe te huri i ēnei āhuatanga i ngā wā katoa i </value>
+    <value>Kōwhiria he aha hei whakarite ināianei. Ka taea e koe te huri i ēnei i ngā wā katoa. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Ngā tautuhinga</value>
+    <value>Akona me pēhea te whakamahi raraunga</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Kaitiaki</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Kōwhiria te CLI kaitiaki e whakamahia ana i te papa kaitiaki. Ka kitea aunoa ngā ACP CLI e hono ana.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Kōwhiria te kaitiaki e whakamahia ana i te papa kaitiaki, ā, e tautoko ana i te ACP.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Ka hiahiatia e tēnei kaitiaki a Node.js me NPX, ka tāutahia aunoa mēnā kāore anō.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Ka hiahiatia e tēnei kaitiaki a Node.js me NPX, ka tāutahia aunoa mēnā kāore anō.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Whakaaroaroa whakatika aunoa mō ngā whakahau kīhai i angitu</value>
+    <value>Te tono hapa aunoa</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Ina whakaahei, ka tātari aunoa te kaihoko AI i ngā whakahau kīhai i angitu, ka tūtohu whakatika. Ina whakakorea, ka whakaaturia e ngā whakahau kīhai i angitu he tohu pāwhiri ki te paewhiri tūnga — pēhi Ctrl+Alt+. mā te pāwhiri rānei i te tohu kia tono whakatika.</value>
+    <value>Tukua a Intelligent Terminal kia tuku hapa ki tō kaihoko hei tono whakatika aunoa.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Whakahaere wāhanga</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Tukua a Intelligent Terminal ki te aroturuki i te tūranga o ō kaitiaki e haere ana, e mahi ana rānei.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Tukua a Iho Atamai ki te aroturuki i te tūranga o ō kaitiaki e haere ana, e mahi ana rānei.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Mā te whakakā i tēnei ka tāuta ngā matau hono hei aroturuki wāhanga puta noa i ō CLI kaitiaki.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Mā te whakakā i tēnei ka tāuta ngā hooks hono hei aroturuki wāhanga puta noa i ō kaitiaki.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Tūranga papa</value>
@@ -111,18 +107,146 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Kei te whakarite...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ I rahua te tāuta i a GitHub Copilot. Tirohia tō hononga whatuao ka ngana anō.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ I āraia te tāutanga o {0} e tētahi kaupapahere Kaiwhakahaere Mōkī Windows. Mēnā kei runga koe i tētahi pūrere whakahaere, whakapā atu ki tō kaiwhakahaere IT.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ I rahua te tāuta i a Node.js. Tirohia tō hononga whatuao ka ngana anō.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Kāore i taea te tāuta i a {0} (waehere hapa {1}). Tirohia te rangitaki mō ngā taipitopito, tāutahia rānei a {0} ā-ringa.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Kāore i taea te tāuta i a {0}. Tirohia te rangitaki mō ngā taipitopito, tāutahia rānei a {0} ā-ringa.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ I pūrongo te kaitāuta o {0} i tētahi hapa (waehere {1}). Tirohia te rangitaki mō ngā taipitopito, tāutahia rānei a {0} ā-ringa.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Kāore i taea te toro atu ki te Kaiwhakahaere Mōkī Windows i te wā e tāuta ana i a {0}. Tirohia tō hononga ipurangi (tērā pea kei te āraia e VPN, takawaenga, pātūahi rānei), kātahi ka ngana anō.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Kāore he kaitāuta hototahi mō {0} e wātea ana i tēnei pūnaha (kāore pea te putanga OS, te hoahoanga rānei e tautokona). Tāutahia a {0} ā-ringa.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ Kāore a {0} i kitea i te putumōhio Kaiwhakahaere Mōkī Windows. Whakamātauria te whakahou i ngā pūtake winget, tāutahia rānei a {0} ā-ringa.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Neke atu i te 20 meneti te tāuta i a {0}. Kua mutu te tatari a Intelligent Terminal, engari tērā pea kei te rere tonu te kaitāuta i muri. Tirohia te Task Manager, ngana anō rānei ā muri ake.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Kāore anō te Kaiwhakahaere Mōkī Windows (winget) kia tāutatia, kāore rānei i te wātea. Tāutahia i te tuatahi, kātahi ka ngana anō.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Kā</value>
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Whaka-kati</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Kei te tātari hapa…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Kua kitea he hapa: kei te tātari…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Kua kitea he hapa: {0} hei whakatika</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
+    <value>Pāwhiritia, pēhia rānei {0} hei tono i te pokapū mō tētahi whakatikatika e marohitia ana</value>
+    <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Kua rite te whakatika. Pēhia {0} hei arotake</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Whakatuwheratia te paewhiri pokapū hei arotake i te whakatikatika e marohitia ana</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
+    <value>Kua kitea he hapa. Pāwhiri, pēhia rānei i {0} kia tono ai i te kaihoko AI ki te tātari me te taunaki whakatikatika.</value>
+    <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Kua rite te whakatika — {0} hei hoatu</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Kua rite te whakatika — {0} hei hoatu: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Kua rite te whakaaro — whakatuwheratia te pihanga agent</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>I whakakāhoretia e te whakatika-aunoa te whakatika tika i tēnei. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Pāwhiritia ki konei, pēhia rānei Ctrl+Shift+. hei whakatuwhera i te pihanga agent me te pānui i te whakaaro katoa.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Ngā tātaritanga</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Ngā wātū agent</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Ngā wātū agent: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Te kimi hapa aunoa</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Tukua a Intelligent Terminal kia uru ki tō anga me te kimi hapa aunoa.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ I rahua te tāuta i te whakaurunga anga. Kua whakawetohia te kitenga hapa. Ka taea e koe te whakahoki anō me te ngana anō, te tiaki rānei kia haere tonu i te kore.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ I rahua te tāuta i ngā session hooks. Kua whakawetohia te whakahaere whakatūnga. Ka taea e koe te whakahoki anō me te ngana anō, te tiaki rānei kia haere tonu i te kore.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Akona me pēhea te whakatika i tēnei mā te ringa</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Mā te whakakā i tēnei ka tāuta te hononga shell hei kite i ngā rahunga tono. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>He atu kōrero</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>Kei te ārai te kaupapahere whakatinana o PowerShell i ngā tuhinga.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ Kei te ārai te kaupapahere whakatinana o PowerShell i ngā tuhinga. Kua whakawetohia te kitenga hapa.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

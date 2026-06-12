@@ -116,9 +116,9 @@ extends:
               removeAllNonSignedFiles: true # appease the overlords
               codeSign: ${{ parameters.codeSign }}
               signingIdentity: ${{ parameters.signingIdentity }}
-              beforeBuildSteps:
+              beforeRustBuildSteps:
                 - template: ./build/pipelines/templates-v2/steps-setup-versioning.yml@self
-
+              beforeBuildSteps:
                 - template: ./build/pipelines/templates-v2/steps-install-terrapin.yml@self
 
                 - task: UniversalPackages@0
@@ -149,9 +149,9 @@ extends:
                 removeAllNonSignedFiles: true # appease the overlords
                 codeSign: ${{ parameters.codeSign }}
                 signingIdentity: ${{ parameters.signingIdentity }}
-                beforeBuildSteps:
+                beforeRustBuildSteps:
                   - template: ./build/pipelines/templates-v2/steps-setup-versioning.yml@self
-                  # WPF doesn't need the localizations or the universal package, but if it does... put them here.
+                # WPF doesn't need the localizations or the universal package, but if it does... put them here.
 
       - stage: Package
         displayName: Package

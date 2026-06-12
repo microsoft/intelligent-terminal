@@ -44,7 +44,7 @@ namespace winrt::TerminalApp::implementation
     void AboutDialog::_SendFeedbackOnClick(const IInspectable& /*sender*/, const Windows::UI::Xaml::Controls::ContentDialogButtonClickEventArgs& /*eventArgs*/)
     {
         // TODO(IntelligentTerminal): register this URL on the aka.ms portal.
-        ShellExecute(nullptr, nullptr, L"https://aka.ms/intelligentterminal/feedback", nullptr, nullptr, SW_SHOW);
+        ShellExecute(nullptr, nullptr, L"https://aka.ms/intelligent-terminal-feedback", nullptr, nullptr, SW_SHOW);
     }
 
     void AboutDialog::_ThirdPartyNoticesOnClick(const IInspectable& /*sender*/, const Windows::UI::Xaml::RoutedEventArgs& /*eventArgs*/)

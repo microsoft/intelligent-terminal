@@ -313,6 +313,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
+    static constexpr std::wstring_view AIAgentsPageId{ L"page.aiagents" };
+
     void MainPage::SetHostingWindow(uint64_t hostingWindow) noexcept
     {
         _hostingHwnd.emplace(reinterpret_cast<HWND>(hostingWindow));
@@ -394,6 +396,28 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto hasThemeForSettings{ theme.Settings() != nullptr };
         const auto requestedTheme = hasThemeForSettings ? theme.Settings().RequestedTheme() : theme.RequestedTheme();
         _setThemeOnPopups(SettingsSearchBox(), requestedTheme);
+    }
+
+    void MainPage::_AnnounceNavPaneState(bool opened)
+    {
+        if (const auto automationPeer{ Automation::Peers::FrameworkElementAutomationPeer::FromElement(SettingsNav()) })
+        {
+            automationPeer.RaiseNotificationEvent(
+                Automation::Peers::AutomationNotificationKind::ActionCompleted,
+                Automation::Peers::AutomationNotificationProcessing::MostRecent,
+                opened ? RS_(L"Nav_PaneOpenedAnnouncement") : RS_(L"Nav_PaneClosedAnnouncement"),
+                L"SettingsNavPaneState");
+        }
+    }
+
+    void MainPage::SettingsNav_PaneOpened(const MUX::Controls::NavigationView&, const IInspectable&)
+    {
+        _AnnounceNavPaneState(true);
+    }
+
+    void MainPage::SettingsNav_PaneClosed(const MUX::Controls::NavigationView&, const IInspectable&)
+    {
+        _AnnounceNavPaneState(false);
     }
 
     // Function Description:
@@ -642,6 +666,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 });
                 contentFrame().Navigate(xaml_typename<Editor::AIAgents>(), winrt::make<NavigateToPageArgs>(aiAgentsVm, *this, elementToFocus));
                 _breadcrumbs.Append(winrt::make<Breadcrumb>(vm, RS_(L"Nav_AIAgents/Content"), BreadcrumbSubPage::None));
+
+                // Dismiss the "NEW" badge after the user visits the page
+                Model::ApplicationState::SharedInstance().DismissBadge(AIAgentsPageId);
+                if (auto badge = AIAgentsBadge())
+                {
+                    badge.Visibility(winrt::Windows::UI::Xaml::Visibility::Collapsed);
+                }
             }
             else if (*clickedItemTag == globalProfileTag)
             {
@@ -871,10 +902,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             ShowLoadWarningsDialog.raise(*this, _settingsClone.Warnings());
         }
 
-        // Install shell integration if autofix was enabled.
-        // Only raise once — _InitShellIntegration handles both targets
-        // and shows a single dialog when done.
-        if (_settingsClone.GlobalSettings().AutoFixEnabled())
+        // Install shell integration if error detection was enabled. Detection
+        // is what needs the OSC 133 marks; auto-suggest is a strict subset and
+        // can't be on without it. Only raise once — _InitShellIntegration
+        // handles both targets and shows a single dialog when done.
+        if (_settingsClone.GlobalSettings().AutoErrorDetectionEnabled())
         {
             InitShellIntegrationRequested.raise(*this, ShellIntegrationTarget::Pwsh);
         }
@@ -905,6 +937,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             // entries from XAML into our runtime menu item source. Do that now.
 
             _MoveXamlParsedNavItemsIntoItemSource();
+        }
+
+        // Hide the AI Agents "NEW" badge if the user has already visited the page
+        if (Model::ApplicationState::SharedInstance().BadgeDismissed(AIAgentsPageId))
+        {
+            if (auto badge = AIAgentsBadge())
+            {
+                badge.Visibility(winrt::Windows::UI::Xaml::Visibility::Collapsed);
+            }
         }
 
         // Manually create a NavigationViewItem and view model for each profile

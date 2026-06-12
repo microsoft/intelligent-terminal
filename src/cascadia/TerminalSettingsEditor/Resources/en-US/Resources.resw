@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -669,6 +669,14 @@
     <value>Startup</value>
     <comment>Header for the "startup" menu item. This navigates to a page that lets you see and modify settings related to the app's launch experience (i.e. screen position, mode, etc.)</comment>
   </data>
+  <data name="Nav_PaneOpenedAnnouncement" xml:space="preserve">
+    <value>Navigation pane opened</value>
+    <comment>Screen reader announcement made when the user activates the toggle button that opens the settings navigation pane.</comment>
+  </data>
+  <data name="Nav_PaneClosedAnnouncement" xml:space="preserve">
+    <value>Navigation pane closed</value>
+    <comment>Screen reader announcement made when the user activates the toggle button that closes the settings navigation pane.</comment>
+  </data>
   <data name="Nav_OpenJSON.Content" xml:space="preserve">
     <value>Open JSON file</value>
     <comment>Header for a menu item. This opens the JSON file that is used to log the app's settings.</comment>
@@ -699,7 +707,15 @@
   </data>
   <data name="AIAgents_PageSubtitle.Text" xml:space="preserve">
     <value>Configure how agents work across your terminal experience</value>
-    <comment>Subtitle shown beneath the page title on the AI Agents settings page.</comment>
+    <comment>DEPRECATED — do not translate. Superseded by AIAgents_PageSubtitlePrefix + AIAgents_PageSubtitlePrivacyLink. Kept in en-US only as a neutral fallback for the not-yet-updated translations in the other locale resw files (without it, PRI263 warns about a missing neutral resource). Safe to delete once those translations are cleaned up.</comment>
+  </data>
+  <data name="AIAgents_PageSubtitlePrefix" xml:space="preserve">
+    <value>Configure how agents work across your terminal experience.</value>
+    <comment>Subtitle shown beneath the page title on the AI Agents settings page. The hyperlink in AIAgents_PageSubtitlePrivacyLink follows this sentence inline; the trailing period belongs to this prefix.</comment>
+  </data>
+  <data name="AIAgents_PageSubtitlePrivacyLink" xml:space="preserve">
+    <value>Learn about how data is used.</value>
+    <comment>Inline hyperlink text that follows the AI Agents page subtitle and navigates to the privacy policy page. Includes a trailing period.</comment>
   </data>
   <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve">
     <value>Agent pane</value>
@@ -713,11 +729,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="AIAgents_AcpAgent.Header" xml:space="preserve">
     <value>Agent</value>
-    <comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment>
+    <comment>Header for the setting that specifies which AI agent powers the agent pane.</comment>
   </data>
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve">
-    <value>Choose the agent CLI used in the agent pane. Any compatible ACP CLI will be detected.</value>
-    <comment>Supplementary description for the agent pane CLI setting. {Locked="ACP","CLI"}</comment>
+    <value>Choose the agent used in the agent pane. Any compatible ACP agent will be detected.</value>
+    <comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve">
     <value>Model</value>
@@ -730,7 +746,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>Agent</value>
-    <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests. 
+    <comment>Header for the setting that specifies which agent handles command palette / on-demand requests.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
@@ -738,14 +754,22 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Supplementary description for the command palette agent setting. 
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>Auto-suggest fixes for failed commands</value>
-    <comment>Header for the toggle that controls whether the AI agent automatically diagnoses failed commands. When off, errors still show a clickable hint in the status bar but the agent is only invoked on demand.
+  <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
+    <value>Automatic error detection</value>
+    <comment>Title for the master toggle (Expander header) that lets the terminal observe the shell and detect failed commands. The Automatic error suggestion setting is nested under this one.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
+    <value>Give Intelligent Terminal permission to access your shell and automatically detect errors. Available in PowerShell and Windows PowerShell.</value>
+    <comment>{Locked="PowerShell","Windows PowerShell"} "Intelligent Terminal" is the product name. Caption under the automatic-error-detection title.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
+    <value>Automatic error suggestion</value>
+    <comment>Title for the nested toggle that lets the agent automatically suggest fixes for detected errors. Depends on (and is nested under) automatic error detection.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>When enabled, the AI agent automatically analyzes failed commands and proposes a fix. When disabled, failed commands surface a clickable hint in the status bar — press Ctrl+Alt+. or click the hint to request a fix.</value>
-    <comment>Supplementary description for the auto-suggest-fixes setting.
+  <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
+    <value>Give Intelligent Terminal permission to send errors to your agent to automatically suggest fixes.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. Caption under the automatic-error-suggestion title.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
@@ -758,26 +782,42 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Supplementary description for the pane position setting. 
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
+  <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
+    <value>Bottom</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionBottom string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Right" xml:space="preserve">
+    <value>Right</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionRight string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Top" xml:space="preserve">
+    <value>Top</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionTop string used in the first-run experience.</comment>
+  </data>
+  <data name="AIAgents_PanePosition_Left" xml:space="preserve">
+    <value>Left</value>
+    <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
+  </data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
     <value>Agent session tracking (hooks)</value>
-    <comment>Header for the expandable Agent Hooks section in the Agent pane group. Wording matches the design ask: this UX exists so the agent pane can track CLI sessions through installed hooks.
+    <comment>{Locked="hooks","Hook","Hooks"} Header for the expandable Agent Hooks section in the Agent pane group. Wording matches the design ask: this UX exists so the agent pane can track agent sessions through installed hooks.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>Track sessions across CLI tools. Required for agent session management.</value>
-    <comment>Help text shown under the expandable section header. {Locked="CLI"}</comment>
+    <value>Track sessions across agents. Required for agent session management.</value>
+    <comment>Help text shown under the expandable section header.</comment>
   </data>
   <data name="AIAgents_HooksInstallRowLabel.Text" xml:space="preserve">
     <value>Install agent hook script</value>
-    <comment>Label for the first row inside the Agent session tracking expander — describes what the adjacent "Install hooks" button does.</comment>
+    <comment>{Locked="hook","Hook"} Label for the first row inside the Agent session tracking expander — describes what the adjacent "Install hooks" button does.</comment>
   </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Install hooks</value>
-    <comment>Button label inside the Agent session tracking expander. Triggers installation of the wt-agent-hooks plugin for every detected agent CLI.</comment>
+    <comment>{Locked="hooks","Hooks"} Button label inside the Agent session tracking expander. Triggers installation of the wt-agent-hooks plugin for every detected agent.</comment>
   </data>
   <data name="AIAgents_HooksRemoveButton.Content" xml:space="preserve">
     <value>Remove</value>
-    <comment>Button label next to each CLI row inside the Agent session tracking expander. Uninstalls the wt-agent-hooks plugin/extension for that CLI.</comment>
+    <comment>Button label next to each agent row inside the Agent session tracking expander. Uninstalls the wt-agent-hooks plugin/extension for that agent.</comment>
   </data>
   <data name="Profile_OpacitySlider.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Background opacity</value>
@@ -2341,7 +2381,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>A disclaimer that indicates that Intelligent Terminal is running in a mode that saves settings to a different folder.</comment>
   </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
-    <value>https://aka.ms/intelligentterminal/portable-mode</value>
+    <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
     <comment>{Locked}</comment>
   </data>
   <data name="Settings_PortableModeInfoLinkTextRun.Text" xml:space="preserve">
@@ -2488,8 +2528,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Accessible name for a control allowing the user to select the icon from a list of built in icons.</comment>
   </data>
   <data name="Nav_NewTabMenu.Content" xml:space="preserve">
-    <value>New Tab Menu</value>
-    <comment>Header for the "new tab menu" menu item. This navigates to a page that lets you see and modify settings related to the app's new tab menu (i.e. profile ordering, nested folders, dividers, etc.)</comment>
+    <value>Dropdown Menu</value>
+    <comment>Header for the "dropdown menu" menu item (formerly "new tab menu"). This navigates to a page that lets you see and modify settings related to the app's dropdown menu (i.e. profile ordering, nested folders, dividers, etc.)</comment>
   </data>
   <data name="NewTabMenuEntry_Separator.Text" xml:space="preserve">
     <value>&lt;Separator&gt;</value>
@@ -2874,23 +2914,67 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
        id (copilot, claude, codex, gemini) regardless of locale. -->
   <data name="AgentName_Copilot" xml:space="preserve">
     <value>GitHub Copilot</value>
-    <comment>{Locked="GitHub","Copilot"} Display name for the GitHub Copilot agent CLI.</comment>
+    <comment>{Locked="GitHub","Copilot"} Display name for the GitHub Copilot agent.</comment>
   </data>
   <data name="AgentName_Claude" xml:space="preserve">
     <value>Claude</value>
-    <comment>{Locked="Claude"} Display name for the Anthropic Claude agent CLI.</comment>
+    <comment>{Locked="Claude"} Display name for the Anthropic Claude agent.</comment>
   </data>
   <data name="AgentName_Codex" xml:space="preserve">
     <value>Codex</value>
-    <comment>{Locked="Codex"} Display name for the OpenAI Codex agent CLI.</comment>
+    <comment>{Locked="Codex"} Display name for the OpenAI Codex agent.</comment>
   </data>
   <data name="AgentName_Gemini" xml:space="preserve">
     <value>Gemini</value>
-    <comment>{Locked="Gemini"} Display name for the Google Gemini agent CLI.</comment>
+    <comment>{Locked="Gemini"} Display name for the Google Gemini agent.</comment>
   </data>
   <!-- GPO policy-locked indicators shown in Settings UI -->
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>This setting is managed by your organization.</value>
     <comment>Text displayed when a setting is controlled by Group Policy (GPO). Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
+    <value>Installing hooks...</value>
+    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
+    <value>Removing Copilot hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
+    <value>Removing Claude hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
+    <value>Removing Gemini hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCodexSummary" xml:space="preserve">
+    <value>Removing Codex hooks...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
+  </data>
+  <data name="AIAgents_CodexTrustHint.Text" xml:space="preserve">
+    <value>After installing, run /hooks in Codex and approve to trust the new event handlers.</value>
+    <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
+  </data>
+  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
+    <value>Failed: could not locate wta.exe</value>
+    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
+    <value>Hooks removed. Restart any open agents to drop the previous hooks.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
+    <value>Hooks installed. Restart any open agents to pick up the new hooks.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
+    <value>Hook removal failed. Check %LOCALAPPDATA%\IntelligentTerminal\logs\ for details.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
+    <value>Hooks installation failed. Check %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log for details.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
 </root>

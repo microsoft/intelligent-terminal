@@ -63,6 +63,7 @@ Author(s):
     X(bool, MinimizeToNotificationArea, "minimizeToNotificationArea", false)                                                                                                                          \
     X(bool, AlwaysShowNotificationIcon, "alwaysShowNotificationIcon", false)                                                                                                                          \
     X(winrt::Windows::Foundation::Collections::IVector<winrt::hstring>, DisabledProfileSources, "disabledProfileSources", nullptr)                                                                    \
+    X(winrt::Windows::Foundation::Collections::IVector<winrt::hstring>, SafeUriSchemes, "safeUriSchemes", nullptr)                                                                                    \
     X(bool, ShowAdminShield, "showAdminShield", true)                                                                                                                                                 \
     X(bool, TrimPaste, "trimPaste", true)                                                                                                                                                             \
     X(bool, EnableColorSelection, "experimental.enableColorSelection", false)                                                                                                                         \
@@ -76,6 +77,7 @@ Author(s):
     X(hstring, AcpModel, "acpModel", L"")                                                                                                                                                               \
     X(hstring, DelegateAgent, "delegateAgent", L"copilot")                                                                                                                                              \
     X(hstring, DelegateModel, "delegateModel", L"")                                                                                                                                                    \
+    X(bool, AutoErrorDetectionEnabled, "autoErrorDetectionEnabled", true)                                                                                                                               \
     X(bool, AutoFixEnabled, "autoFixEnabled", false)                                                                                                                                                    \
     X(hstring, AcpCustomCommand, "acpCustomCommand", L"")                                                                                                                                              \
     X(hstring, DelegateCustomCommand, "delegateCustomCommand", L"")                                                                                                                                    \

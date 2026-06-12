@@ -102,12 +102,32 @@ namespace winrt::TerminalApp::implementation
         std::shared_ptr<Pane> GetRootPane() const { return _rootPane; }
         std::vector<uint32_t> GetMruPanes() const { return _mruPanes; }
 
-        // Per-tab "user wants the agent pane open here" flag. The agent pane
-        // itself is a single shared resource that follows the active tab; this
-        // flag is the source of truth for whether reconciliation should make
-        // it visible when this tab is active.
-        bool AgentPaneOpen() const noexcept { return _agentPaneOpen; }
-        void AgentPaneOpen(bool value) noexcept { _agentPaneOpen = value; }
+        // Returns the AgentPaneContent (if any) hosted in this tab's pane
+        // tree. The presence of an AgentPaneContent IS the truth — a tab has
+        // an agent pane iff its pane tree contains an AgentPaneContent leaf.
+        // No separate flag is tracked: tabs are independently agent-aware.
+        winrt::TerminalApp::AgentPaneContent FindAgentPaneContent() const;
+        // Returns the Pane node hosting the AgentPaneContent, or nullptr.
+        std::shared_ptr<Pane> FindAgentPane() const;
+
+        // Hide the agent pane without detaching it from the tree. The pane
+        // stays alive (so TermControl + conpty + wta-helper survive), but
+        // its parent split is rewritten so the terminal sibling occupies the
+        // full area. Reverse via `RestoreStashedAgentPane`.
+        void StashAgentPane();
+        // Re-attach a previously stashed agent pane (un-hide). Returns true
+        // when a stashed pane was restored. `direction` accepted for API
+        // symmetry but currently unused — the parent split keeps its
+        // original orientation.
+        bool RestoreStashedAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection direction);
+        bool HasStashedAgentPane() const;
+
+        // Override which pane in this tab shows the blue "Agent" chip. Pass
+        // a session GUID to pin the chip onto that pane (e.g. while a Send
+        // recommendation is selected). Pass std::nullopt to revert to the
+        // default behavior, where the chip follows the source-of-agent
+        // flag on each pane.
+        void SetAgentChipOverride(std::optional<winrt::guid> sessionId);
 
         // Stable per-tab identifier (GUID string). Survives tab reordering
         // and is unique across the window's lifetime, unlike the index in
@@ -188,6 +208,12 @@ namespace winrt::TerminalApp::implementation
         std::shared_ptr<Pane> _zoomedPane{ nullptr };
         std::shared_ptr<Pane> _hiddenPane{ nullptr };
 
+        // When set, the "Agent" chip is forced onto the pane whose
+        // connection SessionId matches this guid (e.g. while the user has
+        // a Send-card selected in the agent pane). When unset, the chip
+        // falls back to following each pane's IsSourceOfAgentPane() flag.
+        std::optional<winrt::guid> _agentChipOverride{};
+
         winrt::Microsoft::Terminal::Settings::Model::IconStyle _lastIconStyle;
         winrt::hstring _lastIconPath{};
         std::optional<winrt::Windows::UI::Color> _runtimeTabColor{};
@@ -227,7 +253,6 @@ namespace winrt::TerminalApp::implementation
         bool _receivedKeyDown{ false };
         bool _iconHidden{ false };
         bool _changingActivePane{ false };
-        bool _agentPaneOpen{ false };
 
         winrt::hstring _stableId{};
 
@@ -251,6 +276,7 @@ namespace winrt::TerminalApp::implementation
 
         void _UpdateActivePane(std::shared_ptr<Pane> pane);
         void _UpdateMenuItemStates();
+        void _UpdateAgentChipVisibility();
 
         winrt::hstring _GetActiveTitle() const;
 

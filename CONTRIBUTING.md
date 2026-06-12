@@ -1,10 +1,14 @@
-# Terminal Contributor's Guide
+# Intelligent Terminal Contributor's Guide
 
 Below is our guidance for how to report issues, propose new features, and submit contributions via Pull Requests (PRs).
 
+Intelligent Terminal is a fork of [Windows Terminal](https://github.com/microsoft/terminal) with native agent integration. Much of the contribution workflow mirrors upstream Windows Terminal; project-specific differences are called out below.
+
+> **Filing bugs in shared / upstream code.** Intelligent Terminal periodically syncs shared code from [microsoft/terminal](https://github.com/microsoft/terminal). If the bug you've found also reproduces on stock Windows Terminal — e.g., in the renderer, VT parser, text buffer, settings model, or other inherited code — please file (and ideally fix) it [upstream at microsoft/terminal](https://github.com/microsoft/terminal/issues). The fix will flow back to Intelligent Terminal at the next sync. Bugs that only reproduce in Intelligent Terminal (agent pane, WTA, autofix, hooks, command-palette `?` prefix, etc.) belong in [this repo](https://github.com/microsoft/intelligent-terminal/issues).
+
 ## Open Development Workflow
 
-The Windows Terminal team is VERY active in this GitHub Repo. In fact, we live in it all day long and carry out all our development in the open!
+The Intelligent Terminal team is active in this GitHub Repo and carries out development in the open.
 
 When the team finds issues we file them in the repo. When we propose new ideas or think-up new features, we file new feature requests. When we work on fixes or features, we create branches and work on those improvements. And when PRs are reviewed, we review in public - including all the good, the bad, and the ugly parts.
 
@@ -101,14 +105,14 @@ If you don't have any additional info/context to add but would like to indicate 
 
 If you're able & willing to help fix issues and/or implement features, we'd love your contribution!
 
-The best place to start is the list of ["walkthroughs"](https://aka.ms/terminal-walkthroughs). This is a collection of issues where we've written a "walkthrough", little guides to help get started with a particular issue. These are usually good first issues, and are a great way to get familiar with the codebase. Additionally, the list of ["good first issue"](https://github.com/microsoft/terminal/issues?q=is%3Aopen+is%3Aissue+label%3A%22Help+Wanted%22++label%3A%22good+first+issue%22+)s is another set of issues that might be easier for first-time contributors. Once you're feeling more comfortable in the codebase, feel free to just use the ["Help Wanted"](https://github.com/microsoft/terminal/issues?q=is%3Aopen+is%3Aissue+label%3A%22Help+Wanted%22+) label, or just find any issue you're interested in and hop in!
+The best place to start is the list of ["walkthroughs"](https://aka.ms/terminal-walkthroughs). This is a collection of issues where we've written a "walkthrough", little guides to help get started with a particular issue. These are usually good first issues, and are a great way to get familiar with the codebase. Additionally, the list of ["good first issue"](https://github.com/microsoft/intelligent-terminal/issues?q=is%3Aopen+is%3Aissue+label%3A%22Help+Wanted%22++label%3A%22good+first+issue%22+)s is another set of issues that might be easier for first-time contributors. Once you're feeling more comfortable in the codebase, feel free to just use the ["Help Wanted"](https://github.com/microsoft/intelligent-terminal/issues?q=is%3Aopen+is%3Aissue+label%3A%22Help+Wanted%22+) label, or just find any issue you're interested in and hop in!
 
 Generally, we categorize issues in the following way, which is largely derived from our old internal work tracking system:
-* ["Bugs"](https://github.com/microsoft/terminal/issues?q=is%3Aopen+is%3Aissue+label%3A%22Issue-Bug%22+) are parts of the Terminal & Console that are not quite working the right way. There's code to already support some scenario, but it's not quite working right. Fixing these is generally a matter of debugging the broken functionality and fixing the wrong code.
-* ["Tasks"](https://github.com/microsoft/terminal/issues?q=is%3Aopen+is%3Aissue+label%3A%22Issue-Task%22+) are usually new pieces of functionality that aren't yet implemented for the Terminal/Console. These are usually smaller features, which we believe
+* ["Bugs"](https://github.com/microsoft/intelligent-terminal/issues?q=is%3Aopen+is%3Aissue+label%3A%22Issue-Bug%22+) are parts of the Terminal & Console that are not quite working the right way. There's code to already support some scenario, but it's not quite working right. Fixing these is generally a matter of debugging the broken functionality and fixing the wrong code.
+* ["Tasks"](https://github.com/microsoft/intelligent-terminal/issues?q=is%3Aopen+is%3Aissue+label%3A%22Issue-Task%22+) are usually new pieces of functionality that aren't yet implemented for the Terminal/Console. These are usually smaller features, which we believe
   - could be a single, atomic PR
   - Don't require much design consideration, or we've already written the spec for the larger feature they belong to.
-* ["Features"](https://github.com/microsoft/terminal/issues?q=is%3Aopen+is%3Aissue+label%3A%22Issue-Feature%22+) are larger pieces of new functionality. These are usually things we believe would require larger discussion of how they should be implemented, or they'll require some complicated new settings. They might just be features that are composed of many individual tasks. Often times, with features, we like to have a spec written before development work is started, to make sure we're all on the same page (see below).
+* ["Features"](https://github.com/microsoft/intelligent-terminal/issues?q=is%3Aopen+is%3Aissue+label%3A%22Issue-Feature%22+) are larger pieces of new functionality. These are usually things we believe would require larger discussion of how they should be implemented, or they'll require some complicated new settings. They might just be features that are composed of many individual tasks. Often times, with features, we like to have a spec written before development work is started, to make sure we're all on the same page (see below).
 
 Bugs and tasks are obviously the easiest to get started with, but don't feel afraid of features either! We've had some community members contribute some amazing "feature"-level work to the Terminal (albeit, with lots of discussion 😄).
 
@@ -151,22 +155,22 @@ Once you've discussed your proposed feature/fix/etc. with a team member, and you
 
 1. Fork the repo if you haven't already
 1. Clone your fork locally
-1. Create & push a feature branch
+1. Create & push a feature branch (the team convention is `dev/<alias>/<description>`)
 1. Create a [Draft Pull Request (PR)](https://github.blog/2019-02-14-introducing-draft-pull-requests/)
 1. Work on your changes
-1. Build and see if it works. Consult [How to build OpenConsole](./doc/building.md) if you have problems.
+1. Build and see if it works. See [`AGENTS.md`](./AGENTS.md) for the Intelligent Terminal build flow (Rust WTA + C++ Terminal) and [`doc/building.md`](./doc/building.md) for the underlying Windows Terminal / OpenConsole build instructions.
 
 ### Testing
 
-Testing is a key component in the development workflow. Both Windows Terminal and Windows Console use TAEF (the Test Authoring and Execution Framework) as the main framework for testing.
+Testing is a key component in the development workflow. The C++ Terminal and Console code uses TAEF (the Test Authoring and Execution Framework); the Rust WTA crate uses standard `cargo test`.
 
-If your changes affect existing test cases, or you're working on brand new features and also the accompanying test cases, see [TAEF](./doc/TAEF.md) for more information about how to validate your work locally.
+If your changes affect existing test cases, or you're working on brand new features and also the accompanying test cases, see [TAEF](./doc/TAEF.md) for more information about how to validate the C++ side locally, and run `cargo test --manifest-path tools/wta/Cargo.toml` for the Rust side.
 
 ### Code Review
 
 When you'd like the team to take a look, (even if the work is not yet fully-complete), mark the PR as 'Ready For Review' so that the team can review your work and provide comments, suggestions, and request changes. It may take several cycles, but the end result will be solid, testable, conformant code that is safe for us to merge.
 
-> ⚠ Remember: **changes you make may affect both Windows Terminal and Windows Console and may end up being re-incorporated into Windows itself!** Because of this, we will treat community PR's with the same level of scrutiny and rigor as commits submitted to the official Windows source by team members and partners.
+> ⚠ Remember: Intelligent Terminal forks Windows Terminal, and shared code may flow back upstream. We treat community PRs with the same level of scrutiny and rigor as code reviewed by team members.
 
 ### Merge
 
@@ -176,4 +180,4 @@ Once your code has been reviewed and approved by the requisite number of team me
 
 ## Thank you
 
-Thank you in advance for your contribution! Now, [what's next on the list](https://github.com/microsoft/terminal/labels/Help%20Wanted)? 😜
+Thank you in advance for your contribution! Now, [what's next on the list](https://github.com/microsoft/intelligent-terminal/labels/Help%20Wanted)? 😜

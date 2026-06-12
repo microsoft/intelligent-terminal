@@ -106,6 +106,9 @@
       <SubType>Code</SubType>
     </ClInclude>
     <ClInclude Include="BasePaletteItem.h" />
+    <ClInclude Include="SharedWta.h" />
+    <ClInclude Include="AgentPaneDragStash.h" />
+    <ClInclude Include="AgentPaneLog.h" />
     <ClInclude Include="Tab.h">
       <DependentUpon>Tab.idl</DependentUpon>
     </ClInclude>
@@ -214,6 +217,7 @@
       <DependentUpon>PaletteItemTemplateSelector.idl</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
+    <ClCompile Include="SharedWta.cpp" />
     <ClCompile Include="Tab.cpp">
       <DependentUpon>Tab.idl</DependentUpon>
     </ClCompile>

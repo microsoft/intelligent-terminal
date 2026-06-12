@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
   <resheader name="version"><value>2.0</value></resheader>
@@ -6,14 +6,14 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal-ში მოგესალმებით</value>
+    <value>ჭკვიანი ტერმინალი-ში მოგესალმებით</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>დააკონფიგურირეთ თქვენი ჩაშენებული ასისტენტი, რათა დაგეხმაროთ შეცდომების ახსნაში, ბრძანებების შედგენასა და ამოცანების განბლოკვაში პირდაპირ თქვენს სამუშაო გარემოში. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>შეიტყვეთ მეტი Intelligent Terminal-ის შესახებ</value>
+    <value>შეიტყვეთ მეტი ჭკვიანი ტერმინალი-ის შესახებ</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -36,48 +36,44 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal-ში მოგესალმებით</value>
+    <value>ჭკვიანი ტერმინალი-ში მოგესალმებით</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>აირჩიეთ რა დააკონფიგურიროთ ახლა. ამის შეცვლა ნებისმიერ დროს შეგიძლიათ </value>
+    <value>აირჩიეთ რა გსურთ ახლა დააყენოთ. ამის შეცვლა ნებისმიერ დროს შეგიძლიათ. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>პარამეტრებში</value>
+    <value>გაიგეთ, როგორ გამოიყენება მონაცემები</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>აგენტი</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>აირჩიეთ აგენტის CLI, რომელიც გამოიყენება აგენტის პანელში. ნებისმიერი თავსებადი ACP CLI ავტომატურად აღმოჩნდება.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>აირჩიეთ აგენტი, რომელიც გამოიყენება აგენტის პანელში და აქვს ACP მხარდაჭერა.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ ეს აგენტი მოითხოვს Node.js-სა და NPX-ს, რომლებიც ავტომატურად დაინსტალირდება, თუ უკვე არ არის.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ეს აგენტი მოითხოვს Node.js-სა და NPX-ს, რომლებიც ავტომატურად დაინსტალირდება, თუ უკვე არ არის.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>ავტომატურად შესთავაზე გასწორებები წარუმატებელი ბრძანებებისთვის</value>
+    <value>შეცდომების ავტომატური შემოთავაზება</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>ჩართვისას, AI აგენტი ავტომატურად აანალიზებს წარუმატებელ ბრძანებებს და სთავაზობს გასწორებას. გამორთვისას, წარუმატებელი ბრძანებები სტატუსის ზოლზე აჩვენებენ დაჭერად მინიშნებას — დააჭირეთ Ctrl+Alt+. ან დააწკაპუნეთ მინიშნებაზე გასწორების მოთხოვნისთვის.</value>
+    <value>მიეცით Intelligent Terminal-ს უფლება, გაუგზავნოს შეცდომები თქვენს აგენტს გასწორებების ავტომატურად შემოთავაზებისთვის.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>სესიების მართვა</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>მიეცით Intelligent Terminal-ს უფლება თვალყური ადევნოს თქვენი გაშვებული ან აქტიური აგენტების სტატუსს.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>მიეცით ჭკვიანი ტერმინალი-ს უფლება თვალყური ადევნოს თქვენი გაშვებული ან აქტიური აგენტების სტატუსს.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ ამის ჩართვა დააინსტალირებს ინტეგრაციის hook-ებს სესიების თვალყურისდევნებისთვის თქვენს აგენტის CLI-ებში.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ამის ჩართვა დააინსტალირებს ინტეგრაციის hooks-ს თქვენს აგენტებში სესიების თვალყურისდევნებისთვის.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>პანელის პოზიცია</value>
@@ -111,18 +107,146 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>კონფიგურაცია...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot-ის ინსტალაცია ვერ მოხერხდა. შეამოწმეთ ქსელის კავშირი და სცადეთ თავიდან.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ {0}-ის ინსტალაცია Windows-ის პაკეტების მენეჯერის პოლიტიკამ დაბლოკა. თუ მართული მოწყობილობა გაქვთ, დაუკავშირდით IT ადმინისტრატორს.</value>
+    <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js-ის ინსტალაცია ვერ მოხერხდა. შეამოწმეთ ქსელის კავშირი და სცადეთ თავიდან.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ {0}-ის ინსტალაცია ვერ მოხერხდა (შეცდომის კოდი {1}). დეტალებისთვის იხილეთ ჟურნალი, ან დააინსტალირეთ {0} ხელით.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ {0}-ის ინსტალაცია ვერ მოხერხდა. დეტალებისთვის იხილეთ ჟურნალი, ან დააინსტალირეთ {0} ხელით.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0}-ის ინსტალატორმა შეცდომა დააბრუნა (კოდი {1}). დეტალებისთვის შეამოწმეთ ჟურნალი, ან დააინსტალირეთ {0} ხელით.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ {0}-ის ინსტალაციისას Windows-ის პაკეტების მენეჯერთან დაკავშირება ვერ მოხერხდა. შეამოწმეთ ინტერნეტკავშირი (VPN-მა, პროქსიმ ან ბრანდმაუერმა შეიძლება დაბლოკოს) და სცადეთ თავიდან.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ ამ სისტემაზე {0}-ისთვის თავსებადი ინსტალატორი ხელმისაწვდომი არ არის (შეიძლება OS-ის ვერსია ან არქიტექტურა არ იყოს მხარდაჭერილი). დააინსტალირეთ {0} ხელით.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} Windows-ის პაკეტების მენეჯერის კატალოგში ვერ მოიძებნა. სცადეთ winget წყაროების განახლება, ან დააინსტალირეთ {0} ხელით.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0}-ის ინსტალაციას 20 წუთზე მეტი დასჭირდა. Intelligent Terminal-მა ლოდინი შეწყვიტა, მაგრამ ინსტალატორი შეიძლება კვლავ ფონში მუშაობდეს. შეამოწმეთ Task Manager, ან სცადეთ მოგვიანებით.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows-ის პაკეტების მენეჯერი (winget) არ არის დაინსტალირებული ან ხელმისაწვდომი. ჯერ დააინსტალირეთ, შემდეგ სცადეთ თავიდან.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>ჩართ</value>
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>გამორთ</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>მიმდინარეობს შეცდომის ანალიზი…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>აღმოჩენილია შეცდომა: მიმდინარეობს ანალიზი…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>აღმოჩენილია შეცდომა: {0} შესასწორებლად</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
+    <value>დააწკაპუნეთ ან დააჭირეთ {0}-ს, რათა აგენტს შესწორება სთხოვოთ</value>
+    <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>შესწორება მზადაა. დააჭირეთ {0}-ს გადასახედად</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>გახსენით აგენტის პანელი შემოთავაზებული შესწორების გადასახედად</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
+    <value>შეცდომა აღმოჩენილია. დააწკაპუნეთ ან დააჭირეთ {0}-ს, რათა AI აგენტმა დიაგნოზი დასვას და შესწორება შემოგთავაზოთ.</value>
+    <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>შესწორება მზადაა — {0} გამოსაყენებლად</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>შესწორება მზადაა — {0} გამოსაყენებლად: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>შეთავაზება მზადაა — გახსენით აგენტის პანელი</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>ავტომატურმა შესწორებამ უარი თქვა ამის პირდაპირ შესწორებაზე. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>დააწკაპუნეთ აქ ან დააჭირეთ Ctrl+Shift+. აგენტის პანელის გასახსნელად და სრული შეთავაზების წასაკითხად.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>დიაგნოსტიკა</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>აგენტის სესიები</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>აგენტის სესიები: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>შეცდომების ავტომატური აღმოჩენა</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>მიეცით Intelligent Terminal-ს უფლება, წვდომა ჰქონდეს თქვენს გარსზე და ავტომატურად აღმოაჩინოს შეცდომები.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ გარსის ინტეგრაციის ინსტალაცია ვერ მოხერხდა. შეცდომების აღმოჩენა გამორთულია. შეგიძლიათ ხელახლა ჩართოთ და სცადოთ თავიდან, ან შეინახოთ მის გარეშე გასაგრძელებლად.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks ინსტალაცია ვერ მოხერხდა. სესიების მართვა გამორთულია. შეგიძლიათ ხელახლა ჩართოთ და სცადოთ თავიდან, ან შეინახოთ მის გარეშე გასაგრძელებლად.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>შეიტყვეთ, როგორ გამოასწოროთ ეს ხელით</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>ამის ჩართვა დააინსტალირებს shell-ის ინტეგრაციას ბრძანებების წარუმატებლობის აღმოსაჩენად. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>შეიტყვეთ მეტი</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>PowerShell-ის შესრულების პოლიტიკა ბლოკავს სკრიპტებს.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell-ის შესრულების პოლიტიკა ბლოკავს სკრიპტებს. შეცდომების აღმოჩენა გამორთულია.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

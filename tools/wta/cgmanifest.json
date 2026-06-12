@@ -1,0 +1,2103 @@
+{
+  "$schema": "https://json.schemastore.org/component-detection-manifest.json",
+  "Registrations": [
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "agent-client-protocol",
+          "version": "0.10.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "agent-client-protocol-schema",
+          "version": "0.11.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "aho-corasick",
+          "version": "1.1.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "allocator-api2",
+          "version": "0.2.21"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "anstream",
+          "version": "0.6.21"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "anstyle",
+          "version": "1.0.13"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "anstyle-parse",
+          "version": "0.2.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "anstyle-query",
+          "version": "1.1.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "anstyle-wincon",
+          "version": "3.0.11"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "anyhow",
+          "version": "1.0.102"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "arc-swap",
+          "version": "1.9.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "async-broadcast",
+          "version": "0.7.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "async-trait",
+          "version": "0.1.89"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "atomic",
+          "version": "0.6.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "base62",
+          "version": "2.2.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "base64",
+          "version": "0.22.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "bit-set",
+          "version": "0.5.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "bit-vec",
+          "version": "0.6.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "bitflags",
+          "version": "1.3.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "bitflags",
+          "version": "2.11.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "block-buffer",
+          "version": "0.10.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "bstr",
+          "version": "1.12.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "bytemuck",
+          "version": "1.25.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "bytes",
+          "version": "1.11.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "castaway",
+          "version": "0.2.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "cfg-if",
+          "version": "1.0.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "clap",
+          "version": "4.5.60"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "clap_builder",
+          "version": "4.5.60"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "clap_derive",
+          "version": "4.5.55"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "clap_lex",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "colorchoice",
+          "version": "1.0.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "compact_str",
+          "version": "0.9.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "concurrent-queue",
+          "version": "2.5.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "convert_case",
+          "version": "0.10.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "cpufeatures",
+          "version": "0.2.17"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "crossbeam-channel",
+          "version": "0.5.15"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "crossbeam-deque",
+          "version": "0.8.6"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "crossbeam-epoch",
+          "version": "0.9.18"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "crossbeam-utils",
+          "version": "0.8.21"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "crossterm",
+          "version": "0.29.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "crossterm_winapi",
+          "version": "0.9.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "crypto-common",
+          "version": "0.1.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "csscolorparser",
+          "version": "0.6.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "darling",
+          "version": "0.23.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "darling_core",
+          "version": "0.23.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "darling_macro",
+          "version": "0.23.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "deltae",
+          "version": "0.3.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "deranged",
+          "version": "0.5.8"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "derive_more",
+          "version": "2.1.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "derive_more-impl",
+          "version": "2.1.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "digest",
+          "version": "0.10.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "document-features",
+          "version": "0.2.12"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "dyn-clone",
+          "version": "1.0.20"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "either",
+          "version": "1.15.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "env_home",
+          "version": "0.1.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "equivalent",
+          "version": "1.0.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "euclid",
+          "version": "0.22.13"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "event-listener",
+          "version": "5.4.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "event-listener-strategy",
+          "version": "0.5.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "fancy-regex",
+          "version": "0.11.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "filedescriptor",
+          "version": "0.8.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "finl_unicode",
+          "version": "1.4.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "fixedbitset",
+          "version": "0.4.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "fnv",
+          "version": "1.0.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "foldhash",
+          "version": "0.2.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "futures",
+          "version": "0.3.32"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "futures-channel",
+          "version": "0.3.32"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "futures-core",
+          "version": "0.3.32"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "futures-executor",
+          "version": "0.3.32"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "futures-io",
+          "version": "0.3.32"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "futures-macro",
+          "version": "0.3.32"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "futures-sink",
+          "version": "0.3.32"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "futures-task",
+          "version": "0.3.32"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "futures-util",
+          "version": "0.3.32"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "generic-array",
+          "version": "0.14.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "getrandom",
+          "version": "0.3.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "getrandom",
+          "version": "0.4.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "glob",
+          "version": "0.3.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "globset",
+          "version": "0.4.18"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "globwalk",
+          "version": "0.8.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "hashbrown",
+          "version": "0.16.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "heck",
+          "version": "0.5.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "hex",
+          "version": "0.4.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ident_case",
+          "version": "1.0.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ignore",
+          "version": "0.4.25"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "indexmap",
+          "version": "2.13.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "indoc",
+          "version": "2.0.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "instability",
+          "version": "0.3.11"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "is_terminal_polyfill",
+          "version": "1.70.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "itertools",
+          "version": "0.11.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "itertools",
+          "version": "0.14.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "itoa",
+          "version": "1.0.17"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "kasuari",
+          "version": "0.4.11"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "lab",
+          "version": "0.11.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "lazy_static",
+          "version": "1.5.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "libc",
+          "version": "0.2.183"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "line-clipping",
+          "version": "0.3.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "litrs",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "lock_api",
+          "version": "0.4.14"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "log",
+          "version": "0.4.29"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "lru",
+          "version": "0.16.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "mac_address",
+          "version": "1.1.8"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "matchers",
+          "version": "0.2.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "memchr",
+          "version": "2.8.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "memmem",
+          "version": "0.1.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "minimal-lexical",
+          "version": "0.2.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "mio",
+          "version": "1.1.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "nom",
+          "version": "7.1.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "normpath",
+          "version": "1.5.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "nu-ansi-term",
+          "version": "0.50.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "num-conv",
+          "version": "0.2.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "num-derive",
+          "version": "0.4.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "num-traits",
+          "version": "0.2.19"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "once_cell",
+          "version": "1.21.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "once_cell_polyfill",
+          "version": "1.70.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ordered-float",
+          "version": "4.6.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "parking",
+          "version": "2.2.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "parking_lot",
+          "version": "0.12.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "parking_lot_core",
+          "version": "0.9.12"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pest",
+          "version": "2.8.6"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pest_derive",
+          "version": "2.8.6"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pest_generator",
+          "version": "2.8.6"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pest_meta",
+          "version": "2.8.6"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "phf",
+          "version": "0.11.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "phf_generator",
+          "version": "0.11.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "phf_macros",
+          "version": "0.11.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "phf_shared",
+          "version": "0.11.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pin-project-lite",
+          "version": "0.2.17"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "portable-atomic",
+          "version": "1.13.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "powerfmt",
+          "version": "0.2.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "proc-macro2",
+          "version": "1.0.106"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "quote",
+          "version": "1.0.45"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "rand",
+          "version": "0.8.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "rand_core",
+          "version": "0.6.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ratatui",
+          "version": "0.30.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ratatui-core",
+          "version": "0.1.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ratatui-crossterm",
+          "version": "0.1.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ratatui-macros",
+          "version": "0.7.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ratatui-termwiz",
+          "version": "0.1.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ratatui-widgets",
+          "version": "0.3.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ref-cast",
+          "version": "1.0.25"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ref-cast-impl",
+          "version": "1.0.25"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "regex",
+          "version": "1.12.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "regex-automata",
+          "version": "0.4.14"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "regex-syntax",
+          "version": "0.8.10"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "rust-i18n",
+          "version": "3.1.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "rust-i18n-macro",
+          "version": "3.1.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "rust-i18n-support",
+          "version": "3.1.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "rustversion",
+          "version": "1.0.22"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ryu",
+          "version": "1.0.23"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "same-file",
+          "version": "1.0.6"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "schemars",
+          "version": "1.2.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "schemars_derive",
+          "version": "1.2.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "scopeguard",
+          "version": "1.2.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "serde",
+          "version": "1.0.228"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "serde_core",
+          "version": "1.0.228"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "serde_derive",
+          "version": "1.0.228"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "serde_derive_internals",
+          "version": "0.29.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "serde_json",
+          "version": "1.0.149"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "serde_spanned",
+          "version": "0.6.9"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "serde_yaml",
+          "version": "0.9.34+deprecated"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "sha2",
+          "version": "0.10.9"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "sharded-slab",
+          "version": "0.1.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "siphasher",
+          "version": "1.0.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "slab",
+          "version": "0.4.12"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "smallvec",
+          "version": "1.15.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "smawk",
+          "version": "0.3.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "socket2",
+          "version": "0.6.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "stable_deref_trait",
+          "version": "1.2.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "static_assertions",
+          "version": "1.1.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "strsim",
+          "version": "0.11.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "strum",
+          "version": "0.27.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "strum",
+          "version": "0.28.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "strum_macros",
+          "version": "0.27.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "strum_macros",
+          "version": "0.28.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "symlink",
+          "version": "0.1.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "syn",
+          "version": "1.0.109"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "syn",
+          "version": "2.0.117"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "sys-locale",
+          "version": "0.3.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "terminfo",
+          "version": "0.9.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "termwiz",
+          "version": "0.23.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "textwrap",
+          "version": "0.16.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "thiserror",
+          "version": "1.0.69"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "thiserror",
+          "version": "2.0.18"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "thiserror-impl",
+          "version": "1.0.69"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "thiserror-impl",
+          "version": "2.0.18"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "thread_local",
+          "version": "1.1.9"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "time",
+          "version": "0.3.47"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "time-core",
+          "version": "0.1.8"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "time-macros",
+          "version": "0.2.27"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tokio",
+          "version": "1.50.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tokio-macros",
+          "version": "2.6.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tokio-util",
+          "version": "0.7.18"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "toml",
+          "version": "0.8.23"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "toml_datetime",
+          "version": "0.6.11"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "toml_edit",
+          "version": "0.22.27"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "toml_write",
+          "version": "0.1.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tracelogging",
+          "version": "1.2.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tracelogging_macros",
+          "version": "1.2.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tracing",
+          "version": "0.1.44"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tracing-appender",
+          "version": "0.2.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tracing-attributes",
+          "version": "0.1.31"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tracing-core",
+          "version": "0.1.36"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tracing-log",
+          "version": "0.2.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tracing-subscriber",
+          "version": "0.3.23"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "triomphe",
+          "version": "0.1.15"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "typenum",
+          "version": "1.19.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ucd-trie",
+          "version": "0.1.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "unicode-ident",
+          "version": "1.0.24"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "unicode-linebreak",
+          "version": "0.1.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "unicode-segmentation",
+          "version": "1.12.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "unicode-truncate",
+          "version": "2.0.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "unicode-width",
+          "version": "0.2.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "unicode-xid",
+          "version": "0.2.6"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "unsafe-libyaml",
+          "version": "0.2.11"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "utf8parse",
+          "version": "0.2.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "uuid",
+          "version": "1.22.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "vtparse",
+          "version": "0.6.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "walkdir",
+          "version": "2.5.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "wezterm-bidi",
+          "version": "0.2.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "wezterm-blob-leases",
+          "version": "0.1.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "wezterm-color-types",
+          "version": "0.3.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "wezterm-dynamic",
+          "version": "0.2.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "wezterm-dynamic-derive",
+          "version": "0.1.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "wezterm-input-types",
+          "version": "0.1.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "which",
+          "version": "7.0.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "winapi",
+          "version": "0.3.9"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "winapi-util",
+          "version": "0.1.11"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "windows-link",
+          "version": "0.2.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "windows-sys",
+          "version": "0.61.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "winnow",
+          "version": "0.7.15"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "winsafe",
+          "version": "0.0.19"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "zmij",
+          "version": "1.0.21"
+        }
+      }
+    }
+  ],
+  "Version": 1
+}

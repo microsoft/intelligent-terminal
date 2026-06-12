@@ -4,6 +4,8 @@
 #include "pch.h"
 #include "ColorPickupFlyout.h"
 #include "Tab.h"
+#include "AgentPaneContent.h"
+#include "AgentPaneDragStash.h"
 #include "SettingsPaneContent.h"
 #include "Tab.g.cpp"
 #include "Utils.h"
@@ -539,6 +541,53 @@ namespace winrt::TerminalApp::implementation
     std::vector<ActionAndArgs> Tab::BuildStartupActions(BuildStartupKind kind) const
     {
         ASSERT_UI_THREAD();
+
+        // Cross-window agent-pane drag stash (Content kind only).
+        // BuildStartupKind::Content is used when serializing for a
+        // cross-window move (see TerminalPage::_MoveTab → _MoveContent).
+        // Persist is for app restart (no live source-window peer) and
+        // MovePane is intra-window (same Tab, no StableId change), so
+        // neither needs the stash.
+        //
+        // For every leaf pane whose content is an AgentPaneContent, we
+        // record (live ContentId → this tab's StableId) so the target
+        // window's _MakeTerminalPane can recognize it as an agent pane
+        // and rewrap + emit `tab_renamed` (handled by part 3).
+        if (kind == BuildStartupKind::Content && _rootPane)
+        {
+            const auto& myStableId = _stableId;
+            _rootPane->WalkTree([&myStableId](const auto& p) {
+                if (!p->_IsLeaf())
+                {
+                    return false;
+                }
+                const auto& content = p->GetContent();
+                if (!content)
+                {
+                    return false;
+                }
+                if (!content.try_as<winrt::TerminalApp::AgentPaneContent>())
+                {
+                    return false;
+                }
+                // AgentPaneContent.GetNewTerminalArgs(Content) forwards
+                // to the inner TerminalPaneContent which fills ContentId
+                // from the underlying TermControl.
+                const auto newArgs = content.GetNewTerminalArgs(BuildStartupKind::Content);
+                const auto& termArgs = newArgs.try_as<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs>();
+                if (!termArgs)
+                {
+                    return false;
+                }
+                const auto cid = termArgs.ContentId();
+                if (cid == 0)
+                {
+                    return false;
+                }
+                winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(cid, myStableId);
+                return false;
+            });
+        }
 
         // Give initial ids (0 for the child created with this tab,
         // 1 for the child after the first split.
@@ -1411,6 +1460,12 @@ namespace winrt::TerminalApp::implementation
             previousActive->UpdateVisuals();
         }
 
+        // Recompute the "Agent" chip on every pane in this tab. Both the
+        // ClearActive() above and the SetSourceOfAgentPane(true) we may
+        // have just done can flip which pane is "the source", and the chip
+        // follows that signal whenever there is no protocol-driven override.
+        _UpdateAgentChipVisibility();
+
         // Update our own title text to match the newly-active pane.
         UpdateTitle();
         _UpdateProgressState();
@@ -1468,6 +1523,51 @@ namespace winrt::TerminalApp::implementation
         }
 
         _UpdateMenuItemStates();
+    }
+
+    // Recompute the "Agent" chip visibility on every pane in this tab.
+    // When the helper has supplied a session-id override (typically while a
+    // Send recommendation is selected in the agent pane), chip visibility
+    // is pinned to the pane whose connection SessionId matches. Otherwise
+    // it follows the source-of-agent flag.
+    void Tab::_UpdateAgentChipVisibility()
+    {
+        if (!_rootPane)
+        {
+            return;
+        }
+        if (_agentChipOverride.has_value())
+        {
+            const auto target = _agentChipOverride.value();
+            _rootPane->WalkTree([&target](const auto& pane) {
+                pane->SetAgentChipVisible(pane->GetSessionId() == target);
+            });
+        }
+        else
+        {
+            _rootPane->WalkTree([](const auto& pane) {
+                pane->SetAgentChipVisible(pane->IsSourceOfAgentPane());
+            });
+        }
+    }
+
+    void Tab::SetAgentChipOverride(std::optional<winrt::guid> sessionId)
+    {
+        // Treat the empty guid as "no override" so a malformed event can't
+        // pin the chip to a nonexistent pane permanently.
+        if (sessionId.has_value() && sessionId.value() == winrt::guid{})
+        {
+            sessionId = std::nullopt;
+        }
+        _agentChipOverride = sessionId;
+        // Always recompute, even when the value didn't change. The helper
+        // re-publishes its current state on startup (and a few other sync
+        // points) so an "equal-but-redundant" event arriving here is the
+        // signal that the C++ side should re-walk the pane tree — for
+        // example to pick up a `IsSourceOfAgentPane()` transition the
+        // chip-visibility hook in `_UpdateActivePane` missed (legacy
+        // call sites that mutate the flag without going through it).
+        _UpdateAgentChipVisibility();
     }
 
     void Tab::_UpdateMenuItemStates()
@@ -2350,6 +2450,187 @@ namespace winrt::TerminalApp::implementation
         ASSERT_UI_THREAD();
 
         return _activePane;
+    }
+
+    // Returns the Pane node in this tab's pane tree that hosts an
+    // AgentPaneContent leaf, if any. Walks the tree; returns the first
+    // match. A tab "has" an agent pane iff this returns non-null.
+    std::shared_ptr<Pane> Tab::FindAgentPane() const
+    {
+        if (!_rootPane)
+        {
+            return nullptr;
+        }
+        return _rootPane->WalkTree([](const std::shared_ptr<Pane>& p) -> std::shared_ptr<Pane> {
+            if (p->IsAgentPane())
+            {
+                return p;
+            }
+            return nullptr;
+        });
+    }
+
+    // Returns the AgentPaneContent leaf hosted in this tab, or nullptr.
+    winrt::TerminalApp::AgentPaneContent Tab::FindAgentPaneContent() const
+    {
+        if (const auto pane = FindAgentPane())
+        {
+            if (const auto content = pane->GetContent())
+            {
+                return content.try_as<winrt::TerminalApp::AgentPaneContent>();
+            }
+        }
+        return nullptr;
+    }
+
+    // Hide the agent pane without destroying it. The pane stays in the tab
+    // tree (so its TermControl + conpty + wta-helper child remain alive),
+    // but its parent split is rewritten so the sibling occupies the full
+    // area. Re-show via `RestoreStashedAgentPane`. Preserves the conversation
+    // history and ACP session across toggle close/open — matches the
+    // "hidden background pane" semantic the toggle is supposed to have.
+    void Tab::StashAgentPane()
+    {
+        ASSERT_UI_THREAD();
+        const auto agentPane = FindAgentPane();
+        if (!agentPane || agentPane->IsHidden())
+        {
+            return;
+        }
+        const auto parent = _rootPane->_FindParentOfPane(agentPane);
+        if (!parent)
+        {
+            // Agent pane IS the root pane — nothing to fold into. The
+            // tree has no sibling for the terminal to expand into. Skip
+            // the stash; the toggle just no-ops here.
+            return;
+        }
+        parent->HidePane(agentPane);
+        // After HidePane, XAML focus is in limbo (the previously-focused
+        // element — typically the agent pane's TermControl — was just
+        // removed from the visual tree). Hotkeys go through
+        // `TermControl::_TryHandleKeyBinding`, so without a focused
+        // TermControl every subsequent chord is silently swallowed.
+        //
+        // Fallback: `GetActivePane()` returns nullptr when the sibling has
+        // no `_lastActive` descendant — common case is "user clicked the
+        // agent pane, which cleared `_lastActive` on the terminal sibling".
+        // Walk down to the first leaf in that case.
+        const auto sibling = (parent->_firstChild == agentPane) ? parent->_secondChild : parent->_firstChild;
+        std::shared_ptr<Pane> focusTarget = sibling ? sibling->GetActivePane() : nullptr;
+        if (!focusTarget && sibling)
+        {
+            focusTarget = sibling->_FindPane([](const auto& p) { return p->_IsLeaf(); });
+        }
+        if (focusTarget)
+        {
+            // FocusPane first (focusTarget's `_lastActive` is still false
+            // since agent pane was the active one). Then _UpdateActivePane
+            // for the bookkeeping.
+            _rootPane->FocusPane(focusTarget);
+            _UpdateActivePane(focusTarget);
+            // Defer the actual XAML Focus to a low-priority dispatcher tick
+            // (see RestoreStashedAgentPane for the explanation — synchronous
+            // Programmatic focus drops silently on a just-re-parented
+            // element; deferring lets XAML's layout pass complete first).
+            if (const auto termPane = focusTarget->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+            {
+                if (const auto termControl = termPane.GetTermControl())
+                {
+                    auto dispatcher = DispatcherQueue::GetForCurrentThread();
+                    if (dispatcher)
+                    {
+                        auto weakControl = winrt::make_weak(termControl);
+                        dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakControl]() {
+                            if (const auto ctrl = weakControl.get())
+                            {
+                                ctrl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Re-attach a previously-stashed agent pane. `direction` is accepted
+    // for API symmetry with the spawn path but is currently unused — the
+    // pane retains its original parent split (and its `_desiredSplitPosition`),
+    // so restoring is just a XAML re-add via `Pane::RestorePane`.
+    //
+    // CRITICAL: after RestorePane clears + re-adds the parent grid's
+    // children, XAML focus is left in limbo (no focused element). All
+    // subsequent key chords would be swallowed because WT's chord dispatch
+    // is rooted on TermControl — no focused TermControl means no chord
+    // dispatch. We MUST explicitly re-focus the agent pane's TermControl
+    // here; otherwise the next Ctrl+Shift+. (and every hotkey) is eaten.
+    bool Tab::RestoreStashedAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection /*direction*/)
+    {
+        ASSERT_UI_THREAD();
+        const auto agentPane = FindAgentPane();
+        if (!agentPane || !agentPane->IsHidden())
+        {
+            return false;
+        }
+        const auto parent = _rootPane->_FindParentOfPane(agentPane);
+        if (!parent)
+        {
+            return false;
+        }
+        parent->RestorePane(agentPane);
+        // Order matters: Pane::_Focus has a `WasLastFocused()` early-return
+        // guard, so do FocusPane (which calls _Focus) FIRST (agent's flag
+        // is still false from the stash). _UpdateActivePane sets the flag.
+        _rootPane->FocusPane(agentPane);
+        // FocusPane's synchronous `_Focus` raised GotFocus, which already
+        // called Tab::_UpdateActivePane(agentPane) via our gotFocus handler
+        // — including the SetSourceOfAgentPane(true) call that pins the
+        // chip / border onto the previously-focused terminal pane. A
+        // redundant _UpdateActivePane(agentPane) here would re-run
+        // ClearActive() and wipe that flag again (the condition that
+        // re-sets it requires `previousActive` to be the non-agent pane,
+        // but at this point previousActive is the agent pane itself).
+        // So only fall through if the GotFocus path didn't update us.
+        if (_activePane != agentPane)
+        {
+            _UpdateActivePane(agentPane);
+        }
+
+        // CRITICAL: synchronous Focus(Programmatic) is unreliable on
+        // freshly-re-parented or freshly-spawned TermControls. The element
+        // is in the visual tree but XAML hasn't completed its layout pass,
+        // so the Focus call silently drops. This is the same failure that
+        // makes spawn-time hotkey not work until the user clicks once —
+        // click goes via XAML's Pointer focus path which works on
+        // not-fully-laid-out elements; Programmatic focus does not.
+        //
+        // Defer the Focus to a low-priority dispatcher tick so XAML's
+        // layout pass + the TermControl's internal init (incl. connection
+        // setup) have time to settle. By then Programmatic focus sticks.
+        if (const auto agentContent = agentPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
+        {
+            if (const auto termControl = agentContent.GetTermControl())
+            {
+                auto dispatcher = DispatcherQueue::GetForCurrentThread();
+                if (dispatcher)
+                {
+                    auto weakControl = winrt::make_weak(termControl);
+                    dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakControl]() {
+                        if (const auto ctrl = weakControl.get())
+                        {
+                            ctrl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+                        }
+                    });
+                }
+            }
+        }
+        return true;
+    }
+
+    bool Tab::HasStashedAgentPane() const
+    {
+        const auto agentPane = FindAgentPane();
+        return agentPane && agentPane->IsHidden();
     }
 
     // Method Description:

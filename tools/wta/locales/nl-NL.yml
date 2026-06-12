@@ -1,6 +1,6 @@
 # Titels van het installatiescherm
-# {Locked="Intelligent Terminal"} - productnaam, niet vertalen
-setup.title.first_run: "Welkom bij Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Welkom bij Intelligente Terminal!"
 setup.title.agent_missing: "Agent niet gevonden"
 setup.title.agent_error: "Verbinding met agent mislukt"
 setup.title.switch_agent: "Van agent wisselen"
@@ -8,21 +8,21 @@ setup.title.not_available: "Agent niet beschikbaar"
 setup.title.sign_in: "Aanmelden vereist"
 
 # %{agent} wordt tijdens runtime vervangen door de weergavenaam van de agent.
-setup.subtitle.copilot_missing: "Uw agent \"%{agent}\" is niet geïnstalleerd. Volg de onderstaande stappen om deze te installeren. Om van agent te wisselen, ga naar de instellingen."
-setup.subtitle.agent_missing: "Uw agent \"%{agent}\" is niet geïnstalleerd. Installeer deze handmatig opnieuw en probeer het opnieuw. Om van agent te wisselen, ga naar de instellingen."
-setup.subtitle.copilot_auth: "Uw agent \"%{agent}\" vereist verificatie. Volg de onderstaande stappen om u aan te melden. Om van agent te wisselen, ga naar de instellingen."
-setup.subtitle.agent_auth: "Uw agent \"%{agent}\" vereist verificatie. Meld u aan via de agent-CLI en probeer het opnieuw. Om van agent te wisselen, ga naar de instellingen."
+setup.subtitle.copilot_missing: "Uw agent \"%{agent}\" is niet geïnstalleerd. Volg de onderstaande stappen om deze te installeren. Om van agent te wisselen, ga naar Intelligente Terminal-instellingen > Agent."
+setup.subtitle.agent_missing: "Uw agent \"%{agent}\" is niet geïnstalleerd. Installeer deze handmatig opnieuw en probeer het opnieuw. Om van agent te wisselen, ga naar Intelligente Terminal-instellingen > Agent."
+setup.subtitle.copilot_auth: "Uw agent \"%{agent}\" vereist verificatie. Volg de onderstaande stappen om u aan te melden. Om van agent te wisselen, ga naar Intelligente Terminal-instellingen > Agent."
+setup.subtitle.agent_auth: "Uw agent \"%{agent}\" vereist verificatie. Meld u aan via de agent en selecteer hieronder \"Ik heb me aangemeld\". Om van agent te wisselen, ga naar Intelligente Terminal-instellingen > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Kies de standaard agent-CLI die u wilt gebruiken in Intelligent Terminal. U kunt"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Kies de standaard agent-CLI die u wilt gebruiken in Intelligente Terminal. U kunt"
 setup.description.fre_line2: "naar de instellingen navigeren om uw werkruimte te configureren en in te richten."
 
-setup.option.reinstall: "%{agent} opnieuw installeren"
-setup.option.reinstall_hint: "(Wordt automatisch geïnstalleerd)"
+setup.option.install: "%{agent} installeren"
+setup.option.install_hint: "(Wordt automatisch geïnstalleerd)"
 setup.option.signin: "Aanmelden bij %{agent}"
-setup.option.retry_detection: "Detectie opnieuw proberen"
-setup.option.retry_auth: "Ik heb me aangemeld — verbinding opnieuw proberen"
-setup.option.retry_connection: "Verbinding opnieuw proberen"
+setup.option.retry_detection: "Opnieuw proberen"
+setup.option.retry_auth: "Ik heb me aangemeld — opnieuw verbinden"
+setup.option.retry_connection: "Opnieuw verbinden"
 setup.option.switch_to: "Overschakelen naar %{agent}"
 setup.status.installing: "Installeren..."
 setup.status.install_failed: "Installatie mislukt: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Druk op Enter om aan te melden, Esc om terug te gaan"  # {L
 
 # ── Chatweergave (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Bezig met nadenken…"
-# {Locked="Intelligent Terminal"} - productnaam, niet vertalen
-chat.welcome_title: "Welkom bij Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Welkom bij Intelligente Terminal!"
+chat.welcome_disclaimer: "Intelligente Terminal maakt gebruik van AI. Controleer op fouten."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Recente opdrachtfout automatisch gediagnosticeerd"
+chat.turn_canceled: "(geannuleerd)"
+chat.turn_executed: "→ uitgevoerd: %{title}"
 
 # ── Invoertijdelijke aanduidingen (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Stel een vraag, / voor opdrachten.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Letterlijke '/' verzenden (omzeilt de o
 commands.help_close_hint: "  Esc        Deze help sluiten"  # {Locked="Esc"}
 
 # ── Aanbevelingenpaneel (src/ui/recommendations.rs) ───────────────────────────────────
-# {Locked="Enter","Esc","↵"} - toetsnamen en Enter-toetssymbool, niet vertalen
-recommendations.nav_hint: "(↑ ↓ navigeren • Enter selecteren • Esc annuleren)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - toetsnamen en Enter-toetssymbool, niet vertalen
+recommendations.nav_hint: "(↑ ↓ navigeren • ← → om acties te wisselen • Enter selecteren • Esc annuleren)"
 recommendations.button_run_command: "[ Opdracht uitvoeren ]"
 recommendations.button_insert_in_terminal: "Invoegen in terminal"
 recommendations.button_open_in_new_tab: "Openen in nieuw tabblad ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Zorg dat %{name} is geïnstalleerd en in het PATH staat
 
 # ── Agentweergave (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laden..."
-# {Locked="Enter","Shift+enter","Esc"} - toetscombinaties, niet vertalen
-agents.footer_hint: "(↑ ↓ navigeren • Enter sessie starten in nieuw tabblad • Shift+enter sessie starten in agentdeelvenster • Esc afsluiten)"
+# {Locked="Enter","Esc","↑","↓"} - toetscombinaties, niet vertalen
+agents.footer_hint: "(↑ ↓ navigeren • Enter sessie starten • Esc afsluiten)"
 agents.status.active: "Actief"
 agents.status.waiting_for_input: "Wachten op invoer"
 agents.status.error: "Fout"
 agents.status.idle: "Inactief"
 
 # ── Welkomsthint voor indeling (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. om het agentdeelvenster te tonen/verbergen • Ctrl+Alt+/ om de agentsessie te tonen/verbergen)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. om het agentdeelvenster te tonen/verbergen • Ctrl+Shift+/ om de agentsessie te tonen/verbergen)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Verbindingsstatus ────────────────────────────────────────────────────────────
 connection.starting: "Agent starten..."
 connection.reconnecting: "Opnieuw verbinden..."
+connection.connecting_activity: "Verbinding maken met agent…"
+connection.lost: "De verbinding met de agent is verbroken. Typ /restart om opnieuw verbinding te maken."  # {Locked="/restart"}
 
 # ── Systeemberichten (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Geannuleerd."
 system.no_prompt_in_flight: "Geen prompt actief."
 system.authentication_failed: "Verificatie mislukt"
 system.command_copied_retry: "Opdracht gekopieerd — voer deze uit in een andere terminal en druk op Enter om opnieuw te proberen"  # {Locked="Enter"}
+system.stopped_max_tokens: "Het antwoord is afgekapt nadat de uitvoerlimiet van het model was bereikt."
+system.stopped_max_turn_requests: "De agent is gestopt nadat de aanvraaglimiet voor deze beurt was bereikt."
+system.stopped_refusal: "De agent heeft geweigerd door te gaan met deze aanvraag."
+system.agent_busy: "De agent is bezig op dit tabblad — wacht tot de huidige prompt is voltooid."
+system.resuming_session: "Sessie %{session_id} wordt hervat..."
+system.unknown_command: "Onbekende opdracht \"%{command}\" — verzonden als prompt. Typ /help voor de lijst."
+system.busy_use_stop: "Wacht tot de huidige prompt is voltooid, of gebruik eerst /stop."
+system.cannot_focus_session: "Kan sessie %{session_id} niet focussen: deze lijkt live, maar er is nog geen deelvenster-GUID gekoppeld. Probeer het zo opnieuw."
+system.cannot_resume_no_load_session: "Kan niet hervatten in agentdeelvenster: %{agent} heeft de ACP `loadSession`-mogelijkheid niet aangekondigd. Druk op Enter (zonder Shift) om in plaats daarvan te hervatten in een nieuw terminaldeelvenster."
+system.cannot_resume_no_resume_flag: "Kan %{agent}-sessie niet hervatten: deze agent heeft geen vlag in de stijl `--resume`. Druk op Shift+Enter om in plaats daarvan via ACP te proberen te hervatten binnen het agentdeelvenster."
+system.cannot_resume_unknown_agent: "Kan sessie %{session_id} niet hervatten: de bronagent is onbekend voor deze build."
+system.cannot_resume_phantom_via_flag: "Kan %{agent}-sessie %{session_id} niet hervatten: deze is gestart maar heeft nooit een gesprek opgebouwd, waardoor %{agent} zelf het hervatten zou weigeren. Rij wordt verwijderd."
+system.cannot_resume_phantom_via_load: "Kan %{agent}-sessie %{session_id} niet hervatten: deze is gestart maar heeft nooit een gesprek opgebouwd, waardoor %{agent} het laden zou weigeren. Rij wordt verwijderd."
+system.fallback.this_agent: "deze agent"
+system.fallback.connected_agent: "de verbonden agent"
 
 # ── Runtime CLI-uitvoer (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Geen vensters gevonden."
@@ -171,3 +192,32 @@ hooks.installed_but_disabled: "⚠ Geïnstalleerd maar uitgeschakeld"
 hooks.not_installed: "✗ Niet geïnstalleerd"
 hooks.uninstall_skipped: "Overgeslagen (CLI niet in PATH)"
 hooks.install_attempted: "wt-agent-hooks-installatie geprobeerd (idempotent). Voer `wta hooks status` uit om het resultaat te bekijken. Traceerlogboek: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "zojuist"
+time.minute_singular: "%{count} minuut geleden"
+time.minutes_other: "%{count} minuten geleden"
+time.hour_singular: "%{count} uur geleden"
+time.hours_other: "%{count} uur geleden"
+time.day_singular: "%{count} dag geleden"
+time.days_other: "%{count} dagen geleden"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Deze opdrachtlijst weergeven"
+commands.clear.summary: "Chatgeschiedenis wissen (sessie blijft behouden)"
+commands.new.summary: "Een nieuwe ACP-sessie starten (geschiedenis verwijderen)"
+commands.restart.summary: "Agent opnieuw starten"
+commands.stop.summary: "De actieve prompt annuleren"
+commands.sessions.summary: "De selector voor eerdere sessies openen (Ctrl+Shift+/)"
+
+# ── Aanbeveling uitvoeren (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Keuze %{choice} is mislukt: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Het model voor dit deelvenster kiezen (/model <id> om direct te wisselen)"  # {Locked="/model","<id>"}
+model_picker.title: "Model selecteren (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "De verbonden agent heeft geen selecteerbare modellen aangekondigd."
+system.model_set: "Model voor dit deelvenster ingesteld op %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Onbekend model %{model} — typ /model om de beschikbare lijst te zien."  # {Locked="%{model}","/model"}

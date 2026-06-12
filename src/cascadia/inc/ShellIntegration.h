@@ -3,234 +3,129 @@
 //
 // ShellIntegration.h
 //
-// Pure Win32 + STL functions for installing PowerShell shell integration
-// scripts (OSC 133 prompt marks). Shared by FreOverlay (FRE wizard) and
-// TerminalPage (Settings UI).
+// Umbrella header for the shell-integration installer. Includes:
+//   • ShellIntegrationCommon.h     — types, markers, IShellFlavor + orchestrator
+//   • PowerShellShellIntegration.h — PowerShell 5.1 / 7 flavors
+//   • BashShellIntegration.h       — Git Bash flavor
+//   • WslShellIntegration.h        — per-distro WSL bash flavor (derives from BashFlavor)
 //
-// The shell integration script wraps the user's prompt to emit:
-//   OSC 133;D;<exit_code>  — command finished (triggers autofix)
-//   OSC 133;A              — prompt started
-//   OSC 133;B              — command input starts
-//   OSC 9;9;"<cwd>"        — current working directory
+// Also defines the top-level dispatchers (InstallForTarget /
+// UninstallForTarget) keyed on Target, and provides flat-namespace
+// aliases for every public symbol callers and tests reference (kept
+// to minimize churn in existing code — anything `SI::Install`,
+// `SI::InstallBash`, `SI::FindShellIntegrationBlock` etc. still
+// resolves here without touching call sites).
+//
+// Adding a new shell:
+//   1. Drop in <NewShell>ShellIntegration.h that exposes a concrete
+//      IShellFlavor and Install / Uninstall / DiscoverProfilePath
+//      / etc.
+//   2. Include it below.
+//   3. Extend Target + the dispatchers if it has a natural single-
+//      target shape (like Bash), OR expose a per-instance API (like
+//      Wsl::Install(distName)).
+//   4. Add per-flavor TEST_METHODs that delegate to the shared
+//      _RunScenario_* helpers in ShellIntegrationTests.cpp.
 
 #pragma once
 
-#include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <ShlObj.h>
+#include "ShellIntegrationCommon.h"
+#include "ShellIntegrationProfileGate.h"
+#include "PowerShellShellIntegration.h"
+#include "BashShellIntegration.h"
+#include "WslShellIntegration.h"
 
 namespace Microsoft::Terminal::ShellIntegration
 {
-    enum class Target
-    {
-        Pwsh,
-        WindowsPowerShell,
-    };
+    // ───────────────────────────────────────────────────────────────────
+    // Top-level dispatchers — keyed on Target. Bash has no execution
+    // policy gate (no equivalent in bash); PS does — and the FRE relies
+    // on the policy-blocked InstallResult.executionPolicyBlocked flag
+    // to surface a specific dialog, so the gate MUST stay here in the
+    // umbrella dispatcher (Powershell::InstallForTarget owns it).
+    // ───────────────────────────────────────────────────────────────────
 
-    // Result of an installation attempt.
-    struct InstallResult
-    {
-        bool success{ false };
-        bool alreadyInstalled{ false }; // true when skipped because already configured
-        std::wstring errorMessage;
-    };
-
-    // Discover the PowerShell $PROFILE path.
-    // Uses SHGetKnownFolderPath for the Documents folder instead of spawning
-    // a shell process, which hangs indefinitely in packaged-app environments
-    // (confirmed on both our FRE code and the remote's _InitShellIntegration).
-    // SHGetKnownFolderPath respects OneDrive redirection and group policy.
-    inline std::wstring DiscoverProfilePath(Target target)
-    {
-        wil::unique_cotaskmem_string documentsPath;
-        if (FAILED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &documentsPath)) || !documentsPath)
-        {
-            return {};
-        }
-
-        std::filesystem::path profilePath{ documentsPath.get() };
-        profilePath /= (target == Target::Pwsh) ? L"PowerShell" : L"WindowsPowerShell";
-        profilePath /= L"Microsoft.PowerShell_profile.ps1";
-
-        return profilePath.wstring();
-    }
-
-    // The shell integration script content.
-    inline constexpr std::wstring_view ScriptContent{
-        LR"(# Shell Integration — non-invasive prompt wrapper
-# Emits OSC 133 (command marks / exit code) and OSC 9;9 (CWD) escape
-# sequences WITHOUT altering the visual appearance of the user's prompt.
-#
-# USAGE: dot-source this AFTER the user's profile has loaded:
-#   . "path\to\shell-integration.ps1"
-#
-# Compatible with Windows PowerShell 5.1+ and PowerShell 7+.
-# Safe to source multiple times (idempotent guard).
-
-if (-not $Global:__ShellInteg_Installed) {
-
-    # ── Escape characters (PS 5.1 doesn't support `e / `a literals) ──
-    $Global:__ShellInteg_ESC = [char]0x1B   # ESC
-    $Global:__ShellInteg_BEL = [char]0x07   # BEL (OSC string terminator)
-
-    # ── Snapshot the user's current prompt before we touch it ──────────
-    $Global:__ShellInteg_OriginalPrompt = $function:prompt
-    $Global:__ShellInteg_LastHistoryId  = -1
-    $Global:__ShellInteg_Installed      = $true
-
-    function Global:__ShellInteg_GetLastExitCode {
-        # $? still reflects the *user's* last command here because this
-        # is the very first call inside the prompt function.
-        if ($? -eq $True) { return 0 }
-        $entry = Get-History -Count 1
-        if ($entry -and $Error[0].InvocationInfo.HistoryId -eq $entry.Id) {
-            return -1          # PowerShell-level error
-        }
-        return $LastExitCode   # native command exit code
-    }
-
-    function prompt {
-        # ── Capture exit code FIRST — before anything else can clobber $? ──
-        $gle   = $(__ShellInteg_GetLastExitCode)
-        $entry = Get-History -Count 1
-        $loc   = $executionContext.SessionState.Path.CurrentLocation
-        $E     = $Global:__ShellInteg_ESC
-        $B     = $Global:__ShellInteg_BEL
-
-        $prefix = ''
-        $suffix = ''
-
-        # ── Previous command finished (OSC 133;D with exit code) ──
-        if ($entry -and $entry.Id -ne $Global:__ShellInteg_LastHistoryId) {
-            $prefix += "${E}]133;D;${gle}${B}"
-        }
-
-        # ── Prompt started (OSC 133;A) ──
-        $prefix += "${E}]133;A${B}"
-
-        # ── Report current working directory (OSC 9;9) ──
-        $prefix += "${E}]9;9;`"${loc}`"${B}"
-
-        # ── Prompt ended, command input starts (OSC 133;B) ──
-        $suffix = "${E}]133;B${B}"
-
-        # ── Delegate to the user's ORIGINAL prompt — visual output is theirs ──
-        $originalOutput = & $Global:__ShellInteg_OriginalPrompt
-
-        $Global:__ShellInteg_LastHistoryId = if ($entry) { $entry.Id } else { -1 }
-
-        return "${prefix}${originalOutput}${suffix}"
-    }
-}
-)"
-    };
-
-    // Install shell integration for a given PowerShell profile path.
-    // Writes shell-integration.ps1 next to the profile and appends a
-    // dot-source line to the profile. Idempotent — skips if already configured.
-    // Synchronous — call from a background thread.
-    inline InstallResult Install(const std::wstring& profilePathW)
-    {
-        if (profilePathW.empty())
-        {
-            return { false, false, L"Profile path is empty" };
-        }
-
-        const std::filesystem::path profilePath{ profilePathW };
-        const auto profileDir = profilePath.parent_path();
-        const auto scriptPath = profileDir / L"shell-integration.ps1";
-
-        // Check if already configured
-        if (std::filesystem::exists(profilePath))
-        {
-            std::ifstream profileIn(profilePath, std::ios::binary);
-            if (profileIn)
-            {
-                std::string contents((std::istreambuf_iterator<char>(profileIn)),
-                                      std::istreambuf_iterator<char>());
-                profileIn.close();
-                if (contents.find("shell-integration.ps1") != std::string::npos)
-                {
-                    return { true, true, {} }; // already configured
-                }
-            }
-        }
-
-        // Ensure profile directory exists
-        std::error_code ec;
-        std::filesystem::create_directories(profileDir, ec);
-        if (ec)
-        {
-            return { false, false, L"Failed to create profile directory" };
-        }
-
-        // Write shell-integration.ps1
-        {
-            std::ofstream scriptOut(scriptPath, std::ios::binary | std::ios::trunc);
-            if (!scriptOut)
-            {
-                return { false, false, L"Failed to write shell-integration.ps1" };
-            }
-            const auto scriptUtf8 = til::u16u8(ScriptContent);
-            scriptOut.write(scriptUtf8.data(), scriptUtf8.size());
-        }
-
-        // Back up existing $PROFILE before modifying
-        if (std::filesystem::exists(profilePath))
-        {
-            const auto now = std::chrono::system_clock::now();
-            const auto tt = std::chrono::system_clock::to_time_t(now);
-            struct tm tm{};
-            localtime_s(&tm, &tt);
-            wchar_t timeBuf[32]{};
-            wcsftime(timeBuf, std::size(timeBuf), L"%Y%m%d-%H%M%S", &tm);
-
-            std::ifstream backupIn(profilePath, std::ios::binary);
-            std::string backupContent((std::istreambuf_iterator<char>(backupIn)),
-                                      std::istreambuf_iterator<char>());
-            backupIn.close();
-            const auto contentHash = std::hash<std::string>{}(backupContent);
-
-            auto backupPath = profilePath.wstring() +
-                L".bak." + timeBuf + L"." +
-                fmt::format(FMT_COMPILE(L"{:08x}"), contentHash & 0xFFFFFFFF);
-            std::filesystem::copy_file(profilePath, backupPath,
-                                       std::filesystem::copy_options::overwrite_existing, ec);
-            // Non-fatal if backup fails
-        }
-
-        // Append dot-source line to $PROFILE
-        auto dotSourceLine = fmt::format(
-            FMT_COMPILE(L"\n# Shell integration \u2014 emit OSC 133 (exit code) + OSC 9;9 (CWD) without\n"
-                        L"# altering the visual prompt.  Must load LAST so it can wrap whatever\n"
-                        L"# prompt function exists at this point.\n"
-                        L". \"{}\""),
-            scriptPath.wstring());
-
-        {
-            std::ofstream profileOut(profilePath, std::ios::binary | std::ios::app);
-            if (!profileOut)
-            {
-                return { false, false, L"Failed to append to PowerShell profile" };
-            }
-            const auto lineUtf8 = til::u16u8(dotSourceLine);
-            profileOut.write(lineUtf8.data(), lineUtf8.size());
-        }
-
-        return { true, false, {} };
-    }
-
-    // Convenience: discover profile path + install, for a given target.
-    // Synchronous — call from a background thread.
     inline InstallResult InstallForTarget(Target target)
     {
-        auto profilePath = DiscoverProfilePath(target);
-        if (profilePath.empty())
+        if (target == Target::Bash)
         {
-            return { false, false, L"Could not discover PowerShell profile path" };
+            return Bash::InstallForTarget();
         }
-        return Install(profilePath);
+        return Powershell::InstallForTarget(target);
+    }
+
+    inline InstallResult UninstallForTarget(Target target)
+    {
+        if (target == Target::Bash)
+        {
+            return Bash::UninstallForTarget();
+        }
+        return Powershell::UninstallForTarget(target);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Back-compat aliases — flat-namespace names that pre-refactor code
+    // and tests reference. New code should call the per-flavor
+    // namespaces directly (`Powershell::Install`, `Bash::Install`, etc).
+    // ═══════════════════════════════════════════════════════════════════
+
+    // PowerShell.
+    inline InstallResult Install(const std::wstring& profilePathW) { return Powershell::Install(profilePathW); }
+    inline InstallResult Uninstall(const std::wstring& profilePathW) { return Powershell::Uninstall(profilePathW); }
+    inline std::wstring DiscoverProfilePath(Target target) { return Powershell::DiscoverProfilePath(target); }
+    inline bool ExecutionPolicyBlocksShellIntegration(Target target) noexcept { return Powershell::ExecutionPolicyBlocksShellIntegration(target); }
+    inline constexpr int kShellIntegrationVersion = Powershell::kVersion;
+    inline std::wstring ShellIntegrationScriptFileName() { return Powershell::ScriptFileName(); }
+    inline std::string ShellIntegrationScriptContent() { return Powershell::ScriptContent(); }
+    inline std::string BuildShellIntegrationBlock(std::wstring_view profileSubdir, std::string_view eol)
+    {
+        return Powershell::BuildBlock(profileSubdir, eol);
+    }
+    // Pure-parser wrapper. Tests assert on the byte range only — and
+    // since the orphan-recovery + legacy-form recognizers are stateless
+    // properties of the PowerShell flavor, we get them by constructing a
+    // throwaway flavor with a placeholder profile path (FindExisting
+    // doesn't read the path). Returns the legacy {npos, npos} sentinel
+    // form so the tests can structured-bind against it unchanged.
+    inline std::pair<size_t, size_t> FindShellIntegrationBlock(std::string_view contents)
+    {
+        Powershell::PowerShellFlavor flavor{ L"placeholder.ps1" };
+        const auto result = flavor.FindExistingScriptBlock(contents);
+        return result ? *result : std::pair{ std::string::npos, std::string::npos };
+    }
+
+    // Bash.
+    inline constexpr int kShellIntegrationBashVersion = Bash::kVersion;
+    inline std::wstring ShellIntegrationBashScriptFileName() { return Bash::ScriptFileName(); }
+    inline std::wstring BashScriptDir() { return Bash::ScriptDir(); }
+    inline std::wstring DiscoverBashProfilePath() { return Bash::DiscoverProfilePath(); }
+    inline std::string ShellIntegrationBashScriptContent() { return Bash::ScriptContent(); }
+    inline std::string BuildShellIntegrationBashBlock() { return Bash::BuildBlock("\n"); }
+    inline std::pair<size_t, size_t> FindShellIntegrationBashBlock(std::string_view contents)
+    {
+        Bash::BashFlavor flavor{ L"placeholder", L"placeholder" };
+        const auto result = flavor.FindExistingScriptBlock(contents);
+        return result ? *result : std::pair{ std::string::npos, std::string::npos };
+    }
+    inline InstallResult InstallBash(const std::wstring& profilePathW, const std::wstring& scriptDirW)
+    {
+        return Bash::Install(profilePathW, scriptDirW);
+    }
+    inline InstallResult UninstallBash(const std::wstring& profilePathW) { return Bash::Uninstall(profilePathW); }
+
+    // WSL.
+    inline std::wstring WslUncPath(std::wstring_view distName, std::string_view posixPath) { return Wsl::UncPath(distName, posixPath); }
+    inline InstallResult InstallWslBash(const std::wstring& distName) { return Wsl::Install(distName); }
+    inline InstallResult UninstallWslBash(const std::wstring& distName) { return Wsl::Uninstall(distName); }
+
+    // Re-expose per-flavor details under the top-level `details::` namespace
+    // so existing tests that reference `details::QueryExecutionPolicy(...)`
+    // / `details::IsSafeWslDistroName(...)` keep compiling unchanged.
+    namespace details
+    {
+        inline std::wstring QueryExecutionPolicy(LPCWSTR exe) noexcept { return Powershell::details::QueryExecutionPolicy(exe); }
+        inline bool PolicyNameBlocksUnsignedScripts(std::wstring_view name) noexcept { return Powershell::details::PolicyNameBlocksUnsignedScripts(name); }
+        inline bool IsSafeWslDistroName(std::wstring_view name) noexcept { return Wsl::details::IsSafeDistroName(name); }
+        inline bool IsSafeWslHome(std::string_view home) noexcept { return Wsl::details::IsSafeHome(home); }
     }
 }

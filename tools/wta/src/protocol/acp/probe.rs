@@ -135,28 +135,64 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
             acp::Implementation::new("wta-probe", env!("CARGO_PKG_VERSION"))
                 .title("WTA Model Probe"),
         );
-    let _init_resp = tokio::time::timeout(
-        Duration::from_secs(init_timeout_secs),
-        conn.initialize(init_req),
-    )
-    .await
-    .map_err(|_| {
-        anyhow!(
-            "ACP initialize timed out after {}s during probe (agent={})",
-            init_timeout_secs,
-            spawned.label()
-        )
-    })?
-    .map_err(|e| anyhow!("initialize failed: {}", e))?;
+    let init_started = std::time::Instant::now();
+    let init_result =
+        tokio::time::timeout(Duration::from_secs(init_timeout_secs), conn.initialize(init_req))
+            .await;
+    crate::telemetry::log_acp_initialize_complete(
+        init_started.elapsed().as_secs_f64() * 1000.0,
+        matches!(init_result, Ok(Ok(_))),
+        "Probe",
+        match &init_result {
+            Ok(Ok(_)) => "",
+            Ok(Err(_)) => "AcpError",
+            Err(_) => "Timeout",
+        },
+        match &init_result {
+            Ok(Err(e)) => e.code.into(),
+            _ => 0,
+        },
+    );
+    let _init_resp = init_result
+        .map_err(|_| {
+            anyhow!(
+                "ACP initialize timed out after {}s during probe (agent={})",
+                init_timeout_secs,
+                spawned.label()
+            )
+        })?
+        .map_err(|e| anyhow!("initialize failed: {}", e))?;
 
     let cwd = std::env::current_dir().unwrap_or_default();
-    let session_resp = tokio::time::timeout(
+    let session_started = std::time::Instant::now();
+    let session_result = tokio::time::timeout(
         Duration::from_secs(10),
         conn.new_session(acp::NewSessionRequest::new(cwd)),
     )
-    .await
-    .map_err(|_| anyhow!("new_session timed out after 10s during probe"))?
-    .map_err(|e| anyhow!("new_session failed: {}", e))?;
+    .await;
+    let session_id = session_result
+        .as_ref()
+        .ok()
+        .and_then(|inner| inner.as_ref().ok())
+        .map(|resp| resp.session_id.to_string());
+    crate::telemetry::log_acp_new_session_complete(
+        session_id.as_deref(),
+        session_started.elapsed().as_secs_f64() * 1000.0,
+        matches!(session_result, Ok(Ok(_))),
+        "Probe",
+        match &session_result {
+            Ok(Ok(_)) => "",
+            Ok(Err(_)) => "AcpError",
+            Err(_) => "Timeout",
+        },
+        match &session_result {
+            Ok(Err(e)) => e.code.into(),
+            _ => 0,
+        },
+    );
+    let session_resp = session_result
+        .map_err(|_| anyhow!("new_session timed out after 10s during probe"))?
+        .map_err(|e| anyhow!("new_session failed: {}", e))?;
 
     let (available_models, current_model_id) = match &session_resp.models {
         Some(state) => {

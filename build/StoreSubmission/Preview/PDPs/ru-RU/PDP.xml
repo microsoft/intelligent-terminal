@@ -32,7 +32,7 @@
   <Description>
     Это предварительная сборка Windows Terminal, которая содержит новейшие функции по мере их разработки. Windows Terminal - это современное, быстрое, эффективное, мощное и продуктивное терминальное приложение для пользователей инструментов командной строки и оболочек, таких как командная строка, PowerShell и WSL. Его основные функции включают в себя несколько вкладок, панелей, поддержку символов Unicode и UTF-8, движок рендеринга текста с GPU-ускорением, а также настраиваемые темы, стили и конфигурации. 
 
-Это проект с открытым исходным кодом, и мы приветствуем участие сообщества. Для участия, пожалуйста, посетите https://aka.ms/intelligentterminal/source </Description>
+Это проект с открытым исходным кодом, и мы приветствуем участие сообщества. Для участия, пожалуйста, посетите https://aka.ms/intelligent-terminal-source </Description>
   <ShortDescription>
     <!-- Only used for games. This description appears in the Information section of the Game Hub on Xbox One, and helps customers understand more about your game. -->
     
@@ -174,9 +174,9 @@
     
   </AdditionalLicenseTerms>
   <WebsiteURL>
-    https://aka.ms/intelligentterminal/source</WebsiteURL>
+    https://aka.ms/intelligent-terminal-source</WebsiteURL>
   <SupportContactInfo>
-    https://aka.ms/intelligentterminal/feedback</SupportContactInfo>
+    https://aka.ms/intelligent-terminal-feedback</SupportContactInfo>
   <PrivacyPolicyURL>
-    https://aka.ms/intelligentterminal/privacy</PrivacyPolicyURL>
+    https://aka.ms/intelligent-terminal-privacy</PrivacyPolicyURL>
 </ProductDescription>

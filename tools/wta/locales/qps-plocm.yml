@@ -8,22 +8,22 @@ setup.title.not_available: "[!! Age_nt not available !!]"
 setup.title.sign_in: "[!! Sig_n in required !!]"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "[!! You_r agent \"%{agent}\" is not installed. Follow the steps below to install it. To switch agents, go to Settings. !!]"
-setup.subtitle.agent_missing: "[!! You_r agent \"%{agent}\" is not installed. Please reinstall it manually, then retry. To switch agents, go to Settings. !!]"
-setup.subtitle.copilot_auth: "[!! You_r agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Settings. !!]"
-setup.subtitle.agent_auth: "[!! You_r agent \"%{agent}\" requires authentication. Please sign in via the agent CLI, then retry. To switch agents, go to Settings. !!]"
+setup.subtitle.copilot_missing: "[!! You_r agent \"%{agent}\" is not installed. Follow the steps below to install it. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
+setup.subtitle.agent_missing: "[!! You_r agent \"%{agent}\" is not installed. Please install it manually, then try again. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
+setup.subtitle.copilot_auth: "[!! You_r agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
+setup.subtitle.agent_auth: "[!! You_r agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've_ signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "[!! Cho_ose the default agent CLI you would like to use in Intelligent Terminal. You can !!]"
+setup.description.fre_line1: "[!! Cho_ose the default agent you would like to use in Intelligent Terminal. You can !!]"
 setup.description.fre_line2: "[!! nav_igate to Settings to configure and set up your workspace. !!]"
 
-setup.option.reinstall: "[!! Rei_nstall %{agent} !!]"
-setup.option.reinstall_hint: "[!! (Wi_ll be installed automatically) !!]"
+setup.option.install: "[!! Ins_tall %{agent} !!]"
+setup.option.install_hint: "[!! (Wi_ll be installed automatically) !!]"
 setup.option.signin: "[!! Sig_n in to %{agent} !!]"
-setup.option.retry_detection: "[!! Ret_ry detection !!]"
-setup.option.retry_auth: "[!! I'v_e signed in — retry connection !!]"
-setup.option.retry_connection: "[!! Ret_ry connection !!]"
-setup.option.switch_to: "Switch to %{agent}"
+setup.option.retry_detection: "[!! Try_ again !!]"
+setup.option.retry_auth: "[!! I've_ signed in — try connecting again !!]"
+setup.option.retry_connection: "[!! Try_ connecting again !!]"
+setup.option.switch_to: "[!! Swi_tch to %{agent} !!]"
 setup.status.installing: "[!! Ins_talling... !!]"
 setup.status.install_failed: "[!! Ins_tall failed:  !!]"
 setup.status.installing_winget: "[!!  In_stalling via winget... !!]"
@@ -45,15 +45,19 @@ auth.hint_footer: "[!!   Pr_ess Enter to sign in, Esc to go back !!]"  # {Locked
 chat.activity_thinking: "[!! Thi_nking... !!]"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "[!! Welco_me to Intelligent Terminal! !!]"
+chat.welcome_disclaimer: "[!! Inte_lligent Terminal uses AI. Check for mistakes. !!]"
 chat.plan_header: "[!! Pla_n: !!]"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "[!! Auto-diagnosed_a_recent_command_failure !!]"
+chat.turn_canceled: "[!! (cancel_ed) !!]"
+chat.turn_executed: "[!! → execu_ted: %{title} !!]"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "[!! Ask_ anything, / for commands.. !!]"  # {Locked="/"}
 input.placeholder.connecting: "[!! con_necting... !!]"
-input.placeholder.disconnected: "[!! dis_connect !!]"
+input.placeholder.disconnected: "[!! dis_connected !!]"
 
 # ── Pending prompt queue (src/ui/queued_hint.rs, src/app.rs) ───────────────
 # Indicator shown above the input box while one or more prompts are queued
@@ -77,8 +81,8 @@ commands.help_escape_hint: "[!!   //text     Se_nd a literal '/' (escapes the co
 commands.help_close_hint: "[!!   Esc        Cl_ose this help !!]"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "[!! (↑_ ↓ to navigate • Enter to select • Esc to cancel) !!]"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "[!! (↑_ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel) !!]"
 recommendations.button_run_command: "[!! [ R_un command ] !!]"
 recommendations.button_insert_in_terminal: "[!! Ins_ert in Terminal !!]"
 recommendations.button_open_in_new_tab: "[!! Ope_n in New Tab ↵ !!]"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "[!! Mak_e sure %{name} is installed and on your PATH. !
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "[!! Loa_ding... !!]"
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "[!! (↑_ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit) !!]"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "[!! (↑_ ↓ to navigate • Enter to launch session • Esc to exit) !!]"
 agents.status.active: "[!! Act_ive !!]"
 agents.status.waiting_for_input: "[!! Wai_ting for input !!]"
 agents.status.error: "[!! Err_or !!]"
 agents.status.idle: "[!! Idl_e !!]"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "[!!   (C_trl+Shift+. to show/hide agent pane • Ctrl+Alt+/ to show/hide agent session) !!]"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "[!!   (C_trl+Shift+. to show/hide agent pane • Ctrl+Shift+/ to show/hide agent session) !!]"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "[!! Sta_rting agent... !!]"
 connection.reconnecting: "[!! Rec_onnecting... !!]"
+connection.connecting_activity: "[!! Conn_ecting to agent… !!]"
+connection.lost: "[!! Conn_ection to the agent was lost. Type /restart to reconnect. !!]"  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "[!! Can_celled. !!]"
 system.no_prompt_in_flight: "[!! No_ prompt in flight. !!]"
 system.authentication_failed: "[!! Aut_hentication failed !!]"
 system.command_copied_retry: "[!! Com_mand copied — run it in another terminal, then press Enter to retry !!]"  # {Locked="Enter"}
+system.stopped_max_tokens: "[!! The_ response was cut off after reaching the model's output limit. !!]"
+system.stopped_max_turn_requests: "[!! The_ agent stopped after reaching its request limit for this turn. !!]"
+system.stopped_refusal: "[!! The_ agent declined to continue with this request. !!]"
+system.agent_busy: "[!! Age_nt is busy on this tab — wait for the current prompt to finish. !!]"
+system.resuming_session: "[!! Res_uming session %{session_id}... !!]"
+system.unknown_command: "[!! Unk_nown command \"%{command}\" — sent as prompt. Type /help for the list. !!]"  # {Locked="/help"}
+system.busy_use_stop: "[!! Wai_t for the current prompt to finish, or /stop first. !!]"  # {Locked="/stop"}
+system.cannot_focus_session: "[!! Can_not focus session %{session_id}: it appears live but no pane GUID is bound yet. Try again in a moment. !!]"
+system.cannot_resume_no_load_session: "[!! Can_not resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability. Press Enter (without Shift) to resume in a new terminal pane instead. !!]"  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "[!! Can_not resume %{agent} session: this agent has no `--resume`-style flag. Press Shift+Enter to try resuming inside the agent pane via ACP instead. !!]"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "[!! Can_not resume session %{session_id}: its source agent is unknown to this build. !!]"
+system.cannot_resume_phantom_via_flag: "[!! Can_not resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} itself would reject the resume. Removing the row. !!]"
+system.cannot_resume_phantom_via_load: "[!! Can_not resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row. !!]"
+system.fallback.this_agent: "[!! thi_s agent !!]"
+system.fallback.connected_agent: "[!! the_ connected agent !!]"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "[!! No_ windows found. !!]"
@@ -171,3 +192,30 @@ hooks.installed_but_disabled: "[!! ⚠ i_nstalled but disabled !!]"
 hooks.not_installed: "[!! ✗ n_ot installed !!]"
 hooks.uninstall_skipped: "[!! ski_pped (CLI not on PATH) !!]"
 hooks.install_attempted: "[!! wt-_agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log !!]"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "[!! just now !!]"
+time.minute_singular: "[!! %{count} minute ago !!]"
+time.minutes_other: "[!! %{count} minutes ago !!]"
+time.hour_singular: "[!! %{count} hour ago !!]"
+time.hours_other: "[!! %{count} hours ago !!]"
+time.day_singular: "[!! %{count} day ago !!]"
+time.days_other: "[!! %{count} days ago !!]"
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "[!! Show this command list !!]"
+commands.clear.summary: "[!! Clear the chat scrollback (keeps session) !!]"
+commands.new.summary: "[!! Start a fresh ACP session (drops history) !!]"
+commands.restart.summary: "[!! Restart agent !!]"
+commands.stop.summary: "[!! Cancel the in-flight prompt !!]"
+commands.sessions.summary: "[!! Open the historical sessions picker (Ctrl+Shift+/) !!]"
+
+# ── Recommendation execution (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "[!! Cho_ice %{choice} failed: %{error} !!]"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "[!! Pic_k the model for this pane (/model <id> to switch directly) !!]"  # {Locked="/model","<id>"}
+model_picker.title: "[!! Sel_ect model (↑ ↓ • Enter • Esc) !!]"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "[!! The_ connected agent did not advertise any selectable models. !!]"
+system.model_set: "[!! Mod_el for this pane set to %{model}. !!]"  # {Locked="%{model}"}
+system.model_unknown: "[!! Unk_nown model %{model} — type /model to see the available list. !!]"  # {Locked="%{model}","/model"}

@@ -25,15 +25,16 @@
 // (e.g. Copilot CLI doesn't fire any hooks). Such a row cannot be
 // resumed — it's only valid while the pane is live.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
 pub type AgentKey = String;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CliSource {
     Claude,
+    Codex,
     Copilot,
     Gemini,
     Unknown(String),
@@ -43,6 +44,7 @@ impl CliSource {
     pub fn parse(s: Option<&str>) -> Self {
         match s.unwrap_or("").to_ascii_lowercase().as_str() {
             "claude"  => Self::Claude,
+            "codex"   => Self::Codex,
             "copilot" => Self::Copilot,
             "gemini"  => Self::Gemini,
             ""        => Self::Unknown(String::new()),
@@ -50,28 +52,74 @@ impl CliSource {
         }
     }
 
-    /// Map an `agent_registry` agent id (`"copilot"`, `"claude"`, `"gemini"`,
+    /// Map an `agent_registry` agent id (`"copilot"`, `"claude"`, `"codex"`, `"gemini"`,
     /// ...) to the matching `CliSource` variant. Returns `None` for agents
-    /// the session registry does not track (e.g. `"codex"`, `"unknown"`, or
+    /// the session registry does not track (e.g. `"unknown"`, or
     /// an empty string), which the session-management view treats as
     /// "no filter — show all rows".
     pub fn from_agent_id(agent_id: &str) -> Option<Self> {
         match agent_id.to_ascii_lowercase().as_str() {
-            "copilot" => Some(Self::Copilot),
             "claude"  => Some(Self::Claude),
+            "codex"   => Some(Self::Codex),
+            "copilot" => Some(Self::Copilot),
             "gemini"  => Some(Self::Gemini),
             _ => None,
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AgentStatus {
     Idle,
     Working,
     Attention,
     Error,
     Ended,
+    Historical,
+}
+
+/// 2D session-state model — **activity** dimension.
+///
+/// Captured separately from [`LivenessState`] so the session management
+/// view can answer two orthogonal questions independently:
+///
+///   * "Is this row still alive?" → [`LivenessState`]
+///   * "If alive, what's it doing?" → [`ActivityState`]
+///
+/// The legacy [`AgentStatus`] enum mashes both into one dimension. For
+/// backwards compatibility the storage in [`AgentSession::status`] is
+/// unchanged — these enums are derived via [`AgentSession::activity`]
+/// and [`AgentSession::liveness`]. New consumers should prefer the
+/// derived view so they don't have to think about which `AgentStatus`
+/// variants imply liveness vs. activity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActivityState {
+    /// Sitting waiting for input.
+    Idle,
+    /// Running an autonomous tool.
+    Working,
+    /// Awaiting a clarifying answer from the user (ask_user etc.).
+    Attention,
+    /// Connection-level failure surfaced via ConnectionFailed.
+    Error,
+}
+
+/// 2D session-state model — **liveness** dimension. See [`ActivityState`]
+/// docs for the rationale.
+///
+/// Class A (agent-pane managed by WTA) liveness is composite:
+/// `Live` iff *both* (a) the helper's alive mirror contains the
+/// session's pane GUID and (b) no local PaneClosed event has fired
+/// (the local event acts as a tombstone so a slow `session_removed`
+/// push from master doesn't leave the row stuck `Live` for the
+/// race window between WT closing the pane and the helper noticing).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LivenessState {
+    /// Pane is alive and the session is reachable.
+    Live,
+    /// Session ended in a known way (pane closed, agent stopped, etc.).
+    Ended,
+    /// Reconstructed from on-disk history; no live pane.
     Historical,
 }
 
@@ -85,7 +133,7 @@ pub enum AgentStatus {
 /// that index when reconstructing historical rows. Live rows default to
 /// `Unknown` because the UI only surfaces this badge for ended/historical
 /// sessions, where it is most useful.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SessionOrigin {
     /// Origin not recorded — either the session pre-dates the index, was
     /// started outside of WTA (user ran `copilot` by hand), or the index
@@ -94,6 +142,61 @@ pub enum SessionOrigin {
     Unknown,
     /// Created by WTA on behalf of an Intelligent Terminal agent pane.
     AgentPane,
+}
+
+/// View-layer filter for `SessionOrigin`. Used by the `/sessions`
+/// picker so an MVP build can restrict the list to shell-pane sessions
+/// (user typed `copilot` in a normal shell) and hide WTA-spawned
+/// agent-pane sessions, without removing the data from the registry.
+///
+/// Set the MVP default in `app.rs::MVP_SESSIONS_ORIGIN_FILTER`. Set
+/// `WTA_SESSIONS_SHOW_AGENT_PANE=1` to flip a single helper process to
+/// `All` for debugging. The `wta sessions list` CLI also accepts
+/// `--origin <shell|agent-pane|all>` for the same purpose.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OriginFilter {
+    /// Keep rows whose origin is `Unknown` (the user ran the CLI
+    /// directly in a shell pane) and rows with no origin recorded.
+    /// Hide `AgentPane` rows.
+    ShellOnly,
+    /// Keep only `AgentPane` rows (sessions WTA spawned for an
+    /// Intelligent Terminal agent pane). Hide `Unknown` and untagged
+    /// rows. Provided for symmetry / future un-MVP toggle; not used
+    /// by the default UX today.
+    AgentPaneOnly,
+    /// Keep every row regardless of origin. The historical default
+    /// and the right setting for debug tooling that wants to see
+    /// the full registry contents.
+    #[default]
+    All,
+}
+
+impl OriginFilter {
+    /// Predicate for `AgentSession.origin` (always populated).
+    pub fn matches(self, origin: &SessionOrigin) -> bool {
+        match self {
+            OriginFilter::All           => true,
+            OriginFilter::ShellOnly     => matches!(origin, SessionOrigin::Unknown),
+            OriginFilter::AgentPaneOnly => matches!(origin, SessionOrigin::AgentPane),
+        }
+    }
+
+    /// Predicate for `SessionInfo.origin: Option<SessionOrigin>`.
+    ///
+    /// `None` means the row was serialized before the field existed
+    /// (or arrived via a notification path that doesn't carry origin
+    /// — see `agent_sessions.rs::parse_ext_notification`). We treat a
+    /// missing origin as `Unknown` for filtering purposes; this is a
+    /// compatibility fallback, not a positive identification of
+    /// shell origin. The master tags every `session/new` and
+    /// `session/load` with `Some(AgentPane)` for Class A, so in
+    /// practice `None` rows here are legacy / unclassified.
+    pub fn matches_opt(self, origin: Option<&SessionOrigin>) -> bool {
+        match origin {
+            Some(o) => self.matches(o),
+            None    => matches!(self, OriginFilter::All | OriginFilter::ShellOnly),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -117,7 +220,40 @@ pub struct AgentSession {
     pub origin:            SessionOrigin,
 }
 
-#[derive(Clone, Debug)]
+impl AgentSession {
+    /// Derive the [`ActivityState`] dimension from the legacy
+    /// one-dimensional `status` field.
+    ///
+    /// For non-Live rows (`Ended`/`Historical`) this returns
+    /// [`ActivityState::Idle`] — the caller should consult
+    /// [`Self::liveness`] first and only read `activity` when
+    /// liveness is `Live`.
+    pub fn activity(&self) -> ActivityState {
+        match self.status {
+            AgentStatus::Working   => ActivityState::Working,
+            AgentStatus::Attention => ActivityState::Attention,
+            AgentStatus::Error     => ActivityState::Error,
+            AgentStatus::Idle
+            | AgentStatus::Ended
+            | AgentStatus::Historical => ActivityState::Idle,
+        }
+    }
+
+    /// Derive the [`LivenessState`] dimension from the legacy
+    /// one-dimensional `status` field.
+    pub fn liveness(&self) -> LivenessState {
+        match self.status {
+            AgentStatus::Idle
+            | AgentStatus::Working
+            | AgentStatus::Attention
+            | AgentStatus::Error      => LivenessState::Live,
+            AgentStatus::Ended        => LivenessState::Ended,
+            AgentStatus::Historical   => LivenessState::Historical,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SessionEvent {
     SessionStarted   { key: AgentKey, cli_source: CliSource, pane_session_id: String, cwd: PathBuf, title: String },
     ToolStarting     { key: AgentKey, tool_name: String },
@@ -179,6 +315,15 @@ pub fn is_user_input_tool(name: &str) -> bool {
 pub struct AgentSessionRegistry {
     sessions:        HashMap<AgentKey, AgentSession>,
     active_by_pane:  HashMap<String, AgentKey>,   // pane Guid (text) -> AgentKey
+    /// Union of pane GUIDs ever seen in any alive-mirror snapshot
+    /// (lowercased). Used by [`Self::apply_alive_pane_snapshot`] to
+    /// scope its "end disappeared rows" sweep to Class A sessions
+    /// (rows whose pane was at some point reported by master) and
+    /// avoid touching Class B rows (standalone CLI panes the helper
+    /// never managed). Once a pane is added it is never removed —
+    /// the snapshot diff cares about "in this snapshot vs. some
+    /// earlier snapshot", not about the union.
+    known_alive_panes: HashSet<String>,
     dirty:           bool,
 }
 
@@ -214,23 +359,41 @@ impl AgentSessionRegistry {
                 // Defensive: only clear the previous entry's binding if it
                 // still points at this pane — guards against rare cases
                 // where `active_by_pane` is out of sync with the entry.
-                if let Some(prev_key) = self.active_by_pane.get(&pane_session_id).cloned() {
-                    if prev_key != key {
-                        if let Some(prev) = self.sessions.get_mut(&prev_key) {
-                            if prev.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
-                                prev.status            = AgentStatus::Ended;
-                                prev.pane_session_id   = None;
-                                prev.current_tool      = None;
-                                prev.attention_reason  = None;
-                                prev.last_activity_at  = now;
-                                tracing::info!(
-                                    target: "agent_session_registry",
-                                    prev_key = %prev_key,
-                                    new_key = %key,
-                                    pane = %pane_session_id,
-                                    "SessionStarted demoting previous owner of reused pane",
-                                );
-                                // active_by_pane[pane] is overwritten below.
+                //
+                // Skip the handover entirely when `pane_session_id` is
+                // empty. An empty pane GUID is not a real pane — it
+                // means the event source didn't know which pane the
+                // session belonged to (e.g. hook bridge that lost the
+                // `pane_id` field, or a future event source we haven't
+                // taught about pane attribution). Treating empty as a
+                // real pane causes every session-start with no pane to
+                // collide on the empty-string key in `active_by_pane`,
+                // demoting the previous session to Ended whenever a
+                // new one arrives — the exact shape of the
+                // "second session arrives, first loses its status"
+                // bug after the merge that renamed `session_id` to
+                // `pane_id` for connection_state/vt_sequence but
+                // missed wtcli's BuildSendEventJson.
+                let pane_known = !pane_session_id.is_empty();
+                if pane_known {
+                    if let Some(prev_key) = self.active_by_pane.get(&pane_session_id).cloned() {
+                        if prev_key != key {
+                            if let Some(prev) = self.sessions.get_mut(&prev_key) {
+                                if prev.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
+                                    prev.status            = AgentStatus::Ended;
+                                    prev.pane_session_id   = None;
+                                    prev.current_tool      = None;
+                                    prev.attention_reason  = None;
+                                    prev.last_activity_at  = now;
+                                    tracing::info!(
+                                        target: "agent_session_registry",
+                                        prev_key = %prev_key,
+                                        new_key = %key,
+                                        pane = %pane_session_id,
+                                        "SessionStarted demoting previous owner of reused pane",
+                                    );
+                                    // active_by_pane[pane] is overwritten below.
+                                }
                             }
                         }
                     }
@@ -283,13 +446,25 @@ impl AgentSessionRegistry {
                     entry.title        = title;
                 }
                 entry.cwd              = cwd;
-                entry.pane_session_id  = Some(pane_session_id.clone());
+                // Only record a pane binding for non-empty pane GUIDs.
+                // Symmetric with the skip above — an empty pane id
+                // would never be valid for `active_by_pane` lookups
+                // (PaneClosed, focus-pane, ConnectionFailed all key by
+                // real GUID), so leave the entry's `pane_session_id`
+                // as `None` and skip the map insert.
+                if pane_known {
+                    entry.pane_session_id  = Some(pane_session_id.clone());
+                } else {
+                    entry.pane_session_id  = None;
+                }
                 entry.status           = AgentStatus::Idle;
                 entry.last_error       = None;
                 entry.attention_reason = None;
                 entry.current_tool     = None;
                 entry.last_activity_at = now;
-                self.active_by_pane.insert(pane_session_id, key);
+                if pane_known {
+                    self.active_by_pane.insert(pane_session_id, key);
+                }
                 self.dirty = true;
             }
 
@@ -507,18 +682,33 @@ impl AgentSessionRegistry {
 
     /// Like [`iter_sorted`], but keeps only rows whose `cli_source` matches
     /// the supplied filter. Passing `None` disables filtering and returns
-    /// the same list as `iter_sorted`. Used by the session-management view
+    /// the same list as `iter_sorted`. Used by the session management view
     /// so that, when the agent pane is running a known CLI (copilot /
     /// claude / gemini), the list only shows sessions for that CLI.
     pub fn iter_sorted_filtered(&self, filter: Option<&CliSource>) -> Vec<&AgentSession> {
-        let sorted = self.iter_sorted();
-        match filter {
-            None => sorted,
-            Some(want) => sorted
-                .into_iter()
-                .filter(|s| &s.cli_source == want)
-                .collect(),
-        }
+        self.iter_sorted_with_filters(filter, OriginFilter::All)
+    }
+
+    /// Two-axis variant of [`iter_sorted_filtered`]: filter on both
+    /// `cli_source` (CLI the row belongs to) and `origin` (whether the
+    /// session was started in a shell pane or by WTA's own agent pane).
+    /// Used by the `/sessions` picker and by `wta sessions list
+    /// --origin`; the registry itself stays complete so other consumers
+    /// (Enter routing, alive-mirror reconciliation, `wta sessions list`
+    /// without `--origin`) see every row.
+    pub fn iter_sorted_with_filters(
+        &self,
+        cli: Option<&CliSource>,
+        origin: OriginFilter,
+    ) -> Vec<&AgentSession> {
+        self.iter_sorted()
+            .into_iter()
+            .filter(|s| match cli {
+                None       => true,
+                Some(want) => &s.cli_source == want,
+            })
+            .filter(|s| origin.matches(&s.origin))
+            .collect()
     }
 
     pub fn take_dirty(&mut self) -> bool {
@@ -546,6 +736,50 @@ impl AgentSessionRegistry {
 
     pub fn has_session(&self, key: &AgentKey) -> bool {
         self.sessions.contains_key(key)
+    }
+
+    /// Returns the [`AgentKey`] of the most-recently-active *live* session
+    /// (status is `Idle` / `Working` / `Attention` / `Error`) whose
+    /// [`CliSource`] matches `cli`. Used as a last-resort fallback by
+    /// `route_agent_event_to_registry_with_hook_sink` when a hook event
+    /// arrives carrying neither an `agent_session_id` *nor* a
+    /// `pane_session_id` that resolves to a known live session.
+    ///
+    /// The motivating case is Copilot CLI's `Notification` hook (e.g.
+    /// "approve this command?"), which observably fires without a
+    /// `session_id` field in its JSON payload AND from a subprocess that
+    /// does not inherit `WT_SESSION`. Without this fallback, the event
+    /// synthesises a `pane:<arbitrary-pane-guid>` key, the reducer
+    /// no-ops because no session matches, AND the event never reaches
+    /// master (the routing layer drops synthetic keys to avoid duplicate
+    /// rows). Net effect: the row stays at `Working` from the prior
+    /// `tool.starting` and never flips to `Attention`, so session management view shows
+    /// "Active" instead of "Waiting for input".
+    ///
+    /// Returns `None` for [`CliSource::Unknown`] — we never want to
+    /// route a sessionless event into an unrelated session just because
+    /// it's the only live one. The narrow Copilot-style fallback is
+    /// keyed on a CLI hint we trust.
+    pub fn most_recent_live_session_for_cli(&self, cli: &CliSource) -> Option<AgentKey> {
+        if matches!(cli, CliSource::Unknown(_)) {
+            return None;
+        }
+        self.sessions
+            .iter()
+            .filter(|(_, s)| {
+                &s.cli_source == cli && s.liveness() == LivenessState::Live
+            })
+            .max_by_key(|(_, s)| s.last_activity_at)
+            .map(|(k, _)| k.clone())
+    }
+
+    /// Read-only borrow of the [`AgentSession`] for `key`, or `None` if
+    /// the key isn't tracked. Used by post-apply hooks in the routing
+    /// layer that need to inspect the session's `cli_source` / `status`
+    /// to decide whether to prune (e.g. dropping a "phantom" row whose
+    /// on-disk artefact has no resumable content).
+    pub fn get(&self, key: &AgentKey) -> Option<&AgentSession> {
+        self.sessions.get(key)
     }
 
     /// Update the `origin` field on an existing session entry. No-op if
@@ -577,12 +811,286 @@ impl AgentSessionRegistry {
         self.active_by_pane.contains_key(&pane_session_id.to_ascii_lowercase())
     }
 
+    /// Look up the [`AgentKey`] currently bound to `pane_session_id`, if
+    /// any. Returns `None` for panes that aren't tracked or that have
+    /// already had their binding cleared (e.g. after `PaneClosed`).
+    /// Callers that want to act on a key *just before* `PaneClosed`
+    /// unbinds it must take this lookup before applying the event.
+    pub fn key_for_pane(&self, pane_session_id: &str) -> Option<AgentKey> {
+        self.active_by_pane
+            .get(&pane_session_id.to_ascii_lowercase())
+            .cloned()
+    }
+
+    /// Look up the [`SessionOrigin`] of whatever session is currently
+    /// bound to `pane_session_id`, if any. Returns `None` for panes
+    /// that aren't tracked.
+    ///
+    /// Used by the helper's OSC 133;A handler to distinguish between
+    /// "agent running inside a shell pane (origin Unknown) — shell
+    /// prompt-start really does mean the agent exited" and "agent
+    /// pane (origin AgentPane) — there's no shell underneath, so any
+    /// OSC 133;A is spurious (likely a focus/window-switch artifact
+    /// emitted by WT itself) and must NOT trigger PaneClosed".
+    pub fn origin_for_pane(&self, pane_session_id: &str) -> Option<SessionOrigin> {
+        let key = self
+            .active_by_pane
+            .get(&pane_session_id.to_ascii_lowercase())?;
+        self.sessions.get(key).map(|s| s.origin.clone())
+    }
+
     pub fn remove(&mut self, key: &AgentKey) {
         if let Some(s) = self.sessions.remove(key) {
             if let Some(pane) = s.pane_session_id {
                 self.active_by_pane.remove(&pane);
             }
             self.dirty = true;
+        }
+    }
+
+    /// Reconcile this registry against the helper's alive-mirror snapshot
+    /// of Class A (wta-managed agent-pane) sessions.
+    ///
+    /// `alive_panes` is the set of WT pane GUIDs (lowercase, no braces)
+    /// that the master currently knows about — i.e. every pane that has
+    /// an active helper holding an open ACP session. Any row whose
+    /// `pane_session_id` was previously in some alive snapshot but is
+    /// *not* in this one is transitioned to [`AgentStatus::Ended`].
+    /// This is the second half of Class A's composite-liveness source:
+    /// the local `PaneClosed` event handles the case where WT closes a
+    /// pane before master notices, and this method handles the
+    /// reverse — master tells us the helper exited (e.g. agent CLI
+    /// crashed) before the pane has finished tearing down on our side.
+    ///
+    /// The sweep is intentionally scoped to panes the helper has *ever*
+    /// reported as alive (tracked in `known_alive_panes`). Class B rows
+    /// (standalone `copilot` panes the user started by hand) never
+    /// appear in any alive snapshot, so they remain untouched by this
+    /// method and continue to rely on `PaneClosed` for their `Ended`
+    /// transition.
+    ///
+    /// Idempotent: re-applying the same snapshot is a no-op. Calling
+    /// with an empty `alive_panes` set after a previous non-empty
+    /// snapshot will end every Class A row.
+    pub fn apply_alive_pane_snapshot(&mut self, alive_panes: HashSet<String>) {
+        let now = SystemTime::now();
+        // Normalise to lowercase to match the rest of the registry's
+        // pane-GUID handling (see `apply()`'s normaliser).
+        let alive_lc: HashSet<String> =
+            alive_panes.into_iter().map(|p| p.to_ascii_lowercase()).collect();
+
+        // Compute panes we used to know about that are now gone.
+        let removed: Vec<String> = self
+            .known_alive_panes
+            .iter()
+            .filter(|p| !alive_lc.contains(*p))
+            .cloned()
+            .collect();
+
+        for pane in &removed {
+            // Mirror PaneClosed's reducer: find the bound key, transition
+            // to Ended, clear pane-side bookkeeping. Skip rows that have
+            // already been ended (e.g. by a prior PaneClosed event) to
+            // keep the second half of the composite source idempotent.
+            if let Some(key) = self.active_by_pane.remove(pane) {
+                if let Some(entry) = self.sessions.get_mut(&key) {
+                    if entry.liveness() == LivenessState::Live {
+                        entry.status            = AgentStatus::Ended;
+                        entry.pane_session_id   = None;
+                        entry.current_tool      = None;
+                        entry.attention_reason  = None;
+                        entry.last_activity_at  = now;
+                        self.dirty = true;
+                        tracing::info!(
+                            target: "agent_session_registry",
+                            key = %key,
+                            pane = %pane,
+                            "alive snapshot removed pane; row → Ended",
+                        );
+                    }
+                }
+            }
+            // Stop tracking the pane once it's gone — if it comes back
+            // (e.g. resume creates a new pane with a new GUID) we'll
+            // pick it up again on the next snapshot.
+            self.known_alive_panes.remove(pane);
+        }
+
+        // Union in any newly-seen panes from this snapshot. We track
+        // the union (not just the current snapshot) so that a pane
+        // missing from snapshot N+1 still triggers a removal even if
+        // we never saw it in snapshot N+1's predecessor — but in
+        // practice apply_alive_pane_snapshot is called for each
+        // ExtNotification batch, so the union grows monotonically
+        // and only ever shrinks via the `removed` loop above.
+        for pane in &alive_lc {
+            self.known_alive_panes.insert(pane.clone());
+        }
+    }
+
+    /// Demote the row owned by `session_id` to `Ended` if it is currently
+    /// alive. The incremental counterpart of [`apply_alive_pane_snapshot`]:
+    /// where the snapshot path computes "panes that disappeared from the
+    /// alive set", this path acts on a single explicit `session_removed`
+    /// broadcast from master (i.e. the helper that owned `session_id` just
+    /// disconnected or the agent CLI exited).
+    ///
+    /// Mirrors [`SessionEvent::PaneClosed`]'s reducer: clears the pane
+    /// binding, transitions to [`AgentStatus::Ended`], and removes the
+    /// pane from `active_by_pane`. The pane is **also** removed from
+    /// `known_alive_panes` so a subsequent `apply_alive_pane_snapshot`
+    /// won't try to re-end it.
+    ///
+    /// No-op when the row is `Historical` (it was loaded from disk; no
+    /// pane to demote), `Ended` (already tombstoned by a local
+    /// `PaneClosed` event), or absent (we never had a row for this sid).
+    /// Idempotent.
+    pub fn apply_master_session_ended(&mut self, session_id: &str) {
+        let now = SystemTime::now();
+        let Some(entry) = self.sessions.get_mut(session_id) else {
+            return;
+        };
+        if entry.liveness() != LivenessState::Live {
+            return;
+        }
+        let pane_to_clear = entry.pane_session_id.take();
+        entry.status            = AgentStatus::Ended;
+        entry.current_tool      = None;
+        entry.attention_reason  = None;
+        entry.last_activity_at  = now;
+        self.dirty = true;
+        if let Some(pane) = pane_to_clear {
+            self.active_by_pane.remove(&pane);
+            self.known_alive_panes.remove(&pane);
+        }
+        tracing::info!(
+            target: "agent_session_registry",
+            key = %session_id,
+            "master session_removed broadcast demoted row → Ended",
+        );
+    }
+
+    /// Join the helper's alive-session mirror into this registry — the
+    /// "upgrade Historical to Live" half of Class A's composite source.
+    ///
+    /// Each `(session_id, pane_session_id)` tuple represents one entry
+    /// from the master's [`SessionInfo`](crate::session_registry::SessionInfo)
+    /// snapshot. For each tuple, if there's a row whose [`AgentKey`]
+    /// equals `session_id` and whose [`liveness`](AgentSession::liveness)
+    /// is `Historical` or `Ended`, upgrade it to `Live` (`AgentStatus::Idle`)
+    /// and bind the pane.
+    ///
+    /// Motivation: at startup the on-disk history scan
+    /// (`history_loader::load_all`) and the helper's `list_sessions`
+    /// bootstrap can land in either order, and a WTA process attached
+    /// to an existing master in another WT window may never see the
+    /// originating `SessionStarted` hook event. Without this join, a
+    /// session that is still alive in some pane would be shown as
+    /// Historical in session management view and Enter would mis-route to "resume new"
+    /// instead of "focus existing".
+    ///
+    /// Idempotent — re-applying with the same snapshot is a no-op
+    /// because the second call sees `liveness == Live` and skips.
+    /// Live rows (Idle/Working/Attention/Error) are never demoted by
+    /// this method — `apply_alive_pane_snapshot` is the canonical
+    /// disappearance path.
+    ///
+    /// The join is intentionally string-keyed (no `SessionId` import)
+    /// to keep this module decoupled from `session_registry`. For
+    /// `Class A` (agent-pane-managed) sessions, ACP `session_id`
+    /// equals `AgentKey` for the CLIs that reuse their own session id
+    /// (Claude). For CLIs whose ACP id diverges from the CLI's own id
+    /// (Copilot may differ), the join simply misses — the row stays
+    /// Historical, which is the same behaviour as today and degrades
+    /// gracefully (Enter will start a new session).
+    ///
+    /// Tombstone safety: `Ended` rows reflect a local `PaneClosed`
+    /// observation in this WTA process; we treat that as authoritative
+    /// and refuse to resurrect them, because the alternative (a stale
+    /// `session_added` broadcast arriving before master detects the
+    /// helper disconnect) would silently resurrect a pane that's
+    /// already gone, leaving the session management row Live forever with no demotion
+    /// path. Cross-WTA-process resume-after-disconnect is rare;
+    /// preferring the safe direction.
+    ///
+    /// Live-without-pane rebind: `Live` rows that already have a pane
+    /// bound are no-ops (`apply_alive_pane_snapshot` is the canonical
+    /// disappearance path). `Live` rows with `pane_session_id == None`,
+    /// however, are upgraded just enough to bind the pane carried in
+    /// the snapshot — without touching `status` or any tool/attention
+    /// state. This handles the cross-window resume race: in the tab
+    /// that issued the session management Enter on a Historical row,
+    /// `dispatch_resume_in_agent_pane` fires `ResumeDispatched`, which
+    /// optimistically flips the row to `Idle (Live)` so a rapid double
+    /// press can't dispatch twice — but leaves `pane_session_id =
+    /// None` because the resume runs in a freshly spawned tab whose
+    /// helper hasn't issued a hook yet. When master finally broadcasts
+    /// `session_added` with the new helper-pane's GUID, the gating
+    /// helper (the one that pressed Enter) is no longer `Historical`,
+    /// so without this rebind it would drop the broadcast on the floor
+    /// and leave the row permanently `Live` without a pane — every
+    /// subsequent session management Enter on the same row would return `NotResumable
+    /// { LiveWithoutPane }`.
+    pub fn apply_alive_session_join<'a>(
+        &mut self,
+        alive: impl IntoIterator<Item = (&'a str, Option<&'a str>)>,
+    ) {
+        let now = SystemTime::now();
+        for (sid, pane_opt) in alive {
+            let Some(entry) = self.sessions.get_mut(sid) else { continue };
+            match entry.liveness() {
+                LivenessState::Ended => {
+                    // Tombstone — see method docstring.
+                    continue;
+                }
+                LivenessState::Live => {
+                    // Already live; only fill in a missing pane binding.
+                    // A non-None binding is the local source of truth
+                    // (set by a SessionStarted hook or ResumePaneAssigned).
+                    if entry.pane_session_id.is_some() {
+                        continue;
+                    }
+                    let Some(pane) = pane_opt else { continue };
+                    let pane_lc = pane.to_ascii_lowercase();
+                    entry.pane_session_id = Some(pane_lc.clone());
+                    self.active_by_pane.insert(pane_lc.clone(), sid.to_string());
+                    self.known_alive_panes.insert(pane_lc);
+                    entry.last_activity_at = now;
+                    self.dirty = true;
+                    tracing::info!(
+                        target: "agent_session_registry",
+                        key = %sid,
+                        pane = ?pane_opt,
+                        "alive snapshot bound pane to Live-without-pane row",
+                    );
+                }
+                LivenessState::Historical => {
+                    entry.status            = AgentStatus::Idle;
+                    entry.last_activity_at  = now;
+                    entry.current_tool      = None;
+                    entry.attention_reason  = None;
+                    entry.last_error        = None;
+                    if let Some(pane) = pane_opt {
+                        let pane_lc = pane.to_ascii_lowercase();
+                        // Drop any previous binding pointing elsewhere.
+                        if let Some(old_pane) = entry.pane_session_id.take() {
+                            if old_pane != pane_lc {
+                                self.active_by_pane.remove(&old_pane);
+                            }
+                        }
+                        entry.pane_session_id = Some(pane_lc.clone());
+                        self.active_by_pane.insert(pane_lc.clone(), sid.to_string());
+                        self.known_alive_panes.insert(pane_lc);
+                    }
+                    self.dirty = true;
+                    tracing::info!(
+                        target: "agent_session_registry",
+                        key = %sid,
+                        pane = ?pane_opt,
+                        "alive snapshot upgraded Historical row → Live",
+                    );
+                }
+            }
         }
     }
 
@@ -651,15 +1159,16 @@ impl AgentSessionRegistry {
 
     /// Populate the registry with synthetic data covering all 6 statuses.
     /// Triggered by the `WTA_DEMO_AGENTS=1` env var on App startup so the
-    /// Agents view (F2) can be exercised without running any real CLI.
+    /// agent session view can be exercised without running any real CLI.
     ///
     /// Layout (sorted by last_activity_at desc, newest first):
     ///   1. copilot  WORKING    — currently running a tool
-    ///   2. claude   ATTENTION  — needs user approval
-    ///   3. gemini   IDLE       — sitting waiting for input
-    ///   4. copilot  ERROR      — connection failed
-    ///   5. claude   ENDED      — exited normally a moment ago
-    ///   6. gemini   HISTORICAL — loaded from an old log (no live pane)
+    ///   2. codex    WORKING    — running a tool (second active session)
+    ///   3. claude   ATTENTION  — needs user approval
+    ///   4. gemini   IDLE       — sitting waiting for input
+    ///   5. copilot  ERROR      — connection failed
+    ///   6. claude   ENDED      — exited normally a moment ago
+    ///   7. gemini   HISTORICAL — loaded from an old log (no live pane)
     pub fn populate_demo_data(&mut self) {
         use std::time::Duration;
 
@@ -679,7 +1188,20 @@ impl AgentSessionRegistry {
             tool_name: "shell".to_string(),
         });
 
-        // 2. Attention — claude waiting for tool approval
+        // 2. Working — codex running a tool concurrently
+        self.apply(SessionEvent::SessionStarted {
+            key:             "demo-codex-working".to_string(),
+            cli_source:      CliSource::Codex,
+            pane_session_id: "77777777-7777-7777-7777-777777777777".to_string(),
+            cwd:             cwd.clone(),
+            title:           "codex — implement refactor parser".to_string(),
+        });
+        self.apply(SessionEvent::ToolStarting {
+            key:       "demo-codex-working".to_string(),
+            tool_name: "shell".to_string(),
+        });
+
+        // 3. Attention — claude waiting for tool approval
         self.apply(SessionEvent::SessionStarted {
             key:             "demo-claude-attention".to_string(),
             cli_source:      CliSource::Claude,
@@ -692,7 +1214,7 @@ impl AgentSessionRegistry {
             message: "Allow tool: write_file ./src/lib.rs?".to_string(),
         });
 
-        // 3. Idle — gemini waiting for next prompt
+        // 4. Idle — gemini waiting for next prompt
         self.apply(SessionEvent::SessionStarted {
             key:             "demo-gemini-idle".to_string(),
             cli_source:      CliSource::Gemini,
@@ -701,7 +1223,7 @@ impl AgentSessionRegistry {
             title:           "gemini — explain build system".to_string(),
         });
 
-        // 4. Error — copilot lost network
+        // 5. Error — copilot lost network
         self.apply(SessionEvent::SessionStarted {
             key:             "demo-copilot-error".to_string(),
             cli_source:      CliSource::Copilot,
@@ -714,7 +1236,7 @@ impl AgentSessionRegistry {
             reason:          "API request failed: 503 Service Unavailable".to_string(),
         });
 
-        // 5. Ended — claude finished cleanly a moment ago
+        // 6. Ended — claude finished cleanly a moment ago
         self.apply(SessionEvent::SessionStarted {
             key:             "demo-claude-ended".to_string(),
             cli_source:      CliSource::Claude,
@@ -722,7 +1244,7 @@ impl AgentSessionRegistry {
             cwd:             cwd.clone(),
             title:           "claude — review PR diff".to_string(),
         });
-        // 5. Ended — claude finished cleanly a moment ago. Origin is the
+        // 6. Ended — claude finished cleanly a moment ago. Origin is the
         // default (Unknown), so SessionStopped takes the original
         // immediate-Ended path — no PaneClosed needed.
         self.apply(SessionEvent::SessionStopped {
@@ -730,7 +1252,7 @@ impl AgentSessionRegistry {
             reason: "end_turn".to_string(),
         });
 
-        // 6. Historical — loaded from old log, no live pane
+        // 7. Historical — loaded from old log, no live pane
         let two_hours_ago = now - Duration::from_secs(2 * 60 * 60);
         let key = "demo-gemini-historical".to_string();
         self.sessions.insert(key.clone(), AgentSession {
@@ -755,6 +1277,7 @@ impl AgentSessionRegistry {
         // narrative (working newest, historical oldest).
         let stagger = |secs: u64| now - Duration::from_secs(secs);
         if let Some(s) = self.sessions.get_mut("demo-copilot-working")  { s.last_activity_at = stagger(2); }
+        if let Some(s) = self.sessions.get_mut("demo-codex-working")    { s.last_activity_at = stagger(5); }
         if let Some(s) = self.sessions.get_mut("demo-claude-attention") { s.last_activity_at = stagger(15); }
         if let Some(s) = self.sessions.get_mut("demo-gemini-idle")      { s.last_activity_at = stagger(45); }
         if let Some(s) = self.sessions.get_mut("demo-copilot-error")    { s.last_activity_at = stagger(120); }
@@ -1042,6 +1565,70 @@ mod tests {
         assert_eq!(new.status, AgentStatus::Idle);
         assert_eq!(new.pane_session_id.as_deref(), Some(pane("p").as_str()));
         assert_eq!(reg.active_by_pane.get(&pane("p")), Some(&k("new")));
+    }
+
+    #[test]
+    fn session_started_with_empty_pane_does_not_demote_previous_empty_pane_session() {
+        // Reproduces the user-reported bug introduced by the merge that
+        // renamed `params["session_id"] → params["pane_id"]` in
+        // `TerminalPage.cpp` but missed `wtcli/BuildSendEventJson` (which
+        // still emits `session_id`). WTA's main.rs reads `params["pane_id"]`
+        // and finds nothing for hook-bridge `agent_event` envelopes, so
+        // every routed `SessionStarted` arrives with `pane_session_id = ""`.
+        //
+        // Pre-fix, the registry would index the empty-string key in
+        // `active_by_pane`, so a second `SessionStarted` (different key,
+        // also empty pane) triggered orphan handover and demoted the
+        // first session to Ended. User-visible symptom: row 1's status
+        // badge silently vanishes the moment row 2's first hook arrives.
+        //
+        // Post-fix, the registry must:
+        //   1. Skip the orphan-handover demotion when `pane_session_id`
+        //      is empty (no real pane to collide on).
+        //   2. NOT insert an empty key into `active_by_pane`.
+        //   3. Leave the entry's `pane_session_id` field as `None`
+        //      (no fake binding).
+        //
+        // wtcli is also fixed in the same PR to emit `pane_id`, and
+        // WTA's main.rs falls back to `session_id` for backward
+        // compatibility — but this test guards the registry-level
+        // invariant independent of those upstream sources.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("session-a"), cli_source: CliSource::Copilot,
+            pane_session_id: String::new(),  // empty (the bug shape)
+            cwd: PathBuf::from("/x"),
+            title: "Implement Day Query Feature".into(),
+        });
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("session-b"), cli_source: CliSource::Copilot,
+            pane_session_id: String::new(),  // empty again
+            cwd: PathBuf::from("/x"),
+            title: "ask me a question".into(),
+        });
+
+        let a = reg.sessions.get("session-a").expect("session-a row exists");
+        assert_eq!(
+            a.status, AgentStatus::Idle,
+            "first session must NOT be demoted when a second empty-pane \
+             SessionStarted arrives; got status {:?}",
+            a.status
+        );
+        assert!(
+            a.pane_session_id.is_none(),
+            "no real pane was bound, so pane_session_id stays None",
+        );
+
+        let b = reg.sessions.get("session-b").expect("session-b row exists");
+        assert_eq!(b.status, AgentStatus::Idle);
+        assert!(b.pane_session_id.is_none());
+
+        // The empty string must never have been inserted into the
+        // pane→key map (it would collide for every empty-pane event).
+        assert!(
+            !reg.active_by_pane.contains_key(""),
+            "empty pane GUID must not be indexed in active_by_pane",
+        );
     }
 
     #[test]
@@ -1368,12 +1955,12 @@ mod tests {
         let mut reg = AgentSessionRegistry::new();
         reg.populate_demo_data();
         let sessions = reg.iter_sorted();
-        assert_eq!(sessions.len(), 6, "demo data should yield exactly 6 sessions");
+        assert_eq!(sessions.len(), 7, "demo data should yield exactly 7 sessions");
 
-        // Verify each status appears exactly once.
+        // Verify each non-Working status appears exactly once; Working appears
+        // twice (copilot + codex are both running tools concurrently).
         let statuses: Vec<AgentStatus> = sessions.iter().map(|s| s.status.clone()).collect();
         for st in [
-            AgentStatus::Working,
             AgentStatus::Attention,
             AgentStatus::Idle,
             AgentStatus::Error,
@@ -1382,12 +1969,16 @@ mod tests {
         ] {
             assert_eq!(statuses.iter().filter(|s| **s == st).count(), 1, "expected exactly one {:?}", st);
         }
+        assert_eq!(
+            statuses.iter().filter(|s| **s == AgentStatus::Working).count(), 2,
+            "expected exactly two Working sessions (copilot + codex)",
+        );
 
         // Working session must come first (most recent activity).
         assert_eq!(sessions[0].status, AgentStatus::Working);
         // Historical session must be last and have no live pane binding.
-        assert_eq!(sessions[5].status, AgentStatus::Historical);
-        assert!(sessions[5].pane_session_id.is_none());
+        assert_eq!(sessions[6].status, AgentStatus::Historical);
+        assert!(sessions[6].pane_session_id.is_none());
 
         // Error session must carry the failure reason.
         let err = sessions.iter().find(|s| s.status == AgentStatus::Error).unwrap();
@@ -1401,7 +1992,7 @@ mod tests {
     #[test]
     fn merge_historical_inserts_only_new_keys() {
         let mut reg = AgentSessionRegistry::new();
-        // Pre-existing live session.
+        // Preexisting live session.
         reg.apply(SessionEvent::SessionStarted {
             key:             "live-1".into(),
             cli_source:      CliSource::Copilot,
@@ -1517,12 +2108,29 @@ mod tests {
 
     #[test]
     fn from_agent_id_returns_none_for_untracked_or_empty() {
-        // Empty / unknown / codex are all "no filter" — the F2 view will
+        // Empty / unknown are "no filter" — the session management view will
         // fall back to showing every row.
         assert_eq!(CliSource::from_agent_id(""),         None);
-        assert_eq!(CliSource::from_agent_id("codex"),    None);
         assert_eq!(CliSource::from_agent_id("unknown"),  None);
         assert_eq!(CliSource::from_agent_id("bogus"),    None);
+    }
+
+    #[test]
+    fn cli_source_from_agent_id_recognizes_codex() {
+        assert_eq!(
+            CliSource::from_agent_id("codex"),
+            Some(CliSource::Codex),
+        );
+    }
+
+    #[test]
+    fn cli_source_parse_round_trips_codex() {
+        // Wire format used by SessionHookCliSource::Known("Codex" | "codex")
+        // must parse back to the typed variant — otherwise Codex hook events
+        // would degrade to CliSource::Unknown after a serde round-trip.
+        // Note: CliSource has `pub fn parse(Option<&str>) -> Self` (not FromStr).
+        assert_eq!(CliSource::parse(Some("Codex")), CliSource::Codex);
+        assert_eq!(CliSource::parse(Some("codex")), CliSource::Codex);
     }
 
     #[test]
@@ -1605,5 +2213,710 @@ mod tests {
 
         let all_len = reg.iter_sorted_filtered(None).len();
         assert_eq!(all_len, 2);
+    }
+
+    #[test]
+    fn iter_sorted_with_filters_partitions_by_origin() {
+        // Two rows, identical CLI, different SessionOrigin. ShellOnly
+        // must hide the AgentPane row; AgentPaneOnly is the inverse;
+        // All keeps both. Confirms the MVP sessions filter contract.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("shell-row"),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane("p-shell"),
+            cwd: PathBuf::from("/x"),
+            title: "shell".into(),
+        });
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("pane-row"),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane("p-pane"),
+            cwd: PathBuf::from("/x"),
+            title: "pane".into(),
+        });
+        // Tag one row as AgentPane; the other stays at the default
+        // (Unknown) which represents a shell-pane session.
+        reg.set_origin("pane-row", SessionOrigin::AgentPane);
+
+        let shell_only: Vec<&str> = reg
+            .iter_sorted_with_filters(None, OriginFilter::ShellOnly)
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(shell_only, vec!["shell-row"]);
+
+        let pane_only: Vec<&str> = reg
+            .iter_sorted_with_filters(None, OriginFilter::AgentPaneOnly)
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(pane_only, vec!["pane-row"]);
+
+        let all = reg.iter_sorted_with_filters(None, OriginFilter::All);
+        assert_eq!(all.len(), 2);
+
+        // The legacy single-arg helper must keep returning every row
+        // (origin = All) so existing callers don't silently start
+        // hiding agent-pane rows.
+        assert_eq!(reg.iter_sorted_filtered(None).len(), 2);
+    }
+
+    #[test]
+    fn iter_sorted_with_filters_composes_cli_and_origin() {
+        // Mix of (cli, origin) combos — the two axes must be combined
+        // with a logical AND.
+        let mut reg = AgentSessionRegistry::new();
+        for (key, cli) in [
+            ("cop-shell", CliSource::Copilot),
+            ("cop-pane",  CliSource::Copilot),
+            ("cla-shell", CliSource::Claude),
+            ("cla-pane",  CliSource::Claude),
+        ] {
+            reg.apply(SessionEvent::SessionStarted {
+                key: k(key),
+                cli_source: cli,
+                pane_session_id: pane(&format!("p-{key}")),
+                cwd: PathBuf::from("/x"),
+                title: key.into(),
+            });
+        }
+        reg.set_origin("cop-pane", SessionOrigin::AgentPane);
+        reg.set_origin("cla-pane", SessionOrigin::AgentPane);
+
+        let copilot_shell: Vec<&str> = reg
+            .iter_sorted_with_filters(Some(&CliSource::Copilot), OriginFilter::ShellOnly)
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(copilot_shell, vec!["cop-shell"]);
+
+        let claude_pane: Vec<&str> = reg
+            .iter_sorted_with_filters(Some(&CliSource::Claude), OriginFilter::AgentPaneOnly)
+            .iter()
+            .map(|s| s.key.as_str())
+            .collect();
+        assert_eq!(claude_pane, vec!["cla-pane"]);
+    }
+
+    #[test]
+    fn origin_filter_matches_opt_treats_none_as_shell() {
+        // SessionInfo.origin is Option<SessionOrigin>; None can mean
+        // "serialized before the field existed" or "arrived via a
+        // notification path that doesn't carry origin". The MVP
+        // contract: treat None as shell so legacy rows stay visible.
+        assert!(OriginFilter::ShellOnly.matches_opt(None));
+        assert!(OriginFilter::ShellOnly.matches_opt(Some(&SessionOrigin::Unknown)));
+        assert!(!OriginFilter::ShellOnly.matches_opt(Some(&SessionOrigin::AgentPane)));
+
+        assert!(!OriginFilter::AgentPaneOnly.matches_opt(None));
+        assert!(!OriginFilter::AgentPaneOnly.matches_opt(Some(&SessionOrigin::Unknown)));
+        assert!(OriginFilter::AgentPaneOnly.matches_opt(Some(&SessionOrigin::AgentPane)));
+
+        assert!(OriginFilter::All.matches_opt(None));
+        assert!(OriginFilter::All.matches_opt(Some(&SessionOrigin::Unknown)));
+        assert!(OriginFilter::All.matches_opt(Some(&SessionOrigin::AgentPane)));
+    }
+
+    // -------- B-8: liveness/activity 2D + alive-pane snapshot --------
+
+    #[test]
+    fn activity_and_liveness_derive_from_legacy_status() {
+        // Sanity-check that the 2D derived view matches the existing
+        // one-dimensional AgentStatus for every variant. Doubles as
+        // documentation for the mapping.
+        let make = |status: AgentStatus| AgentSession {
+            key: "k".into(),
+            cli_source: CliSource::Claude,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "t".into(),
+            cwd: PathBuf::from("/x"),
+            started_at: SystemTime::UNIX_EPOCH,
+            last_activity_at: SystemTime::UNIX_EPOCH,
+            status,
+            last_error: None,
+            current_tool: None,
+            attention_reason: None,
+            log_path: None,
+            origin: SessionOrigin::Unknown,
+        };
+
+        let cases = [
+            (AgentStatus::Idle,       ActivityState::Idle,      LivenessState::Live),
+            (AgentStatus::Working,    ActivityState::Working,   LivenessState::Live),
+            (AgentStatus::Attention,  ActivityState::Attention, LivenessState::Live),
+            (AgentStatus::Error,      ActivityState::Error,     LivenessState::Live),
+            (AgentStatus::Ended,      ActivityState::Idle,      LivenessState::Ended),
+            (AgentStatus::Historical, ActivityState::Idle,      LivenessState::Historical),
+        ];
+        for (st, want_act, want_live) in cases {
+            let s = make(st.clone());
+            assert_eq!(s.activity(), want_act, "activity mismatch for {:?}", st);
+            assert_eq!(s.liveness(), want_live, "liveness mismatch for {:?}", st);
+        }
+    }
+
+    #[test]
+    fn apply_alive_pane_snapshot_ends_disappeared_session() {
+        // Class A row: pane appeared in snapshot, then disappeared from
+        // the next snapshot without a PaneClosed event ever firing. The
+        // registry must transition the row to Ended on its own — this
+        // is the "agent CLI crashed and the helper exited before WT
+        // noticed the pane was dead" race.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("sid-1"),
+            cli_source: CliSource::Claude,
+            pane_session_id: pane("pane-aaa"),
+            cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+
+        // First snapshot says the pane is alive → row stays Live.
+        reg.apply_alive_pane_snapshot(HashSet::from(["pane-aaa".into()]));
+        let s = reg.sessions.get("sid-1").unwrap();
+        assert_eq!(s.liveness(), LivenessState::Live);
+        assert_eq!(s.status, AgentStatus::Idle);
+        let _ = reg.take_dirty();
+
+        // Second snapshot omits the pane → row → Ended.
+        reg.apply_alive_pane_snapshot(HashSet::new());
+        let s = reg.sessions.get("sid-1").unwrap();
+        assert_eq!(s.liveness(), LivenessState::Ended);
+        assert_eq!(s.status, AgentStatus::Ended);
+        assert!(s.pane_session_id.is_none(), "pane binding cleared");
+        assert!(reg.active_by_pane.get("pane-aaa").is_none(),
+                "active_by_pane unbound after row → Ended");
+        assert!(reg.take_dirty(), "row transition must flag the registry dirty");
+    }
+
+    #[test]
+    fn apply_alive_pane_snapshot_is_noop_for_never_seen_panes() {
+        // Class B row: the user ran `copilot` in a plain pane that the
+        // helper never opened an ACP session for, so the pane GUID
+        // never enters any alive snapshot. The row must NOT be
+        // demoted to Ended just because it's missing from a snapshot —
+        // its lifecycle is still owned by PaneClosed/hooks.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("standalone"),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane("pane-bbb"),
+            cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+
+        // Several snapshots arrive, none mentioning our pane — Class A
+        // for some *other* pane, irrelevant to us.
+        reg.apply_alive_pane_snapshot(HashSet::from(["pane-other".into()]));
+        reg.apply_alive_pane_snapshot(HashSet::from(["pane-other".into()]));
+        reg.apply_alive_pane_snapshot(HashSet::new());
+
+        let s = reg.sessions.get("standalone").unwrap();
+        assert_eq!(s.liveness(), LivenessState::Live,
+                   "standalone (Class B) row must not be ended by snapshots that never \
+                    contained its pane");
+        assert_eq!(s.status, AgentStatus::Idle);
+        assert_eq!(s.pane_session_id.as_deref(), Some("pane-bbb"));
+    }
+
+    #[test]
+    fn apply_alive_pane_snapshot_is_idempotent_after_pane_closed() {
+        // Composite source: if a local PaneClosed event fired first,
+        // the row is already Ended. A subsequent alive snapshot that
+        // also omits the pane must NOT bump last_activity_at or
+        // produce a second tracing entry — the second branch of the
+        // composite is supposed to be a no-op once PaneClosed wins.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("sid"),
+            cli_source: CliSource::Claude,
+            pane_session_id: pane("pane-x"),
+            cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.apply_alive_pane_snapshot(HashSet::from(["pane-x".into()]));
+        let _ = reg.take_dirty();
+
+        // PaneClosed wins the race.
+        reg.apply(SessionEvent::PaneClosed { pane_session_id: pane("pane-x") });
+        assert_eq!(reg.sessions.get("sid").unwrap().status, AgentStatus::Ended);
+        let before = reg.sessions.get("sid").unwrap().last_activity_at;
+        let _ = reg.take_dirty();
+        // Ensure the next branch can detect "did anything change" via timestamp.
+        std::thread::sleep(std::time::Duration::from_millis(2));
+
+        // Snapshot omits the pane too — should be a no-op now.
+        reg.apply_alive_pane_snapshot(HashSet::new());
+        let s = reg.sessions.get("sid").unwrap();
+        assert_eq!(s.status, AgentStatus::Ended);
+        assert_eq!(s.last_activity_at, before,
+                   "second branch of composite source must not retouch \
+                    a row already ended by PaneClosed");
+        assert!(!reg.take_dirty(), "no second dirty bump");
+    }
+
+    #[test]
+    fn apply_alive_pane_snapshot_is_idempotent_when_replayed() {
+        // Calling the same snapshot twice must not flag the registry
+        // dirty the second time — the session management view re-applies snapshots
+        // every time master pushes a session_added/removed batch.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("sid"), cli_source: CliSource::Claude,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        let _ = reg.take_dirty();
+
+        reg.apply_alive_pane_snapshot(HashSet::from(["p".into()]));
+        assert!(!reg.take_dirty(),
+                "first snapshot that just confirms an existing live row must not be dirty");
+        reg.apply_alive_pane_snapshot(HashSet::from(["p".into()]));
+        assert!(!reg.take_dirty(), "replayed snapshot is a no-op");
+    }
+
+    #[test]
+    fn apply_alive_pane_snapshot_normalises_pane_guid_case() {
+        // Snapshots arrive from master with whatever case master stored —
+        // helpers report lowercase from WT_SESSION but in-memory ACP
+        // sessions may have come from WT-native events (uppercase) on
+        // the master side. The reducer normalises GUIDs to lowercase,
+        // so the snapshot input must too.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("sid"),
+            cli_source: CliSource::Claude,
+            pane_session_id: pane("aaa-BBB-CCC"),
+            cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        // Confirm the reducer lowercased the binding.
+        assert!(reg.active_by_pane.contains_key("aaa-bbb-ccc"));
+
+        // Snapshot reports the same pane in mixed case — should still
+        // count as "alive".
+        reg.apply_alive_pane_snapshot(HashSet::from(["AAA-bbb-CCC".into()]));
+        assert_eq!(reg.sessions.get("sid").unwrap().liveness(), LivenessState::Live);
+
+        // Drop it — also in mixed case absence form (empty snapshot).
+        reg.apply_alive_pane_snapshot(HashSet::new());
+        assert_eq!(reg.sessions.get("sid").unwrap().liveness(), LivenessState::Ended);
+    }
+
+    // -------- B-9: history × alive-mirror join --------
+
+    fn make_historical(key: &str) -> AgentSession {
+        AgentSession {
+            key: key.into(),
+            cli_source: CliSource::Claude,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "t".into(),
+            cwd: PathBuf::from("/x"),
+            started_at: SystemTime::UNIX_EPOCH,
+            last_activity_at: SystemTime::UNIX_EPOCH,
+            status: AgentStatus::Historical,
+            last_error: None,
+            current_tool: None,
+            attention_reason: None,
+            log_path: None,
+            origin: SessionOrigin::AgentPane,
+        }
+    }
+
+    #[test]
+    fn apply_alive_session_join_upgrades_historical_to_live_and_binds_pane() {
+        // The scenario the join is meant to fix: history scan loaded a
+        // row as Historical (it pre-dates this WTA process), but the
+        // master's alive snapshot says the session is still running in
+        // some pane. The join must upgrade the row to Live (Idle) and
+        // bind the pane so a subsequent session management Enter routes to "focus".
+        let mut reg = AgentSessionRegistry::new();
+        reg.merge_historical(vec![make_historical("sid-hist")]);
+        assert_eq!(reg.sessions.get("sid-hist").unwrap().liveness(),
+                   LivenessState::Historical);
+
+        reg.apply_alive_session_join([("sid-hist", Some("pane-XYZ"))]);
+
+        let s = reg.sessions.get("sid-hist").unwrap();
+        assert_eq!(s.liveness(), LivenessState::Live);
+        assert_eq!(s.status, AgentStatus::Idle);
+        assert_eq!(s.pane_session_id.as_deref(), Some("pane-xyz"),
+                   "pane GUID is bound and lowercased");
+        assert_eq!(reg.active_by_pane.get("pane-xyz").map(|k| k.as_str()),
+                   Some("sid-hist"));
+        assert!(reg.take_dirty());
+    }
+
+    #[test]
+    fn apply_alive_session_join_is_noop_for_already_live_rows() {
+        // If the alive snapshot replays a session that we already know
+        // about via SessionStarted, the join must NOT clobber tool /
+        // attention state by demoting back to Idle. Live wins.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("sid"), cli_source: CliSource::Claude,
+            pane_session_id: pane("pane-orig"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.apply(SessionEvent::ToolStarting { key: k("sid"), tool_name: "bash".into() });
+        let _ = reg.take_dirty();
+
+        reg.apply_alive_session_join([("sid", Some("pane-different"))]);
+        let s = reg.sessions.get("sid").unwrap();
+        assert_eq!(s.status, AgentStatus::Working, "tool state preserved");
+        assert_eq!(s.pane_session_id.as_deref(), Some("pane-orig"),
+                   "pane binding not overwritten");
+        assert!(!reg.take_dirty(), "no-op must not flag dirty");
+    }
+
+    #[test]
+    fn apply_alive_session_join_does_not_resurrect_locally_ended_rows() {
+        // Local PaneClosed tombstones win over (potentially stale)
+        // alive broadcasts — see apply_alive_session_join's tombstone
+        // safety comment. Rationale: if a stale `session_added` from
+        // master arrives after PaneClosed has already ended the row,
+        // resurrecting it would leave it Live with no demotion path
+        // (the pane is genuinely gone in this process).
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("sid"), cli_source: CliSource::Claude,
+            pane_session_id: pane("pane-old"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.apply(SessionEvent::PaneClosed { pane_session_id: pane("pane-old") });
+        assert_eq!(reg.sessions.get("sid").unwrap().status, AgentStatus::Ended);
+
+        reg.apply_alive_session_join([("sid", Some("pane-new"))]);
+        let s = reg.sessions.get("sid").unwrap();
+        assert_eq!(s.liveness(), LivenessState::Ended, "Ended must stay Ended");
+        // Pane bindings should not be re-established for a tombstoned row.
+        assert!(reg.active_by_pane.get("pane-new").is_none());
+        assert!(reg.active_by_pane.get("pane-old").is_none());
+    }
+
+    #[test]
+    fn apply_alive_session_join_binds_pane_to_live_without_pane_row() {
+        // Regression for the cross-window session management Enter focus bug:
+        // `dispatch_resume_in_agent_pane` fires `ResumeDispatched`,
+        // which optimistically promotes a Historical row to `Idle (Live)`
+        // *without* binding a pane (the resume runs in a freshly spawned
+        // sibling tab; the gating helper never sees a SessionStarted
+        // hook). When master finally broadcasts `session_added` with
+        // the new helper-pane's GUID, the gating helper's row is no
+        // longer Historical — but it must still adopt the pane binding,
+        // otherwise the row stays Live-without-pane forever and every
+        // subsequent session management Enter on the same row returns
+        // `NotResumable { LiveWithoutPane }` ("Cannot focus session …:
+        // it appears live but no pane GUID is bound yet").
+        let mut reg = AgentSessionRegistry::new();
+        reg.merge_historical(vec![make_historical("sid")]);
+        // Simulate the optimistic flip done by `dispatch_resume_in_agent_pane`.
+        reg.apply(SessionEvent::ResumeDispatched { key: k("sid") });
+        let s = reg.sessions.get("sid").unwrap();
+        assert_eq!(s.liveness(), LivenessState::Live);
+        assert!(s.pane_session_id.is_none(),
+            "ResumeDispatched leaves pane_session_id None on purpose");
+        let _ = reg.take_dirty();
+
+        // Master's broadcast lands with the new helper-pane's GUID.
+        reg.apply_alive_session_join([("sid", Some("pane-new"))]);
+        let s = reg.sessions.get("sid").unwrap();
+        assert_eq!(s.status, AgentStatus::Idle, "status preserved");
+        assert_eq!(s.pane_session_id.as_deref(), Some("pane-new"),
+            "broadcast binds the new pane so cross-window Focus can resolve");
+        assert_eq!(
+            reg.active_by_pane.get("pane-new").map(String::as_str),
+            Some(k("sid").as_str()),
+            "active_by_pane mirrors the binding",
+        );
+        assert!(reg.known_alive_panes.contains("pane-new"));
+        assert!(reg.take_dirty(), "bind flagged dirty for snapshot");
+    }
+
+    #[test]
+    fn apply_alive_session_join_does_not_overwrite_existing_pane_on_live_row() {
+        // The Live-without-pane rebind must NOT overwrite a Live row
+        // that already has a pane bound (e.g. by a local SessionStarted
+        // hook). Local hooks are the source of truth for live state.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("sid"), cli_source: CliSource::Claude,
+            pane_session_id: pane("pane-local"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        let _ = reg.take_dirty();
+
+        reg.apply_alive_session_join([("sid", Some("pane-other"))]);
+        let s = reg.sessions.get("sid").unwrap();
+        assert_eq!(s.pane_session_id.as_deref(), Some("pane-local"),
+            "existing local pane binding wins over broadcast");
+        assert!(!reg.take_dirty(), "no-op must not flag dirty");
+        assert!(reg.active_by_pane.get("pane-other").is_none(),
+            "broadcast's pane must not leak into active_by_pane");
+    }
+
+    #[test]
+    fn apply_alive_session_join_ignores_unknown_sids() {
+        // SessionInfo for a sid we don't have in the registry → no-op.
+        // We don't fabricate rows from alive snapshots; SessionStarted
+        // is still the canonical source for new rows.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply_alive_session_join([("never-seen", Some("pane-x"))]);
+        assert!(reg.sessions.is_empty());
+        assert!(reg.active_by_pane.is_empty());
+        assert!(!reg.take_dirty());
+    }
+
+    #[test]
+    fn apply_alive_session_join_without_pane_only_upgrades_status() {
+        // Some SessionInfo entries have pane_session_id == None (e.g.
+        // legacy sessions replayed before _meta.wta carried a pane id).
+        // The join must still upgrade Historical → Live; no pane is
+        // bound, and active_by_pane is untouched.
+        let mut reg = AgentSessionRegistry::new();
+        reg.merge_historical(vec![make_historical("sid")]);
+
+        reg.apply_alive_session_join([("sid", None)]);
+        let s = reg.sessions.get("sid").unwrap();
+        assert_eq!(s.liveness(), LivenessState::Live);
+        assert_eq!(s.status, AgentStatus::Idle);
+        assert!(s.pane_session_id.is_none(), "no pane binding without a pane id");
+        assert!(reg.active_by_pane.is_empty());
+    }
+
+    #[test]
+    fn apply_alive_session_join_then_pane_snapshot_round_trip() {
+        // Bookend test: history loads Historical → join upgrades to Live
+        // with pane bound → later pane-snapshot drops it → row Ended.
+        // Verifies B-8's apply_alive_pane_snapshot interoperates with
+        // the join (the bound pane lands in known_alive_panes).
+        let mut reg = AgentSessionRegistry::new();
+        reg.merge_historical(vec![make_historical("sid")]);
+        reg.apply_alive_session_join([("sid", Some("pane-1"))]);
+        assert_eq!(reg.sessions.get("sid").unwrap().liveness(), LivenessState::Live);
+
+        // Master initially confirms the pane is alive.
+        reg.apply_alive_pane_snapshot(HashSet::from(["pane-1".into()]));
+        assert_eq!(reg.sessions.get("sid").unwrap().liveness(), LivenessState::Live);
+
+        // Then it disappears from a later snapshot.
+        reg.apply_alive_pane_snapshot(HashSet::new());
+        assert_eq!(reg.sessions.get("sid").unwrap().liveness(), LivenessState::Ended);
+    }
+
+    #[test]
+    fn apply_master_session_ended_demotes_live_row_to_ended() {
+        // Mirrors PaneClosed: Live row → Ended with pane binding cleared.
+        // Driven by master's `intellterm.wta/session_removed` broadcast
+        // when a helper exits — without this path the agent_sessions
+        // reducer never sees the disappearance and the session management row stays
+        // stuck on Live.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("sid"), cli_source: CliSource::Claude,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        // Seed known_alive_panes so we can assert it's also pruned.
+        reg.apply_alive_pane_snapshot(HashSet::from(["p".into()]));
+        assert_eq!(reg.sessions.get("sid").unwrap().liveness(), LivenessState::Live);
+        assert!(reg.known_alive_panes.contains("p"));
+
+        reg.apply_master_session_ended("sid");
+        let s = reg.sessions.get("sid").unwrap();
+        assert_eq!(s.liveness(), LivenessState::Ended);
+        assert!(s.pane_session_id.is_none());
+        assert!(reg.active_by_pane.get("p").is_none(),
+            "active_by_pane must be cleared so future pane events don't hit a stale binding");
+        assert!(!reg.known_alive_panes.contains("p"),
+            "known_alive_panes must be pruned so a subsequent pane snapshot doesn't try to re-end");
+        assert!(reg.take_dirty());
+    }
+
+    #[test]
+    fn apply_master_session_ended_is_noop_for_historical_row() {
+        // Historical rows have never been Live in this process; the
+        // master removed broadcast carries no useful information for
+        // them (they never had a pane binding to clear). Must be a
+        // pure no-op so we don't surprise the disk loader.
+        let mut reg = AgentSessionRegistry::new();
+        reg.merge_historical(vec![make_historical("sid")]);
+        reg.take_dirty();
+
+        reg.apply_master_session_ended("sid");
+        let s = reg.sessions.get("sid").unwrap();
+        assert_eq!(s.liveness(), LivenessState::Historical);
+        assert!(!reg.take_dirty(), "no-op must not dirty the registry");
+    }
+
+    #[test]
+    fn apply_master_session_ended_is_noop_for_already_ended_row() {
+        // Two paths can end a row: local PaneClosed and master
+        // session_removed. Whichever wins the race, the other must
+        // be a no-op so we don't double-fire `dirty` or accidentally
+        // re-clear a binding the user has since re-established via
+        // resume.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("sid"), cli_source: CliSource::Claude,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.apply(SessionEvent::PaneClosed { pane_session_id: pane("p") });
+        assert_eq!(reg.sessions.get("sid").unwrap().liveness(), LivenessState::Ended);
+        reg.take_dirty();
+
+        reg.apply_master_session_ended("sid");
+        assert!(!reg.take_dirty());
+    }
+
+    #[test]
+    fn apply_master_session_ended_is_noop_for_unknown_sid() {
+        // Master may broadcast `session_removed` for sessions we never
+        // saw (e.g. created in another WT window's WTA process). Must
+        // not fabricate a tombstone row.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply_master_session_ended("never-seen");
+        assert!(reg.sessions.is_empty());
+        assert!(!reg.take_dirty());
+    }
+
+    #[test]
+    fn most_recent_live_session_for_cli_returns_none_for_empty_registry() {
+        let reg = AgentSessionRegistry::new();
+        assert_eq!(reg.most_recent_live_session_for_cli(&CliSource::Copilot), None);
+    }
+
+    #[test]
+    fn most_recent_live_session_for_cli_returns_none_for_unknown_cli() {
+        // CliSource::Unknown is a refusal sentinel — we should never
+        // route a sessionless event into "the only live session" just
+        // because we couldn't identify which CLI emitted it.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Unknown(String::new())),
+            None,
+            "Unknown cli_source must never resolve to a fallback",
+        );
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Unknown("foo".into())),
+            None,
+        );
+    }
+
+    #[test]
+    fn most_recent_live_session_for_cli_picks_matching_cli_only() {
+        // Two live sessions for different CLIs — picking the most recent
+        // must still match on cli_source so a sessionless Copilot
+        // notification can't land on the Claude row just because Claude
+        // was touched more recently.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("copilot-old"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p1"), cwd: PathBuf::from("/x"),
+            title: "copilot".into(),
+        });
+        // Force a measurable activity gap so the later session truly
+        // sorts after the earlier one (clock resolution can otherwise
+        // tie the two on fast machines).
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("claude-new"), cli_source: CliSource::Claude,
+            pane_session_id: pane("p2"), cwd: PathBuf::from("/y"),
+            title: "claude".into(),
+        });
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Copilot),
+            Some(k("copilot-old")),
+            "fallback must filter by cli_source, not just pick the freshest row",
+        );
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Claude),
+            Some(k("claude-new")),
+        );
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Gemini),
+            None,
+        );
+    }
+
+    #[test]
+    fn most_recent_live_session_for_cli_picks_freshest_matching() {
+        // Two live sessions for the same CLI — the one whose
+        // last_activity_at is most recent wins. Mirrors the user
+        // scenario of having one stale Copilot pane and one active one;
+        // a sessionless notification should land on the active one.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("stale"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p1"), cwd: PathBuf::from("/x"),
+            title: "stale".into(),
+        });
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("fresh"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p2"), cwd: PathBuf::from("/y"),
+            title: "fresh".into(),
+        });
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        // Touch `stale` last — should still lose to `fresh` because
+        // ToolStarting bumps last_activity_at, and the second
+        // SessionStarted on `fresh` set its last_activity_at, then we
+        // touch stale, making it the freshest now.
+        reg.apply(SessionEvent::ToolStarting {
+            key: k("stale"), tool_name: "bash".into(),
+        });
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Copilot),
+            Some(k("stale")),
+            "ToolStarting bumps last_activity_at, so 'stale' is now freshest",
+        );
+    }
+
+    #[test]
+    fn most_recent_live_session_for_cli_skips_ended_and_historical() {
+        // Ended/Historical rows must NOT be candidates — the fallback is
+        // for routing a *live* event to the right *live* session, and
+        // resurrecting a dead session via a stray notification would be
+        // worse than no-op (it would resurface a terminated row in session management view
+        // with bogus Attention state).
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("live"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p1"), cwd: PathBuf::from("/x"),
+            title: "live".into(),
+        });
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("ended"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p2"), cwd: PathBuf::from("/y"),
+            title: "ended".into(),
+        });
+        // Drive `ended` to a terminal state.
+        reg.sessions.get_mut("ended").unwrap().status = AgentStatus::Ended;
+
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Copilot),
+            Some(k("live")),
+            "Ended rows must be ineligible for the sessionless-event fallback",
+        );
+
+        // Now flip the only live row to Historical too — fallback must
+        // return None rather than picking a non-live row.
+        reg.sessions.get_mut("live").unwrap().status = AgentStatus::Historical;
+        assert_eq!(
+            reg.most_recent_live_session_for_cli(&CliSource::Copilot),
+            None,
+            "Historical rows must also be ineligible — no live target ⇒ no fallback",
+        );
     }
 }

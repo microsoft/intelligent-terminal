@@ -10,6 +10,7 @@
 
 #include "VirtualDesktopUtils.h"
 #include "WindowEmperor.h"
+#include "TerminalProtocolComServer.h"
 #include "../types/inc/utils.hpp"
 
 using namespace winrt::Windows::UI;
@@ -1174,6 +1175,25 @@ safe_void_coroutine AppHost::_WindowInitializedHandler(const winrt::Windows::Fou
                                                        const winrt::Windows::Foundation::IInspectable& /*arg*/)
 {
     _isWindowInitialized = WindowInitializedState::Initializing;
+
+    // Re-run page-events registration now that the TerminalPage is
+    // actually constructed. `WindowEmperor::CreateNewWindow` already
+    // calls `s_OnWindowAdded` immediately after `host->Initialize()`,
+    // but at that point XAML is still spinning up its UI tree and
+    // `_getPage(host)` returns null, so the registration is silently
+    // skipped for this window. `_ensurePageEventsRegistered` deduplicates
+    // per-page via `s_registered`, so the normal "Subscribe() calls
+    // _ensurePageEventsRegistered" retry path picks the new page up the
+    // next time a wta helper subscribes. For tear-out windows that
+    // sometimes still misses (depending on whether the pre-warm helper
+    // wins the race against the existing-helper rekey), and the new
+    // window's `TerminalPage::ProtocolVtSequenceReceived` never gets
+    // wired into the COM fan-out — events the new window raises (e.g.
+    // `autofix_execute` from the Ctrl+Alt+. handler) end up with no
+    // listener and silently disappear. Retrying registration here, when
+    // we know the page is actually ready, closes that hole. Cheap
+    // (O(n) over a small N) and idempotent.
+    TerminalProtocolComServer::s_OnWindowAdded(this);
 
     // GH#11561: We're totally done being initialized. Resize the window to
     // match the initial settings, and then call ShowWindow to finally make us

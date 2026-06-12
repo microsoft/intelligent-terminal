@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -119,14 +119,14 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Laipni lūdzam Intelligent Terminal</value>
+    <value>Laipni lūdzam Viedais Terminālis</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Iestatiet iebūvēto palīgu, lai tas palīdzētu izskaidrot kļūdas, izveidot komandas un atrisināt uzdevumus tieši tur, kur strādājat. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Uzziniet vairāk par Intelligent Terminal</value>
+    <value>Uzziniet vairāk par Viedais Terminālis</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -149,48 +149,44 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Laipni lūdzam Intelligent Terminal</value>
+    <value>Laipni lūdzam Viedais Terminālis</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Izvēlieties, ko iestatīt tagad. Jebkurā laikā varat to mainīt sadaļā </value>
+    <value>Izvēlieties, ko vēlaties iestatīt tagad. Šos iestatījumus varat mainīt jebkurā laikā. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Iestatījumi</value>
+    <value>Uzziniet, kā tiek izmantoti dati</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Aģents</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Izvēlieties aģenta CLI, kas tiek izmantots aģenta panelī. Visi saderīgie ACP CLI tiks noteikti automātiski.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Izvēlieties aģentu, kas tiek izmantots aģenta panelī un atbalsta ACP.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Šim aģentam nepieciešams Node.js un NPX, kas tiks automātiski instalēti, ja tie vēl nav pieejami.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Šim aģentam nepieciešams Node.js un NPX, kas tiks automātiski instalēti, ja tie vēl nav pieejami.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Automātiski ieteikt labojumus neveiksmīgām komandām</value>
+    <value>Automātisks kļūdu ieteikums</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Kad iespējots, MI aģents automātiski analizē neveiksmīgas komandas un piedāvā labojumu. Kad atspējots, neveiksmīgas komandas statusa joslā rāda noklikšķināmu mājienu — nospiediet Ctrl+Alt+. vai noklikšķiniet uz mājiena, lai pieprasītu labojumu.</value>
+    <value>Atļaujiet Intelligent Terminal sūtīt kļūdas jūsu aģentam, lai automātiski ieteiktu labojumus.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Sesiju pārvaldība</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Piešķiriet Intelligent Terminal atļauju izsekot jūsu darbojošos vai aktīvo aģentu statusu.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Piešķiriet Viedais Terminālis atļauju izsekot jūsu darbojošos vai aktīvo aģentu statusu.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Iespējojot šo funkciju, tiks instalēti integrācijas āķi sesiju izsekošanai starp jūsu aģentu CLI.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Iespējojot šo funkciju, tiks instalēti integrācijas hooks sesiju izsekošanai starp jūsu aģentiem.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Paneļa novietojums</value>
@@ -224,18 +220,147 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Iestata...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Neizdevās instalēt GitHub Copilot. Pārbaudiet tīkla savienojumu un mēģiniet vēlreiz.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ {0} instalēšanu bloķēja Windows pakotņu pārvaldnieka politika. Ja izmantojat pārvaldītu ierīci, sazinieties ar savu IT administratoru.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Neizdevās instalēt Node.js. Pārbaudiet tīkla savienojumu un mēģiniet vēlreiz.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Neizdevās instalēt {0} (kļūdas kods {1}). Skatiet žurnālu, lai iegūtu detalizētu informāciju, vai instalējiet {0} manuāli.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Neizdevās instalēt {0}. Skatiet žurnālu, lai iegūtu detalizētu informāciju, vai instalējiet {0} manuāli.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0} instalētājs ziņoja par kļūdu (kods {1}). Skatiet žurnālu, lai iegūtu detalizētu informāciju, vai instalējiet {0} manuāli.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Neizdevās sasniegt Windows pakotņu pārvaldnieku, instalējot {0}. Pārbaudiet interneta savienojumu (VPN, starpniekserveris vai ugunsmūris to var bloķēt) un mēģiniet vēlreiz.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Šajā sistēmā nav pieejams saderīgs instalētājs pakotnei {0} (OS versija vai arhitektūra var netikt atbalstīta). Instalējiet {0} manuāli.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} netika atrasts Windows pakotņu pārvaldnieka katalogā. Mēģiniet atsvaidzināt winget avotus vai instalējiet {0} manuāli.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0} instalēšana ilga vairāk nekā 20 minūtes. Intelligent Terminal pārtrauca gaidīt, bet instalētājs, iespējams, joprojām darbojas fonā. Pārbaudiet Task Manager vai mēģiniet vēlreiz vēlāk.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows pakotņu pārvaldnieks (winget) nav instalēts vai nav pieejams. Vispirms instalējiet to un pēc tam mēģiniet vēlreiz.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  </data>
+
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Ieslēgts</value>
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Izslēgts</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Analizē kļūdu…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Konstatēta kļūda: analizē…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Konstatēta kļūda: {0}, lai labotu</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
+    <value>Noklikšķiniet vai nospiediet {0}, lai lūgtu aģentam ieteikto labojumu</value>
+    <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Labojums gatavs. Nospiediet {0}, lai pārskatītu</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Atveriet aģenta rūti, lai pārskatītu ieteikto labojumu</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
+    <value>Kļūda konstatēta. Noklikšķiniet vai nospiediet {0}, lai lūgtu AI aģentam diagnosticēt un ieteikt labojumu.</value>
+    <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Labojums gatavs — {0}, lai lietotu</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Labojums gatavs — {0}, lai lietotu: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Ieteikums gatavs — atveriet aģenta paneli</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Automātiska labošana atteicās to labot tieši. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Noklikšķiniet šeit vai nospiediet Ctrl+Shift+., lai atvērtu aģenta paneli un izlasītu pilnu ieteikumu.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Diagnostika</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Aģenta sesijas</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Aģenta sesijas: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Automātiska kļūdu noteikšana</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Atļaujiet Intelligent Terminal piekļūt jūsu čaulai un automātiski noteikt kļūdas.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Neizdevās instalēt čaulas integrāciju. Kļūdu noteikšana ir izslēgta. Varat to atkārtoti iespējot un mēģināt vēlreiz vai saglabāt, lai turpinātu bez tās.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Neizdevās instalēt session hooks. Sesiju pārvaldība ir izslēgta. Varat to atkārtoti iespējot un mēģināt vēlreiz vai saglabāt, lai turpinātu bez tās.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Uzziniet, kā to manuāli novērst</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Iespējojot šo funkciju, tiks instalēta shell integrācija komandu kļūmju noteikšanai. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Uzziniet vairāk</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>PowerShell izpildes politika bloķē skriptus.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell izpildes politika bloķē skriptus. Kļūdu noteikšana ir izslēgta.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

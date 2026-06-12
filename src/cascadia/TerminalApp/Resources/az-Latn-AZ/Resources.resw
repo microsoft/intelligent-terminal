@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -119,14 +119,14 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal-a xoş gəlmisiniz</value>
+    <value>Ağıllı Terminal-a xoş gəlmisiniz</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Xətaları izah etməyə, əmr qaralamalarına və işlədiyin yerdə tıxanan tapşırıqları həll etməyə kömək edəcək daxili köməkçini qurun. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Intelligent Terminal haqqında daha çox öyrənin</value>
+    <value>Ağıllı Terminal haqqında daha çox öyrənin</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -149,48 +149,44 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal-a xoş gəlmisiniz</value>
+    <value>Ağıllı Terminal-a xoş gəlmisiniz</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>İndi nəyi qurmaq istədiyinizi seçin. Bunları istənilən vaxt </value>
+    <value>İndi nəyi qurmaq istədiyinizi seçin. Bunları istənilən vaxt dəyişə bilərsiniz. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Parametrlər</value>
+    <value>Verilənlərin necə istifadə edildiyini öyrənin</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Agent</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Agent panelində istifadə olunan agent CLI seçin. Uyğun olan istənilən ACP CLI avtomatik aşkar ediləcək.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Agent panelində istifadə olunan və ACP dəstəkləyən agenti seçin.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Bu agent Node.js və NPX tələb edir, əgər hələ quraşdırılmayıbsa avtomatik quraşdırılacaq.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Bu agent Node.js və NPX tələb edir, əgər hələ quraşdırılmayıbsa avtomatik quraşdırılacaq.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Uğursuz əmrlər üçün düzəlişləri avtomatik təklif et</value>
+    <value>Avtomatik səhv təklifi</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Aktiv edildikdə, AI agenti uğursuz əmrləri avtomatik təhlil edir və düzəliş təklif edir. Deaktiv edildikdə, uğursuz əmrlər status panelində klikləmək mümkün olan ipucu göstərir — düzəliş tələb etmək üçün Ctrl+Alt+. düyməsini basın və ya ipucunu klikləyin.</value>
+    <value>Intelligent Terminal-ə düzəlişləri avtomatik təklif etmək üçün səhvləri agentinizə göndərmək icazəsi verin.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Sessiya idarəetməsi</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal-a işləyən və ya aktiv agentlərinizin vəziyyətini izləmək icazəsi verin.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Ağıllı Terminal-a işləyən və ya aktiv agentlərinizin vəziyyətini izləmək icazəsi verin.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Bunu aktivləşdirmək agent CLI-ləriniz arasında sessiyaları izləmək üçün inteqrasiya qarmaqları quraşdıracaq.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Bunu aktivləşdirmək agentləriniz arasında sessiyaları izləmək üçün inteqrasiya hooks quraşdıracaq.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Panel mövqeyi</value>
@@ -224,18 +220,146 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Qurulur...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot quraşdırıla bilmədi. Şəbəkənizi yoxlayın və yenidən cəhd edin.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ {0} quraşdırılması Windows Paket Meneceri siyasəti tərəfindən bloklandı. İdarə olunan cihazdasınızsa, IT administratorunuzla əlaqə saxlayın.</value>
+    <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js quraşdırıla bilmədi. Şəbəkənizi yoxlayın və yenidən cəhd edin.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ {0} quraşdırıla bilmədi (xəta kodu {1}). Təfərrüatlar üçün jurnala baxın və ya {0} paketini əl ilə quraşdırın.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ {0} quraşdırıla bilmədi. Təfərrüatlar üçün jurnala baxın və ya {0} paketini əl ilə quraşdırın.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0} quraşdırıcısı xəta bildirdi (kod {1}). Təfərrüatlar üçün jurnalı yoxlayın və ya {0} paketini əl ilə quraşdırın.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ {0} quraşdırılarkən Windows Paket Menecerinə qoşulmaq mümkün olmadı. İnternet bağlantınızı yoxlayın (VPN, proksi və ya təhlükəsizlik divarı onu bloklaya bilər) və yenidən cəhd edin.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Bu sistemdə {0} üçün uyğun quraşdırıcı mövcud deyil (OS versiyası və ya arxitektura dəstəklənməyə bilər). {0} paketini əl ilə quraşdırın.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} Windows Paket Meneceri kataloqunda tapılmadı. winget mənbələrini yeniləməyi sınayın və ya {0} paketini əl ilə quraşdırın.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0} quraşdırılması 20 dəqiqədən çox çəkdi. Intelligent Terminal gözləməyi dayandırdı, lakin quraşdırıcı hələ də arxa planda işləyə bilər. Task Manager-i yoxlayın və ya sonra yenidən cəhd edin.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows Paket Meneceri (winget) quraşdırılmayıb və ya əlçatan deyil. Əvvəlcə onu quraşdırın, sonra yenidən cəhd edin.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Açıq</value>
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Bağlı</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Xəta təhlil edilir…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Xəta aşkarlandı: təhlil edilir…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Xəta aşkarlandı: düzəltmək üçün {0}</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
+    <value>Agentdən təklif olunan düzəliş istəmək üçün {0} üzərinə klikləyin və ya basın</value>
+    <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Düzəliş hazırdır. Nəzərdən keçirmək üçün {0} basın</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Təklif olunan düzəlişi nəzərdən keçirmək üçün agent panelini açın</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
+    <value>Xəta aşkar edildi. AI agentindən diaqnostika aparmasını və düzəliş təklif etməsini istəmək üçün {0} üzərinə klikləyin və ya basın.</value>
+    <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Düzəliş hazırdır — tətbiq etmək üçün {0}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Düzəliş hazırdır — tətbiq etmək üçün {0}: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Təklif hazırdır — agent panelini açın</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Avtomatik düzəliş bunu birbaşa düzəltməkdən imtina etdi. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Agent panelini açmaq və tam təklifi oxumaq üçün buraya klikləyin və ya Ctrl+Shift+. basın.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Diaqnostika</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Agent seansları</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Agent seansları: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Avtomatik səhv aşkarlanması</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal-ə qabığınıza daxil olmaq və səhvləri avtomatik aşkarlamaq icazəsi verin.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Shell inteqrasiyasını quraşdırmaq alınmadı. Xəta aşkarlanması söndürülüb. Onu yenidən aktivləşdirib təkrar cəhd edə bilərsiniz və ya onsuz davam etmək üçün saxlaya bilərsiniz.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Session hooks quraşdırmaq alınmadı. Sessiya idarəetməsi söndürülüb. Onu yenidən aktivləşdirib təkrar cəhd edə bilərsiniz və ya onsuz davam etmək üçün saxlaya bilərsiniz.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Bunu necə əl ilə düzəltməyi öyrənin</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Bunu aktivləşdirmək əmr xətalarını aşkar etmək üçün shell inteqrasiyası quraşdıracaq. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Daha çox öyrənin</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>PowerShell icra siyasəti skriptləri bloklayır.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell icra siyasəti skriptləri bloklayır. Xəta aşkarlanması söndürüldü.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -166,7 +166,7 @@
     <value>Не вдалося перезавантажити налаштування</value>
   </data>
   <data name="FeedbackUriValue" xml:space="preserve">
-    <value>https://aka.ms/intelligentterminal/feedback</value>
+    <value>https://aka.ms/intelligent-terminal-feedback</value>
     <comment>{Locked}</comment>
   </data>
   <data name="AboutMenuItem" xml:space="preserve">
@@ -298,7 +298,7 @@
     <comment>{Locked="\"globals\""} </comment>
   </data>
   <data name="LegacyGlobalsPropertyHrefUrl" xml:space="preserve">
-    <value>https://aka.ms/intelligentterminal/legacy-globals</value>
+    <value>https://go.microsoft.com/fwlink/?linkid=2128258</value>
     <comment>{Locked}</comment>
   </data>
   <data name="LegacyGlobalsPropertyHrefLabel" xml:space="preserve">
@@ -1002,23 +1002,23 @@
   <data name="NotificationMessage_TabActivity" xml:space="preserve"><value>Активність у вкладці "{0}"</value><comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment></data>
   <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve"><value>Активність у вкладці "{0}" (вікно "{1}")</value><comment>{0} is the tab title, {1} is the window name. Shown as the body of a desktop notification when tab activity is detected and the window has a name.</comment></data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve"><value>Інтеграцію оболонки ініціалізовано</value></data>
-  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>Інтеграцію оболонки налаштовано. Перезапустіть сеанс PowerShell або відкрийте нову вкладку, щоб зміни набули чинності.</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>Інтеграцію оболонки налаштовано. Зміни набудуть чинності лише в нових сеансах оболонки (PowerShell, bash або WSL bash).</value><comment>{Locked="PowerShell","bash","WSL bash"}</comment></data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve"><value>Інтеграцію оболонки вже налаштовано</value></data>
-  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>Інтеграцію оболонки вже налаштовано у вашому профілі PowerShell.</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>Інтеграцію оболонки вже налаштовано для оболонок, виявлених у вашій системі (PowerShell, bash або WSL bash).</value><comment>{Locked="PowerShell","bash","WSL bash"}</comment></data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve"><value>Помилка інтеграції оболонки</value></data>
-  <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>Не вдалося ініціалізувати інтеграцію оболонки. Не вдалося визначити шлях до вашого профілю PowerShell. Переконайтеся, що цільову оболонку встановлено.</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>Не вдалося ініціалізувати інтеграцію оболонки. Перегляньте наведені нижче відомості та повторіть спробу.</value><comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>Агент ШІ недоступний</value></data>
-  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>Не вдалося знайти жодного агента ШІ. Установіть CLI агента (наприклад, copilot або gemini) і переконайтеся, що його додано до PATH, або налаштуйте його в Налаштування &gt; Агенти.</value><comment>{Locked="CLI","PATH","copilot","gemini"}</comment></data>
+  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>Не вдалося знайти жодного агента ШІ. Установіть агента (наприклад, copilot або gemini) і переконайтеся, що його додано до PATH, або налаштуйте його в Налаштування &gt; Агенти.</value><comment>{Locked="PATH","copilot","gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Ласкаво просимо до Intelligent Terminal</value>
+    <value>Ласкаво просимо до Інтелектуальний Термінал</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Налаштуйте вбудованого помічника, щоб він допомагав пояснювати помилки, складати команди та розблоковувати завдання саме там, де ви працюєте. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Дізнатися більше про Intelligent Terminal</value>
+    <value>Дізнатися більше про Інтелектуальний Термінал</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -1041,48 +1041,44 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Ласкаво просимо до Intelligent Terminal</value>
+    <value>Ласкаво просимо до Інтелектуальний Термінал</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Оберіть, що налаштувати зараз. Ви можете змінити це будь-коли у розділі </value>
+    <value>Виберіть, що потрібно налаштувати зараз. Ви можете змінити ці параметри в будь-який час. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Налаштування</value>
+    <value>Дізнайтеся, як використовуються дані</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Агент</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Оберіть CLI агента, який використовується у панелі агента. Будь-який сумісний ACP CLI буде виявлено автоматично.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Оберіть агента, який використовується в панелі агента та підтримує ACP.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Цей агент потребує Node.js та NPX, які будуть встановлені автоматично, якщо ще не встановлені.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Цей агент потребує Node.js та NPX, які будуть встановлені автоматично, якщо ще не встановлені.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Автоматично пропонувати виправлення для невдалих команд</value>
+    <value>Автоматична пропозиція виправлень</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Якщо ввімкнено, ШІ-агент автоматично аналізує невдалі команди та пропонує виправлення. Якщо вимкнено, невдалі команди показують підказку в рядку стану, на яку можна клацнути — натисніть Ctrl+Alt+. або клацніть підказку, щоб запитати виправлення.</value>
+    <value>Дозвольте Intelligent Terminal надсилати помилки вашому агенту для автоматичної пропозиції виправлень.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Керування сеансами</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Надайте Intelligent Terminal дозвіл відстежувати стан ваших запущених або активних агентів.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Надайте Інтелектуальний Термінал дозвіл відстежувати стан ваших запущених або активних агентів.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Увімкнення цієї функції встановить інтеграційні хуки для відстеження сеансів у всіх ваших CLI агентів.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Увімкнення цієї функції встановить інтеграційні hooks для відстеження сеансів у всіх ваших агентах.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Положення панелі</value>
@@ -1116,14 +1112,51 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Налаштування...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Не вдалося встановити GitHub Copilot. Перевірте мережеве підключення та спробуйте знову.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Інсталяцію {0} заблоковано політикою Диспетчера пакетів Windows. Якщо ви використовуєте керований пристрій, зверніться до ІТ-адміністратора.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Не вдалося встановити Node.js. Перевірте мережеве підключення та спробуйте знову.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Не вдалося інсталювати {0} (код помилки {1}). Перегляньте журнал, щоб дізнатися подробиці, або інсталюйте {0} вручну.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Не вдалося інсталювати {0}. Перегляньте журнал, щоб дізнатися подробиці, або інсталюйте {0} вручну.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ Інсталятор {0} повідомив про помилку (код {1}). Перегляньте журнал, щоб дізнатися подробиці, або інсталюйте {0} вручну.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Не вдалося зв’язатися з Диспетчером пакетів Windows під час інсталяції {0}. Перевірте підключення до Інтернету (VPN, проксі або брандмауер можуть його блокувати) і спробуйте знову.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ У цій системі немає сумісного інсталятора для {0} (версія ОС або архітектура може не підтримуватися). Інсталюйте {0} вручну.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} не знайдено в каталозі Диспетчера пакетів Windows. Спробуйте оновити джерела winget або інсталюйте {0} вручну.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Інсталяція {0} тривала довше ніж 20 хвилин. Intelligent Terminal припинив очікування, але інсталятор може й досі працювати у фоновому режимі. Перевірте Task Manager або спробуйте знову пізніше.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Диспетчер пакетів Windows (winget) не інстальовано або він недоступний. Спочатку інсталюйте його, а потім спробуйте знову.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  </data>
+
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Увімк</value>
   </data>
@@ -1141,5 +1174,97 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_PolicyLocked" xml:space="preserve">
     <value>╨ª╨╡╨╣ ╨┐╨░╤Ç╨░╨╝╨╡╤é╤Ç ╨║╨╡╤Ç╤â╤ö╤é╤î╤ü╤Å ╨▓╨░╤ê╨╛╤Ä ╨╛╤Ç╨│╨░╨╜╤û╨╖╨░╤å╤û╤ö╤Ä.</value>
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Аналіз помилки…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Виявлено помилку: аналіз…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Виявлено помилку: {0}, щоб виправити</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
+    <value>Клацніть або натисніть {0}, щоб запитати в агента запропоноване виправлення</value>
+    <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Виправлення готове. Натисніть {0} для перегляду</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Відкрийте панель агента, щоб переглянути запропоноване виправлення</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
+    <value>Виявлено помилку. Клацніть або натисніть {0}, щоб попросити AI-агента діагностувати її та запропонувати виправлення.</value>
+    <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Виправлення готове — {0}, щоб застосувати</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Виправлення готове — {0}, щоб застосувати: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Пропозиція готова — відкрийте панель агента</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Автовиправлення відмовилося виправляти це безпосередньо. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Клацніть тут або натисніть Ctrl+Shift+., щоб відкрити панель агента та прочитати повну пропозицію.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Діагностика</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Сеанси агентів</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Сеанси агентів: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Автоматичне виявлення помилок</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Дозвольте Intelligent Terminal отримати доступ до оболонки та автоматично виявляти помилки.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Не вдалося встановити інтеграцію оболонки. Виявлення помилок вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Не вдалося встановити session hooks. Керування сеансами вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Дізнайтеся, як виправити це вручну</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Увімкнення цієї функції встановить інтеграцію оболонки для виявлення збоїв команд. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Дізнатися більше</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>Політика виконання PowerShell блокує сценарії.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ Політика виконання PowerShell блокує сценарії. Виявлення помилок вимкнено.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

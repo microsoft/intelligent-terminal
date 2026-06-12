@@ -73,7 +73,11 @@ namespace Microsoft.Terminal.Settings.Editor
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, AcpModel);
         Boolean ShowDelegateModel { get; };
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, DelegateModel);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, AutoErrorDetectionEnabled);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, AutoFixEnabled);
+        // Whether the auto-suggest toggle should be enabled: detection must be
+        // on and the auto-fix GPO must not be locking it off.
+        Boolean CanSuggestErrors { get; };
 
         // GPO policy lock indicators.
         // IsAgentPolicyLocked: AllowedAgents policy is active — agent
@@ -109,16 +113,20 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean IsCopilotCliDetected { get; };
         Boolean IsClaudeCliDetected { get; };
         Boolean IsGeminiCliDetected { get; };
+        Boolean IsCodexCliDetected { get; };
         Boolean IsAnyAgentCliDetected { get; };
         Boolean ShowCopilotHookRow { get; };
         Boolean ShowClaudeHookRow { get; };
         Boolean ShowGeminiHookRow { get; };
+        Boolean ShowCodexHookRow { get; };
         String CopilotHooksSubtitle { get; };
         String ClaudeHooksSubtitle { get; };
         String GeminiHooksSubtitle { get; };
+        String CodexHooksSubtitle { get; };
         Boolean ShowCopilotHooksSubtitle { get; };
         Boolean ShowClaudeHooksSubtitle { get; };
         Boolean ShowGeminiHooksSubtitle { get; };
+        Boolean ShowCodexHooksSubtitle { get; };
         Boolean CanInstallAgentHooks { get; };
         Boolean IsInstallingAgentHooks { get; };
         String AgentHooksInstallSummary { get; };
@@ -131,5 +139,6 @@ namespace Microsoft.Terminal.Settings.Editor
         void RemoveCopilotHooks();
         void RemoveClaudeHooks();
         void RemoveGeminiHooks();
+        void RemoveCodexHooks();
     }
 }

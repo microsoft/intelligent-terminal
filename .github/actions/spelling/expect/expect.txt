@@ -26,6 +26,7 @@ AImpl
 AInplace
 ALIGNRIGHT
 allocing
+allsigned
 alpc
 ALTERNATENAME
 ALTF
@@ -123,7 +124,6 @@ BPPF
 branchconfig
 brandings
 Browsable
-Bspace
 bspace
 BTNFACE
 bufferout
@@ -962,6 +962,7 @@ maxval
 maxversiontested
 MAXWORD
 maybenull
+mbr
 MBUTTON
 MBUTTONDBLCLK
 MBUTTONDOWN
@@ -1076,6 +1077,7 @@ NOCONTEXTHELP
 NOCOPYBITS
 nodiscard
 NODUP
+NODEFAULT
 noexcepts
 NOFONT
 NOHIDDENTEXT
@@ -1329,7 +1331,6 @@ PSINGLE
 psl
 psldl
 PSNRET
-PSobject
 psp
 PSPCB
 psr
@@ -1383,6 +1384,7 @@ redist
 REDSCROLL
 REFCLSID
 Reference'd
+refetches
 REFGUID
 REFIID
 REFPROPERTYKEY
@@ -1539,7 +1541,6 @@ SHOWWINDOW
 sidebyside
 SIF
 SIGDN
-Signtool
 SINGLETHREADED
 siup
 sixel
@@ -1554,6 +1555,7 @@ SLGP
 SLIST
 slmult
 sln
+slnf
 slnx
 slpit
 SManifest
@@ -1561,6 +1563,7 @@ SMARTQUOTE
 SMTO
 snapcx
 snapcy
+SND
 snk
 SOLIDBOX
 Solutiondir
@@ -1818,7 +1821,6 @@ VSTS
 VSTT
 vswhere
 vtapp
-VTE
 VTID
 vtmode
 vtpipeterm
@@ -1934,7 +1936,6 @@ wstr
 wstrings
 wsz
 wta
-WTCLI
 wtai
 wtd
 WTEXT
@@ -2032,3 +2033,9 @@ inbox
 prioritization
 sourced
 IME
+CLDR
+doy
+Hinnant
+LONGDATE
+MRT
+Uninstalls

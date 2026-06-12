@@ -174,6 +174,8 @@ public:
     void IsAgentPane(bool value) noexcept;
     bool IsSourceOfAgentPane() const noexcept;
     void SetSourceOfAgentPane(bool value) noexcept;
+    void SetAgentChipVisible(bool value);
+    winrt::guid GetSessionId() const;
     bool IsHidden() const noexcept { return _hidden; }
 
     void EnableBroadcast(bool enabled);
@@ -265,6 +267,11 @@ private:
     // drag-to-resize. Lazily created the first time we need it.
     winrt::Windows::UI::Xaml::Controls::Border _splitter{ nullptr };
 
+    // Blue "Agent" pill shown at the bottom-right corner of the pane the
+    // agent is about to act on. Visibility is driven from the outside
+    // (Tab / protocol-event layer) — this struct just owns the chrome.
+    winrt::Windows::UI::Xaml::Controls::Border _agentChip{ nullptr };
+
     PaneResources _themeResources;
 
 #pragma region Properties that need to be transferred between child / parent panes upon splitting / closing
@@ -322,6 +329,8 @@ private:
     void _ApplySplitDefinitions();
     void _SetupEntranceAnimation();
     void _UpdateBorders();
+    void _EnsureAgentChip();
+    void _UpdateAgentChipBackground();
     Borders _GetCommonBorders();
     winrt::Windows::UI::Xaml::Media::SolidColorBrush _ComputeBorderColor();
 

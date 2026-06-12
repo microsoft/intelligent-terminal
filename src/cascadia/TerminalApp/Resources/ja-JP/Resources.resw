@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -497,23 +497,47 @@
     <value>サード パーティ通知</value>
     <comment>A hyperlink name for the Terminal's third-party notices</comment>
   </data>
-  <data name="QuitDialog.CloseButtonText" xml:space="preserve">
+  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve">
     <value>キャンセル</value>
   </data>
-  <data name="QuitDialog.PrimaryButtonText" xml:space="preserve">
-    <value>すべて閉じる</value>
-  </data>
-  <data name="QuitDialog.Title" xml:space="preserve">
+  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve">
     <value>すべてのウィンドウを閉じますか?</value>
   </data>
-  <data name="CloseAllDialog.CloseButtonText" xml:space="preserve">
-    <value>キャンセル</value>
-  </data>
-  <data name="CloseAllDialog.PrimaryButtonText" xml:space="preserve">
+  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve">
     <value>すべて閉じる</value>
   </data>
-  <data name="CloseAllDialog.Title" xml:space="preserve">
+  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve">
     <value>すべてのタブを閉じますか?</value>
+  </data>
+  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve">
+    <value>すべて閉じる</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve">
+    <value>このタブを閉じますか?</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve">
+    <value>タブを閉じる</value>
+  </data>
+  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve">
+    <value>このウィンドウを閉じますか?</value>
+  </data>
+  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve">
+    <value>ウィンドウを閉じる</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve">
+    <value>これらのタブを閉じますか?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve">
+    <value>タブを閉じる</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve">
+    <value>これらのウィンドウを閉じますか?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve">
+    <value>ウィンドウを閉じる</value>
+  </data>
+  <data name="DontAskAgainCheckBox.Content" xml:space="preserve">
+    <value>今後、このメッセージを表示しない</value>
   </data>
   <data name="CloseReadOnlyDialog.CloseButtonText" xml:space="preserve">
     <value>キャンセル</value>
@@ -746,6 +770,14 @@
     <value>Windows</value>
     <comment>This is displayed as a label for the context menu item that holds the submenu of available windows.</comment>
   </data>
+  <data name="NotificationMessage_TabActivity" xml:space="preserve">
+    <value>タブ "{0}" のアクティビティ</value>
+    <comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment>
+  </data>
+  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">
+    <value>タブ "{0}" のアクティビティ (ウィンドウ "{1}")</value>
+    <comment>{0} is the tab title, {1} is the window name. Shown as the body of a desktop notification when tab activity is detected and the window has a name.</comment>
+  </data>
   <data name="DropPathTabRun.Text" xml:space="preserve">
     <value>指定された開始ディレクトリで新しいタブを開きます</value>
   </data>
@@ -882,10 +914,10 @@
     <value>設定されている場合、コマンドはプロファイルの既定のコマンドを置き換えるのではなく、追加されます。</value>
   </data>
   <data name="RestartConnectionText" xml:space="preserve">
-    <value>接続の再起動</value>
+    <value>セッションの再開</value>
   </data>
   <data name="RestartConnectionToolTip" xml:space="preserve">
-    <value>アクティブ ペイン接続を再起動します</value>
+    <value>アクティブなウィンドウでセッションを再起動します</value>
   </data>
   <data name="SnippetPaneTitle.Text" xml:space="preserve">
     <value>抜粋</value>
@@ -930,36 +962,22 @@
   <data name="InvalidRegex" xml:space="preserve">
     <value>無効な正規表現が見つかりました。</value>
   </data>
-<data name="ConfirmCloseDialog_Cancel" xml:space="preserve"><value>キャンセル</value></data>
-  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve"><value>すべてのウィンドウを閉じますか?</value></data>
-  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve"><value>すべて閉じる</value></data>
-  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve"><value>すべてのタブを閉じますか?</value></data>
-  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve"><value>すべて閉じる</value></data>
-  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve"><value>このタブを閉じますか?</value></data>
-  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve"><value>タブを閉じる</value></data>
-  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve"><value>このペインを閉じますか?</value></data>
-  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve"><value>ペインを閉じる</value></data>
-  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve"><value>これらのタブを閉じますか?</value></data>
-  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve"><value>タブを閉じる</value></data>
-  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve"><value>これらのペインを閉じますか?</value></data>
-  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve"><value>ペインを閉じる</value></data>
   <data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve"><value>エージェント プロンプト モード</value><comment>This text will be read aloud using assistive technologies when the command palette switches into the agent foreground prompt mode.</comment></data>
   <data name="CommandPaletteModeAnnouncement_AgentBackgroundMode" xml:space="preserve"><value>エージェント バックグラウンド タスク モード</value><comment>This text will be read aloud using assistive technologies when the command palette switches into the agent background task mode.</comment></data>
   <data name="CmdPalAgentForegroundPrompt" xml:space="preserve"><value>エージェントに質問...</value><comment>Placeholder text shown in the command palette search box when in agent foreground prompt mode.</comment></data>
   <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve"><value>エージェント タスクをバックグラウンドで実行...</value><comment>Placeholder text shown in the command palette search box when in agent background task mode.</comment></data>
-  <data name="NotificationMessage_TabActivity" xml:space="preserve"><value>タブ "{0}" でアクティビティがありました</value><comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment></data>
-  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve"><value>タブ "{0}" でアクティビティがありました (ウィンドウ "{1}")</value><comment>{0} is the tab title, {1} is the window name. Shown as the body of a desktop notification when tab activity is detected and the window has a name.</comment></data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve"><value>シェル統合が初期化されました</value></data>
-  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>シェル統合が構成されました。変更を有効にするには、PowerShell セッションを再起動するか、新しいタブを開いてください。</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationSuccessMessage" xml:space="preserve"><value>シェル統合が構成されました。新しいシェル セッション (PowerShell、bash、または WSL bash) でのみ有効になります。</value><comment>{Locked="PowerShell","bash","WSL bash"}</comment></data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve"><value>シェル統合は既に構成されています</value></data>
-  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>シェル統合は既に PowerShell プロファイルで構成されています。</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve"><value>シェル統合は、システムで検出されたシェル (PowerShell、bash、または WSL bash) に対して既に構成されています。</value><comment>{Locked="PowerShell","bash","WSL bash"}</comment></data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve"><value>シェル統合エラー</value></data>
-  <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>シェル統合を初期化できませんでした。PowerShell プロファイルのパスを特定できませんでした。対象のシェルがインストールされていることを確認してください。</value><comment>{Locked="PowerShell"}</comment></data>
+  <data name="InitShellIntegrationErrorMessage" xml:space="preserve"><value>シェル統合を初期化できませんでした。以下の詳細を確認して、もう一度お試しください。</value><comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment></data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve"><value>AI エージェントは利用できません</value></data>
-  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>AI エージェントが見つかりませんでした。エージェント CLI (例: copilot、gemini) をインストールし、それが PATH に含まれていることを確認するか、[設定] &gt; [AI エージェント] で構成してください。</value><comment>{Locked="CLI","PATH","copilot","gemini"}</comment></data>
+  <data name="AgentNotConfiguredSubtitle" xml:space="preserve"><value>AI エージェントが見つかりませんでした。エージェント (例: copilot、gemini) をインストールし、それが PATH に含まれていることを確認するか、[設定] &gt; [AI エージェント] で構成してください。</value><comment>{Locked="PATH","copilot","gemini"}
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal へようこそ</value>
+    <value>インテリジェント ターミナルへようこそ</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
@@ -970,7 +988,7 @@
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Intelligent Terminal の詳細を見る</value>
+    <value>インテリジェント ターミナルの詳細を見る</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -993,48 +1011,46 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal へようこそ</value>
+    <value>インテリジェント ターミナルへようこそ</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>今すぐ設定する項目を選択してください。これらはいつでも</value>
+    <value>今すぐ設定する項目を選択してください。これらはいつでも変更できます。</value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>設定</value>
+    <value>データの使用方法について確認する</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>エージェント</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>エージェント ペインで使用するエージェント CLI を選択します。互換性のある ACP CLI は自動的に検出されます。</value>
-    <comment>{Locked="CLI","ACP"}
+    <value>エージェント ペインで使用する、ACP をサポートするエージェントを選択します。</value>
+    <comment>{Locked="ACP"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ このエージェントには Node.js と NPX が必要です。未インストールの場合は自動的にインストールされます。</value>
+    <value>このエージェントには Node.js と NPX が必要です。未インストールの場合は自動的にインストールされます。</value>
     <comment>{Locked="Node.js","NPX"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>失敗したコマンドの修正候補を自動的に提案する</value>
+    <value>エラーの自動提案</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>有効にすると、AI エージェントが失敗したコマンドを自動的に分析し、修正案を提案します。無効にすると、失敗したコマンドはステータス バーにクリック可能なヒントを表示します — Ctrl+Alt+. を押すか、ヒントをクリックすると修正をリクエストできます。</value>
+    <value>Intelligent Terminal がエラーをエージェントに送信して、修正を自動的に提案することを許可します。</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>セッション管理</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal に実行中またはアクティブなエージェントの状態を追跡する権限を付与します。</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>インテリジェント ターミナルに実行中またはアクティブなエージェントの状態を追跡する権限を付与します。</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ これを有効にすると、エージェント CLI 全体でセッションを追跡するための統合フックがインストールされます。</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>これを有効にすると、エージェント全体でセッションを追跡するための統合 hooks がインストールされます。</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>ペインの位置</value>
@@ -1068,13 +1084,60 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>セットアップ中...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot のインストールに失敗しました。ネットワークを確認して再試行してください。</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ {0} のインストールは Windows パッケージ マネージャーのポリシーによってブロックされました。管理対象デバイスを使用している場合は、IT 管理者にお問い合わせください。</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js のインストールに失敗しました。ネットワークを確認して再試行してください。</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ {0} をインストールできませんでした (エラー コード {1})。詳細についてはログを確認するか、{0} を手動でインストールしてください。</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ {0} をインストールできませんでした。詳細についてはログを確認するか、{0} を手動でインストールしてください。</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0} インストーラーからエラーが報告されました (コード {1})。詳細についてはログを確認するか、{0} を手動でインストールしてください。</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ {0} のインストール中に Windows パッケージ マネージャーに接続できませんでした。インターネット接続 (VPN、プロキシ、ファイアウォールによってブロックされている可能性があります) を確認して、もう一度お試しください。</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ このシステムで使用できる {0} 用の互換性のあるインストーラーはありません (OS バージョンまたはアーキテクチャがサポートされていない可能性があります)。{0} を手動でインストールしてください。</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ Windows パッケージ マネージャー カタログに {0} が見つかりませんでした。winget ソースを更新するか、{0} を手動でインストールしてください。</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0} のインストールに 20 分以上かかりました。Intelligent Terminal は待機を停止しましたが、インストーラーはまだバックグラウンドで実行されている可能性があります。Task Manager を確認するか、後でもう一度お試しください。</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows パッケージ マネージャー (winget) がインストールされていないか、利用できません。先にインストールしてから、もう一度お試しください。</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooksのインストールに失敗しました。セッション管理がオフになりました。再度有効にしてやり直すか、保存してセッション管理なしで続行できます。</value>
+    <comment>{Locked="hooks"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ シェル統合のインストールに失敗しました。エラー検出がオフになりました。再度有効にしてやり直すか、保存してエラー検出なしで続行できます。</value>
+  </data>
+  <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>手動で修正する方法について</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>オン</value>
@@ -1089,5 +1152,89 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="AgentBlockedByPolicySubtitle" xml:space="preserve">
     <value>τ╡äτ╣öπü«πâ¥πâ¬πé╖πâ╝πü½πéêπéèπÇüAI πé¿πâ╝πé╕πéºπâ│πâêπü«σê⌐τö¿πü»Φ¿▒σÅ»πüòπéîπüªπüäπü╛πü¢πéôπÇéπé╡πâ¥πâ╝πâêπüîσ┐àΦªüπü¬σá┤σÉêπü»πÇüIT τ«íτÉåΦÇàπü½πüèσòÅπüäσÉêπéÅπü¢πüÅπüáπüòπüäπÇé</value>
     <comment>Subtitle shown when Group Policy blocks all AI agents from running.</comment>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>エラーを分析しています…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>エラーを検出しました: 分析しています…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>エラーを検出しました: {0} で修正</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
+    <value>クリックするか {0} を押してエージェントに修正案を依頼</value>
+    <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>修正の準備ができました。{0} を押して確認</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>エージェント ペインを開いて修正案を確認します</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
+    <value>エラーが検出されました。クリックするか、{0} を押して AI エージェントに診断と修正案の提案を依頼してください。</value>
+    <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>修正の準備ができました — {0} で適用</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>修正の準備ができました — {0} で適用: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>提案の準備ができました — エージェント ペインを開く</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>自動修正では直接修正できませんでした。 </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>ここをクリックするか Ctrl+Shift+. を押してエージェント ペインを開き、提案の全文を確認してください。</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>診断</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>エージェント セッション</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>エージェント セッション: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>エラーの自動検出</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal にシェルへのアクセスを許可し、エラーを自動的に検出します。</value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>これを有効にすると、コマンドの失敗を検出するためのシェル統合がインストールされます。 </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>詳細情報</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>PowerShell の実行ポリシーがスクリプトをブロックしています。</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell の実行ポリシーがスクリプトをブロックしています。エラー検出はオフになりました。</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

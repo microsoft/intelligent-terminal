@@ -32,7 +32,7 @@
   <Description>
     Dies ist die Vorschauversion des Windows-Terminals, die die neuesten Funktionen enthält, sobald sie entwickelt werden. Das Windows-Terminal ist eine moderne, schnelle, effiziente, leistungsstarke und produktive Terminalanwendung für Benutzer von Befehlszeilentools und Shells wie Eingabeaufforderung, PowerShell und WSL. Die wichtigsten Features umfassen mehrere Registerkarten, Bereiche, Unicode- und UTF-8-Zeichenunterstützung, GPU-beschleunigtes Textrenderingmodul sowie benutzerdefinierte Designs, Formatvorlagen und Konfigurationen.
 
-Dies ist ein Open Source-Projekt, und wir freuen uns über die Teilnahme der Community. Um teilzunehmen, besuchen Sie bitte die Website https://aka.ms/intelligentterminal/source </Description>
+Dies ist ein Open Source-Projekt, und wir freuen uns über die Teilnahme der Community. Um teilzunehmen, besuchen Sie bitte die Website https://aka.ms/intelligent-terminal-source </Description>
   <ShortDescription>
     <!-- Only used for games. This description appears in the Information section of the Game Hub on Xbox One, and helps customers understand more about your game. -->
     
@@ -174,9 +174,9 @@ Weitere Informationen finden Sie auf unserer GitHub-Releaseseite.
     
   </AdditionalLicenseTerms>
   <WebsiteURL>
-    https://aka.ms/intelligentterminal/source</WebsiteURL>
+    https://aka.ms/intelligent-terminal-source</WebsiteURL>
   <SupportContactInfo>
-    https://aka.ms/intelligentterminal/feedback</SupportContactInfo>
+    https://aka.ms/intelligent-terminal-feedback</SupportContactInfo>
   <PrivacyPolicyURL>
-    https://aka.ms/intelligentterminal/privacy</PrivacyPolicyURL>
+    https://aka.ms/intelligent-terminal-privacy</PrivacyPolicyURL>
 </ProductDescription>

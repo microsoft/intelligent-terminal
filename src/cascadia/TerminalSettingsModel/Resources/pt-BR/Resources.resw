@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -702,7 +702,7 @@
     <comment>When enabled, input will go to all panes in this tab simultaneously</comment>
   </data>
   <data name="RestartConnectionKey" xml:space="preserve">
-    <value>Reiniciar conexão</value>
+    <value>Reiniciar sessão</value>
   </data>
   <data name="OpenScratchpadKey" xml:space="preserve">
     <value>Abrir o scratchpad</value>
@@ -1001,4 +1001,7 @@
   <data name="BugReportCommandKey" xml:space="preserve">
     <value>Relatar um bug (coletar logs)</value>
   </data>
+  <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
+    <value>Abrir agente em segundo plano em uma nova guia</value>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
 </root>

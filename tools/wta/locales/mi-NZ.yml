@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Nau mai ki Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Nau mai ki Iho Atamai!"
 setup.title.agent_missing: "Kaore i kitea te agent"
 setup.title.agent_error: "I rahua te hononga agent"
 setup.title.switch_agent: "Huri agent"
@@ -8,21 +8,21 @@ setup.title.not_available: "Kaore te agent e watea"
 setup.title.sign_in: "Me takiuru"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Kaore to agent \"%{agent}\" i tautahia. Whaia nga hipanga i raro nei ki te tauta. Ki te huri agent, haere ki Settings."
-setup.subtitle.agent_missing: "Kaore to agent \"%{agent}\" i tautahia. Tautahia ano a ringa, katahi ka ngana ano. Ki te huri agent, haere ki Settings."
-setup.subtitle.copilot_auth: "Me whakamanatu to agent \"%{agent}\". Whaia nga hipanga i raro nei ki te takiuru. Ki te huri agent, haere ki Settings."
-setup.subtitle.agent_auth: "Me whakamanatu to agent \"%{agent}\". Takiuru ma te agent CLI, katahi ka ngana ano. Ki te huri agent, haere ki Settings."
+setup.subtitle.copilot_missing: "Kaore to agent \"%{agent}\" i tautahia. Whaia nga hipanga i raro nei ki te tauta. Ki te huri agent, haere ki Iho Atamai Settings > Agent."
+setup.subtitle.agent_missing: "Kaore to agent \"%{agent}\" i tautahia. Tautahia ano a ringa, katahi ka ngana ano. Ki te huri agent, haere ki Iho Atamai Settings > Agent."
+setup.subtitle.copilot_auth: "Me whakamanatu to agent \"%{agent}\". Whaia nga hipanga i raro nei ki te takiuru. Ki te huri agent, haere ki Iho Atamai Settings > Agent."
+setup.subtitle.agent_auth: "Me whakamanatu to agent \"%{agent}\". Takiuru mā te agent, kātahi ka kōwhiria \"Kua takiuru au\" i raro. Ki te huri agent, haere ki Iho Atamai Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Kowhiria te agent CLI taunoa hei whakamahi i roto i Intelligent Terminal. Ka taea e koe te"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Kōwhiria te agent taunoa hei whakamahi i roto i Iho Atamai. Ka taea e koe te"
 setup.description.fre_line2: "haere ki Settings hei whirihiri me te whakarite i to wahi mahi."
 
-setup.option.reinstall: "Tauta ano i a %{agent}"
-setup.option.reinstall_hint: "(Ka tautahia aunoa)"
+setup.option.install: "Tauta ano i a %{agent}"
+setup.option.install_hint: "(Ka tautahia aunoa)"
 setup.option.signin: "Takiuru ki %{agent}"
-setup.option.retry_detection: "Ngana ano ki te kimi"
-setup.option.retry_auth: "Kua takiuru ahau — ngana ano ki te hono"
-setup.option.retry_connection: "Ngana ano ki te hono"
+setup.option.retry_detection: "Ngana anō"
+setup.option.retry_auth: "Kua takiuru au — ngana anō ki te hono"
+setup.option.retry_connection: "Ngana anō ki te hono"
 setup.option.switch_to: "Huri ki %{agent}"
 setup.status.installing: "E tauta ana..."
 setup.status.install_failed: "I rahua te tauta: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Pehi Enter ki te takiuru, Esc ki te hoki"  # {Locked="Enter
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "E whakaaro ana..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Nau mai ki Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Nau mai ki Iho Atamai!"
+chat.welcome_disclaimer: "Ka whakamahia e Iho Atamai te AI. Tirohia ngā hapa."
 chat.plan_header: "Mahere:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Kua tātaringia aunoatia te rahunga whakahau tata"
+chat.turn_canceled: "(whakakorea)"
+chat.turn_executed: "→ kua mahia: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Patai i tetahi mea, / mo nga whakahau.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Tukua he '/' tuturu (whakaorangia te ka
 commands.help_close_hint: "  Esc        Katia tenei awhina"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ ki te whakatere • Enter ki te whiriwhiri • Esc ki te whakakore)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ ki te whakatere • ← → ki te whakawhiti pātene • Enter ki te whiriwhiri • Esc ki te whakakore)"
 recommendations.button_run_command: "[ Whakahautia te whakahau ]"
 recommendations.button_insert_in_terminal: "Whakauruhia ki te Teirminara"
 recommendations.button_open_in_new_tab: "Whakatuwherahia i te Ripa Hou ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Kia mohio kua tautahia a %{name} a kei runga i to PATH.
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "E uta ana..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ ki te whakatere • Enter ki te whakarewa wahanga i te ripa hou • Shift+enter ki te whakarewa wahanga i te papa agent • Esc ki te puta)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ ki te whakatere • Enter ki te whakarewa wahanga • Esc ki te puta)"
 agents.status.active: "Hohe"
 agents.status.waiting_for_input: "E tatari ana mo te tauuru"
 agents.status.error: "Hapa"
 agents.status.idle: "Noho noa"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ki te whakaatu/huna i te papa agent • Ctrl+Alt+/ ki te whakaatu/huna i te wahanga agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ki te whakaatu/huna i te papa agent • Ctrl+Shift+/ ki te whakaatu/huna i te wahanga agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "E timata ana i te agent..."
 connection.reconnecting: "E hono ano ana..."
+connection.connecting_activity: "E hono ana ki te agent…"
+connection.lost: "Kua ngaro te hononga ki te agent. Patohia /restart kia hono anō."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Kua whakakorea."
 system.no_prompt_in_flight: "Karekau he tohutohu e rere ana."
 system.authentication_failed: "I rahua te whakamanatu"
 system.command_copied_retry: "Kua tarua te whakahau — whakahautia i tetahi atu teirminara, katahi ka pehi Enter ki te ngana ano"  # {Locked="Enter"}
+system.stopped_max_tokens: "I tapahia te whakautu i muri i te tutukinga o te tepe putanga o te tauira."
+system.stopped_max_turn_requests: "I mutu te kaihoko i muri i te tutukinga o tana tepe tono mō tēnei huri."
+system.stopped_refusal: "I whakakāhore te kaihoko ki te haere tonu me tēnei tono."
+system.agent_busy: "Kei te pukumahi te agent i tēnei ripa — tatari kia mutu te prompt onāianei."
+system.resuming_session: "Kei te tīmata anō te wāhanga %{session_id}..."
+system.unknown_command: "He command kāore e mōhiotia \"%{command}\" — kua tukuna hei prompt. Patohia /help mō te rārangi."  # {Locked="/help"}
+system.busy_use_stop: "Tatari kia mutu te prompt onāianei, me whakamahi rānei i te /stop i te tuatahi."  # {Locked="/stop"}
+system.cannot_focus_session: "Kāore e taea te arotahi ki te wāhanga %{session_id}: te āhua nei e ora ana, engari kāore anō kia herea he GUID papa. Ngana anō ākuanei."
+system.cannot_resume_no_load_session: "Kāore e taea te tīmata anō i te papa agent: kāore a %{agent} i pānui i te āheinga ACP `loadSession`. Pēhia Enter (kaua ko Shift) kia tīmata anō ki tētahi papa terminal hōu kē."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Kāore e taea te tīmata anō i te wāhanga %{agent}: kāore he haki ā-`--resume` tō tēnei agent. Pēhia Shift+Enter kia whakamātau ki te tīmata anō i roto i te papa agent mā ACP kē."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Kāore e taea te tīmata anō i te wāhanga %{session_id}: kāore tōna agent pūtake e mōhiotia e tēnei build."
+system.cannot_resume_phantom_via_flag: "Kāore e taea te tīmata anō i te wāhanga %{agent} %{session_id}: i tīmata, engari kāore rawa he kōrerorero i kohikohia, nō reira mā %{agent} tonu e whakakore te resume. E tango ana i te rārangi."
+system.cannot_resume_phantom_via_load: "Kāore e taea te tīmata anō i te wāhanga %{agent} %{session_id}: i tīmata, engari kāore rawa he kōrerorero i kohikohia, nō reira mā %{agent} e whakakore te load. E tango ana i te rārangi."
+system.fallback.this_agent: "tēnei agent"
+system.fallback.connected_agent: "te agent kua hono"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Karekau he matapihi i kitea."
@@ -171,3 +192,21 @@ hooks.installed_but_disabled: "⚠ kua tautahia engari kua monokia"
 hooks.not_installed: "✗ kaore i tautahia"
 hooks.uninstall_skipped: "kua pekehia (CLI kaore i runga i te PATH)"
 hooks.install_attempted: "Kua ngana ki te tauta i a wt-agent-hooks (idempotent). Whakahautia `wta hooks status` ki te tirotiro i te hua. Raarangi aroturuki: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "inaianei tonu"
+time.minute_singular: "%{count} meneti ki muri"
+time.minutes_other: "%{count} meneti ki muri"
+time.hour_singular: "%{count} hāora ki muri"
+time.hours_other: "%{count} hāora ki muri"
+time.day_singular: "%{count} rā ki muri"
+time.days_other: "%{count} rā ki muri"
+
+# ── Whakahaere tūtohutanga (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "I rahua te kōwhiringa %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Kōwhiria te tauira mō tēnei papa (/model <id> ki te huri tika)"  # {Locked="/model","<id>"}
+model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."
+system.model_set: "Kua whakaritea te tauira mō tēnei papa ki %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Tauira kāore e mōhiotia %{model} — patohia /model kia kite i te rārangi e wātea ana."  # {Locked="%{model}","/model"}

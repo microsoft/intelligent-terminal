@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
   <resheader name="version"><value>2.0</value></resheader>
@@ -6,14 +6,14 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Fáilte go Intelligent Terminal</value>
+    <value>Fáilte go Teirminéal Cliste</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Socraigh do chúntóir ionsuite chun cabhrú leat earráidí a mhíniú, orduithe a dhréachtú, agus tascanna a dhíbhlocáil díreach san áit a bhfuil tú ag obair. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Foghlaim tuilleadh faoi Intelligent Terminal</value>
+    <value>Foghlaim tuilleadh faoi Teirminéal Cliste</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -36,48 +36,44 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Fáilte go Intelligent Terminal</value>
+    <value>Fáilte go Teirminéal Cliste</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Roghnaigh céard a shocrú anois. Is féidir leat iad seo a athrú am ar bith i </value>
+    <value>Roghnaigh cad ba mhaith leat a shocrú anois. Is féidir leat iad seo a athrú ag am ar bith. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Socruithe</value>
+    <value>Foghlaim faoi conas a úsáidtear sonraí</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Gníomhaire</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Roghnaigh an CLI gníomhaire a úsáidtear sa phán gníomhaire. Aimseofar aon ACP CLI comhoiriúnach go huathobríoch.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Roghnaigh an gníomhaire a úsáidtear sa phán gníomhaire agus a thacaíonn le ACP.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Tá Node.js agus NPX ag teastáil ón ngníomhaire seo, a shuiteálfar go huathobríoch mura bhfuil siad ann cheana.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Tá Node.js agus NPX ag teastáil ón ngníomhaire seo, a shuiteálfar go huathobríoch mura bhfuil siad ann cheana.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Mol deisithe go huathoibríoch d'orduithe a theip orthu</value>
+    <value>Moladh earráidí uathoibríoch</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Nuair atá sé cumasaithe, déanann an ghníomhaire IS anailís uathoibríoch ar orduithe a theip orthu agus molann sé deisiú. Nuair atá sé díchumasaithe, taispeánann orduithe a theip orthu nod inchliceáilte sa bharra stádais — brúigh Ctrl+Alt+. nó cliceáil ar an nod chun deisiú a iarraidh.</value>
+    <value>Tabhair cead do Intelligent Terminal earráidí a sheoladh chuig do ghníomhaire chun réitigh a mholadh go huathoibríoch.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Bainistíocht seisiún</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Tabhair cead do Intelligent Terminal stádas do ghníomhairí atá ag rith nó gníomhach a rianú.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Tabhair cead do Teirminéal Cliste stádas do ghníomhairí atá ag rith nó gníomhach a rianú.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Má chuireann tú é seo ar siúl suiteálfar duáin chomhtháthú chun seisiúin a rianú trasna do CLI gníomhaire.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Má chuireann tú é seo ar siúl suiteálfar hooks comhtháthaithe chun seisiúin a rianú trasna do ghníomhairí.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Suíomh pána</value>
@@ -111,18 +107,146 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Ag socrú...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Theip ar GitHub Copilot a shuiteáil. Seiceáil do cheangal líonra agus bain triail eile as.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Chuir polasaí de chuid Bhainisteoir Pacáistí Windows bac ar shuiteáil {0}. Má tá gléas bainistithe in úsáid agat, déan teagmháil le do riarthóir TF.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Theip ar Node.js a shuiteáil. Seiceáil do cheangal líonra agus bain triail eile as.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Níorbh fhéidir {0} a shuiteáil (cód earráide {1}). Seiceáil an loga le haghaidh sonraí, nó suiteáil {0} de láimh.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Níorbh fhéidir {0} a shuiteáil. Seiceáil an loga le haghaidh sonraí, nó suiteáil {0} de láimh.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ Thuairiscigh suiteálaí {0} earráid (cód {1}). Seiceáil an loga le haghaidh sonraí, nó suiteáil {0} de láimh.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Níorbh fhéidir Bainisteoir Pacáistí Windows a bhaint amach agus {0} á shuiteáil. Seiceáil do cheangal idirlín (d'fhéadfadh VPN, seachfhreastalaí nó balla dóiteáin é a bhlocáil) agus bain triail eile as.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Níl aon suiteálaí comhoiriúnach do {0} ar fáil ar an gcóras seo (seans nach dtacaítear le leagan an chórais oibriúcháin nó leis an ailtireacht). Suiteáil {0} de láimh.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ Níor aimsíodh {0} i gcatalóg Bhainisteoir Pacáistí Windows. Bain triail as foinsí winget a athnuachan, nó suiteáil {0} de láimh.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Thóg suiteáil {0} níos mó ná 20 nóiméad. Stop Intelligent Terminal de bheith ag fanacht, ach d'fhéadfadh an suiteálaí a bheith fós ag rith sa chúlra. Seiceáil Task Manager, nó bain triail eile as níos déanaí.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Níl Bainisteoir Pacáistí Windows (winget) suiteáilte nó ar fáil. Suiteáil é ar dtús, ansin bain triail eile as.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Air</value>
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>As</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Earráid á hanailísiú…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Braitheadh earráid: á hanailísiú…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Braitheadh earráid: {0} le ceartú</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
+    <value>Cliceáil nó brúigh {0} chun réiteach molta a iarraidh ar an ngníomhaire</value>
+    <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Réiteach réidh. Brúigh {0} chun athbhreithniú a dhéanamh</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Oscail pána an ghníomhaire chun an réiteach molta a athbhreithniú</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
+    <value>Braitheadh earráid. Cliceáil nó brúigh {0} chun iarraidh ar an ngníomhaire AI anailís a dhéanamh agus réiteach a mholadh.</value>
+    <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Ceartúchán réidh — {0} le cur i bhfeidhm</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Ceartúchán réidh — {0} le cur i bhfeidhm: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Moladh réidh — oscail painéal an ghníomhaire</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Dhiúltaigh an t-uathcheartú é seo a cheartú go díreach. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Cliceáil anseo nó brúigh Ctrl+Shift+. chun painéal an ghníomhaire a oscailt agus an moladh iomlán a léamh.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Diagnóisic</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Seisiúin ghníomhaire</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Seisiúin ghníomhaire: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Brath earráidí uathoibríoch</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Tabhair cead do Intelligent Terminal rochtain a fháil ar do bhlaosc agus earráidí a bhrath go huathoibríoch.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Theip ar chomhtháthú blaoisce a shuiteáil. Tá brath earráidí múchta. Is féidir leat é a athchumasú agus triail eile a bhaint as, nó sábháil chun leanúint ar aghaidh gan é.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Theip ar na session hooks a shuiteáil. Tá bainistiú seisiún múchta. Is féidir leat é a athchumasú agus triail eile a bhaint as, nó sábháil chun leanúint ar aghaidh gan é.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Foghlaim conas é seo a shocrú de láimh</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Má chuireann tú é seo ar siúl suiteálfar comhtháthú shell chun teipeanna ordaithe a bhrath. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Foghlaim tuilleadh</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>Tá beartas feidhmithe PowerShell ag cosc scripteanna.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ Tá beartas feidhmithe PowerShell ag cosc scripteanna. Brath earráidí múchta.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

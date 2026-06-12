@@ -29,6 +29,11 @@ namespace Microsoft::Terminal::Core
     class ControlKeyStates;
 }
 
+namespace Json
+{
+    class Value;
+}
+
 namespace winrt::Microsoft::Terminal::Settings
 {
     struct TerminalSettingsCreateResult;
@@ -206,8 +211,11 @@ namespace winrt::TerminalApp::implementation
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
-        void OnAgentViewChanged(hstring eventJson);
+        void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
+        void OnAgentChipTargetChanged(hstring eventJson);
+        void OnRestartAgentStackRequested(hstring eventJson);
+        void OnAgentPaneRestartRequested(hstring eventJson);
 
         til::property_changed_event PropertyChanged;
 
@@ -306,56 +314,62 @@ namespace winrt::TerminalApp::implementation
         std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> _startupActions;
         winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection _startupConnection{ nullptr };
 
+        // Deferred startup state — when FRE is active, tab creation is
+        // postponed until FRE completes so ConptyConnection picks up
+        // PATH changes from winget installs.
+        std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> _deferredStartupActions;
+        winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection _deferredStartupConnection{ nullptr };
+
         std::shared_ptr<Toast> _windowIdToast{ nullptr };
         std::shared_ptr<Toast> _actionSavedToast{ nullptr };
         std::shared_ptr<Toast> _actionSaveFailedToast{ nullptr };
         std::shared_ptr<Toast> _windowCwdToast{ nullptr };
 
-        // Single agent pane shared across all tabs in this window.
-        std::weak_ptr<Pane> _agentPane;
-
-        // True from when _AutoCreateHiddenAgentPane splits the pane into the
-        // visual tree until its TermControl raises Initialized. While set,
-        // _ReconcileAgentPaneForActiveTab must NOT hide the pane: hiding it
-        // before SwapChainPanel.LayoutUpdated fires kills the chain that
-        // launches wta.exe (no LayoutUpdated -> no _InitializeTerminal -> no
-        // connection.Start()), defeating pre-warming.
-        bool _agentPanePreWarming{ false };
-
-        // --- Bottom bar (AI toolbar) ---
-        enum class AutofixState
-        {
-            Idle,      // no error pending
-            Detected,  // suggest-mode: error detected, awaiting user activation
-            Pending,   // error detected, WTA is generating a fix
-            Armed,     // fix ready — click or Ctrl+Alt+. executes it
-            Suggested, // analysis ready but no auto-fix — click opens agent pane
-        };
-        struct DiagnosticState
-        {
-            // Pane GUID of the most recent error (matches the wire-level
-            // `pane_id` rename in this PR). The historical name
-            // `lastErrorSessionId` was a misnomer — this never held an
-            // ACP session id, only a WT pane GUID.
-            std::wstring lastErrorPaneId;
-            AutofixState autofixState{ AutofixState::Idle };
-            std::wstring fixPreview;          // Armed
-            std::wstring hotkeyHint;          // Armed / Detected
-            std::wstring suggestionTitle;     // Suggested
-            std::wstring detectedSummary;     // Detected
-        };
-        DiagnosticState _diagnostics;
-        bool _agentPaneVisible{ false };
-
-        void _AgentToggleButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
-        void _DiagnosticsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
-        void _SessionToggleButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        // ── Per-tab agent pane + window-level bottom bar ────────────────
+        // Each tab independently owns (or doesn't own) one agent pane,
+        // which lives as an AgentPaneContent leaf in that tab's pane tree.
+        // The bottom bar lives at the window level (TerminalPage.xaml)
+        // but reflects the active tab's agent-pane state, so its display
+        // toggles each time the user switches tabs.
+        //
+        // The bottom-bar click handlers (`_AgentToggleButtonOnClick`,
+        // `_SessionToggleButtonOnClick`, `_DiagnosticsButtonOnClick`)
+        // target the *active* tab's AgentPaneContent (or open one if
+        // it doesn't exist yet).
+        void _AgentToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
+                                       const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _SessionToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
+                                         const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _DiagnosticsButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
+                                       const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        // Recomputes the bottom bar's visibility / toggle-lit / diagnostics
+        // affordance from the active tab's AgentPaneContent (or absence
+        // thereof). Called on tab switch and whenever an AgentPaneContent
+        // raises `StateChanged` for the active tab.
         void _UpdateBottomBarState();
-        void _TriggerAutofix();
+        // Refresh ONLY the bottom-bar visibility (show on terminal/agent
+        // tabs, collapse on Settings/etc.). Safe to call synchronously
+        // on tab switch because the decision depends solely on the
+        // focused tab's content type and not on any wta-projected
+        // agent state. `_UpdateBottomBarState` calls this first and
+        // then refreshes the agent-state-dependent UI (toggle
+        // highlights, diagnostics).
+        void _UpdateBottomBarVisibility();
+        // Subscribe to an AgentPaneContent's StateChanged event so the
+        // window-level bottom bar refreshes when its state mutates.
+        // Wired once per AgentPaneContent creation.
+        void _WireAgentPaneEvents(const winrt::TerminalApp::AgentPaneContent& content,
+                                  const winrt::com_ptr<Tab>& ownerTab);
 
         // Hot-reload of agent/model settings. Snapshot is captured on first
         // SetSettings and after every rebuild; a diff drives teardown/rebuild
         // of the agent pane.
+        //
+        // Only the agent-CLI *identity* (acpAgent / acpCustomCommand, which
+        // resolve --agent + --agent-id = the actual agent binary) forces a
+        // master respawn via _RebuildAgentStack. Model + delegate config are
+        // hot-updated over the event channel (see AgentRuntimeConfigSnapshot
+        // + _EmitAgentRuntimeConfigIfChanged) and must NOT restart the pane.
         struct AgentSettingsSnapshot
         {
             std::wstring acpAgent;
@@ -367,62 +381,154 @@ namespace winrt::TerminalApp::implementation
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
-        // Snapshot of AutoFixEnabled at last SetSettings call. When the
-        // user toggles "Auto-suggest fixes" we send the new value to WTA
-        // over the protocol so it can update its in-memory gate without
-        // requiring the agent pane to be torn down and restarted.
-        bool _lastAutoFixEnabled{ false };
-        bool _autoFixEnabledSnapshotInitialized{ false };
+        // Hot-updatable runtime agent config. When any of these change we
+        // push a single consolidated `agent_config_changed` event to the
+        // running wta-helper(s) so they update in place — no agent-pane
+        // teardown/restart. This is the unified dispatch point for every
+        // agent setting that can be hot-reloaded (autofix gate, acp-model,
+        // delegate agent/model). `delegateAgent` holds the *resolved effective*
+        // value (custom-command ids already expanded).
+        struct AgentRuntimeConfigSnapshot
+        {
+            std::wstring acpModel;
+            std::wstring delegateAgent;
+            std::wstring delegateModel;
+            bool autofixEnabled{ false };
+        };
+        AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
+        bool _agentRuntimeConfigInitialized{ false };
+        // Snapshot of EffectiveAutoErrorDetectionEnabled at last
+        // SetSettings call. Drives the silent shell-integration reconcile
+        // (Install when ON, Uninstall when OFF) on first-load and on
+        // every change — handles both Settings-UI toggle-off (which
+        // previously left our $PROFILE block behind) and roaming
+        // settings.json arriving on a fresh machine (which previously
+        // never ran the install).
+        bool _lastAutoErrorDetectionEnabled{ false };
+        bool _lastAutoErrorDetectionHasExplicit{ false };
+        bool _autoErrorDetectionSnapshotInitialized{ false };
+        // Cross-thread "latest desired state" for the shell-integration
+        // reconcile. SetSettings (UI thread) stores the current value
+        // *before* spawning the fire-and-forget reconcile; the coroutine
+        // reads this inside the serialization mutex so the last lock
+        // acquirer always observes the most recent setting. Together
+        // with idempotent Install/Uninstall this guarantees the on-disk
+        // state matches the latest setting even when reconciles arrive
+        // back-to-back (e.g. file-watcher reload storms).
+        std::atomic<bool> _shellIntegrationDesiredEnabled{ false };
+        std::mutex _shellIntegrationReconcileMutex;
         bool _agentRebuilding{ false };
         // Set when a settings change wants a rebuild but the active
         // tab can't host an agent pane (e.g. the Settings tab itself).
         // _FlushPendingAgentRebuild runs the deferred rebuild from
         // _OnTabSelectionChanged once a terminal tab is active.
         bool _pendingAgentRebuild{ false };
+
+        // Plan-C resume-into-new-tab bookkeeping. When the session
+        // manager's Enter handler on a Historical/Ended row creates a
+        // new tab, it stashes the requested session id + cwd here keyed
+        // by the new tab's StableId. `OnAgentStateChanged` consumes the
+        // entry the moment it spawns the new helper for that tab —
+        // passing the values down as `--initial-load-session-id` +
+        // `--initial-load-cwd` so the boot-time ACP `session/load` is
+        // atomic with helper spawn. Replaces the prior race-prone
+        // "spawn helper, then broadcast `load_session` VT event" path
+        // (the VT broadcast often landed in the wrong helper because
+        // every helper subscribed to the same shared COM event stream).
+        //
+        // Entries are one-shot; an unconsumed entry leaks until the
+        // page is torn down (only happens if the user closes the new
+        // tab before its `agent_state_changed{pane_open:true}` round-
+        // trips back from wta). Tiny worst-case memory cost.
+        struct _PendingLoadSession
+        {
+            std::string sessionId;
+            std::string cwd;
+        };
+        std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
+        // Short-lived marks keyed by tab StableId: set whenever an agent
+        // pane is torn down deliberately (Ctrl+C×2, settings rebuild,
+        // /restart, recovery re-warm). `OnAgentPaneRestartRequested`
+        // consumes a mark to skip respawning a pane the user/we just
+        // closed — the master's `restart_agent_pane` event fires for both
+        // deliberate teardown and genuine crash, so this is how C++
+        // distinguishes them. Entries are consumed on read and otherwise
+        // expire after a few seconds.
+        std::unordered_map<winrt::hstring, std::chrono::steady_clock::time_point> _agentPaneRestartSuppression;
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
+        // Compares only agent-CLI *identity* fields — the change that forces
+        // a master respawn. Model/delegate changes are handled by
+        // _EmitAgentRuntimeConfigIfChanged instead.
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
-        void _TeardownAgentPane();
+        AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
+        // Diffs the hot-updatable runtime config against the last snapshot
+        // and, on change, emits one `agent_config_changed` event carrying
+        // only the changed fields. No agent-pane teardown.
+        void _EmitAgentRuntimeConfigIfChanged();
+        // Serialize and raise a `{type:"event", method, params}` envelope on
+        // ProtocolVtSequenceReceived. Single source of the wta protocol-event
+        // wire shape — callers just supply the method name and a params object.
+        void _RaiseProtocolEvent(std::string_view method, const Json::Value& params);
+        void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab, bool suppressMasterRestart = true);
         void _RebuildAgentStack();
         void _FlushPendingAgentRebuild();
-        void _AutoCreateHiddenAgentPane(winrt::com_ptr<Tab> tab);
+        // Build the per-process flag/value pairs that the wta-master
+        // inherits at spawn time (--agent, --agent-id, --no-autofix,
+        // --language, --acp-model, --delegate-agent, --delegate-model).
+        // Single source of truth shared by `_AutoCreateHiddenAgentPaneShared`
+        // (first acquire) and `_RebuildAgentStack` (settings-change-driven
+        // SharedWta::Restart). Reads from `_settings.GlobalSettings()`.
+        std::vector<std::wstring> _BuildSharedWtaExtraArgs();
+        // Helper+master agent-pane creation (Z-M3, default since Z-M6):
+        // spawns a wta-helper as a normal conpty child for this pane and
+        // connects it to the SharedWta-managed wta-master process over a
+        // named pipe (helper ↔ master speaks ACP JSON-RPC). Returns true
+        // when the helper was spawned successfully.
+        //
+        // `intoSessionsView` is passed through to the helper as
+        // `--initial-view sessions`. Called from `_OpenOrReuseAgentPane`
+        // user-initiated paths.
+        //
+        // `initialLoadSessionId` + `initialLoadCwd` plumb a Plan-C boot-time
+        // resume hint down to the helper: when non-empty, the spawned wta
+        // process gets `--initial-load-session-id` (+ `--initial-load-cwd`)
+        // on its cmdline and immediately calls `session/load` instead of
+        // creating a fresh session. Used by the "Enter on Historical /
+        // Ended row" path to bundle spawn + resume atomically (replacing
+        // the prior race-prone "spawn, then broadcast `load_session` VT"
+        // design).
+        //
+        // `autoStash=true` is the pre-warm path called from `_InitializeTab`:
+        // the helper conpty is spawned but the pane is immediately stashed
+        // (`Tab::StashAgentPane`) so the user sees only the terminal pane.
+        // Focus stays on the original terminal; no telemetry fires (the
+        // pane wasn't *opened*, just pre-warmed). This is what makes
+        // autofix work without the user ever opening the agent pane.
+        bool _AutoCreateHiddenAgentPaneShared(winrt::com_ptr<Tab> tab,
+                                              bool intoSessionsView = false,
+                                              bool autoStash = false,
+                                              std::string_view initialLoadSessionId = {},
+                                              std::string_view initialLoadCwd = {});
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
-        // above the wta TermControl. Returns a fresh Pane around the
-        // wrapper; falls back to the raw pane if the content isn't a
-        // TerminalPaneContent (shouldn't happen for a terminal-content
-        // pane). Both pane creation paths (_AutoCreateHiddenAgentPane on
-        // launch, _OpenOrReuseAgentPane after teardown) must go through
-        // this — otherwise post-teardown rebuilds end up with a bare
-        // pane and no title bar.
+        // above the wta TermControl + the bottom-bar below.
         std::shared_ptr<Pane> _WrapInAgentPaneContent(std::shared_ptr<Pane> rawPane);
 
-        // Per-tab agent-pane state reconciliation. The single shared agent
-        // pane follows the active tab based on each tab's AgentPaneOpen()
-        // flag.
-        void _RelocateAgentPaneToTab(winrt::com_ptr<Tab> targetTab);
-        void _ReconcileAgentPaneForActiveTab();
-        void _ClearAllAgentPaneFlags();
-        // Tells wta which tab is currently active so it routes per-tab events
-        // (autofix triggers, prompt deliveries, ...) to the right TabSession.
-        // Deduped against _lastNotifiedAgentTabId so we only emit on change.
-        void _NotifyAgentTabChanged(const winrt::com_ptr<Tab>& targetTab);
+        // Per-tab: ask wta to flip view/pane_open state on a specific tab.
+        // Sole writer of `set_agent_state` for that tab. Routes through
+        // `ProtocolVtSequenceReceived` like the rest of the C++ → wta events.
+        void _RequestAgentStateForTab(const winrt::com_ptr<Tab>& tab,
+                                      std::optional<std::string_view> view,
+                                      std::optional<bool> paneOpen);
         // Tells wta that a tab is being destroyed so it can drop the matching
-        // TabSession and any session_to_tab entries pointing at it. Without
-        // this, the per-tab conversation history would leak across newly
-        // created tabs that reuse the closed tab's stable id (it doesn't, but
-        // the registry would still grow unboundedly).
+        // TabSession and any session_to_tab entries pointing at it.
         void _NotifyAgentTabClosed(const winrt::hstring& tabId);
         void _NotifyAgentTabReset(const winrt::hstring& tabId);
-        std::optional<winrt::hstring> _lastNotifiedAgentTabId{};
-
-        // Tracks whether the agent pane is currently displaying its Agents
-        // (session list) view. Drives Ctrl+Shift+/ toggle semantics: when
-        // true, the next press closes the pane; when false (chat or pane
-        // closed), the next press opens/switches to sessions view.
-        // Set whenever WT commands wta into a known view; cleared when the
-        // pane is closed. Note: F2 inside wta switches view without telling
-        // WT, so the flag can be briefly stale — one extra press resyncs.
-        bool _agentSessionsViewActive{ false };
+        void _NotifyAgentTabChanged(const winrt::hstring& tabId);
+        // Look up a tab by its StableId; returns nullptr if unknown.
+        winrt::com_ptr<Tab> _FindTabByStableId(const winrt::hstring& stableId) const;
+        // Look up a tab by the AgentPaneContent instance hosted in it.
+        winrt::com_ptr<Tab> _FindTabHostingAgentPaneContent(const winrt::TerminalApp::AgentPaneContent& content) const;
 
         winrt::Windows::UI::Xaml::Controls::TextBox::LayoutUpdated_revoker _renamerLayoutUpdatedRevoker;
         int _renamerLayoutCount{ 0 };
@@ -457,6 +563,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowLargePasteWarningDialog();
 
         safe_void_coroutine _InitShellIntegration(const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
+        safe_void_coroutine _ReconcileShellIntegration();
         void _ShowShellIntegrationDialog(const winrt::hstring& title, const winrt::hstring& message);
         void _OnSettingsInitShellIntegration(const winrt::Windows::Foundation::IInspectable& sender, const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
 
@@ -504,7 +611,7 @@ namespace winrt::TerminalApp::implementation
 
         winrt::Windows::Foundation::IAsyncAction _HandleCloseTabRequested(winrt::TerminalApp::Tab tab, bool skipConfirmClose = false);
         void _CloseTabAtIndex(uint32_t index);
-        void _RemoveTab(const winrt::TerminalApp::Tab& tab);
+        void _RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway = false);
         safe_void_coroutine _RemoveTabs(const std::vector<winrt::TerminalApp::Tab> tabs);
 
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
@@ -555,6 +662,7 @@ namespace winrt::TerminalApp::implementation
         TerminalApp::Tab _GetTabByTabViewItem(const IInspectable& tabViewItem) const noexcept;
 
         void _HandleClosePaneRequested(std::shared_ptr<Pane> pane);
+        void _NotifyPanesClosing(const std::shared_ptr<Pane>& rootPane);
         bool _ShouldWarnOnClose() const;
         bool _ShouldWarnOnCloseTab(const winrt::com_ptr<Tab>& tab) const;
         safe_void_coroutine _SetFocusedTab(const winrt::TerminalApp::Tab tab);
@@ -583,7 +691,7 @@ namespace winrt::TerminalApp::implementation
 
         safe_void_coroutine _OpenHyperlinkHandler(const IInspectable sender, const Microsoft::Terminal::Control::OpenHyperlinkEventArgs eventArgs);
         static bool _IsUriSupported(const winrt::Windows::Foundation::Uri& parsedUri);
-        static bool _IsUriConsideredSomewhatSafe(const winrt::Windows::Foundation::Uri& parsedUri);
+        bool _IsUriConsideredSomewhatSafe(const winrt::Windows::Foundation::Uri& parsedUri) const;
 
         void _ShowCouldNotOpenDialog(winrt::hstring reason, winrt::hstring uri);
         bool _CopyText(bool dismissSelection, bool singleLine, bool withControlSequences, Microsoft::Terminal::Control::CopyFormat formats);
@@ -630,55 +738,18 @@ namespace winrt::TerminalApp::implementation
         // Agent pane helpers
         winrt::hstring _DetectAgentCli() const;
         winrt::hstring _DetectWtaPath() const;
-        std::shared_ptr<Pane> _FindAgentPane();
-        winrt::com_ptr<Tab> _FindTabContainingAgentPane();
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
         void _DelegatePromptToAgent(const winrt::hstring& prompt);
+        void _OpenBackgroundAgentTab();
+        void _LaunchDelegate(const std::optional<winrt::hstring>& prompt);
 
-        // Agent-pane wta lifetime management. Solves two problems at once:
-        //
-        // (1) Detect wta death (crash / external taskkill / clean exit) so we
-        //     tear the pane down. Conpty StateChanged can't be used because
-        //     wta spawns long-lived children (npx → npm → node → ACP adapter)
-        //     that inherit the conpty client handles, so the pipe never EOFs
-        //     even when wta itself is gone.
-        // (2) Reclaim those orphaned children. Without explicit job
-        //     containment, killing wta leaves node.exe / npx running.
-        //
-        // _agentPaneJob: KILL_ON_JOB_CLOSE Job Object containing wta and (by
-        // inheritance) all its descendants. Resetting the handle terminates
-        // every member — used during teardown to sweep orphans, and (via OS)
-        // when WT itself exits abnormally. Only the agent pane uses a job;
-        // ordinary shell panes keep their existing free-running lifetime.
-        //
-        // _agentPaneWtaHandle: duplicated SYNCHRONIZE handle to wta. Owned
-        // independently of ConptyConnection's _piClient so the wait stays
-        // valid across teardown ordering.
-        //
-        // _agentPaneWtaWait + _agentPaneWtaWaitContext: RegisterWaitForSingleObject
-        // registration. Context is heap-allocated (so the threadpool callback
-        // has stable storage even if TerminalPage tears down before the wait
-        // unregisters); it carries a weak_ref + cancelled flag so we can race
-        // safely with deliberate teardown.
-        struct AgentPaneWtaWaitContext;
-        wil::unique_handle _agentPaneJob;
-        wil::unique_handle _agentPaneWtaHandle;
-        HANDLE _agentPaneWtaWait{ nullptr };
-        std::unique_ptr<AgentPaneWtaWaitContext> _agentPaneWtaWaitContext;
-        // Generation counter bumped on every _SetupAgentPaneWtaWatch and
-        // _TearDownAgentPaneWtaWatch. The dispatched UI-thread continuation
-        // captures the generation it was scheduled under and compares
-        // against the live value before tearing the pane down. Without
-        // this, a callback that posts to the UI thread can land after a
-        // teardown-then-rebuild and tear down the freshly-armed
-        // replacement pane. UI-thread only — no atomic needed.
-        uint64_t _agentPaneWtaGen{ 0 };
-        void _SetupAgentPaneWtaWatch(HANDLE wtaProcessHandle) noexcept;
-        void _TearDownAgentPaneWtaWatch() noexcept;
-        static void NTAPI _OnAgentPaneWtaExit(PVOID context, BOOLEAN timedOut) noexcept;
-        void _OpenOrReuseAgentPane(const winrt::hstring& prompt, bool intoSessionsView = false);
+        // Note (Phase 5): the per-pane wta-process watch + Job Object members
+        // and their setup/teardown methods were removed when the legacy
+        // per-pane-wta architecture was deleted. Helper processes are now
+        // ordinary conpty children of TermControl — TermControl /
+        // ConptyConnection owns their lifetime.
+        void _OpenOrReuseAgentPane(bool intoSessionsView, const wchar_t* triggerSource);
         void _FocusAgentPane();
-        void _BroadcastAgentSetView(std::string_view view);
         void _RepositionAgentPanes();
         static winrt::Microsoft::Terminal::Settings::Model::SplitDirection _AgentPanePositionToSplitDirection(const winrt::hstring& position);
 

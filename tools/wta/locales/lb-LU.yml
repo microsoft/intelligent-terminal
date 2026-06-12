@@ -1,6 +1,6 @@
 # Astellungs-Écran Titelen
-# {Locked="Intelligent Terminal"} - Produktnumm, net iwwersetzen
-setup.title.first_run: "Wëllkomm am Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Wëllkomm am Intelligenten Terminal!"
 setup.title.agent_missing: "Agent net fonnt"
 setup.title.agent_error: "Verbindung mam Agent ass gescheitert"
 setup.title.switch_agent: "Agent wiesselen"
@@ -8,21 +8,21 @@ setup.title.not_available: "Agent net disponibel"
 setup.title.sign_in: "Umeldung erfuerderlech"
 
 # %{agent} gëtt zur Laufzäit duerch den Unzeignumm vum Agent ersat.
-setup.subtitle.copilot_missing: "Ären Agent \"%{agent}\" ass net installéiert. Follegt de Schrëtt hei drënner fir en z'installéieren. Fir den Agent ze wiesselen, gitt op Settings."
-setup.subtitle.agent_missing: "Ären Agent \"%{agent}\" ass net installéiert. Installéiert en nach eng Kéier manuell an probéiert et nach eng Kéier. Fir den Agent ze wiesselen, gitt op Settings."
-setup.subtitle.copilot_auth: "Ären Agent \"%{agent}\" brauch eng Authentifizéierung. Follegt de Schrëtt hei drënner fir Iech unzemellen. Fir den Agent ze wiesselen, gitt op Settings."
-setup.subtitle.agent_auth: "Ären Agent \"%{agent}\" brauch eng Authentifizéierung. Mellt Iech iwwer den Agent CLI un an probéiert et nach eng Kéier. Fir den Agent ze wiesselen, gitt op Settings."
+setup.subtitle.copilot_missing: "Ären Agent \"%{agent}\" ass net installéiert. Follegt de Schrëtt hei drënner fir en z'installéieren. Fir den Agent ze wiesselen, gitt op Intelligenten Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Ären Agent \"%{agent}\" ass net installéiert. Installéiert en nach eng Kéier manuell an probéiert et nach eng Kéier. Fir den Agent ze wiesselen, gitt op Intelligenten Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Ären Agent \"%{agent}\" brauch eng Authentifizéierung. Follegt de Schrëtt hei drënner fir Iech unzemellen. Fir den Agent ze wiesselen, gitt op Intelligenten Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Ären Agent \"%{agent}\" brauch eng Authentifizéierung. Mellt Iech iwwer den Agent un a wielt dann \"Ech hu mech ugemellt\" hei ënnendrënner. Fir den Agent ze wiesselen, gitt op Intelligenten Terminal Settings > Agent."
 
-# {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Wielt de Standard-Agent CLI deen Dir am Intelligent Terminal benotze wëllt. Dir kënnt"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
+setup.description.fre_line1: "Wielt de Standard-Agent deen Dir am Intelligenten Terminal benotze wëllt. Dir kënnt"
 setup.description.fre_line2: "op Settings goen fir Ären Aarbechtsberäich ze konfiguréieren an anzeriichten."
 
-setup.option.reinstall: "%{agent} nei installéieren"
-setup.option.reinstall_hint: "(Gëtt automatesch installéiert)"
+setup.option.install: "%{agent} installéieren"
+setup.option.install_hint: "(Gëtt automatesch installéiert)"
 setup.option.signin: "Bei %{agent} umellen"
-setup.option.retry_detection: "Erkennung nach eng Kéier probéieren"
-setup.option.retry_auth: "Ech sinn ugemellt — Verbindung nach eng Kéier probéieren"
-setup.option.retry_connection: "Verbindung nach eng Kéier probéieren"
+setup.option.retry_detection: "Nach eng Kéier probéieren"
+setup.option.retry_auth: "Ech hu mech ugemellt — probéiert nach eng Kéier ze verbannen"
+setup.option.retry_connection: "Probéiert nach eng Kéier ze verbannen"
 setup.option.switch_to: "Op %{agent} wiesselen"
 setup.status.installing: "Gëtt installéiert..."
 setup.status.install_failed: "Installatioun gescheitert: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Dréckt Enter fir Iech unzemellen, Esc fir zréckzegoen"  #
 
 # ── Chat-Vue (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Denkt no…"
-# {Locked="Intelligent Terminal"} - Produktnumm, net iwwersetzen
-chat.welcome_title: "Wëllkomm am Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Wëllkomm am Intelligenten Terminal!"
+chat.welcome_disclaimer: "Intelligenten Terminal benotzt KI. Kuckt no Feeler."
 chat.plan_header: "Plang:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Rezent Kommandoversoen automatesch diagnostizéiert"
+chat.turn_canceled: "(ofgebrach)"
+chat.turn_executed: "→ ausgeféiert: %{title}"
 
 # ── Input-Plazhalter (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Froen eppes, / fir Kommandoen.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Schéckt e literale '/' (escapéiert de
 commands.help_close_hint: "  Esc        Dës Hëllef zoumaachen"  # {Locked="Esc"}
 
 # ── Recommandatiounen-Panell (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - Schlësselnimm an Enter-Tast-Glyph, net iwwersetzen
-recommendations.nav_hint: "(↑ ↓ fir ze navigéieren • Enter fir auszewielen • Esc fir ofzebriechen)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - Schlësselnimm an Enter-Tast-Glyph, net iwwersetzen
+recommendations.nav_hint: "(↑ ↓ fir ze navigéieren • ← → fir Knäppercher ze wiesselen • Enter fir auszewielen • Esc fir ofzebriechen)"
 recommendations.button_run_command: "[ Kommando ausféieren ]"
 recommendations.button_insert_in_terminal: "An den Terminal asetzen"
 recommendations.button_open_in_new_tab: "An engem neien Tab opmaachen ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Suergt dofir datt %{name} installéiert ass an op Ärem
 
 # ── Agenten-Vue (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Gëtt gelueden..."
-# {Locked="Enter","Shift+enter","Esc"} - Tast-Kombinatiounen, net iwwersetzen
-agents.footer_hint: "(↑ ↓ fir ze navigéieren • Enter fir d'Sëtzung an engem neien Tab ze starten • Shift+enter fir d'Sëtzung am Agent-Panell ze starten • Esc fir eraus)"
+# {Locked="Enter","Esc","↑","↓"} - Tast-Kombinatiounen, net iwwersetzen
+agents.footer_hint: "(↑ ↓ fir ze navigéieren • Enter fir d'Sëtzung ze starten • Esc fir eraus)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Waart op Input"
 agents.status.error: "Feeler"
 agents.status.idle: "Onbeschäftegt"
 
 # ── Layout-Wëllkomm-Hiwäis (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. fir den Agent-Panell ze weisen/verstoppen • Ctrl+Alt+/ fir d'Agent-Sëtzung ze weisen/verstoppen)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. fir den Agent-Panell ze weisen/verstoppen • Ctrl+Shift+/ fir d'Agent-Sëtzung ze weisen/verstoppen)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Verbindungszoustand ────────────────────────────────────────────────────────
 connection.starting: "Agent gëtt gestart..."
 connection.reconnecting: "Gëtt nei verbonnen..."
+connection.connecting_activity: "Verbindung mam Agent gëtt hiergestallt…"
+connection.lost: "D'Verbindung mam Agent ass verluer gaangen. Tippt /restart fir nei ze verbannen."  # {Locked="/restart"}
 
 # ── System-Messagen (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Ofgebrach."
 system.no_prompt_in_flight: "Keen Prompt ënnerwee."
 system.authentication_failed: "Authentifizéierung gescheitert"
 system.command_copied_retry: "Kommando kopéiert — féiert et an engem aneren Terminal aus, da dréckt Enter fir nach eng Kéier ze probéieren"  # {Locked="Enter"}
+system.stopped_max_tokens: "D'Äntwert gouf ofgeschnidden nodeems d'Ausgab-Limit vum Modell erreecht gouf."
+system.stopped_max_turn_requests: "Den Agent huet gestoppt nodeems seng Ufro-Limit fir dës Ronn erreecht gouf."
+system.stopped_refusal: "Den Agent huet refuséiert mat dëser Ufro weiderzemaachen."
+system.agent_busy: "Den Agent ass op dësem Tab beschäftegt — waart bis den aktuelle Prompt fäerdeg ass."
+system.resuming_session: "Sessioun %{session_id} gëtt weidergefouert..."
+system.unknown_command: "Onbekannte Commande \"%{command}\" — als Prompt geschéckt. Tippt /help fir d’Lëscht."
+system.busy_use_stop: "Waart bis den aktuelle Prompt fäerdeg ass, oder benotzt fir d’éischt /stop."
+system.cannot_focus_session: "Sessioun %{session_id} kann net fokusséiert ginn: si schéngt aktiv ze sinn, mee et ass nach kee Fënster-GUID gebonnen. Probéiert et gläich nach eng Kéier."
+system.cannot_resume_no_load_session: "Kann net am Agent-Fënster weiderfueren: %{agent} huet d’ACP `loadSession`-Fäegkeet net ugekënnegt. Dréckt Enter (ouni Shift) fir amplaz an engem neien Terminal-Fënster weiderzefueren."
+system.cannot_resume_no_resume_flag: "Kann %{agent}-Sessioun net weiderfueren: dësen Agent huet kee `--resume`-ähnleche Fändel. Dréckt Shift+Enter fir amplaz am Agent-Fënster iwwer ACP weiderzefueren."
+system.cannot_resume_unknown_agent: "Kann Sessioun %{session_id} net weiderfueren: hire Quell-Agent ass dësem Build onbekannt."
+system.cannot_resume_phantom_via_flag: "Kann %{agent}-Sessioun %{session_id} net weiderfueren: si gouf gestart, mee et ass ni e Gespréich entstanen, dofir géif %{agent} selwer d’Weiderféierung refuséieren. Rei gëtt ewechgeholl."
+system.cannot_resume_phantom_via_load: "Kann %{agent}-Sessioun %{session_id} net weiderfueren: si gouf gestart, mee et ass ni e Gespréich entstanen, dofir géif %{agent} d’Luede refuséieren. Rei gëtt ewechgeholl."
+system.fallback.this_agent: "dësen Agent"
+system.fallback.connected_agent: "den ugeschlossenen Agent"
 
 # ── CLI-Ausgang zur Laufzäit (src/main.rs) ────────────────────────────────────
 output.no_windows: "Keng Fënsteren fonnt."
@@ -171,3 +192,22 @@ hooks.installed_but_disabled: "⚠ installéiert awer deaktivéiert"
 hooks.not_installed: "✗ net installéiert"
 hooks.uninstall_skipped: "iwwersprong (CLI net op PATH)"
 hooks.install_attempted: "wt-agent-hooks Installatioun probéiert (idempotent). Féiert `wta hooks status` aus fir d'Resultat z'iwwerpréiwen. Trace-Log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
+time.just_now: "elo grad"
+time.minute_singular: "virun %{count} Minutt"
+time.minutes_other: "virun %{count} Minutten"
+time.hour_singular: "virun %{count} Stonn"
+time.hours_other: "virun %{count} Stonnen"
+time.day_singular: "virun %{count} Dag"
+time.days_other: "virun %{count} Deeg"
+
+# ── Ausféierung vun der Recommandatioun (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Wiel %{choice} ass feelgeschloen: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Wielt de Modell fir dës Panell (/model <id> fir direkt ze wiesselen)"  # {Locked="/model","<id>"}
+model_picker.title: "Modell auswielen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Den ugeschlossenen Agent huet keng auswielbar Modeller ugekënnegt."
+system.model_set: "De Modell fir dës Panell gouf op %{model} gesat."  # {Locked="%{model}"}
+system.model_unknown: "Onbekannte Modell %{model} — tippt /model fir d'verfügbar Lëscht ze gesinn."  # {Locked="%{model}","/model"}

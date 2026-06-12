@@ -24,8 +24,8 @@
                 BorderBrush="#26FFFFFF"
                 BorderThickness="0,1,0,1">
             <Grid Padding="10,0,0,0">
-                <!--  Left cluster: logo + label + chevron. History (and other actions)
-                      live on the bottom agent bar, not here.  -->
+                <!--  Left cluster: logo + label. History and other actions
+                      live on the window-level bottom agent bar.  -->
                 <StackPanel Orientation="Horizontal"
                             VerticalAlignment="Center"
                             Spacing="4">

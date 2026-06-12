@@ -113,6 +113,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 { ShortcutAction::FocusAgentPane, USES_RESOURCE(L"FocusAgentPaneCommandKey") },
                 { ShortcutAction::OpenAgentSessions, USES_RESOURCE(L"OpenAgentSessionsCommandKey") },
                 { ShortcutAction::TriggerAutofix, USES_RESOURCE(L"TriggerAutofixCommandKey") },
+                { ShortcutAction::OpenBackgroundAgent, USES_RESOURCE(L"OpenBackgroundAgentCommandKey") },
                 { ShortcutAction::OpenCWD, USES_RESOURCE(L"OpenCWDCommandKey") },
                 { ShortcutAction::OpenNewTabDropdown, USES_RESOURCE(L"OpenNewTabDropdownCommandKey") },
                 { ShortcutAction::OpenScratchpad, USES_RESOURCE(L"OpenScratchpadKey") },

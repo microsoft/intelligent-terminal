@@ -1,6 +1,6 @@
 # Заголовки екрану налаштування
-# {Locked="Intelligent Terminal"} - назва продукту, не перекладати
-setup.title.first_run: "Ласкаво просимо до Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Ласкаво просимо до Інтелектуальний Термінал!"
 setup.title.agent_missing: "Агент не знайдено"
 setup.title.agent_error: "Не вдалося підключитися до агента"
 setup.title.switch_agent: "Змінити агента"
@@ -8,21 +8,21 @@ setup.title.not_available: "Агент недоступний"
 setup.title.sign_in: "Потрібен вхід"
 
 # %{agent} замінюється на відображуване ім'я агента під час виконання.
-setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" не встановлено. Виконайте наведені нижче кроки, щоб його встановити. Щоб змінити агента, перейдіть до налаштувань."
-setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" не встановлено. Перевстановіть його вручну та повторіть спробу. Щоб змінити агента, перейдіть до налаштувань."
-setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Виконайте наведені нижче кроки для входу. Щоб змінити агента, перейдіть до налаштувань."
-setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Увійдіть через CLI агента та повторіть спробу. Щоб змінити агента, перейдіть до налаштувань."
+setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" не встановлено. Виконайте наведені нижче кроки, щоб його встановити. Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."
+setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" не встановлено. Перевстановіть його вручну та повторіть спробу. Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."
+setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Виконайте наведені нижче кроки для входу. Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."
+setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" потребує автентифікації. Увійдіть через агента та виберіть \"Я увійшов\" нижче. Щоб змінити агента, перейдіть до Інтелектуальний Термінал Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Оберіть CLI агента за замовчуванням для використання в Intelligent Terminal. Ви можете"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Оберіть агента за замовчуванням для використання в Інтелектуальний Термінал. Ви можете"
 setup.description.fre_line2: "перейти до налаштувань для налаштування робочої області."
 
-setup.option.reinstall: "Перевстановити %{agent}"
-setup.option.reinstall_hint: "(Буде встановлено автоматично)"
+setup.option.install: "Встановити %{agent}"
+setup.option.install_hint: "(Буде встановлено автоматично)"
 setup.option.signin: "Увійти в %{agent}"
-setup.option.retry_detection: "Повторити виявлення"
-setup.option.retry_auth: "Я увійшов — повторити підключення"
-setup.option.retry_connection: "Повторити підключення"
+setup.option.retry_detection: "Спробувати знову"
+setup.option.retry_auth: "Я увійшов — спробувати підключитися знову"
+setup.option.retry_connection: "Спробувати підключитися знову"
 setup.option.switch_to: "Переключитися на %{agent}"
 setup.status.installing: "Встановлення..."
 setup.status.install_failed: "Помилка встановлення: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Натисніть Enter для входу, Esc для по
 
 # ── Перегляд чату (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Думаю…"
-# {Locked="Intelligent Terminal"} - назва продукту, не перекладати
-chat.welcome_title: "Ласкаво просимо до Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Ласкаво просимо до Інтелектуальний Термінал!"
+chat.welcome_disclaimer: "Інтелектуальний Термінал використовує AI. Перевіряйте помилки."
 chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Автоматично діагностовано нещодавню помилку команди"
+chat.turn_canceled: "(скасовано)"
+chat.turn_executed: "→ виконано: %{title}"
 
 # ── Заповнювачі введення (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Запитайте будь-що, / для команд.."  # {Locked="/"}
@@ -75,10 +79,17 @@ commands.help_title: " Довідка "
 commands.help_header: "Слеш-команди — введіть / у полі введення."
 commands.help_escape_hint: "  //text     Надіслати літерал '/' (екранує аналізатор команд)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Закрити цю довідку"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Показати цей список команд"
+commands.clear.summary: "Очистити історію чату (сеанс зберігається)"
+commands.new.summary: "Розпочати новий сеанс ACP (історію буде скинуто)"  # {Locked="ACP"}
+commands.restart.summary: "Перезапустити агента"
+commands.stop.summary: "Скасувати поточний запит"
+commands.sessions.summary: "Відкрити вибір історичних сеансів (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Панель рекомендацій (src/ui/recommendations.rs) ───────────────────────────────────
-# {Locked="Enter","Esc","↵"} - назви клавіш і символ клавіші Enter, не перекладати
-recommendations.nav_hint: "(↑ ↓ навігація • Enter вибрати • Esc скасувати)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - назви клавіш і символ клавіші Enter, не перекладати
+recommendations.nav_hint: "(↑ ↓ навігація • ← → перемикання кнопок • Enter вибрати • Esc скасувати)"
 recommendations.button_run_command: "[ Виконати команду ]"
 recommendations.button_insert_in_terminal: "Вставити в термінал"
 recommendations.button_open_in_new_tab: "Відкрити в новій вкладці ↵"
@@ -115,25 +126,42 @@ agent.custom.auth_hint: "Переконайтеся, що %{name} встанов
 
 # ── Перегляд агентів (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Завантаження..."
-# {Locked="Enter","Shift+enter","Esc"} - комбінації клавіш, не перекладати
-agents.footer_hint: "(↑ ↓ навігація • Enter запустити сеанс у новій вкладці • Shift+enter запустити сеанс у панелі агента • Esc вихід)"
+# {Locked="Enter","Esc","↑","↓"} - комбінації клавіш, не перекладати
+agents.footer_hint: "(↑ ↓ навігація • Enter запустити сеанс • Esc вихід)"
 agents.status.active: "Активний"
 agents.status.waiting_for_input: "Очікування введення"
 agents.status.error: "Помилка"
 agents.status.idle: "Бездіяльний"
 
 # ── Підказка привітання макету (src/ui/layout.rs) ──────────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. — показати/сховати панель агента • Ctrl+Alt+/ — показати/сховати сеанс агента)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. — показати/сховати панель агента • Ctrl+Shift+/ — показати/сховати сеанс агента)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Стан підключення ────────────────────────────────────────────────────────────
 connection.starting: "Запуск агента..."
 connection.reconnecting: "Перепідключення..."
+connection.connecting_activity: "Підключення до агента…"
+connection.lost: "Підключення до агента втрачено. Введіть /restart, щоб підключитися знову."  # {Locked="/restart"}
 
 # ── Системні повідомлення (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Скасовано."
 system.no_prompt_in_flight: "Немає активного запиту."
 system.authentication_failed: "Помилка автентифікації"
 system.command_copied_retry: "Команду скопійовано — виконайте її в іншому терміналі, потім натисніть Enter для повтору"  # {Locked="Enter"}
+system.stopped_max_tokens: "Відповідь було обрізано після досягнення ліміту виводу моделі."
+system.stopped_max_turn_requests: "Агент зупинився після досягнення ліміту запитів для цього ходу."
+system.stopped_refusal: "Агент відмовився продовжувати цей запит."
+system.agent_busy: "Агент зайнятий на цій вкладці — дочекайтеся завершення поточного запиту."
+system.resuming_session: "Відновлення сеансу %{session_id}..."
+system.unknown_command: "Невідома команда \"%{command}\" — надіслано як запит. Введіть /help, щоб переглянути список."  # {Locked="/help"}
+system.busy_use_stop: "Дочекайтеся завершення поточного запиту або спочатку скористайтеся /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Не вдається сфокусувати сеанс %{session_id}: він виглядає активним, але GUID панелі ще не прив’язано. Спробуйте ще раз за мить."
+system.cannot_resume_no_load_session: "Не вдається відновити в панелі агента: %{agent} не оголосив можливість ACP `loadSession`. Натисніть Enter (без Shift), щоб натомість відновити в новій панелі термінала."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Не вдається відновити сеанс %{agent}: цей агент не має прапорця в стилі `--resume`. Натисніть Shift+Enter, щоб спробувати відновити всередині панелі агента через ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Не вдається відновити сеанс %{session_id}: його вихідний агент невідомий цій збірці WTA."
+system.cannot_resume_phantom_via_flag: "Не вдається відновити сеанс %{agent} %{session_id}: його було запущено, але в ньому не накопичилося жодної розмови, тому сам %{agent} відхилив би відновлення. Рядок видаляється."
+system.cannot_resume_phantom_via_load: "Не вдається відновити сеанс %{agent} %{session_id}: його було запущено, але в ньому не накопичилося жодної розмови, тому %{agent} відхилив би завантаження. Рядок видаляється."
+system.fallback.this_agent: "цей агент"
+system.fallback.connected_agent: "підключений агент"
 
 # ── Вивід CLI під час виконання (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Вікна не знайдено."
@@ -171,3 +199,25 @@ hooks.installed_but_disabled: "⚠ Встановлено, але вимкнен
 hooks.not_installed: "✗ Не встановлено"
 hooks.uninstall_skipped: "Пропущено (CLI не в PATH)"
 hooks.install_attempted: "Спроба встановлення wt-agent-hooks (ідемпотентно). Виконайте `wta hooks status` для перевірки результату. Журнал трасування: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
+time.just_now: "щойно"
+time.minute_singular: "1 хвилину тому"
+time.minutes_other: "%{count} хвилин тому"
+time.hour_singular: "1 годину тому"
+time.hours_other: "%{count} годин тому"
+time.day_singular: "1 день тому"
+time.days_other: "%{count} днів тому"
+
+# ── Виконання рекомендації (src/coordinator.rs) ─────────────────────────────
+system.choice_execution_failed: "Не вдалося виконати вибір %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Виберіть модель для цієї панелі (/model <id> для прямого перемикання)"  # {Locked="/model","<id>"}
+model_picker.title: "Виберіть модель (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Підключений агент не оголосив жодної моделі, яку можна вибрати."
+system.model_set: "Модель для цієї панелі встановлено на %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Невідома модель %{model} — введіть /model, щоб переглянути доступний список."  # {Locked="%{model}","/model"}

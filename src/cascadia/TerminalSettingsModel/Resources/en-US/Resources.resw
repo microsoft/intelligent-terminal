@@ -1005,4 +1005,7 @@
   <data name="PromptActionArgumentLocalized" xml:space="preserve">
     <value>Prompt</value>
   </data>
+  <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
+    <value>Open background agent in a new tab</value>
+  <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
 </root>

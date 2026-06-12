@@ -1,4 +1,10 @@
 steps:
+  # M.W.T.V's Setup.ps1 calls `nuget install`, so make sure nuget.exe is
+  # on PATH first. This template is idempotent and safe to call twice
+  # (the C++ side also calls it via steps-restore-nuget.yml later in the
+  # job).
+  - template: steps-ensure-nuget-version.yml
+
   - pwsh: |-
       nuget install Microsoft.Windows.Terminal.Versioning -OutputDirectory _versioning
       $VersionRoot = (Get-Item _versioning\Microsoft.Windows.*).FullName

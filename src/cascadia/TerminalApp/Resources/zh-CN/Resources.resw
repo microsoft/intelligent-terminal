@@ -499,23 +499,47 @@
     <value>第三方通知</value>
     <comment>A hyperlink name for the Terminal's third-party notices</comment>
   </data>
-  <data name="QuitDialog.CloseButtonText" xml:space="preserve">
+  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve">
     <value>取消</value>
   </data>
-  <data name="QuitDialog.PrimaryButtonText" xml:space="preserve">
-    <value>全部关闭</value>
-  </data>
-  <data name="QuitDialog.Title" xml:space="preserve">
+  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve">
     <value>是否要关闭所有窗口?</value>
   </data>
-  <data name="CloseAllDialog.CloseButtonText" xml:space="preserve">
-    <value>取消</value>
-  </data>
-  <data name="CloseAllDialog.PrimaryButtonText" xml:space="preserve">
+  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve">
     <value>全部关闭</value>
   </data>
-  <data name="CloseAllDialog.Title" xml:space="preserve">
+  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve">
     <value>是否要关闭所有标签页?</value>
+  </data>
+  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve">
+    <value>全部关闭</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve">
+    <value>是否要关闭此选项卡?</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve">
+    <value>关闭选项卡</value>
+  </data>
+  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve">
+    <value>是否要关闭此窗格?</value>
+  </data>
+  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve">
+    <value>关闭窗格</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve">
+    <value>是否要关闭这些选项卡?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve">
+    <value>关闭选项卡</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve">
+    <value>是否要关闭这些窗格?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve">
+    <value>关闭窗格</value>
+  </data>
+  <data name="DontAskAgainCheckBox.Content" xml:space="preserve">
+    <value>不再询问</value>
   </data>
   <data name="CloseReadOnlyDialog.CloseButtonText" xml:space="preserve">
     <value>取消</value>
@@ -748,6 +772,14 @@
     <value>Windows</value>
     <comment>This is displayed as a label for the context menu item that holds the submenu of available windows.</comment>
   </data>
+  <data name="NotificationMessage_TabActivity" xml:space="preserve">
+    <value>选项卡“{0}”中的活动</value>
+    <comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment>
+  </data>
+  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">
+    <value>选项卡“{0}”(窗口“{1}”)中的活动</value>
+    <comment>{0} is the tab title, {1} is the window name. Shown as the body of a desktop notification when tab activity is detected and the window has a name.</comment>
+  </data>
   <data name="DropPathTabRun.Text" xml:space="preserve">
     <value>在给定的起始目录中打开新选项卡</value>
   </data>
@@ -884,10 +916,10 @@
     <value>如果设置，该命令将追加到配置文件的默认命令，而不是替换它。</value>
   </data>
   <data name="RestartConnectionText" xml:space="preserve">
-    <value>重新启动连接</value>
+    <value>重启会话</value>
   </data>
   <data name="RestartConnectionToolTip" xml:space="preserve">
-    <value>重新启动活动窗格连接</value>
+    <value>重启活动窗格中的会话</value>
   </data>
   <data name="SnippetPaneTitle.Text" xml:space="preserve">
     <value>片段</value>
@@ -932,45 +964,6 @@
   <data name="InvalidRegex" xml:space="preserve">
     <value>发现无效的正则表达式。</value>
   </data>
-  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve">
-    <value>取消</value>
-  </data>
-  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve">
-    <value>是否要关闭所有窗口？</value>
-  </data>
-  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve">
-    <value>全部关闭</value>
-  </data>
-  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve">
-    <value>是否要关闭所有标签页？</value>
-  </data>
-  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve">
-    <value>全部关闭</value>
-  </data>
-  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve">
-    <value>是否要关闭此标签页？</value>
-  </data>
-  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve">
-    <value>关闭标签页</value>
-  </data>
-  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve">
-    <value>是否要关闭此窗格？</value>
-  </data>
-  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve">
-    <value>关闭窗格</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve">
-    <value>是否要关闭这些标签页？</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve">
-    <value>关闭标签页</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve">
-    <value>是否要关闭这些窗格？</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve">
-    <value>关闭窗格</value>
-  </data>
   <data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve">
     <value>智能体提示模式</value>
     <comment>This text will be read aloud using assistive technologies when the command palette switches into the agent foreground prompt mode.</comment>
@@ -987,56 +980,48 @@
     <value>在后台运行智能体任务...</value>
     <comment>Placeholder text shown in the command palette search box when in agent background task mode.</comment>
   </data>
-  <data name="NotificationMessage_TabActivity" xml:space="preserve">
-    <value>标签页“{0}”中有活动</value>
-    <comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment>
-  </data>
-  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">
-    <value>标签页“{0}”中有活动（窗口“{1}”）</value>
-    <comment>{0} is the tab title, {1} is the window name. Shown as the body of a desktop notification when tab activity is detected and the window has a name.</comment>
-  </data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve">
     <value>Shell 集成已初始化</value>
   </data>
   <data name="InitShellIntegrationSuccessMessage" xml:space="preserve">
-    <value>已配置 Shell 集成。请重启你的 PowerShell 会话，或打开一个新标签页以使更改生效。</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Shell 集成已配置。只对新的 shell 会话 (PowerShell、bash 或 WSL bash) 生效。</value>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve">
     <value>Shell 集成已配置</value>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve">
-    <value>你的 PowerShell 配置文件中已配置 Shell 集成。</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Shell 集成已针对系统中检测到的 shell 配置 (PowerShell、bash 或 WSL bash)。</value>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve">
     <value>Shell 集成错误</value>
   </data>
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve">
-    <value>初始化 Shell 集成失败。无法确定你的 PowerShell 配置文件路径。请确保已安装目标 shell。</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>初始化 Shell 集成失败。请查看以下详细信息，然后重试。</value>
+    <comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment>
   </data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve">
     <value>智能体不可用</value>
   </data>
   <data name="AgentNotConfiguredSubtitle" xml:space="preserve">
-    <value>找不到任何智能体。请安装智能体 CLI（例如 copilot、gemini），并确保其位于你的 PATH 中，或在“设置”>“智能体”中配置。</value>
-    <comment>{Locked="CLI","PATH","copilot","gemini"}</comment>
+    <value>找不到任何智能体。请安装智能体（例如 copilot、gemini），并确保其位于你的 PATH 中，或在"设置"&gt;"智能体"中配置。</value>
+    <comment>{Locked="PATH","copilot","gemini"}</comment>
   </data>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>欢迎使用 Intelligent Terminal</value>
+    <value>欢迎使用智能终端</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>设置内置助手，帮助你在工作中直接解释错误、起草命令并扫清任务阻碍。</value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>详细了解 Intelligent Terminal</value>
+    <value>详细了解智能终端</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
-    <value>借助内置 AI 智能体保持工作节奏</value>
+    <value>借助内置智能体保持工作节奏</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_Card1Description.Text" xml:space="preserve">
@@ -1055,48 +1040,46 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>欢迎使用 Intelligent Terminal</value>
+    <value>欢迎使用智能终端</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>选择要立即设置的项目。你可以随时在</value>
+    <value>选择要立即设置的项目。你可以随时更改这些设置。</value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>设置</value>
+    <value>了解数据的使用方式</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>智能体</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>选择在智能体窗格中使用的智能体 CLI。任何兼容的 ACP CLI 都会被自动检测。</value>
-    <comment>{Locked="CLI","ACP"}
+    <value>选择在智能体窗格中使用的支持 ACP 的智能体。</value>
+    <comment>{Locked="ACP"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ 此智能体需要 Node.js 和 NPX，如果尚未安装，将自动安装。</value>
+    <value>此智能体需要 Node.js 和 NPX，如果尚未安装，将自动安装。</value>
     <comment>{Locked="Node.js","NPX"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>自动为失败的命令建议修复方案</value>
+    <value>自动错误建议</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>启用后,AI 智能体将自动分析失败的命令并提出修复建议。禁用后,失败的命令会在状态栏中显示一个可点击的提示 — 按 Ctrl+Alt+. 或单击该提示以请求修复。</value>
+    <value>允许 Intelligent Terminal 将错误发送给你的智能体以自动建议修复。</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>会话管理</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>授予 Intelligent Terminal 跟踪正在运行或活动中的智能体状态的权限。</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>授予智能终端跟踪正在运行或活动中的智能体状态的权限。</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ 启用此功能将安装集成钩子，以跟踪跨智能体 CLI 的会话。</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>启用此功能将安装集成 hooks，以跟踪跨智能体的会话。</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>窗格位置</value>
@@ -1130,13 +1113,60 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>正在设置...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ 安装 GitHub Copilot 失败。请检查网络并重试。</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Windows 程序包管理器策略阻止了 {0} 的安装。如果你使用的是受管理设备，请联系 IT 管理员。</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ 安装 Node.js 失败。请检查网络并重试。</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ 无法安装 {0}（错误代码 {1}）。请查看日志了解详细信息，或手动安装 {0}。</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ 无法安装 {0}。请查看日志了解详细信息，或手动安装 {0}。</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0} 安装程序报告了错误（代码 {1}）。请查看日志了解详细信息，或手动安装 {0}。</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ 安装 {0} 时无法访问 Windows 程序包管理器。请检查 Internet 连接（VPN、代理或防火墙可能会阻止连接），然后重试。</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ 此系统上没有可用的 {0} 兼容安装程序（可能不支持 OS 版本或体系结构）。请手动安装 {0}。</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ 在 Windows 程序包管理器目录中找不到 {0}。请尝试刷新 winget 源，或手动安装 {0}。</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ 安装 {0} 花费的时间超过 20 分钟。Intelligent Terminal 已停止等待，但安装程序可能仍在后台运行。请查看 Task Manager，或稍后重试。</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows 程序包管理器 (winget) 未安装或不可用。请先安装它，然后重试。</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ 安装 session hooks 失败。会话管理已关闭。您可以重新启用并重试，或保存以继续而不使用它。</value>
+    <comment>{Locked="hooks"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ 安装 Shell 集成失败。错误检测已关闭。您可以重新启用并重试，或保存以继续而不使用它。</value>
+  </data>
+  <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>了解如何手动修复此问题</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>开</value>
@@ -1155,5 +1185,89 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_PolicyLocked" xml:space="preserve">
     <value>此设置由你的组织管理。</value>
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>正在分析错误…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>检测到错误：正在分析…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>检测到错误：按 {0} 修复</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
+    <value>单击或按 {0} 向智能体请求建议的修复</value>
+    <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>修复已就绪。按 {0} 进行查看</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>打开智能体窗格以查看建议的修复</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
+    <value>已检测到错误。单击或按 {0}，让 AI 智能体进行诊断并建议修复。</value>
+    <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>修复已就绪 — 按 {0} 应用</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>修复已就绪 — 按 {0} 应用：{1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>建议已就绪 — 打开智能体窗格</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>自动修复已拒绝直接修复此问题。 </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>单击此处或按 Ctrl+Shift+. 打开智能体窗格并阅读完整建议。</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>诊断</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>智能体会话</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>智能体会话：{0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>自动错误检测</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>允许 Intelligent Terminal 访问你的 shell 并自动检测错误。</value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>启用此功能将安装 shell 集成，以检测命令失败。 </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>了解详细信息</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>PowerShell 执行策略正在阻止脚本。</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell 执行策略正在阻止脚本。错误检测已关闭。</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

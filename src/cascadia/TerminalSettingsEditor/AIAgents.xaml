@@ -20,8 +20,7 @@
             <DataTemplate x:Key="AgentEntryTemplate"
                           x:DataType="local:AgentEntry">
                 <TextBlock Text="{x:Bind DisplayLabel}"
-                           Opacity="{x:Bind local:AIAgents.InstalledOpacity(IsInstalled)}"
-                           FontStyle="{x:Bind local:AIAgents.AddNewFontStyle(IsAddNew)}" />
+                           Opacity="{x:Bind local:AIAgents.InstalledOpacity(IsInstalled)}" />
             </DataTemplate>
 
             <DataTemplate x:Key="EnumComboBoxTemplate"
@@ -41,20 +40,69 @@
 
             <!--  Page subtitle. The page title itself is rendered by the
                   Settings BreadcrumbBar from Nav_AIAgents.Content, so we only
-                  add the subtitle below it here.  -->
-            <TextBlock x:Uid="AIAgents_PageSubtitle"
-                       Opacity="0.7"
-                       Margin="0,0,0,16" />
+                  add the subtitle below it here. The inline Run/Hyperlink
+                  text is populated from the ResourceLoader in code-behind
+                  (x:Uid on inline Run is not honored in this codebase).
+                  The muted "secondary" foreground is applied only to the
+                  non-link Runs so the Hyperlink keeps its full theme
+                  accent contrast (and its hover/pressed affordance).  -->
+            <TextBlock Margin="0,0,0,16"
+                       TextWrapping="Wrap">
+                <Run x:Name="PageSubtitlePrefix"
+                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                     Text="" /><Run Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text=" " /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-privacy">
+                    <Run x:Name="PageSubtitlePrivacyLink" Text="" />
+                </Hyperlink>
+            </TextBlock>
 
-            <!--  ═══ Agent pane group ═══  -->
+            <!--  ═══ Agent pane group ═══
+                  First sub-header on the page: override the style's 32px
+                  top margin to 0 so the page subtitle's bottom margin is
+                  the only gap above the header. Otherwise, the page
+                  subtitle + sub-header margins stack to ~48px and look
+                  visibly larger than every other settings page (which
+                  doesn't render a page subtitle).  -->
             <TextBlock x:Uid="AIAgents_AcpGroupHeader"
-                       Style="{StaticResource SubtitleTextBlockStyle}"
-                       Margin="0,0,0,8" />
+                       Style="{StaticResource TextBlockSubHeaderStyle}"
+                       Margin="0,0,0,4" />
 
-            <!--  Agent (ACP CLI)  -->
-            <local:SettingContainer x:Name="AcpAgent"
-                                    x:Uid="AIAgents_AcpAgent">
-                <StackPanel>
+            <!--  Agent (ACP CLI) — hand-built Grid mimicking the NonExpanderGrid chrome of
+                  local:SettingContainer, so the description TextBlock can host an inline Hyperlink.  -->
+            <Grid x:Name="AcpAgent"
+                  Background="{ThemeResource ExpanderHeaderBackground}"
+                  BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                  BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                  CornerRadius="{ThemeResource ControlCornerRadius}"
+                  MinHeight="64"
+                  MinWidth="{ThemeResource FlyoutThemeMinWidth}"
+                  MaxWidth="1000"
+                  HorizontalAlignment="Stretch"
+                  Padding="16,0,8,0"
+                  Margin="0,4,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Padding="0,12,0,12">
+                    <TextBlock x:Name="AcpAgentHeaderText"
+                               Style="{StaticResource SettingsPageItemHeaderStyle}" />
+                    <!--  Run.Text values populated from code-behind by splitting on "ACP".  -->
+                    <TextBlock x:Name="AcpAgentDescriptionText"
+                               Style="{StaticResource SettingsPageItemDescriptionStyle}">
+                        <Run x:Name="AcpAgentDescriptionBefore" />
+                        <Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-acpref">
+                            <Run x:Name="AcpAgentDescriptionAcpToken" />
+                        </Hyperlink>
+                        <Run x:Name="AcpAgentDescriptionAfter" />
+                    </TextBlock>
+                </StackPanel>
+                <StackPanel Grid.Column="1"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Margin="0,12,0,12">
                     <ComboBox AutomationProperties.AccessibilityView="Content"
                               ItemTemplate="{StaticResource AgentEntryTemplate}"
                               ItemsSource="{x:Bind ViewModel.AcpAgentList, Mode=OneWay}"
@@ -63,7 +111,6 @@
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
-                               FontStyle="Italic"
                                Margin="0,4,0,0" />
                     <!--  Read-only preview when custom agent is selected on page load  -->
                     <StackPanel Orientation="Vertical"
@@ -94,9 +141,13 @@
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
-            </local:SettingContainer>
+            </Grid>
 
-            <!--  Model (only for built-in agents)  -->
+            <!--  Model picker — shown for every selected agent (built-in
+                  or custom) so a stale acpModel value is always visible
+                  and clearable. HasAcpModelList picks between the
+                  dropdown (helper published available_models) and the
+                  free-form textbox fallback.  -->
             <local:SettingContainer x:Name="AcpModel"
                                     x:Uid="AIAgents_AcpModel"
                                     Visibility="{x:Bind ViewModel.ShowAcpModel, Mode=OneWay}">
@@ -106,12 +157,12 @@
                               ItemsSource="{x:Bind ViewModel.AcpModelList, Mode=OneWay}"
                               ItemTemplate="{StaticResource AcpModelEntryTemplate}"
                               SelectedItem="{x:Bind ViewModel.CurrentAcpModelEntry, Mode=TwoWay}"
-                              PlaceholderText="Auto"
+                              PlaceholderText="Default"
                               Style="{StaticResource ComboBoxSettingStyle}"
                               Visibility="{x:Bind ViewModel.HasAcpModelList, Mode=OneWay}" />
                     <!--  Free-form fallback: agent pane never connected, custom agent, or agent didn't advertise models  -->
                     <TextBox Text="{x:Bind ViewModel.AcpModel, Mode=TwoWay}"
-                             PlaceholderText="Auto"
+                             PlaceholderText="Default"
                              Style="{StaticResource TextBoxSettingStyle}"
                              Visibility="{x:Bind ViewModel.ShowAcpModelTextBox, Mode=OneWay}" />
                 </Grid>
@@ -127,20 +178,79 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
-            <!--  Auto-error detection  -->
-            <local:SettingContainer x:Name="AutoFixEnabled"
-                                    x:Uid="AIAgents_AutoFix">
-                <StackPanel>
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
-                                  IsEnabled="{x:Bind local:AIAgents.NotBool(ViewModel.IsAutoFixPolicyLocked), Mode=OneWay}"
-                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+            <!--  Automatic error detection (parent) + Automatic error
+                  suggestion (dependent child). Modeled as an Expander so the
+                  hierarchy is explicit: detection's master toggle lives in the
+                  always-visible header; suggestion is nested in the expand body
+                  and stays disabled until detection is on (ViewModel.
+                  CanSuggestErrors). Hand-built header (vs. ExpanderSetting
+                  ContainerStyle) because that style's header-right slot is a
+                  read-only text preview and can't host the master toggle.  -->
+            <muxc:Expander x:Name="AutoErrorDetectionExpander"
+                           Margin="0,4,0,0"
+                           HorizontalAlignment="Stretch"
+                           HorizontalContentAlignment="Stretch"
+                           IsExpanded="True">
+                <muxc:Expander.Header>
+                    <Grid MinHeight="64">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                            <TextBlock x:Uid="AIAgents_AutoErrorDetectionTitle"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap" />
+                            <TextBlock x:Uid="AIAgents_AutoErrorDetectionCaption"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1"
+                                      MinWidth="0"
+                                      VerticalAlignment="Center"
+                                      AutomationProperties.AccessibilityView="Content"
+                                      IsOn="{x:Bind ViewModel.AutoErrorDetectionEnabled, Mode=TwoWay}" />
+                    </Grid>
+                </muxc:Expander.Header>
+                <!--  Nested dependent setting: suggestion. Plain rows (no nested
+                      SettingContainer) so it sits inside the detection Expander
+                      body with no "card-in-card" background. Greyed out
+                      whenever detection is off or auto-fix is GPO-locked
+                      (ViewModel.CanSuggestErrors). Its On/Off reflects the
+                      user's own value and is independent of the detection
+                      toggle.  -->
+                <StackPanel Margin="0,4,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                            <TextBlock x:Uid="AIAgents_AutoErrorSuggestionTitle"
+                                       TextWrapping="Wrap" />
+                            <TextBlock x:Uid="AIAgents_AutoErrorSuggestionCaption"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1"
+                                      MinWidth="0"
+                                      VerticalAlignment="Center"
+                                      AutomationProperties.AccessibilityView="Content"
+                                      IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
+                                      IsEnabled="{x:Bind ViewModel.CanSuggestErrors, Mode=OneWay}" />
+                    </Grid>
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsAutoFixPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
-                               FontStyle="Italic"
                                Margin="0,4,0,0" />
                 </StackPanel>
-            </local:SettingContainer>
+            </muxc:Expander>
 
             <!--  Agent session tracking (hooks) — last entry in the Agent pane group.
                   Collapsible SettingContainer (Expander style). When expanded:
@@ -189,7 +299,6 @@
                             <TextBlock x:Uid="AIAgents_PolicyLocked"
                                        Visibility="{x:Bind ViewModel.IsAgentSessionHooksPolicyLocked, Mode=OneWay}"
                                        Opacity="0.6"
-                                       FontStyle="Italic"
                                        Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
@@ -272,18 +381,57 @@
                                     MinWidth="120" />
                         </Grid>
                     </Border>
+                    <Border Visibility="{x:Bind ViewModel.ShowCodexHookRow, Mode=OneWay}"
+                            BorderThickness="0,1,0,0"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Padding="0,16,0,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="Codex CLI" TextWrapping="Wrap" />
+                                <TextBlock Text="{x:Bind ViewModel.CodexHooksSubtitle, Mode=OneWay}"
+                                           Visibility="{x:Bind ViewModel.ShowCodexHooksSubtitle, Mode=OneWay}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Opacity="0.6"
+                                           TextWrapping="Wrap" />
+                                <!--  Codex is the only CLI whose hook commands must be
+                                      individually trusted by the user before they fire.
+                                      Surface the one-line "run /hooks and approve"
+                                      reminder right under the row title so users see it
+                                      both before clicking Install (anticipation) and
+                                      after install (the row only becomes visible once
+                                      Codex has any hook state, which is the moment the
+                                      reminder is most actionable).  -->
+                                <TextBlock x:Uid="AIAgents_CodexTrustHint"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Opacity="0.6"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    x:Uid="AIAgents_HooksRemoveButton"
+                                    Click="{x:Bind ViewModel.RemoveCodexHooks}"
+                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    MinWidth="120" />
+                        </Grid>
+                    </Border>
                 </StackPanel>
             </local:SettingContainer>
 
             <!--  ═══ Command palette group ═══  -->
             <TextBlock x:Uid="AIAgents_DelegateGroupHeader"
-                       Style="{StaticResource SubtitleTextBlockStyle}"
-                       Margin="0,16,0,8" />
+                       Style="{StaticResource TextBlockSubHeaderStyle}" />
 
             <!--  Agent (delegate / on-demand CLI)  -->
             <local:SettingContainer x:Name="DelegateAgent"
                                     x:Uid="AIAgents_DelegateAgent">
-                <StackPanel>
+                <!--  Vertical Margin — same rationale as the AcpAgent
+                      container above: when a custom delegate agent is
+                      selected the content grows past the SettingContainer's
+                      MinHeight=64 and would otherwise hug the card edges.  -->
+                <StackPanel Margin="0,12,0,12">
                     <ComboBox AutomationProperties.AccessibilityView="Content"
                               ItemTemplate="{StaticResource AgentEntryTemplate}"
                               ItemsSource="{x:Bind ViewModel.DelegateAgentList, Mode=OneWay}"
@@ -292,7 +440,6 @@
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
-                               FontStyle="Italic"
                                Margin="0,4,0,0" />
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsCustomDelegateAgentSelected, Mode=OneWay}"

@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Dobrodošli u Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Dobrodošli u Inteligentni Terminal!"
 setup.title.agent_missing: "Agent nije pronađen"
 setup.title.agent_error: "Povezivanje sa agentom nije uspelo"
 setup.title.switch_agent: "Promeni agenta"
@@ -8,21 +8,21 @@ setup.title.not_available: "Agent nije dostupan"
 setup.title.sign_in: "Potrebna je prijava"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Vaš agent \"%{agent}\" nije instaliran. Pratite korake ispod da biste ga instalirali. Za promenu agenta idite u Settings."
-setup.subtitle.agent_missing: "Vaš agent \"%{agent}\" nije instaliran. Ponovo ga ručno instalirajte, pa pokušajte ponovo. Za promenu agenta idite u Settings."
-setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Pratite korake ispod da biste se prijavili. Za promenu agenta idite u Settings."
-setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Prijavite se preko CLI agenta, pa pokušajte ponovo. Za promenu agenta idite u Settings."
+setup.subtitle.copilot_missing: "Vaš agent \"%{agent}\" nije instaliran. Pratite korake ispod da biste ga instalirali. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Vaš agent \"%{agent}\" nije instaliran. Ponovo ga ručno instalirajte, pa pokušajte ponovo. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Pratite korake ispod da biste se prijavili. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Prijavite se preko agenta, pa izaberite \"Prijavio/la sam se\" ispod. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Izaberite podrazumevani CLI agent koji želite da koristite u Intelligent Terminal. Možete"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Izaberite podrazumevanog agenta koji želite da koristite u Inteligentni Terminal. Možete"
 setup.description.fre_line2: "otići u Settings da konfigurišete i podesite svoj radni prostor."
 
-setup.option.reinstall: "Ponovo instaliraj %{agent}"
-setup.option.reinstall_hint: "(Biće instalirano automatski)"
+setup.option.install: "Instaliraj %{agent}"
+setup.option.install_hint: "(Biće instalirano automatski)"
 setup.option.signin: "Prijavi se u %{agent}"
-setup.option.retry_detection: "Ponovo pokušaj otkrivanje"
-setup.option.retry_auth: "Prijavio/la sam se — pokušaj ponovo povezivanje"
-setup.option.retry_connection: "Ponovo pokušaj povezivanje"
+setup.option.retry_detection: "Pokušaj ponovo"
+setup.option.retry_auth: "Prijavio/la sam se — pokušaj ponovo da se povežeš"
+setup.option.retry_connection: "Pokušaj ponovo da se povežeš"
 setup.option.switch_to: "Prebaci na %{agent}"
 setup.status.installing: "Instaliranje..."
 setup.status.install_failed: "Instalacija nije uspela: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Pritisnite Enter za prijavu, Esc za povratak"  # {Locked="E
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Razmišljam…"
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Dobrodošli u Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Dobrodošli u Inteligentni Terminal!"
+chat.welcome_disclaimer: "Inteligentni Terminal koristi AI. Proverite greške."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Automatski dijagnostikovan nedavni neuspeh komande"
+chat.turn_canceled: "(otkazano)"
+chat.turn_executed: "→ izvršeno: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Pitajte bilo šta, / za komande.."  # {Locked="/"}
@@ -75,10 +79,17 @@ commands.help_title: " Pomoć "
 commands.help_header: "Komande sa kosom crtom — otkucajte / u polju za unos."
 commands.help_escape_hint: "  //text     Pošalji doslovno '/' (zaobilazi parser komandi)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Zatvori ovu pomoć"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Prikaži ovu listu komandi"
+commands.clear.summary: "Obriši istoriju ćaskanja (zadržava sesiju)"
+commands.new.summary: "Pokreni novu sesiju ACP (odbacuje istoriju)"  # {Locked="ACP"}
+commands.restart.summary: "Ponovo pokreni agenta"
+commands.stop.summary: "Otkaži upit u toku"
+commands.sessions.summary: "Otvori birač prethodnih sesija (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ za navigaciju • Enter za izbor • Esc za otkazivanje)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ za navigaciju • ← → za prebacivanje dugmadi • Enter za izbor • Esc za otkazivanje)"
 recommendations.button_run_command: "[ Pokreni komandu ]"
 recommendations.button_insert_in_terminal: "Ubaci u Terminal"
 recommendations.button_open_in_new_tab: "Otvori u novoj kartici ↵"
@@ -115,25 +126,42 @@ agent.custom.auth_hint: "Proverite da je %{name} instaliran i da se nalazi u PAT
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Učitavanje..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ za navigaciju • Enter za otvaranje sesije u novoj kartici • Shift+enter za otvaranje sesije u panelu agenta • Esc za izlaz)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ za navigaciju • Enter za otvaranje sesije • Esc za izlaz)"
 agents.status.active: "Aktivan"
 agents.status.waiting_for_input: "Čeka na unos"
 agents.status.error: "Greška"
 agents.status.idle: "Neaktivan"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. za prikaz/skrivanje panela agenta • Ctrl+Alt+/ za prikaz/skrivanje sesije agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. za prikaz/skrivanje panela agenta • Ctrl+Shift+/ za prikaz/skrivanje sesije agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Pokretanje agenta..."
 connection.reconnecting: "Ponovno povezivanje..."
+connection.connecting_activity: "Povezivanje sa agentom…"
+connection.lost: "Veza sa agentom je izgubljena. Unesite /restart da biste se ponovo povezali."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Otkazano."
 system.no_prompt_in_flight: "Nema aktivnog zahteva."
 system.authentication_failed: "Autentifikacija nije uspela"
 system.command_copied_retry: "Komanda je kopirana — pokrenite je u drugom terminalu, zatim pritisnite Enter za ponovni pokušaj"  # {Locked="Enter"}
+system.stopped_max_tokens: "Odgovor je odsečen nakon dostizanja izlaznog ograničenja modela."
+system.stopped_max_turn_requests: "Agent se zaustavio nakon dostizanja ograničenja zahteva za ovaj potez."
+system.stopped_refusal: "Agent je odbio da nastavi sa ovim zahtevom."
+system.agent_busy: "Agent je zauzet na ovoj kartici — sačekajte da se trenutni upit završi."
+system.resuming_session: "Nastavlja se sesija %{session_id}..."
+system.unknown_command: "Nepoznata komanda \"%{command}\" — poslata kao upit. Unesite /help za spisak."  # {Locked="/help"}
+system.busy_use_stop: "Sačekajte da se trenutni upit završi ili prvo upotrebite /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nije moguće fokusirati sesiju %{session_id}: izgleda aktivna, ali još nije povezan GUID okna. Pokušajte ponovo za trenutak."
+system.cannot_resume_no_load_session: "Nije moguće nastaviti u oknu agenta: %{agent} nije oglasio mogućnost ACP `loadSession`. Pritisnite Enter (bez Shift) da umesto toga nastavite u novom terminalskom oknu."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nije moguće nastaviti sesiju agenta %{agent}: ovaj agent nema zastavicu u stilu `--resume`. Pritisnite Shift+Enter da pokušate nastaviti unutar okna agenta putem ACP-a."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nije moguće nastaviti sesiju %{session_id}: njen izvorni agent nije poznat ovoj verziji WTA."
+system.cannot_resume_phantom_via_flag: "Nije moguće nastaviti sesiju agenta %{agent} %{session_id}: pokrenuta je, ali nikada nije prikupila razgovor, pa bi sam %{agent} odbio nastavak. Red se uklanja."
+system.cannot_resume_phantom_via_load: "Nije moguće nastaviti sesiju agenta %{agent} %{session_id}: pokrenuta je, ali nikada nije prikupila razgovor, pa bi %{agent} odbio učitavanje. Red se uklanja."
+system.fallback.this_agent: "ovaj agent"
+system.fallback.connected_agent: "povezani agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nisu pronađeni prozori."
@@ -171,3 +199,25 @@ hooks.installed_but_disabled: "⚠ instaliran ali onemogućen"
 hooks.not_installed: "✗ nije instaliran"
 hooks.uninstall_skipped: "preskočeno (CLI nije u PATH)"
 hooks.install_attempted: "Pokušana instalacija wt-agent-hooks (idempotentno). Pokrenite `wta hooks status` za pregled rezultata. Dnevnik praćenja: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
+time.just_now: "upravo sada"
+time.minute_singular: "pre 1 minut"
+time.minutes_other: "pre %{count} minuta"
+time.hour_singular: "pre 1 sat"
+time.hours_other: "pre %{count} sati"
+time.day_singular: "pre 1 dan"
+time.days_other: "pre %{count} dana"
+
+# ── Izvršavanje preporuke (src/coordinator.rs) ──────────────────────────────
+system.choice_execution_failed: "Izbor %{choice} nije uspeo: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Izaberite model za ovo okno (/model <id> za direktno prebacivanje)"  # {Locked="/model","<id>"}
+model_picker.title: "Izaberite model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Povezani agent nije oglasio nijedan model koji se može izabrati."
+system.model_set: "Model za ovo okno je podešen na %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Nepoznat model %{model} — unesite /model da vidite dostupnu listu."  # {Locked="%{model}","/model"}

@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Tere tulemast Intelligent Terminali!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Tere tulemast Nutikas Terminali!"
 setup.title.agent_missing: "Agenti ei leitud"
 setup.title.agent_error: "Agendiga ühenduse loomine nurjus"
 setup.title.switch_agent: "Vaheta agenti"
@@ -8,21 +8,21 @@ setup.title.not_available: "Agent pole saadaval"
 setup.title.sign_in: "Sisselogimine nõutav"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Teie agent \"%{agent}\" pole installitud. Järgige allolevaid juhiseid selle installimiseks. Agendi vahetamiseks avage Settings."
-setup.subtitle.agent_missing: "Teie agent \"%{agent}\" pole installitud. Installige see käsitsi uuesti ja proovige seejärel uuesti. Agendi vahetamiseks avage Settings."
-setup.subtitle.copilot_auth: "Teie agent \"%{agent}\" nõuab autentimist. Järgige allolevaid juhiseid sisselogimiseks. Agendi vahetamiseks avage Settings."
-setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi CLI kaudu ja proovige seejärel uuesti. Agendi vahetamiseks avage Settings."
+setup.subtitle.copilot_missing: "Teie agent \"%{agent}\" pole installitud. Järgige allolevaid juhiseid selle installimiseks. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Teie agent \"%{agent}\" pole installitud. Installige see käsitsi uuesti ja proovige seejärel uuesti. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Teie agent \"%{agent}\" nõuab autentimist. Järgige allolevaid juhiseid sisselogimiseks. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi kaudu ja valige seejärel allpool \"Olen sisse loginud\". Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Valige vaikimisi agendi CLI, mida soovite kasutada Intelligent Terminalis. Saate"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Valige vaikeagent, mida soovite kasutada Nutikas Terminalis. Saate"
 setup.description.fre_line2: "avada Settings, et oma tööruumi seadistada ja konfigureerida."
 
-setup.option.reinstall: "Installi %{agent} uuesti"
-setup.option.reinstall_hint: "(Installitakse automaatselt)"
+setup.option.install: "Installi %{agent}"
+setup.option.install_hint: "(Installitakse automaatselt)"
 setup.option.signin: "Logi sisse teenusesse %{agent}"
-setup.option.retry_detection: "Proovi tuvastamist uuesti"
-setup.option.retry_auth: "Olen sisse loginud — proovi ühendust uuesti"
-setup.option.retry_connection: "Proovi ühendust uuesti"
+setup.option.retry_detection: "Proovi uuesti"
+setup.option.retry_auth: "Olen sisse loginud — proovi uuesti ühendust luua"
+setup.option.retry_connection: "Proovi uuesti ühendust luua"
 setup.option.switch_to: "Lülitu üle: %{agent}"
 setup.status.installing: "Installimine..."
 setup.status.install_failed: "Installimine nurjus: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Vajutage Enter sisselogimiseks, Esc tagasi minemiseks"  # {
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Mõtleb..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Tere tulemast Intelligent Terminali!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Tere tulemast Nutikas Terminali!"
+chat.welcome_disclaimer: "Nutikas Terminal kasutab AI-d. Kontrollige vigu."
 chat.plan_header: "Plaan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Hiljutine käsutõrge automaatselt diagnoositud"
+chat.turn_canceled: "(tühistatud)"
+chat.turn_executed: "→ käivitatud: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Küsi mida iganes, / käskude jaoks.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Saada sõnasõnaline '/' (väldib käsu
 commands.help_close_hint: "  Esc        Sulge see abi"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ navigeerimiseks • Enter valimiseks • Esc tühistamiseks)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ navigeerimiseks • ← → nuppude vahetamiseks • Enter valimiseks • Esc tühistamiseks)"
 recommendations.button_run_command: "[ Käivita käsk ]"
 recommendations.button_insert_in_terminal: "Lisa terminali"
 recommendations.button_open_in_new_tab: "Ava uuel vahekaardil ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Veenduge, et %{name} on installitud ja teie PATH-is."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laadimine..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ navigeerimiseks • Enter seansi käivitamiseks uuel vahekaardil • Shift+enter seansi käivitamiseks agendipaneelil • Esc väljumiseks)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ navigeerimiseks • Enter seansi käivitamiseks • Esc väljumiseks)"
 agents.status.active: "Aktiivne"
 agents.status.waiting_for_input: "Ootab sisendit"
 agents.status.error: "Viga"
 agents.status.idle: "Jõude"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. agendipaneeli kuvamiseks/peitmiseks • Ctrl+Alt+/ agendiseansi kuvamiseks/peitmiseks)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. agendipaneeli kuvamiseks/peitmiseks • Ctrl+Shift+/ agendiseansi kuvamiseks/peitmiseks)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agendi käivitamine..."
 connection.reconnecting: "Taasühendamine..."
+connection.connecting_activity: "Agendiga ühenduse loomine…"
+connection.lost: "Ühendus agendiga katkes. Uuesti ühendamiseks tippige /restart."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Tühistatud."
 system.no_prompt_in_flight: "Aktiivset päringut pole."
 system.authentication_failed: "Autentimine nurjus"
 system.command_copied_retry: "Käsk kopeeritud — käivitage see teises terminalis ja vajutage seejärel Enter uuesti proovimiseks"  # {Locked="Enter"}
+system.stopped_max_tokens: "Vastus katkestati pärast mudeli väljundpiiri saavutamist."
+system.stopped_max_turn_requests: "Agent peatus pärast selle vooru päringupiiri saavutamist."
+system.stopped_refusal: "Agent keeldus selle päringuga jätkamast."
+system.agent_busy: "Agent on sellel vahekaardil hõivatud — oodake, kuni praegune viip lõpeb."
+system.resuming_session: "Seansi %{session_id} jätkamine..."
+system.unknown_command: "Tundmatu käsk \"%{command}\" — saadeti viibana. Loendi jaoks tippige /help."  # {Locked="/help"}
+system.busy_use_stop: "Oodake, kuni praegune viip lõpeb, või kasutage esmalt /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Seanssi %{session_id} ei saa fookusesse võtta: see näib olevat aktiivne, kuid ühtegi paani GUID-i pole veel seotud. Proovige hetke pärast uuesti."
+system.cannot_resume_no_load_session: "Agendipaanil ei saa jätkata: %{agent} ei reklaaminud ACP `loadSession` võimekust. Vajutage Enter (ilma Shiftita), et jätkata selle asemel uuel terminalipaanil."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "%{agent} seanssi ei saa jätkata: sellel agendil pole `--resume`-stiilis lippu. Vajutage Shift+Enter, et proovida jätkamist agendipaani sees ACP kaudu."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Seanssi %{session_id} ei saa jätkata: selle lähteagent on sellele WTA järgule tundmatu."
+system.cannot_resume_phantom_via_flag: "%{agent} seanssi %{session_id} ei saa jätkata: see käivitati, kuid vestlust ei kogunenud, seega lükkaks %{agent} ise jätkamise tagasi. Rida eemaldatakse."
+system.cannot_resume_phantom_via_load: "%{agent} seanssi %{session_id} ei saa jätkata: see käivitati, kuid vestlust ei kogunenud, seega lükkaks %{agent} laadimise tagasi. Rida eemaldatakse."
+system.fallback.this_agent: "see agent"
+system.fallback.connected_agent: "ühendatud agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Aknaid ei leitud."
@@ -171,3 +192,22 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
+time.just_now: "just praegu"
+time.minute_singular: "%{count} minut tagasi"
+time.minutes_other: "%{count} minutit tagasi"
+time.hour_singular: "%{count} tund tagasi"
+time.hours_other: "%{count} tundi tagasi"
+time.day_singular: "%{count} päev tagasi"
+time.days_other: "%{count} päeva tagasi"
+
+# ── Soovituse täitmine (src/coordinator.rs) ─────────────────────────────────
+system.choice_execution_failed: "Valik %{choice} nurjus: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Valige selle paani mudel (/model <id> otse vahetamiseks)"  # {Locked="/model","<id>"}
+model_picker.title: "Valige mudel (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Ühendatud agent ei reklaaminud ühtegi valitavat mudelit."
+system.model_set: "Selle paani mudeliks määrati %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Tundmatu mudel %{model} — tippige /model saadaolevate mudelite loendi nägemiseks."  # {Locked="%{model}","/model"}

@@ -1,6 +1,6 @@
 # Konfigurazio-pantailaren tituluak
-# {Locked="Intelligent Terminal"} - produktuaren izena, ez itzuli
-setup.title.first_run: "Ongi etorri Intelligent Terminal-era!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Ongi etorri Terminal Adimenduna-era!"
 setup.title.agent_missing: "Agentea ez da aurkitu"
 setup.title.agent_error: "Agentearekin konektatzeak huts egin du"
 setup.title.switch_agent: "Aldatu agentea"
@@ -8,21 +8,21 @@ setup.title.not_available: "Agentea ez dago erabilgarri"
 setup.title.sign_in: "Saioa hastea beharrezkoa da"
 
 # %{agent} exekuzio-unean agentearen bistaratze-izenarekin ordezkatzen da.
-setup.subtitle.copilot_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. Jarraitu beheko urratsak instalatzeko. Agenteak aldatzeko, joan Settings atalera."
-setup.subtitle.agent_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. Birinstalatu eskuz, eta saiatu berriro. Agenteak aldatzeko, joan Settings atalera."
-setup.subtitle.copilot_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Jarraitu beheko urratsak saioa hasteko. Agenteak aldatzeko, joan Settings atalera."
-setup.subtitle.agent_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Hasi saioa agentearen CLI bidez, eta saiatu berriro. Agenteak aldatzeko, joan Settings atalera."
+setup.subtitle.copilot_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. Jarraitu beheko urratsak instalatzeko. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
+setup.subtitle.agent_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. Birinstalatu eskuz, eta saiatu berriro. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
+setup.subtitle.copilot_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Jarraitu beheko urratsak saioa hasteko. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
+setup.subtitle.agent_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Hasi saioa agentearen bidez, eta hautatu \"Saioa hasi dut\" behean. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
 
-# {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Aukeratu Intelligent Terminal-en erabili nahi duzun agente CLI lehenetsia. Hau egin dezakezu:"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
+setup.description.fre_line1: "Aukeratu Terminal Adimenduna-en erabili nahi duzun agente CLI lehenetsia. Hau egin dezakezu:"
 setup.description.fre_line2: "joan Settings atalera zure lan-eremua konfiguratu eta ezartzeko."
 
-setup.option.reinstall: "Birinstalatu %{agent}"
-setup.option.reinstall_hint: "(Automatikoki instalatuko da)"
+setup.option.install: "Instalatu %{agent}"
+setup.option.install_hint: "(Automatikoki instalatuko da)"
 setup.option.signin: "Hasi saioa %{agent}(e)n"
-setup.option.retry_detection: "Saiatu berriro detekzioa"
-setup.option.retry_auth: "Saioa hasi dut — saiatu berriro konexioa"
-setup.option.retry_connection: "Saiatu berriro konexioa"
+setup.option.retry_detection: "Saiatu berriro"
+setup.option.retry_auth: "Saioa hasi dut — saiatu konektatzen berriro"
+setup.option.retry_connection: "Saiatu konektatzen berriro"
 setup.option.switch_to: "Aldatu %{agent}(e)ra"
 setup.status.installing: "Instalatzen..."
 setup.status.install_failed: "Instalazioak huts egin du: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Sakatu Enter saioa hasteko, Esc atzera joateko"  # {Locked=
 
 # ── Txat-ikuspegia (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Pentsatzen…"
-# {Locked="Intelligent Terminal"} - produktuaren izena, ez itzuli
-chat.welcome_title: "Ongi etorri Intelligent Terminal-era!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Ongi etorri Terminal Adimenduna-era!"
+chat.welcome_disclaimer: "Terminal Adimenduna-ek AI erabiltzen du. Egiaztatu akatsak."
 chat.plan_header: "Plana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Azken komando-hutsegite bat automatikoki diagnostikatua"
+chat.turn_canceled: "(bertan behera utzita)"
+chat.turn_executed: "→ exekutatuta: %{title}"
 
 # ── Sarrera-leku-markak (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Galdetu edozer, / komandoetarako.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Bidali '/' literala (ihes komando-anali
 commands.help_close_hint: "  Esc        Itxi laguntza hau"  # {Locked="Esc"}
 
 # ── Gomendio-panela (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - tekla-izenak eta Itzuli-tekla glifoa, ez itzuli
-recommendations.nav_hint: "(↑ ↓ nabigatzeko • Enter hautatzeko • Esc bertan behera uzteko)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - tekla-izenak eta Itzuli-tekla glifoa, ez itzuli
+recommendations.nav_hint: "(↑ ↓ nabigatzeko • ← → ekintzak aldatzeko • Enter hautatzeko • Esc bertan behera uzteko)"
 recommendations.button_run_command: "[ Exekutatu komandoa ]"
 recommendations.button_insert_in_terminal: "Txertatu Terminalean"
 recommendations.button_open_in_new_tab: "Ireki Fitxa Berrian ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Ziurtatu %{name} instalatuta dagoela eta zure PATH-ean 
 
 # ── Agenteen ikuspegia (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Kargatzen..."
-# {Locked="Enter","Shift+enter","Esc"} - tekla-konbinazioak, ez itzuli
-agents.footer_hint: "(↑ ↓ nabigatzeko • Enter saioa fitxa berrian abiarazteko • Shift+enter saioa agente-panelean abiarazteko • Esc irteteko)"
+# {Locked="Enter","Esc","↑","↓"} - tekla-konbinazioak, ez itzuli
+agents.footer_hint: "(↑ ↓ nabigatzeko • Enter saioa abiarazteko • Esc irteteko)"
 agents.status.active: "Aktiboa"
 agents.status.waiting_for_input: "Sarreraren zain"
 agents.status.error: "Errorea"
 agents.status.idle: "Inaktibo"
 
 # ── Diseinu-ongietorri argibidea (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. agente-panela erakusteko/ezkutatzeko • Ctrl+Alt+/ agente-saioa erakusteko/ezkutatzeko)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. agente-panela erakusteko/ezkutatzeko • Ctrl+Shift+/ agente-saioa erakusteko/ezkutatzeko)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Konexio-egoera ────────────────────────────────────────────────────────
 connection.starting: "Agentea abiarazten..."
 connection.reconnecting: "Birkonektatzen..."
+connection.connecting_activity: "Agentearekin konektatzen…"
+connection.lost: "Agentearekiko konexioa galdu da. Idatzi /restart berriro konektatzeko."  # {Locked="/restart"}
 
 # ── Sistema-mezuak (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Bertan behera utzia."
 system.no_prompt_in_flight: "Ez dago gonbidapenik abian."
 system.authentication_failed: "Autentifikazioak huts egin du"
 system.command_copied_retry: "Komandoa kopiatu da — exekutatu beste terminal batean, eta sakatu Enter berriro saiatzeko"  # {Locked="Enter"}
+system.stopped_max_tokens: "Erantzuna eten egin da modeloaren irteera-muga gainditu ondoren."
+system.stopped_max_turn_requests: "Agentea gelditu egin da txanda honetako eskaera-muga gainditu ondoren."
+system.stopped_refusal: "Agenteak eskaera honekin jarraitzeari uko egin dio."
+system.agent_busy: "Agentea lanpetuta dago fitxa honetan — itxaron uneko gonbita amaitu arte."
+system.resuming_session: "%{session_id} saioa berrekiten..."
+system.unknown_command: "Komando ezezaguna \"%{command}\" — gonbita gisa bidali da. Idatzi /help zerrenda ikusteko."
+system.busy_use_stop: "Itxaron uneko gonbita amaitu arte, edo erabili /stop lehenik."
+system.cannot_focus_session: "Ezin da %{session_id} saioa fokuratu: aktibo dagoela dirudi, baina oraindik ez dago panelaren GUIDik lotuta. Saiatu berriro une batean."
+system.cannot_resume_no_load_session: "Ezin da agente-panelean berrekin: %{agent} agenteak ez du ACP `loadSession` gaitasuna iragarri. Sakatu Enter (Shift gabe) terminal-panel berri batean berrekiteko."
+system.cannot_resume_no_resume_flag: "Ezin da %{agent} saioa berrekin: agente honek ez du `--resume` estiloko banderarik. Sakatu Shift+Enter ACP bidez agente-panelaren barruan berrekiten saiatzeko."
+system.cannot_resume_unknown_agent: "Ezin da %{session_id} saioa berrekin: bere jatorrizko agentea ezezaguna da eraikuntza honentzat."
+system.cannot_resume_phantom_via_flag: "Ezin da %{agent} saioa %{session_id} berrekin: hasi zen, baina ez zuen inoiz elkarrizketarik metatu; beraz, %{agent} agenteak berak berrekitea baztertuko luke. Errenkada kentzen."
+system.cannot_resume_phantom_via_load: "Ezin da %{agent} saioa %{session_id} berrekin: hasi zen, baina ez zuen inoiz elkarrizketarik metatu; beraz, %{agent} agenteak karga baztertuko luke. Errenkada kentzen."
+system.fallback.this_agent: "agente hau"
+system.fallback.connected_agent: "konektatutako agentea"
 
 # ── CLI irteera exekuzio-unean (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ez da leihorik aurkitu."
@@ -171,3 +192,22 @@ hooks.installed_but_disabled: "⚠ instalatuta baina desgaituta"
 hooks.not_installed: "✗ instalatu gabe"
 hooks.uninstall_skipped: "saltatu da (CLI ez dago PATH-ean)"
 hooks.install_attempted: "wt-agent-hooks instalatzea saiatu da (idempotentea). Exekutatu `wta hooks status` emaitza ikusteko. Aztarna-loga: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "oraintxe"
+time.minute_singular: "duela %{count} minutu"
+time.minutes_other: "duela %{count} minutu"
+time.hour_singular: "duela %{count} ordu"
+time.hours_other: "duela %{count} ordu"
+time.day_singular: "duela %{count} egun"
+time.days_other: "duela %{count} egun"
+
+# ── Gomendioaren exekuzioa (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "%{choice} aukera huts egin du: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Aukeratu panel honetarako modeloa (/model <id> zuzenean aldatzeko)"  # {Locked="/model","<id>"}
+model_picker.title: "Hautatu modeloa (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Konektatutako agenteak ez du modelo hautagarririk iragarri."
+system.model_set: "Panel honetarako modeloa %{model} gisa ezarri da."  # {Locked="%{model}"}
+system.model_unknown: "%{model} modelo ezezaguna — idatzi /model erabilgarri dagoen zerrenda ikusteko."  # {Locked="%{model}","/model"}

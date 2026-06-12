@@ -32,7 +32,7 @@
   <Description>
     这是 Windows 终端的预览版本，其中包含最新功能。Windows 终端是一款新式、快速、高效、强大且高效的终端应用程序，适用于命令行工具和命令提示符，PowerShell和 WSL 等 Shell 用户。主要功能包括多个选项卡、窗格、Unicode、和 UTF-8 字符支持，GPU 加速文本渲染引擎以及自定义主题、样式和配置。
 
-这是一个开源项目，我们欢迎社区参与。如要参与，请访问 https://aka.ms/intelligentterminal/source </Description>
+这是一个开源项目，我们欢迎社区参与。如要参与，请访问 https://aka.ms/intelligent-terminal-source </Description>
   <ShortDescription>
     <!-- Only used for games. This description appears in the Information section of the Game Hub on Xbox One, and helps customers understand more about your game. -->
     
@@ -174,9 +174,9 @@
     
   </AdditionalLicenseTerms>
   <WebsiteURL>
-    https://aka.ms/intelligentterminal/source</WebsiteURL>
+    https://aka.ms/intelligent-terminal-source</WebsiteURL>
   <SupportContactInfo>
-    https://aka.ms/intelligentterminal/feedback</SupportContactInfo>
+    https://aka.ms/intelligent-terminal-feedback</SupportContactInfo>
   <PrivacyPolicyURL>
-    https://aka.ms/intelligentterminal/privacy</PrivacyPolicyURL>
+    https://aka.ms/intelligent-terminal-privacy</PrivacyPolicyURL>
 </ProductDescription>

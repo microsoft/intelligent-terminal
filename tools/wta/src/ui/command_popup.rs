@@ -6,20 +6,25 @@
 //! lists every command with full descriptions.
 
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 
+use super::popup;
 use crate::app::App;
 use crate::commands::{CommandSpec, REGISTRY};
 use crate::theme;
 
 const POPUP_MAX_VISIBLE: usize = 6;
-const POPUP_BORDER_HEIGHT: u16 = 2;
 
 /// Per-frame state captured from the [`App`] so callers don't need to know
 /// the popup internals.
 pub struct PopupState<'a> {
     pub candidates: &'a [&'static CommandSpec],
     pub selected: usize,
+    /// Effective model for the active pane (per-pane `/model` override, else
+    /// the global one). Appended to the `/model` row so the user sees what
+    /// they're currently on while typing the command. `None` when no model
+    /// is known yet.
+    pub current_model: Option<String>,
 }
 
 /// Render the autocomplete popup just above `input_area`. If there isn't
@@ -32,18 +37,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
     }
 
     let visible = state.candidates.len().min(POPUP_MAX_VISIBLE) as u16;
-    let height = visible + POPUP_BORDER_HEIGHT;
-    let width = input_area.width;
-
-    // Prefer above; fall back to below if there's no room.
-    let area = if input_area.y >= height {
-        Rect::new(input_area.x, input_area.y - height, width, height)
-    } else {
-        // Anchor right below; clamp to frame so we don't render off-screen.
-        let frame_area = frame.area();
-        let y = (input_area.y + input_area.height).min(frame_area.y + frame_area.height.saturating_sub(height));
-        Rect::new(input_area.x, y, width, height)
-    };
+    let area = popup::anchored_above(frame, input_area, visible);
 
     frame.render_widget(Clear, area);
 
@@ -51,22 +45,24 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         .candidates
         .iter()
         .map(|spec| {
-            let line = Line::from(vec![
+            let mut spans = vec![
                 Span::styled(format!(" /{:<8} ", spec.name), theme::INPUT_TEXT),
-                Span::styled(spec.summary.to_string(), theme::DIM),
-            ]);
-            ListItem::new(line)
+                Span::styled(spec.summary(), theme::DIM),
+            ];
+            // The `/model` row shows the pane's current model so the user can
+            // see what they're on before opening the picker.
+            if spec.name == "model" {
+                if let Some(model) = state.current_model.as_deref() {
+                    spans.push(Span::styled("  → ", theme::DIM));
+                    spans.push(Span::styled(model, theme::INPUT_TEXT));
+                }
+            }
+            ListItem::new(Line::from(spans))
         })
         .collect();
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(theme::INPUT_BORDER)
-        .style(Style::default().bg(theme::INPUT_BG))
-        .title(t!("commands.popup_title").into_owned());
-
     let list = List::new(items)
-        .block(block)
+        .block(popup::block(t!("commands.popup_title").into_owned()))
         .highlight_style(theme::SELECTED)
         .highlight_symbol("> ");
 
@@ -91,7 +87,7 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
     .chain(REGISTRY.iter().map(|spec| {
         Line::from(vec![
             Span::styled(format!("  /{:<8}  ", spec.name), theme::INPUT_TEXT),
-            Span::styled(spec.summary.to_string(), theme::DIM),
+            Span::styled(spec.summary(), theme::DIM),
         ])
     }))
     .chain(std::iter::once(Line::default()))
@@ -113,12 +109,7 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
 
     frame.render_widget(Clear, modal);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(theme::INPUT_BORDER)
-        .style(Style::default().bg(theme::INPUT_BG))
-        .title(t!("commands.help_title").into_owned());
-
-    let paragraph = Paragraph::new(lines).block(block);
+    let paragraph =
+        Paragraph::new(lines).block(popup::block(t!("commands.help_title").into_owned()));
     frame.render_widget(paragraph, modal);
 }

@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Üdvözli az Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Üdvözli az Intelligens Terminál!"
 setup.title.agent_missing: "Az ügynök nem található"
 setup.title.agent_error: "Az ügynökhöz való kapcsolódás sikertelen"
 setup.title.switch_agent: "Ügynök váltása"
@@ -8,21 +8,21 @@ setup.title.not_available: "Az ügynök nem érhető el"
 setup.title.sign_in: "Bejelentkezés szükséges"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Kövesse az alábbi lépéseket a telepítéshez. Az ügynök váltásához lépjen a Settings oldalra."
-setup.subtitle.agent_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Telepítse újra manuálisan, majd próbálja újra. Az ügynök váltásához lépjen a Settings oldalra."
-setup.subtitle.copilot_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Kövesse az alábbi lépéseket a bejelentkezéshez. Az ügynök váltásához lépjen a Settings oldalra."
-setup.subtitle.agent_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Jelentkezzen be az ügynök CLI-n keresztül, majd próbálja újra. Az ügynök váltásához lépjen a Settings oldalra."
+setup.subtitle.copilot_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Kövesse az alábbi lépéseket a telepítéshez. Az ügynök váltásához lépjen a Intelligens Terminál Settings > Agent oldalra."
+setup.subtitle.agent_missing: "A(z) \"%{agent}\" ügynök nincs telepítve. Telepítse újra manuálisan, majd próbálja újra. Az ügynök váltásához lépjen a Intelligens Terminál Settings > Agent oldalra."
+setup.subtitle.copilot_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Kövesse az alábbi lépéseket a bejelentkezéshez. Az ügynök váltásához lépjen a Intelligens Terminál Settings > Agent oldalra."
+setup.subtitle.agent_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Jelentkezzen be az ügynökön keresztül, majd válassza a \"Bejelentkeztem\" lehetőséget alul. Az ügynök váltásához lépjen a Intelligens Terminál Settings > Agent oldalra."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Válassza ki az Intelligent Terminal alkalmazásban használni kívánt alapértelmezett ügynök CLI-t. A"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Válassza ki az Intelligens Terminál alkalmazásban használni kívánt alapértelmezett ügynököt. A"
 setup.description.fre_line2: "Settings oldalon konfigurálhatja és beállíthatja a munkaterületét."
 
-setup.option.reinstall: "%{agent} újratelepítése"
-setup.option.reinstall_hint: "(Automatikusan telepítve lesz)"
+setup.option.install: "%{agent} telepítése"
+setup.option.install_hint: "(Automatikusan telepítve lesz)"
 setup.option.signin: "Bejelentkezés a következőbe: %{agent}"
-setup.option.retry_detection: "Észlelés újrapróbálása"
-setup.option.retry_auth: "Bejelentkeztem — kapcsolódás újrapróbálása"
-setup.option.retry_connection: "Kapcsolódás újrapróbálása"
+setup.option.retry_detection: "Próbálja újra"
+setup.option.retry_auth: "Bejelentkeztem — próbálja újra csatlakozni"
+setup.option.retry_connection: "Próbálja újra csatlakozni"
 setup.option.switch_to: "Váltás erre: %{agent}"
 setup.status.installing: "Telepítés..."
 setup.status.install_failed: "A telepítés sikertelen: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Nyomja meg az Entert a bejelentkezéshez, az Esc-et a vissz
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Gondolkodás..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Üdvözli az Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Üdvözli az Intelligens Terminál!"
+chat.welcome_disclaimer: "Az Intelligens Terminál AI-t használ. Ellenőrizze a hibákat."
 chat.plan_header: "Terv:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Egy közelmúltbeli parancshiba automatikus diagnosztizálása"
+chat.turn_canceled: "(megszakítva)"
+chat.turn_executed: "→ végrehajtva: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Kérdezzen bármit, / a parancsokhoz.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Szó szerinti '/' küldése (megkerüli
 commands.help_close_hint: "  Esc        Súgó bezárása"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ navigáláshoz • Enter kiválasztáshoz • Esc megszakításhoz)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ navigáláshoz • ← → gombok közötti váltáshoz • Enter kiválasztáshoz • Esc megszakításhoz)"
 recommendations.button_run_command: "[ Parancs futtatása ]"
 recommendations.button_insert_in_terminal: "Beszúrás a terminálba"
 recommendations.button_open_in_new_tab: "Megnyitás új lapon ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Győződjön meg róla, hogy a(z) %{name} telepítve va
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Betöltés..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ navigáláshoz • Enter munkamenet indításához új lapon • Shift+enter munkamenet indításához az ügynök panelen • Esc kilépéshez)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ navigáláshoz • Enter munkamenet indításához • Esc kilépéshez)"
 agents.status.active: "Aktív"
 agents.status.waiting_for_input: "Bemenetre vár"
 agents.status.error: "Hiba"
 agents.status.idle: "Tétlen"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. ügynökpanel megjelenítése/elrejtése • Ctrl+Alt+/ ügynökmunkamenet megjelenítése/elrejtése)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. ügynökpanel megjelenítése/elrejtése • Ctrl+Shift+/ ügynökmunkamenet megjelenítése/elrejtése)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Ügynök indítása..."
 connection.reconnecting: "Újrakapcsolódás..."
+connection.connecting_activity: "Kapcsolódás az ügynökhöz…"
+connection.lost: "Megszakadt a kapcsolat az ügynökkel. Az újrakapcsolódáshoz írja be: /restart."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Megszakítva."
 system.no_prompt_in_flight: "Nincs folyamatban lévő kérés."
 system.authentication_failed: "A hitelesítés sikertelen"
 system.command_copied_retry: "Parancs másolva — futtassa egy másik terminálban, majd nyomja meg az Entert az újrapróbálkozáshoz"  # {Locked="Enter"}
+system.stopped_max_tokens: "A válasz megszakadt, miután elérte a modell kimeneti korlátját."
+system.stopped_max_turn_requests: "Az ügynök leállt, miután elérte a kérési korlátját ehhez a fordulóhoz."
+system.stopped_refusal: "Az ügynök elutasította a kérés folytatását."
+system.agent_busy: "Az ügynök elfoglalt ezen a lapon — várja meg, amíg az aktuális kérés befejeződik."
+system.resuming_session: "A(z) %{session_id} munkamenet folytatása..."
+system.unknown_command: "Ismeretlen parancs: \"%{command}\" — kérésként elküldve. A listához írja be: /help."  # {Locked="/help"}
+system.busy_use_stop: "Várja meg, amíg az aktuális kérés befejeződik, vagy előbb használja a /stop parancsot."  # {Locked="/stop"}
+system.cannot_focus_session: "Nem lehet fókuszba helyezni a(z) %{session_id} munkamenetet: élőnek tűnik, de még nincs hozzárendelve panel-GUID. Próbálja újra egy pillanat múlva."
+system.cannot_resume_no_load_session: "Nem lehet folytatni az ügynökpanelben: %{agent} nem hirdette meg az ACP `loadSession` képességet. Nyomja meg az Enter billentyűt (Shift nélkül), ha inkább új terminálpanelben szeretné folytatni."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nem lehet folytatni a(z) %{agent} munkamenetet: ennek az ügynöknek nincs `--resume` stílusú jelzője. Nyomja meg a Shift+Enter billentyűt, hogy ACP-n keresztül próbálja folytatni az ügynökpanelen belül."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nem lehet folytatni a(z) %{session_id} munkamenetet: a forrásügynök ismeretlen ennek a WTA-buildnek."
+system.cannot_resume_phantom_via_flag: "Nem lehet folytatni a(z) %{agent} %{session_id} munkamenetet: elindult, de nem gyűlt benne beszélgetés, ezért maga a(z) %{agent} elutasítaná a folytatást. A sor eltávolítása."
+system.cannot_resume_phantom_via_load: "Nem lehet folytatni a(z) %{agent} %{session_id} munkamenetet: elindult, de nem gyűlt benne beszélgetés, ezért a(z) %{agent} elutasítaná a betöltést. A sor eltávolítása."
+system.fallback.this_agent: "ez az ügynök"
+system.fallback.connected_agent: "a csatlakoztatott ügynök"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nem találhatók ablakok."
@@ -171,3 +192,21 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "épp most"
+time.minute_singular: "%{count} perce"
+time.minutes_other: "%{count} perce"
+time.hour_singular: "%{count} órája"
+time.hours_other: "%{count} órája"
+time.day_singular: "%{count} napja"
+time.days_other: "%{count} napja"
+
+# ── Javaslat végrehajtása (src/coordinator.rs) ──────────────────────────────
+system.choice_execution_failed: "A(z) %{choice}. választás sikertelen: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Válassza ki a modellt ehhez a panelhez (/model <id> a közvetlen váltáshoz)"  # {Locked="/model","<id>"}
+model_picker.title: "Modell kiválasztása (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "A csatlakoztatott ügynök nem hirdetett meg kiválasztható modelleket."
+system.model_set: "A panel modellje erre állítva: %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Ismeretlen modell: %{model} — írja be a /model parancsot az elérhető lista megtekintéséhez."  # {Locked="%{model}","/model"}

@@ -9,6 +9,7 @@
 #include "EnumEntry.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentHooksStatus.h"
+#include "../inc/CustomAgentId.h"
 #include "../inc/WtaProcess.h"
 
 #include <json/json.h>
@@ -67,21 +68,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     winrt::hstring AIAgentsViewModel::_DeriveId(const winrt::hstring& command)
     {
-        const auto str = winrt::to_string(command);
-        const auto pos = str.find(' ');
-        auto token = (pos != std::string::npos) ? str.substr(0, pos) : str;
-        auto slash = token.rfind('\\');
-        if (slash == std::string::npos) slash = token.rfind('/');
-        if (slash != std::string::npos) token = token.substr(slash + 1);
-        for (const auto* ext : { ".exe", ".cmd", ".bat" })
-        {
-            if (token.size() > strlen(ext) && token.substr(token.size() - strlen(ext)) == ext)
-            {
-                token = token.substr(0, token.size() - strlen(ext));
-                break;
-            }
-        }
-        return winrt::to_hstring(token);
+        // Delegate to the header-only helper shared with the unit tests.
+        return ::Microsoft::Terminal::Settings::Model::DeriveCustomAgentId(
+            std::wstring_view{ command });
     }
 
     void AIAgentsViewModel::_AppendAddNewEntry(IObservableVector<Editor::AgentEntry>& list)
@@ -100,9 +89,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         const auto bareId = _DeriveId(customCommand);
         const bool isBuiltIn = _IsKnownAgent(bareId);
-        const auto settingsId = isBuiltIn
-            ? winrt::hstring{ L"custom:" + std::wstring_view{ bareId } }
-            : bareId;
+        // Mirror SaveCustom*: the saved id always carries "custom:".
+        const auto settingsId = winrt::hstring{ L"custom:" + std::wstring_view{ bareId } };
         const auto displayName = isBuiltIn
             ? winrt::hstring{ std::wstring_view{ bareId } + L" (custom)" }
             : bareId;
@@ -121,6 +109,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _GlobalSettings{ globalSettings }
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+
+        // Refresh PATH from the Windows registry so SearchPathW can find
+        // CLIs installed after Terminal launched (e.g. WinGet\Links).
+        try
+        {
+            ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
 
         // ACP-capable agents — use GPO-filtered list so only policy-allowed
         // agents appear in the dropdown. Also skip agents whose CLI isn't
@@ -187,16 +186,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // Pane position list
         _agentPanePositionMap = winrt::single_threaded_map<winrt::hstring, Editor::EnumEntry>();
         std::vector<Editor::EnumEntry> posEntries;
-        static constexpr std::pair<std::wstring_view, std::wstring_view> positions[] = {
-            { L"Bottom", L"bottom" },
-            { L"Right", L"right" },
-            { L"Top", L"top" },
-            { L"Left", L"left" },
+        const std::pair<winrt::hstring, std::wstring_view> positions[] = {
+            { RS_(L"AIAgents_PanePosition_Bottom"), L"bottom" },
+            { RS_(L"AIAgents_PanePosition_Right"), L"right" },
+            { RS_(L"AIAgents_PanePosition_Top"), L"top" },
+            { RS_(L"AIAgents_PanePosition_Left"), L"left" },
         };
         for (const auto& [displayName, value] : positions)
         {
             auto entry = winrt::make<implementation::EnumEntry>(
-                winrt::hstring{ displayName },
+                displayName,
                 winrt::box_value(winrt::hstring{ value }));
             posEntries.emplace_back(entry);
             _agentPanePositionMap.Insert(winrt::hstring{ value }, entry);
@@ -243,9 +242,46 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 m.Description()));
         }
 
+        // Reconcile a *stale* persisted id with the authoritative list.
+        // Only fires when the user has actively configured a specific model
+        // (non-empty) that this agent doesn't advertise — e.g. switching
+        // agents leaves a leftover id. In that case reset to the empty
+        // "agent default" sentinel rather than picking the agent's
+        // "auto"/"default" entry: empty is the unambiguous "send no model
+        // override" state and renders as the ComboBox's "Default"
+        // placeholder, so we never silently mislabel a stale id as a real
+        // model the user didn't choose.
+        //
+        // Empty is already the legitimate "use whatever default the agent
+        // picks" sentinel, so the empty case needs no reconciliation.
+        if (newSize > 0)
+        {
+            const auto current = _GlobalSettings.AcpModel();
+            if (!current.empty())
+            {
+                bool matched = false;
+                for (uint32_t i = 0; i < newSize; ++i)
+                {
+                    if (_acpModelList.GetAt(i).Id() == current)
+                    {
+                        matched = true;
+                        break;
+                    }
+                }
+                if (!matched)
+                {
+                    // Stale leftover id this agent doesn't advertise → reset
+                    // to the empty "agent default" sentinel (send no model
+                    // override), which renders as the "Default" placeholder.
+                    _GlobalSettings.AcpModel(L"");
+                }
+            }
+        }
+
         _NotifyChanges(L"AcpModelList",
                        L"HasAcpModelList",
                        L"ShowAcpModelTextBox",
+                       L"AcpModel",
                        L"CurrentAcpModelEntry");
     }
 
@@ -314,22 +350,26 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     Editor::AcpModelEntry AIAgentsViewModel::CurrentAcpModelEntry()
     {
-        if (!_acpModelList)
-        {
-            return nullptr;
-        }
+        if (!_acpModelList) return nullptr;
         const auto current = _GlobalSettings.AcpModel();
         for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
         {
             const auto entry = _acpModelList.GetAt(i);
-            if (entry.Id() == current)
-            {
-                return entry;
-            }
+            if (entry.Id() == current) return entry;
         }
-        // No match: stale id from a different agent. ComboBox's
-        // PlaceholderText surfaces "Auto" until the probe re-runs
-        // and lands a list this id matches.
+        // Unconfigured case (empty persisted id): return null so the
+        // ComboBox renders its "Default" PlaceholderText. This is the
+        // distinct "agent default — send no model override" state and is
+        // intentionally NOT mapped onto the agent's advertised
+        // "auto"/"default" entry. That advertised entry is a real model in
+        // the agent's support list (e.g. copilot's "auto" router) which,
+        // when explicitly selected, gets forwarded via setSessionModel;
+        // conflating the two would mislabel "no override" (which resolves
+        // to the agent's own server-side default, e.g. claude-sonnet-4.6)
+        // as the "auto" model. The stale-id case (non-empty + no match) is
+        // reset to empty at the data layer by _RebuildAcpModelListFromCache,
+        // so it also lands here and shows the placeholder.
+        // Empty list (probe hasn't run yet) likewise → PlaceholderText.
         return nullptr;
     }
 
@@ -348,15 +388,24 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     bool AIAgentsViewModel::ShowAcpModel()
     {
+        // Show for every built-in agent AND for custom agents. The original
+        // code hid the row for custom:* which then trapped users when a
+        // previously-selected acpModel turned invalid (e.g. credentials
+        // expired) — the stale value was invisible and unclearable.
+        // HasAcpModelList / ShowAcpModelTextBox pick between the dropdown
+        // (when the helper has published available_models via agent_status)
+        // and the free-form textbox fallback.
         if (_isAddingCustomAcpAgent) return false;
-        if (_StartsWithCustom(_GlobalSettings.AcpAgent())) return false;
+        if (_StartsWithCustom(_GlobalSettings.AcpAgent())) return true;
         return _IsKnownAgent(_GlobalSettings.AcpAgent());
     }
 
     bool AIAgentsViewModel::ShowDelegateModel()
     {
+        // Same rationale as ShowAcpModel: show the row for custom delegate
+        // agents so a stale delegateModel value remains visible / clearable.
         if (_isAddingCustomDelegateAgent) return false;
-        if (_StartsWithCustom(_GlobalSettings.DelegateAgent())) return false;
+        if (_StartsWithCustom(_GlobalSettings.DelegateAgent())) return true;
         return _IsKnownAgent(_GlobalSettings.DelegateAgent());
     }
 
@@ -502,12 +551,19 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (_GlobalSettings.IsCustomAgentPolicyLocked()) return;
         if (_customAcpCommand.empty()) return;
         const auto bareId = _DeriveId(_customAcpCommand);
+        // Whitespace-only / quote-only commands derive to an empty id and
+        // would otherwise be saved as a bare "custom:" entry, leaving the
+        // UI with a blank, unusable custom agent. Reject before persisting.
+        if (bareId.empty()) return;
         _GlobalSettings.AcpCustomCommand(_customAcpCommand);
 
+        // Custom agents always carry the "custom:" discriminator — every
+        // downstream consumer (EffectiveAcpAgent policy gate, command-line
+        // resolver, custom-edit/delete UI gates) keys on this prefix.
+        // Storing a bare id silently breaks all of them and makes the page
+        // revert to the default agent on next load.
         const bool isBuiltIn = _IsKnownAgent(bareId);
-        const auto settingsId = isBuiltIn
-            ? winrt::hstring{ L"custom:" + std::wstring_view{ bareId } }
-            : bareId;
+        const auto settingsId = winrt::hstring{ L"custom:" + std::wstring_view{ bareId } };
         const auto displayName = isBuiltIn
             ? winrt::hstring{ std::wstring_view{ bareId } + L" (custom)" }
             : bareId;
@@ -539,12 +595,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (_GlobalSettings.IsCustomAgentPolicyLocked()) return;
         if (_customDelegateCommand.empty()) return;
         const auto bareId = _DeriveId(_customDelegateCommand);
+        // See SaveCustomAcpAgent — reject empty derivations before persisting.
+        if (bareId.empty()) return;
         _GlobalSettings.DelegateCustomCommand(_customDelegateCommand);
 
+        // See SaveCustomAcpAgent — always carry the "custom:" prefix.
         const bool isBuiltIn = _IsKnownAgent(bareId);
-        const auto settingsId = isBuiltIn
-            ? winrt::hstring{ L"custom:" + std::wstring_view{ bareId } }
-            : bareId;
+        const auto settingsId = winrt::hstring{ L"custom:" + std::wstring_view{ bareId } };
         const auto displayName = isBuiltIn
             ? winrt::hstring{ std::wstring_view{ bareId } + L" (custom)" }
             : bareId;
@@ -620,17 +677,50 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
-    // ── AutoFix ──────────────────────────────────────────────────────────
+    // ── Auto error detection ───────────────────────────────────────────────
+
+    bool AIAgentsViewModel::AutoErrorDetectionEnabled() const
+    {
+        return _GlobalSettings.EffectiveAutoErrorDetectionEnabled();
+    }
+
+    void AIAgentsViewModel::AutoErrorDetectionEnabled(bool value)
+    {
+        if (_GlobalSettings.AutoErrorDetectionEnabled() == value) return;
+        _GlobalSettings.AutoErrorDetectionEnabled(value);
+        // Master-detail: detection drives both the suggestion toggle's enabled
+        // state (CanSuggestErrors) and its effective value (EffectiveAutoFix
+        // Enabled flips to false when detection is off), so refresh both. The
+        // stored autoFixEnabled preference is preserved, so re-enabling
+        // detection restores the previous suggestion value rather than forcing
+        // it on.
+        _NotifyChanges(L"HasAutoErrorDetectionEnabled", L"AutoErrorDetectionEnabled",
+                       L"CanSuggestErrors", L"AutoFixEnabled");
+        // Shell integration installation is triggered on Save, not on toggle.
+    }
+
+    bool AIAgentsViewModel::HasAutoErrorDetectionEnabled() const
+    {
+        return _GlobalSettings.HasAutoErrorDetectionEnabled();
+    }
+
+    // ── AutoFix (auto-suggest) ─────────────────────────────────────────────
 
     bool AIAgentsViewModel::AutoFixEnabled() const
     {
+        // Master-detail: suggestion follows detection. EffectiveAutoFixEnabled
+        // returns false whenever detection is off (or GPO blocks autofix), so
+        // the toggle reads Off when the master is off; when detection is on it
+        // reflects the user's stored autoFixEnabled preference.
         return _GlobalSettings.EffectiveAutoFixEnabled();
     }
 
     void AIAgentsViewModel::AutoFixEnabled(bool value)
     {
-        // Reject writes when policy blocks autofix.
-        if (_GlobalSettings.IsAutoFixPolicyLocked())
+        // Reject writes when policy blocks autofix or detection is off (the
+        // toggle is disabled in those cases, but guard against races).
+        if (_GlobalSettings.IsAutoFixPolicyLocked() ||
+            !_GlobalSettings.EffectiveAutoErrorDetectionEnabled())
         {
             return;
         }
@@ -643,6 +733,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     bool AIAgentsViewModel::HasAutoFixEnabled() const
     {
         return _GlobalSettings.HasAutoFixEnabled();
+    }
+
+    bool AIAgentsViewModel::CanSuggestErrors() const
+    {
+        return !_GlobalSettings.IsAutoFixPolicyLocked() &&
+               _GlobalSettings.EffectiveAutoErrorDetectionEnabled();
     }
 
     // ── Pane position ────────────────────────────────────────────────────
@@ -764,22 +860,27 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _copilotCliDetected = false;
             _claudeCliDetected = false;
             _geminiCliDetected = false;
+            _codexCliDetected = false;
             _showCopilotHookRow = false;
             _showClaudeHookRow = false;
             _showGeminiHookRow = false;
+            _showCodexHookRow = false;
             _copilotHooksSubtitle = {};
             _claudeHooksSubtitle = {};
             _geminiHooksSubtitle = {};
+            _codexHooksSubtitle = {};
         }
         else
         {
             const auto* copilot = FindCli(*report, "copilot");
             const auto* claude = FindCli(*report, "claude");
             const auto* gemini = FindCli(*report, "gemini");
+            const auto* codex = FindCli(*report, "codex");
 
             _copilotCliDetected = copilot && copilot->binaryOnPath;
             _claudeCliDetected = claude && claude->binaryOnPath;
             _geminiCliDetected = gemini && gemini->binaryOnPath;
+            _codexCliDetected = codex && codex->binaryOnPath;
 
             const auto hasState = [](const CliStatus* cli) {
                 return cli && (cli->marketplaceRegistered || cli->pluginInstalled);
@@ -787,25 +888,32 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _showCopilotHookRow = hasState(copilot);
             _showClaudeHookRow = hasState(claude);
             _showGeminiHookRow = hasState(gemini);
+            _showCodexHookRow = hasState(codex);
 
             _copilotHooksSubtitle = _ComputeHooksSubtitle(copilot);
             _claudeHooksSubtitle = _ComputeHooksSubtitle(claude);
             _geminiHooksSubtitle = _ComputeHooksSubtitle(gemini);
+            _codexHooksSubtitle = _ComputeHooksSubtitle(codex);
         }
 
         _NotifyChanges(L"IsCopilotCliDetected",
                        L"IsClaudeCliDetected",
                        L"IsGeminiCliDetected",
+                       L"IsCodexCliDetected",
                        L"IsAnyAgentCliDetected",
+                       L"CanInstallAgentHooks",
                        L"ShowCopilotHookRow",
                        L"ShowClaudeHookRow",
                        L"ShowGeminiHookRow",
+                       L"ShowCodexHookRow",
                        L"CopilotHooksSubtitle",
                        L"ClaudeHooksSubtitle",
                        L"GeminiHooksSubtitle",
+                       L"CodexHooksSubtitle",
                        L"ShowCopilotHooksSubtitle",
                        L"ShowClaudeHooksSubtitle",
-                       L"ShowGeminiHooksSubtitle");
+                       L"ShowGeminiHooksSubtitle",
+                       L"ShowCodexHooksSubtitle");
     }
 
     void AIAgentsViewModel::RefreshAgentHooksStatus()
@@ -839,39 +947,48 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         if (_installingAgentHooks || IsAgentSessionHooksPolicyLocked()) return;
         _installingAgentHooks = true;
-        _agentHooksInstallSummary = winrt::hstring{ L"Installing hooks..." };
+        _agentHooksInstallSummary = RS_(L"AIAgents_HooksInstallingSummary");
         _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
-        _RunHooksWtaAsync(L"hooks install", L"Installing hooks...");
+        _RunHooksWtaAsync(L"hooks install");
     }
 
     void AIAgentsViewModel::RemoveCopilotHooks()
     {
         if (_installingAgentHooks) return;
         _installingAgentHooks = true;
-        _agentHooksInstallSummary = winrt::hstring{ L"Removing Copilot hooks..." };
+        _agentHooksInstallSummary = RS_(L"AIAgents_HooksRemovingCopilotSummary");
         _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
-        _RunHooksWtaAsync(L"hooks uninstall --cli copilot", L"Removing Copilot hooks...");
+        _RunHooksWtaAsync(L"hooks uninstall --cli copilot");
     }
 
     void AIAgentsViewModel::RemoveClaudeHooks()
     {
         if (_installingAgentHooks) return;
         _installingAgentHooks = true;
-        _agentHooksInstallSummary = winrt::hstring{ L"Removing Claude hooks..." };
+        _agentHooksInstallSummary = RS_(L"AIAgents_HooksRemovingClaudeSummary");
         _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
-        _RunHooksWtaAsync(L"hooks uninstall --cli claude", L"Removing Claude hooks...");
+        _RunHooksWtaAsync(L"hooks uninstall --cli claude");
     }
 
     void AIAgentsViewModel::RemoveGeminiHooks()
     {
         if (_installingAgentHooks) return;
         _installingAgentHooks = true;
-        _agentHooksInstallSummary = winrt::hstring{ L"Removing Gemini hooks..." };
+        _agentHooksInstallSummary = RS_(L"AIAgents_HooksRemovingGeminiSummary");
         _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
-        _RunHooksWtaAsync(L"hooks uninstall --cli gemini", L"Removing Gemini hooks...");
+        _RunHooksWtaAsync(L"hooks uninstall --cli gemini");
     }
 
-    winrt::fire_and_forget AIAgentsViewModel::_RunHooksWtaAsync(std::wstring wtaArgs, std::wstring /*inProgressMessage*/)
+    void AIAgentsViewModel::RemoveCodexHooks()
+    {
+        if (_installingAgentHooks) return;
+        _installingAgentHooks = true;
+        _agentHooksInstallSummary = RS_(L"AIAgents_HooksRemovingCodexSummary");
+        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
+        _RunHooksWtaAsync(L"hooks uninstall --cli codex");
+    }
+
+    winrt::fire_and_forget AIAgentsViewModel::_RunHooksWtaAsync(std::wstring wtaArgs)
     {
         auto strongThis = get_strong();
         // Capture dispatcher synchronously while we're still on the calling
@@ -882,6 +999,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // `hooks install...` or `hooks uninstall...` and we surface a
         // matching success/failure line in the expander.
         const bool isUninstall = wtaArgs.find(L"uninstall") != std::wstring::npos;
+        const std::wstring locateWtaFailedSummary{ RS_(L"AIAgents_HooksLocateWtaFailedSummary") };
+        const std::wstring hooksRemovedSummary{ RS_(L"AIAgents_HooksRemovedSummary") };
+        const std::wstring hooksInstalledSummary{ RS_(L"AIAgents_HooksInstalledSummary") };
+        const std::wstring hooksRemovalFailedSummary{ RS_(L"AIAgents_HooksRemovalFailedSummary") };
+        const std::wstring hooksInstallationFailedSummary{ RS_(L"AIAgents_HooksInstallationFailedSummary") };
         std::wstring summary;
         bool ok = false;
 
@@ -890,22 +1012,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto wtaPath = ::Microsoft::Terminal::WtaProcess::ResolveWtaExePath();
         if (wtaPath.empty())
         {
-            summary = L"Failed: could not locate wta.exe";
+            summary = locateWtaFailedSummary;
         }
         else
         {
             ok = ::Microsoft::Terminal::WtaProcess::RunWtaAndWait(wtaPath, wtaArgs, 60'000);
             if (ok)
             {
-                summary = isUninstall
-                              ? L"Hooks removed. Restart any open agent CLIs to drop the previous hooks."
-                              : L"Hooks installed. Restart any open agent CLIs to pick up the new hooks.";
+                summary = isUninstall ? hooksRemovedSummary : hooksInstalledSummary;
             }
             else
             {
-                summary = isUninstall
-                              ? L"Hook removal failed. Check %LOCALAPPDATA%\\IntelligentTerminal\\logs\\ for details."
-                              : L"Hooks installation failed. Check %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log for details.";
+                summary = isUninstall ? hooksRemovalFailedSummary : hooksInstallationFailedSummary;
             }
         }
 

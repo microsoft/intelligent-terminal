@@ -1,6 +1,6 @@
 # Titli tal-iskrin tas-setup
-# {Locked="Intelligent Terminal"} - isem il-prodott, tittradux
-setup.title.first_run: "Merħba fl-Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Merħba fl-Terminal Intelliġenti!"
 setup.title.agent_missing: "L-aġent ma nstabx"
 setup.title.agent_error: "Il-konnessjoni mal-aġent falliet"
 setup.title.switch_agent: "Ibdel l-aġent"
@@ -8,21 +8,21 @@ setup.title.not_available: "L-aġent mhuwiex disponibbli"
 setup.title.sign_in: "Hemm bżonn li tidħol"
 
 # %{agent} jiġi sostitwit bl-isem tal-aġent waqt l-eżekuzzjoni.
-setup.subtitle.copilot_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Segwi l-passi t'hawn taħt biex tinstallaw. Biex tibdel l-aġenti, mur għal Settings."
-setup.subtitle.agent_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Erġa' installah manwalment, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Settings."
-setup.subtitle.copilot_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Segwi l-passi t'hawn taħt biex tidħol. Biex tibdel l-aġenti, mur għal Settings."
-setup.subtitle.agent_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Idħol permezz tal-CLI tal-aġent, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Settings."
+setup.subtitle.copilot_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Segwi l-passi t'hawn taħt biex tinstallaw. Biex tibdel l-aġenti, mur għal Terminal Intelliġenti Settings > Agent."
+setup.subtitle.agent_missing: "L-aġent tiegħek \"%{agent}\" mhuwiex installat. Erġa' installah manwalment, imbagħad erġa' pprova. Biex tibdel l-aġenti, mur għal Terminal Intelliġenti Settings > Agent."
+setup.subtitle.copilot_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Segwi l-passi t'hawn taħt biex tidħol. Biex tibdel l-aġenti, mur għal Terminal Intelliġenti Settings > Agent."
+setup.subtitle.agent_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Idħol permezz tal-aġent, imbagħad agħżel \"Dħalt\" hawn taħt. Biex tibdel l-aġenti, mur għal Terminal Intelliġenti Settings > Agent."
 
-# {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Agħżel il-CLI tal-aġent awtomatiku li tixtieq tuża fl-Intelligent Terminal. Tista'"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
+setup.description.fre_line1: "Agħżel l-aġent awtomatiku li tixtieq tuża fl-Terminal Intelliġenti. Tista'"
 setup.description.fre_line2: "tmur għal Settings biex tikkonfigura u twaqqaf l-ispazju tax-xogħol tiegħek."
 
-setup.option.reinstall: "Erġa' installa %{agent}"
-setup.option.reinstall_hint: "(Se jiġi installat awtomatikament)"
+setup.option.install: "Installa %{agent}"
+setup.option.install_hint: "(Se jiġi installat awtomatikament)"
 setup.option.signin: "Idħol f'%{agent}"
-setup.option.retry_detection: "Erġa' pprova d-detezzjoni"
-setup.option.retry_auth: "Dħalt — erġa' pprova l-konnessjoni"
-setup.option.retry_connection: "Erġa' pprova l-konnessjoni"
+setup.option.retry_detection: "Erġa' pprova"
+setup.option.retry_auth: "Dħalt — erġa' pprova tikkonnettja"
+setup.option.retry_connection: "Erġa' pprova tikkonnettja"
 setup.option.switch_to: "Ibdel għal %{agent}"
 setup.status.installing: "Qed jiġi installat..."
 setup.status.install_failed: "L-installazzjoni falliet: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Agħfas Enter biex tidħol, Esc biex tmur lura"  # {Locked=
 
 # ── Vista taċ-ċatt (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Qed jaħseb…"
-# {Locked="Intelligent Terminal"} - isem il-prodott, tittradux
-chat.welcome_title: "Merħba fl-Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Merħba fl-Terminal Intelliġenti!"
+chat.welcome_disclaimer: "Terminal Intelliġenti juża l-AI. Iċċekkja għall-iżbalji."
 chat.plan_header: "Pjan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Falliment riċenti ta' kmand iddijanjostikat awtomatikament"
+chat.turn_canceled: "(ikkanċellat)"
+chat.turn_executed: "→ ġie eżegwit: %{title}"
 
 # ── Placeholders tal-input (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Staqsi kull ħaġa, / għall-kmandat.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Ibgħat '/' litterali (eskejpja l-parse
 commands.help_close_hint: "  Esc        Agħlaq din l-għajnuna"  # {Locked="Esc"}
 
 # ── Pannell tar-rakkomandazzjonijiet (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - ismijiet taċ-ċwievet u glyph taċ-ċavetta Return, tittradux
-recommendations.nav_hint: "(↑ ↓ biex tinnaviga • Enter biex tagħżel • Esc biex tikkanċella)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - ismijiet taċ-ċwievet u glyph taċ-ċavetta Return, tittradux
+recommendations.nav_hint: "(↑ ↓ biex tinnaviga • ← → biex taqleb il-buttuni • Enter biex tagħżel • Esc biex tikkanċella)"
 recommendations.button_run_command: "[ Ħaddem il-kmand ]"
 recommendations.button_insert_in_terminal: "Daħħal fit-Terminal"
 recommendations.button_open_in_new_tab: "Iftaħ f'Tab Ġdid ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Kun żgur li %{name} huwa installat u fuq il-PATH tieg�
 
 # ── Vista tal-aġenti (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Qed jitgħabba..."
-# {Locked="Enter","Shift+enter","Esc"} - kombinazzjonijiet taċ-ċwievet, tittradux
-agents.footer_hint: "(↑ ↓ biex tinnaviga • Enter biex tniedi sessjoni f'tab ġdid • Shift+enter biex tniedi sessjoni fil-pannell tal-aġent • Esc biex toħroġ)"
+# {Locked="Enter","Esc","↑","↓"} - kombinazzjonijiet taċ-ċwievet, tittradux
+agents.footer_hint: "(↑ ↓ biex tinnaviga • Enter biex tniedi sessjoni • Esc biex toħroġ)"
 agents.status.active: "Attiv"
 agents.status.waiting_for_input: "Qed jistenna input"
 agents.status.error: "Żball"
 agents.status.idle: "Inattiv"
 
 # ── Suġġeriment tal-merħba tad-disinn (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. biex turi/taħbi l-pannell tal-aġent • Ctrl+Alt+/ biex turi/taħbi s-sessjoni tal-aġent)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. biex turi/taħbi l-pannell tal-aġent • Ctrl+Shift+/ biex turi/taħbi s-sessjoni tal-aġent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Stat tal-konnessjoni ────────────────────────────────────────────────────────
 connection.starting: "L-aġent qed jibda..."
 connection.reconnecting: "Qed jerġa' jikkonnettja..."
+connection.connecting_activity: "Qed tikkonnettja mal-aġent…"
+connection.lost: "Il-konnessjoni mal-aġent intilfet. Ittajpja /restart biex terġa' tikkonnettja."  # {Locked="/restart"}
 
 # ── Messaġġi tas-sistema (src/app.rs) ────────────────────────────────────────
 system.cancelled: "Ikkanċellat."
 system.no_prompt_in_flight: "L-ebda prompt fl-arja."
 system.authentication_failed: "L-awtentikazzjoni falliet"
 system.command_copied_retry: "Kmand ikkupjat — ħaddmu f'terminal ieħor, imbagħad agħfas Enter biex terġa' tipprova"  # {Locked="Enter"}
+system.stopped_max_tokens: "It-tweġiba nqatgħet wara li ntlaħaq il-limitu tal-output tal-mudell."
+system.stopped_max_turn_requests: "L-aġent waqaf wara li laħaq il-limitu tat-talbiet tiegħu għal din id-dawra."
+system.stopped_refusal: "L-aġent irrifjuta li jkompli b'din it-talba."
+system.agent_busy: "L-aġent huwa okkupat fuq din it-tab — stenna sakemm jintemm il-prompt kurrenti."
+system.resuming_session: "Qed tkompli s-sessjoni %{session_id}..."
+system.unknown_command: "Kmand mhux magħruf \"%{command}\" — intbagħat bħala prompt. Ittajpja /help għal-lista."
+system.busy_use_stop: "Stenna sakemm jintemm il-prompt kurrenti, jew uża /stop l-ewwel."
+system.cannot_focus_session: "Ma tistax tiffoka s-sessjoni %{session_id}: tidher live iżda għad m’hemm l-ebda GUID tal-panew marbut. Erġa’ pprova fi ftit."
+system.cannot_resume_no_load_session: "Ma tistax tkompli fil-panew tal-aġent: %{agent} ma ħabbarx il-kapaċità ACP `loadSession`. Agħfas Enter (mingħajr Shift) biex minflok tkompli f’panew tat-terminal ġdid."
+system.cannot_resume_no_resume_flag: "Ma tistax tkompli s-sessjoni ta’ %{agent}: dan l-aġent m’għandux flag stil `--resume`. Agħfas Shift+Enter biex tipprova tkompli ġewwa l-panew tal-aġent permezz ta’ ACP minflok."
+system.cannot_resume_unknown_agent: "Ma tistax tkompli s-sessjoni %{session_id}: l-aġent tas-sors tagħha mhuwiex magħruf għal din il-build."
+system.cannot_resume_phantom_via_flag: "Ma tistax tkompli s-sessjoni ta’ %{agent} %{session_id}: inbdiet iżda qatt ma akkumulat konverżazzjoni, għalhekk %{agent} innifsu jirrifjuta t-tkomplija. Qed titneħħa r-ringiela."
+system.cannot_resume_phantom_via_load: "Ma tistax tkompli s-sessjoni ta’ %{agent} %{session_id}: inbdiet iżda qatt ma akkumulat konverżazzjoni, għalhekk %{agent} jirrifjuta t-tagħbija. Qed titneħħa r-ringiela."
+system.fallback.this_agent: "dan l-aġent"
+system.fallback.connected_agent: "l-aġent konness"
 
 # ── Output CLI waqt l-eżekuzzjoni (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ma nstabet l-ebda tieqa."
@@ -171,3 +192,21 @@ hooks.installed_but_disabled: "⚠ installat imma diżattivat"
 hooks.not_installed: "✗ mhux installat"
 hooks.uninstall_skipped: "maqbuż (CLI mhix fuq PATH)"
 hooks.install_attempted: "Saret tentattiv biex jiġi installat wt-agent-hooks (idempotenti). Ħaddem `wta hooks status` biex tispezzjona r-riżultat. Log tat-trace: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "issa stess"
+time.minute_singular: "%{count} minuta ilu"
+time.minutes_other: "%{count}-il minuta ilu"
+time.hour_singular: "%{count} siegħa ilu"
+time.hours_other: "%{count}-il siegħa ilu"
+time.day_singular: "%{count} ġurnata ilu"
+time.days_other: "%{count}-il ġurnata ilu"
+
+# ── Eżekuzzjoni tar-rakkomandazzjoni (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "L-għażla %{choice} falliet: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Agħżel il-mudell għal dan il-pannell (/model <id> biex tibdel direttament)"  # {Locked="/model","<id>"}
+model_picker.title: "Agħżel mudell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "L-aġent konness ma rreklama l-ebda mudell li jista' jintgħażel."
+system.model_set: "Il-mudell għal dan il-pannell ġie ssettjat għal %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}

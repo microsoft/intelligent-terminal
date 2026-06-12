@@ -34,8 +34,11 @@ namespace Microsoft::Terminal::Protocol::Parsing
         AutofixState,         // Direct to TerminalPage, no broadcast
         AgentStatus,          // Direct to TerminalPage, no broadcast
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
-        ViewChanged,          // Direct to TerminalPage, no broadcast
+        AgentState,           // Direct to TerminalPage, no broadcast — unified per-tab agent-pane UI snapshot (view + pane_open + ...)
         ResumeInNewAgentTab,  // Direct to TerminalPage, no broadcast
+        AgentChipTarget,      // Direct to TerminalPage, no broadcast — "draw the Agent chip on this pane (or hide override)"
+        RestartAgentStack,    // Direct to TerminalPage, no broadcast — `/restart` from any agent pane TUI
+        RestartAgentPane,     // Direct to TerminalPage, no broadcast — master detected helper death; re-warm a fresh helper for this tab
         Broadcast,            // Normalize envelope + broadcast to all subscribers
         Invalid               // Failed validation
     };
@@ -77,13 +80,25 @@ namespace Microsoft::Terminal::Protocol::Parsing
             {
                 return SendEventRoute::CloseAgentPane;
             }
-            if (method == "view_changed")
+            if (method == "agent_state_changed")
             {
-                return SendEventRoute::ViewChanged;
+                return SendEventRoute::AgentState;
             }
             if (method == "resume_in_new_agent_tab")
             {
                 return SendEventRoute::ResumeInNewAgentTab;
+            }
+            if (method == "set_agent_chip_target")
+            {
+                return SendEventRoute::AgentChipTarget;
+            }
+            if (method == "restart_agent_stack")
+            {
+                return SendEventRoute::RestartAgentStack;
+            }
+            if (method == "restart_agent_pane")
+            {
+                return SendEventRoute::RestartAgentPane;
             }
         }
 

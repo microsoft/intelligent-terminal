@@ -19,7 +19,7 @@ namespace Microsoft::Terminal::WtaProcess
 {
     // Locate wta.exe using the same strategy as TerminalPage::_DetectWtaPath:
     //   1. Co-located next to the running module (MSIX / packaged)
-    //   2. Walk up from module dir looking for wta/target/{debug,release}/wta.exe (dev build)
+    //   2. Walk up from module dir looking for tools/wta/target/{debug,release}/wta.exe (dev build)
     //   3. SearchPathW fallback
     inline std::wstring ResolveWtaExePath()
     {
@@ -36,13 +36,19 @@ namespace Microsoft::Terminal::WtaProcess
             }
         }
 
-        // 2. Dev-tree walk
+        // 2. Dev-tree walk. Relative path must match the canonical layout
+        //    `tools\wta\target\<profile>\wta.exe` produced by
+        //    `cargo build --manifest-path tools\wta\Cargo.toml` and
+        //    matched by TerminalPage::_DetectWtaPath. Keep this list in
+        //    sync with that function — diverging here silently makes
+        //    `wta hooks status` / FRE "Install hooks" fall through to
+        //    the PATH fallback in dev (unpackaged) builds.
         auto cursor = moduleDir;
         while (!cursor.empty())
         {
             for (const auto& relative : {
-                     std::filesystem::path{ L"wta\\target\\debug\\wta.exe" },
-                     std::filesystem::path{ L"wta\\target\\release\\wta.exe" },
+                     std::filesystem::path{ L"tools\\wta\\target\\debug\\wta.exe" },
+                     std::filesystem::path{ L"tools\\wta\\target\\release\\wta.exe" },
                  })
             {
                 const auto candidate = cursor / relative;
@@ -229,6 +235,123 @@ namespace Microsoft::Terminal::WtaProcess
         envBlock += L'\0'; // double-null terminator
         FreeEnvironmentStringsW(currentEnv);
         return envBlock;
+    }
+
+    // Merge registry PATH entries into the current process's PATH.
+    // Reads system + user PATH from the registry, then appends any
+    // directories not already present. Preserves session-specific
+    // entries inherited from the parent process.
+    // Pure Win32 + std::wstring — no til/env or WinRT dependency.
+    inline void RefreshProcessPath()
+    {
+        auto readRegPath = [](HKEY root, const wchar_t* subkey) -> std::wstring {
+            HKEY hk{};
+            if (RegOpenKeyExW(root, subkey, 0, KEY_READ, &hk) != ERROR_SUCCESS)
+                return {};
+            DWORD size = 0, kind = 0;
+            if (RegQueryValueExW(hk, L"Path", nullptr, &kind, nullptr, &size) != ERROR_SUCCESS || size == 0)
+            {
+                RegCloseKey(hk);
+                return {};
+            }
+            // Only process string types
+            if (kind != REG_SZ && kind != REG_EXPAND_SZ)
+            {
+                RegCloseKey(hk);
+                return {};
+            }
+            // Round up to whole wchar_t count to guard against odd byte sizes
+            const DWORD wcharCount = (size + sizeof(wchar_t) - 1) / sizeof(wchar_t);
+            std::wstring buf(wcharCount, L'\0');
+            if (RegQueryValueExW(hk, L"Path", nullptr, &kind,
+                                 reinterpret_cast<BYTE*>(buf.data()), &size) != ERROR_SUCCESS)
+            {
+                RegCloseKey(hk);
+                return {};
+            }
+            RegCloseKey(hk);
+            // Trim trailing null(s)
+            while (!buf.empty() && buf.back() == L'\0')
+                buf.pop_back();
+            // Expand %VAR% references if REG_EXPAND_SZ
+            if (kind == REG_EXPAND_SZ)
+            {
+                DWORD needed = ExpandEnvironmentStringsW(buf.c_str(), nullptr, 0);
+                if (needed > 0)
+                {
+                    std::wstring expanded(needed, L'\0');
+                    DWORD written = ExpandEnvironmentStringsW(buf.c_str(), expanded.data(), needed);
+                    if (written > 0 && written <= needed)
+                    {
+                        while (!expanded.empty() && expanded.back() == L'\0')
+                            expanded.pop_back();
+                        return expanded;
+                    }
+                    // Expansion failed — fall through to return unexpanded buf
+                }
+            }
+            return buf;
+        };
+
+        // Case-insensitive check: is `entry` already somewhere in
+        // the semicolon-delimited `path`?
+        auto pathContains = [](const std::wstring& path, const std::wstring& entry) -> bool {
+            if (entry.empty())
+                return true;
+            // Walk the semicolon-delimited string without allocating
+            size_t start = 0;
+            while (start <= path.size())
+            {
+                auto pos = path.find(L';', start);
+                if (pos == std::wstring::npos)
+                    pos = path.size();
+                if (pos - start == entry.size() &&
+                    _wcsnicmp(path.c_str() + start, entry.c_str(), entry.size()) == 0)
+                {
+                    return true;
+                }
+                start = pos + 1;
+            }
+            return false;
+        };
+
+        auto sysPath = readRegPath(HKEY_LOCAL_MACHINE,
+                                   LR"(SYSTEM\CurrentControlSet\Control\Session Manager\Environment)");
+        auto usrPath = readRegPath(HKEY_CURRENT_USER, L"Environment");
+
+        // Get current process PATH
+        wchar_t currentBuf[32767]{};
+        GetEnvironmentVariableW(L"PATH", currentBuf, 32767);
+        std::wstring currentPath{ currentBuf };
+
+        // Append registry entries not already in the process PATH
+        bool changed = false;
+        auto mergeFrom = [&](const std::wstring& regPath) {
+            size_t start = 0;
+            while (start < regPath.size())
+            {
+                auto pos = regPath.find(L';', start);
+                if (pos == std::wstring::npos)
+                    pos = regPath.size();
+                auto entry = regPath.substr(start, pos - start);
+                if (!entry.empty() && !pathContains(currentPath, entry))
+                {
+                    if (!currentPath.empty() && currentPath.back() != L';')
+                        currentPath += L';';
+                    currentPath += entry;
+                    changed = true;
+                }
+                start = pos + 1;
+            }
+        };
+
+        mergeFrom(sysPath);
+        mergeFrom(usrPath);
+
+        if (changed)
+        {
+            SetEnvironmentVariableW(L"PATH", currentPath.c_str());
+        }
     }
 
     // Spawn `wta.exe <argsAfterExe>` and wait for completion (no stdout capture).

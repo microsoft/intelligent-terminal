@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Mirë se vini në Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Mirë se vini në Terminali inteligjent!"
 setup.title.agent_missing: "Agjenti nuk u gjet"
 setup.title.agent_error: "Lidhja me agjentin dështoi"
 setup.title.switch_agent: "Ndrysho agjentin"
@@ -8,21 +8,21 @@ setup.title.not_available: "Agjenti nuk është i disponueshëm"
 setup.title.sign_in: "Kërkohet identifikimi"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Ndiqni hapat më poshtë për ta instaluar. Për të ndryshuar agjentin, shkoni te Settings."
-setup.subtitle.agent_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Riinstalojeni manualisht dhe provoni përsëri. Për të ndryshuar agjentin, shkoni te Settings."
-setup.subtitle.copilot_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Ndiqni hapat më poshtë për t'u identifikuar. Për të ndryshuar agjentin, shkoni te Settings."
-setup.subtitle.agent_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Identifikohuni përmes CLI të agjentit dhe provoni përsëri. Për të ndryshuar agjentin, shkoni te Settings."
+setup.subtitle.copilot_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Ndiqni hapat më poshtë për ta instaluar. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
+setup.subtitle.agent_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Riinstalojeni manualisht dhe provoni përsëri. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
+setup.subtitle.copilot_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Ndiqni hapat më poshtë për t'u identifikuar. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
+setup.subtitle.agent_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Identifikohuni përmes agjentit dhe zgjidhni \"U identifikova\" më poshtë. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Zgjidhni CLI-në e paracaktuar të agjentit që dëshironi të përdorni në Intelligent Terminal. Mund të"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Zgjidhni agjentin e paracaktuar që dëshironi të përdorni në Terminali inteligjent. Mund të"
 setup.description.fre_line2: "shkoni te Settings për të konfiguruar hapësirën tuaj të punës."
 
-setup.option.reinstall: "Riinstalo %{agent}"
-setup.option.reinstall_hint: "(Do të instalohet automatikisht)"
+setup.option.install: "Instalo %{agent}"
+setup.option.install_hint: "(Do të instalohet automatikisht)"
 setup.option.signin: "Identifikohu te %{agent}"
-setup.option.retry_detection: "Riprovo zbulimin"
-setup.option.retry_auth: "Jam identifikuar — riprovo lidhjen"
-setup.option.retry_connection: "Riprovo lidhjen"
+setup.option.retry_detection: "Provoni përsëri"
+setup.option.retry_auth: "U identifikova — provoni të lidheni përsëri"
+setup.option.retry_connection: "Provoni të lidheni përsëri"
 setup.option.switch_to: "Kalo te %{agent}"
 setup.status.installing: "Po instalohet..."
 setup.status.install_failed: "Instalimi dështoi: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Shtypni Enter për t'u identifikuar, Esc për t'u kthyer"  
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Po mendoj..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Mirë se vini në Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Mirë se vini në Terminali inteligjent!"
+chat.welcome_disclaimer: "Terminali inteligjent përdor AI. Kontrolloni për gabime."
 chat.plan_header: "Plani:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Dështim i fundit i komandës është diagnostikuar automatikisht"
+chat.turn_canceled: "(anuluar)"
+chat.turn_executed: "→ ekzekutuar: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Pyetni çfarëdo, / për komandat.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Dërgo një '/' fjalëpërfjalshëm (an
 commands.help_close_hint: "  Esc        Mbyll këtë ndihmë"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ për të naviguar • Enter për të zgjedhur • Esc për të anuluar)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ për të naviguar • ← → për të ndërruar butonat • Enter për të zgjedhur • Esc për të anuluar)"
 recommendations.button_run_command: "[ Ekzekuto komandën ]"
 recommendations.button_insert_in_terminal: "Fut në Terminal"
 recommendations.button_open_in_new_tab: "Hap në skedën e re ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Sigurohuni që %{name} është i instaluar dhe në PATH
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Po ngarkohet..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ për të naviguar • Enter për të nisur seancën në skedë të re • Shift+enter për të nisur seancën në panelin e agjentit • Esc për të dalë)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ për të naviguar • Enter për të nisur seancën • Esc për të dalë)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Po pret hyrjen"
 agents.status.error: "Gabim"
 agents.status.idle: "Joaktiv"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. shfaq/fshih panelin e agjentit • Ctrl+Alt+/ shfaq/fshih seancën e agjentit)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. shfaq/fshih panelin e agjentit • Ctrl+Shift+/ shfaq/fshih seancën e agjentit)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Po niset agjenti..."
 connection.reconnecting: "Po rilidhet..."
+connection.connecting_activity: "Po lidhet me agjentin…"
+connection.lost: "Lidhja me agjentin u humb. Shkruani /restart për t'u rilidhur."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "U anulua."
 system.no_prompt_in_flight: "Asnjë kërkesë nuk është në proces."
 system.authentication_failed: "Vërtetimi dështoi"
 system.command_copied_retry: "Komanda u kopjua — ekzekutojeni në një terminal tjetër, pastaj shtypni Enter për të riprovuar"  # {Locked="Enter"}
+system.stopped_max_tokens: "Përgjigja u ndërpre pasi u arrit kufiri i daljes së modelit."
+system.stopped_max_turn_requests: "Agjenti ndaloi pasi arriti kufirin e kërkesave për këtë radhë."
+system.stopped_refusal: "Agjenti refuzoi të vazhdojë me këtë kërkesë."
+system.agent_busy: "Agjenti është i zënë në këtë skedë — prisni që kërkesa aktuale të përfundojë."
+system.resuming_session: "Po rifillon sesioni %{session_id}..."
+system.unknown_command: "Komandë e panjohur \"%{command}\" — u dërgua si kërkesë. Shkruani /help për listën."  # {Locked="/help"}
+system.busy_use_stop: "Prisni që kërkesa aktuale të përfundojë, ose përdorni më parë /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nuk mund të fokusohet sesioni %{session_id}: duket aktiv, por ende nuk është lidhur asnjë GUID paneli. Provojeni përsëri pas pak."
+system.cannot_resume_no_load_session: "Nuk mund të rifillohet në panelin e agjentit: %{agent} nuk shpalli aftësinë ACP `loadSession`. Shtypni Enter (pa Shift) për ta rifilluar në një panel të ri terminali në vend të kësaj."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nuk mund të rifillohet sesioni %{agent}: ky agjent nuk ka flamur të stilit `--resume`. Shtypni Shift+Enter për të provuar rifillimin brenda panelit të agjentit përmes ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nuk mund të rifillohet sesioni %{session_id}: agjenti i tij burimor është i panjohur për këtë ndërtim të WTA."
+system.cannot_resume_phantom_via_flag: "Nuk mund të rifillohet sesioni %{agent} %{session_id}: ai u nis, por nuk grumbulloi kurrë asnjë bisedë, prandaj vetë %{agent} do ta refuzonte rifillimin. Po hiqet rreshti."
+system.cannot_resume_phantom_via_load: "Nuk mund të rifillohet sesioni %{agent} %{session_id}: ai u nis, por nuk grumbulloi kurrë asnjë bisedë, prandaj %{agent} do ta refuzonte ngarkimin. Po hiqet rreshti."
+system.fallback.this_agent: "ky agjent"
+system.fallback.connected_agent: "agjenti i lidhur"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nuk u gjetën dritare."
@@ -171,3 +192,21 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "pikërisht tani"
+time.minute_singular: "%{count} minut më parë"
+time.minutes_other: "%{count} minuta më parë"
+time.hour_singular: "%{count} orë më parë"
+time.hours_other: "%{count} orë më parë"
+time.day_singular: "%{count} ditë më parë"
+time.days_other: "%{count} ditë më parë"
+
+# ── Ekzekutimi i rekomandimit (src/coordinator.rs) ──────────────────────────
+system.choice_execution_failed: "Zgjedhja %{choice} dështoi: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Zgjidhni modelin për këtë panel (/model <id> për të kaluar drejtpërdrejt)"  # {Locked="/model","<id>"}
+model_picker.title: "Zgjidhni modelin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Agjenti i lidhur nuk shpalli asnjë model të zgjedhshëm."
+system.model_set: "Modeli për këtë panel u caktua në %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model i panjohur %{model} — shkruani /model për të parë listën e disponueshme."  # {Locked="%{model}","/model"}

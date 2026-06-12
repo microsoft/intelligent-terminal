@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -119,14 +119,14 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>ยินดีต้อนรับสู่ Intelligent Terminal</value>
+    <value>ยินดีต้อนรับสู่ เทอร์มินัลอัจฉริยะ</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>ตั้งค่าผู้ช่วยในตัวเพื่อช่วยอธิบายข้อผิดพลาด ร่างคำสั่ง และแก้ไขปัญหาที่ติดขัดได้ทันทีในที่ที่คุณทำงาน </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>เรียนรู้เพิ่มเติมเกี่ยวกับ Intelligent Terminal</value>
+    <value>เรียนรู้เพิ่มเติมเกี่ยวกับ เทอร์มินัลอัจฉริยะ</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -149,48 +149,44 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>ยินดีต้อนรับสู่ Intelligent Terminal</value>
+    <value>ยินดีต้อนรับสู่ เทอร์มินัลอัจฉริยะ</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>เลือกสิ่งที่จะตั้งค่าตอนนี้ คุณสามารถเปลี่ยนได้ทุกเมื่อใน</value>
+    <value>เลือกสิ่งที่ต้องการตั้งค่าตอนนี้ คุณสามารถเปลี่ยนแปลงการตั้งค่าเหล่านี้ได้ตลอดเวลา </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>การตั้งค่า</value>
+    <value>เรียนรู้เกี่ยวกับวิธีการใช้ข้อมูล</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>เอเจนต์</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>เลือก CLI เอเจนต์ที่ใช้ในแผงเอเจนต์ CLI ที่เข้ากันได้กับ ACP จะถูกตรวจพบโดยอัตโนมัติ</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>เลือกเอเจนต์ที่ใช้ในแผงเอเจนต์และรองรับ ACP</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ เอเจนต์นี้ต้องการ Node.js และ NPX ซึ่งจะถูกติดตั้งโดยอัตโนมัติหากยังไม่ได้ติดตั้ง</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>เอเจนต์นี้ต้องการ Node.js และ NPX ซึ่งจะถูกติดตั้งโดยอัตโนมัติหากยังไม่ได้ติดตั้ง</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>แนะนำการแก้ไขโดยอัตโนมัติสำหรับคำสั่งที่ล้มเหลว</value>
+    <value>การแนะนำข้อผิดพลาดอัตโนมัติ</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>เมื่อเปิดใช้งาน เอเจนต์ AI จะวิเคราะห์คำสั่งที่ล้มเหลวโดยอัตโนมัติและเสนอการแก้ไข เมื่อปิดใช้งาน คำสั่งที่ล้มเหลวจะแสดงคำใบ้ที่คลิกได้ในแถบสถานะ — กด Ctrl+Alt+. หรือคลิกที่คำใบ้เพื่อขอการแก้ไข</value>
+    <value>อนุญาตให้ Intelligent Terminal ส่งข้อผิดพลาดไปยังตัวแทนของคุณเพื่อแนะนำการแก้ไขโดยอัตโนมัติ</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>การจัดการเซสชัน</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>อนุญาตให้ Intelligent Terminal ติดตามสถานะของเอเจนต์ที่กำลังทำงานหรือใช้งานอยู่</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>อนุญาตให้ เทอร์มินัลอัจฉริยะ ติดตามสถานะของเอเจนต์ที่กำลังทำงานหรือใช้งานอยู่</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ การเปิดใช้งานนี้จะติดตั้ง hook การรวมเพื่อติดตามเซสชันข้าม CLI เอเจนต์ของคุณ</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>การเปิดใช้งานนี้จะติดตั้ง hooks การรวมเพื่อติดตามเซสชันข้ามเอเจนต์ของคุณ</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>ตำแหน่งแผง</value>
@@ -224,18 +220,82 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>กำลังตั้งค่า...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ ติดตั้ง GitHub Copilot ล้มเหลว ตรวจสอบเครือข่ายของคุณแล้วลองอีกครั้ง</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ การติดตั้ง {0} ถูกบล็อกโดยนโยบาย Windows Package Manager หากคุณใช้อุปกรณ์ที่มีการจัดการ โปรดติดต่อผู้ดูแลระบบ IT ของคุณ</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ ติดตั้ง Node.js ล้มเหลว ตรวจสอบเครือข่ายของคุณแล้วลองอีกครั้ง</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ ไม่สามารถติดตั้ง {0} ได้ (รหัสข้อผิดพลาด {1}) ตรวจสอบบันทึกเพื่อดูรายละเอียด หรือติดตั้ง {0} ด้วยตนเอง</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ ไม่สามารถติดตั้ง {0} ได้ ตรวจสอบบันทึกเพื่อดูรายละเอียด หรือติดตั้ง {0} ด้วยตนเอง</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ ตัวติดตั้ง {0} รายงานข้อผิดพลาด (รหัส {1}) ตรวจสอบบันทึกเพื่อดูรายละเอียด หรือติดตั้ง {0} ด้วยตนเอง</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ ไม่สามารถเชื่อมต่อกับ Windows Package Manager ขณะติดตั้ง {0} ได้ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของคุณ (VPN, proxy หรือไฟร์วอลล์อาจบล็อกอยู่) แล้วลองอีกครั้ง</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ ไม่มีตัวติดตั้งที่เข้ากันได้สำหรับ {0} บนระบบนี้ (อาจไม่รองรับเวอร์ชัน OS หรือสถาปัตยกรรม) ติดตั้ง {0} ด้วยตนเอง</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ ไม่พบ {0} ในแค็ตตาล็อก Windows Package Manager ลองรีเฟรชแหล่งที่มาของ winget หรือติดตั้ง {0} ด้วยตนเอง</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ การติดตั้ง {0} ใช้เวลานานกว่า 20 นาที Intelligent Terminal หยุดรอแล้ว แต่ตัวติดตั้งอาจยังคงทำงานอยู่เบื้องหลัง ตรวจสอบ Task Manager หรือลองอีกครั้งในภายหลัง</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows Package Manager (winget) ไม่ได้ติดตั้งหรือไม่พร้อมใช้งาน ติดตั้งก่อน แล้วลองอีกครั้ง</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>เปิด</value>
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>ปิด</value>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>การตรวจหาข้อผิดพลาดอัตโนมัติ</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>อนุญาตให้ Intelligent Terminal เข้าถึงเชลล์ของคุณและตรวจหาข้อผิดพลาดโดยอัตโนมัติ</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ติดตั้งการรวมเชลล์ล้มเหลว การตรวจจับข้อผิดพลาดถูกปิดใช้งาน คุณสามารถเปิดใช้งานอีกครั้งแล้วลองใหม่ หรือบันทึกเพื่อดำเนินการต่อโดยไม่ใช้</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ ติดตั้ง session hooksล้มเหลว การจัดการเซสชันถูกปิดใช้งาน คุณสามารถเปิดใช้งานอีกครั้งแล้วลองใหม่ หรือบันทึกเพื่อดำเนินการต่อโดยไม่ใช้</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>เรียนรู้วิธีแก้ไขปัญหานี้ด้วยตนเอง</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>การเปิดใช้งานนี้จะติดตั้งการรวม shell เพื่อตรวจหาความล้มเหลวของคำสั่ง </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>เรียนรู้เพิ่มเติม</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>นโยบายการดำเนินการของ PowerShell กำลังบล็อกสคริปต์</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ นโยบายการดำเนินการของ PowerShell กำลังบล็อกสคริปต์ การตรวจจับข้อผิดพลาดถูกปิดใช้งาน</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

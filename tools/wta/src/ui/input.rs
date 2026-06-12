@@ -48,32 +48,38 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         .saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH);
     let viewport = input_viewport(&tab.input, tab.cursor_pos, text_width);
 
+    // The caret is painted as a buffer cell (not the OS cursor) in every
+    // state, but only when the input box is the live caret target: the pane
+    // has XAML focus *and* the TUI's arrow keys land in the input (not in a
+    // recommendation card or a selected completed turn). See
+    // TabSession::input_has_nav_focus.
+    let input_active = app.pane_focused && tab.input_has_nav_focus();
+
     let lines: Vec<Line> = if tab.input.is_empty() {
         // Show a placeholder reflecting connection state. The "> " is its
         // own span so the placeholder/typed text/cursor all sit in the same
-        // column whether the input is empty or not.
+        // column regardless of whether the input is empty.
         let placeholder = match &app.state {
             ConnectionState::Connected => t!("input.placeholder.connected").into_owned(),
             ConnectionState::Connecting(_) => t!("input.placeholder.connecting").into_owned(),
             ConnectionState::Disconnected => t!("input.placeholder.disconnected").into_owned(),
             ConnectionState::Failed(_) => t!("input.placeholder.disconnected").into_owned(),
         };
-        // Paint the first cell of the placeholder as "white block with
-        // black glyph" directly in the buffer. The WT block cursor lands
-        // on this exact cell (input is empty ⇒ cursor_pos == 0) and is
-        // alpha-overlaid onto an already-white cell — same color in, same
-        // color out — so the visible result is a stable white block with
-        // a readable black character. Setting only fg=Black wouldn't work:
-        // the glyph would be painted onto the black cell bg first (Black
-        // on Black = invisible) before the cursor overlay had anything to
-        // reveal.
+        // Paint the first cell of the placeholder as the caret using reverse
+        // video (swap the scheme's fg/bg) so it reads as a solid block in the
+        // scheme's own colors. A hardcoded white block was invisible on light
+        // schemes once the pane background follows the scheme (#234). The OS
+        // cursor stays hidden (`terminal.hide_cursor`), so this painted cell
+        // is the only caret.
         let mut placeholder_spans = vec![Span::styled(INPUT_PROMPT, theme::DIM)];
         let mut chars = placeholder.chars();
         if let Some(first) = chars.next() {
-            placeholder_spans.push(Span::styled(
-                first.to_string(),
-                Style::new().fg(Color::Black).bg(Color::White),
-            ));
+            let first_style = if input_active {
+                Style::new().add_modifier(Modifier::REVERSED)
+            } else {
+                theme::DIM
+            };
+            placeholder_spans.push(Span::styled(first.to_string(), first_style));
             let rest: String = chars.collect();
             if !rest.is_empty() {
                 placeholder_spans.push(Span::styled(rest, theme::DIM));
@@ -100,7 +106,17 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 } else {
                     Span::raw(INPUT_PROMPT_CONT)
                 };
-                Line::from(vec![prefix, Span::styled(line.clone(), theme::INPUT_TEXT)])
+                // Paint the caret as an inverse cell on the row/column the
+                // cursor sits on. This replaces the OS block cursor so there
+                // is nothing for WT to blink or tear, and lets `draw_frame`
+                // keep the OS cursor hidden in every state.
+                if input_active && i == viewport.cursor_row {
+                    let mut spans = vec![prefix];
+                    push_caret_spans(&mut spans, line, viewport.cursor_col);
+                    Line::from(spans)
+                } else {
+                    Line::from(vec![prefix, Span::styled(line.clone(), theme::INPUT_TEXT)])
+                }
             })
             .collect()
     };
@@ -118,27 +134,40 @@ pub(crate) fn input_height(input: &str, cursor_pos: usize, total_width: u16) -> 
     (viewport.visible_lines.len() as u16 + 2).clamp(INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT)
 }
 
-pub(crate) fn cursor_position(app: &App, area: Rect) -> Option<Position> {
-    if area.width <= INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH || area.height <= 2 {
-        return None;
+/// Split `line` at the caret display-column and push up to three spans onto
+/// `spans`: the text before the caret, the caret cell (the glyph under it, or
+/// a space when the caret sits past the last char at end of line) painted as
+/// an inverse block, and the text after. `caret_col` is a display-cell column
+/// produced by `wrap_input`, so it always lands on a char boundary.
+fn push_caret_spans(spans: &mut Vec<Span<'static>>, line: &str, caret_col: usize) {
+    let mut before = String::new();
+    let mut col = 0usize;
+    let mut chars = line.chars();
+    let mut caret_ch: Option<char> = None;
+    for ch in chars.by_ref() {
+        if col >= caret_col {
+            caret_ch = Some(ch);
+            break;
+        }
+        before.push(ch);
+        col += char_display_width(ch);
     }
+    let after: String = chars.collect();
+    let caret_text = caret_ch.map(|c| c.to_string()).unwrap_or_else(|| " ".to_string());
 
-    let text_width = area
-        .width
-        .saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH);
-    let tab = app.current_tab();
-    let viewport = input_viewport(&tab.input, tab.cursor_pos, text_width);
-    let cursor_col = viewport.cursor_col.min(text_width.saturating_sub(1) as usize);
-    let cursor_row = viewport
-        .cursor_row
-        .min(viewport.visible_lines.len().saturating_sub(1));
-
-    // +1 for the left `│` border, then inner padding, then the "> " prefix,
-    // then the column inside the text.
-    Some(Position::new(
-        area.x + 1 + INPUT_LEFT_PAD + INPUT_PROMPT_WIDTH + cursor_col as u16,
-        area.y + 1 + cursor_row as u16,
-    ))
+    if !before.is_empty() {
+        spans.push(Span::styled(before, theme::INPUT_TEXT));
+    }
+    // Reverse video so the caret block uses the scheme's own fg/bg and stays
+    // visible on light schemes too (a hardcoded white block vanished on a
+    // light background once the pane follows the scheme — #234).
+    spans.push(Span::styled(
+        caret_text,
+        Style::new().add_modifier(Modifier::REVERSED),
+    ));
+    if !after.is_empty() {
+        spans.push(Span::styled(after, theme::INPUT_TEXT));
+    }
 }
 
 pub(crate) fn input_viewport(input: &str, cursor_pos: usize, total_width: u16) -> InputViewport {
@@ -207,7 +236,22 @@ fn wrap_input(input: &str, cursor_pos: usize, max_width: usize) -> WrappedInput 
         }
     }
 
-    let (cursor_row, cursor_col) = cursor.unwrap_or((row, col));
+    let (mut cursor_row, mut cursor_col) = cursor.unwrap_or((row, col));
+
+    // When the caret is at the very end of the input and sits at the right
+    // edge of a full line, show it at the start of a fresh next line instead
+    // of the overflow column (where the appended caret cell would be clipped).
+    // The next typed glyph wraps down there anyway, so the caret just leads
+    // it. Gated on end-of-input: a caret in the middle of text that happens to
+    // land on a wrap boundary (e.g. just before a `\n` or wrapped content) is
+    // left where it is so it doesn't jump onto the following line's glyph.
+    if cursor_col >= max_width && cursor_pos == input.len() {
+        cursor_row += 1;
+        cursor_col = 0;
+        if lines.len() <= cursor_row {
+            lines.push(String::new());
+        }
+    }
 
     WrappedInput {
         lines,
@@ -233,7 +277,7 @@ fn clamp_cursor_to_boundary(input: &str, cursor_pos: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{input_height, input_viewport};
+    use super::{input_height, input_viewport, push_caret_spans};
 
     #[test]
     fn empty_input_uses_single_visible_row() {
@@ -276,5 +320,54 @@ mod tests {
         assert_eq!(viewport.visible_lines.len(), 6);
         assert!(viewport.scroll_row > 0);
         assert_eq!(viewport.cursor_row, 5);
+    }
+
+    #[test]
+    fn caret_at_end_of_full_line_moves_to_next_line() {
+        // "abcdefgh" exactly fills width 8 with the cursor at the end. Rather
+        // than stranding the caret in the overflow column (where it would be
+        // clipped), it shows at the start of a fresh empty line below, and the
+        // box grows a row to make room.
+        let viewport = input_viewport("abcdefgh", 8, 8);
+
+        assert_eq!(
+            viewport.visible_lines,
+            vec!["abcdefgh".to_string(), String::new()]
+        );
+        assert_eq!(viewport.cursor_row, 1);
+        assert_eq!(viewport.cursor_col, 0);
+        // inner width 8 (= 13 - 5 borders/pad/prefix): 2 rows + 2 borders.
+        assert_eq!(input_height("abcdefgh", 8, 13), 4);
+    }
+
+    #[test]
+    fn caret_mid_text_at_wrap_boundary_does_not_jump_to_next_line() {
+        // Caret just before a hard '\n' that lands on the wrap boundary is
+        // mid-text, not end-of-input, so it must stay on its own line instead
+        // of jumping onto the following line's glyph.
+        let viewport = input_viewport("abcdefgh\nx", 8, 8);
+        assert_eq!(viewport.cursor_row, 0);
+    }
+
+    #[test]
+    fn caret_past_end_of_short_line_uses_blank_cell() {
+        // Short line: the caret sits in the blank cell right after the text.
+        let mut spans = Vec::new();
+        push_caret_spans(&mut spans, "ab", 2);
+
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].content.as_ref(), "ab");
+        assert_eq!(spans[1].content.as_ref(), " ");
+    }
+
+    #[test]
+    fn caret_in_middle_splits_before_glyph_after() {
+        let mut spans = Vec::new();
+        push_caret_spans(&mut spans, "abcd", 1);
+
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content.as_ref(), "a");
+        assert_eq!(spans[1].content.as_ref(), "b");
+        assert_eq!(spans[2].content.as_ref(), "cd");
     }
 }

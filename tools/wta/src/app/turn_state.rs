@@ -140,6 +140,19 @@ impl TurnState {
         }
     }
 
+    /// Mutable prompt info for the in-flight or just-surfaced turn. Used to
+    /// late-bind a manual `/fix`'s `AutofixContext.target_pane_id` once the
+    /// client task has resolved the working pane (see
+    /// `App::apply_autofix_target_resolved`).
+    pub fn prompt_mut(&mut self) -> Option<&mut SubmittedPrompt> {
+        match self {
+            TurnState::Idle => None,
+            TurnState::Submitted(p) => Some(p),
+            TurnState::Streaming { prompt, .. } => Some(prompt),
+            TurnState::Surfaced { prompt, .. } => Some(prompt),
+        }
+    }
+
     /// Autofix generation snapshot for the current turn, if any.
     pub fn autofix_generation(&self) -> Option<u64> {
         self.prompt()

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -119,14 +119,14 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Bem-vindo ao Intelligent Terminal</value>
+    <value>Bem-vindo ao Terminal Inteligente</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Configure o seu assistente integrado para o ajudar a explicar erros, redigir comandos e desbloquear tarefas exatamente onde trabalha. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Saiba mais sobre o Intelligent Terminal</value>
+    <value>Saiba mais sobre o Terminal Inteligente</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -146,43 +146,43 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Bem-vindo ao Intelligent Terminal</value>
+    <value>Bem-vindo ao Terminal Inteligente</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Escolha o que configurar agora. Pode alterar estas opções a qualquer momento em </value>
+    <value>Escolha o que pretende configurar agora. Pode alterar estas definições a qualquer momento. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Definições</value>
+    <value>Saiba como os dados são utilizados</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Agente</value>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Escolha a CLI do agente utilizada no painel do agente. Qualquer CLI ACP compatível será detetada.</value>
-    <comment>{Locked="CLI","ACP"}</comment>
+    <value>Escolha o agente utilizado no painel do agente que suporta ACP.</value>
+    <comment>{Locked="ACP"}</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Este agente requer Node.js e NPX, que serão instalados automaticamente se ainda não estiverem presentes.</value>
+    <value>Este agente requer Node.js e NPX, que serão instalados automaticamente se ainda não estiverem presentes.</value>
     <comment>{Locked="Node.js","NPX"}</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Sugerir correções automaticamente para comandos com falha</value>
+    <value>Sugestão automática de erros</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Quando ativado, o agente de IA analisa automaticamente os comandos com falha e propõe uma correção. Quando desativado, os comandos com falha mostram uma sugestão clicável na barra de estado — prima Ctrl+Alt+. ou clique na sugestão para pedir uma correção.</value>
+    <value>Permita que o Intelligent Terminal envie erros ao agente para sugerir correções automaticamente.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Gestão de sessões</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Conceda permissão ao Intelligent Terminal para monitorizar o estado dos seus agentes em execução ou ativos.</value>
+    <value>Conceda permissão ao Terminal Inteligente para monitorizar o estado dos seus agentes em execução ou ativos.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Ativar esta opção instalará hooks de integração para monitorizar sessões nas suas CLIs de agente.</value>
-    <comment>{Locked="CLI"}</comment>
+    <value>Ativar esta opção instalará hooks de integração para monitorizar sessões nos seus agentes.</value>
+    <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Posição do painel</value>
@@ -215,18 +215,146 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>A configurar...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Falha ao instalar o GitHub Copilot. Verifique a sua ligação de rede e tente novamente.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ A instalação de {0} foi bloqueada por uma política do Gestor de Pacotes do Windows. Se estiver num dispositivo gerido, contacte o seu administrador de TI.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Falha ao instalar o Node.js. Verifique a sua ligação de rede e tente novamente.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Não foi possível instalar {0} (código de erro {1}). Consulte o registo para obter detalhes, ou instale {0} manualmente.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Não foi possível instalar {0}. Consulte o registo para obter detalhes, ou instale {0} manualmente.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ O instalador de {0} comunicou um erro (código {1}). Consulte o registo para obter detalhes, ou instale {0} manualmente.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Não foi possível aceder ao Gestor de Pacotes do Windows ao instalar {0}. Verifique a sua ligação à Internet (VPN, proxy ou firewall podem estar a bloquear) e tente novamente.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Nenhum instalador compatível para {0} está disponível neste sistema (a versão do sistema operativo ou a arquitetura poderá não ser suportada). Instale {0} manualmente.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} não foi encontrado no catálogo do Gestor de Pacotes do Windows. Tente atualizar as origens do winget, ou instale {0} manualmente.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ A instalação de {0} demorou mais de 20 minutos. Intelligent Terminal deixou de aguardar, mas o instalador poderá ainda estar em execução em segundo plano. Consulte Task Manager, ou tente novamente mais tarde.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ O Gestor de Pacotes do Windows (winget) não está instalado ou não está disponível. Instale-o primeiro e tente novamente.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Ativado</value>
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Desativado</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>Analisando erro…</value>
+    <comment>Dica de ferramenta enquanto a análise está em andamento.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>Erro detectado: analisando…</value>
+    <comment>Rótulo de status durante a análise.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>Erro detectado: {0} para corrigir</value>
+    <comment>{0} = atalho de teclado.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
+    <value>Clique ou prima {0} para pedir ao agente uma correção sugerida</value>
+    <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>Correção pronta. Prima {0} para rever</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>Abra o painel do agente para rever a correção sugerida</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
+    <value>Erro detetado. Clique ou prima {0} para pedir ao agente de IA que diagnostique e sugira uma correção.</value>
+    <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>Correção pronta — {0} para aplicar</value>
+    <comment>{0} = atalho de teclado.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>Correção pronta — {0} para aplicar: {1}</value>
+    <comment>{0} = atalho; {1} = prévia.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>Sugestão pronta — abrir o painel do agente</value>
+    <comment>Rótulo quando uma sugestão está disponível.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>A correção automática recusou-se a corrigir diretamente. </value>
+    <comment>Primeira frase. Mantenha o espaço final.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>Clique aqui ou pressione Ctrl+Shift+. para abrir o painel do agente e ler a sugestão completa.</value>
+    <comment>{Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>Diagnóstico</value>
+    <comment>Dica do botão em repouso.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>Sessões do agente</value>
+    <comment>Título do painel quando o gerenciamento de sessões está ativo.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>Sessões do agente: {0}</value>
+    <comment>{0} = nome do agente.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>{Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Deteção automática de erros</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Permita que o Intelligent Terminal aceda à shell e detete erros automaticamente.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Falha ao instalar a integração da shell. A deteção de erros foi desativada. Pode reativá-la e tentar novamente, ou guardar para continuar sem ela.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Falha ao instalar os hooks de sessão. A gestão de sessões foi desativada. Pode reativá-la e tentar novamente, ou guardar para continuar sem ela.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Saiba como corrigir isto manualmente</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Ativar esta opção instalará a integração da shell para detetar falhas de comandos. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Saiba mais</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>A política de execução do PowerShell está a bloquear scripts.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ A política de execução do PowerShell está a bloquear scripts. Deteção de erros desativada.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

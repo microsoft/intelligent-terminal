@@ -5,8 +5,11 @@
 #include "App.h"
 
 #include "TerminalPage.h"
+#include "AgentPaneContent.h"
+#include "AgentPaneLog.h"
 #include "ScratchpadContent.h"
 #include "../inc/ShellIntegration.h"
+#include "ShellIntegrationSweep.h"
 #include "../WinRTUtils/inc/WtExeUtils.h"
 #include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
@@ -1663,29 +1666,37 @@ namespace winrt::TerminalApp::implementation
                                             const ActionEventArgs& args)
     {
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentPane called\n");
+        const auto activeTabPre = _GetFocusedTabImpl();
+        const auto agentPanePre = activeTabPre ? activeTabPre->FindAgentPane() : nullptr;
+        const bool stashedPre = agentPanePre && agentPanePre->IsHidden();
+        _agentPaneLog(std::string{ "_HandleOpenAgentPane fired hasPane=" } + (agentPanePre ? "yes" : "no") + " stashed=" + (stashedPre ? "yes" : "no"));
 
-        // Symmetric counterpart of _HandleOpenAgentSessions: when the pane
-        // is visible on the active tab and currently showing the sessions
-        // view, switch to chat (the "autofix agent pane") rather than
-        // closing. All other cases fall through to the legacy
-        // _OpenOrReuseAgentPane toggle (open/close/relocate).
-        const auto pane = _FindAgentPane();
+        // Per-tab. Three cases (in priority order):
+        //   * Pane stashed (hidden) → fall through to _OpenOrReuseAgentPane
+        //     which unstashes via wta. Don't switch view here — restore in
+        //     whatever view it had when hidden.
+        //   * Pane visible, sessions view → switch to chat view.
+        //   * Pane visible, chat view OR no pane → fall through.
         const auto activeTab = _GetFocusedTabImpl();
-        const bool visibleOnActiveTab =
-            pane && activeTab && (_FindTabContainingAgentPane() == activeTab) && !pane->IsHidden();
-
-        if (visibleOnActiveTab && _agentSessionsViewActive)
+        if (activeTab)
         {
-            OutputDebugStringW(L"[AgentPane] OpenAgentPane: switch to chat — pane visible and in sessions view\n");
-            _BroadcastAgentSetView("chat");
-            _agentSessionsViewActive = false;
-            _UpdateBottomBarState();
-            args.Handled(true);
-            return;
+            const auto agentPane = activeTab->FindAgentPane();
+            const bool isStashed = agentPane && agentPane->IsHidden();
+            if (!isStashed)
+            {
+                if (const auto agentContent = activeTab->FindAgentPaneContent())
+                {
+                    if (agentContent.IsSessionsView())
+                    {
+                        _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
+                        args.Handled(true);
+                        return;
+                    }
+                }
+            }
         }
 
-        _OpenOrReuseAgentPane(L"");
-        _UpdateBottomBarState();
+        _OpenOrReuseAgentPane(false, L"Action");
         args.Handled(true);
     }
 
@@ -1697,75 +1708,112 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
+    void TerminalPage::_HandleOpenBackgroundAgent(const IInspectable& /*sender*/,
+                                                  const ActionEventArgs& args)
+    {
+        OutputDebugStringW(L"[AgentPane] _HandleOpenBackgroundAgent called\n");
+        _OpenBackgroundAgentTab();
+        args.Handled(true);
+    }
+
     void TerminalPage::_HandleOpenAgentSessions(const IInspectable& /*sender*/,
                                                 const ActionEventArgs& args)
     {
         OutputDebugStringW(L"[AgentPane] _HandleOpenAgentSessions called\n");
+        const auto activeTabPre = _GetFocusedTabImpl();
+        const auto agentPanePre = activeTabPre ? activeTabPre->FindAgentPane() : nullptr;
+        const bool stashedPre = agentPanePre && agentPanePre->IsHidden();
+        _agentPaneLog(std::string{ "_HandleOpenAgentSessions fired hasPane=" } + (agentPanePre ? "yes" : "no") + " stashed=" + (stashedPre ? "yes" : "no"));
 
-        // Toggle semantics for the session-management view:
-        //   - Pane not visible on the active tab  → open + sessions view
-        //   - Pane visible AND already in sessions → close the pane
-        //   - Pane visible but in chat view       → switch to sessions
-        //
-        // "Visible on the active tab" requires the pane to exist, to live
-        // in the focused tab, and to not be hidden. The reuse path inside
-        // _OpenOrReuseAgentPane handles the "exists but on another tab /
-        // hidden" cases by relocating + showing the pane.
-        const auto pane = _FindAgentPane();
+        // Per-tab sessions toggle. Cases (priority order):
+        //   * Pane stashed → fall through (_OpenOrReuseAgentPane unstashes
+        //     in sessions view via wta echo).
+        //   * Pane visible, sessions view → hide (stash).
+        //   * Pane visible, chat view → switch to sessions.
+        //   * No pane → spawn in sessions view.
         const auto activeTab = _GetFocusedTabImpl();
-        const bool visibleOnActiveTab =
-            pane && activeTab && (_FindTabContainingAgentPane() == activeTab) && !pane->IsHidden();
-
-        if (visibleOnActiveTab && _agentSessionsViewActive)
+        if (activeTab)
         {
-            // Toggle off: close the pane on the active tab. Mirrors the
-            // closing half of the Ctrl+Shift+. toggle path.
-            OutputDebugStringW(L"[AgentPane] OpenAgentSessions: toggle close — pane visible and already in sessions view\n");
-            activeTab->AgentPaneOpen(false);
-            _ReconcileAgentPaneForActiveTab();
-            _agentSessionsViewActive = false;
-            _UpdateBottomBarState();
-            args.Handled(true);
-            return;
+            const auto agentPane = activeTab->FindAgentPane();
+            const bool isStashed = agentPane && agentPane->IsHidden();
+            if (!isStashed)
+            {
+                if (const auto agentContent = activeTab->FindAgentPaneContent())
+                {
+                    if (agentContent.IsSessionsView())
+                    {
+                        _RequestAgentStateForTab(activeTab, std::nullopt, /*pane_open*/ false);
+                        args.Handled(true);
+                        return;
+                    }
+                }
+            }
         }
 
-        // Either the pane needs opening/relocating, or it's open in chat
-        // view and we want to switch it. Both go through the existing
-        // intoSessionsView=true code path, which sets _agentSessionsViewActive
-        // = true on success.
-        _OpenOrReuseAgentPane(L"", /*intoSessionsView*/ true);
-        _UpdateBottomBarState();
+        _OpenOrReuseAgentPane(/*intoSessionsView*/ true, L"SessionsAction");
         args.Handled(true);
     }
 
     void TerminalPage::_HandleTriggerAutofix(const IInspectable& /*sender*/,
                                               const ActionEventArgs& args)
     {
-        // Two activation states:
-        //   * Armed    — fix is cached, execute it (existing path)
-        //   * Detected — suggest-mode pill, ask WTA to invoke the LLM now
-        // Pending/Suggested/Idle let the chord fall through to other consumers.
-        if (_diagnostics.autofixState == AutofixState::Armed)
+        // Per-tab: read autofix state from the active tab's AgentPaneContent.
+        const auto activeTab = _GetFocusedTabImpl();
+        if (!activeTab)
         {
-            _TriggerAutofix();
-            args.Handled(true);
+            return;
         }
-        else if (_diagnostics.autofixState == AutofixState::Detected)
+        const auto agentContent = activeTab->FindAgentPaneContent();
+        if (!agentContent)
         {
-            // Mirror the Detected branch of `_DiagnosticsButtonOnClick`:
-            // send autofix_execute_from_detected; WTA replays the trigger
-            // with the auto-suggest gate bypassed.
+            return;
+        }
+        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+        if (!impl)
+        {
+            return;
+        }
+        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
+        const auto state = impl->GetAutofixState();
+        // Open or focus the active tab's agent pane (shared by Detected and
+        // Review). Opening it makes the helper observe pane_open=true and
+        // flip the bar to Idle on its own.
+        const auto openAgentPaneForReview = [&]() {
+            const auto agentPane = activeTab->FindAgentPane();
+            if (agentPane && !agentPane->IsHidden())
+            {
+                if (agentContent.IsSessionsView())
+                {
+                    _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
+                }
+            }
+            else
+            {
+                _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"Autofix");
+            }
+        };
+        if (state == AS::Detected)
+        {
+            // "Ask the agent for a fix": open the pane, then fire the LLM.
+            openAgentPaneForReview();
             Json::Value evt;
             evt["type"] = "event";
             evt["method"] = "autofix_execute_from_detected";
             Json::Value params;
-            params["pane_id"] = winrt::to_string(_diagnostics.lastErrorPaneId);
+            params["pane_id"] = winrt::to_string(impl->GetLastErrorPaneId());
+            params["tab_id"] = winrt::to_string(activeTab->StableId());
             evt["params"] = params;
             Json::StreamWriterBuilder wb;
             wb["indentation"] = "";
             ProtocolVtSequenceReceived.raise(
                 *this,
                 winrt::to_hstring(Json::writeString(wb, evt)));
+            args.Handled(true);
+        }
+        else if (state == AS::Review)
+        {
+            // Result is ready in the pane chat — just open it for review.
+            openAgentPaneForReview();
             args.Handled(true);
         }
     }
@@ -1783,14 +1831,15 @@ namespace winrt::TerminalApp::implementation
         {
             co_return;
         }
-        wil::unique_cotaskmem_string localAppDataRaw;
-        if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppDataRaw)) || !localAppDataRaw)
+        const std::filesystem::path desktop{ desktopRaw.get() };
+        // Archive the WTA log *root* (`...\logs`), not the per-version subdir,
+        // so the bug report captures every version's logs plus the flat
+        // hook-trace.log — the whole `logs\` tree is tarred recursively below.
+        const std::filesystem::path logsDir = ::IntelligentTerminal::LogDir();
+        if (logsDir.empty())
         {
             co_return;
         }
-
-        const std::filesystem::path desktop{ desktopRaw.get() };
-        const std::filesystem::path logsDir = std::filesystem::path(localAppDataRaw.get()) / L"IntelligentTerminal" / L"logs";
 
         // create_directories is a no-op if the path already exists. We do this so
         // tar always has *something* to archive, even on a brand-new install where
@@ -1900,41 +1949,197 @@ namespace winrt::TerminalApp::implementation
 
         if (_windowIdToast != nullptr)
         {
-            WindowIdToast().Title(L"Terminal Protocol");
+            WindowIdToast().Title(RS_(L"TerminalProtocolTeachingTipTitle"));
             WindowIdToast().Subtitle(pipeName);
             _windowIdToast->Open();
         }
         args.Handled(true);
     }
 
-    safe_void_coroutine TerminalPage::_InitShellIntegration(const ShellIntegrationTarget target)
+    safe_void_coroutine TerminalPage::_InitShellIntegration([[maybe_unused]] const ShellIntegrationTarget target)
     {
+        // Publish "user clicked Install -> desired = true" SYNCHRONOUSLY,
+        // before the first suspension. If we deferred this until after the
+        // resume_background() below, a settings reload that publishes
+        // `false` between the click and our resumption could complete its
+        // uninstall first, and then this coroutine would stamp `true`
+        // back over it and reinstall — leaving $PROFILE installed while
+        // the toggle is off. Publishing pre-suspension makes the
+        // last-writer-wins semantics depend on UI-thread ordering (which
+        // matches user intent ordering), not on coroutine resume ordering.
+        _shellIntegrationDesiredEnabled.store(true, std::memory_order_release);
+
         const auto weak = get_weak();
         const auto dispatcher = Dispatcher();
 
+        // Snapshot WSL distros AND which non-WSL shells the user has
+        // profiles for, on the UI thread BEFORE we go background.
+        // _settings.AllProfiles() is an observable vector; iterating it
+        // concurrently with a settings reload would be unsafe.
+        const auto wslDistros = ShellIntegrationSweep::SnapshotWslDistroNames(_settings);
+        const auto shellPresence = ShellIntegrationSweep::SnapshotShellPresence(_settings);
+
         co_await winrt::resume_background();
 
-        namespace SI = ::Microsoft::Terminal::ShellIntegration;
+        // Acquire a strong reference *before* touching any more member
+        // state so a page destroyed while this coroutine was queued
+        // doesn't leave us chasing freed members. Mirrors the pattern in
+        // _ReconcileShellIntegration.
+        auto self = weak.get();
+        if (!self)
+        {
+            co_return;
+        }
 
-        // Install for both PowerShell 7 and Windows PowerShell 5.1
-        const auto pwshResult = SI::InstallForTarget(SI::Target::Pwsh);
-        const auto wpResult = SI::InstallForTarget(SI::Target::WindowsPowerShell);
+        bool desiredAtRun = true;
+        bool allAlreadyInstalled = false;
+        bool anyFailure = false;
+        bool epBlocked = false;
+        // Collected failure details from EVERY failing flavor (pwsh, WinPS,
+        // bash, each WSL distro). Surfaced verbatim in the error dialog so
+        // the user sees the real reason ("Profile directory not writable",
+        // "Failed to write backup", etc.) instead of a guess. Empty when
+        // every flavor succeeded.
+        std::wstring failureDetails;
+        {
+            std::lock_guard<std::mutex> guard{ _shellIntegrationReconcileMutex };
+            // Re-check after acquiring the lock. If a settings reload (toggle
+            // off) raced ahead and published `false`, that is a newer
+            // expression of intent than the Install button click; skip the
+            // install so we don't reinstall on top of the just-completed
+            // uninstall and leave the profile out of sync with the toggle.
+            desiredAtRun = _shellIntegrationDesiredEnabled.load(std::memory_order_acquire);
+            if (desiredAtRun)
+            {
+                // Profile-gated install: RunInstall only touches shells
+                // the user actually has a profile for. A user with only
+                // "Developer PowerShell for VS" (Windows PowerShell) and
+                // no pwsh profile should not get a pwsh block written.
+                // Skipped shells are reported as success-already-installed
+                // so the all-installed / any-failure UI verdict below
+                // doesn't flag a missing shell as a failure.
+                const auto results = ShellIntegrationSweep::RunInstall(shellPresence, wslDistros);
 
-        const bool allAlreadyInstalled = pwshResult.alreadyInstalled && wpResult.alreadyInstalled;
-        const bool anyFailure = !pwshResult.success || !wpResult.success;
+                // Aggregate verdict across ALL four flavors (pwsh, WinPS,
+                // bash, every WSL distro). The earlier two-flavor version
+                // silently dropped bash/WSL failures on the floor.
+                auto fold = [&](const auto& r, std::wstring_view label) {
+                    if (r.executionPolicyBlocked)
+                    {
+                        epBlocked = true;
+                    }
+                    if (!r.success)
+                    {
+                        anyFailure = true;
+                        if (!r.errorMessage.empty())
+                        {
+                            if (!failureDetails.empty())
+                            {
+                                failureDetails += L"\n";
+                            }
+                            failureDetails += L"• ";
+                            failureDetails += label;
+                            failureDetails += L": ";
+                            failureDetails += r.errorMessage;
+                        }
+                    }
+                };
+
+                bool sawAny = false;
+                auto consider = [&](const auto& r, std::wstring_view label) {
+                    sawAny = true;
+                    fold(r, label);
+                    if (!r.alreadyInstalled)
+                    {
+                        allAlreadyInstalled = false;
+                    }
+                };
+
+                allAlreadyInstalled = true; // becomes false on first non-alreadyInstalled below
+
+                if (shellPresence.pwsh)              { consider(results.pwsh,              L"PowerShell"); }
+                if (shellPresence.windowsPowerShell) { consider(results.windowsPowerShell, L"Windows PowerShell"); }
+                if (shellPresence.bash)              { consider(results.bash,              L"bash"); }
+                for (const auto& [distName, wslRes] : results.wsl)
+                {
+                    consider(wslRes, L"WSL bash (" + distName + L")");
+                }
+
+                if (!sawAny)
+                {
+                    // No profiles matched any supported shell. Treat as
+                    // "already installed" (nothing to do) so no dialog
+                    // fires — matches the prior single-flavor behavior
+                    // when both pwsh AND WinPS were absent.
+                    allAlreadyInstalled = true;
+                }
+            }
+        }
 
         co_await wil::resume_foreground(dispatcher);
         if (auto strong = weak.get())
         {
-            if (allAlreadyInstalled)
+            if (!desiredAtRun)
+            {
+                // Auto-detection was disabled between the click and the lock.
+                // No dialog: a reconcile has already brought $PROFILE in line.
+            }
+            else if (allAlreadyInstalled)
             {
                 // Already configured — no dialog needed
             }
+            else if (epBlocked)
+            {
+                // Specific message: execution policy is refusing scripts.
+                // Different remediation than a generic write failure (the user
+                // needs to change execution policy, not retry). Build the body
+                // as a TextBlock with the sentence on one line and a clickable
+                // "Learn how to fix this manually" Hyperlink on a separate
+                // line below — matches the FreOverlay error-banner pattern
+                // and avoids any concat/RTL issues with inline links.
+                if (auto presenter{ strong->_dialogPresenter.get() })
+                {
+                    Controls::ContentDialog dialog;
+                    dialog.Title(winrt::box_value(RS_(L"InitShellIntegrationErrorTitle")));
+
+                    Controls::TextBlock body;
+                    body.TextWrapping(TextWrapping::Wrap);
+
+                    Documents::Run sentence;
+                    sentence.Text(RS_(L"InitShellIntegrationExecutionPolicyErrorMessage"));
+                    body.Inlines().Append(sentence);
+
+                    body.Inlines().Append(Documents::LineBreak{});
+
+                    Documents::Hyperlink link;
+                    link.NavigateUri(winrt::Windows::Foundation::Uri{ L"https://aka.ms/intelligent-terminal-dependency#4-powershell-shell-integration" });
+                    Documents::Run linkRun;
+                    linkRun.Text(RS_(L"FreOverlay_ErrorHelpLink"));
+                    link.Inlines().Append(linkRun);
+                    body.Inlines().Append(link);
+
+                    dialog.Content(body);
+                    dialog.CloseButtonText(RS_(L"Ok"));
+                    dialog.DefaultButton(Controls::ContentDialogButton::Close);
+                    presenter.ShowDialog(dialog);
+                }
+            }
             else if (anyFailure)
             {
+                // Append per-flavor failure details (collected above) so the
+                // user sees the actual reason — "Profile directory not
+                // writable", a WSL distro that isn't running, etc. — instead
+                // of a guess. Body intentionally not localized: orchestrator
+                // error strings are English-only diagnostics.
+                std::wstring body{ RS_(L"InitShellIntegrationErrorMessage") };
+                if (!failureDetails.empty())
+                {
+                    body += L"\n\n";
+                    body += failureDetails;
+                }
                 strong->_ShowShellIntegrationDialog(
                     RS_(L"InitShellIntegrationErrorTitle"),
-                    RS_(L"InitShellIntegrationErrorMessage"));
+                    winrt::hstring{ body });
             }
             else
             {
@@ -1948,6 +2153,70 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_OnSettingsInitShellIntegration(const IInspectable& /*sender*/, const ShellIntegrationTarget target)
     {
         _InitShellIntegration(target);
+    }
+
+    // Silent install/uninstall driven by EffectiveAutoErrorDetectionEnabled.
+    // Called from SetSettings on first-load and on every change of the
+    // effective detection setting. No dialog — this is the background
+    // reconcile that keeps $PROFILE in sync with the user's stored
+    // preference (including roaming/sync arrivals on fresh machines and
+    // toggle-OFF cleanup that the FRE/Settings-Save dialog path doesn't
+    // perform). Install/Uninstall are both idempotent.
+    safe_void_coroutine TerminalPage::_ReconcileShellIntegration()
+    {
+        auto weak = get_weak();
+
+        // Snapshot WSL distros AND non-WSL shell presence on the UI
+        // thread BEFORE going background. _settings.AllProfiles() is
+        // an observable vector and must not be iterated concurrently
+        // with a settings reload.
+        const auto wslDistros = ShellIntegrationSweep::SnapshotWslDistroNames(_settings);
+        const auto shellPresence = ShellIntegrationSweep::SnapshotShellPresence(_settings);
+
+        co_await winrt::resume_background();
+        auto self = weak.get();
+        if (!self)
+        {
+            co_return;
+        }
+
+        // Serialize against any other in-flight reconcile so back-to-back
+        // toggle changes (or file-watcher reload storms) can't interleave
+        // an earlier Install's write after a later Uninstall and leave
+        // the $PROFILE block stuck in the wrong state. Reading the
+        // desired flag inside the lock means the last acquirer always
+        // observes the latest UI-thread-published value, so the final
+        // on-disk state matches the latest setting.
+        std::lock_guard<std::mutex> guard{ _shellIntegrationReconcileMutex };
+        const bool enabled = _shellIntegrationDesiredEnabled.load(std::memory_order_acquire);
+
+        if (enabled)
+        {
+            // Profile-gated install: only touch shells the user has a
+            // profile for. A user keeping only "Developer PowerShell
+            // for VS" (which uses Windows PowerShell) and no pwsh
+            // profile must not get pwsh integration written.
+            (void)ShellIntegrationSweep::RunInstall(shellPresence, wslDistros);
+        }
+        else
+        {
+            // Profile-gated uninstall: symmetric with install — we
+            // only clean up shells the user currently has a profile
+            // for. Trade-off: if the user installed for shell X,
+            // deleted the X profile, then toggled off, the X block
+            // in their HOME survives. This matches install-time
+            // policy and avoids touching shells the user does not
+            // use (which would write `.bak.*` for nothing). The
+            // next reconcile after re-adding the X profile sweeps
+            // it.
+            //
+            // WSL is similarly bounded by `wslDistros`: WT profile
+            // deletion != WSL distro removal (the user may still
+            // use the distro via `wsl.exe` directly), and tracking
+            // previously-installed distros across settings reloads
+            // would add complexity for a rare edge case.
+            ShellIntegrationSweep::RunUninstall(shellPresence, wslDistros);
+        }
     }
 
     void TerminalPage::_ShowShellIntegrationDialog(const winrt::hstring& title, const winrt::hstring& message)

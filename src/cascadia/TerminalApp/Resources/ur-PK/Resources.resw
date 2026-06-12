@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -120,14 +120,14 @@
 
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal میں خوش آمدید</value>
+    <value>ذہین ٹرمینل میں خوش آمدید</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>غلطیوں کی وضاحت، کمانڈز تیار کرنے اور کاموں کو ان بلاک کرنے میں مدد کے لیے اپنا بلٹ ان اسسٹنٹ سیٹ اپ کریں، بالکل وہیں جہاں آپ کام کرتے ہیں۔ </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Intelligent Terminal کے بارے میں مزید جانیں</value>
+    <value>ذہین ٹرمینل کے بارے میں مزید جانیں</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -150,48 +150,44 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Intelligent Terminal میں خوش آمدید</value>
+    <value>ذہین ٹرمینل میں خوش آمدید</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>ابھی کیا سیٹ اپ کرنا ہے منتخب کریں۔ آپ انہیں کسی بھی وقت تبدیل کر سکتے ہیں </value>
+    <value>منتخب کریں کہ ابھی کیا ترتیب دینا ہے۔ آپ انہیں کسی بھی وقت تبدیل کر سکتے ہیں۔ </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>ترتیبات</value>
+    <value>جانیں کہ ڈیٹا کیسے استعمال ہوتا ہے</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>ایجنٹ</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>ایجنٹ پین میں استعمال ہونے والا ایجنٹ CLI منتخب کریں۔ کوئی بھی ہم آہنگ ACP CLI خود بخود شناخت ہو جائے گا۔</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ایجنٹ پین میں استعمال ہونے والا اور ACP کو سپورٹ کرنے والا ایجنٹ منتخب کریں۔</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ اس ایجنٹ کو Node.js اور NPX درکار ہیں، جو پہلے سے موجود نہ ہونے پر خود بخود انسٹال ہو جائیں گے۔</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>اس ایجنٹ کو Node.js اور NPX درکار ہیں، جو پہلے سے موجود نہ ہونے پر خود بخود انسٹال ہو جائیں گے۔</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>ناکام کمانڈز کے لیے خودکار طور پر اصلاحات تجویز کریں</value>
+    <value>خودکار خرابی کی تجویز</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>فعال ہونے پر، AI ایجنٹ خودکار طور پر ناکام کمانڈز کا تجزیہ کرتا ہے اور ایک اصلاح تجویز کرتا ہے۔ غیر فعال ہونے پر، ناکام کمانڈز اسٹیٹس بار میں ایک قابل کلک اشارہ ظاہر کرتی ہیں — اصلاح کی درخواست کرنے کے لیے Ctrl+Alt+. دبائیں یا اشارے پر کلک کریں۔</value>
+    <value>Intelligent Terminal کو خودکار طور پر اصلاحات تجویز کرنے کے لیے اپنے ایجنٹ کو خرابیاں بھیجنے کی اجازت دیں۔</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>سیشن کا انتظام</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal کو اپنے چل رہے یا فعال ایجنٹس کی حالت ٹریک کرنے کی اجازت دیں۔</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ذہین ٹرمینل کو اپنے چل رہے یا فعال ایجنٹس کی حالت ٹریک کرنے کی اجازت دیں۔</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ اسے فعال کرنے سے آپ کے ایجنٹ CLI میں سیشنز ٹریک کرنے کے لیے انٹیگریشن ہکس انسٹال ہوں گے۔</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>اسے فعال کرنے سے آپ کے ایجنٹس میں سیشنز ٹریک کرنے کے لیے انٹیگریشن hooks انسٹال ہوں گے۔</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>پین کی پوزیشن</value>
@@ -225,18 +221,149 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>سیٹ اپ ہو رہا ہے...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot انسٹال کرنے میں ناکامی۔ اپنا نیٹ ورک چیک کریں اور دوبارہ کوشش کریں۔</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Windows Package Manager پالیسی نے {0} کی انسٹالیشن کو بلاک کر دیا۔ اگر آپ مینیجڈ ڈیوائس پر ہیں، تو اپنے IT ایڈمن سے رابطہ کریں۔</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy (group policy disabled the operation).</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js انسٹال کرنے میں ناکامی۔ اپنا نیٹ ورک چیک کریں اور دوبارہ کوشش کریں۔</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ {0} انسٹال نہیں ہو سکا (خرابی کوڈ {1})۔ تفصیلات کے لیے لاگ دیکھیں، یا {0} کو دستی طور پر انسٹال کریں۔</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194". Shown for failure causes we don't have a more specific message for.</comment>
   </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ {0} انسٹال نہیں ہو سکا۔ تفصیلات کے لیے لاگ دیکھیں، یا {0} کو دستی طور پر انسٹال کریں۔</value>
+    <comment>FRE setup error fallback used when no actionable error code is available (e.g. the catalog connect/search failed before an installer ever ran). {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0} انسٹالر نے ایک خرابی رپورٹ کی (کوڈ {1})۔ تفصیلات کے لیے لاگ چیک کریں، یا {0} کو دستی طور پر انسٹال کریں۔</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603). Shown when winget reached the install phase but the installer itself failed.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ {0} انسٹال کرتے وقت Windows Package Manager تک رسائی نہیں ہو سکی۔ اپنا انٹرنیٹ کنکشن چیک کریں (VPN، proxy، یا firewall اسے بلاک کر رہے ہو سکتے ہیں) اور دوبارہ کوشش کریں۔</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name (FreOverlay_PackageDisplayName_Copilot or _Node). Shown when winget couldn't reach its catalog or the package download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ اس سسٹم پر {0} کے لیے کوئی مطابقت پذیر انسٹالر دستیاب نہیں ہے (OS ورژن یا آرکیٹیکچر سپورٹڈ نہیں ہو سکتا)۔ {0} کو دستی طور پر انسٹال کریں۔</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). Shown when winget returned NoApplicableInstallers — the manifest exists but no installer entry matches this OS/arch/scope.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ Windows Package Manager کیٹلاگ میں {0} نہیں ملا۔ winget سورسز ریفریش کرنے کی کوشش کریں، یا {0} کو دستی طور پر انسٹال کریں۔</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice). Shown when no manifest with the requested package ID was returned from the catalog search.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0} انسٹال ہونے میں 20 منٹ سے زیادہ وقت لگا۔ Intelligent Terminal نے انتظار کرنا بند کر دیا، لیکن انسٹالر اب بھی پس منظر میں چل رہا ہو سکتا ہے۔ Task Manager چیک کریں، یا بعد میں دوبارہ کوشش کریں۔</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name. Shown when our 20-minute hard timeout expired before the install completed.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks انسٹال کرنے میں ناکامی۔ سیشن کا انتظام بند کر دیا گیا ہے۔ آپ اسے دوبارہ فعال کر کے دوبارہ کوشش کر سکتے ہیں، یا اس کے بغیر جاری رکھنے کے لیے محفوظ کر سکتے ہیں۔</value>
+    <comment>{Locked="hooks"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ شیل انضمام انسٹال کرنے میں ناکامی۔ خرابی کی نشاندہی بند کر دی گئی ہے۔ آپ اسے دوبارہ فعال کر کے دوبارہ کوشش کر سکتے ہیں، یا اس کے بغیر جاری رکھنے کے لیے محفوظ کر سکتے ہیں۔</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell ایگزیکیوشن پالیسی اسکرپٹس کو بلاک کر رہی ہے۔ خرابی کی نشاندہی بند کر دی گئی۔</value>
+    <comment>{Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows Package Manager (winget) انسٹال نہیں ہے یا دستیاب نہیں ہے۔ پہلے اسے انسٹال کریں، پھر دوبارہ کوشش کریں۔</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  </data>
+
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>آن</value>
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>آف</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>خرابی کا تجزیہ ہو رہا ہے…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>خرابی کا پتہ چلا: تجزیہ ہو رہا ہے…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>خرابی کا پتہ چلا: درست کرنے کے لیے {0}</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
+    <value>تجویز کردہ اصلاح کے لیے ایجنٹ سے پوچھنے کی خاطر {0} پر کلک کریں یا دبائیں</value>
+    <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>اصلاح تیار ہے۔ جائزہ لینے کے لیے {0} دبائیں</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>تجویز کردہ اصلاح کا جائزہ لینے کے لیے ایجنٹ پین کھولیں</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
+    <value>خرابی کا پتہ چل گیا ہے۔ AI ایجنٹ سے تشخیص اور حل تجویز کروانے کے لیے {0} پر کلک کریں یا دبائیں۔</value>
+    <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>درستی تیار — لاگو کرنے کے لیے {0}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>درستی تیار — لاگو کرنے کے لیے {0}: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>تجویز تیار — ایجنٹ پین کھولیں</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>Auto-fix نے اسے براہ راست درست کرنے سے انکار کیا۔ </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>ایجنٹ پین کھولنے اور مکمل تجویز پڑھنے کے لیے یہاں کلک کریں یا Ctrl+Shift+. دبائیں۔</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>تشخیص</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>ایجنٹ سیشنز</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>ایجنٹ سیشنز: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>خودکار خرابی کا پتہ لگانا</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal کو اپنے شیل تک رسائی اور خودکار طور پر خرابیوں کا پتہ لگانے کی اجازت دیں۔</value>
+  </data>
+  <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>دستی طور پر اسے ٹھیک کرنے کا طریقہ سیکھیں</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>اسے فعال کرنے سے کمانڈ کی ناکامیوں کا پتہ لگانے کے لیے shell انٹیگریشن انسٹال ہوگی۔ </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>مزید جانیں</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>PowerShell ایگزیکیوشن پالیسی اسکرپٹس کو بلاک کر رہی ہے۔</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
 </root>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -119,14 +119,14 @@
   </resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Maligayang pagdating sa Intelligent Terminal</value>
+    <value>Maligayang pagdating sa Matalinong Terminal</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>I-set up ang iyong built-in na assistant para tulungan kang ipaliwanag ang mga error, gumawa ng mga command, at i-unblock ang mga task sa mismong lugar na pinagtatrabahuhan mo. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Matuto pa tungkol sa Intelligent Terminal</value>
+    <value>Matuto pa tungkol sa Matalinong Terminal</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -149,48 +149,44 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Maligayang pagdating sa Intelligent Terminal</value>
+    <value>Maligayang pagdating sa Matalinong Terminal</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Piliin kung ano ang ise-set up ngayon. Maaari mong baguhin ang mga ito kahit kailan sa </value>
+    <value>Piliin kung ano ang ise-set up ngayon. Maaari mong baguhin ang mga ito anumang oras. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Mga Setting</value>
+    <value>Alamin kung paano ginagamit ang data</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Agent</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Piliin ang agent CLI na ginagamit sa agent pane. Awtomatikong made-detect ang anumang compatible na ACP CLI.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Piliin ang agent na ginagamit sa agent pane na sumusuporta sa ACP.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Ang agent na ito ay nangangailangan ng Node.js at NPX, na awtomatikong mai-install kung wala pa.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Ang agent na ito ay nangangailangan ng Node.js at NPX, na awtomatikong mai-install kung wala pa.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Awtomatikong magmungkahi ng mga ayos para sa mga nabigong utos</value>
+    <value>Awtomatikong mungkahi ng error</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Kapag pinagana, awtomatikong sinusuri ng AI agent ang mga nabigong utos at nagmumungkahi ng ayos. Kapag hindi pinagana, ang mga nabigong utos ay nagpapakita ng mai-click na pahiwatig sa status bar — pindutin ang Ctrl+Alt+. o i-click ang pahiwatig upang humiling ng ayos.</value>
+    <value>Bigyan ang Intelligent Terminal ng pahintulot na magpadala ng mga error sa iyong agent upang awtomatikong magmungkahi ng mga ayos.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Pamamahala ng session</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Payagan ang Intelligent Terminal na subaybayan ang status ng iyong mga tumatakbo o aktibong agent.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Payagan ang Matalinong Terminal na subaybayan ang status ng iyong mga tumatakbo o aktibong agent.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Ang pag-enable nito ay mag-i-install ng mga integration hook para subaybayan ang mga session sa iyong mga agent CLI.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Ang pag-enable nito ay mag-i-install ng mga integration hooks para subaybayan ang mga session sa iyong mga agent.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Posisyon ng pane</value>
@@ -224,18 +220,82 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Sine-set up...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Nabigong i-install ang GitHub Copilot. Suriin ang iyong network at subukang muli.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Na-block ng patakaran ng Windows Package Manager ang pag-install ng {0}. Kung nasa pinamamahalaang device ka, makipag-ugnayan sa iyong IT admin.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Nabigong i-install ang Node.js. Suriin ang iyong network at subukang muli.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Hindi ma-install ang {0} (error code {1}). Tingnan ang log para sa mga detalye, o manu-manong i-install ang {0}.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Hindi ma-install ang {0}. Tingnan ang log para sa mga detalye, o manu-manong i-install ang {0}.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ Nag-ulat ng error ang installer ng {0} (code {1}). Tingnan ang log para sa mga detalye, o manu-manong i-install ang {0}.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Hindi maabot ang Windows Package Manager habang ini-install ang {0}. Suriin ang iyong koneksyon sa internet (maaaring bina-block ito ng VPN, proxy, o firewall) at subukang muli.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Walang compatible na installer para sa {0} na available sa system na ito (maaaring hindi suportado ang bersyon ng OS o architecture). Manu-manong i-install ang {0}.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ Hindi natagpuan ang {0} sa catalog ng Windows Package Manager. Subukang i-refresh ang mga source ng winget, o manu-manong i-install ang {0}.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Tumagal nang higit sa 20 minuto ang pag-install ng {0}. Huminto sa paghihintay ang Intelligent Terminal, pero maaaring tumatakbo pa rin sa background ang installer. Suriin ang Task Manager, o subukang muli mamaya.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Hindi naka-install o hindi available ang Windows Package Manager (winget). I-install muna ito, pagkatapos ay subukang muli.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Bukas</value>
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Sarado</value>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Awtomatikong pagtukoy ng error</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Bigyan ang Intelligent Terminal ng pahintulot na i-access ang iyong shell at awtomatikong tukuyin ang mga error.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Nabigong i-install ang shell integration. Na-off ang error detection. Maaari mo itong i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ito.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Nabigong i-install ang session hooks. Na-off ang pamamahala ng session. Maaari mo itong i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ito.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Alamin kung paano ito ayusin nang manu-mano</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Ang pag-enable nito ay mag-i-install ng shell integration para matukoy ang mga pagkabigo ng command. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Matuto pa</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>Hinaharangan ng execution policy ng PowerShell ang mga script.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ Hinaharangan ng execution policy ng PowerShell ang mga script. Na-off ang error detection.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

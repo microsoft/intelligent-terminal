@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
     Microsoft ResX Schema
@@ -120,14 +120,14 @@
 
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>ברוכים הבאים ל-Intelligent Terminal</value>
+    <value>ברוכים הבאים ל-מסוף חכם</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>הגדר את העוזר המובנה שלך כדי לעזור לך להסביר שגיאות, לנסח פקודות ולבטל חסימת משימות ישירות במקום בו אתה עובד. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>למד עוד על Intelligent Terminal</value>
+    <value>למד עוד על מסוף חכם</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -150,48 +150,44 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>ברוכים הבאים ל-Intelligent Terminal</value>
+    <value>ברוכים הבאים ל-מסוף חכם</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>בחר מה להגדיר כעת. תוכל לשנות אלה בכל עת ב</value>
+    <value>בחר מה להגדיר כעת. ניתן לשנות הגדרות אלה בכל עת. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>הגדרות</value>
+    <value>למד כיצד נעשה שימוש בנתונים</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>סוכן</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>בחר את CLI הסוכן המשמש בחלונית הסוכן. כל CLI תואם ACP יזוהה אוטומטית.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>בחר את הסוכן המשמש בחלונית הסוכן ותומך ב-ACP.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ סוכן זה דורש Node.js ו-NPX, אשר יותקנו אוטומטית אם אינם קיימים.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>סוכן זה דורש Node.js ו-NPX, אשר יותקנו אוטומטית אם אינם קיימים.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>הצע אוטומטית תיקונים לפקודות שנכשלו</value>
+    <value>הצעת שגיאות אוטומטית</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>כאשר מופעל, סוכן הבינה המלאכותית מנתח אוטומטית פקודות שנכשלו ומציע תיקון. כאשר מושבת, פקודות שנכשלו מציגות רמז שניתן ללחוץ עליו בשורת המצב — הקש Ctrl+Alt+. או לחץ על הרמז כדי לבקש תיקון.</value>
+    <value>העניק ל-Intelligent Terminal הרשאה לשלוח שגיאות לסוכן שלך כדי להציע תיקונים באופן אוטומטי.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>ניהול הפעלות</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>תן ל-Intelligent Terminal הרשאה לעקוב אחר מצב הסוכנים הפועלים או הפעילים שלך.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>תן ל-מסוף חכם הרשאה לעקוב אחר מצב הסוכנים הפועלים או הפעילים שלך.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ הפעלת אפשרות זו תתקין hooks לאינטגרציה למעקב אחר הפעלות בכלי CLI הסוכן שלך.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>הפעלת אפשרות זו תתקין hooks לאינטגרציה למעקב אחר הפעלות בכל הסוכנים שלך.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>מיקום החלונית</value>
@@ -225,18 +221,146 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>מגדיר...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ התקנת GitHub Copilot נכשלה. בדוק את הרשת שלך ונסה שוב.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ התקנת {0} נחסמה על-ידי מדיניות של מנהל החבילות של Windows. אם אתה במכשיר מנוהל, פנה למנהל ה-IT שלך.</value>
+    <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ התקנת Node.js נכשלה. בדוק את הרשת שלך ונסה שוב.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ לא ניתן היה להתקין את {0} (קוד שגיאה {1}). עיין ביומן לקבלת פרטים, או התקן את {0} באופן ידני.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ לא ניתן היה להתקין את {0}. עיין ביומן לקבלת פרטים, או התקן את {0} באופן ידני.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ מתקין {0} דיווח על שגיאה (קוד {1}). בדוק את היומן לקבלת פרטים, או התקן את {0} באופן ידני.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ לא ניתן היה להגיע למנהל החבילות של Windows בזמן התקנת {0}. בדוק את החיבור שלך לאינטרנט (VPN, proxy או חומת אש עשויים לחסום אותו) ונסה שוב.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ אין מתקין תואם עבור {0} במערכת זו (ייתכן שגרסת מערכת ההפעלה או הארכיטקטורה אינן נתמכות). התקן את {0} באופן ידני.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} לא נמצא בקטלוג של מנהל החבילות של Windows. נסה לרענן את מקורות winget, או התקן את {0} באופן ידני.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ התקנת {0} ארכה יותר מ-20 דקות. Intelligent Terminal הפסיק להמתין, אך ייתכן שהמתקין עדיין פועל ברקע. בדוק את Task Manager, או נסה שוב מאוחר יותר.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ מנהל החבילות של Windows (winget) אינו מותקן או אינו זמין. התקן אותו תחילה ולאחר מכן נסה שוב.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>פעיל</value>
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>כבוי</value>
+  </data>
+  <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
+    <value>מנתח שגיאה…</value>
+    <comment>Tooltip for the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorPendingLabel" xml:space="preserve">
+    <value>זוהתה שגיאה: מנתח…</value>
+    <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
+  </data>
+  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
+    <value>זוהתה שגיאה: {0} לתיקון</value>
+    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
+    <value>לחץ או הקש על {0} כדי לבקש מהסוכן תיקון מוצע</value>
+    <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewLabelFormat" xml:space="preserve">
+    <value>התיקון מוכן. הקש על {0} כדי לעיין</value>
+    <comment>Short status label shown next to the diagnostics button when an analysis result is ready and the agent pane is closed; pressing the shortcut opens the pane to review. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_ReviewTooltip" xml:space="preserve">
+    <value>פתח את חלונית הסוכן כדי לעיין בתיקון המוצע</value>
+    <comment>Tooltip on the diagnostics button when an analysis result is ready to review in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
+    <value>זוהתה שגיאה. לחץ או הקש על {0} כדי לבקש מהסוכן של ה‑AI לאבחן ולהציע תיקון.</value>
+    <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
+    <value>התיקון מוכן — {0} להחלה</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
+  </data>
+  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
+    <value>התיקון מוכן — {0} להחלה: {1}</value>
+    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
+    <value>ההצעה מוכנה — פתח את חלונית הסוכן</value>
+    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
+    <value>התיקון האוטומטי סירב לתקן זאת ישירות. </value>
+    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
+  </data>
+  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
+    <value>לחץ כאן או הקש Ctrl+Shift+. כדי לפתוח את חלונית הסוכן ולקרוא את ההצעה המלאה.</value>
+    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
+  </data>
+  <data name="Diagnostics_Tooltip" xml:space="preserve">
+    <value>אבחון</value>
+    <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitle" xml:space="preserve">
+    <value>הפעלות סוכן</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
+    <value>הפעלות סוכן: {0}</value>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+  </data>
+  <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
+    <value>Terminal Protocol</value>
+    <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>זיהוי שגיאות אוטומטי</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>העניק ל-Intelligent Terminal הרשאה לגשת למעטפת שלך ולזהות שגיאות באופן אוטומטי.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ התקנת שילוב מעטפת נכשלה. זיהוי שגיאות כובה. באפשרותך להפעיל מחדש ולנסות שוב, או לשמור כדי להמשיך בלעדיו.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ התקנת hooks של הפעלה נכשלה. ניהול ההפעלות כובה. באפשרותך להפעיל מחדש ולנסות שוב, או לשמור כדי להמשיך בלעדיו.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>למד כיצד לתקן זאת באופן ידני</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>הפעלת אפשרות זו תתקין אינטגרציית shell לזיהוי כשלים בפקודות. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>למד עוד</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>מדיניות הביצוע של PowerShell חוסמת סקריפטים.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ מדיניות הביצוע של PowerShell חוסמת סקריפטים. זיהוי שגיאות כובה.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

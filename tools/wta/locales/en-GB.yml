@@ -8,21 +8,21 @@ setup.title.not_available: "Agent not available"
 setup.title.sign_in: "Sign in required"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Your agent \"%{agent}\" is not installed. Follow the steps below to install it. To switch agents, go to Settings."
-setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please reinstall it manually, then retry. To switch agents, go to Settings."
-setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Settings."
-setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent CLI, then retry. To switch agents, go to Settings."
+setup.subtitle.copilot_missing: "Your agent \"%{agent}\" is not installed. Follow the steps below to install it. To switch agents, go to Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please install it manually, then try again. To switch agents, go to Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Choose the default agent CLI you would like to use in Intelligent Terminal. You can"
+setup.description.fre_line1: "Choose the default agent you would like to use in Intelligent Terminal. You can"
 setup.description.fre_line2: "navigate to Settings to configure and set up your workspace."
 
-setup.option.reinstall: "Reinstall %{agent}"
-setup.option.reinstall_hint: "(Will be installed automatically)"
+setup.option.install: "Install %{agent}"
+setup.option.install_hint: "(Will be installed automatically)"
 setup.option.signin: "Sign in to %{agent}"
-setup.option.retry_detection: "Retry detection"
-setup.option.retry_auth: "I've signed in — retry connection"
-setup.option.retry_connection: "Retry connection"
+setup.option.retry_detection: "Try again"
+setup.option.retry_auth: "I've signed in — try connecting again"
+setup.option.retry_connection: "Try connecting again"
 setup.option.switch_to: "Switch to %{agent}"
 setup.status.installing: "Installing..."
 setup.status.install_failed: "Install failed: "
@@ -45,15 +45,19 @@ auth.hint_footer: "  Press Enter to sign in, Esc to go back"  # {Locked="Enter",
 chat.activity_thinking: "Thinking…"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Welcome to Intelligent Terminal!"
+chat.welcome_disclaimer: "Intelligent Terminal uses AI. Check for mistakes."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Auto-diagnosed a recent command failure"
+chat.turn_canceled: "(cancelled)"
+chat.turn_executed: "→ executed: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
 input.placeholder.connecting: "connecting..."
-input.placeholder.disconnected: "disconnect"
+input.placeholder.disconnected: "disconnected"
 
 # ── Pending prompt queue (src/ui/queued_hint.rs, src/app.rs) ───────────────
 # Indicator shown above the input box while one or more prompts are queued
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command
 commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ to navigate • Enter to select • Esc to cancel)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ to navigate • ← → to switch actions • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session in new tab • Shift+enter to launch session in agent pane • Esc to exit)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit)"
 agents.status.active: "Active"
 agents.status.waiting_for_input: "Waiting for input"
 agents.status.error: "Error"
 agents.status.idle: "Idle"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Alt+/ to show/hide agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Shift+/ to show/hide agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Starting agent..."
 connection.reconnecting: "Reconnecting..."
+connection.connecting_activity: "Connecting to agent…"
+connection.lost: "Connection to the agent was lost. Type /restart to reconnect."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"
 system.command_copied_retry: "Command copied — run it in another terminal, then press Enter to retry"  # {Locked="Enter"}
+system.stopped_max_tokens: "The response was cut off after reaching the model's output limit."
+system.stopped_max_turn_requests: "The agent stopped after reaching its request limit for this turn."
+system.stopped_refusal: "The agent declined to continue with this request."
+system.agent_busy: "Agent is busy on this tab — wait for the current prompt to finish."
+system.resuming_session: "Resuming session %{session_id}..."
+system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."
+system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."
+system.cannot_focus_session: "Cannot focus session %{session_id}: it appears live but no pane GUID is bound yet. Try again in a moment."
+system.cannot_resume_no_load_session: "Cannot resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability. Press Enter (without Shift) to resume in a new terminal pane instead."
+system.cannot_resume_no_resume_flag: "Cannot resume %{agent} session: this agent has no `--resume`-style flag. Press Shift+Enter to try resuming inside the agent pane via ACP instead."
+system.cannot_resume_unknown_agent: "Cannot resume session %{session_id}: its source agent is unknown to this build."
+system.cannot_resume_phantom_via_flag: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} itself would reject the resume. Removing the row."
+system.cannot_resume_phantom_via_load: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row."
+system.fallback.this_agent: "this agent"
+system.fallback.connected_agent: "the connected agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "No windows found."
@@ -171,3 +192,22 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "just now"
+time.minute_singular: "%{count} minute ago"
+time.minutes_other: "%{count} minutes ago"
+time.hour_singular: "%{count} hour ago"
+time.hours_other: "%{count} hours ago"
+time.day_singular: "%{count} day ago"
+time.days_other: "%{count} days ago"
+
+# ── Recommendation execution (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Choice %{choice} failed: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
+model_picker.title: "Select model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "The connected agent did not advertise any selectable models."
+system.model_set: "Model for this pane set to %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Unknown model %{model} — type /model to see the available list."  # {Locked="%{model}","/model"}

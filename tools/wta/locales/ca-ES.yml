@@ -1,6 +1,6 @@
 # Titles de la pantalla de configuració
-# {Locked="Intelligent Terminal"} - nom del producte, no traduïu
-setup.title.first_run: "Us donem la benvinguda a l'Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Us donem la benvinguda a l'Terminal Intel·ligent!"
 setup.title.agent_missing: "No s'ha trobat l'agent"
 setup.title.agent_error: "No s'ha pogut connectar amb l'agent"
 setup.title.switch_agent: "Canvia d'agent"
@@ -8,21 +8,21 @@ setup.title.not_available: "L'agent no està disponible"
 setup.title.sign_in: "Cal iniciar la sessió"
 
 # %{agent} se substitueix pel nom de visualització de l'agent en temps d'execució.
-setup.subtitle.copilot_missing: "El vostre agent \"%{agent}\" no està instal·lat. Seguiu els passos següents per instal·lar-lo. Per canviar d'agent, aneu a Settings."
-setup.subtitle.agent_missing: "El vostre agent \"%{agent}\" no està instal·lat. Reinstal·leu-lo manualment i torneu-ho a provar. Per canviar d'agent, aneu a Settings."
-setup.subtitle.copilot_auth: "El vostre agent \"%{agent}\" requereix autenticació. Seguiu els passos següents per iniciar la sessió. Per canviar d'agent, aneu a Settings."
-setup.subtitle.agent_auth: "El vostre agent \"%{agent}\" requereix autenticació. Inicieu la sessió mitjançant el CLI de l'agent i torneu-ho a provar. Per canviar d'agent, aneu a Settings."
+setup.subtitle.copilot_missing: "El vostre agent \"%{agent}\" no està instal·lat. Seguiu els passos següents per instal·lar-lo. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
+setup.subtitle.agent_missing: "El vostre agent \"%{agent}\" no està instal·lat. Reinstal·leu-lo manualment i torneu-ho a provar. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
+setup.subtitle.copilot_auth: "El vostre agent \"%{agent}\" requereix autenticació. Seguiu els passos següents per iniciar la sessió. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
+setup.subtitle.agent_auth: "El vostre agent \"%{agent}\" requereix autenticació. Inicieu la sessió mitjançant l'agent i seleccioneu \"He iniciat la sessió\" a continuació. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
 
-# {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "Trieu el CLI d'agent predeterminat que voleu utilitzar a l'Intelligent Terminal. Podeu"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
+setup.description.fre_line1: "Trieu el CLI d'agent predeterminat que voleu utilitzar a l'Terminal Intel·ligent. Podeu"
 setup.description.fre_line2: "anar a Settings per configurar el vostre espai de treball."
 
-setup.option.reinstall: "Reinstal·la %{agent}"
-setup.option.reinstall_hint: "(S'instal·larà automàticament)"
+setup.option.install: "Instal·la %{agent}"
+setup.option.install_hint: "(S'instal·larà automàticament)"
 setup.option.signin: "Inicia la sessió a %{agent}"
-setup.option.retry_detection: "Torna a provar la detecció"
-setup.option.retry_auth: "He iniciat la sessió — torna a provar la connexió"
-setup.option.retry_connection: "Torna a provar la connexió"
+setup.option.retry_detection: "Torna-ho a provar"
+setup.option.retry_auth: "He iniciat la sessió — prova de connectar de nou"
+setup.option.retry_connection: "Prova de connectar de nou"
 setup.option.switch_to: "Canvia a %{agent}"
 setup.status.installing: "S'està instal·lant..."
 setup.status.install_failed: "Error en la instal·lació: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Premeu Enter per iniciar la sessió, Esc per tornar enrere"
 
 # ── Vista de xat (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Pensant…"
-# {Locked="Intelligent Terminal"} - nom del producte, no traduïu
-chat.welcome_title: "Us donem la benvinguda a l'Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Us donem la benvinguda a l'Terminal Intel·ligent!"
+chat.welcome_disclaimer: "Terminal Intel·ligent utilitza IA. Comproveu si hi ha errors."
 chat.plan_header: "Pla:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Diagnosticada automàticament una fallada recent d'una ordre"
+chat.turn_canceled: "(cancel·lat)"
+chat.turn_executed: "→ executat: %{title}"
 
 # ── Marcadors d'entrada (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Pregunteu el que vulgueu, / per a ordres.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Envia un '/' literal (escapa l'analitza
 commands.help_close_hint: "  Esc        Tanca aquesta ajuda"  # {Locked="Esc"}
 
 # ── Tauler de recomanacions (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - noms de tecles i glif de tecla Retorn, no traduïu
-recommendations.nav_hint: "(↑ ↓ per navegar • Enter per seleccionar • Esc per cancel·lar)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - noms de tecles i glif de tecla Retorn, no traduïu
+recommendations.nav_hint: "(↑ ↓ per navegar • ← → per canviar accions • Enter per seleccionar • Esc per cancel·lar)"
 recommendations.button_run_command: "[ Executa l'ordre ]"
 recommendations.button_insert_in_terminal: "Insereix al Terminal"
 recommendations.button_open_in_new_tab: "Obre en una pestanya nova ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Assegureu-vos que %{name} estigui instal·lat i al vost
 
 # ── Vista d'agents (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "S'està carregant..."
-# {Locked="Enter","Shift+enter","Esc"} - combinacions de tecles, no traduïu
-agents.footer_hint: "(↑ ↓ per navegar • Enter per iniciar la sessió en una pestanya nova • Shift+enter per iniciar la sessió al tauler d'agent • Esc per sortir)"
+# {Locked="Enter","Esc","↑","↓"} - combinacions de tecles, no traduïu
+agents.footer_hint: "(↑ ↓ per navegar • Enter per iniciar la sessió • Esc per sortir)"
 agents.status.active: "Actiu"
 agents.status.waiting_for_input: "Esperant entrada"
 agents.status.error: "Error"
 agents.status.idle: "Inactiu"
 
 # ── Consell de benvinguda del disseny (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. per mostrar/amagar el tauler d'agent • Ctrl+Alt+/ per mostrar/amagar la sessió d'agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. per mostrar/amagar el tauler d'agent • Ctrl+Shift+/ per mostrar/amagar la sessió d'agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Estat de la connexió ────────────────────────────────────────────────────────
 connection.starting: "S'està iniciant l'agent..."
 connection.reconnecting: "S'està reconnectant..."
+connection.connecting_activity: "S'està connectant a l'agent…"
+connection.lost: "S'ha perdut la connexió amb l'agent. Escriviu /restart per tornar-vos a connectar."  # {Locked="/restart"}
 
 # ── Missatges del sistema (src/app.rs) ────────────────────────────────────────
 system.cancelled: "Cancel·lat."
 system.no_prompt_in_flight: "No hi ha cap indicació en curs."
 system.authentication_failed: "L'autenticació ha fallat"
 system.command_copied_retry: "Ordre copiada — executeu-la en un altre terminal i premeu Enter per tornar-ho a provar"  # {Locked="Enter"}
+system.stopped_max_tokens: "La resposta s'ha tallat en arribar al límit de sortida del model."
+system.stopped_max_turn_requests: "L'agent s'ha aturat en arribar al seu límit de sol·licituds per a aquest torn."
+system.stopped_refusal: "L'agent ha rebutjat continuar amb aquesta sol·licitud."
+system.agent_busy: "L’agent està ocupat en aquesta pestanya — espereu que acabi la indicació actual."
+system.resuming_session: "S’està reprenent la sessió %{session_id}..."
+system.unknown_command: "Ordre desconeguda \"%{command}\" — s’ha enviat com a indicació. Escriviu /help per veure la llista."
+system.busy_use_stop: "Espereu que acabi la indicació actual, o feu /stop primer."
+system.cannot_focus_session: "No es pot enfocar la sessió %{session_id}: sembla activa, però encara no hi ha cap GUID de subfinestra vinculat. Torneu-ho a provar d’aquí a un moment."
+system.cannot_resume_no_load_session: "No es pot reprendre al panell d’agent: %{agent} no ha anunciat la capacitat ACP `loadSession`. Premeu Enter (sense Shift) per reprendre-la en un panell de terminal nou."
+system.cannot_resume_no_resume_flag: "No es pot reprendre la sessió de %{agent}: aquest agent no té cap marca d’estil `--resume`. Premeu Shift+Enter per provar de reprendre-la dins del panell d’agent mitjançant ACP."
+system.cannot_resume_unknown_agent: "No es pot reprendre la sessió %{session_id}: l’agent d’origen és desconegut per a aquesta compilació."
+system.cannot_resume_phantom_via_flag: "No es pot reprendre la sessió de %{agent} %{session_id}: es va iniciar però no va acumular cap conversa, de manera que %{agent} rebutjaria la represa. S’elimina la fila."
+system.cannot_resume_phantom_via_load: "No es pot reprendre la sessió de %{agent} %{session_id}: es va iniciar però no va acumular cap conversa, de manera que %{agent} rebutjaria la càrrega. S’elimina la fila."
+system.fallback.this_agent: "aquest agent"
+system.fallback.connected_agent: "l’agent connectat"
 
 # ── Sortida de CLI en temps d'execució (src/main.rs) ────────────────────────────────────
 output.no_windows: "No s'han trobat finestres."
@@ -171,3 +192,22 @@ hooks.installed_but_disabled: "⚠ instal·lat però desactivat"
 hooks.not_installed: "✗ no instal·lat"
 hooks.uninstall_skipped: "s'ha omès (CLI no està al PATH)"
 hooks.install_attempted: "S'ha intentat instal·lar wt-agent-hooks (idempotent). Executeu `wta hooks status` per inspeccionar el resultat. Registre de traça: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "ara mateix"
+time.minute_singular: "fa %{count} minut"
+time.minutes_other: "fa %{count} minuts"
+time.hour_singular: "fa %{count} hora"
+time.hours_other: "fa %{count} hores"
+time.day_singular: "fa %{count} dia"
+time.days_other: "fa %{count} dies"
+
+# ── Execució de recomanacions (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "L’opció %{choice} ha fallat: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Trieu el model per a aquest tauler (/model <id> per canviar directament)"  # {Locked="/model","<id>"}
+model_picker.title: "Seleccioneu el model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "L’agent connectat no ha anunciat cap model seleccionable."
+system.model_set: "El model d’aquest tauler s’ha establert a %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model desconegut %{model} — escriviu /model per veure la llista disponible."  # {Locked="%{model}","/model"}

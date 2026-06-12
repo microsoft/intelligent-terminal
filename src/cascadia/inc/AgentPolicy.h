@@ -199,6 +199,33 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         return _GetSnapshot()->autoFix;
     }
 
+    // ── Test-only seam ──────────────────────────────────────────────────
+    //
+    // Replace this DLL's cached snapshot with a caller-supplied one and
+    // mark the cache as loaded so production code paths see it. Used by
+    // unit tests to exercise the policy-aware getters without touching
+    // the user's registry. NOT for production use.
+    //
+    // Because each consuming DLL has its own inline-static cache, this
+    // helper only patches the DLL that compiled the call. To exercise
+    // EffectiveAcpAgent / EffectiveDelegateAgent (which live in the
+    // SettingsModel DLL), call through GlobalAppSettings::_TestHookSetAgentPolicy.
+    inline void SetSnapshotForTest(std::shared_ptr<const PolicySnapshot> snap)
+    {
+        std::lock_guard lock{ s_policyMutex };
+        s_snapshot = std::move(snap);
+        s_loaded.store(true, std::memory_order_release);
+    }
+
+    // Drop the test snapshot so the next call lazy-loads from the real
+    // registry again. Tests should call this in cleanup.
+    inline void ResetForTest()
+    {
+        std::lock_guard lock{ s_policyMutex };
+        s_snapshot.reset();
+        s_loaded.store(false, std::memory_order_release);
+    }
+
     inline PolicyState GetAgentSessionHooksPolicy()
     {
         return _GetSnapshot()->agentSessionHooks;

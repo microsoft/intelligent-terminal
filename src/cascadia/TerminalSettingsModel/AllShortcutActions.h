@@ -119,6 +119,7 @@
     ON_ALL_ACTIONS(FocusAgentPane)          \
     ON_ALL_ACTIONS(OpenAgentSessions)       \
     ON_ALL_ACTIONS(TriggerAutofix)          \
+    ON_ALL_ACTIONS(OpenBackgroundAgent)     \
     ON_ALL_ACTIONS(ShowProtocolInfo)        \
     ON_ALL_ACTIONS(BugReport)
 

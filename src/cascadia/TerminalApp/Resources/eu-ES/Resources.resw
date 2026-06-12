@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
   <resheader name="version"><value>2.0</value></resheader>
@@ -6,14 +6,14 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
-    <value>Ongi etorri Intelligent Terminal-era</value>
+    <value>Ongi etorri Terminal Adimenduna-era</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Konfiguratu zure laguntza integratua erroreak azaltzeko, komandoak idazteko eta atazak desblokeatzeko zure lanean zauden lekuan bertan laguntzeko. </value>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
-    <value>Intelligent Terminal-i buruz gehiago jakin</value>
+    <value>Terminal Adimenduna-i buruz gehiago jakin</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_Card1Title.Text" xml:space="preserve">
@@ -36,48 +36,44 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Ongi etorri Intelligent Terminal-era</value>
+    <value>Ongi etorri Terminal Adimenduna-era</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
-    <value>Aukeratu zer konfiguratu orain. Edozein unetan alda ditzakezu hemen: </value>
+    <value>Aukeratu zer konfiguratu nahi duzun orain. Hauek edozein unetan alda ditzakezu. </value>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
-    <value>Ezarpenak</value>
+    <value>Ikasi nola erabiltzen diren datuak</value>
   </data>
   <data name="FreOverlay_AgentLabel.Text" xml:space="preserve">
     <value>Agentea</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Aukeratu agente-panelean erabiltzen den agente CLI-a. ACP CLI bateragarri oro automatikoki detektatuko da.</value>
-    <comment>{Locked="CLI","ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Aukeratu agente-panelean erabiltzen den eta ACP onartzen duen agentea.</value>
+    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Agente honek Node.js eta NPX behar ditu, automatikoki instalatuko direnak oraindik ez badaude.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Agente honek Node.js eta NPX behar ditu, automatikoki instalatuko direnak oraindik ez badaude.</value>
+    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Iradoki konponketak automatikoki huts egindako komandoetarako</value>
+    <value>Erroreen iradokizun automatikoa</value>
   </data>
   <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Gaituta dagoenean, IA agenteak automatikoki aztertzen ditu huts egindako komandoak eta konponketa bat proposatzen du. Desgaituta dagoenean, huts egindako komandoek egoera-barran klikatu daitekeen aholku bat erakusten dute — sakatu Ctrl+Alt+. edo egin klik aholkuan konponketa eskatzeko.</value>
+    <value>Eman baimena Intelligent Terminal-i erroreak zure agenteari bidaltzeko konponketak automatikoki iradokitzeko.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Saio-kudeaketa</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Eman Intelligent Terminal-i zure agente aktiboen egoera jarraitzeko baimena.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Eman Terminal Adimenduna-i zure agente aktiboen egoera jarraitzeko baimena.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Hau gaitzeak integrazio-hook-ak instalatuko ditu saioak jarraitzeko zure agente CLI guztietan.</value>
-    <comment>{Locked="CLI"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Hau gaitzeak integrazio-hooks instalatuko ditu zure agente guztietan saioen jarraipena egiteko.</value>
+    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Panel-posizioa</value>
@@ -111,18 +107,82 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Konfiguratzen...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot instalatzeak huts egin du. Egiaztatu sare-konexioa eta saiatu berriro.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ {0} instalatzea Windows pakete-kudeatzailearen gidalerro batek blokeatu du. Gailu kudeatu batean bazaude, jarri harremanetan zure IT administratzailearekin.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js instalatzeak huts egin du. Egiaztatu sare-konexioa eta saiatu berriro.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Ezin izan da {0} instalatu (errore-kodea: {1}). Begiratu erregistroa xehetasunetarako, edo instalatu {0} eskuz.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Ezin izan da {0} instalatu. Begiratu erregistroa xehetasunetarako, edo instalatu {0} eskuz.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0} instalatzaileak errore bat jakinarazi du (kodea: {1}). Begiratu erregistroa xehetasunetarako, edo instalatu {0} eskuz.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Ezin izan da Windows pakete-kudeatzailearekin konektatu {0} instalatzen zen bitartean. Egiaztatu Interneteko konexioa (VPN, proxy edo suebaki batek blokea dezake) eta saiatu berriro.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ {0} instalatzeko ez dago instalatzaile bateragarririk sistema honetan (baliteke SEaren bertsioa edo arkitektura ez onartzea). Instalatu {0} eskuz.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} ez da aurkitu Windows pakete-kudeatzailearen katalogoan. Saiatu winget iturburuak freskatzen, edo instalatu {0} eskuz.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0} instalatzeak 20 minutu baino gehiago iraun du. Intelligent Terminal itxaroteari utzi dio, baina baliteke instalatzaileak atzeko planoan exekutatzen jarraitzea. Begiratu Task Manager, edo saiatu berriro geroago.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows pakete-kudeatzailea (winget) ez dago instalatuta edo ez dago erabilgarri. Instalatu lehenik, eta saiatu berriro.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Aktibatuta</value>
   </data>
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Desaktibatuta</value>
+  </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Erroreen detekzio automatikoa</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Eman baimena Intelligent Terminal-i zure shell-era sartzeko eta erroreak automatikoki detektatzeko.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Shell integrazioa instalatzeak huts egin du. Erroreen detekzioa desaktibatu da. Berriro aktibatu eta berriro saiatu dezakezu, edo gorde hori gabe jarraitzeko.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Session hooks instalatzeak huts egin du. Saio-kudeaketa desaktibatu da. Berriro aktibatu eta berriro saiatu dezakezu, edo gorde hori gabe jarraitzeko.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Ikasi nola konpondu hau eskuz</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Hau gaitzeak shell integrazioa instalatuko du komando-hutsegiteak hautemateko. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Gehiago jakin</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>PowerShell exekuzio-politikak script-ak blokeatzen ditu.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell exekuzio-politikak script-ak blokeatzen ditu. Erroreen detekzioa desaktibatuta.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Witamy w Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Witamy w Inteligentny Terminal!"
 setup.title.agent_missing: "Nie znaleziono agenta"
 setup.title.agent_error: "Połączenie z agentem nie powiodło się"
 setup.title.switch_agent: "Zmień agenta"
@@ -8,21 +8,21 @@ setup.title.not_available: "Agent niedostępny"
 setup.title.sign_in: "Wymagane logowanie"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Agent \"%{agent}\" nie jest zainstalowany. Wykonaj poniższe kroki, aby go zainstalować. Aby zmienić agenta, przejdź do Settings."
-setup.subtitle.agent_missing: "Agent \"%{agent}\" nie jest zainstalowany. Zainstaluj go ponownie ręcznie, a następnie spróbuj ponownie. Aby zmienić agenta, przejdź do Settings."
-setup.subtitle.copilot_auth: "Agent \"%{agent}\" wymaga uwierzytelnienia. Wykonaj poniższe kroki, aby się zalogować. Aby zmienić agenta, przejdź do Settings."
-setup.subtitle.agent_auth: "Agent \"%{agent}\" wymaga uwierzytelnienia. Zaloguj się za pomocą agenta CLI, a następnie spróbuj ponownie. Aby zmienić agenta, przejdź do Settings."
+setup.subtitle.copilot_missing: "Agent \"%{agent}\" nie jest zainstalowany. Wykonaj poniższe kroki, aby go zainstalować. Aby zmienić agenta, przejdź do Inteligentny Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Agent \"%{agent}\" nie jest zainstalowany. Zainstaluj go ponownie ręcznie, a następnie spróbuj ponownie. Aby zmienić agenta, przejdź do Inteligentny Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Agent \"%{agent}\" wymaga uwierzytelnienia. Wykonaj poniższe kroki, aby się zalogować. Aby zmienić agenta, przejdź do Inteligentny Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Agent \"%{agent}\" wymaga uwierzytelnienia. Zaloguj się za pomocą agenta, a następnie wybierz poniżej \"Zalogowałem się\". Aby zmienić agenta, przejdź do Inteligentny Terminal Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Wybierz domyślny agent CLI, którego chcesz używać w Intelligent Terminal. Możesz"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Wybierz domyślnego agenta, którego chcesz używać w Inteligentny Terminal. Możesz"
 setup.description.fre_line2: "przejść do Settings, aby skonfigurować obszar roboczy."
 
-setup.option.reinstall: "Zainstaluj ponownie %{agent}"
-setup.option.reinstall_hint: "(Zostanie zainstalowany automatycznie)"
+setup.option.install: "Zainstaluj %{agent}"
+setup.option.install_hint: "(Zostanie zainstalowany automatycznie)"
 setup.option.signin: "Zaloguj się do %{agent}"
-setup.option.retry_detection: "Ponów wykrywanie"
-setup.option.retry_auth: "Zalogowałem się — ponów połączenie"
-setup.option.retry_connection: "Ponów połączenie"
+setup.option.retry_detection: "Spróbuj ponownie"
+setup.option.retry_auth: "Zalogowałem się — spróbuj ponownie połączyć"
+setup.option.retry_connection: "Spróbuj ponownie połączyć"
 setup.option.switch_to: "Przełącz na %{agent}"
 setup.status.installing: "Instalowanie..."
 setup.status.install_failed: "Instalacja nie powiodła się: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Naciśnij Enter, aby się zalogować, Esc, aby wrócić"  #
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Myślenie..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Witamy w Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Witamy w Inteligentny Terminal!"
+chat.welcome_disclaimer: "Inteligentny Terminal korzysta z AI. Sprawdź, czy nie ma błędów."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Automatyczne zdiagnozowanie ostatniego błędu polecenia"
+chat.turn_canceled: "(anulowano)"
+chat.turn_executed: "→ wykonano: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Zapytaj o cokolwiek, / dla poleceń.."  # {Locked="/"}
@@ -75,10 +79,17 @@ commands.help_title: " Pomoc "
 commands.help_header: "Polecenia ukośnika — wpisz / w polu wprowadzania."
 commands.help_escape_hint: "  //text     Wyślij dosłowne '/' (pomija parser poleceń)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Zamknij tę pomoc"  # {Locked="Esc"}
-
+# Slash command summaries. Command names stay in English.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Pokaż tę listę poleceń"
+commands.clear.summary: "Wyczyść historię czatu (zachowuje sesję)"
+commands.new.summary: "Rozpocznij nową sesję ACP (usuwa historię)"  # {Locked="ACP"}
+commands.restart.summary: "Uruchom ponownie agenta"
+commands.stop.summary: "Anuluj trwający monit"
+commands.sessions.summary: "Otwórz wybór historycznych sesji (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ do nawigacji • Enter aby wybrać • Esc aby anulować)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ do nawigacji • ← → do przełączania przycisków • Enter aby wybrać • Esc aby anulować)"
 recommendations.button_run_command: "[ Uruchom polecenie ]"
 recommendations.button_insert_in_terminal: "Wstaw w terminalu"
 recommendations.button_open_in_new_tab: "Otwórz w nowej karcie ↵"
@@ -115,25 +126,42 @@ agent.custom.auth_hint: "Upewnij się, że %{name} jest zainstalowany i znajduje
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Ładowanie..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ do nawigacji • Enter aby uruchomić sesję w nowej karcie • Shift+enter aby uruchomić sesję w panelu agenta • Esc aby wyjść)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ do nawigacji • Enter aby uruchomić sesję • Esc aby wyjść)"
 agents.status.active: "Aktywny"
 agents.status.waiting_for_input: "Oczekiwanie na dane"
 agents.status.error: "Błąd"
 agents.status.idle: "Bezczynny"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. pokaż/ukryj panel agenta • Ctrl+Alt+/ pokaż/ukryj sesję agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. pokaż/ukryj panel agenta • Ctrl+Shift+/ pokaż/ukryj sesję agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Uruchamianie agenta..."
 connection.reconnecting: "Ponowne łączenie..."
+connection.connecting_activity: "Łączenie z agentem…"
+connection.lost: "Połączenie z agentem zostało utracone. Wpisz /restart, aby połączyć się ponownie."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Anulowano."
 system.no_prompt_in_flight: "Brak aktywnego zapytania."
 system.authentication_failed: "Uwierzytelnianie nie powiodło się"
 system.command_copied_retry: "Polecenie skopiowane — uruchom je w innym terminalu, a następnie naciśnij Enter, aby ponowić próbę"  # {Locked="Enter"}
+system.stopped_max_tokens: "Odpowiedź została obcięta po osiągnięciu limitu danych wyjściowych modelu."
+system.stopped_max_turn_requests: "Agent zatrzymał się po osiągnięciu limitu żądań dla tej tury."
+system.stopped_refusal: "Agent odmówił kontynuowania tego żądania."
+system.agent_busy: "Agent jest zajęty na tej karcie — poczekaj, aż bieżący monit się zakończy."
+system.resuming_session: "Wznawianie sesji %{session_id}..."
+system.unknown_command: "Nieznane polecenie \"%{command}\" — wysłano jako monit. Wpisz /help, aby wyświetlić listę."  # {Locked="/help"}
+system.busy_use_stop: "Poczekaj, aż bieżący monit się zakończy, albo najpierw użyj /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nie można ustawić fokusu na sesji %{session_id}: wygląda na aktywną, ale nie powiązano jeszcze żadnego identyfikatora GUID panelu. Spróbuj ponownie za chwilę."
+system.cannot_resume_no_load_session: "Nie można wznowić w panelu agenta: %{agent} nie ogłosił możliwości ACP `loadSession`. Naciśnij Enter (bez Shift), aby zamiast tego wznowić w nowym panelu terminala."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nie można wznowić sesji %{agent}: ten agent nie ma flagi w stylu `--resume`. Naciśnij Shift+Enter, aby spróbować wznowić wewnątrz panelu agenta przez ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nie można wznowić sesji %{session_id}: jej agent źródłowy jest nieznany tej kompilacji WTA."
+system.cannot_resume_phantom_via_flag: "Nie można wznowić sesji %{agent} %{session_id}: została uruchomiona, ale nigdy nie zgromadziła żadnej konwersacji, więc sam %{agent} odrzuciłby wznowienie. Usuwanie wiersza."
+system.cannot_resume_phantom_via_load: "Nie można wznowić sesji %{agent} %{session_id}: została uruchomiona, ale nigdy nie zgromadziła żadnej konwersacji, więc %{agent} odrzuciłby załadowanie. Usuwanie wiersza."
+system.fallback.this_agent: "ten agent"
+system.fallback.connected_agent: "połączony agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nie znaleziono okien."
@@ -171,3 +199,25 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+# rust-i18n has no CLDR plural support; Rust selects singular vs. other.
+# For Slavic 3-form locales, _other uses the many form (natural for 5+).
+# %{count} = numeric count (interpolated).
+time.just_now: "przed chwilą"
+time.minute_singular: "1 minutę temu"
+time.minutes_other: "%{count} minut temu"
+time.hour_singular: "1 godzinę temu"
+time.hours_other: "%{count} godzin temu"
+time.day_singular: "1 dzień temu"
+time.days_other: "%{count} dni temu"
+
+# ── Wykonywanie rekomendacji (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Wybór %{choice} nie powiódł się: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Wybierz model dla tego panelu (/model <id>, aby przełączyć bezpośrednio)"  # {Locked="/model","<id>"}
+model_picker.title: "Wybierz model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Połączony agent nie ogłosił żadnych modeli do wyboru."
+system.model_set: "Model dla tego panelu ustawiono na %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Nieznany model %{model} — wpisz /model, aby zobaczyć dostępną listę."  # {Locked="%{model}","/model"}

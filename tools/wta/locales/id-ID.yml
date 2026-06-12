@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - nama produk, jangan diterjemahkan
-setup.title.first_run: "Selamat datang di Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Selamat datang di Terminal Cerdas!"
 setup.title.agent_missing: "Agen AI tidak ditemukan"
 setup.title.agent_error: "Koneksi agen AI gagal"
 setup.title.switch_agent: "Ganti agen AI"
@@ -8,21 +8,21 @@ setup.title.not_available: "Agen AI tidak tersedia"
 setup.title.sign_in: "Perlu masuk"
 
 # %{agent} diganti dengan nama tampilan agen AI saat runtime.
-setup.subtitle.copilot_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Ikuti langkah-langkah di bawah untuk menginstalnya. Untuk mengganti agen AI, buka Settings."
-setup.subtitle.agent_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Silakan instal ulang secara manual, lalu coba lagi. Untuk mengganti agen AI, buka Settings."
-setup.subtitle.copilot_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Ikuti langkah-langkah di bawah untuk masuk. Untuk mengganti agen AI, buka Settings."
-setup.subtitle.agent_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Silakan masuk melalui CLI agen AI, lalu coba lagi. Untuk mengganti agen AI, buka Settings."
+setup.subtitle.copilot_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Ikuti langkah-langkah di bawah untuk menginstalnya. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
+setup.subtitle.agent_missing: "Agen AI \"%{agent}\" Anda belum diinstal. Silakan instal ulang secara manual, lalu coba lagi. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
+setup.subtitle.copilot_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Ikuti langkah-langkah di bawah untuk masuk. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
+setup.subtitle.agent_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Silakan masuk melalui agen AI, lalu pilih \"Saya sudah masuk\" di bawah. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Pilih CLI agen AI default yang ingin Anda gunakan di Intelligent Terminal. Anda dapat"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Pilih CLI agen AI default yang ingin Anda gunakan di Terminal Cerdas. Anda dapat"
 setup.description.fre_line2: "membuka Settings untuk mengonfigurasi dan menyiapkan ruang kerja Anda."
 
-setup.option.reinstall: "Instal ulang %{agent}"
-setup.option.reinstall_hint: "(Akan diinstal secara otomatis)"
+setup.option.install: "Instal %{agent}"
+setup.option.install_hint: "(Akan diinstal secara otomatis)"
 setup.option.signin: "Masuk ke %{agent}"
-setup.option.retry_detection: "Coba deteksi lagi"
-setup.option.retry_auth: "Saya sudah masuk — coba sambungkan lagi"
-setup.option.retry_connection: "Coba sambungkan lagi"
+setup.option.retry_detection: "Coba lagi"
+setup.option.retry_auth: "Saya sudah masuk — coba sambungkan kembali"
+setup.option.retry_connection: "Coba sambungkan kembali"
 setup.option.switch_to: "Beralih ke %{agent}"
 setup.status.installing: "Menginstal..."
 setup.status.install_failed: "Instalasi gagal: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Tekan Enter untuk masuk, Esc untuk kembali"  # {Locked="Ent
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Berpikir…"
-# {Locked="Intelligent Terminal"} - nama produk, jangan diterjemahkan
-chat.welcome_title: "Selamat datang di Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Selamat datang di Terminal Cerdas!"
+chat.welcome_disclaimer: "Terminal Cerdas menggunakan AI. Periksa kesalahan."
 chat.plan_header: "Rencana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Kegagalan perintah terbaru terdiagnosis otomatis"
+chat.turn_canceled: "(dibatalkan)"
+chat.turn_executed: "→ dijalankan: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Tanyakan apa saja, / untuk perintah.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Kirim '/' literal (melewati parser peri
 commands.help_close_hint: "  Esc        Tutup bantuan ini"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ untuk navigasi • Enter untuk memilih • Esc untuk membatalkan)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ untuk navigasi • ← → untuk mengganti tindakan • Enter untuk memilih • Esc untuk membatalkan)"
 recommendations.button_run_command: "[ Jalankan perintah ]"
 recommendations.button_insert_in_terminal: "Sisipkan di Terminal"
 recommendations.button_open_in_new_tab: "Buka di Tab Baru ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Pastikan %{name} sudah diinstal dan ada di PATH Anda." 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Memuat..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ untuk navigasi • Enter untuk membuka sesi di tab baru • Shift+enter untuk membuka sesi di panel agen AI • Esc untuk keluar)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ untuk navigasi • Enter untuk membuka sesi • Esc untuk keluar)"
 agents.status.active: "Aktif"
 agents.status.waiting_for_input: "Menunggu input"
 agents.status.error: "Kesalahan"
 agents.status.idle: "Menganggur"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. untuk menampilkan/menyembunyikan panel agen AI • Ctrl+Alt+/ untuk menampilkan/menyembunyikan sesi agen AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. untuk menampilkan/menyembunyikan panel agen AI • Ctrl+Shift+/ untuk menampilkan/menyembunyikan sesi agen AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Memulai agen AI..."
 connection.reconnecting: "Menyambungkan kembali..."
+connection.connecting_activity: "Menyambungkan ke agen AI…"
+connection.lost: "Koneksi ke agen AI terputus. Ketik /restart untuk menyambungkan kembali."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Dibatalkan."
 system.no_prompt_in_flight: "Tidak ada prompt yang sedang berjalan."
 system.authentication_failed: "Autentikasi gagal"
 system.command_copied_retry: "Perintah disalin — jalankan di terminal lain, lalu tekan Enter untuk mencoba lagi"  # {Locked="Enter"}
+system.stopped_max_tokens: "Respons terpotong setelah mencapai batas keluaran model."
+system.stopped_max_turn_requests: "Agen berhenti setelah mencapai batas permintaannya untuk giliran ini."
+system.stopped_refusal: "Agen menolak untuk melanjutkan permintaan ini."
+system.agent_busy: "Agen sedang sibuk di tab ini — tunggu hingga prompt saat ini selesai."
+system.resuming_session: "Melanjutkan sesi %{session_id}..."
+system.unknown_command: "Perintah tidak dikenal \"%{command}\" — dikirim sebagai prompt. Ketik /help untuk daftar."  # {Locked="/help"}
+system.busy_use_stop: "Tunggu hingga prompt saat ini selesai, atau jalankan /stop terlebih dahulu."  # {Locked="/stop"}
+system.cannot_focus_session: "Tidak dapat memfokuskan sesi %{session_id}: sesi tampak aktif, tetapi GUID panel belum terikat. Coba lagi sebentar lagi."
+system.cannot_resume_no_load_session: "Tidak dapat melanjutkan di panel agen: %{agent} tidak mengiklankan kapabilitas ACP `loadSession`. Tekan Enter (tanpa Shift) untuk melanjutkan di panel terminal baru sebagai gantinya."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Tidak dapat melanjutkan sesi %{agent}: agen ini tidak memiliki flag bergaya `--resume`. Tekan Shift+Enter untuk mencoba melanjutkan di dalam panel agen melalui ACP sebagai gantinya."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Tidak dapat melanjutkan sesi %{session_id}: agen sumbernya tidak dikenal oleh build ini."
+system.cannot_resume_phantom_via_flag: "Tidak dapat melanjutkan sesi %{agent} %{session_id}: sesi ini dimulai tetapi tidak pernah mengumpulkan percakapan apa pun, sehingga %{agent} sendiri akan menolak pelanjutan. Menghapus baris."
+system.cannot_resume_phantom_via_load: "Tidak dapat melanjutkan sesi %{agent} %{session_id}: sesi ini dimulai tetapi tidak pernah mengumpulkan percakapan apa pun, sehingga %{agent} akan menolak pemuatan. Menghapus baris."
+system.fallback.this_agent: "agen ini"
+system.fallback.connected_agent: "agen yang terhubung"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Tidak ada jendela ditemukan."
@@ -171,3 +192,22 @@ hooks.installed_but_disabled: "⚠ terinstal tetapi dinonaktifkan"
 hooks.not_installed: "✗ belum terinstal"
 hooks.uninstall_skipped: "dilewati (CLI tidak ada di PATH)"
 hooks.install_attempted: "Instalasi wt-agent-hooks dicoba (idempotent). Jalankan `wta hooks status` untuk memeriksa hasil. Log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting ─────────────────────────────────────
+time.just_now: "baru saja"
+time.minute_singular: "%{count} menit yang lalu"
+time.minutes_other: "%{count} menit yang lalu"
+time.hour_singular: "%{count} jam yang lalu"
+time.hours_other: "%{count} jam yang lalu"
+time.day_singular: "%{count} hari yang lalu"
+time.days_other: "%{count} hari yang lalu"
+
+# ── Eksekusi rekomendasi (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Pilihan %{choice} gagal: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Pilih model untuk panel ini (/model <id> untuk beralih langsung)"  # {Locked="/model","<id>"}
+model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Agen yang terhubung tidak mengiklankan model apa pun yang dapat dipilih."
+system.model_set: "Model untuk panel ini diatur ke %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model tidak dikenal %{model} — ketik /model untuk melihat daftar yang tersedia."  # {Locked="%{model}","/model"}

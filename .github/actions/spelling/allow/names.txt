@@ -25,7 +25,10 @@ Imms
 italo
 jantari
 jerrysh
+kaitao
 Kaiyu
+Kimi
+Kiro
 leonardder
 lhecker
 Lovecraft
@@ -46,6 +49,8 @@ Panos
 paulcam
 PGP
 Pham
+Qwen
+qwen
 Rincewind
 Schoonover
 shadertoy
@@ -56,6 +61,7 @@ sonpham
 stakx
 thereses
 Thysell
+vanzue
 WDX
 Wellons
 Westerman
@@ -66,3 +72,4 @@ Zamora
 zljubisic
 Zoey
 zorio
+Figma

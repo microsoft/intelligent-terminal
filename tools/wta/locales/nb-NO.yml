@@ -8,21 +8,21 @@ setup.title.not_available: "Agenten er ikke tilgjengelig"
 setup.title.sign_in: "Pålogging kreves"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Agenten din \"%{agent}\" er ikke installert. Følg trinnene nedenfor for å installere den. For å bytte agent, gå til Settings."
-setup.subtitle.agent_missing: "Agenten din \"%{agent}\" er ikke installert. Installer den på nytt manuelt, og prøv deretter igjen. For å bytte agent, gå til Settings."
-setup.subtitle.copilot_auth: "Agenten din \"%{agent}\" krever autentisering. Følg trinnene nedenfor for å logge inn. For å bytte agent, gå til Settings."
-setup.subtitle.agent_auth: "Agenten din \"%{agent}\" krever autentisering. Logg inn via agentens CLI, og prøv deretter igjen. For å bytte agent, gå til Settings."
+setup.subtitle.copilot_missing: "Agenten din \"%{agent}\" er ikke installert. Følg trinnene nedenfor for å installere den. For å bytte agent, gå til Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_missing: "Agenten din \"%{agent}\" er ikke installert. Installer den på nytt manuelt, og prøv deretter igjen. For å bytte agent, gå til Intelligent Terminal Settings > Agent."
+setup.subtitle.copilot_auth: "Agenten din \"%{agent}\" krever autentisering. Følg trinnene nedenfor for å logge inn. For å bytte agent, gå til Intelligent Terminal Settings > Agent."
+setup.subtitle.agent_auth: "Agenten din \"%{agent}\" krever autentisering. Logg inn via agenten, og velg deretter \"Jeg har logget inn\" nedenfor. For å bytte agent, gå til Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Velg standard agent-CLI du vil bruke i Intelligent Terminal. Du kan"
+setup.description.fre_line1: "Velg standardagenten du vil bruke i Intelligent Terminal. Du kan"
 setup.description.fre_line2: "gå til Settings for å konfigurere og sette opp arbeidsområdet ditt."
 
-setup.option.reinstall: "Installer %{agent} på nytt"
-setup.option.reinstall_hint: "(Installeres automatisk)"
+setup.option.install: "Installer %{agent}"
+setup.option.install_hint: "(Installeres automatisk)"
 setup.option.signin: "Logg inn på %{agent}"
-setup.option.retry_detection: "Prøv gjenkjenning igjen"
-setup.option.retry_auth: "Jeg har logget inn — prøv tilkoblingen igjen"
-setup.option.retry_connection: "Prøv tilkoblingen igjen"
+setup.option.retry_detection: "Prøv igjen"
+setup.option.retry_auth: "Jeg har logget inn — prøv å koble til igjen"
+setup.option.retry_connection: "Prøv å koble til igjen"
 setup.option.switch_to: "Bytt til %{agent}"
 setup.status.installing: "Installerer..."
 setup.status.install_failed: "Installasjonen mislyktes: "
@@ -45,10 +45,14 @@ auth.hint_footer: "  Trykk Enter for å logge inn, Esc for å gå tilbake"  # {L
 chat.activity_thinking: "Tenker..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Velkommen til Intelligent Terminal!"
+chat.welcome_disclaimer: "Intelligent Terminal bruker AI. Se etter feil."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Nylig kommandofeil diagnostisert automatisk"
+chat.turn_canceled: "(avbrutt)"
+chat.turn_executed: "→ utført: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Spør om hva som helst, / for kommandoer.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Send en bokstavelig '/' (unngår komman
 commands.help_close_hint: "  Esc        Lukk denne hjelpen"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ for å navigere • Enter for å velge • Esc for å avbryte)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ for å navigere • ← → for å bytte knapper • Enter for å velge • Esc for å avbryte)"
 recommendations.button_run_command: "[ Kjør kommando ]"
 recommendations.button_insert_in_terminal: "Sett inn i Terminal"
 recommendations.button_open_in_new_tab: "Åpne i ny fane ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Kontroller at %{name} er installert og på din PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laster..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt i ny fane • Shift+enter for å starte økt i agentpanelet • Esc for å avslutte)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt • Esc for å avslutte)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Venter på inndata"
 agents.status.error: "Feil"
 agents.status.idle: "Inaktiv"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. for å vise/skjule agentpanelet • Ctrl+Alt+/ for å vise/skjule agentøkten)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. for å vise/skjule agentpanelet • Ctrl+Shift+/ for å vise/skjule agentøkten)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Starter agenten..."
 connection.reconnecting: "Kobler til på nytt..."
+connection.connecting_activity: "Kobler til agenten…"
+connection.lost: "Tilkoblingen til agenten gikk tapt. Skriv /restart for å koble til på nytt."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Avbrutt."
 system.no_prompt_in_flight: "Ingen forespørsel pågår."
 system.authentication_failed: "Autentisering mislyktes"
 system.command_copied_retry: "Kommando kopiert — kjør den i en annen terminal og trykk Enter for å prøve igjen"  # {Locked="Enter"}
+system.stopped_max_tokens: "Svaret ble avkortet etter at modellens utdatagrense ble nådd."
+system.stopped_max_turn_requests: "Agenten stoppet etter at forespørselsgrensen for denne runden ble nådd."
+system.stopped_refusal: "Agenten avslo å fortsette med denne forespørselen."
+system.agent_busy: "Agenten er opptatt i denne fanen — vent til gjeldende ledetekst er ferdig."
+system.resuming_session: "Fortsetter økten %{session_id}..."
+system.unknown_command: "Ukjent kommando \"%{command}\" — sendt som ledetekst. Skriv /help for listen."
+system.busy_use_stop: "Vent til gjeldende ledetekst er ferdig, eller bruk /stop først."
+system.cannot_focus_session: "Kan ikke fokusere økten %{session_id}: den ser ut til å være aktiv, men ingen rute-GUID er bundet ennå. Prøv igjen om et øyeblikk."
+system.cannot_resume_no_load_session: "Kan ikke fortsette i agentruten: %{agent} annonserte ikke ACP `loadSession`-funksjonen. Trykk Enter (uten Shift) for å fortsette i en ny terminalrute i stedet."
+system.cannot_resume_no_resume_flag: "Kan ikke fortsette %{agent}-økten: denne agenten har ikke noe `--resume`-lignende flagg. Trykk Shift+Enter for å prøve å fortsette inne i agentruten via ACP i stedet."
+system.cannot_resume_unknown_agent: "Kan ikke fortsette økten %{session_id}: kildeagenten er ukjent for denne byggen."
+system.cannot_resume_phantom_via_flag: "Kan ikke fortsette %{agent}-økten %{session_id}: den ble startet, men samlet aldri opp noen samtale, så %{agent} ville selv avvise fortsettelsen. Fjerner raden."
+system.cannot_resume_phantom_via_load: "Kan ikke fortsette %{agent}-økten %{session_id}: den ble startet, men samlet aldri opp noen samtale, så %{agent} ville avvise innlastingen. Fjerner raden."
+system.fallback.this_agent: "denne agenten"
+system.fallback.connected_agent: "den tilkoblede agenten"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Ingen vinduer funnet."
@@ -171,3 +192,22 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
+time.just_now: "akkurat nå"
+time.minute_singular: "%{count} minutt siden"
+time.minutes_other: "%{count} minutter siden"
+time.hour_singular: "%{count} time siden"
+time.hours_other: "%{count} timer siden"
+time.day_singular: "%{count} dag siden"
+time.days_other: "%{count} dager siden"
+
+# ── Utføring av anbefaling (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Valg %{choice} mislyktes: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Velg modellen for dette panelet (/model <id> for å bytte direkte)"  # {Locked="/model","<id>"}
+model_picker.title: "Velg modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Den tilkoblede agenten annonserte ingen valgbare modeller."
+system.model_set: "Modellen for dette panelet er satt til %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Ukjent modell %{model} — skriv /model for å se den tilgjengelige listen."  # {Locked="%{model}","/model"}

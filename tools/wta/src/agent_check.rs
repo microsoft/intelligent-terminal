@@ -195,6 +195,45 @@ pub fn refresh_path() {
     }
 }
 
+/// Build the PATH a freshly-spawned child process should inherit.
+///
+/// Windows Terminal (and therefore the `wta-master` / `wta` children it
+/// spawns) captures its environment block at process start. When an agent
+/// CLI is installed *after* WT is already running — e.g. the FRE
+/// winget-installs `copilot` mid-session — our inherited PATH stays stale,
+/// so `CreateProcess` (or `cmd /c <cli>`) can't resolve the bare CLI name
+/// and the spawn fails with "is not recognized", which surfaces as an
+/// immediate ACP-initialize failure. Rebuild PATH from the registry
+/// (system + user) so a just-installed CLI resolves without a full WT
+/// restart, merging in the current process PATH so no runtime-only entry
+/// is lost. Returns `None` when the registry read yields nothing usable.
+pub fn spawn_path() -> Option<String> {
+    let fresh = fresh_path();
+    if fresh.is_empty() {
+        return None;
+    }
+    let current = std::env::var("PATH").unwrap_or_default();
+    Some(merge_paths(&fresh, &current))
+}
+
+/// Concatenate two `;`-separated PATH strings, preferring `fresh` ordering
+/// and dropping case-insensitive duplicates (ignoring a trailing
+/// backslash). Skips empty segments.
+fn merge_paths(fresh: &str, current: &str) -> String {
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out: Vec<&str> = Vec::new();
+    for part in fresh.split(';').chain(current.split(';')) {
+        if part.is_empty() {
+            continue;
+        }
+        let key = part.trim_end_matches('\\').to_ascii_lowercase();
+        if seen.insert(key) {
+            out.push(part);
+        }
+    }
+    out.join(";")
+}
+
 // ─── Composite functions ────────────────────────────────────────────────────
 
 /// Check a single agent: find executable + check credential.
@@ -218,54 +257,6 @@ pub fn check_agent(agent_id: &str) -> AgentStatus {
 /// Check all known agents.
 pub fn check_all_agents() -> Vec<AgentStatus> {
     KNOWN_AGENTS.iter().map(|p| check_agent(p.id)).collect()
-}
-
-/// Check an agent from a full command string (e.g. "copilot --acp --stdio"
-/// or "my-custom-agent --acp"). Supports both known and custom agents.
-pub fn check_agent_cmd(agent_cmd: &str) -> AgentStatus {
-    let exe_name = agent_cmd.split_whitespace().next().unwrap_or(agent_cmd);
-
-    // Try to match a known agent first
-    let profile = agent_registry::lookup_profile(exe_name);
-    if profile.id != "unknown" {
-        return check_agent(profile.id);
-    }
-
-    // Custom agent: check if the executable exists on fresh PATH
-    let path_var = fresh_path();
-    let mut cli_path = None;
-
-    // Check as-is (might be a full path)
-    if std::path::Path::new(exe_name).is_file() {
-        cli_path = Some(exe_name.to_string());
-    }
-
-    // Check on PATH with common extensions
-    if cli_path.is_none() {
-        for ext in &["", ".exe", ".cmd"] {
-            let name = format!("{}{}", exe_name, ext);
-            for dir in std::env::split_paths(&path_var) {
-                let candidate = dir.join(&name);
-                if candidate.is_file() {
-                    cli_path = Some(candidate.to_string_lossy().to_string());
-                    break;
-                }
-            }
-            if cli_path.is_some() { break; }
-        }
-    }
-
-    let cli_found = cli_path.is_some();
-
-    AgentStatus {
-        id: exe_name.to_string(),
-        display_name: exe_name.to_string(),
-        cli_found,
-        cli_path,
-        has_credential: false, // unknown for custom agents
-        install_hint: String::new(),
-        auth_hint: t!("agent.custom.auth_hint", name = exe_name).into_owned(),
-    }
 }
 
 /// Ensure an agent is installed: find → install if missing → refresh PATH → find again.
@@ -446,4 +437,35 @@ fn expand_env_vars(s: &str) -> Option<String> {
     let len = (written as usize).saturating_sub(1);
     let os_str = std::ffi::OsString::from_wide(&out[..len]);
     Some(os_str.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_paths_prefers_fresh_and_removes_duplicates_case_insensitively() {
+        let fresh = r"C:\WinGet\Links;C:\Windows\System32";
+        let current = r"C:\windows\system32\;C:\Runtime\Only";
+        let merged = merge_paths(fresh, current);
+        assert_eq!(
+            merged,
+            r"C:\WinGet\Links;C:\Windows\System32;C:\Runtime\Only"
+        );
+    }
+
+    #[test]
+    fn merge_paths_skips_empty_segments() {
+        let merged = merge_paths(r"C:\A;;C:\B", r";C:\B;");
+        assert_eq!(merged, r"C:\A;C:\B");
+    }
+
+    #[test]
+    fn merge_paths_keeps_runtime_only_entries() {
+        // An entry present only in the live process PATH (not the registry)
+        // must survive so we never regress a runtime-injected directory.
+        let merged = merge_paths(r"C:\Reg", r"C:\Reg;C:\OnlyAtRuntime");
+        assert_eq!(merged, r"C:\Reg;C:\OnlyAtRuntime");
+    }
+
 }

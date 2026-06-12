@@ -3,13 +3,14 @@ name = "wta"
 version = "0.1.0"
 edition = "2021"
 description = "Windows Terminal Agent — ACP TUI client / MCP tool server"
+build = "build.rs"
 
 [[bin]]
 name = "wta"
 path = "src/main.rs"
 
 [dependencies]
-agent-client-protocol = { version = "0.10", features = ["unstable_session_model"] }
+agent-client-protocol = { version = "0.10", features = ["unstable_session_model", "unstable_session_list"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 async-trait = "0.1"
@@ -24,6 +25,8 @@ textwrap = "0.16"
 serde = { version = "1", features = ["derive"] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Storage_Packaging_Appx",
     "Win32_System_Environment",
     "Win32_System_Registry",
     "Win32_System_Threading",
@@ -31,6 +34,12 @@ windows-sys = { version = "0.61", features = [
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
+# Microsoft's official ETW TraceLogging crate. Emits byte-identical events to
+# the C++ TraceLoggingWrite() macros — see src/cascadia/TerminalApp/init.cpp
+# for the matching provider GUID and src/cascadia/TerminalApp/AppLogic.cpp
+# for the event-emission style we mirror here.
+tracelogging = "1"
 which = "7"
+uuid = { version = "1", features = ["v4"] }
 rust-i18n = "3"
 sys-locale = "0.3"

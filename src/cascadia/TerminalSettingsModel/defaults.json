@@ -43,7 +43,6 @@
             "name": "Agent Pane",
             "hidden": true,
             "padding": "8, 8, 8, 0",
-            "background": "#0c0c0c",
             "scrollbarState": "hidden",
             "closeOnExit": "always",
             "suppressApplicationTitle": true
@@ -561,6 +560,7 @@
         { "command": "focusAgentPane", "id": "Terminal.FocusAgentPane" },
         { "command": "openAgentSessions", "id": "Terminal.OpenAgentSessions" },
         { "command": "triggerAutofix", "id": "Terminal.TriggerAutofix" },
+        { "command": "openBackgroundAgent", "id": "Terminal.OpenBackgroundAgent" },
         { "command": "bugReport", "id": "Terminal.BugReport" },
         // Tab Management
         // "command": "closeTab" is unbound by default.
@@ -750,6 +750,7 @@
         { "keys": "ctrl+shift+f", "id": "Terminal.FindText" },
         { "keys": "ctrl+shift+p", "id": "Terminal.ToggleCommandPalette" },
         { "keys": "alt+shift+/", "id": "Terminal.OpenAgentDelegation" },
+        { "keys": "alt+shift+b", "id": "Terminal.OpenBackgroundAgent" },
         { "keys": "win+sc(41)", "id": "Terminal.QuakeMode" },
         { "keys": "alt+space", "id": "Terminal.OpenSystemMenu" },
         { "keys": "ctrl+shift+period", "id": "Terminal.OpenAgentPane" },

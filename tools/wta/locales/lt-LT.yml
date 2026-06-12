@@ -1,6 +1,6 @@
 # Setup screen titles
-# {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Sveiki atvykę į Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Sveiki atvykę į Išmanusis Terminalas!"
 setup.title.agent_missing: "Agentas nerastas"
 setup.title.agent_error: "Nepavyko prisijungti prie agento"
 setup.title.switch_agent: "Pakeisti agentą"
@@ -8,21 +8,21 @@ setup.title.not_available: "Agentas nepasiekiamas"
 setup.title.sign_in: "Reikia prisijungti"
 
 # %{agent} is replaced with the agent display name at runtime.
-setup.subtitle.copilot_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Norėdami jį įdiegti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Settings."
-setup.subtitle.agent_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Įdiekite jį iš naujo rankiniu būdu, tada bandykite dar kartą. Norėdami pakeisti agentą, eikite į Settings."
-setup.subtitle.copilot_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Norėdami prisijungti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Settings."
-setup.subtitle.agent_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Prisijunkite per agento CLI, tada bandykite dar kartą. Norėdami pakeisti agentą, eikite į Settings."
+setup.subtitle.copilot_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Norėdami jį įdiegti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
+setup.subtitle.agent_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Įdiekite jį iš naujo rankiniu būdu, tada bandykite dar kartą. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
+setup.subtitle.copilot_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Norėdami prisijungti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
+setup.subtitle.agent_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Prisijunkite per agentą, tada pasirinkite \"Prisijungiau\" žemiau. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Pasirinkite numatytąjį agento CLI, kurį norite naudoti Intelligent Terminal. Galite"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Pasirinkite numatytąjį agentą, kurį norite naudoti Išmanusis Terminalas. Galite"
 setup.description.fre_line2: "eiti į Settings, kad sukonfigūruotumėte ir nustatytumėte savo darbo sritį."
 
-setup.option.reinstall: "Iš naujo įdiegti %{agent}"
-setup.option.reinstall_hint: "(Bus įdiegta automatiškai)"
+setup.option.install: "Įdiegti %{agent}"
+setup.option.install_hint: "(Bus įdiegta automatiškai)"
 setup.option.signin: "Prisijungti prie %{agent}"
-setup.option.retry_detection: "Bandyti aptikti iš naujo"
-setup.option.retry_auth: "Prisijungiau — bandyti ryšį iš naujo"
-setup.option.retry_connection: "Bandyti ryšį iš naujo"
+setup.option.retry_detection: "Bandyti dar kartą"
+setup.option.retry_auth: "Prisijungiau — bandyti prisijungti dar kartą"
+setup.option.retry_connection: "Bandyti prisijungti dar kartą"
 setup.option.switch_to: "Perjungti į %{agent}"
 setup.status.installing: "Diegiama..."
 setup.status.install_failed: "Diegimas nepavyko: "
@@ -43,12 +43,16 @@ auth.hint_footer: "  Paspauskite Enter, kad prisijungtumėte, Esc, kad grįžtum
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Mąsto..."
-# {Locked="Intelligent Terminal"} - product name, do not translate
-chat.welcome_title: "Sveiki atvykę į Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Sveiki atvykę į Išmanusis Terminalas!"
+chat.welcome_disclaimer: "Išmanusis Terminalas naudoja AI. Tikrinkite klaidas."
 chat.plan_header: "Planas:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Automatiškai diagnozuotas neseniai įvykęs komandos sutrikimas"
+chat.turn_canceled: "(atšaukta)"
+chat.turn_executed: "→ įvykdyta: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Klauskite bet ko, / komandoms.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Siųsti tiesioginį '/' (apeina komand�
 commands.help_close_hint: "  Esc        Uždaryti šią pagalbą"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↵"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ naršyti • Enter pasirinkti • Esc atšaukti)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
+recommendations.nav_hint: "(↑ ↓ naršyti • ← → mygtukams perjungti • Enter pasirinkti • Esc atšaukti)"
 recommendations.button_run_command: "[ Vykdyti komandą ]"
 recommendations.button_insert_in_terminal: "Įterpti į Terminal"
 recommendations.button_open_in_new_tab: "Atidaryti naujame skirtuke ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Įsitikinkite, kad %{name} yra įdiegtas ir yra jūsų 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Įkeliama..."
-# {Locked="Enter","Shift+enter","Esc"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ naršyti • Enter pradėti seansą naujame skirtuke • Shift+enter pradėti seansą agento skydelyje • Esc išeiti)"
+# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ naršyti • Enter pradėti seansą • Esc išeiti)"
 agents.status.active: "Aktyvus"
 agents.status.waiting_for_input: "Laukia įvesties"
 agents.status.error: "Klaida"
 agents.status.idle: "Laukimo būsena"
 
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. rodyti / slėpti agento skydelį • Ctrl+Alt+/ rodyti / slėpti agento seansą)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. rodyti / slėpti agento skydelį • Ctrl+Shift+/ rodyti / slėpti agento seansą)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Paleidžiamas agentas..."
 connection.reconnecting: "Jungiamasi iš naujo..."
+connection.connecting_activity: "Jungiamasi prie agento…"
+connection.lost: "Ryšys su agentu nutrūko. Įveskite /restart, kad prisijungtumėte iš naujo."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Atšaukta."
 system.no_prompt_in_flight: "Nėra vykdomos užklausos."
 system.authentication_failed: "Autentifikavimas nepavyko"
 system.command_copied_retry: "Komanda nukopijuota — paleiskite ją kitame terminale, tada paspauskite Enter, kad bandytumėte iš naujo"  # {Locked="Enter"}
+system.stopped_max_tokens: "Atsakymas buvo nutrauktas pasiekus modelio išvesties ribą."
+system.stopped_max_turn_requests: "Agentas sustojo pasiekęs šio ėjimo užklausų ribą."
+system.stopped_refusal: "Agentas atsisakė tęsti šią užklausą."
+system.agent_busy: "Agentas šiame skirtuke užimtas — palaukite, kol dabartinė užklausa bus baigta."
+system.resuming_session: "Tęsiamas seansas %{session_id}..."
+system.unknown_command: "Nežinoma komanda \"%{command}\" — išsiųsta kaip užklausa. Sąrašui įveskite /help."  # {Locked="/help"}
+system.busy_use_stop: "Palaukite, kol dabartinė užklausa bus baigta, arba pirmiausia naudokite /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nepavyksta sufokusuoti seanso %{session_id}: jis atrodo aktyvus, bet dar nėra susietas joks srities GUID. Bandykite dar kartą po akimirkos."
+system.cannot_resume_no_load_session: "Nepavyksta tęsti agento srityje: %{agent} nepaskelbė ACP `loadSession` galimybės. Paspauskite Enter (be Shift), kad vietoj to tęstumėte naujoje terminalo srityje."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nepavyksta tęsti %{agent} seanso: šis agentas neturi `--resume` tipo vėliavėlės. Paspauskite Shift+Enter, kad pabandytumėte tęsti agento srityje per ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nepavyksta tęsti seanso %{session_id}: jo šaltinio agentas šiai WTA komponuotei nežinomas."
+system.cannot_resume_phantom_via_flag: "Nepavyksta tęsti %{agent} seanso %{session_id}: jis buvo paleistas, bet nesukaupė jokio pokalbio, todėl pats %{agent} atmestų tęsimą. Eilutė šalinama."
+system.cannot_resume_phantom_via_load: "Nepavyksta tęsti %{agent} seanso %{session_id}: jis buvo paleistas, bet nesukaupė jokio pokalbio, todėl %{agent} atmestų įkėlimą. Eilutė šalinama."
+system.fallback.this_agent: "šis agentas"
+system.fallback.connected_agent: "prijungtas agentas"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Langų nerasta."
@@ -171,3 +192,22 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
 hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+
+# ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
+time.just_now: "ką tik"
+time.minute_singular: "prieš %{count} minutę"
+time.minutes_other: "prieš %{count} minučių"
+time.hour_singular: "prieš %{count} valandą"
+time.hours_other: "prieš %{count} valandų"
+time.day_singular: "prieš %{count} dieną"
+time.days_other: "prieš %{count} dienų"
+
+# ── Rekomendacijos vykdymas (src/coordinator.rs) ────────────────────────────
+system.choice_execution_failed: "Pasirinkimas %{choice} nepavyko: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Pasirinkite šios srities modelį (/model <id> norėdami perjungti tiesiogiai)"  # {Locked="/model","<id>"}
+model_picker.title: "Pasirinkite modelį (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Prijungtas agentas nepaskelbė jokių pasirenkamų modelių."
+system.model_set: "Šios srities modelis nustatytas į %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Nežinomas modelis %{model} — įveskite /model, kad pamatytumėte galimų sąrašą."  # {Locked="%{model}","/model"}

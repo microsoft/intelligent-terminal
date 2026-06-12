@@ -39,7 +39,7 @@ namespace Microsoft::Terminal::AgentHooks
     // One entry of `clis[]` from the JSON report.
     struct CliStatus
     {
-        std::string name; // "copilot" | "claude" | "gemini"
+        std::string name; // "copilot" | "claude" | "gemini" | "codex"
         bool binaryOnPath{ false };
         std::optional<std::string> binaryPath;
         bool marketplaceRegistered{ false };

@@ -35,7 +35,7 @@ Features include:
 - Custom themes, styles, and configurations
 - Works with Command Prompt, PowerShell, WSL, and more
 
-Learn more at https://aka.ms/intelligentterminal/docs</Description>
+Learn more at https://aka.ms/intelligent-terminal-docs</Description>
   <ShortDescription _locID="App_ShortDescription">
     <!-- Only used for games. This description appears in the Information section of the Game Hub on Xbox One, and helps customers understand more about your game. -->
     <!-- _locComment_text="{MaxLength=500} App ShortDescription" -->
@@ -164,9 +164,9 @@ Learn more at https://aka.ms/intelligentterminal/docs</Description>
     <!-- _locComment_text="{MaxLength=10000} Additional License Terms" -->
   </AdditionalLicenseTerms>
   <WebsiteURL _locID="App_WebsiteURL">
-    <!-- _locComment_text="{MaxLength=2048} WebsiteURL" -->https://aka.ms/intelligentterminal/source</WebsiteURL>
+    <!-- _locComment_text="{MaxLength=2048} WebsiteURL" -->https://aka.ms/intelligent-terminal-source</WebsiteURL>
   <SupportContactInfo _locID="App_SupportContactInfo">
-    <!-- _locComment_text="{MaxLength=2048} Support Contact Info" -->https://aka.ms/intelligentterminal/feedback</SupportContactInfo>
+    <!-- _locComment_text="{MaxLength=2048} Support Contact Info" -->https://aka.ms/intelligent-terminal-feedback</SupportContactInfo>
   <PrivacyPolicyURL _locID="App_PrivacyURL">
-    <!-- _locComment_text="{MaxLength=2048} Privacy Policy URL" -->https://aka.ms/intelligentterminal/privacy</PrivacyPolicyURL>
+    <!-- _locComment_text="{MaxLength=2048} Privacy Policy URL" -->https://aka.ms/intelligent-terminal-privacy</PrivacyPolicyURL>
 </ProductDescription>

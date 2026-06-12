@@ -1,6 +1,6 @@
 # Teidil scáileán socraithe
-# {Locked="Intelligent Terminal"} - ainm an táirge, ná haistrigh
-setup.title.first_run: "Fáilte go Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.title.first_run: "Fáilte go Teirminéal Cliste!"
 setup.title.agent_missing: "Nír aimsíodh an gníomhaire"
 setup.title.agent_error: "Theip ar cheangal an ghníomhaire"
 setup.title.switch_agent: "Athraigh gníomhaire"
@@ -8,19 +8,19 @@ setup.title.not_available: "Níl an gníomhaire ar fáil"
 setup.title.sign_in: "Sínigh isteach riachtanach"
 
 # Cuirtear %{agent} in ionad ainm taispeána an ghníomhaire ag am rite.
-setup.subtitle.copilot_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Lean na céimeanna thíos chun é a shuiteáil. Chun gníomhairí a athrú, téigh go Settings."
-setup.subtitle.agent_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Athshuiteáil de láimh é, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Settings."
-setup.subtitle.copilot_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Lean na céimeanna thíos chun síniú isteach. Chun gníomhairí a athrú, téigh go Settings."
-setup.subtitle.agent_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Sínigh isteach tríd an CLI gníomhaire, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Settings."
+setup.subtitle.copilot_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Lean na céimeanna thíos chun é a shuiteáil. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
+setup.subtitle.agent_missing: "Níl do ghníomhaire \"%{agent}\" suiteáilte. Athshuiteáil de láimh é, ansin bain triail eile as. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
+setup.subtitle.copilot_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Lean na céimeanna thíos chun síniú isteach. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
+setup.subtitle.agent_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Sínigh isteach tríd an ngníomhaire, ansin roghnaigh \"Tá mé sínithe isteach\" thíos. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
 
-# {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Roghnaigh an CLI gníomhaire réamhshocraithe ba mhaith leat a úsáid in Intelligent Terminal. Is féidir leat"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+setup.description.fre_line1: "Roghnaigh an gníomhaire réamhshocraithe ba mhaith leat a úsáid in Teirminéal Cliste. Is féidir leat"
 setup.description.fre_line2: "dul go Settings chun do spás oibre a chumrú agus a shocrú."
 
-setup.option.reinstall: "Athshuiteáil %{agent}"
-setup.option.reinstall_hint: "(Suiteálfar go huathoibríoch)"
+setup.option.install: "Suiteáil %{agent}"
+setup.option.install_hint: "(Suiteálfar go huathoibríoch)"
 setup.option.signin: "Sínigh isteach chuig %{agent}"
-setup.option.retry_detection: "Bain triail eile as aimsiú"
+setup.option.retry_detection: "Bain triail eile as"
 setup.option.retry_auth: "Tá mé sínithe isteach — bain triail eile as ceangal"
 setup.option.retry_connection: "Bain triail eile as ceangal"
 setup.option.switch_to: "Athraigh go %{agent}"
@@ -43,12 +43,16 @@ auth.hint_footer: "  Brúigh Enter chun síniú isteach, Esc chun dul ar ais"  #
 
 # ── Amharc comhrá (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Ag smaoineamh…"
-# {Locked="Intelligent Terminal"} - ainm an táirge, ná haistrigh
-chat.welcome_title: "Fáilte go Intelligent Terminal!"
+# {Locked=qps-ploc,qps-ploca,qps-plocm}
+chat.welcome_title: "Fáilte go Teirminéal Cliste!"
+chat.welcome_disclaimer: "Úsáideann Teirminéal Cliste AI. Seiceáil le haghaidh botúin."
 chat.plan_header: "Plean:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
+chat.autofix_prompt_label: "Diagnóisíodh teip ar ordú le déanaí go huathoibríoch"
+chat.turn_canceled: "(cealaithe)"
+chat.turn_executed: "→ rinneadh: %{title}"
 
 # ── Ionadóirí ionchuir (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Cuir ceist ar bith, / le haghaidh orduithe.."  # {Locked="/"}
@@ -77,8 +81,8 @@ commands.help_escape_hint: "  //text     Seol '/' litriúil (éalú ón bparsál
 commands.help_close_hint: "  Esc        Dún an chabhair seo"  # {Locked="Esc"}
 
 # ── Painéal moltaí (src/ui/recommendations.rs) ───────────────────────────────
-# {Locked="Enter","Esc","↵"} - ainmneacha eochracha agus gliof eochair Fillte, ná haistrigh
-recommendations.nav_hint: "(↑ ↓ chun nascleanúint • Enter chun roghnú • Esc chun cealú)"
+# {Locked="Enter","Esc","↵","↑","↓","←","→"} - ainmneacha eochracha agus gliof eochair Fillte, ná haistrigh
+recommendations.nav_hint: "(↑ ↓ chun nascleanúint a dhéanamh • ← → chun cnaipí a athrú • Enter chun roghnú • Esc chun cealú)"
 recommendations.button_run_command: "[ Rith ordú ]"
 recommendations.button_insert_in_terminal: "Ionsáigh i dTeirminéal"
 recommendations.button_open_in_new_tab: "Oscail i gCluaisín Nua ↵"
@@ -115,25 +119,42 @@ agent.custom.auth_hint: "Cinntigh go bhfuil %{name} suiteáilte agus ar do PATH.
 
 # ── Amharc gníomhairí (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Á luchtú..."
-# {Locked="Enter","Shift+enter","Esc"} - teaglamaí eochracha, ná haistrigh
-agents.footer_hint: "(↑ ↓ chun nascleanúint • Enter chun seisiún a sheoladh i gcluaisín nua • Shift+enter chun seisiún a sheoladh i bpána gníomhaire • Esc chun scor)"
+# {Locked="Enter","Esc","↑","↓"} - teaglamaí eochracha, ná haistrigh
+agents.footer_hint: "(↑ ↓ chun nascleanúint • Enter chun seisiún a sheoladh • Esc chun scor)"
 agents.status.active: "Gníomhach"
 agents.status.waiting_for_input: "Ag fanacht le hionchur"
 agents.status.error: "Earráid"
 agents.status.idle: "Díomhaoin"
 
 # ── Leid fáilte leagan amach (src/ui/layout.rs) ──────────────────────────────
-layout.welcome_hint: "  (Ctrl+Shift+. chun pána gníomhaire a thaispeáint/a cheilt • Ctrl+Alt+/ chun seisiún gníomhaire a thaispeáint/a cheilt)"  # {Locked="Ctrl+Shift+.","Ctrl+Alt+/"}
+layout.welcome_hint: "  (Ctrl+Shift+. chun pána gníomhaire a thaispeáint/a cheilt • Ctrl+Shift+/ chun seisiún gníomhaire a thaispeáint/a cheilt)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Staid ceangail ────────────────────────────────────────────────────────
 connection.starting: "Gníomhaire á thosú..."
 connection.reconnecting: "Ag athcheangal..."
+connection.connecting_activity: "Ag ceangal leis an ngníomhaire…"
+connection.lost: "Cailleadh an ceangal leis an ngníomhaire. Clóscríobh /restart chun athcheangal."  # {Locked="/restart"}
 
 # ── Teachtaireachtaí córais (src/app.rs) ────────────────────────────────────
 system.cancelled: "Cealaithe."
 system.no_prompt_in_flight: "Níl aon leid ar siúl."
 system.authentication_failed: "Theip ar fhíordheimhniú"
 system.command_copied_retry: "Ordú cóipeáilte — rith i dteirminéal eile é, ansin brúigh Enter chun triail eile a bhaint as"  # {Locked="Enter"}
+system.stopped_max_tokens: "Gearradh an freagra tar éis teorainn aschuir an mhúnla a bhaint amach."
+system.stopped_max_turn_requests: "Stop an gníomhaire tar éis a theorainn iarratas don seal seo a bhaint amach."
+system.stopped_refusal: "Dhiúltaigh an gníomhaire leanúint ar aghaidh leis an iarratas seo."
+system.agent_busy: "Tá an gníomhaire gnóthach ar an gcluaisín seo — fan go gcríochnóidh an leid reatha."
+system.resuming_session: "Seisiún %{session_id} á atosú..."
+system.unknown_command: "Ordú anaithnid \"%{command}\" — seolta mar leid. Clóscríobh /help don liosta."
+system.busy_use_stop: "Fan go gcríochnóidh an leid reatha, nó úsáid /stop ar dtús."
+system.cannot_focus_session: "Ní féidir díriú ar sheisiún %{session_id}: is cosúil go bhfuil sé beo ach níl GUID pána ceangailte fós. Bain triail eile as i gceann nóiméid."
+system.cannot_resume_no_load_session: "Ní féidir atosú i bpána gníomhaire: níor fhógair %{agent} cumas ACP `loadSession`. Brúigh Enter (gan Shift) chun atosú i bpána teirminéil nua ina ionad sin."
+system.cannot_resume_no_resume_flag: "Ní féidir seisiún %{agent} a atosú: níl bratach de stíl `--resume` ag an ngníomhaire seo. Brúigh Shift+Enter chun iarracht a dhéanamh atosú laistigh den phána gníomhaire trí ACP ina ionad sin."
+system.cannot_resume_unknown_agent: "Ní féidir seisiún %{session_id} a atosú: níl a ghníomhaire foinse ar eolas ag an leagan seo."
+system.cannot_resume_phantom_via_flag: "Ní féidir seisiún %{agent} %{session_id} a atosú: cuireadh tús leis ach níor charnaigh sé aon chomhrá riamh, mar sin dhiúltódh %{agent} féin don atosú. An ró á bhaint."
+system.cannot_resume_phantom_via_load: "Ní féidir seisiún %{agent} %{session_id} a atosú: cuireadh tús leis ach níor charnaigh sé aon chomhrá riamh, mar sin dhiúltódh %{agent} don lódáil. An ró á bhaint."
+system.fallback.this_agent: "an gníomhaire seo"
+system.fallback.connected_agent: "an gníomhaire ceangailte"
 
 # ── Aschur CLI ag am rite (src/main.rs) ────────────────────────────────────
 output.no_windows: "Níor aimsíodh aon fhuinneoga."
@@ -171,3 +192,21 @@ hooks.installed_but_disabled: "⚠ suiteáilte ach díchumasaithe"
 hooks.not_installed: "✗ níl suiteáilte"
 hooks.uninstall_skipped: "léimthe (CLI níl ar PATH)"
 hooks.install_attempted: "Rinneadh iarracht wt-agent-hooks a shuiteáil (iompóiteach). Rith `wta hooks status` chun an toradh a iniúchadh. Loga rianaithe: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
+time.just_now: "anois díreach"
+time.minute_singular: "%{count} nóiméad ó shin"
+time.minutes_other: "%{count} nóiméad ó shin"
+time.hour_singular: "%{count} uair an chloig ó shin"
+time.hours_other: "%{count} uair an chloig ó shin"
+time.day_singular: "%{count} lá ó shin"
+time.days_other: "%{count} lá ó shin"
+
+# ── Rith moltaí (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Theip ar rogha %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Roghnaigh an samhail don phána seo (/model <id> chun athrú go díreach)"  # {Locked="/model","<id>"}
+model_picker.title: "Roghnaigh samhail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Níor fhógair an gníomhaire ceangailte aon tsamhail in-roghnaithe."
+system.model_set: "Samhail an phána seo socraithe go %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Samhail anaithnid %{model} — clóscríobh /model chun an liosta atá ar fáil a fheiceáil."  # {Locked="%{model}","/model"}
