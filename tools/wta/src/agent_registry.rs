@@ -102,7 +102,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &[],
         // Claude CLI itself doesn't speak ACP. We launch the
-        // agentclientprotocol-maintained adapter via npx; npm-installed
+        // ACP-project-maintained adapter via npx; npm-installed
         // `claude` shim implies node/npx are present, so this works whenever
         // delegate mode does. (Renamed from the deprecated
         // `@zed-industries/claude-code-acp`; see issue #257.)
