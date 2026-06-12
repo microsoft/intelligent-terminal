@@ -87,7 +87,7 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 
 ## 2. Agent pane chat
 
-**Feature definition:** The agent pane is a per-tab AI chat pane backed by WTA helper/master and an ACP-capable agent. It should be reusable, hideable, and stable across tab/window operations.
+**Feature definition:** The agent pane is a per-tab AI chat pane backed by WTA helper/master and an ACP-capable agent. It should be reusable, able to be hidden, and stable across tab/window operations.
 
 ### Opening, hiding, and focus
 
