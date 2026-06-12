@@ -667,15 +667,28 @@ where
             Ok(r) => return Ok((r, cwd.clone())),
             Err(e) => {
                 let retryable = is_cwd_error(&e) && i + 1 < attempts.len();
-                tracing::warn!(
-                    target: "master",
-                    op = "new_session",
-                    attempt = i,
-                    cwd = %cwd.display(),
-                    retryable,
-                    error = %e,
-                    "new_session attempt failed"
-                );
+                // Benign when retryable — the fallback ladder is working as
+                // designed, so don't inflate warn counts; reserve warn! for
+                // the terminal/non-retryable failure.
+                if retryable {
+                    tracing::info!(
+                        target: "master",
+                        op = "new_session",
+                        attempt = i,
+                        cwd = %cwd.display(),
+                        error = %e,
+                        "new_session cwd attempt failed; trying next candidate"
+                    );
+                } else {
+                    tracing::warn!(
+                        target: "master",
+                        op = "new_session",
+                        attempt = i,
+                        cwd = %cwd.display(),
+                        error = %e,
+                        "new_session attempt failed (no more candidates)"
+                    );
+                }
                 last_err = Some(e);
                 if !retryable {
                     break;

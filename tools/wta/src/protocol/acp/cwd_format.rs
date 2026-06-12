@@ -265,8 +265,15 @@ fn user_profile_dir() -> PathBuf {
 
 fn path_eq_ci(a: &Path, b: &Path) -> bool {
     fn norm(p: &Path) -> String {
-        p.to_string_lossy()
-            .trim_end_matches(['\\', '/'])
+        let s = p.to_string_lossy();
+        // Strip verbatim / device prefixes so `\\?\C:\Windows\System32`
+        // normalizes the same as `C:\Windows\System32` — otherwise a
+        // verbatim junk path would slip past `is_junk`.
+        let s: &str = s
+            .strip_prefix(r"\\?\")
+            .or_else(|| s.strip_prefix(r"\\.\"))
+            .unwrap_or(&s);
+        s.trim_end_matches(['\\', '/'])
             .to_ascii_lowercase()
             .replace('/', "\\")
     }
@@ -405,6 +412,11 @@ mod tests {
             PathBuf::from(r"C:\Users\tester")
         );
         assert_eq!(pick_value(None), PathBuf::from(r"C:\Users\tester"));
+        // verbatim/extended-length junk is also detected
+        assert_eq!(
+            pick_value(Some(Path::new(r"\\?\C:\WINDOWS\system32"))),
+            PathBuf::from(r"C:\Users\tester")
+        );
         // real paths pass through (windows or posix)
         assert_eq!(
             pick_value(Some(Path::new(r"Q:\repo"))),
