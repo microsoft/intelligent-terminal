@@ -33,51 +33,128 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 0. First-run experience (FRE)
 
-**Feature definition:** FRE guides first-time users through agent selection, pane position, automatic error detection, automatic error suggestion, and session-management hook setup.
+**Feature definition:** FRE guides first-time users through agent selection, pane position, automatic error detection, automatic error suggestion, and agent-hook setup. It also kicks off prerequisite installs (Copilot CLI, Node.js LTS) and shell-integration installs as part of `Save`, with structured error reporting for each failure mode.
+
+### FRE shell
 
 - [ ] `[E2E]` **FRE opens correctly:** A clean user profile launches the FRE instead of skipping directly to the terminal.
-- [ ] `[E2E]` **FRE can be completed:** The user can go through every page, save settings, and enter the main terminal window.
-- [ ] `[E2E]` **FRE can be skipped or closed safely:** Skipping/closing does not crash and leaves settings in a valid state.
-- [ ] `[E2E]` **FRE privacy / help links work:** Links open the browser and do not block completion.
-- [ ] `[E2E]` **FRE save progress works:** The progress UI appears while setup/install work is running and returns to a usable state.
-- [ ] `[UT~]` `[E2E]` **FRE error messages are actionable:** Install/auth/setup failures show a useful message instead of a silent failure or raw OS error. _(UT: WTA `classify_acp_error`.)_
-- [ ] `[UT~]` `[E2E]` **FRE respects policy locks:** If agent, autofix, or session-management policy is locked, affected controls are disabled and explain why. _(UT: `IsAgentPolicyLocked`, Effective* gates.)_
+- [ ] `[E2E]` **FRE trigger condition:** `state.json` `agentFreCompleted == false` triggers FRE; corrupt or missing `state.json` falls back to triggering FRE.
+- [ ] `[E2E]` **FRE can be completed:** The user can go through Welcome → Settings, click Save, and enter the main terminal window.
+- [ ] `[E2E]` **FRE survives parent tab/window close:** Closing the tab/window containing an active FRE (including during a slow install) does not crash. _(FRE has no Close or Skip button — only Next on Welcome and Save on Settings; XAML only wires `_OnNextButtonClick` and `_OnSaveButtonClick`.)_
+- [ ] `[E2E]` **FRE privacy / help links work:** Welcome subtitle/help links open the browser and do not block completion.
+- [ ] `[UT+]` `[E2E]` **FRE save progress works:** `_SetSavingState(true)` disables the form, disables Save, shows the SavingOverlay spinner + "Setting up..." text; `_SetSavingState(false)` restores everything (used both for the success-path complete and the failure-path retry). _(UT: state transitions in `_SetSavingState`.)_
+- [ ] `[UT~]` `[E2E]` **FRE respects policy locks:** If agent, autofix, or session-management policy is locked, affected controls are disabled and explain why. _(UT: `IsAgentPolicyLockedTracksAllowedAgents`, `IsCustomAgentPolicyLockedTracksBlocked` cover the `IsAgentPolicyLocked` gate; XAML disable behavior is E2E only.)_
 - [ ] `[UT~]` `[MANUAL]` **FRE RTL/localized layout is usable:** Layout mirrors correctly for RTL locales and text is not clipped in localized builds. _(UT: `IsRtlLocale`.)_
+- [ ] `[E2E]` **FRE completion opens an agent pane:** After a successful `Completed` event, `TerminalPage::_OnFreCompleted` runs deferred startup which creates/selects a tab, then `_OpenOrReuseAgentPane(false, "FirstRunExperience")` opens the agent pane on the focused tab. If no tabs exist, the window closes instead.
+- [ ] `[UT+]` **All FRE choices persist across restart:** `acpAgent`, `agentPanePosition`, `autoErrorDetectionEnabled`, `autoFixEnabled` survive load → save → reload, plus their default-resolution. _(UT: `BuiltInAcpAgentRoundtrips`, `AgentPanePositionRoundtripsAndDefaults`, `AutoErrorSettingsRoundtrip` already cover this via `[UT✓]`; the cross-restart end-to-end remains `[E2E]`.)_
 
 ### FRE agent selection
 
+- [ ] `[E2E]` **FRE lists only built-in ACP agents:** Copilot/Claude/Codex/Gemini from the filtered registry. Custom agents are intentionally not selectable in FRE (configured via Settings page).
 - [ ] `[UT~]` `[E2E]` **Copilot without install:** Copilot appears as an available/default choice, is labeled as needing install, and the setup path installs or clearly explains how to install it. _(UT: registry/policy filter.)_
 - [ ] `[UT~]` `[E2E]` **Copilot preinstalled:** Copilot appears as installed; saving does not reinstall unnecessarily; opening the agent pane uses Copilot successfully.
 - [ ] `[UT~]` `[E2E]` **Claude installed:** Claude appears only when available; selecting it saves correctly; Node/npx requirement guidance appears when relevant.
 - [ ] `[UT~]` `[E2E]` **Codex installed:** Codex appears only when available; selecting it saves correctly; Node/npx requirement guidance appears when relevant.
 - [ ] `[UT~]` `[E2E]` **Gemini installed:** Gemini appears only when available; selecting it saves correctly and can connect in agent-pane mode.
 - [ ] `[UT~]` `[E2E]` **Unavailable non-Copilot agents:** Claude/Codex/Gemini that are not installed do not appear as broken selectable options.
-- [ ] `[UT✓]` `[E2E]` **Agent selection persists:** The selected agent remains selected after FRE completion and app restart. _(UT: `BuiltInAcpAgentRoundtrips`.)_
+- [ ] `[UT+]` `[E2E]` **NodeJS install only triggers for Claude/Codex:** Copilot Save path never invokes `_WingetInstallAsync(OpenJS.NodeJS.LTS)`. _(`FreOverlay.cpp:1451` — `needsNode = (agentId == "claude" || agentId == "codex") && !_IsNodeInstalled()`.)_
 
 ### FRE automatic error settings
 
-- [ ] `[UT✓]` `[E2E]` **Automatic error detection off:** Turning detection off disables error-event monitoring behavior and disables dependent suggestion UI. _(UT: `EffectiveAutoFixEnabled` + autofix reducer gate.)_
+- [ ] `[UT✓]` `[E2E]` **Automatic error detection off:** Turning detection off disables error-event monitoring behavior and disables dependent suggestion UI. _(UT: `EffectiveAutoFixFalseWhenDetectionOff` covers the `EffectiveAutoFixEnabled` reducer gate.)_
 - [ ] `[UT✓]` `[E2E]` **Automatic error detection on:** Turning detection on enables shell failure detection when shell integration is available.
 - [ ] `[UT✓]` `[E2E]` **Automatic error suggestion off:** Detection can remain on while LLM-powered suggestions are off; failures do not trigger an agent suggestion. _(UT: autofix reducer no-LLM path.)_
 - [ ] `[UT✓]` `[E2E]` **Automatic error suggestion on:** With detection on and suggestion on, failures can trigger autofix suggestions.
-- [ ] `[UT✓]` `[E2E]` **Detection/suggestion dependency:** Suggestion cannot be enabled when detection is off; the UI state is visually clear. _(UT: `EffectiveAutoFixFalseWhenDetectionOff`.)_
-- [ ] `[UT✓]` `[E2E]` **Settings persist:** Detection and suggestion choices persist after restart. _(UT: `AutoErrorSettingsRoundtrip`.)_
+- [ ] `[UT✓]` `[E2E]` **Detection/suggestion dependency:** Suggestion cannot be enabled when detection is off; the UI state is visually clear. _(UT: `EffectiveAutoFixFalseWhenDetectionOff` + `_UpdateSuggestionEnabledState` toggles AutoErrorToggle.IsEnabled.)_
 
-### FRE session management
+### FRE prewarm
 
-- [ ] `[UT~]` `[E2E]` **Session management off:** Turning it off does not install hooks and session UI remains stable.
-- [ ] `[E2E]` **Session management on:** Turning it on installs or updates agent hooks where supported.
-- [ ] `[E2E]` **Session hook hints:** Informational hint rows appear only when the owning toggle is on.
-- [ ] `[UT~]` `[E2E]` **Hook install failure:** Missing CLI, disabled plugin, or partial install states show a useful message and do not block FRE completion. _(UT: `wta hooks status --json` parse.)_
-- [ ] `[UT~]` `[E2E]` **Session-management choice persists:** The choice is reflected later in Settings. _(UT: `AgentHooksStatusTests` parses the read-back state; the toggle installs hooks on Save rather than persisting a settings bool, so the persistence itself is E2E.)_
+The Welcome page kicks off `winget source update` in the background while the user is reading/clicking, so the on-Save `winget install` skips the 3–20s catalog refresh.
+
+- [ ] `[E2E]` **Prewarm triggers when needed:** Welcome page launch starts prewarm IFF Copilot or Node is missing AND winget is on PATH (`_MaybeStartPrewarm` gate).
+- [ ] `[E2E]` **Prewarm timeout is non-fatal:** If the background `winget source update` hits the 120s timeout in `_RunPrewarmAsync`, the install proceeds anyway (just pays the cold-catalog cost itself).
+- [ ] `[E2E]` **Save awaits in-flight prewarm:** When the user clicks Save before prewarm finishes, `_SaveAndInstallAsync` waits for `s_prewarmAction` before kicking off its own `_WingetInstallAsync`, so the two winget operations never run concurrently.
+- [ ] `[E2E]` **Multi-window single-flight:** Two IT windows reaching FRE simultaneously share one prewarm — only one `winget source update` runs across all windows, gated by `s_prewarmMutex` + first-writer-wins on `s_prewarmAction`.
+
+### FRE winget install — pre-flight gate
+
+- [ ] `[E2E]` **WingetMissing hard gate:** When the FRE Save path needs Copilot or Node installation AND `_IsWingetInstalled()` is false, `_ShowProblem(FreProblemKind::WingetMissing)` is shown (`FreOverlay_InstallErrorWingetMissing` + setup-doc deep-link) and the install flow aborts before any winget call. _(Hard gate semantics: `FreProblemKind::WingetMissing = 0` priority. Reproduce by removing `winget.exe` from PATH.)_
+
+### FRE winget install — failure-kind messages
+
+`_WingetInstallAsync` returns one of seven `FreWingetFailureKind` values which `_ShowWingetProblem` renders as kind-specific, localized templates. Each kind must show its own actionable message (PR #262). Cited `FreOverlay.cpp` line numbers below are against the current branch tip.
+
+- [ ] `[UT+]` `[E2E]` **Network:** "Couldn't reach the Windows Package Manager… Check your internet connection." Sources:
+  - `ConnectResult.Status() == CatalogError` → unconditional Network (FreOverlay.cpp:891-894); no HRESULT is available here so any non-network catalog failure (e.g. catalog-DB corruption) is also reported as Network. _(Caveat: documented in code.)_
+  - `InstallResultStatus::DownloadError` + `_IsNetworkLikeHResult(hr)` (994-1001)
+  - `InstallResultStatus::CatalogError` where `_ClassifyWingetHResult(hr)` returns Network (1015-1017)
+  - Thrown `hresult_error` classified as Network (1039-1051)
+  - _(UT: `_IsNetworkLikeHResult` whitelist (1072-1097), `_ClassifyWingetHResult` Network branch (1138-1140, 1159-1161).)_
+- [ ] `[UT+]` `[E2E]` **BlockedByPolicy:** "Installation of {pkg} was blocked by a Windows Package Manager policy." Sources:
+  - `FindPackagesResultStatus::BlockedByPolicy` (909-918)
+  - `InstallResultStatus::BlockedByPolicy` (988-990, returned via 1022)
+  - `InstallResultStatus::CatalogError` where classifier returns BlockedByPolicy (1015-1017)
+  - Thrown HRESULT classified BlockedByPolicy (1039-1051): `0x8A15003A` `BLOCKED_BY_POLICY`, `0x8A15010F` `INSTALL_BLOCKED_BY_POLICY`, `0x8A15001B/1C` `MSSTORE_*_BLOCKED_BY_POLICY`, `0x8A15001D` `EXPERIMENTAL_FEATURE_DISABLED`
+  - Reproducer: `reg add HKLM\SOFTWARE\Policies\Microsoft\Windows\AppInstaller /v EnableAppInstaller /t REG_DWORD /d 0 /f`
+  - _(UT: `_ClassifyWingetHResult` BlockedByPolicy cases (1126-1131).)_
+- [ ] `[UT+]` `[E2E]` **PackageNotFound:** "{pkg} wasn't found in the Windows Package Manager catalog." Sources:
+  - **Primary:** `findResult.Matches().Size() == 0` after a successful find (920-923)
+  - Defensive: classifier path for `0x8A150014` `NO_APPLICATIONS_FOUND` via install CatalogError or exception (1153-1154) — observed rarely in practice; the primary path covers most cases
+  - _(UT: `_ClassifyWingetHResult` `0x8A150014` case.)_
+- [ ] `[UT+]` `[E2E]` **NoCompatibleInstaller:** "No compatible installer for {pkg} is available on this system." Sources:
+  - **Primary:** `InstallResultStatus::NoApplicableInstallers` (991-993)
+  - Defensive: classifier path for `0x8A150010` `NO_APPLICABLE_INSTALLER` via install CatalogError or exception (1146-1147) — observed rarely; primary path dominates
+  - _(UT: `_ClassifyWingetHResult` `0x8A150010` case.)_
+- [ ] `[UT+]` `[E2E]` **InstallerFailed:** "The {pkg} installer reported an error (code N)." Sources:
+  - Only `InstallResultStatus::InstallError` with non-zero `installerErrorCode` (1003-1005)
+  - When `installerErrorCode == 0` `_ShowWingetProblem` falls back to Generic (with HRESULT) or GenericNoCode (no HRESULT) so users never see the misleading "(code 0)"
+  - Caveat: if `GetResults()` throws instead of returning `InstallError`, the HRESULT classifier decides the kind — unrecognized HRESULTs become Generic, but other HRESULTs may classify as Network/BlockedByPolicy/etc.
+- [ ] `[UT+]` `[E2E]` **Timeout:** "Installing {pkg} took longer than 20 minutes. Intelligent Terminal stopped waiting, but the installer may still be running in the background. Check Task Manager, or try again later." Source:
+  - Only the 20-minute hard cap (956-965); we call `installOp.Cancel()` and return `Kind::Timeout`. `Cancel()` is best-effort — the installer may keep running after we stop waiting.
+- [ ] `[UT+]` `[E2E]` **Generic / GenericNoCode:** "Couldn't install {pkg} (error code 0x…). See the log for details, or install manually." Sources:
+  - Connect non-`CatalogError` (e.g. `SourceAgreementsNotAccepted` — should be impossible because we set `AcceptSourceAgreements(true)`, but defended)
+  - Find non-OK and non-`BlockedByPolicy`
+  - `InstallResultStatus::DownloadError` with non-network HRESULT
+  - Install statuses unmapped (`InternalError`, `ManifestError`, `InvalidOptions`, `NoApplicableUpgrade`, `PackageAgreementsNotAccepted`, unknown values)
+  - `InstallResultStatus::CatalogError` where classifier falls through to Generic (1015-1017 → 1163)
+  - Unclassified `hresult_error` (1051) or `catch (...)` (1053-1056)
+  - **GenericNoCode** template (no `(error code X)` suffix) used when `hr == 0`, e.g. catalog connect failed pre-install — no HRESULT to show. Template selection logic in `_ShowWingetProblem`.
+
+### FRE winget install — diagnostics & robustness
+
+- [ ] `[E2E]` **DiagOutputDir log capture on failure:** When `_WingetInstallAsync` returns a non-Success kind, `_CopyWingetLogsSince(installStartTime)` copies winget's own `*.log` files from `%LOCALAPPDATA%\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir\` into our per-version `…\IntelligentTerminal\logs\<pkgver>\winget\` subfolder, so the bug-report zip captures them. Conservative size caps (25 MB/file, 50 MB total) prevent runaway disk usage. Verify by inducing a failure (network down, GPO block, etc.) and listing the `winget\` subdir.
+- [ ] `[E2E]` **Tab/window close during install does not crash:** PR #262 captured `dispatcher` once at the top of `_SaveAndInstallAsync` so post-`co_await` `Dispatcher()` calls do not deref dangling `this`. Test sub-cases:
+  - During slow/blocked `_WingetInstallAsync` (covered by PR #262 dispatcher capture)
+  - **TODO bug:** during `co_await s_prewarmAction` wait (`FreOverlay.cpp:~1505`) — no `auto self = weak.get(); if (!self) co_return;` guard after the resume; the subsequent `_WingetInstallAsync` call at ~1520 can dereference a dangling `this` if the overlay was destroyed during the wait. Contrast with the guards present at ~1528-1531 and ~1553-1555 for the Copilot/Node installs.
+- [ ] `[UT~]` `[E2E]` **FreProblemKind priority semantics:** `WingetMissing` is an EARLY hard gate — checked before any winget call and aborts the Save flow on hit. `ShellIntegrationExecutionPolicy` outranks `ShellIntegration` which outranks `Hooks` when more than one of those soft failures fires; the soft failures STOP the current Save attempt but toggle off the affected feature so a subsequent Save can complete. _(UT: priority enum + abort vs. toggle-off logic; E2E to verify user-visible difference.)_
+- [ ] `[MANUAL]` **RebootRequired install outcome:** When `InstallResult.RebootRequired()` is true (e.g. some MSI-style packages), we log `"[FRE] winget install: ok (reboot required)"` but do NOT surface this in the UI. Install reports success and FRE completes. Known limitation — do not test as failure.
+
+### FRE shell integration
+
+PowerShell shell integration is required for autofix; bash/WSL shell integration is best-effort.
+
+- [ ] `[E2E]` **PowerShell shell integration installs:** Either `pwsh7` or Windows PowerShell installer failing surfaces `FreOverlay_InstallError_ShellIntegration` (or `_ShellIntegrationExecutionPolicy` if execution-policy-blocked), turns off auto-detect, stops the current Save attempt, and re-enables Save so the user can retry without re-walking Welcome.
+- [ ] `[E2E]` **Bash/WSL shell integration is best-effort:** Bash/WSL installer failure is logged but does NOT surface a user-visible error, does NOT affect auto-detect, and does NOT block FRE completion. (`FreOverlay.cpp:1688-1710` — comment "Bash and WSL failures are NOT counted here" plus the `if (!pwsh7Result.success || !windowsPsResult.success)` exclusion.)
+
+### FRE agent hooks (session-management toggle)
+
+The "Session management" toggle on the Settings page controls installation of agent hooks (the wt-agent-hooks plugin/extension), not the session-management picker UI itself (which is `/sessions` from PR #266 — a separate feature).
+
+- [ ] `[UT~]` `[E2E]` **Toggle off:** Turning it off does not call `_InstallHooksAsync` for the selected agent and the session-management hint row in FRE stays hidden.
+- [ ] `[E2E]` **Toggle on:** Turning it on calls `wta hooks install --cli <selected agent>` on Save. (PR #281: parallel `*_status` queries cut Copilot hooks install to ~5s, Claude ~3s, Gemini ~5s.)
+- [ ] `[E2E]` **Hook hints visibility:** Informational hint rows appear only when their owning toggle is on (e.g. `SessionManagementHintRow` is gated on `SessionManagementToggle`, `AutoDetectShellIntegrationHintRow` is gated on `AutoDetectToggle`).
+- [ ] `[E2E]` **Agent prereq hint (Node):** Selecting Claude or Codex shows `AgentInstallHintRow` informing the user that Node is required, regardless of whether Node is already installed (`FreOverlay.cpp:342-355` — the hint is driven by agent ID, not by `_IsNodeInstalled()`).
+- [ ] `[E2E]` **Hook install failure:** Missing CLI, disabled plugin, or partial install states surface `FreOverlay_InstallErrorHooks` via `_ShowProblem(FreProblemKind::Hooks)`, toggle off Session Management, and **stop the current Save attempt** (`co_return` at `FreOverlay.cpp:~1720`); the next Save click can complete the FRE. _(Note: FRE uses a static error message here — it does NOT call `wta hooks status --json`; that contract is tested separately under Settings page.)_
+- [ ] `[UT~]` `[E2E]` **Choice reflected in Settings:** After FRE the Settings page shows the post-install hook state via `wta hooks status --json`. _(UT: `AgentHooksStatusTests` parses the read-back state.)_
 
 ### FRE agent pane position
 
-- [ ] `[E2E]` **Bottom:** Agent pane opens at the bottom.
-- [ ] `[E2E]` **Right:** Agent pane opens on the right.
-- [ ] `[E2E]` **Left:** Agent pane opens on the left.
-- [ ] `[E2E]` **Top:** Agent pane opens at the top.
+- [ ] `[E2E]` **All four positions work:** Selecting Bottom / Right / Left / Top from the FRE dropdown opens the agent pane in the chosen position when FRE completes.
 - [ ] `[UT✓]` `[E2E]` **Position persists:** The selected position remains after restart and is used by the hotkey/button. _(UT: `AgentPanePositionRoundtripsAndDefaults`.)_
+
+### FRE localization
+
+- [ ] `[UT+]` **All non-en-US `.resw` locales have parity with en-US for `FreOverlay_InstallError_*` and `FreOverlay_PackageDisplayName_*` keys.** A locale missing one of these renders the raw key as user-visible UI (e.g. `FreOverlay_InstallError_Network` literal). PR #262 added 8 new FRE error templates (`Network`, `BlockedByPolicy`, `PackageNotFound`, `NoCompatibleInstaller`, `InstallerFailed`, `Timeout`, `Generic`, `GenericNoCode`) plus 2 package display names across all locales; a parity test analogous to vanzue's `every_locale_has_all_en_us_keys` for WTA YAML belongs here.
 
 ## 1. Settings > AI Agents
 
