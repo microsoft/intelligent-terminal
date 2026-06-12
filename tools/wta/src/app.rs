@@ -1517,9 +1517,25 @@ impl TabSession {
     /// pane's XAML focus, so a non-enterable state reads the same as lost
     /// focus.
     pub fn input_has_nav_focus(&self) -> bool {
-        self.selected_completed_turn_idx.is_none()
-            && self.turn.recommendations().is_none()
-            && self.permission.is_empty()
+        // Lock input editing in two cases:
+        //   1. The user is navigating a past turn (Tab-selected) — keystrokes
+        //      would seemingly disappear because the visible cursor is on
+        //      the highlighted turn, not the input box.
+        //   2. A permission card is up — the y/n hotkeys belong to the
+        //      card, and the user shouldn't be typing into a hidden input
+        //      while answering a permission prompt.
+        //
+        // NOT included: `self.turn.recommendations().is_none()`. Earlier
+        // versions also locked input while a recommendation card was
+        // visible, on the theory that the user's focus belongs to the
+        // card. In practice the input box is still visually present and
+        // draftable, and locking it left users unable to backspace /
+        // edit / clear their draft with no indication why (silently
+        // ignored keystrokes). The card still owns Arrow keys (its own
+        // earlier match arms) and Enter (the card-Enter branch executes
+        // the card regardless of input contents); Esc dismisses the card.
+        // Char/Backspace/Delete/Ctrl+Backspace edit the input draft.
+        self.selected_completed_turn_idx.is_none() && self.permission.is_empty()
     }
 
     pub fn clear_recommendations(&mut self) {
@@ -14559,6 +14575,56 @@ mod tests {
         // draft via the normal prompt-dispatch path.
         assert!(app.current_tab().input_has_nav_focus(),
             "input must regain nav focus once card-recs are cleared");
+    }
+
+    #[test]
+    fn input_editing_works_while_recommendation_card_visible() {
+        // Bug report: user with a draft + a surfaced recommendation card
+        // could not Backspace, type, or Delete in the input box — keys
+        // were silently swallowed because `input_has_nav_focus` returned
+        // false while `turn.recommendations().is_some()`. Fix: card
+        // visibility no longer locks input editing. The card still owns
+        // Arrow keys (its own match arms run first) and Enter (the
+        // card-Enter branch executes the card regardless of input state);
+        // Esc dismisses the card. Char/Backspace/Delete edit the draft.
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.to_string());
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("pane-1", "Get-Process | Sort-Object CPU")],
+            0,
+            None,
+        );
+        type_text(&mut app, "Give me command for Ram");
+
+        // Card is visible. Input editing must still work — this is the
+        // contract the silent-no-op regression broke.
+        assert!(app.current_tab().input_has_nav_focus(),
+            "input must remain editable while a recommendation card is visible");
+        assert!(app.current_tab().turn.recommendations().is_some(),
+            "card is still surfaced");
+
+        // Backspace removes the last char of the draft.
+        app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "Give me command for Ra",
+            "Backspace must work while card visible");
+
+        // Typing a character appends to the draft.
+        app.handle_key(KeyEvent::new(KeyCode::Char('!'), KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "Give me command for Ra!",
+            "Char insertion must work while card visible");
+
+        // Card must NOT be dismissed by editing the input — only Esc /
+        // Enter affect the card.
+        assert!(app.current_tab().turn.recommendations().is_some(),
+            "input editing must not dismiss the card");
+
+        // Ctrl+Backspace deletes the previous word.
+        app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::CONTROL));
+        assert!(!app.current_tab().input.ends_with("Ra!"),
+            "Ctrl+Backspace must delete the previous word while card visible (got {:?})",
+            app.current_tab().input);
     }
 
     #[test]
