@@ -121,3 +121,155 @@ fn slash_new_when_idle_resets_session() {
     assert_eq!(app.current_tab().session_id, None);
     assert!(app.current_tab().messages.is_empty());
 }
+
+/// Dispatch a slash command with free-form args (e.g. `/model gpt-5`) through
+/// the same `handle_slash_command` path the Enter handler uses.
+fn run_slash_args(app: &mut App, name: &str, rest: &str) {
+    let spec = commands::lookup(name).expect("name is a registered command");
+    app.handle_slash_command(ParsedCommand {
+        kind: spec.kind,
+        spec,
+        rest: rest.to_string(),
+    });
+}
+
+#[test]
+fn slash_sessions_opens_agents_view() {
+    let mut app = test_app();
+    assert_eq!(app.current_tab().current_view, View::Chat);
+
+    run_slash(&mut app, "sessions");
+
+    assert_eq!(
+        app.current_tab().current_view,
+        View::Agents,
+        "/sessions must switch the active tab to the session-management view"
+    );
+}
+
+#[test]
+fn slash_restart_resets_connection_and_clears_sessions() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.session_id = "live-sid".to_string();
+    app.current_tab_mut().session_id = Some("tab-sid".into());
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::System("stale".into()));
+
+    run_slash(&mut app, "restart");
+
+    assert!(
+        matches!(app.state, ConnectionState::Connecting(_)),
+        "/restart must move the connection into Connecting while the stack respawns"
+    );
+    assert!(
+        app.session_id.is_empty(),
+        "/restart must clear the process-level session id"
+    );
+    assert_eq!(
+        app.current_tab().session_id,
+        None,
+        "/restart must drop each tab's session so the next prompt gets a fresh one"
+    );
+    assert!(
+        app.current_tab().messages.is_empty(),
+        "/restart must wipe per-tab chat history"
+    );
+}
+
+#[test]
+fn slash_fix_when_idle_submits_autofix_turn() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    let gen_before = app.current_tab().autofix.generation;
+    assert!(app.current_tab().turn.is_idle());
+
+    run_slash(&mut app, "fix");
+
+    assert!(
+        !app.current_tab().turn.is_idle(),
+        "/fix on an idle tab must submit an autofix turn"
+    );
+    assert_eq!(
+        app.current_tab().autofix.generation,
+        gen_before.wrapping_add(1),
+        "/fix must bump the autofix generation so stale responses are dropped"
+    );
+}
+
+#[test]
+fn slash_fix_while_busy_does_not_resubmit() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    // First /fix arms an in-flight turn.
+    run_slash(&mut app, "fix");
+    assert!(!app.current_tab().turn.is_idle());
+    let gen_after_first = app.current_tab().autofix.generation;
+
+    // Second /fix while busy must be refused (busy advisory), not resubmitted.
+    run_slash(&mut app, "fix");
+    assert_eq!(
+        app.current_tab().autofix.generation,
+        gen_after_first,
+        "/fix while a turn is in flight must not bump generation / resubmit"
+    );
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::System(_))
+    ));
+}
+
+#[test]
+fn slash_model_without_models_notes_none() {
+    let mut app = test_app();
+    assert!(app.available_models.is_empty());
+
+    run_slash(&mut app, "model");
+
+    assert!(
+        !app.current_tab().model_picker_open,
+        "/model must not open the picker when no models are available"
+    );
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::System(_))
+    ));
+}
+
+#[test]
+fn slash_model_bare_opens_picker_when_models_present() {
+    let mut app = test_app();
+    app.available_models = vec![
+        AcpModelInfo { id: "fast".into(), name: "Fast".into(), description: None },
+        AcpModelInfo { id: "smart".into(), name: "Smart".into(), description: None },
+    ];
+
+    run_slash(&mut app, "model");
+
+    assert!(
+        app.current_tab().model_picker_open,
+        "bare /model must open the model picker when models are available"
+    );
+}
+
+#[test]
+fn slash_model_direct_switch_sets_override() {
+    let mut app = test_app();
+    app.available_models = vec![
+        AcpModelInfo { id: "fast".into(), name: "Fast".into(), description: None },
+        AcpModelInfo { id: "smart".into(), name: "Smart".into(), description: None },
+    ];
+
+    run_slash_args(&mut app, "model", "smart");
+
+    assert_eq!(
+        app.current_tab().model_override.as_deref(),
+        Some("smart"),
+        "/model <id> must pin the active tab's per-pane model override"
+    );
+    assert!(
+        !app.current_tab().model_picker_open,
+        "a direct /model <id> switch must not leave the picker open"
+    );
+}
