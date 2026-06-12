@@ -74,6 +74,7 @@ commands.help_close_hint: "  Esc        Бу ярдәмне ябу"  # {Locked="
 commands.help.summary: "Бу боерыклар исемлеген күрсәтү"
 commands.clear.summary: "Чат әйләндерү тарихын чистарту (сеансны саклый)"
 commands.new.summary: "Яңа ACP сеансын башлау (тарихны ташлый)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Агентны яңадан старт"
 commands.stop.summary: "Башкарылучы сорауны кире кагу"
 commands.sessions.summary: "Тарихи сеанслар сайлагычын ачу (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

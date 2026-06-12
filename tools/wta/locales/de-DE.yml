@@ -195,6 +195,7 @@ time.days_other: "vor %{count} Tagen"
 commands.help.summary: "Diese Befehlsliste anzeigen"
 commands.clear.summary: "Chatverlauf löschen (Sitzung bleibt erhalten)"
 commands.new.summary: "Eine neue ACP-Sitzung starten (Verlauf verwerfen)"
+commands.fix.summary: "Das aktive Terminal diagnostizieren und eine Korrektur vorschlagen (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Agent neu starten"
 commands.stop.summary: "Laufende Eingabe abbrechen"
 commands.sessions.summary: "Auswahl historischer Sitzungen öffnen (Ctrl+Shift+/)"

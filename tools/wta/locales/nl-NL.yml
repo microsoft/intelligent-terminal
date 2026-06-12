@@ -195,6 +195,7 @@ time.days_other: "%{count} dagen geleden"
 commands.help.summary: "Deze opdrachtlijst weergeven"
 commands.clear.summary: "Chatgeschiedenis wissen (sessie blijft behouden)"
 commands.new.summary: "Een nieuwe ACP-sessie starten (geschiedenis verwijderen)"
+commands.fix.summary: "Diagnose uitvoeren op de actieve terminal en een oplossing voorstellen (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Agent opnieuw starten"
 commands.stop.summary: "De actieve prompt annuleren"
 commands.sessions.summary: "De selector voor eerdere sessies openen (Ctrl+Shift+/)"
