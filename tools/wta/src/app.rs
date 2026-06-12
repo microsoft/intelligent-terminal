@@ -47,45 +47,24 @@ use autofix::*;
 
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
-// ─── MVP sessions origin filter ────────────────────────────────────────────────────
+// ─── Sessions origin filter ─────────────────────────────────────────────────────────
 //
-// The session management view (`/sessions`) currently ships in MVP
-// mode: it only surfaces shell-pane sessions (the user manually ran
-// `copilot` / `claude` / `gemini` in a regular shell). Agent-pane
-// sessions (Class A — created by WTA on behalf of an Intelligent
-// Terminal agent pane) stay in the registry so Enter routing,
-// alive-mirror reconciliation, and `wta sessions list` continue to
-// work; they just don't render in the picker.
+// The session management view (`/sessions`) surfaces every session WTA
+// knows about regardless of origin: both shell-pane sessions (Class B —
+// the user manually ran `copilot` / `claude` / `gemini` in a regular
+// shell) and agent-pane sessions (Class A — created by WTA on behalf of
+// an Intelligent Terminal agent pane). The Enter / Shift+Enter dispatch
+// table in `session_mgmt::decide_enter_action` knows how to route both
+// classes, so neither is hidden from the picker.
 //
-// To bring agent-pane sessions back into the picker once the manage UX
-// is ready, flip this constant to `OriginFilter::All` and delete the
-// `WTA_SESSIONS_SHOW_AGENT_PANE` env override below. No other call sites
-// need to change — all consumers go through
-// `App::sessions_origin_filter`.
-const MVP_SESSIONS_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
-    crate::agent_sessions::OriginFilter::ShellOnly;
-
-/// Resolve the `/sessions` origin filter for this process.
-///
-/// Defaults to [`MVP_SESSIONS_ORIGIN_FILTER`]. The `WTA_SESSIONS_SHOW_AGENT_PANE`
-/// env var (set to `1` / `true`) flips a single helper to
-/// `OriginFilter::All` for debugging — matches the existing
-/// `WTA_LOG_AGENT_EVENT` / `WTA_SOURCE_*` convention. Each helper is
-/// a separate process so the override only affects the pane that
-/// launched with the env var set; the rest of the Terminal keeps the
-/// MVP default.
-pub fn resolve_sessions_origin_filter() -> crate::agent_sessions::OriginFilter {
-    match std::env::var("WTA_SESSIONS_SHOW_AGENT_PANE")
-        .ok()
-        .as_deref()
-        .map(str::trim)
-    {
-        Some("1") | Some("true") | Some("TRUE") | Some("True") | Some("yes") => {
-            crate::agent_sessions::OriginFilter::All
-        }
-        _ => MVP_SESSIONS_ORIGIN_FILTER,
-    }
-}
+// `App::sessions_origin_filter` is still the single knob threaded through
+// the three places that must agree on which rows are visible
+// (`agents_rows_for_tab`, the post-history-scan auto-select / Delete
+// clamp, and `agents_view::render`); it just defaults to
+// [`OriginFilter::All`] now. The `wta sessions list --origin` CLI flag
+// continues to slice the out-of-band debug list by origin.
+const DEFAULT_SESSIONS_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
+    crate::agent_sessions::OriginFilter::All;
 
 use crate::commands::{self, CommandKind, CommandSpec, ParseOutcome, ParsedCommand};
 use crate::coordinator::{
@@ -1955,12 +1934,13 @@ pub struct App {
     /// can't rehydrate ACP sessions. Set on `AgentConnected`.
     pub agent_supports_load_session: bool,
     /// Origin filter for the `/sessions` picker. Captured once at
-    /// `App::new` time via [`resolve_sessions_origin_filter`] so the value is
-    /// stable for the lifetime of this helper process. Read by
-    /// [`Self::agents_rows_for_tab`] (the cursor / Enter source of
-    /// truth), the post-history-scan auto-select, the Delete clamp,
-    /// and the `agents_view::render` call in `ui/layout.rs`. See
-    /// [`MVP_SESSIONS_ORIGIN_FILTER`] for the gate to flip when un-MVP.
+    /// `App::new` time so the value is stable for the lifetime of this
+    /// helper process. Read by [`Self::agents_rows_for_tab`] (the cursor
+    /// / Enter source of truth), the post-history-scan auto-select, the
+    /// Delete clamp, and the `agents_view::render` call in
+    /// `ui/layout.rs`. Defaults to [`DEFAULT_SESSIONS_ORIGIN_FILTER`]
+    /// (`All` — every origin is shown); tests override it to exercise
+    /// the per-origin slicing.
     pub sessions_origin_filter: crate::agent_sessions::OriginFilter,
     // Onboarding: signals main.rs to install agent hook plugins on demand.
     install_request_tx: Option<mpsc::UnboundedSender<()>>,
@@ -2204,7 +2184,7 @@ impl App {
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
             history_load_state: HistoryLoadState::NotStarted,
             agent_supports_load_session: false,
-            sessions_origin_filter: resolve_sessions_origin_filter(),
+            sessions_origin_filter: DEFAULT_SESSIONS_ORIGIN_FILTER,
             install_request_tx: None,
             agent_event_tx: None,
             session_hook_tx: None,
@@ -3593,7 +3573,7 @@ impl App {
             if let Some(want) = filter.as_ref() {
                 rows.retain(|s| &s.cli_source == want || matches!(&s.cli_source, crate::agent_sessions::CliSource::Unknown(v) if v.is_empty()));
             }
-            // Apply the MVP origin filter on top of the cli filter.
+            // Apply the origin filter on top of the cli filter.
             // Snapshot rows come from master via SessionInfo where origin
             // is Option<SessionOrigin>; session_info_to_agent_session
             // collapses None -> SessionOrigin::Unknown so a registry-style
@@ -6416,7 +6396,7 @@ impl App {
                                 // Keep the cursor in-bounds after eviction.
                                 // Re-query through the same filters so the
                                 // selection clamp matches the rendered list
-                                // (both cli + MVP origin filter).
+                                // (both cli + origin filter).
                                 let new_count = self
                                     .agent_sessions
                                     .iter_sorted_with_filters(
@@ -11019,11 +10999,13 @@ mod tests {
         );
     }
 
-    /// MVP sessions origin filter: with `ShellOnly`, agent-pane rows must
+    /// Sessions origin filter: with `ShellOnly`, agent-pane rows must
     /// be hidden from `agents_rows_for_tab` (the cursor / Enter
     /// dispatch source of truth) — *not just* from `agents_view::render`.
     /// A bug where render filtered but `agents_rows_for_tab` didn't
-    /// would let Enter on visible row N activate hidden row M.
+    /// would let Enter on visible row N activate hidden row M. (The
+    /// shipping default is `All`; this test drives the filter axis
+    /// explicitly.)
     #[test]
     fn shell_only_filter_hides_agent_pane_rows_from_cursor_model() {
         use crate::agent_sessions::{OriginFilter, SessionOrigin};
@@ -11044,8 +11026,8 @@ mod tests {
         assert_eq!(rows.len(), 1, "only the Class B row is visible: {rows:?}");
         assert_eq!(rows[0].key, "class-b");
 
-        // Flip to All — both rows must reappear so the un-MVP toggle
-        // brings agent-pane rows back without any other code change.
+        // Flip to All (the shipping default) — both rows must appear so
+        // agent-pane sessions are reachable in the picker.
         app.sessions_origin_filter = OriginFilter::All;
         let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
         assert_eq!(rows.len(), 2);
@@ -11060,7 +11042,7 @@ mod tests {
     /// Registry path (no snapshot): the same filter must apply when
     /// `agents_rows_for_tab` falls back to `agent_sessions` directly.
     /// Without this, helpers that haven't received a master snapshot
-    /// yet would show every row regardless of the MVP filter.
+    /// yet would show every row regardless of the configured filter.
     #[test]
     fn shell_only_filter_applies_to_registry_fallback_path() {
         use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
@@ -11088,37 +11070,6 @@ mod tests {
         let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].key, "shell-key");
-    }
-
-    /// `resolve_sessions_origin_filter` reads the `WTA_SESSIONS_SHOW_AGENT_PANE`
-    /// env var. With it unset (or 0/false) the MVP default
-    /// (`ShellOnly`) wins; with it set to a truthy value we flip to
-    /// `All` so a single debug helper can see everything without a
-    /// rebuild.
-    ///
-    /// Env vars are process-global, so this test serializes via the
-    /// `WTA_SESSIONS_SHOW_AGENT_PANE_TEST_LOCK` mutex shared with any other
-    /// future test that touches the same var.
-    #[test]
-    fn resolve_sessions_origin_filter_respects_env_override() {
-        use crate::agent_sessions::OriginFilter;
-        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-
-        std::env::remove_var("WTA_SESSIONS_SHOW_AGENT_PANE");
-        assert_eq!(crate::app::resolve_sessions_origin_filter(), MVP_SESSIONS_ORIGIN_FILTER);
-        assert_eq!(MVP_SESSIONS_ORIGIN_FILTER, OriginFilter::ShellOnly);
-
-        std::env::set_var("WTA_SESSIONS_SHOW_AGENT_PANE", "1");
-        assert_eq!(crate::app::resolve_sessions_origin_filter(), OriginFilter::All);
-
-        std::env::set_var("WTA_SESSIONS_SHOW_AGENT_PANE", "true");
-        assert_eq!(crate::app::resolve_sessions_origin_filter(), OriginFilter::All);
-
-        std::env::set_var("WTA_SESSIONS_SHOW_AGENT_PANE", "0");
-        assert_eq!(crate::app::resolve_sessions_origin_filter(), MVP_SESSIONS_ORIGIN_FILTER);
-
-        std::env::remove_var("WTA_SESSIONS_SHOW_AGENT_PANE");
     }
 
     #[test]
@@ -11736,10 +11687,9 @@ mod tests {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         use std::path::PathBuf;
         let mut app = test_app();
-        // This test exercises the Class A (AgentPane) Enter routing,
-        // which the MVP sessions filter hides. Opt out so the row is
-        // visible to the cursor; the dispatch logic under test is
-        // unchanged by the filter.
+        // This test exercises the Class A (AgentPane) Enter routing.
+        // The picker now defaults to showing every origin; set it
+        // explicitly here so the test is robust to that default.
         app.sessions_origin_filter = OriginFilter::All;
         app.agent_supports_load_session = true;
         app.agent_sessions.apply(SessionEvent::SessionStarted {
@@ -11824,9 +11774,9 @@ mod tests {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         use std::path::PathBuf;
         let mut app = test_app();
-        // Same rationale as the Class A dead-row tests above:
-        // MVP sessions filter hides AgentPane rows, this test verifies the
-        // dispatch logic for when they are visible.
+        // Same as the Class A dead-row tests above: set the filter
+        // explicitly so the AgentPane row is visible regardless of the
+        // picker default (which now shows every origin).
         app.sessions_origin_filter = OriginFilter::All;
         app.agent_sessions.apply(SessionEvent::SessionStarted {
             key: "live-class-a".into(),

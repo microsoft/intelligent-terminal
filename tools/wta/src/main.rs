@@ -475,9 +475,9 @@ enum SessionsAction {
         master: Option<String>,
 
         /// Restrict the list to a session origin. `all` (default) shows
-        /// every row — that matches the historical debug behavior.
-        /// `shell` shows only user-started shell-pane sessions (the
-        /// MVP sessions default). `agent-pane` shows only sessions that
+        /// every row — that matches the historical debug behavior and
+        /// the `/sessions` picker. `shell` shows only user-started
+        /// shell-pane sessions; `agent-pane` shows only sessions that
         /// WTA spawned for an Intelligent Terminal agent pane.
         #[arg(long, value_enum, default_value_t = SessionsOriginArg::All)]
         origin: SessionsOriginArg,
@@ -490,10 +490,10 @@ enum SessionsAction {
 /// crate with clap as a dependency.
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 enum SessionsOriginArg {
-    /// Shell-pane sessions only (Class B). Matches the MVP sessions picker.
+    /// Shell-pane sessions only (Class B).
     Shell,
-    /// Agent-pane sessions only (Class A). Hidden from the MVP sessions
-    /// picker; surfaced here for debugging.
+    /// Agent-pane sessions only (Class A) — sessions WTA spawned for
+    /// an Intelligent Terminal agent pane.
     AgentPane,
     /// Every row in the registry — historical debug default.
     All,
@@ -1209,9 +1209,9 @@ async fn run_sessions_list(
         .await?;
     // Origin filter is applied client-side: master always returns the
     // full registry so this command can act as the debug eye-of-god
-    // view (default `--origin all`). `--origin shell` matches what
-    // the MVP sessions picker shows; `--origin agent-pane` surfaces the
-    // rows MVP sessions hides.
+    // view (default `--origin all`, matching the `/sessions` picker).
+    // `--origin shell` slices to shell-pane sessions; `--origin
+    // agent-pane` slices to agent-pane sessions.
     let filtered: Vec<session_registry::SessionInfo> = sessions
         .into_iter()
         .filter(|s| origin_filter.matches_opt(s.origin.as_ref()))

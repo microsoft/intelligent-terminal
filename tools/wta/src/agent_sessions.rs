@@ -145,14 +145,15 @@ pub enum SessionOrigin {
 }
 
 /// View-layer filter for `SessionOrigin`. Used by the `/sessions`
-/// picker so an MVP build can restrict the list to shell-pane sessions
-/// (user typed `copilot` in a normal shell) and hide WTA-spawned
-/// agent-pane sessions, without removing the data from the registry.
+/// picker and by `wta sessions list` to optionally restrict the list to
+/// one origin class — shell-pane sessions (user typed `copilot` in a
+/// normal shell) or WTA-spawned agent-pane sessions — without removing
+/// the data from the registry.
 ///
-/// Set the MVP default in `app.rs::MVP_SESSIONS_ORIGIN_FILTER`. Set
-/// `WTA_SESSIONS_SHOW_AGENT_PANE=1` to flip a single helper process to
-/// `All` for debugging. The `wta sessions list` CLI also accepts
-/// `--origin <shell|agent-pane|all>` for the same purpose.
+/// The `/sessions` picker defaults to `All` (see
+/// `app.rs::DEFAULT_SESSIONS_ORIGIN_FILTER`), so every origin is shown.
+/// The `wta sessions list` CLI accepts `--origin <shell|agent-pane|all>`
+/// to slice the out-of-band debug list.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum OriginFilter {
     /// Keep rows whose origin is `Unknown` (the user ran the CLI
@@ -161,8 +162,8 @@ pub enum OriginFilter {
     ShellOnly,
     /// Keep only `AgentPane` rows (sessions WTA spawned for an
     /// Intelligent Terminal agent pane). Hide `Unknown` and untagged
-    /// rows. Provided for symmetry / future un-MVP toggle; not used
-    /// by the default UX today.
+    /// rows. Provided for symmetry and for `wta sessions list
+    /// --origin agent-pane`; not used by the default picker UX.
     AgentPaneOnly,
     /// Keep every row regardless of origin. The historical default
     /// and the right setting for debug tooling that wants to see
@@ -2219,7 +2220,7 @@ mod tests {
     fn iter_sorted_with_filters_partitions_by_origin() {
         // Two rows, identical CLI, different SessionOrigin. ShellOnly
         // must hide the AgentPane row; AgentPaneOnly is the inverse;
-        // All keeps both. Confirms the MVP sessions filter contract.
+        // All keeps both. Confirms the origin filter contract.
         let mut reg = AgentSessionRegistry::new();
         reg.apply(SessionEvent::SessionStarted {
             key: k("shell-row"),

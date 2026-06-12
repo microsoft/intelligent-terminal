@@ -36,8 +36,8 @@ pub fn render(
     history_load_state: HistoryLoadState,
     activity_frame: usize,
     cli_filter: Option<&CliSource>,
-    // MVP origin filter — `ShellOnly` by default, see
-    // `app.rs::MVP_SESSIONS_ORIGIN_FILTER`. Must match whatever filter
+    // Origin filter — `All` by default (see
+    // `app.rs::DEFAULT_SESSIONS_ORIGIN_FILTER`). Must match whatever filter
     // `App::agents_rows_for_tab` applies so the rendered rows line
     // up with the cursor / Enter dispatch model. Caller threads the
     // stored `app.sessions_origin_filter`.
@@ -122,7 +122,7 @@ pub fn render(
                     || matches!(&s.cli_source, CliSource::Unknown(v) if v.is_empty())
             });
         }
-        // MVP origin filter. Stays in sync with the same retain inside
+        // Origin filter. Stays in sync with the same retain inside
         // `App::agents_rows_for_tab` (which feeds the cursor / Enter
         // dispatch); both call sites read `app.sessions_origin_filter`.
         // `session_info_to_agent_session` collapses None origin to

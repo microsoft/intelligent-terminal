@@ -55,10 +55,10 @@ fn sessions_list_cli_parses_json_and_master_override() {
         Some(Command::Sessions { action: SessionsAction::List { master, origin } }) => {
             assert_eq!(master.as_deref(), Some(r"\\.\pipe\wta-master-test"));
             // Default keeps the historical debug behavior — show
-            // every origin. MVP sessions picker has its own default in
-            // `app::resolve_sessions_origin_filter`; this CLI default is
-            // intentionally divergent so `wta sessions list` is
-            // the "see everything" debug tool.
+            // every origin, matching the `/sessions` picker default
+            // (`app::DEFAULT_SESSIONS_ORIGIN_FILTER`). `wta sessions
+            // list` is the "see everything" debug tool; `--origin
+            // shell|agent-pane` slices it.
             assert_eq!(origin, SessionsOriginArg::All);
         }
         other => panic!("expected sessions list command, got {other:?}"),
