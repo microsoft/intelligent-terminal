@@ -82,9 +82,10 @@ pub fn detect_format<'a>(
 }
 
 /// Choose the source cwd value, dropping junk launcher dirs (`System32`,
-/// `Windows`) and empty values down to `%USERPROFILE%` (then the process
-/// cwd). The result may itself be Windows or POSIX — a WSL-integrated pane
-/// reports a POSIX `$PWD` — which is fine: the converters are idempotent.
+/// `Windows`) and empty values down to [`user_profile_dir`] (USERPROFILE →
+/// Windows-only HOME → `%SystemDrive%\`). The result may itself be Windows
+/// or POSIX — a WSL-integrated pane reports a POSIX `$PWD` — which is fine:
+/// the converters are idempotent.
 pub fn pick_value(candidate: Option<&Path>) -> PathBuf {
     if let Some(p) = candidate {
         if !p.as_os_str().is_empty() && !is_junk(p) {
