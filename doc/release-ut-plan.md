@@ -89,7 +89,15 @@ Verified **already covered**, no new tests needed:
 
 Deferred:
 
-- **Localization presence lint** — a strict `tools/wta/locales/*.yml` parity test would be red today: `commands.fix.summary` is missing from all 88 locale files and ~6 more keys lag per-locale (translation-pipeline lag). Route the missing keys through the loc pipeline first, then add the parity test.
+- _(none — all planned UT items implemented.)_
+
+Localization parity (resolved):
+
+- The `tools/wta/locales/*.yml` gap is closed: a sub-agent backfilled the
+  missing `commands.*.summary` keys (notably `commands.fix.summary`, which was
+  absent from all 88 non-en-US locales) to full key-parity with en-US, and a
+  `every_locale_has_all_en_us_keys` guard test (`locale_parity_tests.rs`) now
+  enforces it.
 
 ## Recommended new UT work (the `[UT+]` backlog)
 

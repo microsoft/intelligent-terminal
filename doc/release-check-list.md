@@ -341,7 +341,7 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 - [ ] `[MANUAL]` **High contrast theme works:** FRE, Settings, agent pane, and autofix UI remain readable.
 - [ ] `[MANUAL]` **Light/dark theme works:** UI is readable in both themes.
 - [ ] `[MANUAL]` **Text scaling works:** 125%, 150%, and 200% scaling do not clip critical controls.
-- [ ] `[UT+]` `[MANUAL]` **Localization strings are present:** New user-facing strings are localized or intentionally locked. _(UT: resource-key presence lint.)_
+- [ ] `[UT✓]` `[MANUAL]` **Localization strings are present:** New user-facing strings are localized or intentionally locked. _(UT: `every_locale_has_all_en_us_keys` enforces WTA locale key-parity; .resw locales still manual/pipeline.)_
 - [ ] `[UT~]` `[MANUAL]` **Pseudo-locales work:** qps pseudo-locales do not clip or corrupt layout.
 - [ ] `[UT~]` `[MANUAL]` **RTL works:** RTL layout is mirrored where expected. _(UT: `IsRtlLocale`.)_
 
