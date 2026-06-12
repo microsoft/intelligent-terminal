@@ -59,6 +59,19 @@ input.placeholder.connected: "Frag etwas, / für Befehle.."  # {Locked="/"}
 input.placeholder.connecting: "Verbindung wird hergestellt..."
 input.placeholder.disconnected: "Getrennt"
 
+# ── Warteschlange ausstehender Prompts (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# Anzeige über dem Eingabefeld, während ein oder mehrere Prompts in der Warteschlange stehen
+# und darauf warten, dass der Agent den aktuellen Durchlauf beendet. %{count} ist die Anzahl
+# der wartenden Prompts; %{preview} ist eine einzeilige Vorschau des zuletzt
+# eingereihten Prompts (den Esc als Nächstes entfernen würde).
+input.queue.indicator: "In Warteschlange (%{count}): %{preview}"
+# Vorübergehender Hinweis, der angezeigt wird, nachdem Esc den zuletzt eingereihten Prompt entfernt hat.
+input.queue.removed: "Nachricht aus Warteschlange entfernt: %{preview}"
+# Vorübergehender Hinweis, wenn der Benutzer versucht, einen weiteren Prompt einzureihen, die
+# Warteschlange aber bereits ihre Kapazität (%{cap} Einträge) erreicht hat. Der Benutzer muss warten,
+# bis sich die Warteschlange leert, oder Esc drücken, um eingereihte Elemente zu entfernen.
+input.queue.full: "Die Warteschlange ist voll (%{cap}). Warten Sie auf den Agenten, oder drücken Sie Esc, um eingereihte Elemente zu entfernen."  # {Locked="Esc"}
+
 # ── Befehlspopup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - Schrägstrich-Befehlspräfix, muss ASCII bleiben
 commands.popup_title: " / Befehle "

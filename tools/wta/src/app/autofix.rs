@@ -157,11 +157,13 @@ impl App {
         }
 
         // Latest event always wins — but only if we can actually act on it.
-        // The ACP transport single-flights at the tab level, so if the
-        // target tab already has a prompt in flight, submitting another
-        // one results in `tab.turn = Submitted(new)` + ACP `AgentBusy`
-        // rejection — the buffer and the wire diverge, and old chunks
-        // corrupt the new turn's state. Defer instead.
+        // The ACP transport single-flights at the tab level, so submitting
+        // another prompt while one is in flight would (pre-queue) trip the
+        // `AgentBusy` rejection at the transport layer, and the local
+        // buffer would diverge from the wire (old chunks corrupting the
+        // new turn's state). Post-queue the normal Enter path enqueues
+        // instead, but autofix bypasses the queue (it's system-driven,
+        // not user-driven), so defer here to preserve the same invariant.
         let (same_pane, already_busy, armed_pane_dbg) = {
             let tab = self.tab_mut(&target_tab_id);
             let same = tab.autofix.pane_id.as_deref() == Some(notification.pane_id.as_str());

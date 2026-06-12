@@ -59,6 +59,19 @@ input.placeholder.connected: "Klauskite bet ko, / komandoms.."  # {Locked="/"}
 input.placeholder.connecting: "jungiamasi..."
 input.placeholder.disconnected: "atjungta"
 
+# ── Laukiančių užklausų eilė (src/ui/queued_hint.rs, src/app.rs) ─────────────
+# Indikatorius, rodomas virš įvesties lauko, kai viena ar daugiau užklausų yra eilėje
+# ir laukia, kol agentas užbaigs dabartinį veiksmą. %{count} yra eilėje esančių
+# užklausų skaičius; %{preview} yra vienos eilutės paskutinės į eilę įtrauktos
+# užklausos peržiūra (tos, kurią Esc pašalins kitą).
+input.queue.indicator: "Eilėje (%{count}): %{preview}"
+# Laikina užuomina, rodoma po to, kai Esc pašalina paskutinę į eilę įtrauktą užklausą.
+input.queue.removed: "Pašalintas eilėje esantis pranešimas: %{preview}"
+# Laikina užuomina, rodoma, kai vartotojas bando į eilę įtraukti dar vieną užklausą,
+# bet eilė jau pasiekė talpą (%{cap} elementų). Vartotojas turi palaukti, kol eilė
+# ištuštės, arba paspausti Esc, kad pašalintų eilėje esančius elementus.
+input.queue.full: "Eilė pilna (%{cap}). Palaukite agento arba paspauskite Esc, kad pašalintumėte eilėje esančius elementus."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / komandos "

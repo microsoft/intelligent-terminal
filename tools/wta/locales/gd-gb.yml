@@ -59,6 +59,19 @@ input.placeholder.connected: "Faighnich rud sam bith, / airson òrdughan.."  # {
 input.placeholder.connecting: "a' ceangal..."
 input.placeholder.disconnected: "air a dhì-cheangal"
 
+# ── Ciutha bhrosnachaidhean ri thighinn (src/ui/queued_hint.rs, src/app.rs) ──
+# Comharra air a shealltainn os cionn a' bhogsa ion-chuir fhad 's a tha aon bhrosnachadh no barrachd sa chiutha
+# a' feitheamh ris an àidseant crìoch a chur air an tionndadh làithreach. 'S e %{count} an àireamh
+# de bhrosnachaidhean sa chiutha; 's e ro-shealladh aon-loidhne a th' ann an %{preview} den bhrosnachadh
+# as ùire a chaidh a chur sa chiutha (am fear a bheireadh Esc air falbh an ath rud).
+input.queue.indicator: "Sa chiutha (%{count}): %{preview}"
+# Sanas sealach air a shealltainn às dèidh do Esc am brosnachadh as ùire sa chiutha a thoirt air falbh.
+input.queue.removed: "Chaidh teachdaireachd sa chiutha a thoirt air falbh: %{preview}"
+# Sanas sealach air a shealltainn nuair a dh'fheuchas an cleachdaiche ri brosnachadh eile a chur sa chiutha,
+# ach tha an ciutha aig comas mu thràth (%{cap} nithean). Feumaidh an cleachdaiche feitheamh gus
+# am bi an ciutha falamh no Esc a bhrùthadh gus nithean sa chiutha a thoirt air falbh.
+input.queue.full: "Tha an ciutha làn (%{cap}). Fuirich ris an àidseant no brùth Esc gus nithean sa chiutha a thoirt air falbh."  # {Locked="Esc"}
+
 # ── Priob-uinneag òrdughan (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - ro-leasachan àithne sgian-dubh, feumaidh e fuireach ASCII
 commands.popup_title: " / òrdughan "

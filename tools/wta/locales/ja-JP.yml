@@ -55,6 +55,19 @@ input.placeholder.connected: "何でも聞いてください。/ でコマンド
 input.placeholder.connecting: "接続中..."
 input.placeholder.disconnected: "切断済み"
 
+# ── 保留中のプロンプト キュー (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# 1 つ以上のプロンプトがキューに入り、エージェントが現在のターンを
+# 終えるのを待っている間に入力ボックスの上に表示されるインジケーターです。
+# %{count} はキュー内のプロンプト数、%{preview} は直近にキューへ入った
+# プロンプト（Esc で次に取り出されるもの）の 1 行プレビューです。
+input.queue.indicator: "キュー済み (%{count}): %{preview}"
+# Esc で直近にキューへ入ったプロンプトを削除した後に表示される一時的なヒントです。
+input.queue.removed: "キュー済みメッセージを削除: %{preview}"
+# ユーザーがさらにプロンプトをキューに入れようとしたものの、キューがすでに
+# 上限（%{cap} 件）に達している場合に表示される一時的なヒントです。
+# ユーザーはキューが空くまで待つか、Esc を押してキュー内の項目を削除する必要があります。
+input.queue.full: "キューがいっぱいです (%{cap})。エージェントを待つか、Esc を押してキュー済みアイテムを削除してください。"  # {Locked="Esc"}
+
 # ── コマンド ポップアップ (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - スラッシュ コマンド プレフィックス、ASCII のまま保持
 commands.popup_title: " / コマンド "

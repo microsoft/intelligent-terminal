@@ -59,6 +59,19 @@ input.placeholder.connected: "Pergunte qualquer coisa, / para comandos.."  # {Lo
 input.placeholder.connecting: "Conectando..."
 input.placeholder.disconnected: "Desconectado"
 
+# ── Fila de prompts pendentes (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# Indicador mostrado acima da caixa de entrada enquanto um ou mais prompts estão na fila
+# aguardando o agente terminar o turno atual. %{count} é o número
+# de prompts na fila; %{preview} é uma prévia em uma única linha do prompt mais recente
+# colocado na fila (o que Esc removeria em seguida).
+input.queue.indicator: "Na fila (%{count}): %{preview}"
+# Dica temporária mostrada depois que Esc remove o prompt mais recente da fila.
+input.queue.removed: "Mensagem na fila removida: %{preview}"
+# Dica temporária mostrada quando o usuário tenta colocar outro prompt na fila, mas a
+# fila já está no limite de capacidade (%{cap} entradas). O usuário deve aguardar
+# a fila esvaziar ou pressionar Esc para remover itens da fila.
+input.queue.full: "A fila está cheia (%{cap}). Aguarde o agente ou pressione Esc para remover itens da fila."  # {Locked="Esc"}
+
 # ── Popup de comandos (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefixo de comando de barra, deve permanecer em ASCII
 commands.popup_title: " / comandos "

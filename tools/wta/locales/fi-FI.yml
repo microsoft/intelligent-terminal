@@ -59,6 +59,19 @@ input.placeholder.connected: "Kysy mitä tahansa, / komennoille.."  # {Locked="/
 input.placeholder.connecting: "yhdistetään..."
 input.placeholder.disconnected: "yhteys katkaistu"
 
+# ── Odottavien kehotteiden jono (src/ui/queued_hint.rs, src/app.rs) ─────────
+# Ilmaisin, joka näkyy syöttöruudun yläpuolella, kun yksi tai useampi kehote on jonossa
+# odottamassa, että agentti saa nykyisen vuoron valmiiksi. %{count} on jonossa olevien
+# kehotteiden määrä; %{preview} on yhden rivin esikatselu viimeksi jonoon lisätystä
+# kehotteesta (jonka Esc poistaa seuraavaksi).
+input.queue.indicator: "Jonossa (%{count}): %{preview}"
+# Tilapäinen vihje, joka näytetään, kun Esc poistaa viimeksi jonoon lisätyn kehotteen.
+input.queue.removed: "Poistettu jonossa oleva viesti: %{preview}"
+# Tilapäinen vihje, joka näytetään, kun käyttäjä yrittää lisätä uuden kehotteen jonoon,
+# mutta jono on jo täynnä (%{cap} kohdetta). Käyttäjän on odotettava jonon tyhjentymistä
+# tai poistettava jonossa olevia kohteita painamalla Esc.
+input.queue.full: "Jono on täynnä (%{cap}). Odota agenttia tai poista jonossa olevia kohteita painamalla Esc."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / komennot "

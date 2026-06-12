@@ -55,6 +55,16 @@ input.placeholder.connected: "隨意提問，/ 查看命令.."  # {Locked="/"}
 input.placeholder.connecting: "連線中..."
 input.placeholder.disconnected: "已中斷連線"
 
+# ── 待處理提示佇列 (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# 當一個或多個提示已排入佇列，正在等待智慧代理完成目前回合時，顯示在輸入方塊上方的指示器。
+# %{count} 是已排入佇列的提示數；%{preview} 是最近排入佇列的提示（Esc 接下來會彈出的那一則）的單行預覽。
+input.queue.indicator: "已排入佇列 (%{count}): %{preview}"
+# Esc 移除最近排入佇列的提示後顯示的暫時提示。
+input.queue.removed: "已移除佇列訊息: %{preview}"
+# 當使用者嘗試再排入一個提示，但佇列已達容量上限（%{cap} 筆）時顯示的暫時提示。
+# 使用者必須等待佇列清空，或按 Esc 移除佇列項目。
+input.queue.full: "佇列已滿 (%{cap})。請等待智慧代理，或按 Esc 移除佇列項目。"  # {Locked="Esc"}
+
 # ── 命令快顯視窗 (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - 斜線命令前綴，必須保持 ASCII
 commands.popup_title: " / 命令 "

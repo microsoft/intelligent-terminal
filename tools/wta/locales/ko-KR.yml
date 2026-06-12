@@ -55,6 +55,19 @@ input.placeholder.connected: "무엇이든 물어보세요, / 명령어.."  # {L
 input.placeholder.connecting: "연결 중..."
 input.placeholder.disconnected: "연결 끊김"
 
+# ── 보류 중인 프롬프트 대기열 (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# 하나 이상의 프롬프트가 대기열에 들어가 에이전트가 현재 턴을 마치기를
+# 기다리는 동안 입력 상자 위에 표시되는 표시기입니다. %{count}는 대기 중인
+# 프롬프트 수이고, %{preview}는 가장 최근에 대기열에 추가된 프롬프트(Esc로
+# 다음에 꺼낼 항목)의 한 줄 미리 보기입니다.
+input.queue.indicator: "대기열에 추가됨 (%{count}): %{preview}"
+# Esc가 가장 최근에 대기열에 추가된 프롬프트를 제거한 뒤 표시되는 임시 힌트입니다.
+input.queue.removed: "대기열 메시지 제거됨: %{preview}"
+# 사용자가 다른 프롬프트를 대기열에 추가하려고 하지만 대기열이 이미 용량
+# 제한(%{cap}개)에 도달했을 때 표시되는 임시 힌트입니다. 사용자는 대기열이
+# 비워질 때까지 기다리거나 Esc를 눌러 대기열 항목을 제거해야 합니다.
+input.queue.full: "대기열이 가득 찼습니다(%{cap}). 에이전트를 기다리거나 Esc를 눌러 대기열 항목을 제거하세요."  # {Locked="Esc"}
+
 # ── 명령어 팝업 (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - 슬래시 명령 접두사, ASCII로 유지
 commands.popup_title: " / 명령어 "

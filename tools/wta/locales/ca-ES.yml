@@ -59,6 +59,19 @@ input.placeholder.connected: "Pregunteu el que vulgueu, / per a ordres.."  # {Lo
 input.placeholder.connecting: "connectant..."
 input.placeholder.disconnected: "desconnectat"
 
+# ── Cua de sol·licituds pendents (src/ui/queued_hint.rs, src/app.rs) ─────────
+# Indicador que es mostra sobre el quadre d'entrada mentre hi ha una o més sol·licituds en cua
+# esperant que l'agent acabi el torn actual. %{count} és el nombre
+# de sol·licituds en cua; %{preview} és una previsualització d'una sola línia de la sol·licitud
+# posada en cua més recentment (la que Esc trauria a continuació).
+input.queue.indicator: "En cua (%{count}): %{preview}"
+# Avís transitori que es mostra després que Esc elimini la sol·licitud en cua més recent.
+input.queue.removed: "S'ha eliminat el missatge en cua: %{preview}"
+# Avís transitori que es mostra quan l'usuari intenta posar una altra sol·licitud en cua,
+# però la cua ja ha arribat a la capacitat (%{cap} entrades). L'usuari ha d'esperar que
+# la cua es buidi o prémer Esc per eliminar elements en cua.
+input.queue.full: "La cua és plena (%{cap}). Espereu que l'agent acabi o premeu Esc per eliminar elements en cua."  # {Locked="Esc"}
+
 # ── Finestra emergent d'ordres (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefix d'ordre de barra, ha de romandre ASCII
 commands.popup_title: " / ordres "

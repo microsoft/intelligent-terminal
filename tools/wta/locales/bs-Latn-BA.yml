@@ -59,6 +59,19 @@ input.placeholder.connected: "Pitajte bilo šta, / za naredbe.."  # {Locked="/"}
 input.placeholder.connecting: "povezivanje..."
 input.placeholder.disconnected: "prekinuta veza"
 
+# ── Red čekanja za upite (src/ui/queued_hint.rs, src/app.rs) ────────────────
+# Indikator prikazan iznad polja za unos dok je jedan ili više upita u redu čekanja
+# i čeka da agent završi trenutni potez. %{count} je broj
+# upita u redu čekanja; %{preview} je jednolinijski pregled posljednje
+# dodatog upita (onog koji bi Esc sljedeći uklonio).
+input.queue.indicator: "U redu čekanja (%{count}): %{preview}"
+# Privremeni savjet prikazan nakon što Esc ukloni posljednje dodati upit iz reda čekanja.
+input.queue.removed: "Uklonjena poruka iz reda čekanja: %{preview}"
+# Privremeni savjet prikazan kada korisnik pokuša dodati još jedan upit u red čekanja,
+# ali je red već dostigao kapacitet (%{cap} stavki). Korisnik mora sačekati
+# da se red isprazni ili pritisnuti Esc za uklanjanje stavki iz reda čekanja.
+input.queue.full: "Red čekanja je pun (%{cap}). Sačekajte agenta ili pritisnite Esc za uklanjanje stavki iz reda čekanja."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / naredbe "

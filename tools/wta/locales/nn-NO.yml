@@ -59,6 +59,19 @@ input.placeholder.connected: "Spør om kva som helst, / for kommandoar.."  # {Lo
 input.placeholder.connecting: "koplar til..."
 input.placeholder.disconnected: "fråkopla"
 
+# ── Ventande førespurnadskø (src/ui/queued_hint.rs, src/app.rs) ──────────────
+# Indikator som blir vist over inndatafeltet medan éi eller fleire førespurnader ligg i kø
+# og ventar på at agenten skal fullføre gjeldande tur. %{count} er talet på
+# førespurnader i kø; %{preview} er ei førehandsvising på éi linje av den sist
+# kølagde førespurnaden (den Esc fjernar neste gong).
+input.queue.indicator: "I kø (%{count}): %{preview}"
+# Mellombels tips som blir vist etter at Esc fjernar den sist kølagde førespurnaden.
+input.queue.removed: "Fjerna melding i kø: %{preview}"
+# Mellombels tips som blir vist når brukaren prøver å leggje endå ein førespurnad i kø,
+# men køen alt er ved kapasitet (%{cap} element). Brukaren må vente på at køen
+# blir tømd, eller trykkje på Esc for å fjerne element i kø.
+input.queue.full: "Køen er full (%{cap}). Vent på agenten eller trykk på Esc for å fjerne element i kø."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / kommandoar "

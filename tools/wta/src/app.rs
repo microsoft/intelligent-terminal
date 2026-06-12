@@ -1482,6 +1482,12 @@ pub struct TabSession {
     pub agents_list_state: ratatui::widgets::ListState,
     pub agents_view: AgentsViewState,
 
+    /// Prompts the user submitted while a turn was in flight. Dispatched
+    /// FIFO when the turn transitions back to an accepting state and no
+    /// recommendation card is visible. Esc pops the back (LIFO undo). Bounded
+    /// by `PENDING_PROMPT_QUEUE_CAP`.
+    pub pending_prompts: VecDeque<QueuedPrompt>,
+
     // "Does this tab want the agent pane visible?" — per-tab user intent.
     // Independent of where the (single, shared) XAML pane physically lives:
     // C++ relocates the pane to whichever active tab has `pane_open == true`
@@ -1511,9 +1517,25 @@ impl TabSession {
     /// pane's XAML focus, so a non-enterable state reads the same as lost
     /// focus.
     pub fn input_has_nav_focus(&self) -> bool {
-        self.selected_completed_turn_idx.is_none()
-            && self.turn.recommendations().is_none()
-            && self.permission.is_empty()
+        // Lock input editing in two cases:
+        //   1. The user is navigating a past turn (Tab-selected) — keystrokes
+        //      would seemingly disappear because the visible cursor is on
+        //      the highlighted turn, not the input box.
+        //   2. A permission card is up — the y/n hotkeys belong to the
+        //      card, and the user shouldn't be typing into a hidden input
+        //      while answering a permission prompt.
+        //
+        // NOT included: `self.turn.recommendations().is_none()`. Earlier
+        // versions also locked input while a recommendation card was
+        // visible, on the theory that the user's focus belongs to the
+        // card. In practice the input box is still visually present and
+        // draftable, and locking it left users unable to backspace /
+        // edit / clear their draft with no indication why (silently
+        // ignored keystrokes). The card still owns Arrow keys (its own
+        // earlier match arms) and Enter (the card-Enter branch executes
+        // the card regardless of input contents); Esc dismisses the card.
+        // Char/Backspace/Delete/Ctrl+Backspace edit the input draft.
+        self.selected_completed_turn_idx.is_none() && self.permission.is_empty()
     }
 
     pub fn clear_recommendations(&mut self) {
@@ -1580,6 +1602,11 @@ impl TabSession {
         self.selection_visible_pending = false;
         self.turn = TurnState::Idle;
         self.clear_recommendations();
+        // /clear, /new, /restart, tab reset and session-load all funnel
+        // through here. Queued prompts belonged to the conversation being
+        // wiped — allowing them to survive across the reset would surprise
+        // the user by firing into the fresh session.
+        self.pending_prompts.clear();
     }
 
     /// Flush pending user/agent replay buffers at a turn boundary during
@@ -2039,6 +2066,110 @@ pub struct App {
 /// enough that the user can react after seeing the hint; short enough that
 /// a stale arm doesn't bite the next time they want to clear input.
 pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// Maximum number of prompts the user can queue while a turn is in flight.
+/// Caps unbounded growth from paste storms / accidental Enter mashing.
+pub const PENDING_PROMPT_QUEUE_CAP: usize = 20;
+
+/// How long an Esc-dequeue or queue-full transient hint stays on screen.
+pub const QUEUE_HINT_DURATION: std::time::Duration = std::time::Duration::from_millis(2500);
+
+/// A prompt the user submitted while the agent was busy. Held on
+/// `TabSession::pending_prompts` and dispatched FIFO when the turn returns
+/// to an accepting state. Esc pops the back of this deque (LIFO undo).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueuedPrompt {
+    pub text: String,
+    /// Whitespace-collapsed cache of `text`, capped at
+    /// `COLLAPSED_PREVIEW_CAP` chars and read each frame by
+    /// `ui/queued_hint::render`. Avoids both the per-frame
+    /// `split_whitespace().collect::<Vec<_>>().join(" ")` allocation and
+    /// unbounded scanning/copying when the user pastes a huge prompt —
+    /// the visible indicator can only show ~60 cells anyway.
+    collapsed: String,
+}
+
+/// Upper bound on `QueuedPrompt::collapsed`. Generously over-provisioned
+/// versus the actual visible width — even at very wide terminals the queue
+/// hint row only renders a few dozen cells — but caps per-frame `t!()`
+/// interpolation + width scanning in `ui/queued_hint::render` to a
+/// constant when the user pastes a multi-megabyte prompt. The renderer
+/// performs the final width-based truncation against `area.width` via
+/// `truncate_to_width`, so this cap is an O(n) defense, not a display cap.
+const COLLAPSED_PREVIEW_CAP: usize = 256;
+
+impl QueuedPrompt {
+    pub fn new(text: String) -> Self {
+        let collapsed = collapse_whitespace_capped(&text, COLLAPSED_PREVIEW_CAP);
+        Self { text, collapsed }
+    }
+
+    /// One-line preview for the transient hint shown after an Esc-dequeue.
+    /// Collapses internal whitespace and truncates at `max_chars` characters
+    /// with an ellipsis. Char-based (not cell-based) because the transient
+    /// hint row is rendered with simple `Paragraph` clipping and doesn't
+    /// need the precise width math `ui/queued_hint` performs.
+    ///
+    /// `max_chars == 0` short-circuits to `String::new()` so callers
+    /// passing a zero budget don't get a 1-char `"…"` violating the
+    /// "at most N chars" contract.
+    pub fn preview(&self, max_chars: usize) -> String {
+        if max_chars == 0 {
+            return String::new();
+        }
+        if self.collapsed.chars().count() <= max_chars {
+            self.collapsed.clone()
+        } else {
+            let taken: String = self
+                .collapsed
+                .chars()
+                .take(max_chars.saturating_sub(1))
+                .collect();
+            format!("{}…", taken)
+        }
+    }
+
+    /// Cached whitespace-collapsed text (no truncation, no ellipsis).
+    /// `ui/queued_hint` consumes this so it can do one single width-aware
+    /// truncation pass — combining a char-count truncation here with the
+    /// cell-width truncation there could otherwise yield a doubled `…`
+    /// when both clips fire on the same string.
+    pub fn collapsed_text(&self) -> &str {
+        &self.collapsed
+    }
+}
+
+/// Stream-collapse contiguous whitespace runs into single spaces and cap the
+/// result at `max_chars` characters. Allocates only the result string (no
+/// intermediate `Vec`). Stops early as soon as `max_chars` have been emitted
+/// — capping the work for very large inputs that the UI would clip anyway.
+fn collapse_whitespace_capped(text: &str, max_chars: usize) -> String {
+    let mut out = String::with_capacity(text.len().min(max_chars));
+    let mut pending_space = false;
+    let mut wrote_any = false;
+    let mut chars_out = 0usize;
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            pending_space = wrote_any;
+        } else {
+            if pending_space {
+                if chars_out + 1 > max_chars {
+                    break;
+                }
+                out.push(' ');
+                chars_out += 1;
+                pending_space = false;
+            }
+            if chars_out + 1 > max_chars {
+                break;
+            }
+            out.push(ch);
+            chars_out += 1;
+            wrote_any = true;
+        }
+    }
+    out
+}
 
 /// Top-level UI view selector. Toggled with Ctrl+Shift+/.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4189,6 +4320,7 @@ impl App {
                     let should_redraw = self.event_requires_redraw(&event);
                     let handle_started = std::time::Instant::now();
                     self.handle_event(event);
+                    self.drain_pending_prompts();
                     ui_trace::log_slow("ui_event_handle", handle_started.elapsed(), || {
                         format!("event={} {}", event_name, self.trace_state())
                     });
@@ -4225,6 +4357,12 @@ impl App {
                             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
                         }
                     }
+                    // Drain once at end of batch — events may have flipped a
+                    // tab from in-flight to accepting (AgentMessageEnd, error,
+                    // cancel ack, etc.). Single pass is enough: each dispatch
+                    // re-arms the turn to Submitted so the same tab can't
+                    // double-fire this tick.
+                    self.drain_pending_prompts();
 
                     ui_trace::log_slow("event_batch_handle", batch_started.elapsed(), || {
                         format!(
@@ -6636,31 +6774,7 @@ impl App {
                 return;
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                // In-flight: state is Submitted/Streaming or Surfaced{end_pending}.
-                let in_flight = !self.current_tab().turn.is_idle()
-                    && !matches!(
-                        self.current_tab().turn,
-                        TurnState::Surfaced {
-                            end_pending: false,
-                            ..
-                        }
-                    );
-                if in_flight {
-                    // Send a session/cancel to the ACP client. The client
-                    // will fire the protocol notification and signal the
-                    // per-prompt oneshot so the spawned task drops out of
-                    // conn.prompt() immediately.
-                    let session_id = self.current_tab().session_id.clone();
-                    if let Some(sid) = session_id.clone() {
-                        let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
-                    }
-                    if let Some(sid) = session_id {
-                        self.turn_cancel(&sid);
-                    }
-                    let tab = self.current_tab_mut();
-                    tab.messages
-                        .push(ChatMessage::System(t!("system.cancelled").into_owned()));
-                    tab.scroll_to_bottom();
+                if self.cancel_in_flight_turn() {
                     self.close_pane_armed_at = None;
                 } else if !self.current_tab().input.is_empty() {
                     // Mirror bash readline: Ctrl+C clears the buffer.
@@ -6696,31 +6810,32 @@ impl App {
             KeyCode::Esc if self.show_notification_banner => {
                 self.dismiss_notifications();
             }
+            // Recommendation card visible → dismiss card (priority over the
+            // queue because the card blocks `drain_pending_prompts` anyway:
+            // once dismissed, drain auto-promotes the next queued prompt).
+            // We intentionally do NOT lump in-flight autofix into this
+            // branch — that case is handled by the generic in-flight
+            // cancel below, which yields to queue-pop first so the user can
+            // peel queued prompts they typed during autofix.
             KeyCode::Esc
-                if self.current_tab().turn.recommendations().is_some()
-                    || (self.current_tab().autofix.pane_id.is_some()
-                        && !self.current_tab().turn.is_idle()) =>
+                if self.current_tab().turn.recommendations().is_some() =>
             {
-                // Dismiss armed fix card or cancel in-flight autofix request.
                 // `turn_cancel` bumps generation, emits autofix_state_cleared,
-                // and resets the state machine to Idle.
-                let session_id = self.current_tab().session_id.clone();
-                if let Some(sid) = session_id {
-                    self.turn_cancel(&sid);
-                } else {
-                    // No session attached yet — fall back to manual cleanup
-                    // (no chunks can be in flight in that case).
-                    let pane_to_clear = {
-                        let tab = self.current_tab_mut();
-                        tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
-                        tab.autofix.armed_at = None;
-                        tab.autofix.pane_id.take()
-                    };
-                    if pane_to_clear.is_some() {
-                        let active = self.active_tab_key().to_string();
-                        self.emit_autofix_state_cleared(&active);
-                    }
-                }
+                // and resets the state machine to Idle (which clears the
+                // recommendation card). When the focused tab has no real
+                // ACP session id yet, fall back to DEFAULT_TAB_ID — same
+                // convention `cancel_in_flight_turn` uses — so the card
+                // still gets dismissed via `tab_for_session(DEFAULT_TAB_ID)`
+                // → `self.tab_id` resolving to the focused tab. Without
+                // this fallback, the card would persist on a brand-new tab
+                // that surfaced a recommendation before `SessionAttached`
+                // arrived.
+                let sid = self
+                    .current_tab()
+                    .session_id
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+                self.turn_cancel(&sid);
             }
             // Dismiss the bottom-bar Suggested indicator (autofix produced an
             // explanation, not an executable fix). Reachable only when the user
@@ -6736,6 +6851,42 @@ impl App {
                 self.current_tab_mut().autofix.suggested_pane_id = None;
                 let active = self.active_tab_key().to_string();
                 self.emit_autofix_state_cleared(&active);
+            }
+            // Pop the most-recently queued prompt (LIFO undo) — runs BEFORE
+            // the in-flight cancel below so users can rescind a prompt they
+            // queued by mistake while the agent (or autofix) is still
+            // working on the head. Only when the input box is empty;
+            // otherwise the user is most likely clearing a draft.
+            KeyCode::Esc
+                if self.current_tab().input.is_empty()
+                    && !self.current_tab().pending_prompts.is_empty() =>
+            {
+                let removed = self.current_tab_mut().pending_prompts.pop_back();
+                if let Some(p) = removed {
+                    let now = std::time::Instant::now();
+                    let preview = p.preview(40);
+                    self.transient_hint = Some((
+                        t!("input.queue.removed", preview = preview).into_owned(),
+                        now + QUEUE_HINT_DURATION,
+                    ));
+                }
+            }
+            // Esc with an empty queue + an in-flight turn acts like `/stop`:
+            // cancel the current Thinking… (the head). Handles both
+            // autofix-initiated turns and user-typed prompts. After cancel
+            // the state machine is Idle and the next event tick's drain
+            // hook will pick up any prompts queued while the cancel was
+            // in flight (though typically the queue is empty by the time
+            // this branch fires — see the queue-pop branch above).
+            KeyCode::Esc
+                if self.current_tab().input.is_empty()
+                    && !self.current_tab().turn.is_idle()
+                    && !matches!(
+                        self.current_tab().turn,
+                        TurnState::Surfaced { end_pending: false, .. }
+                    ) =>
+            {
+                self.cancel_in_flight_turn();
             }
             KeyCode::Esc => {
                 self.current_tab_mut().clear_input();
@@ -6778,8 +6929,7 @@ impl App {
                 }
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
-                if self.current_tab().input.is_empty()
-                    && self.state == ConnectionState::Connected
+                if self.state == ConnectionState::Connected
                     && self.current_tab().turn.recommendations().is_some()
                 {
                     // Card is visible — Enter executes the selected choice.
@@ -6787,42 +6937,86 @@ impl App {
                     // coordinator, transitions the state machine to
                     // `Surfaced{Empty, end_pending preserved}`, and emits
                     // the autofix-cleared bottom-bar event when applicable.
-                    let session_id = self.current_tab().session_id.clone();
-                    if let Some(session_id) = session_id {
-                        let label_choice = self
+                    //
+                    // This intentionally runs even when the input box has
+                    // typed text. When a card surfaces, `input_has_nav_focus`
+                    // locks the input so the user can't type more, but any
+                    // pre-existing draft stays in the buffer. Pressing Enter
+                    // in that state is unambiguous: the user wants to
+                    // execute the visible card action. The draft stays in
+                    // the input untouched — once the card finishes
+                    // (turn → Surfaced{Empty}) `input_has_nav_focus` flips
+                    // back to true and the user can press Enter again to
+                    // send the draft as a normal prompt, or edit/discard it.
+                    //
+                    // Fall back to `DEFAULT_TAB_ID` when no real session_id
+                    // is bound yet — same convention as the queue branch
+                    // below and `cancel_in_flight_turn` — so the state
+                    // machine still advances on this tab even pre-attach.
+                    let session_id = self
+                        .current_tab()
+                        .session_id
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+                    let label_choice = self
+                        .selected_recommendation_choice()
+                        .map(|c| c.choice)
+                        .unwrap_or(0);
+                    let insert_only = self.current_tab().selected_button == 1
+                        && self
                             .selected_recommendation_choice()
-                            .map(|c| c.choice)
-                            .unwrap_or(0);
-                        let insert_only = self.current_tab().selected_button == 1
-                            && self
-                                .selected_recommendation_choice()
-                                .map(|c| self.is_send_choice(c))
-                                .unwrap_or(false);
-                        tracing::info!(
-                            target: "autofix",
-                            choice = label_choice,
-                            insert_only,
-                            "Executing choice",
-                        );
-                        let label = if insert_only {
-                            "Inserting"
-                        } else {
-                            "Executing"
-                        };
-                        self.push_execution_info(format!("{} choice {}.", label, label_choice));
-                        self.turn_execute_card(&session_id);
-                    }
-                } else if !self.current_tab().input.is_empty()
-                    && self.state == ConnectionState::Connected
-                {
-                    // Same-tab single-flight: refuse a new prompt if the
-                    // turn isn't accepting one. The ACP transport rejects
-                    // too, but bouncing here keeps the user's input intact.
-                    if !self.current_tab().turn.accepts_new_prompt() {
+                            .map(|c| self.is_send_choice(c))
+                            .unwrap_or(false);
+                    tracing::info!(
+                        target: "autofix",
+                        choice = label_choice,
+                        insert_only,
+                        "Executing choice",
+                    );
+                    let label = if insert_only {
+                        "Inserting"
+                    } else {
+                        "Executing"
+                    };
+                    self.push_execution_info(format!("{} choice {}.", label, label_choice));
+                    self.turn_execute_card(&session_id);
+                } else if !self.current_tab().input.is_empty() && self.state == ConnectionState::Connected {
+                    // Same-tab single-flight: if the turn isn't accepting a
+                    // new prompt right now (in-flight, or a card is staged
+                    // and Surfaced{end_pending:true}), queue the prompt
+                    // instead of refusing. It is dispatched FIFO once the
+                    // turn returns to an accepting state by
+                    // `drain_pending_prompts`.
+                    //
+                    // `loading_session` is treated as busy here even though
+                    // `turn` stays Idle through replay — `drain_pending_prompts`
+                    // already gates on `loading_session` for the same reason
+                    // (a fresh prompt mid-replay would interleave a new turn
+                    // with loadSession replay chunks). Keep both sides
+                    // symmetric so Enter and drain agree on what "busy" means.
+                    //
+                    // Note: `recommendations().is_some()` is handled by the
+                    // card-Enter branch above (which executes the card),
+                    // so we don't need to gate on it here.
+                    if !self.current_tab().turn.accepts_new_prompt()
+                        || self.current_tab().loading_session
+                    {
                         let tab = self.current_tab_mut();
-                        tab.messages
-                            .push(ChatMessage::System(t!("system.agent_busy").into_owned()));
-                        tab.scroll_to_bottom();
+                        if tab.pending_prompts.len() >= PENDING_PROMPT_QUEUE_CAP {
+                            // Keep the user's text intact so they can edit
+                            // and resend after the queue drains.
+                            let now = std::time::Instant::now();
+                            let cap = PENDING_PROMPT_QUEUE_CAP;
+                            self.transient_hint = Some((
+                                t!("input.queue.full", cap = cap).into_owned(),
+                                now + QUEUE_HINT_DURATION,
+                            ));
+                            return;
+                        }
+                        let text = std::mem::take(&mut tab.input);
+                        tab.cursor_pos = 0;
+                        tab.pending_prompts.push_back(QueuedPrompt::new(text));
+                        tab.refresh_command_popup();
                         return;
                     }
                     let tab = self.current_tab_mut();
@@ -7134,22 +7328,13 @@ impl App {
     }
 
     /// `/stop` — cancel the in-flight turn, or note that there is nothing to
-    /// stop. `in_flight` is the active tab's turn state, captured by the
-    /// dispatcher before any mutation.
-    fn cmd_stop(&mut self, in_flight: bool) {
-        if in_flight {
-            let session_id = self.current_tab().session_id.clone();
-            if let Some(sid) = session_id.clone() {
-                let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
-            }
-            if let Some(sid) = session_id {
-                self.turn_cancel(&sid);
-            }
-            let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::System(t!("system.cancelled").into_owned()));
-            tab.scroll_to_bottom();
-        } else {
+    /// stop. Delegates to `cancel_in_flight_turn` (the same path Ctrl+C uses)
+    /// so the queued-prompt clear lives in exactly one place. The captured
+    /// `in_flight` flag is now unused — `cancel_in_flight_turn` recomputes
+    /// state on its own — but kept in the signature to match the slash
+    /// dispatcher convention.
+    fn cmd_stop(&mut self, _in_flight: bool) {
+        if !self.cancel_in_flight_turn() {
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::System(
                 t!("system.no_prompt_in_flight").into_owned(),
@@ -7939,6 +8124,137 @@ impl App {
 // ─────────────────────────────────────────────────────────────────────────
 
 impl App {
+    /// Walk every tab and dispatch the front of its `pending_prompts` queue
+    /// if the turn state is ready for a new prompt. Idempotent and cheap when
+    /// queues are empty — safe to call after every event-handling tick.
+    ///
+    /// **Per-tick policy:** at most one queued prompt per tab per call.
+    /// `turn_submit_prompt` flips the state to `Submitted`, so a second pass
+    /// would no-op anyway. Per-tab dispatch order is FIFO and deterministic.
+    /// Cross-tab dispatch order is determined by sorting tab ids, since
+    /// `HashMap::keys()` iteration order is otherwise nondeterministic — this
+    /// matters mostly for tests and log reproducibility, not user-visible
+    /// behavior (a single tick rarely drains more than one tab anyway).
+    ///
+    /// **Gates** — only dispatch when ALL of:
+    /// * connection is `Connected`,
+    /// * tab is not mid-session-load (`loading_session` is false),
+    /// * `turn.accepts_new_prompt()` (i.e. Idle or Surfaced{end_pending:false}),
+    /// * no recommendation card is currently surfaced — the user must be
+    ///   able to Run/Insert/dismiss the card before the next queued prompt
+    ///   wipes it via the new `Idle→Submitted` transition (which clears
+    ///   `selected_recommendation` and friends).
+    ///
+    /// Tab-scoped: resolves session-id per tab and dispatches against the
+    /// owning tab's `PaneContext`, so events arriving for a non-focused tab
+    /// drain the right queue.
+    pub fn drain_pending_prompts(&mut self) {
+        if self.state != ConnectionState::Connected {
+            return;
+        }
+        // Cheap early-out: avoid the keys-clone + sort allocation when no
+        // tab has anything to dispatch. This path runs after every UI tick
+        // so the common "agent idle, nothing queued" case stays allocation-
+        // free. (Suggested by Copilot review round 6.)
+        if !self.tab_sessions.values().any(|t| !t.pending_prompts.is_empty()) {
+            return;
+        }
+        // Snapshot the tab keys so the inner mutable borrow is unambiguous.
+        // Sort for deterministic cross-tab dispatch order (HashMap iteration
+        // is intentionally randomized).
+        let mut tab_ids: Vec<String> = self.tab_sessions.keys().cloned().collect();
+        tab_ids.sort();
+        for tab_id in tab_ids {
+            let Some(tab) = self.tab_sessions.get(&tab_id) else {
+                continue;
+            };
+            if !tab.turn.accepts_new_prompt() {
+                continue;
+            }
+            if tab.turn.recommendations().is_some() {
+                continue;
+            }
+            if tab.loading_session {
+                continue;
+            }
+            // Defensive guard: never auto-dispatch a queued prompt while a
+            // permission card is still on screen for this tab. In practice
+            // ACP `request_permission` always arrives during an active turn
+            // (so `accepts_new_prompt()` is already false), but that's an
+            // implicit invariant of the agent protocol — if any future
+            // code path leaves a `permission` entry queued past turn close,
+            // the prompt drain must not race past it. Cheap, explicit.
+            if !tab.permission.is_empty() {
+                continue;
+            }
+            if tab.pending_prompts.is_empty() {
+                continue;
+            }
+            // Resolve the ACP session id this tab dispatches against.
+            //
+            // With a real `session_id`, `session_tab_mut(session_id)` routes
+            // unambiguously via `session_to_tab` → this tab.
+            //
+            // Without one, `session_tab_mut(DEFAULT_TAB_ID)` falls back via
+            // `tab_for_session`'s `self.tab_id` branch — correct *only* for
+            // the focused tab. Background-tab drains hitting that fallback
+            // would apply the state transition to the focused tab instead
+            // (Copilot review round 7). Defer those drains until the tab's
+            // own `SessionAttached` arrives; the next event tick retries.
+            let session_id = match tab.session_id.clone() {
+                Some(sid) => sid,
+                None => {
+                    let focused = self
+                        .tab_id
+                        .as_deref()
+                        .unwrap_or(DEFAULT_TAB_ID);
+                    if tab_id == focused {
+                        DEFAULT_TAB_ID.to_string()
+                    } else {
+                        continue;
+                    }
+                }
+            };
+            let queued = self
+                .tab_sessions
+                .get_mut(&tab_id)
+                .expect("tab present")
+                .pending_prompts
+                .pop_front()
+                .expect("non-empty checked");
+
+            let pane_context = PaneContext {
+                pane_id: self.pane_id.clone(),
+                // Attribute the dispatched prompt to the WT tab whose queue
+                // we just drained — not `self.tab_id`, which tracks the
+                // currently focused WT tab. A background-tab drain
+                // attributed to the focused tab would route any
+                // tab-scoped follow-ups (`tab_changed` reordering,
+                // pane-context-aware autofix, etc.) to the wrong row.
+                tab_id: Some(tab_id.clone()),
+                window_id: self.window_id.clone(),
+                cwd: None,
+                source_pane_id: None,
+            };
+            let text = queued.text;
+            let prompt = PromptSubmission::new(text.clone(), Some(pane_context));
+            prompt_timing_log(
+                prompt.id,
+                prompt.submitted_at_unix_s,
+                "queue_dispatch",
+                &format!("preview={:?}", prompt.preview()),
+            );
+            let submitted = SubmittedPrompt {
+                id: prompt.id,
+                text,
+                submitted_at_unix_s: prompt.submitted_at_unix_s,
+                autofix: None,
+            };
+            self.turn_submit_prompt(&session_id, submitted);
+            let _ = self.prompt_tx.send(prompt);
+        }
+    }
+
     /// Transition `tab.turn` into `Submitted` for a new prompt and perform
     /// the side effects: clear stale in-flight chat state (messages, tool
     /// calls, permission, scroll), push the user bubble, log
@@ -8430,6 +8746,58 @@ impl App {
     /// User pressed Esc — cancel the in-flight turn. Bumps
     /// `autofix_generation` so any chunks that arrive after this point are
     /// dropped by the stale-check in `turn_observe_chunk`.
+    /// Shared in-flight-turn cancel used by Esc and Ctrl+C. Mirrors `/stop`:
+    /// sends `session/cancel` to the ACP client, transitions the state
+    /// machine back to Idle, and pushes a "Cancelled." system bubble.
+    /// Returns `true` iff a turn was actually in flight and was cancelled.
+    ///
+    /// **Esc ordering note:** the Esc handler runs `pending_prompts.pop_back()`
+    /// (LIFO) *before* falling through to this helper, so on a non-empty
+    /// queue Esc removes the most-recently queued prompt rather than
+    /// cancelling the in-flight head. This helper only fires when the
+    /// queue is empty (or the call comes from Ctrl+C, which has no
+    /// queue-pop short-circuit). After cancel, `drain_pending_prompts`
+    /// can promote any newly queued prompt on the next tick.
+    fn cancel_in_flight_turn(&mut self) -> bool {
+        // Surfaced{end_pending:false} is the "accepts new prompt" state —
+        // not in flight even though the turn isn't Idle. Mirror the matcher
+        // used in `Char('c') CONTROL` and `accepts_new_prompt` so both
+        // entry points stay consistent.
+        let in_flight = !self.current_tab().turn.is_idle()
+            && !matches!(
+                self.current_tab().turn,
+                TurnState::Surfaced { end_pending: false, .. }
+            );
+        if !in_flight {
+            return false;
+        }
+        // Mirror the Enter-dispatch path: when the focused tab has no real
+        // ACP session id yet, fall back to DEFAULT_TAB_ID. `session_tab_mut`
+        // resolves that via `tab_for_session` → `self.tab_id` so the local
+        // state machine still resets on the right tab. The ACP-side cancel
+        // is best-effort and only sent when a real session exists.
+        let real_session = self.current_tab().session_id.clone();
+        if let Some(sid) = real_session.clone() {
+            let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
+        }
+        let sid = real_session.unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        self.turn_cancel(&sid);
+        let tab = self.current_tab_mut();
+        // Cancel must halt *all* of this tab's pending work, not just the
+        // in-flight head. Without this clear, the next `drain_pending_prompts`
+        // tick (after `turn_cancel` leaves the tab Idle) would auto-dispatch
+        // the next queued prompt — the user pressed Ctrl+C / `/stop`
+        // expecting silence and would get the next queued turn instead.
+        // Esc reaches this path only when the queue is already empty (the
+        // Esc handler pops the queue first), so this is a no-op for Esc and
+        // the real fix for Ctrl+C and `/stop`.
+        tab.pending_prompts.clear();
+        tab.messages
+            .push(ChatMessage::System(t!("system.cancelled").into_owned()));
+        tab.scroll_to_bottom();
+        true
+    }
+
     pub fn turn_cancel(&mut self, session_id: &str) {
         let target_tab = self.tab_for_session(session_id);
         let pane_id = {
@@ -9360,7 +9728,14 @@ mod tests {
     // `pub(super)` so the sibling `slash_command_tests` module (see the
     // `#[path]` mod in app.rs) can reuse it instead of duplicating App::new.
     pub(super) fn test_app() -> App {
-        let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+        test_app_with_prompt_rx().0
+    }
+
+    /// Same as `test_app` but also returns the prompt-channel receiver so
+    /// tests can introspect dispatched `PromptSubmission`s (e.g. verifying
+    /// `pane_context.tab_id` on a queue drain).
+    fn test_app_with_prompt_rx() -> (App, tokio::sync::mpsc::UnboundedReceiver<PromptSubmission>) {
+        let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
         let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
         let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
         let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -9371,7 +9746,7 @@ mod tests {
         let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
         let debug_capture = Arc::new(AtomicBool::new(false));
         let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
-        App::new(
+        let app = App::new(
             prompt_tx,
             recommendation_tx,
             permission_tx,
@@ -9386,7 +9761,8 @@ mod tests {
             true,
             false,
             Arc::new(crate::shell::ShellManager::new()),
-        )
+        );
+        (app, prompt_rx)
     }
 
     /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event
@@ -14006,5 +14382,1019 @@ mod tests {
     fn known_cli_id_returns_none_for_unknown_variant() {
         use crate::agent_sessions::CliSource;
         assert_eq!(known_cli_id(&CliSource::Unknown("anything".to_string())), None);
+    }
+
+    // ─── Pending prompt queue ────────────────────────────────────────────────
+
+    /// Helper: connect the app and drive an Enter with the given text. Mirrors
+    /// the real key-event path so the queue / dispatch wiring is exercised
+    /// end-to-end.
+    fn connected_app_with_text(text: &str) -> App {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        let tab = app.current_tab_mut();
+        tab.input = text.to_string();
+        tab.cursor_pos = text.len();
+        app
+    }
+
+    fn press_enter(app: &mut App) {
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    }
+
+    fn press_esc(app: &mut App) {
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    }
+
+    fn type_text(app: &mut App, text: &str) {
+        let tab = app.current_tab_mut();
+        tab.input = text.to_string();
+        tab.cursor_pos = text.len();
+    }
+
+    #[test]
+    fn enter_while_busy_queues_prompt_without_user_bubble() {
+        let mut app = connected_app_with_text("hello");
+        press_enter(&mut app);
+        // First Enter dispatches and pushes the User bubble.
+        assert!(matches!(app.current_tab().turn, TurnState::Submitted(_)));
+        let bubbles_after_first = app.current_tab().messages.len();
+        assert_eq!(bubbles_after_first, 1);
+
+        // Second Enter while busy → queued, not dispatched.
+        type_text(&mut app, "second");
+        press_enter(&mut app);
+        assert!(matches!(app.current_tab().turn, TurnState::Submitted(_)),
+            "still submitted; queued prompt didn't preempt");
+        assert_eq!(app.current_tab().pending_prompts.len(), 1);
+        assert_eq!(app.current_tab().pending_prompts[0].text, "second");
+        // No user bubble for the queued one yet — chat reflects only the
+        // in-flight prompt.
+        assert_eq!(app.current_tab().messages.len(), 1);
+        assert!(app.current_tab().input.is_empty(), "input cleared after enqueue");
+    }
+
+    #[test]
+    fn drain_dispatches_queued_prompts_fifo_when_turn_completes() {
+        let mut app = connected_app_with_text("first");
+        press_enter(&mut app);
+        for q in ["q1", "q2", "q3"] {
+            type_text(&mut app, q);
+            press_enter(&mut app);
+        }
+        assert_eq!(app.current_tab().pending_prompts.len(), 3);
+
+        // Simulate turn completion: cancel the in-flight turn so the tab
+        // becomes Idle, then drain. Cancel was chosen over a full ACP loop
+        // to keep the test focused on queue semantics.
+        let sid = app
+            .current_tab()
+            .session_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        app.turn_cancel(&sid);
+        app.drain_pending_prompts();
+
+        // Front of queue (`q1`) is now in-flight. Other two stay queued.
+        assert!(matches!(app.current_tab().turn, TurnState::Submitted(ref p) if p.text == "q1"));
+        assert_eq!(app.current_tab().pending_prompts.len(), 2);
+        assert_eq!(app.current_tab().pending_prompts[0].text, "q2");
+        assert_eq!(app.current_tab().pending_prompts[1].text, "q3");
+    }
+
+    #[test]
+    fn esc_pops_queue_before_cancelling_in_flight() {
+        // User flow from the autofix scenario report: an autofix turn is in
+        // flight, the user types a follow-up question, presses Esc once. The
+        // queued question should be popped (LIFO); the in-flight head keeps
+        // running. Esc only cancels the head once the queue is empty.
+        let mut app = connected_app_with_text("first");
+        press_enter(&mut app);
+        type_text(&mut app, "queued");
+        press_enter(&mut app);
+        assert!(matches!(app.current_tab().turn, TurnState::Submitted(_)));
+        assert_eq!(app.current_tab().pending_prompts.len(), 1);
+
+        press_esc(&mut app);
+
+        assert_eq!(app.current_tab().pending_prompts.len(), 0,
+            "Esc must pop the queued prompt first, leaving the in-flight head alone");
+        assert!(matches!(app.current_tab().turn, TurnState::Submitted(_)),
+            "in-flight head must keep running while queued items exist");
+    }
+
+    #[test]
+    fn enter_with_card_visible_and_empty_input_executes_card() {
+        // Baseline: card visible, no draft. Enter executes the card; the
+        // turn transitions Surfaced{Recommendation} → Surfaced{Empty} and
+        // recommendations() becomes None.
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.to_string());
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("pane-1", "Get-Process | Sort-Object CPU")],
+            0,
+            None,
+        );
+        assert!(app.current_tab().input.is_empty());
+
+        press_enter(&mut app);
+
+        assert!(
+            app.current_tab().turn.recommendations().is_none(),
+            "card must execute (Surfaced{{Recommendation}} → Surfaced{{Empty}}); got {:?}",
+            app.current_tab().turn,
+        );
+        assert!(
+            matches!(
+                app.current_tab().turn,
+                TurnState::Surfaced { outcome: TurnOutcome::Empty, .. }
+            ),
+            "post-execute turn must be Surfaced{{Empty}}; got {:?}",
+            app.current_tab().turn,
+        );
+        assert!(app.current_tab().pending_prompts.is_empty(),
+            "no queue interaction expected when there's no draft");
+    }
+
+    #[test]
+    fn enter_with_card_visible_and_draft_input_executes_card_preserving_draft() {
+        // Bug report scenario: user typed a follow-up in the input box,
+        // then the agent surfaced a recommendation card. User presses
+        // Enter wanting to execute the card. Pre-fix, the card-Enter
+        // handler required `input.is_empty()`, so Enter fell through
+        // to the prompt-dispatch path which wiped the card and committed
+        // the typed text as a new prompt — the symptom the user reported
+        // as "can't choose execution selection, hang".
+        //
+        // Contract: Enter executes the card; the draft stays in the
+        // input untouched. After the card runs, the user is back in
+        // normal mode with their draft right where they left it and
+        // can edit, send, or discard.
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.to_string());
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("pane-1", "Get-Process | Sort-Object CPU")],
+            0,
+            None,
+        );
+        type_text(&mut app, "Give me command for Ram");
+        let cursor_before = app.current_tab().cursor_pos;
+
+        press_enter(&mut app);
+
+        // Card executed.
+        assert!(
+            app.current_tab().turn.recommendations().is_none(),
+            "card must execute; got {:?}",
+            app.current_tab().turn,
+        );
+        assert!(
+            matches!(
+                app.current_tab().turn,
+                TurnState::Surfaced { outcome: TurnOutcome::Empty, .. }
+            ),
+            "post-execute turn must be Surfaced{{Empty}}; got {:?}",
+            app.current_tab().turn,
+        );
+        // Draft preserved verbatim — no queue interaction, no dispatch,
+        // cursor position unchanged. The user's input intent is intact.
+        assert_eq!(
+            app.current_tab().input, "Give me command for Ram",
+            "draft must stay in input untouched"
+        );
+        assert_eq!(app.current_tab().cursor_pos, cursor_before,
+            "cursor must stay where the user left it");
+        assert!(app.current_tab().pending_prompts.is_empty(),
+            "card-Enter must not interact with the pending-prompts queue");
+        // After the card runs, the input is no longer focus-locked
+        // (recommendations is None), so the next Enter would send the
+        // draft via the normal prompt-dispatch path.
+        assert!(app.current_tab().input_has_nav_focus(),
+            "input must regain nav focus once card-recs are cleared");
+    }
+
+    #[test]
+    fn input_editing_works_while_recommendation_card_visible() {
+        // Bug report: user with a draft + a surfaced recommendation card
+        // could not Backspace, type, or Delete in the input box — keys
+        // were silently swallowed because `input_has_nav_focus` returned
+        // false while `turn.recommendations().is_some()`. Fix: card
+        // visibility no longer locks input editing. The card still owns
+        // Arrow keys (its own match arms run first) and Enter (the
+        // card-Enter branch executes the card regardless of input state);
+        // Esc dismisses the card. Char/Backspace/Delete edit the draft.
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.to_string());
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("pane-1", "Get-Process | Sort-Object CPU")],
+            0,
+            None,
+        );
+        type_text(&mut app, "Give me command for Ram");
+
+        // Card is visible. Input editing must still work — this is the
+        // contract the silent-no-op regression broke.
+        assert!(app.current_tab().input_has_nav_focus(),
+            "input must remain editable while a recommendation card is visible");
+        assert!(app.current_tab().turn.recommendations().is_some(),
+            "card is still surfaced");
+
+        // Backspace removes the last char of the draft.
+        app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "Give me command for Ra",
+            "Backspace must work while card visible");
+
+        // Typing a character appends to the draft.
+        app.handle_key(KeyEvent::new(KeyCode::Char('!'), KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "Give me command for Ra!",
+            "Char insertion must work while card visible");
+
+        // Card must NOT be dismissed by editing the input — only Esc /
+        // Enter affect the card.
+        assert!(app.current_tab().turn.recommendations().is_some(),
+            "input editing must not dismiss the card");
+
+        // Ctrl+Backspace deletes the previous word.
+        app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::CONTROL));
+        assert!(!app.current_tab().input.ends_with("Ra!"),
+            "Ctrl+Backspace must delete the previous word while card visible (got {:?})",
+            app.current_tab().input);
+    }
+
+    #[test]
+    fn esc_cancels_in_flight_turn_when_input_empty() {
+        // With no queue, Esc cancels the in-flight head like /stop.
+        let mut app = connected_app_with_text("first");
+        press_enter(&mut app);
+        assert!(matches!(app.current_tab().turn, TurnState::Submitted(_)));
+        assert_eq!(app.current_tab().pending_prompts.len(), 0);
+
+        press_esc(&mut app);
+
+        assert!(app.current_tab().turn.is_idle(),
+            "Esc with empty queue cancels in-flight turn (got {:?})",
+            app.current_tab().turn);
+        let last = app.current_tab().messages.last().expect("messages non-empty");
+        let expected = t!("system.cancelled");
+        assert!(matches!(last, ChatMessage::System(s) if s == &*expected),
+            "expected Cancelled system message, got {last:?}");
+    }
+
+    #[test]
+    fn esc_cancels_autofix_only_when_queue_is_empty() {
+        // Autofix in-flight + queued user prompt. First Esc pops the queue;
+        // autofix keeps running. Second Esc (queue empty) cancels autofix
+        // via cancel_in_flight_turn. Mirrors the autofix-with-queue
+        // scenario reported by the user.
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        // Stage an autofix in-flight turn directly so we don't depend on
+        // OSC-133/event wiring. Autofix state is per-tab post-#42.
+        let sid = DEFAULT_TAB_ID.to_string();
+        let gen = {
+            let tab = app.session_tab_mut(&sid);
+            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
+            tab.autofix.pane_id = Some("pane-x".into());
+            tab.autofix.generation
+        };
+        let autofix_prompt = SubmittedPrompt {
+            id: 7,
+            text: "diagnose error".into(),
+            submitted_at_unix_s: 0.0,
+            autofix: Some(AutofixContext {
+                target_pane_id: "pane-x".into(),
+                generation: gen,
+            }),
+        };
+        app.turn_submit_prompt(&sid, autofix_prompt);
+        // User types a question while autofix is running.
+        type_text(&mut app, "what about this?");
+        press_enter(&mut app);
+        assert_eq!(app.current_tab().pending_prompts.len(), 1);
+        assert!(app.current_tab().turn.is_autofix(),
+            "autofix turn must still be in flight");
+
+        // First Esc: pops queue, autofix continues.
+        press_esc(&mut app);
+        assert_eq!(app.current_tab().pending_prompts.len(), 0,
+            "queued user prompt popped first");
+        assert!(app.current_tab().turn.is_autofix(),
+            "autofix must keep running after first Esc — user only wanted to undo their queue");
+
+        // Second Esc: queue now empty, cancels autofix.
+        press_esc(&mut app);
+        assert!(app.current_tab().turn.is_idle(),
+            "second Esc cancels the autofix head");
+        assert!(app.current_tab().autofix.pane_id.is_none(),
+            "autofix pane_id cleared by turn_cancel");
+    }
+
+    #[test]
+    fn esc_pops_back_of_queue_when_idle_and_input_empty() {
+        // With no turn in flight (e.g. after the in-flight one was
+        // cancelled or finished and drain hasn't yet run), Esc pops the
+        // back of the queue (LIFO undo) so the user can rescind prompts
+        // they queued by mistake.
+        let mut app = connected_app_with_text("first");
+        press_enter(&mut app);
+        for q in ["a", "b", "c"] {
+            type_text(&mut app, q);
+            press_enter(&mut app);
+        }
+        // Cancel the in-flight so the first Esc below isn't intercepted by
+        // the in-flight-cancel branch — we want to verify the LIFO pop
+        // path specifically.
+        let sid = app
+            .current_tab()
+            .session_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        app.turn_cancel(&sid);
+        assert_eq!(app.current_tab().pending_prompts.len(), 3);
+
+        press_esc(&mut app);
+        assert_eq!(app.current_tab().pending_prompts.len(), 2);
+        assert_eq!(app.current_tab().pending_prompts.back().unwrap().text, "b",
+            "Esc removed the most-recent (`c`), `b` is now the new tail");
+        press_esc(&mut app);
+        press_esc(&mut app);
+        assert!(app.current_tab().pending_prompts.is_empty());
+    }
+
+    #[test]
+    fn esc_does_not_pop_queue_when_input_is_not_empty() {
+        let mut app = connected_app_with_text("first");
+        press_enter(&mut app);
+        type_text(&mut app, "queued");
+        press_enter(&mut app);
+        // Now type a fresh draft.
+        type_text(&mut app, "editing");
+        press_esc(&mut app);
+        // Esc should clear the input draft (existing behavior) and leave the
+        // queue intact AND the in-flight turn alone — otherwise users who
+        // Esc while editing would either lose work or accidentally cancel
+        // the agent. Both the in-flight-cancel and queue-pop branches gate
+        // on `input.is_empty()`.
+        assert!(app.current_tab().input.is_empty());
+        assert_eq!(app.current_tab().pending_prompts.len(), 1,
+            "queue must be preserved; Esc on non-empty input clears draft only");
+        assert!(matches!(app.current_tab().turn, TurnState::Submitted(_)),
+            "in-flight turn must be preserved when draft is non-empty");
+    }
+
+    #[test]
+    fn drain_uses_loop_tab_id_for_pane_context_not_focused_tab() {
+        // Reproduces the Copilot-review bug fix: when a background (non-
+        // focused) tab drains, the dispatched PaneContext must carry the
+        // background tab's id, not `self.tab_id` (which tracks the
+        // currently focused WT tab).
+        let (mut app, mut rx) = test_app_with_prompt_rx();
+        app.state = ConnectionState::Connected;
+        app.pane_id = Some("pane-real".into());
+        app.window_id = Some("win-real".into());
+        // Focused tab is "focused-tab"; queue is on a different tab.
+        app.tab_id = Some("focused-tab".into());
+        let bg = "bg-tab".to_string();
+        // Seed both tabs so session_tab_mut / current_tab don't collide.
+        // The background tab must have a real ACP session id for drain to
+        // fire — see `drain_pending_prompts` round-7 fix that gates on
+        // `session_id.is_some()` to avoid wrong-tab dispatch via the old
+        // DEFAULT_TAB_ID fallback.
+        {
+            let tab = app.tab_sessions.entry(bg.clone()).or_default();
+            tab.session_id = Some("bg-session".into());
+            tab.pending_prompts.push_back(QueuedPrompt::new("bg-msg".into()));
+        }
+        app.session_to_tab.insert("bg-session".into(), bg.clone());
+        app.tab_sessions
+            .entry("focused-tab".into())
+            .or_default();
+
+        app.drain_pending_prompts();
+        let dispatched = rx.try_recv().expect("queued prompt was dispatched");
+        let ctx = dispatched.pane_context.as_ref().expect("pane context attached");
+        assert_eq!(ctx.tab_id.as_deref(), Some("bg-tab"),
+            "PaneContext.tab_id must reflect the drained tab, not the focused one");
+        assert_eq!(ctx.pane_id.as_deref(), Some("pane-real"));
+        assert_eq!(ctx.window_id.as_deref(), Some("win-real"));
+    }
+
+    #[test]
+    fn drain_holds_queue_when_tab_has_no_session_id() {
+        // Regression for Copilot round-7: a background tab without an ACP
+        // session id must NOT drain via the old DEFAULT_TAB_ID fallback,
+        // because `session_tab_mut(DEFAULT_TAB_ID)` resolves to the
+        // currently focused tab — would apply the state transition to the
+        // wrong tab. Queue stays put until SessionAttached arrives.
+        let (mut app, mut rx) = test_app_with_prompt_rx();
+        app.state = ConnectionState::Connected;
+        app.tab_id = Some("focused-tab".into());
+        let bg = "bg-tab".to_string();
+        {
+            let tab = app.tab_sessions.entry(bg.clone()).or_default();
+            // session_id intentionally left None.
+            tab.pending_prompts.push_back(QueuedPrompt::new("bg-msg".into()));
+        }
+        app.tab_sessions
+            .entry("focused-tab".into())
+            .or_default();
+
+        app.drain_pending_prompts();
+        assert!(rx.try_recv().is_err(),
+            "must not dispatch when the draining tab has no session_id");
+        assert_eq!(app.tab_sessions[&bg].pending_prompts.len(), 1,
+            "queued prompt is preserved until SessionAttached arrives");
+    }
+
+    #[test]
+    fn drain_skips_when_recommendation_card_visible() {
+        use crate::coordinator::{RecommendationChoice, RecommendationSet};
+        let mut app = connected_app_with_text("first");
+        press_enter(&mut app);
+        type_text(&mut app, "queued");
+        press_enter(&mut app);
+
+        // Surface a recommendation card. accepts_new_prompt() is true for
+        // Surfaced{end_pending:false}, but the card must block auto-drain
+        // — otherwise turn_submit_prompt wipes the card before the user can
+        // act on it.
+        let sid = app
+            .current_tab()
+            .session_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        let prompt = match &app.current_tab().turn {
+            TurnState::Submitted(p) => p.clone(),
+            _ => unreachable!(),
+        };
+        app.session_tab_mut(&sid).turn = TurnState::Surfaced {
+            prompt,
+            outcome: TurnOutcome::Recommendation(RecommendationSet {
+                recommended_choice: Some(0),
+                choices: vec![RecommendationChoice {
+                    choice: 0,
+                    title: "go".into(),
+                    rationale: String::new(),
+                    actions: vec![],
+                }],
+            }),
+            end_pending: false,
+        };
+        app.drain_pending_prompts();
+        assert_eq!(app.current_tab().pending_prompts.len(), 1,
+            "card visible → queue stays put until card is dismissed/executed");
+        assert!(app.current_tab().turn.recommendations().is_some());
+    }
+
+    #[test]
+    fn queue_full_keeps_input_and_emits_hint() {
+        let mut app = connected_app_with_text("first");
+        press_enter(&mut app);
+        for i in 0..PENDING_PROMPT_QUEUE_CAP {
+            type_text(&mut app, &format!("q{i}"));
+            press_enter(&mut app);
+        }
+        assert_eq!(app.current_tab().pending_prompts.len(), PENDING_PROMPT_QUEUE_CAP);
+        // One more should bounce.
+        type_text(&mut app, "overflow");
+        press_enter(&mut app);
+        assert_eq!(app.current_tab().pending_prompts.len(), PENDING_PROMPT_QUEUE_CAP,
+            "queue did not grow past cap");
+        assert_eq!(app.current_tab().input, "overflow",
+            "input preserved on queue-full so the user can resend later");
+        assert!(app.transient_hint.is_some(), "queue-full transient hint shown");
+    }
+
+    #[test]
+    fn clear_chat_history_drops_pending_prompts() {
+        let mut app = connected_app_with_text("first");
+        press_enter(&mut app);
+        type_text(&mut app, "queued");
+        press_enter(&mut app);
+        assert_eq!(app.current_tab().pending_prompts.len(), 1);
+        app.current_tab_mut().clear_chat_history();
+        assert!(app.current_tab().pending_prompts.is_empty(),
+            "reset paths must not let stale prompts fire into a fresh session");
+    }
+
+    #[test]
+    fn drain_no_ops_when_disconnected() {
+        let mut app = connected_app_with_text("first");
+        press_enter(&mut app);
+        type_text(&mut app, "queued");
+        press_enter(&mut app);
+        let sid = app
+            .current_tab()
+            .session_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        app.turn_cancel(&sid);
+        // Simulate transport drop.
+        app.state = ConnectionState::Disconnected;
+        app.drain_pending_prompts();
+        assert_eq!(app.current_tab().pending_prompts.len(), 1,
+            "drain must not fire while disconnected — the prompt would never reach the agent");
+    }
+
+    #[test]
+    fn enter_during_session_load_queues_instead_of_dispatching() {
+        // During session/load replay, `tab.turn` stays Idle (no
+        // TurnState::Submitted is created for replay), so
+        // `accepts_new_prompt()` returns true. Without the
+        // `loading_session` gate on the Enter path, the prompt would
+        // dispatch immediately and interleave a new turn with the
+        // in-progress loadSession replay chunks.
+        let mut app = connected_app_with_text("type-during-load");
+        app.current_tab_mut().loading_session = true;
+        press_enter(&mut app);
+        assert!(app.current_tab().turn.is_idle(),
+            "turn should stay idle during load replay (got {:?})",
+            app.current_tab().turn);
+        assert_eq!(app.current_tab().pending_prompts.len(), 1,
+            "Enter during loading_session must queue, not dispatch");
+        assert_eq!(app.current_tab().pending_prompts[0].text, "type-during-load");
+        assert!(app.current_tab().input.is_empty(), "input cleared after enqueue");
+        assert_eq!(app.current_tab().messages.len(), 0,
+            "no User bubble while the prompt is queued");
+
+        // Drain while still loading is also a no-op (existing contract).
+        app.drain_pending_prompts();
+        assert_eq!(app.current_tab().pending_prompts.len(), 1,
+            "drain must not fire while loading_session is true");
+
+        // Once load completes, drain dispatches the queued prompt.
+        app.current_tab_mut().loading_session = false;
+        app.drain_pending_prompts();
+        assert!(matches!(app.current_tab().turn, TurnState::Submitted(_)),
+            "queued prompt dispatched once load completed (got {:?})",
+            app.current_tab().turn);
+        assert!(app.current_tab().pending_prompts.is_empty());
+    }
+
+    #[test]
+    fn queued_prompt_preview_truncates_and_collapses_whitespace() {
+        let q = QueuedPrompt::new("  hello  \n\n  world   ".into());
+        assert_eq!(q.preview(40), "hello world");
+        let long = QueuedPrompt::new("x".repeat(100));
+        let preview = long.preview(10);
+        assert!(preview.ends_with('…'));
+        assert!(preview.chars().count() <= 10);
+    }
+
+    #[test]
+    fn queued_prompt_preview_zero_budget_is_empty() {
+        // Regression for Copilot review: `preview(0)` previously returned
+        // "…" (1 char), violating the "at most max_chars" contract.
+        let q = QueuedPrompt::new("anything".into());
+        assert_eq!(q.preview(0), "", "zero budget must yield an empty string");
+    }
+
+    #[test]
+    fn queued_prompt_caps_collapsed_storage() {
+        // The cached collapsed preview is bounded so a paste-large prompt
+        // doesn't make the per-frame UI render scan/copy unbounded text
+        // through `t!(...)` interpolation. The full text remains intact
+        // for downstream ACP dispatch.
+        let big = "x".repeat(10_000);
+        let q = QueuedPrompt::new(big.clone());
+        assert_eq!(q.text.len(), 10_000, "full text preserved for dispatch");
+        assert!(
+            q.collapsed_text().chars().count() <= COLLAPSED_PREVIEW_CAP,
+            "collapsed cache must be capped at COLLAPSED_PREVIEW_CAP (got {})",
+            q.collapsed_text().chars().count()
+        );
+    }
+
+    #[test]
+    fn esc_only_pops_focused_tabs_queue_not_background_tabs() {
+        // Pinning the per-tab isolation contract: pressing Esc on the
+        // focused tab must NOT touch a background tab's queue or
+        // in-flight state. Every queue mutation (pop_back from Esc,
+        // push_back from Enter, clear from clear_chat_history) targets
+        // `current_tab_mut()` exclusively.
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.tab_id = Some("focused".into());
+        // Background tab with a queue and an in-flight turn.
+        {
+            let bg = app.tab_sessions.entry("background".into()).or_default();
+            bg.session_id = Some("bg-session".into());
+            bg.pending_prompts.push_back(QueuedPrompt::new("bg-only".into()));
+            bg.turn = TurnState::Submitted(SubmittedPrompt {
+                id: 99,
+                text: "bg head".into(),
+                submitted_at_unix_s: 0.0,
+                autofix: None,
+            });
+        }
+        app.session_to_tab.insert("bg-session".into(), "background".into());
+        // Focused tab with its own queue + in-flight head.
+        type_text(&mut app, "focused first");
+        press_enter(&mut app);
+        type_text(&mut app, "focused queued");
+        press_enter(&mut app);
+        assert_eq!(app.tab_sessions["focused"].pending_prompts.len(), 1);
+        assert_eq!(app.tab_sessions["background"].pending_prompts.len(), 1);
+
+        // Esc on focused tab — should pop only "focused queued".
+        press_esc(&mut app);
+        assert_eq!(app.tab_sessions["focused"].pending_prompts.len(), 0,
+            "focused tab's queued item popped");
+        assert_eq!(app.tab_sessions["background"].pending_prompts.len(), 1,
+            "background tab's queue untouched");
+        assert!(matches!(app.tab_sessions["background"].turn, TurnState::Submitted(_)),
+            "background tab's in-flight head untouched");
+
+        // Esc again (focused queue now empty) — cancels focused head only.
+        press_esc(&mut app);
+        assert!(app.tab_sessions["focused"].turn.is_idle(),
+            "focused tab's head cancelled");
+        assert!(matches!(app.tab_sessions["background"].turn, TurnState::Submitted(_)),
+            "background tab's head still untouched");
+        assert_eq!(app.tab_sessions["background"].pending_prompts.len(), 1,
+            "background tab's queue still intact");
+    }
+
+    #[test]
+    fn drain_dispatches_to_multiple_idle_tabs_in_same_tick() {
+        // The cross-tab iteration in `drain_pending_prompts` must visit
+        // every idle tab with a non-empty queue in a single call — not
+        // bail after the first dispatch. Both tabs are background
+        // (neither matches `self.tab_id`) so we exercise the same loop
+        // path that real multi-tab routing takes.
+        let (mut app, mut rx) = test_app_with_prompt_rx();
+        app.state = ConnectionState::Connected;
+        app.pane_id = Some("pane-real".into());
+        app.window_id = Some("win-real".into());
+        app.tab_id = Some("focused-tab".into());
+        for (tab_id, sid, text) in [
+            ("tab-a", "sess-a", "prompt-A"),
+            ("tab-b", "sess-b", "prompt-B"),
+        ] {
+            let tab = app.tab_sessions.entry(tab_id.into()).or_default();
+            tab.session_id = Some(sid.into());
+            tab.pending_prompts.push_back(QueuedPrompt::new(text.into()));
+            app.session_to_tab.insert(sid.into(), tab_id.into());
+        }
+        app.tab_sessions.entry("focused-tab".into()).or_default();
+
+        app.drain_pending_prompts();
+
+        let mut got: Vec<(String, String)> = Vec::new();
+        while let Ok(sub) = rx.try_recv() {
+            let tab = sub
+                .pane_context
+                .as_ref()
+                .and_then(|c| c.tab_id.clone())
+                .expect("pane context tab_id present");
+            got.push((tab, sub.text));
+        }
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                ("tab-a".to_string(), "prompt-A".to_string()),
+                ("tab-b".to_string(), "prompt-B".to_string()),
+            ],
+            "both idle tabs must dispatch their queued prompt in one drain"
+        );
+        assert!(app.tab_sessions["tab-a"].pending_prompts.is_empty());
+        assert!(app.tab_sessions["tab-b"].pending_prompts.is_empty());
+    }
+
+    #[test]
+    fn drain_dispatches_only_idle_tabs_leaves_busy_tabs_queued() {
+        // A busy tab in the iteration must not steal a dispatch slot or
+        // get its queue popped — the per-tab `accepts_new_prompt()` gate
+        // is what keeps cross-tab fairness honest.
+        let (mut app, mut rx) = test_app_with_prompt_rx();
+        app.state = ConnectionState::Connected;
+        app.pane_id = Some("pane-real".into());
+        app.window_id = Some("win-real".into());
+        app.tab_id = Some("focused-tab".into());
+
+        {
+            let a = app.tab_sessions.entry("tab-a".into()).or_default();
+            a.session_id = Some("sess-a".into());
+            a.pending_prompts.push_back(QueuedPrompt::new("A".into()));
+        }
+        app.session_to_tab.insert("sess-a".into(), "tab-a".into());
+        {
+            let b = app.tab_sessions.entry("tab-b".into()).or_default();
+            b.session_id = Some("sess-b".into());
+            b.pending_prompts.push_back(QueuedPrompt::new("B".into()));
+            b.turn = TurnState::Submitted(SubmittedPrompt {
+                id: 1,
+                text: "in-flight".into(),
+                submitted_at_unix_s: 0.0,
+                autofix: None,
+            });
+        }
+        app.session_to_tab.insert("sess-b".into(), "tab-b".into());
+        app.tab_sessions.entry("focused-tab".into()).or_default();
+
+        app.drain_pending_prompts();
+
+        let sub = rx.try_recv().expect("idle tab dispatched");
+        assert_eq!(sub.text, "A");
+        assert_eq!(
+            sub.pane_context.as_ref().and_then(|c| c.tab_id.clone()),
+            Some("tab-a".into())
+        );
+        assert!(rx.try_recv().is_err(), "busy tab must not dispatch");
+        assert!(app.tab_sessions["tab-a"].pending_prompts.is_empty());
+        assert_eq!(
+            app.tab_sessions["tab-b"].pending_prompts.len(),
+            1,
+            "busy tab's queued prompt is preserved untouched"
+        );
+        assert_eq!(
+            app.tab_sessions["tab-b"].pending_prompts[0].text,
+            "B"
+        );
+    }
+
+    #[test]
+    fn drain_per_tab_fifo_independent_across_tabs() {
+        // Per-tab FIFO with cross-tab fairness: one drain tick pops the
+        // head of every idle tab's queue, leaving the rest in order.
+        // (A second tick can't fire here because `turn_submit_prompt`
+        // flips each tab to `Submitted` — same as the single-tab
+        // `drain_dispatches_queued_prompts_fifo_when_turn_completes` case.)
+        let (mut app, mut rx) = test_app_with_prompt_rx();
+        app.state = ConnectionState::Connected;
+        app.pane_id = Some("pane-real".into());
+        app.window_id = Some("win-real".into());
+        app.tab_id = Some("focused-tab".into());
+        for (tab_id, sid, items) in [
+            ("tab-a", "sess-a", vec!["A1", "A2", "A3"]),
+            ("tab-b", "sess-b", vec!["B1", "B2"]),
+        ] {
+            let tab = app.tab_sessions.entry(tab_id.into()).or_default();
+            tab.session_id = Some(sid.into());
+            for t in items {
+                tab.pending_prompts.push_back(QueuedPrompt::new(t.into()));
+            }
+            app.session_to_tab.insert(sid.into(), tab_id.into());
+        }
+        app.tab_sessions.entry("focused-tab".into()).or_default();
+
+        app.drain_pending_prompts();
+
+        let mut got: Vec<(String, String)> = Vec::new();
+        while let Ok(sub) = rx.try_recv() {
+            let tab = sub
+                .pane_context
+                .as_ref()
+                .and_then(|c| c.tab_id.clone())
+                .expect("pane context tab_id present");
+            got.push((tab, sub.text));
+        }
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                ("tab-a".to_string(), "A1".to_string()),
+                ("tab-b".to_string(), "B1".to_string()),
+            ],
+            "exactly one (head) dispatch per idle tab in one tick"
+        );
+        let a_remaining: Vec<&str> = app.tab_sessions["tab-a"]
+            .pending_prompts
+            .iter()
+            .map(|q| q.text.as_str())
+            .collect();
+        assert_eq!(a_remaining, vec!["A2", "A3"], "tab-a FIFO preserved");
+        let b_remaining: Vec<&str> = app.tab_sessions["tab-b"]
+            .pending_prompts
+            .iter()
+            .map(|q| q.text.as_str())
+            .collect();
+        assert_eq!(b_remaining, vec!["B2"], "tab-b FIFO preserved");
+    }
+
+    #[test]
+    fn clear_chat_history_on_one_tab_preserves_other_tabs_queue() {
+        // `clear_chat_history` is a per-`TabSession` method; calling it
+        // on one tab's session must never reach into another tab's
+        // queue. Pins the isolation contract used by reset paths.
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        {
+            let a = app.tab_sessions.entry("tab-a".into()).or_default();
+            a.pending_prompts.push_back(QueuedPrompt::new("A1".into()));
+            a.pending_prompts.push_back(QueuedPrompt::new("A2".into()));
+        }
+        {
+            let b = app.tab_sessions.entry("tab-b".into()).or_default();
+            b.pending_prompts.push_back(QueuedPrompt::new("B1".into()));
+        }
+
+        app.tab_sessions
+            .get_mut("tab-a")
+            .expect("tab-a present")
+            .clear_chat_history();
+
+        assert!(
+            app.tab_sessions["tab-a"].pending_prompts.is_empty(),
+            "tab-a queue cleared"
+        );
+        let b_remaining: Vec<&str> = app.tab_sessions["tab-b"]
+            .pending_prompts
+            .iter()
+            .map(|q| q.text.as_str())
+            .collect();
+        assert_eq!(b_remaining, vec!["B1"], "tab-b queue untouched");
+    }
+
+    // --- Cancel-clears-queue contract (Fix A1) ---
+
+    #[test]
+    fn ctrl_c_clears_pending_prompts_queue_and_blocks_auto_dispatch() {
+        // Ctrl+C invokes `cancel_in_flight_turn` directly. Before Fix A1 the
+        // cancel path only nuked the in-flight head; the next drain tick
+        // promoted the front of `pending_prompts` and the user got a new
+        // turn they thought they'd cancelled. Pin the contract: cancel
+        // clears the queue *and* the very next drain dispatches nothing.
+        let (mut app, mut rx) = test_app_with_prompt_rx();
+        app.state = ConnectionState::Connected;
+        app.pane_id = Some("pane-real".into());
+        app.window_id = Some("win-real".into());
+        // Seed an in-flight turn + a queue of two prompts on the focused tab.
+        {
+            let tab = app.current_tab_mut();
+            tab.turn = TurnState::Submitted(SubmittedPrompt {
+                id: 1,
+                text: "in-flight".into(),
+                submitted_at_unix_s: 0.0,
+                autofix: None,
+            });
+            tab.pending_prompts.push_back(QueuedPrompt::new("A1".into()));
+            tab.pending_prompts.push_back(QueuedPrompt::new("A2".into()));
+        }
+
+        let cancelled = app.cancel_in_flight_turn();
+        assert!(cancelled, "in-flight turn was active, cancel must report true");
+
+        assert!(
+            app.current_tab().pending_prompts.is_empty(),
+            "Ctrl+C must clear queued prompts together with the in-flight head"
+        );
+        // Tab is now Idle (post-cancel); drain would normally promote the
+        // queue. With the queue cleared, no dispatch must happen.
+        app.drain_pending_prompts();
+        assert!(
+            rx.try_recv().is_err(),
+            "no auto-dispatch after Ctrl+C — cancel means stop, not pause"
+        );
+    }
+
+    #[test]
+    fn slash_stop_clears_pending_prompts_queue() {
+        // `/stop` flows through `cmd_stop`, which post-A1 delegates to
+        // `cancel_in_flight_turn`. Mirror of the Ctrl+C test to pin that
+        // both entry points end up clearing the queue identically.
+        let (mut app, mut rx) = test_app_with_prompt_rx();
+        app.state = ConnectionState::Connected;
+        app.pane_id = Some("pane-real".into());
+        app.window_id = Some("win-real".into());
+        {
+            let tab = app.current_tab_mut();
+            tab.turn = TurnState::Submitted(SubmittedPrompt {
+                id: 2,
+                text: "in-flight".into(),
+                submitted_at_unix_s: 0.0,
+                autofix: None,
+            });
+            tab.pending_prompts.push_back(QueuedPrompt::new("B1".into()));
+            tab.pending_prompts.push_back(QueuedPrompt::new("B2".into()));
+        }
+
+        // `in_flight=true` matches what the slash dispatcher would pass.
+        app.cmd_stop(true);
+
+        assert!(
+            app.current_tab().pending_prompts.is_empty(),
+            "/stop must clear queued prompts together with the in-flight head"
+        );
+        app.drain_pending_prompts();
+        assert!(
+            rx.try_recv().is_err(),
+            "no auto-dispatch after /stop"
+        );
+    }
+
+    #[test]
+    fn esc_cancel_in_flight_with_empty_queue_still_clears_correctly() {
+        // Regression-pin: when the queue is already empty, Esc falls
+        // through to `cancel_in_flight_turn` and the new `pending_prompts
+        // .clear()` is a harmless no-op. Verifies we didn't accidentally
+        // turn the no-op into observable behavior (e.g. extra alloc /
+        // ordering surprises) and that the in-flight cancel itself still
+        // works in this path.
+        let (mut app, mut rx) = test_app_with_prompt_rx();
+        app.state = ConnectionState::Connected;
+        app.pane_id = Some("pane-real".into());
+        app.window_id = Some("win-real".into());
+        {
+            let tab = app.current_tab_mut();
+            tab.turn = TurnState::Submitted(SubmittedPrompt {
+                id: 3,
+                text: "in-flight".into(),
+                submitted_at_unix_s: 0.0,
+                autofix: None,
+            });
+        }
+        assert!(app.current_tab().pending_prompts.is_empty());
+
+        // Drive the exact key Esc maps to (matches `esc_cancels_in_flight_
+        // turn_when_input_empty`).
+        press_esc(&mut app);
+
+        assert!(
+            app.current_tab().pending_prompts.is_empty(),
+            "queue stays empty"
+        );
+        assert!(
+            app.current_tab().turn.is_idle(),
+            "Esc with empty queue cancels the in-flight turn (got {:?})",
+            app.current_tab().turn
+        );
+        app.drain_pending_prompts();
+        assert!(rx.try_recv().is_err(), "no auto-dispatch from empty queue");
+    }
+
+    // --- Drain defensive permission guard (Fix A2) ---
+
+    #[test]
+    fn drain_skips_tab_with_pending_permission_request() {
+        // Defensive guard: a tab with a pending `permission` card must not
+        // have its queued prompt auto-dispatched, even if the turn state
+        // says `accepts_new_prompt`. In practice ACP `request_permission`
+        // arrives during an active turn, but the invariant is implicit —
+        // pin it explicitly here so future refactors don't quietly race
+        // past a visible permission card.
+        let (mut app, mut rx) = test_app_with_prompt_rx();
+        app.state = ConnectionState::Connected;
+        app.pane_id = Some("pane-real".into());
+        app.window_id = Some("win-real".into());
+        app.tab_id = Some("focused-tab".into());
+
+        // Tab A: idle, queued prompt, AND a pending permission card →
+        // drain must skip.
+        {
+            let a = app.tab_sessions.entry("tab-a".into()).or_default();
+            a.session_id = Some("sess-a".into());
+            a.pending_prompts.push_back(QueuedPrompt::new("A1".into()));
+            a.permission.push_back(PermissionState {
+                description: "may I?".into(),
+                options: vec![PermOption {
+                    id: "allow".into(),
+                    name: "Allow".into(),
+                    kind: "allow_once".into(),
+                }],
+                selected: 0,
+                responder: None,
+            });
+        }
+        app.session_to_tab.insert("sess-a".into(), "tab-a".into());
+
+        // Tab B: idle, queued prompt, empty permission → drain must dispatch.
+        {
+            let b = app.tab_sessions.entry("tab-b".into()).or_default();
+            b.session_id = Some("sess-b".into());
+            b.pending_prompts.push_back(QueuedPrompt::new("B1".into()));
+        }
+        app.session_to_tab.insert("sess-b".into(), "tab-b".into());
+        app.tab_sessions.entry("focused-tab".into()).or_default();
+
+        app.drain_pending_prompts();
+
+        let sub = rx.try_recv().expect("tab-b must dispatch");
+        assert_eq!(sub.text, "B1");
+        assert_eq!(
+            sub.pane_context.as_ref().and_then(|c| c.tab_id.clone()),
+            Some("tab-b".into())
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "tab-a must NOT dispatch while a permission card is pending"
+        );
+        assert_eq!(
+            app.tab_sessions["tab-a"].pending_prompts.len(),
+            1,
+            "tab-a's queued prompt is preserved untouched"
+        );
+        assert_eq!(app.tab_sessions["tab-a"].pending_prompts[0].text, "A1");
+        assert!(
+            app.tab_sessions["tab-b"].pending_prompts.is_empty(),
+            "tab-b's queue head was popped on dispatch"
+        );
     }
 }

@@ -59,6 +59,19 @@ input.placeholder.connected: "Hỏi bất cứ điều gì, / cho lệnh.."  # {
 input.placeholder.connecting: "đang kết nối..."
 input.placeholder.disconnected: "đã ngắt kết nối"
 
+# ── Pending prompt queue (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# Indicator shown above the input box while one or more prompts are queued
+# waiting for the agent to finish the current turn. %{count} is the number
+# of queued prompts; %{preview} is a single-line preview of the most-recently
+# queued prompt (the one Esc would pop next).
+input.queue.indicator: "Đã xếp hàng (%{count}): %{preview}"
+# Transient hint shown after Esc removes the most-recently queued prompt.
+input.queue.removed: "Đã xóa tin nhắn đã xếp hàng: %{preview}"
+# Transient hint shown when the user tries to queue another prompt but the
+# queue is already at capacity (%{cap} entries). The user must wait for the
+# queue to drain or press Esc to remove queued items.
+input.queue.full: "Hàng đợi đã đầy (%{cap}). Hãy chờ tác nhân hoặc nhấn Esc để xóa các mục đã xếp hàng."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / lệnh "

@@ -59,6 +59,19 @@ input.placeholder.connected: "Chiedi qualsiasi cosa, / per i comandi.."  # {Lock
 input.placeholder.connecting: "Connessione in corso..."
 input.placeholder.disconnected: "Disconnesso"
 
+# ── Coda dei prompt in attesa (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# Indicatore mostrato sopra la casella di input mentre uno o più prompt sono in coda
+# in attesa che l'agente termini il turno corrente. %{count} è il numero
+# di prompt in coda; %{preview} è un'anteprima su una sola riga del prompt più recente
+# messo in coda (quello che Esc rimuoverebbe per primo).
+input.queue.indicator: "In coda (%{count}): %{preview}"
+# Suggerimento temporaneo mostrato dopo che Esc rimuove il prompt più recente in coda.
+input.queue.removed: "Messaggio in coda rimosso: %{preview}"
+# Suggerimento temporaneo mostrato quando l'utente prova ad aggiungere un altro prompt alla coda, ma la
+# coda ha già raggiunto la capacità massima (%{cap} voci). L'utente deve attendere che
+# la coda si svuoti o premere Esc per rimuovere gli elementi in coda.
+input.queue.full: "La coda è piena (%{cap}). Attendi l'agente o premi Esc per rimuovere gli elementi in coda."  # {Locked="Esc"}
+
 # ── Popup dei comandi (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefisso del comando slash, deve rimanere ASCII
 commands.popup_title: " / comandi "

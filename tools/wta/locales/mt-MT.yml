@@ -59,6 +59,19 @@ input.placeholder.connected: "Staqsi kull ħaġa, / għall-kmandat.."  # {Locked
 input.placeholder.connecting: "qed jikkonnettja..."
 input.placeholder.disconnected: "diskonnettjat"
 
+# ── Kju ta' prompts pendenti (src/ui/queued_hint.rs, src/app.rs) ─────────────
+# Indikatur muri fuq il-kaxxa tal-input waqt li prompt wieħed jew aktar ikunu fil-kju
+# jistennew lill-aġent jispiċċa d-dawra kurrenti. %{count} huwa n-numru
+# ta' prompts fil-kju; %{preview} hija preview b'linja waħda tal-aktar prompt riċenti
+# li tpoġġa fil-kju (dak li Esc ineħħi wara).
+input.queue.indicator: "Fil-kju (%{count}): %{preview}"
+# Ħjiel temporanju muri wara li Esc ineħħi l-aktar prompt riċenti fil-kju.
+input.queue.removed: "Tneħħa messaġġ mill-kju: %{preview}"
+# Ħjiel temporanju muri meta l-utent jipprova jpoġġi prompt ieħor fil-kju,
+# iżda l-kju diġà jinsab fil-kapaċità tiegħu (%{cap} entrati). L-utent irid jistenna sakemm
+# il-kju jitbattal jew jagħfas Esc biex ineħħi oġġetti mill-kju.
+input.queue.full: "Il-kju mimli (%{cap}). Stenna lill-aġent jew agħfas Esc biex tneħħi oġġetti mill-kju."  # {Locked="Esc"}
+
 # ── Popup tal-kmandati (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefiss tal-kmand slash, irid jibqa' ASCII
 commands.popup_title: " / kmandati "

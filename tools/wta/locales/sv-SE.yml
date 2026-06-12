@@ -59,6 +59,19 @@ input.placeholder.connected: "Fråga vad som helst, / för kommandon.."  # {Lock
 input.placeholder.connecting: "ansluter..."
 input.placeholder.disconnected: "frånkopplad"
 
+# ── Väntande promptkö (src/ui/queued_hint.rs, src/app.rs) ───────────────────
+# Indikator som visas ovanför inmatningsfältet medan en eller flera prompter är köade
+# och väntar på att agenten ska slutföra den aktuella turen. %{count} är antalet
+# köade prompter; %{preview} är en enradig förhandsvisning av den senast köade
+# prompten (den som Esc tar bort härnäst).
+input.queue.indicator: "I kö (%{count}): %{preview}"
+# Tillfälligt tips som visas efter att Esc tar bort den senast köade prompten.
+input.queue.removed: "Tog bort köat meddelande: %{preview}"
+# Tillfälligt tips som visas när användaren försöker köa ytterligare en prompt men
+# kön redan har nått kapaciteten (%{cap} poster). Användaren måste vänta på att kön
+# töms eller trycka på Esc för att ta bort köade objekt.
+input.queue.full: "Kön är full (%{cap}). Vänta på agenten eller tryck på Esc för att ta bort köade objekt."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / kommandon "

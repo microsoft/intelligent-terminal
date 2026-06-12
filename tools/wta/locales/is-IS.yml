@@ -59,6 +59,19 @@ input.placeholder.connected: "Spurðu hvað sem er, / fyrir skipanir.."  # {Lock
 input.placeholder.connecting: "tengist..."
 input.placeholder.disconnected: "aftengt"
 
+# ── Biðröð fyrir fyrirspurnir (src/ui/queued_hint.rs, src/app.rs) ────────────
+# Vísir sem birtist fyrir ofan inntaksreitinn á meðan ein eða fleiri fyrirspurnir eru í biðröð
+# og bíða eftir að agentinn ljúki núverandi lotu. %{count} er fjöldi fyrirspurna
+# í biðröð; %{preview} er eins línu forskoðun á síðustu fyrirspurninni sem var sett
+# í biðröð (þeirri sem Esc fjarlægir næst).
+input.queue.indicator: "Í biðröð (%{count}): %{preview}"
+# Tímabundin vísbending sem birtist eftir að Esc fjarlægir síðustu fyrirspurnina úr biðröðinni.
+input.queue.removed: "Fjarlægði skilaboð úr biðröð: %{preview}"
+# Tímabundin vísbending sem birtist þegar notandinn reynir að setja aðra fyrirspurn í biðröð
+# en biðröðin er þegar komin í hámark (%{cap} atriði). Notandinn verður að bíða eftir að
+# biðröðin tæmist eða ýta á Esc til að fjarlægja atriði úr biðröð.
+input.queue.full: "Biðröðin er full (%{cap}). Bíddu eftir agentinum eða ýttu á Esc til að fjarlægja atriði úr biðröð."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / skipanir "

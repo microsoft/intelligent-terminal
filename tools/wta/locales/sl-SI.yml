@@ -59,6 +59,19 @@ input.placeholder.connected: "Vprašajte karkoli, / za ukaze.."  # {Locked="/"}
 input.placeholder.connecting: "povezovanje..."
 input.placeholder.disconnected: "prekinjeno"
 
+# ── Čakalna vrsta čakajočih pozivov (src/ui/queued_hint.rs, src/app.rs) ─────
+# Indikator, prikazan nad vnosnim poljem, ko je v čakalni vrsti en ali več pozivov
+# in čakajo, da agent dokonča trenutni obrat. %{count} je število
+# pozivov v čakalni vrsti; %{preview} je enovrstični predogled nazadnje
+# dodanega poziva (tistega, ki bi ga Esc odstranil naslednjega).
+input.queue.indicator: "V čakalni vrsti (%{count}): %{preview}"
+# Začasni namig, prikazan po tem, ko Esc odstrani nazadnje dodani poziv.
+input.queue.removed: "Sporočilo iz čakalne vrste je odstranjeno: %{preview}"
+# Začasni namig, prikazan, ko uporabnik poskuša dodati še en poziv,
+# vendar je čakalna vrsta že dosegla zmogljivost (%{cap} elementov). Uporabnik mora počakati,
+# da se čakalna vrsta izprazni, ali pritisniti Esc, da odstrani elemente iz čakalne vrste.
+input.queue.full: "Čakalna vrsta je polna (%{cap}). Počakajte na agenta ali pritisnite Esc, da odstranite elemente iz čakalne vrste."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / ukazi "

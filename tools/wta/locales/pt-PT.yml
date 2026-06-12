@@ -59,6 +59,19 @@ input.placeholder.connected: "Pergunte o que quiser, / para comandos.."  # {Lock
 input.placeholder.connecting: "A ligar..."
 input.placeholder.disconnected: "Desligado"
 
+# ── Fila de pedidos pendentes (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# Indicador apresentado acima da caixa de entrada enquanto um ou mais pedidos estão na fila
+# à espera que o agente termine o turno atual. %{count} é o número
+# de pedidos na fila; %{preview} é uma pré-visualização numa única linha do pedido mais recente
+# colocado na fila (o que Esc removeria a seguir).
+input.queue.indicator: "Na fila (%{count}): %{preview}"
+# Sugestão temporária apresentada depois de Esc remover o pedido mais recente da fila.
+input.queue.removed: "Mensagem na fila removida: %{preview}"
+# Sugestão temporária apresentada quando o utilizador tenta colocar outro pedido na fila, mas a
+# fila já está no limite de capacidade (%{cap} entradas). O utilizador deve aguardar que
+# a fila esvazie ou premir Esc para remover itens da fila.
+input.queue.full: "A fila está cheia (%{cap}). Aguarde pelo agente ou prima Esc para remover itens da fila."  # {Locked="Esc"}
+
 # ── Janela de comandos (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefixo de comando de barra, deve permanecer em ASCII
 commands.popup_title: " / comandos "

@@ -59,6 +59,19 @@ input.placeholder.connected: "Cuir ceist ar bith, / le haghaidh orduithe.."  # {
 input.placeholder.connecting: "ag ceangal..."
 input.placeholder.disconnected: "dícheangailte"
 
+# ── Ciú iarratas ar feitheamh (src/ui/queued_hint.rs, src/app.rs) ────────────
+# Táscaire a thaispeántar os cionn an bhosca ionchuir fad atá iarratas amháin nó níos mó sa chiú
+# ag fanacht go gcríochnóidh an gníomhaire an seal reatha. Is é %{count} líon
+# na n-iarratas sa chiú; is réamhamharc aonlíne é %{preview} ar an iarratas is déanaí
+# a cuireadh sa chiú (an ceann a bhainfeadh Esc ina dhiaidh sin).
+input.queue.indicator: "Sa chiú (%{count}): %{preview}"
+# Leid shealadach a thaispeántar tar éis do Esc an t-iarratas is déanaí sa chiú a bhaint.
+input.queue.removed: "Baineadh teachtaireacht ón gciú: %{preview}"
+# Leid shealadach a thaispeántar nuair a dhéanann an t-úsáideoir iarracht iarratas eile a chur sa chiú,
+# ach tá an ciú ag a thoilleadh cheana (%{cap} iontráil). Caithfidh an t-úsáideoir fanacht go
+# bhfolmhaítear an ciú nó Esc a bhrú chun míreanna sa chiú a bhaint.
+input.queue.full: "Tá an ciú lán (%{cap}). Fan leis an ngníomhaire nó brúigh Esc chun míreanna sa chiú a bhaint."  # {Locked="Esc"}
+
 # ── Aníos orduithe (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - réimír ordú scáth, caithfidh sé fanacht ASCII
 commands.popup_title: " / orduithe "

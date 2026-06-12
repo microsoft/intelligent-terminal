@@ -59,6 +59,19 @@ input.placeholder.connected: "Spørg om hvad som helst, / for kommandoer.."  # {
 input.placeholder.connecting: "forbinder..."
 input.placeholder.disconnected: "afbrudt"
 
+# ── Kø med ventende prompter (src/ui/queued_hint.rs, src/app.rs) ─────────────
+# Indikator, der vises over inputfeltet, mens en eller flere prompter er i kø
+# og venter på, at agenten afslutter den aktuelle tur. %{count} er antallet
+# af prompter i kø; %{preview} er en forhåndsvisning på én linje af den senest
+# satte prompt i kø (den, som Esc vil fjerne næste gang).
+input.queue.indicator: "I kø (%{count}): %{preview}"
+# Midlertidigt tip, der vises, efter Esc fjerner den senest satte prompt i kø.
+input.queue.removed: "Fjernede meddelelse i kø: %{preview}"
+# Midlertidigt tip, der vises, når brugeren prøver at sætte endnu en prompt i kø,
+# men køen allerede har nået kapaciteten (%{cap} elementer). Brugeren skal vente på,
+# at køen tømmes, eller trykke på Esc for at fjerne elementer i kø.
+input.queue.full: "Køen er fuld (%{cap}). Vent på agenten, eller tryk på Esc for at fjerne elementer i kø."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / kommandoer "

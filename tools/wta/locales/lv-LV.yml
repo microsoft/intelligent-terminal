@@ -59,6 +59,19 @@ input.placeholder.connected: "Jautājiet jebko, / komandām.."  # {Locked="/"}
 input.placeholder.connecting: "savienojas..."
 input.placeholder.disconnected: "atvienots"
 
+# ── Gaidošo pieprasījumu rinda (src/ui/queued_hint.rs, src/app.rs) ───────────
+# Indikators, kas tiek rādīts virs ievades lodziņa, kamēr viens vai vairāki pieprasījumi ir rindā
+# un gaida, līdz aģents pabeidz pašreizējo gājienu. %{count} ir rindā esošo
+# pieprasījumu skaits; %{preview} ir vienas rindas priekšskatījums pēdējam rindā
+# ievietotajam pieprasījumam (tam, ko Esc noņems nākamo).
+input.queue.indicator: "Rindā (%{count}): %{preview}"
+# Pagaidu padoms, kas tiek rādīts pēc tam, kad Esc noņem pēdējo rindā ievietoto pieprasījumu.
+input.queue.removed: "Noņemts rindā esošs ziņojums: %{preview}"
+# Pagaidu padoms, kas tiek rādīts, kad lietotājs mēģina rindā ievietot vēl vienu pieprasījumu,
+# bet rinda jau ir pilna (%{cap} vienumi). Lietotājam ir jāgaida, līdz rinda iztukšojas,
+# vai jānospiež Esc, lai noņemtu rindā esošos vienumus.
+input.queue.full: "Rinda ir pilna (%{cap}). Gaidiet aģentu vai nospiediet Esc, lai noņemtu rindā esošos vienumus."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / komandas "

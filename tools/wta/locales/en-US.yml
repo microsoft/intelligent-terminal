@@ -73,6 +73,19 @@ input.placeholder.connecting: "connecting..."
 # Input box placeholder when agent is disconnected
 input.placeholder.disconnected: "disconnected"
 
+# ── Pending prompt queue (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# Indicator shown above the input box while one or more prompts are queued
+# waiting for the agent to finish the current turn. %{count} is the number
+# of queued prompts; %{preview} is a single-line preview of the most-recently
+# queued prompt (the one Esc would pop next).
+input.queue.indicator: "Queued (%{count}): %{preview}"
+# Transient hint shown after Esc removes the most-recently queued prompt.
+input.queue.removed: "Removed queued message: %{preview}"
+# Transient hint shown when the user tries to queue another prompt but the
+# queue is already at capacity (%{cap} entries). The user must wait for the
+# queue to drain or press Esc to remove queued items.
+input.queue.full: "Queue is full (%{cap}). Wait for the agent or press Esc to remove queued items."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / commands "
@@ -190,7 +203,7 @@ system.command_copied_retry: "Command copied — run it in another terminal, the
 system.stopped_max_tokens: "The response was cut off after reaching the model's output limit."
 system.stopped_max_turn_requests: "The agent stopped after reaching its request limit for this turn."
 system.stopped_refusal: "The agent declined to continue with this request."
-system.agent_busy: "Agent is busy on this tab — wait for the current prompt to finish."  # Shown when the user presses Enter to submit a new prompt while the agent is still processing the previous one on the same tab.
+system.agent_busy: "Agent is busy on this tab — wait for the current prompt to finish."  # Defense-in-depth system line emitted only by the ACP transport-layer single-flight guard (`dispatch_prompt` in protocol/acp/client.rs). The normal Enter-while-busy UX queues the prompt instead (see input.queue.*); this string fires only if a future caller bypasses the queue path and submits two prompts on the same tab simultaneously.
 system.resuming_session: "Resuming session %{session_id}..."  # Shown briefly while ACP `loadSession` rehydrates a previous conversation. %{session_id} is an opaque id (e.g. UUID); not translated.
 system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."  # Slash-command fallback when the user types an unknown /command. %{command} is the raw token (e.g. "foo"). {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."  # Shown when the user runs /new while a prompt is still in flight. {Locked="/stop"} — slash-command name.

@@ -59,6 +59,19 @@ input.placeholder.connected: "Pregunte lo que sea, / para comandos.."  # {Locked
 input.placeholder.connecting: "Conectando..."
 input.placeholder.disconnected: "Desconectado"
 
+# ── Cola de solicitudes pendientes (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# Indicador que se muestra encima del cuadro de entrada mientras una o varias solicitudes están en cola
+# esperando a que el agente termine el turno actual. %{count} es el número
+# de solicitudes en cola; %{preview} es una vista previa de una sola línea de la solicitud más reciente
+# puesta en cola (la que Esc quitaría a continuación).
+input.queue.indicator: "En cola (%{count}): %{preview}"
+# Sugerencia transitoria que se muestra después de que Esc quite la solicitud puesta en cola más reciente.
+input.queue.removed: "Mensaje en cola quitado: %{preview}"
+# Sugerencia transitoria que se muestra cuando el usuario intenta poner en cola otra solicitud, pero la
+# cola ya está al máximo de capacidad (%{cap} entradas). El usuario debe esperar a que
+# se vacíe la cola o pulsar Esc para quitar elementos en cola.
+input.queue.full: "La cola está llena (%{cap}). Espere al agente o pulse Esc para quitar elementos en cola."  # {Locked="Esc"}
+
 # ── Ventana emergente de comandos (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefijo de comando de barra diagonal, debe permanecer en ASCII
 commands.popup_title: " / comandos "

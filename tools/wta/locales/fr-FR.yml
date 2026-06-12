@@ -59,6 +59,19 @@ input.placeholder.connected: "Posez une question, / pour les commandes.."  # {Lo
 input.placeholder.connecting: "Connexion en cours..."
 input.placeholder.disconnected: "Déconnecté"
 
+# ── File d’attente des invites en attente (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# Indicateur affiché au-dessus de la zone de saisie lorsqu’une ou plusieurs invites sont en file d’attente
+# en attendant que l’agent termine le tour en cours. %{count} est le nombre
+# d’invites en file d’attente ; %{preview} est un aperçu sur une seule ligne de la dernière invite
+# mise en file d’attente (celle que Esc retirerait ensuite).
+input.queue.indicator: "En file d’attente (%{count}) : %{preview}"
+# Indication temporaire affichée après que Esc a retiré la dernière invite mise en file d’attente.
+input.queue.removed: "Message en file d’attente supprimé : %{preview}"
+# Indication temporaire affichée lorsque l’utilisateur essaie de mettre une autre invite en file d’attente, mais que
+# la file d’attente a déjà atteint sa capacité (%{cap} entrées). L’utilisateur doit attendre que
+# la file d’attente se vide ou appuyer sur Esc pour retirer des éléments en file d’attente.
+input.queue.full: "La file d’attente est pleine (%{cap}). Attendez l’agent ou appuyez sur Esc pour retirer des éléments en file d’attente."  # {Locked="Esc"}
+
 # ── Fenêtre contextuelle des commandes (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - préfixe de commande slash, doit rester en ASCII
 commands.popup_title: " / commandes "

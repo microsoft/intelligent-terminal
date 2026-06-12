@@ -1,4 +1,4 @@
-use crossterm::event::{Event, EventStream};
+use crossterm::event::{Event, EventStream, KeyCode};
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration, MissedTickBehavior};
@@ -79,7 +79,24 @@ pub async fn read_crossterm_events(tx: mpsc::UnboundedSender<AppEvent>) {
                     }
                 };
                 let app_event = match event {
-                    Event::Key(key) if key.kind == crossterm::event::KeyEventKind::Press => {
+                    Event::Key(mut key) if key.kind == crossterm::event::KeyEventKind::Press => {
+                        // Windows Terminal (via conpty) sends Backspace as the
+                        // DEL character (0x7F) wrapped in `Char('\u{7f}')`,
+                        // not as `KeyCode::Backspace`. Some Unix terminals do
+                        // the same. Normalize at the boundary so every
+                        // downstream handler can match on `KeyCode::Backspace`
+                        // without each having to remember the conpty quirk.
+                        //
+                        // Also normalize `Ctrl+H` (0x08 BS), which a handful
+                        // of legacy emulators still send as the Backspace
+                        // byte. Crossterm represents that as
+                        // `Char('\u{8}')`.
+                        match (key.code, key.modifiers) {
+                            (KeyCode::Char('\u{7f}'), _) | (KeyCode::Char('\u{8}'), _) => {
+                                key.code = KeyCode::Backspace;
+                            }
+                            _ => {}
+                        }
                         tracing::trace!(
                             target: "input",
                             code = ?key.code,

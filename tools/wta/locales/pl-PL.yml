@@ -59,6 +59,19 @@ input.placeholder.connected: "Zapytaj o cokolwiek, / dla poleceń.."  # {Locked=
 input.placeholder.connecting: "łączenie..."
 input.placeholder.disconnected: "rozłączono"
 
+# ── Kolejka oczekujących monitów (src/ui/queued_hint.rs, src/app.rs) ─────────
+# Wskaźnik wyświetlany nad polem wprowadzania, gdy co najmniej jeden monit jest w kolejce
+# i czeka, aż agent zakończy bieżącą turę. %{count} to liczba
+# monitów w kolejce; %{preview} to jednowierszowy podgląd ostatnio
+# dodanego do kolejki monitu (tego, który Esc usunie jako następny).
+input.queue.indicator: "W kolejce (%{count}): %{preview}"
+# Tymczasowa podpowiedź wyświetlana po tym, jak Esc usuwa ostatnio dodany do kolejki monit.
+input.queue.removed: "Usunięto wiadomość z kolejki: %{preview}"
+# Tymczasowa podpowiedź wyświetlana, gdy użytkownik próbuje dodać kolejny monit do kolejki,
+# ale kolejka osiągnęła już pojemność (%{cap} pozycji). Użytkownik musi poczekać,
+# aż kolejka się opróżni, albo nacisnąć Esc, aby usunąć elementy z kolejki.
+input.queue.full: "Kolejka jest pełna (%{cap}). Poczekaj na agenta albo naciśnij Esc, aby usunąć elementy z kolejki."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / polecenia "

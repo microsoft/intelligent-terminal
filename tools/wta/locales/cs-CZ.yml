@@ -59,6 +59,19 @@ input.placeholder.connected: "Zeptejte se na cokoli, / pro příkazy.."  # {Lock
 input.placeholder.connecting: "připojování..."
 input.placeholder.disconnected: "odpojeno"
 
+# ── Fronta čekajících výzev (src/ui/queued_hint.rs, src/app.rs) ──────────────
+# Indikátor zobrazený nad vstupním polem, když je ve frontě jedna nebo více výzev
+# a čeká se, až agent dokončí aktuální tah. %{count} je počet
+# výzev ve frontě; %{preview} je jednořádkový náhled naposledy
+# zařazené výzvy (té, kterou by Esc odebralo jako další).
+input.queue.indicator: "Ve frontě (%{count}): %{preview}"
+# Dočasná nápověda zobrazená poté, co Esc odebere naposledy zařazenou výzvu.
+input.queue.removed: "Odebrána zpráva z fronty: %{preview}"
+# Dočasná nápověda zobrazená, když se uživatel pokusí zařadit další výzvu,
+# ale fronta už dosáhla kapacity (%{cap} položek). Uživatel musí počkat,
+# až se fronta vyprázdní, nebo stisknout Esc a odebrat položky z fronty.
+input.queue.full: "Fronta je plná (%{cap}). Počkejte na agenta nebo stiskněte Esc a odeberte položky z fronty."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / příkazy "

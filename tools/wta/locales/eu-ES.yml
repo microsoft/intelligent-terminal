@@ -59,6 +59,19 @@ input.placeholder.connected: "Galdetu edozer, / komandoetarako.."  # {Locked="/"
 input.placeholder.connecting: "konektatzen..."
 input.placeholder.disconnected: "deskonektatuta"
 
+# ── Zain dauden eskaeren ilara (src/ui/queued_hint.rs, src/app.rs) ───────────
+# Sarrera-koadroaren gainean erakusten den adierazlea, eskaera bat edo gehiago ilaran dauden bitartean
+# agenteak uneko txanda amaitzeko zain. %{count} ilaran dauden eskaeren kopurua da;
+# %{preview} ilaran berriki jarritako eskaeraren lerro bakarreko aurrebista da
+# (Esc sakatuta hurrena kenduko litzatekeena).
+input.queue.indicator: "Ilaran (%{count}): %{preview}"
+# Esc sakatuta ilarako eskaera berriena kendu ondoren erakusten den aldi baterako oharra.
+input.queue.removed: "Ilarako mezua kendu da: %{preview}"
+# Erabiltzaileak beste eskaera bat ilaran jartzen saiatzen denean erakusten den aldi baterako oharra,
+# baina ilara dagoeneko gaitasun-mugan dago (%{cap} sarrera). Erabiltzaileak itxaron behar du
+# ilara hustu arte edo Esc sakatu ilarako elementuak kentzeko.
+input.queue.full: "Ilara beteta dago (%{cap}). Itxaron agenteari edo sakatu Esc ilarako elementuak kentzeko."  # {Locked="Esc"}
+
 # ── Komandoen popup-a (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - barra-komando aurrizkia, ASCII izan behar du
 commands.popup_title: " / komandoak "

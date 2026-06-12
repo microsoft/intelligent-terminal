@@ -55,6 +55,16 @@ input.placeholder.connected: "随意提问，/ 查看命令.."  # {Locked="/"}
 input.placeholder.connecting: "连接中..."
 input.placeholder.disconnected: "已断开"
 
+# ── 待处理提示队列 (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# 当一个或多个提示已排入队列，正在等待智能体完成当前轮次时，显示在输入框上方的指示器。
+# %{count} 是已排队提示的数量；%{preview} 是最近排入队列的提示（Esc 接下来会弹出的那一条）的单行预览。
+input.queue.indicator: "已排队 (%{count}): %{preview}"
+# Esc 移除最近排入队列的提示后显示的临时提示。
+input.queue.removed: "已移除排队消息: %{preview}"
+# 当用户尝试再排入一个提示，但队列已达到容量上限（%{cap} 条）时显示的临时提示。
+# 用户必须等待队列排空，或按 Esc 移除队列项。
+input.queue.full: "队列已满 (%{cap})。请等待智能体，或按 Esc 移除队列项。"  # {Locked="Esc"}
+
 # ── 命令弹出窗口 (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - 斜杠命令前缀，必须保持 ASCII
 commands.popup_title: " / 命令 "

@@ -59,6 +59,19 @@ input.placeholder.connected: "Küsi mida iganes, / käskude jaoks.."  # {Locked=
 input.placeholder.connecting: "ühendamine..."
 input.placeholder.disconnected: "ühendus katkestatud"
 
+# ── Ootel päringute järjekord (src/ui/queued_hint.rs, src/app.rs) ────────────
+# Näidik, mis kuvatakse sisendikasti kohal, kui üks või mitu päringut on järjekorras
+# ja ootavad, kuni agent lõpetab praeguse käigu. %{count} on järjekorras olevate
+# päringute arv; %{preview} on üherealine eelvaade viimati järjekorda lisatud
+# päringust (sellest, mille Esc järgmisena eemaldab).
+input.queue.indicator: "Järjekorras (%{count}): %{preview}"
+# Ajutine vihje, mis kuvatakse pärast seda, kui Esc eemaldab viimati järjekorda lisatud päringu.
+input.queue.removed: "Eemaldati järjekorras olev sõnum: %{preview}"
+# Ajutine vihje, mis kuvatakse, kui kasutaja proovib lisada järjekorda veel ühe päringu,
+# kuid järjekord on juba täis (%{cap} üksust). Kasutaja peab ootama, kuni järjekord
+# tühjeneb, või vajutama Esc, et eemaldada järjekorras olevaid üksusi.
+input.queue.full: "Järjekord on täis (%{cap}). Oodake agenti või vajutage Esc, et eemaldada järjekorras olevaid üksusi."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / käsud "

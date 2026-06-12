@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 
 use super::{
     agents_view, auth, chat, command_popup, debug_panel, input, model_popup, permission,
-    recommendations, setup,
+    queued_hint, recommendations, setup,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -122,6 +122,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     } else {
         0
     };
+    // Queue indicator: one row above the input box when prompts are pending.
+    // Sits below the transient/rec-hint rows and directly above the input
+    // box so the user's eye reaches it next to where they're typing.
+    let queue_hint_h: u16 = queued_hint::queue_hint_height(app);
 
     // The host (Windows Terminal) renders the agent bar in XAML above this
     // pane, so wta uses the full pane area for chat / recommendations / input.
@@ -129,16 +133,15 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // Layout: chat sized to its content, rec panel right below, blank
     // filler, optional one-row transient hint, optional one-row rec nav
     // hint (sits directly above the input box whenever recs are visible),
-    // input at the bottom. Cap chat at `pane_height - rec - input - hints`
-    // so the recommendation card always renders in full — chat_scroll lets
-    // the user reach older history if it overflows.
+    // optional one-row queue indicator, input at the bottom.
     let chat_content_width = main_area.width.saturating_sub(2); // h_chat 1+1 padding
     let chat_estimate = chat::estimated_block_height(app, chat_content_width);
     let reserved_below = rec_panel_h
         .saturating_add(perm_panel_h)
         .saturating_add(input_height)
         .saturating_add(hint_h)
-        .saturating_add(rec_hint_h);
+        .saturating_add(rec_hint_h)
+        .saturating_add(queue_hint_h);
     let chat_max = main_area.height.saturating_sub(reserved_below).max(1);
     let chat_height = chat_estimate.min(chat_max);
     let chunks = Layout::default()
@@ -150,6 +153,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             Constraint::Min(0),
             Constraint::Length(hint_h),
             Constraint::Length(rec_hint_h),
+            Constraint::Length(queue_hint_h),
             Constraint::Length(input_height),
         ])
         .split(main_area);
@@ -210,26 +214,27 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     if app.current_tab().turn.recommendations().is_some() {
         recommendations::render_hint(frame, chunks[5]);
     }
-    input::render(frame, app, chunks[6]);
+    queued_hint::render(frame, app, chunks[6]);
+    input::render(frame, app, chunks[7]);
 
     if let Some(debug_area) = debug_area {
         debug_panel::render(frame, app, debug_area);
     }
 
     // Slash-command autocomplete: pinned directly above the input box
-    // (`chunks[6]`). Anchoring to the input box rather than the filler row
+    // (`chunks[7]`). Anchoring to the input box rather than the filler row
     // keeps the popup glued to the input regardless of how much empty space
     // sits above it — otherwise a short chat leaves a tall filler and the
     // popup floats far up the pane (worst in side-by-side layouts).
     if let Some(popup_state) = app.command_popup_state() {
-        command_popup::render_popup(frame, popup_state, chunks[6]);
+        command_popup::render_popup(frame, popup_state, chunks[7]);
     }
 
     // `/model` picker modal: same anchor as the autocomplete popup. The two
     // are mutually exclusive — opening the picker clears the input, so the
     // command popup isn't visible while it's up.
     if let Some(model_state) = app.model_popup_state() {
-        model_popup::render_popup(frame, model_state, chunks[6]);
+        model_popup::render_popup(frame, model_state, chunks[7]);
     }
 
     // `/help` overlay sits on top of everything so the user can always

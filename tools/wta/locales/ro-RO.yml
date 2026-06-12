@@ -59,6 +59,19 @@ input.placeholder.connected: "Întrebați orice, / pentru comenzi.."  # {Locked=
 input.placeholder.connecting: "se conectează..."
 input.placeholder.disconnected: "deconectat"
 
+# ── Coada de solicitări în așteptare (src/ui/queued_hint.rs, src/app.rs) ─────
+# Indicator afișat deasupra câmpului de introducere cât timp una sau mai multe solicitări sunt în coadă,
+# așteptând ca agentul să termine runda curentă. %{count} este numărul
+# de solicitări din coadă; %{preview} este o previzualizare pe o singură linie a celei mai recente
+# solicitări puse în coadă (cea pe care Esc ar elimina-o următoarea).
+input.queue.indicator: "În coadă (%{count}): %{preview}"
+# Indiciu temporar afișat după ce Esc elimină cea mai recentă solicitare din coadă.
+input.queue.removed: "Mesaj eliminat din coadă: %{preview}"
+# Indiciu temporar afișat când utilizatorul încearcă să pună în coadă încă o solicitare,
+# dar coada este deja la capacitate (%{cap} intrări). Utilizatorul trebuie să aștepte ca
+# să se golească coada sau să apese Esc pentru a elimina elemente din coadă.
+input.queue.full: "Coada este plină (%{cap}). Așteptați agentul sau apăsați Esc pentru a elimina elementele din coadă."  # {Locked="Esc"}
+
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / comenzi "

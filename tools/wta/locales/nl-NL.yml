@@ -59,6 +59,19 @@ input.placeholder.connected: "Stel een vraag, / voor opdrachten.."  # {Locked="/
 input.placeholder.connecting: "Verbinden..."
 input.placeholder.disconnected: "Verbroken"
 
+# ── Wachtrij voor openstaande prompts (src/ui/queued_hint.rs, src/app.rs) ───────────────
+# Indicator die boven het invoervak wordt weergegeven terwijl een of meer prompts in de wachtrij staan
+# en wachten tot de agent de huidige beurt heeft voltooid. %{count} is het aantal
+# prompts in de wachtrij; %{preview} is een voorbeeld op één regel van de meest recent
+# in de wachtrij geplaatste prompt (degene die Esc als volgende zou verwijderen).
+input.queue.indicator: "In wachtrij (%{count}): %{preview}"
+# Tijdelijke hint die wordt weergegeven nadat Esc de meest recent in de wachtrij geplaatste prompt verwijdert.
+input.queue.removed: "Bericht uit wachtrij verwijderd: %{preview}"
+# Tijdelijke hint die wordt weergegeven wanneer de gebruiker nog een prompt in de wachtrij probeert te plaatsen, maar de
+# wachtrij al de capaciteit heeft bereikt (%{cap} items). De gebruiker moet wachten tot
+# de wachtrij leegloopt of op Esc drukken om items uit de wachtrij te verwijderen.
+input.queue.full: "De wachtrij is vol (%{cap}). Wacht op de agent of druk op Esc om items uit de wachtrij te verwijderen."  # {Locked="Esc"}
+
 # ── Opdrachtpopup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - schuine-streep-opdrachtvoorvoegsel, moet ASCII blijven
 commands.popup_title: " / opdrachten "

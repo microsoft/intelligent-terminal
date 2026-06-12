@@ -59,6 +59,19 @@ input.placeholder.connected: "Gofynnwch unrhyw beth, / am orchmynion.."  # {Lock
 input.placeholder.connecting: "yn cysylltu..."
 input.placeholder.disconnected: "datgysylltedig"
 
+# ── Ciw anogwyr ar y gweill (src/ui/queued_hint.rs, src/app.rs) ──────────────
+# Dangosydd a ddangosir uwchben y blwch mewnbwn tra bod un neu fwy o anogwyr wedi'u ciwio
+# yn aros i'r asiant orffen y tro presennol. %{count} yw nifer
+# yr anogwyr wedi'u ciwio; mae %{preview} yn rhagolwg un llinell o'r anogwr
+# diweddaraf a giwiwyd (yr un y byddai Esc yn ei dynnu nesaf).
+input.queue.indicator: "Wedi ciwio (%{count}): %{preview}"
+# Awgrym dros dro a ddangosir ar ôl i Esc dynnu'r anogwr diweddaraf wedi'i giwio.
+input.queue.removed: "Tynnwyd neges wedi'i chiwio: %{preview}"
+# Awgrym dros dro a ddangosir pan fydd y defnyddiwr yn ceisio ciwio anogwr arall,
+# ond mae'r ciw eisoes ar gapasiti (%{cap} cofnod). Rhaid i'r defnyddiwr aros i'r
+# ciw wagio neu bwyso Esc i dynnu eitemau wedi'u ciwio.
+input.queue.full: "Mae'r ciw yn llawn (%{cap}). Arhoswch am yr asiant neu pwyswch Esc i dynnu eitemau wedi'u ciwio."  # {Locked="Esc"}
+
 # ── Naidlen gorchmynion (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - rhagddodiad gorchymyn slaes, rhaid iddo aros yn ASCII
 commands.popup_title: " / gorchmynion "
