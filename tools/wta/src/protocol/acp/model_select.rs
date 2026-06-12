@@ -82,15 +82,21 @@ pub(crate) fn models_from_new_session(
 fn model_option_from_config(
     opts: &[acp::SessionConfigOption],
 ) -> Option<(String, Vec<AcpModelInfo>, Option<String>)> {
-    let opt = opts.iter().find(|o| {
-        matches!(o.category, Some(acp::SessionConfigOptionCategory::Model))
-            || o.id.0.as_ref() == "model"
+    // Pick the first option that is BOTH a model selector AND a Select. A
+    // plain `find` on the category/id alone would bail out if a same-named
+    // non-Select entry happened to come first, hiding a valid Select later in
+    // the list.
+    let (opt, sel) = opts.iter().find_map(|o| {
+        let is_model = matches!(o.category, Some(acp::SessionConfigOptionCategory::Model))
+            || o.id.0.as_ref() == "model";
+        if !is_model {
+            return None;
+        }
+        match &o.kind {
+            acp::SessionConfigKind::Select(sel) => Some((o, sel)),
+            _ => None,
+        }
     })?;
-
-    let sel = match &opt.kind {
-        acp::SessionConfigKind::Select(sel) => sel,
-        _ => return None,
-    };
 
     let flat: Vec<&acp::SessionConfigSelectOption> = match &sel.options {
         acp::SessionConfigSelectOptions::Ungrouped(v) => v.iter().collect(),
@@ -215,5 +221,32 @@ mod tests {
         let (models, current) = models_from_new_session(&resp);
         assert!(models.is_empty());
         assert_eq!(current, None);
+
+        // 4. Model selector identified by category alone (id != "model") is
+        //    still found, and a preceding non-model Select is skipped — proves
+        //    the find_map matches on the model predicate, not just position.
+        let by_category = r#"{
+            "sessionId": "cat-1",
+            "configOptions": [
+                {
+                    "id": "mode", "name": "Mode", "category": "mode", "type": "select",
+                    "currentValue": "auto", "options": [{"value": "auto", "name": "Auto"}]
+                },
+                {
+                    "id": "llm", "name": "LLM", "category": "model", "type": "select",
+                    "currentValue": "haiku",
+                    "options": [{"value": "haiku", "name": "Haiku"}]
+                }
+            ]
+        }"#;
+        let resp: acp::NewSessionResponse =
+            serde_json::from_str(by_category).expect("valid new_session");
+        let (models, current) = models_from_new_session(&resp);
+        let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, vec!["haiku"]);
+        assert_eq!(current.as_deref(), Some("haiku"));
+        // MODEL_CONFIG_ID is a OnceLock locked to "model" back in step 1
+        // (first-writer-wins); this just confirms the channel stays config.
+        assert_eq!(MODEL_SWITCH_VIA.load(Ordering::Relaxed), SWITCH_VIA_CONFIG);
     }
 }

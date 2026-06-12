@@ -2599,7 +2599,7 @@ pub async fn run_acp_client_over_pipe(
             .await
             .map_err(|e| {
                 anyhow::anyhow!(
-                    "set_session_model failed for requested model {}: {}",
+                    "failed to set requested model {}: {}",
                     requested_model,
                     e
                 )
@@ -3446,7 +3446,7 @@ async fn run_inner(
         .await
         .map_err(|e| {
             anyhow::anyhow!(
-                "set_session_model failed for requested model {}: {}",
+                "failed to set requested model {}: {}",
                 requested_model,
                 e
             )
@@ -4048,7 +4048,7 @@ fn dispatch_master_ext_request(
                             session_id = %sid.0,
                             model = %model,
                             error = ?err,
-                            "set_session_model hot-update failed"
+                            "model hot-update failed"
                         ),
                     }
                 }
