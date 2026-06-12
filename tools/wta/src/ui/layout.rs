@@ -222,7 +222,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     }
 
     // Slash-command autocomplete: pinned directly above the input box
-    // (`chunks[6]`). Anchoring to the input box rather than the filler row
+    // (`chunks[7]`). Anchoring to the input box rather than the filler row
     // keeps the popup glued to the input regardless of how much empty space
     // sits above it — otherwise a short chat leaves a tall filler and the
     // popup floats far up the pane (worst in side-by-side layouts).
