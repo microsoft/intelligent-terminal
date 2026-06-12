@@ -27,7 +27,7 @@ const HORIZONTAL_PADDING: u16 = 2;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let tab = app.current_tab();
-    if tab.pending_prompts.is_empty() || area.height == 0 {
+    if tab.pending_prompts.is_empty() || area.height == 0 || area.width == 0 {
         return;
     }
     let count = tab.pending_prompts.len();
