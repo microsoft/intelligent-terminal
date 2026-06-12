@@ -15,35 +15,39 @@
 //! first time a `new_session` response is parsed and [`apply_session_model`]
 //! reads it back when the user hot-swaps the model from a decoupled call site.
 
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::OnceLock;
+use std::sync::RwLock;
 
 use agent_client_protocol as acp;
 use agent_client_protocol::Agent as _;
 
 use crate::app::AcpModelInfo;
 
-const SWITCH_VIA_LEGACY: u8 = 0;
-const SWITCH_VIA_CONFIG: u8 = 1;
+/// How the current agent expects a model switch to be delivered. Refreshed on
+/// every `new_session` parse (see [`models_from_new_session`]) so an in-process
+/// agent restart — or a session whose model selector advertises a different
+/// config-option id — is always reflected, rather than frozen at first write.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ModelSwitchChannel {
+    /// Legacy `session/set_model`.
+    Legacy,
+    /// `session/set_config_option` carrying this config id (e.g. `"model"`).
+    Config { config_id: String },
+}
 
-/// How this process's agent expects model switches to be delivered. Defaults
-/// to the legacy `session/set_model` path until a `config_options`-style model
-/// selector is observed.
-static MODEL_SWITCH_VIA: AtomicU8 = AtomicU8::new(SWITCH_VIA_LEGACY);
-
-/// The `config_options` id of the model selector (typically `"model"`), kept
-/// so the hot-swap path forwards the exact id the agent advertised.
-static MODEL_CONFIG_ID: OnceLock<String> = OnceLock::new();
+/// The switch channel for this process's currently-connected agent. One `wta`
+/// process drives one agent CLI, but the agent can restart in-process and a
+/// later `new_session` may advertise a different channel/id — so this is a
+/// mutable cell overwritten on every extraction, not a write-once latch.
+static MODEL_SWITCH: RwLock<ModelSwitchChannel> = RwLock::new(ModelSwitchChannel::Legacy);
 
 fn record_channel_legacy() {
-    MODEL_SWITCH_VIA.store(SWITCH_VIA_LEGACY, Ordering::Relaxed);
+    *MODEL_SWITCH.write().unwrap() = ModelSwitchChannel::Legacy;
 }
 
 fn record_channel_config(config_id: &str) {
-    MODEL_SWITCH_VIA.store(SWITCH_VIA_CONFIG, Ordering::Relaxed);
-    // First writer wins; the channel is uniform per process so a later session
-    // would carry the same id anyway.
-    let _ = MODEL_CONFIG_ID.set(config_id.to_string());
+    *MODEL_SWITCH.write().unwrap() = ModelSwitchChannel::Config {
+        config_id: config_id.to_string(),
+    };
 }
 
 /// Extract the model list and current model id from a `new_session` response,
@@ -130,20 +134,20 @@ pub(crate) async fn apply_session_model(
     session_id: acp::SessionId,
     model_id: String,
 ) -> acp::Result<()> {
-    if MODEL_SWITCH_VIA.load(Ordering::Relaxed) == SWITCH_VIA_CONFIG {
-        let config_id = MODEL_CONFIG_ID
-            .get()
-            .map(String::as_str)
-            .unwrap_or("model");
-        conn.set_session_config_option(acp::SetSessionConfigOptionRequest::new(
-            session_id, config_id, model_id,
-        ))
-        .await
-        .map(|_| ())
-    } else {
-        conn.set_session_model(acp::SetSessionModelRequest::new(session_id, model_id))
+    // Snapshot under the read lock and release it before the await — the lock
+    // guard isn't Send and must not be held across the suspension point.
+    let channel = MODEL_SWITCH.read().unwrap().clone();
+    match channel {
+        ModelSwitchChannel::Config { config_id } => conn
+            .set_session_config_option(acp::SetSessionConfigOptionRequest::new(
+                session_id, config_id, model_id,
+            ))
             .await
-            .map(|_| ())
+            .map(|_| ()),
+        ModelSwitchChannel::Legacy => conn
+            .set_session_model(acp::SetSessionModelRequest::new(session_id, model_id))
+            .await
+            .map(|_| ()),
     }
 }
 
@@ -203,8 +207,12 @@ mod tests {
         assert_eq!(current.as_deref(), Some("default"));
         // The model selector — not the "mode" selector — must win.
         assert_eq!(models[0].name, "Default (recommended)");
-        assert_eq!(MODEL_SWITCH_VIA.load(Ordering::Relaxed), SWITCH_VIA_CONFIG);
-        assert_eq!(MODEL_CONFIG_ID.get().map(String::as_str), Some("model"));
+        assert_eq!(
+            *MODEL_SWITCH.read().unwrap(),
+            ModelSwitchChannel::Config {
+                config_id: "model".to_string()
+            }
+        );
 
         // 2. Legacy `models` field wins when present, channel flips back.
         let resp: acp::NewSessionResponse =
@@ -213,7 +221,7 @@ mod tests {
         let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, vec!["gpt-5.5", "gpt-5.4"]);
         assert_eq!(current.as_deref(), Some("gpt-5.5"));
-        assert_eq!(MODEL_SWITCH_VIA.load(Ordering::Relaxed), SWITCH_VIA_LEGACY);
+        assert_eq!(*MODEL_SWITCH.read().unwrap(), ModelSwitchChannel::Legacy);
 
         // 3. Neither channel present → empty list, no current model.
         let resp: acp::NewSessionResponse =
@@ -245,8 +253,14 @@ mod tests {
         let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, vec!["haiku"]);
         assert_eq!(current.as_deref(), Some("haiku"));
-        // MODEL_CONFIG_ID is a OnceLock locked to "model" back in step 1
-        // (first-writer-wins); this just confirms the channel stays config.
-        assert_eq!(MODEL_SWITCH_VIA.load(Ordering::Relaxed), SWITCH_VIA_CONFIG);
+        // The channel id now UPDATES to this session's selector id ("llm"),
+        // proving it is no longer frozen at the first-seen "model" id — the
+        // exact regression the OnceLock version had.
+        assert_eq!(
+            *MODEL_SWITCH.read().unwrap(),
+            ModelSwitchChannel::Config {
+                config_id: "llm".to_string()
+            }
+        );
     }
 }
