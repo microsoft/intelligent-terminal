@@ -10,6 +10,8 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 - `[E2E]` — needs mock-ACP end-to-end or UI automation; not a UT.
 - `[MANUAL]` — human judgment (visual polish, real LLM quality, install/auth UX).
 
+> **Checkbox semantics:** a ticked `- [x]` box means the item is fully verified by an automated unit test (pure `[UT✓]` items). Items tagged `[UT✓]` *and* `[E2E]`/`[MANUAL]` keep the `[UT✓]` marker to show the logic core is unit-tested, but stay unchecked because release sign-off still needs the E2E / manual portion.
+
 ## Release sign-off metadata
 
 - [ ] `[MANUAL]` **Build under test:** Version/build number is recorded.
@@ -126,15 +128,15 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 
 ### Agent pane slash commands
 
-- [ ] `[UT✓]` **`/help` works:** Shows available commands.
-- [ ] `[UT✓]` **`/clear` works:** Clears chat view as expected without breaking the session.
-- [ ] `[UT✓]` **`/new` works:** Starts a fresh session.
-- [ ] `[UT✓]` **`/fix` works:** Runs manual autofix using recent terminal context. _(UT: classify + `slash_fix_when_idle_submits_autofix_turn` / `slash_fix_while_busy_does_not_resubmit`.)_
-- [ ] `[UT✓]` **`/restart` works:** Restarts the agent stack and reconnects to a clean session. _(UT: `slash_restart_resets_connection_and_clears_sessions`.)_
-- [ ] `[UT✓]` **`/stop` works:** Stops/cancels an in-progress turn.
-- [ ] `[UT✓]` **`/sessions` works:** Switches to session-management view. _(UT: `slash_sessions_opens_agents_view`.)_
+- [x] `[UT✓]` **`/help` works:** Shows available commands.
+- [x] `[UT✓]` **`/clear` works:** Clears chat view as expected without breaking the session.
+- [x] `[UT✓]` **`/new` works:** Starts a fresh session.
+- [x] `[UT✓]` **`/fix` works:** Runs manual autofix using recent terminal context. _(UT: classify + `slash_fix_when_idle_submits_autofix_turn` / `slash_fix_while_busy_does_not_resubmit`.)_
+- [x] `[UT✓]` **`/restart` works:** Restarts the agent stack and reconnects to a clean session. _(UT: `slash_restart_resets_connection_and_clears_sessions`.)_
+- [x] `[UT✓]` **`/stop` works:** Stops/cancels an in-progress turn.
+- [x] `[UT✓]` **`/sessions` works:** Switches to session-management view. _(UT: `slash_sessions_opens_agents_view`.)_
 - [ ] `[UT✓]` `[E2E]` **`/model` works:** Opens/selects model where supported; unsupported agents fail gracefully. _(UT: `slash_model_*`; picker render is E2E.)_
-- [ ] `[UT✓]` **Unknown slash command is safe:** Unknown `/command` does not lose user input or crash.
+- [x] `[UT✓]` **Unknown slash command is safe:** Unknown `/command` does not lose user input or crash.
 - [ ] `[E2E]` **Esc/back navigation works:** User can return from popups/session/model views to chat.
 
 ### Chat/session view switching
@@ -152,13 +154,13 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 
 - [ ] `[E2E]` **PowerShell shell integration installed:** Supported PowerShell profiles emit command-finished events.
 - [ ] `[E2E]` **Missing shell integration is safe:** Without shell integration, failures do not crash or produce broken UI.
-- [ ] `[UT✓]` **Failure detection works:** A failing command emits an event and is detected by Intelligent Terminal. _(UT: `classify_wt_event`.)_
-- [ ] `[UT✓]` **Successful commands ignored:** Successful commands do not trigger autofix. _(UT: `classify_wt_event` + `success_exit_code_does_not_arm_autofix`.)_
-- [ ] `[UT✓]` **Detection off suppresses autofix:** With automatic error detection off, failures do not trigger autofix. _(UT: autofix reducer.)_
-- [ ] `[UT✓]` **Detection on observes failures:** With detection on, failure notifications are observed. _(UT: autofix reducer.)_
-- [ ] `[UT✓]` **Suggestion off suppresses LLM call:** With suggestion off, detection can show any expected local UI but does not ask the agent for a fix. _(UT: `suggestion_off_emits_detected_without_submitting_turn`.)_
-- [ ] `[UT✓]` **Suggestion on triggers LLM call:** With suggestion on and a connected helper, an autofix suggestion is requested. _(UT: reducer submit path.)_
-- [ ] `[UT✓]` **Cold-start behavior is acceptable:** If failure happens before the helper is connected, UI stays stable and no stale suggestion appears later. _(UT: `cold_start_drops_autofix_when_not_connected`.)_
+- [x] `[UT✓]` **Failure detection works:** A failing command emits an event and is detected by Intelligent Terminal. _(UT: `classify_wt_event`.)_
+- [x] `[UT✓]` **Successful commands ignored:** Successful commands do not trigger autofix. _(UT: `classify_wt_event` + `success_exit_code_does_not_arm_autofix`.)_
+- [x] `[UT✓]` **Detection off suppresses autofix:** With automatic error detection off, failures do not trigger autofix. _(UT: autofix reducer.)_
+- [x] `[UT✓]` **Detection on observes failures:** With detection on, failure notifications are observed. _(UT: autofix reducer.)_
+- [x] `[UT✓]` **Suggestion off suppresses LLM call:** With suggestion off, detection can show any expected local UI but does not ask the agent for a fix. _(UT: `suggestion_off_emits_detected_without_submitting_turn`.)_
+- [x] `[UT✓]` **Suggestion on triggers LLM call:** With suggestion on and a connected helper, an autofix suggestion is requested. _(UT: reducer submit path.)_
+- [x] `[UT✓]` **Cold-start behavior is acceptable:** If failure happens before the helper is connected, UI stays stable and no stale suggestion appears later. _(UT: `cold_start_drops_autofix_when_not_connected`.)_
 
 ### Autofix with agent pane
 
@@ -220,8 +222,8 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 
 - [ ] `[UT✓]` `[E2E]` **Built-in agents tracked:** Copilot, Claude, Codex, and Gemini sessions are tracked when hooks/session support is enabled. _(UT: cli_source/origin.)_
 - [ ] `[UT✓]` `[E2E]` **Custom agent safe behavior:** Custom agents do not crash session management and do not show strange/broken UI. _(UT: `NotResumable` UnknownCli.)_
-- [ ] `[UT✓]` **Custom agent limitation is acceptable:** Session management is not expected to fully restore custom-agent sessions unless the custom agent provides compatible session metadata.
-- [ ] `[UT✓]` **MVP origin filter is understood:** If the release keeps the MVP filter, the picker shows shell-pane sessions only while debug/CLI listing can still inspect all origins. _(UT: `OriginFilter` + cli_tests.)_
+- [x] `[UT✓]` **Custom agent limitation is acceptable:** Session management is not expected to fully restore custom-agent sessions unless the custom agent provides compatible session metadata.
+- [x] `[UT✓]` **MVP origin filter is understood:** If the release keeps the MVP filter, the picker shows shell-pane sessions only while debug/CLI listing can still inspect all origins. _(UT: `OriginFilter` + cli_tests.)_
 - [ ] `[UT~]` `[E2E]` **Hooks off behavior is safe:** With session management off, missing rows are expected and UI remains stable.
 
 ## 5. Delegate agent and command palette shortcuts
@@ -249,7 +251,7 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 
 - [ ] `[E2E]` **Custom agent is Settings-only:** FRE does not expose custom-agent creation.
 - [ ] `[UT✓]` `[E2E]` **Add custom ACP agent:** In Settings, add an agent-pane custom command such as `qwen.cmd --acp`. _(UT: `DeriveCustomAgentId`.)_
-- [ ] `[UT✓]` **Save custom ACP agent:** Saving persists `custom:<cmd>`/custom command settings. _(UT: CustomAgentAndPolicyTests round-trip.)_
+- [x] `[UT✓]` **Save custom ACP agent:** Saving persists `custom:<cmd>`/custom command settings. _(UT: CustomAgentAndPolicyTests round-trip.)_
 - [ ] `[UT✓]` `[E2E]` **Edit custom ACP agent:** Editing updates the command used by new agent panes.
 - [ ] `[UT~]` `[E2E]` **Delete custom ACP agent:** Deleting returns to a valid built-in/default selection.
 - [ ] `[UT~]` `[E2E]` **Model selection visible:** Model picker/textbox remains visible when custom agent is selected.
@@ -262,7 +264,7 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 ### Custom delegate agent
 
 - [ ] `[UT✓]` `[E2E]` **Add custom delegate agent:** In Settings, add a delegate custom command such as `qwen.cmd`. _(UT: `DeriveCustomAgentId`.)_
-- [ ] `[UT✓]` **Save custom delegate agent:** Saving persists the delegate custom command. _(UT: round-trip.)_
+- [x] `[UT✓]` **Save custom delegate agent:** Saving persists the delegate custom command. _(UT: round-trip.)_
 - [ ] `[UT+]` `[E2E]` **`Alt+Shift+B` uses custom delegate:** Background delegate shortcut launches the custom command. _(UT: binding + `EffectiveDelegateAgent` resolution.)_
 - [ ] `[UT+]` `[E2E]` **`Alt+Shift+/` uses custom delegate:** Agent-delegation command palette launches the custom command.
 - [ ] `[UT~]` `[E2E]` **Custom delegate cwd is correct:** Custom delegate starts in the source pane's cwd.
