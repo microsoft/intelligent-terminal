@@ -82,7 +82,11 @@ The following `[UT+]` items have been implemented and are passing:
 - **Agent action parse** (`KeyBindingsTests::AgentActionsParse`): `openAgentPane` / `focusAgentPane` / `openAgentSessions` / `openBackgroundAgent` command keywords parse to their `ShortcutAction`, and `commandPalette` + `launchMode: agentDelegation` parses to `ToggleCommandPalette` with `CommandPaletteLaunchMode::AgentDelegation`.
 - **Built-in agent settings round-trip** (`CustomAgentAndPolicyTests`, 6 tests): built-in agent/model/pane-position/autofix round-trip + default resolution + `EffectiveAutoFixEnabled` false when detection off.
 - **Slash dispatch** (`slash_command_tests.rs`, 8 tests): `/sessions`, `/restart`, `/fix` (idle + busy), `/model` (none/bare/direct).
-- **Locale key-parity** (`locale_parity_tests.rs`): every `en-US.yml` key present in all 88 locales.
+
+> **Localization parity** (the WTA locale backfill + `locale_parity_tests.rs`
+> guard) was split out of this test-suite branch into its own PR to keep the
+> two concerns reviewable independently. It is therefore **not** part of this
+> branch; see the localization PR.
 
 Verified **already covered**, no new tests needed:
 
@@ -91,13 +95,13 @@ Verified **already covered**, no new tests needed:
 
 `[UT+]` backlog status: **cleared** — every checklist item that was UT-coverable is now `[UT✓]` (or `[UT✓] [E2E]` where only the logic half is a UT). The one item that looked like a settings round-trip but isn't — "Session-management choice persists" — is reclassified `[UT~] [E2E]` because the FRE toggle installs hooks on Save rather than persisting a settings bool (read-back state is parse-tested via `AgentHooksStatusTests`, the persistence itself is E2E).
 
-Localization parity (resolved):
+Localization parity (split to a separate PR):
 
-- The `tools/wta/locales/*.yml` gap is closed: a sub-agent backfilled the
-  missing `commands.*.summary` keys (notably `commands.fix.summary`, which was
-  absent from all 88 non-en-US locales) to full key-parity with en-US, and a
-  `every_locale_has_all_en_us_keys` guard test (`locale_parity_tests.rs`) now
-  enforces it.
+- The `tools/wta/locales/*.yml` gap — `commands.fix.summary` was absent from
+  all 88 non-en-US locales, plus six other `commands.*.summary` keys lagged —
+  is fixed by a **separate localization PR** (locale backfill +
+  `every_locale_has_all_en_us_keys` guard test). It is not part of this
+  test-suite branch.
 
 ## Recommended new UT work (the `[UT+]` backlog) — COMPLETED
 

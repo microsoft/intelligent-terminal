@@ -353,7 +353,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[MANUAL]` **High contrast theme works:** FRE, Settings, agent pane, and autofix UI remain readable.
 - [ ] `[MANUAL]` **Light/dark theme works:** UI is readable in both themes.
 - [ ] `[MANUAL]` **Text scaling works:** 125%, 150%, and 200% scaling do not clip critical controls.
-- [ ] `[UT✓]` `[MANUAL]` **Localization strings are present:** New user-facing strings are localized or intentionally locked. _(UT: `every_locale_has_all_en_us_keys` enforces WTA locale key-parity; .resw locales still manual/pipeline.)_
+- [ ] `[MANUAL]` **Localization strings are present:** New user-facing strings are localized or intentionally locked. _(WTA locale key-parity is enforced by a separate PR's `every_locale_has_all_en_us_keys` guard; .resw locales remain manual/pipeline.)_
 - [ ] `[UT~]` `[MANUAL]` **Pseudo-locales work:** qps pseudo-locales do not clip or corrupt layout.
 - [ ] `[UT~]` `[MANUAL]` **RTL works:** RTL layout is mirrored where expected. _(UT: `IsRtlLocale`.)_
 
