@@ -12,6 +12,16 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 
 > **Checkbox semantics:** a ticked `- [x]` box means the item is fully verified by an automated unit test (pure `[UT✓]` items). Items tagged `[UT✓]` *and* `[E2E]`/`[MANUAL]` keep the `[UT✓]` marker to show the logic core is unit-tested, but stay unchecked because release sign-off still needs the E2E / manual portion.
 
+## How to use this checklist for testing
+
+Read the markers to decide where to spend manual effort — don't re-test what the unit tests already lock down:
+
+- **`[x]` pure `[UT✓]`** — the logic is fully verified by a unit test that re-runs on every build. Do **not** manually test these in isolation; just let them ride along in the final end-to-end smoke pass. (Examples: slash-command dispatch, autofix on/off gating, settings persistence.)
+- **`[UT✓]` + `[E2E]` (box left unchecked)** — the **decision/logic half is already UT-covered**, so during E2E you only need to confirm the **UI / interaction half** works (the pane actually opens, the row actually shows the state, the picker renders). You do **not** need to re-verify the underlying branches — those are guarded by UT and regress automatically. (Examples: `Ctrl+Shift+.` opens the pane, session-state display, Enter/Shift+Enter resume, `/model` picker.)
+- **`[E2E]` / `[MANUAL]`** — no UT safety net; test these fully by hand / automation.
+
+Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not "is every logic branch correct". The final gate is one end-to-end run over the `[E2E]`/`[MANUAL]` surface plus a smoke pass that exercises the `[UT✓]` paths in a real build.
+
 ## Release sign-off metadata
 
 - [ ] `[MANUAL]` **Build under test:** Version/build number is recorded.
