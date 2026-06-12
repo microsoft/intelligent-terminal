@@ -6961,8 +6961,21 @@ impl App {
                     // (a fresh prompt mid-replay would interleave a new turn
                     // with loadSession replay chunks). Keep both sides
                     // symmetric so Enter and drain agree on what "busy" means.
+                    //
+                    // Card-visible is also treated as busy. A staged
+                    // recommendation lives in `Surfaced { end_pending: false }`,
+                    // which `accepts_new_prompt()` reports as accepting — but
+                    // dispatching now would call `turn_submit_prompt`, which
+                    // resets `selected_recommendation`/`messages` and wipes
+                    // the card before the user can Run/Insert/Esc it.
+                    // `drain_pending_prompts` already gates on
+                    // `recommendations().is_some()`; mirror it here so Enter
+                    // queues the typed prompt and the card survives until
+                    // the user dismisses or executes it (the drain then
+                    // promotes the queued prompt automatically).
                     if !self.current_tab().turn.accepts_new_prompt()
                         || self.current_tab().loading_session
+                        || self.current_tab().turn.recommendations().is_some()
                     {
                         let tab = self.current_tab_mut();
                         if tab.pending_prompts.len() >= PENDING_PROMPT_QUEUE_CAP {
@@ -14444,6 +14457,55 @@ mod tests {
             "Esc must pop the queued prompt first, leaving the in-flight head alone");
         assert!(matches!(app.current_tab().turn, TurnState::Submitted(_)),
             "in-flight head must keep running while queued items exist");
+    }
+
+    #[test]
+    fn enter_with_card_visible_queues_prompt_and_preserves_card() {
+        // Regression: a Surfaced{ end_pending: false } card was being wiped
+        // by typing+Enter because `accepts_new_prompt()` returns true for
+        // that state. The Enter handler dispatched the prompt, which ran
+        // `turn_submit_prompt` and reset selected_recommendation/messages,
+        // erasing the card the user was about to Run/Insert. Match the
+        // drain gate: card-visible → queue, don't dispatch.
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("pane-1", "Get-Process | Sort-Object CPU")],
+            0,
+            None,
+        );
+        // Sanity: card is visible AND accepts_new_prompt is true (the bug
+        // precondition). Without the fix, the next Enter would dispatch.
+        assert!(app.current_tab().turn.recommendations().is_some());
+        assert!(app.current_tab().turn.accepts_new_prompt());
+
+        type_text(&mut app, "Give me command for Ram");
+        press_enter(&mut app);
+
+        // Card is still surfaced (selected_recommendation untouched).
+        assert!(
+            app.current_tab().turn.recommendations().is_some(),
+            "card must survive a queued prompt; got turn={:?}",
+            app.current_tab().turn,
+        );
+        assert!(
+            matches!(
+                app.current_tab().turn,
+                TurnState::Surfaced { end_pending: false, .. }
+            ),
+            "still Surfaced{{end_pending:false}} (no transition to Submitted); got {:?}",
+            app.current_tab().turn,
+        );
+        // Prompt was queued, not dispatched.
+        assert_eq!(app.current_tab().pending_prompts.len(), 1);
+        assert_eq!(
+            app.current_tab().pending_prompts[0].text,
+            "Give me command for Ram"
+        );
+        // Input was consumed so the next keystroke lands on an empty line.
+        assert!(app.current_tab().input.is_empty());
+        assert_eq!(app.current_tab().cursor_pos, 0);
     }
 
     #[test]
