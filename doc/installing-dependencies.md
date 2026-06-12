@@ -87,7 +87,7 @@ new `winget.exe` is picked up on `PATH`, then verify with
 **Why you need it:** Claude Code, OpenAI Codex, and Gemini CLI are all
 distributed as npm packages. Intelligent Terminal also launches Claude and
 Codex through `npx` wrappers
-(`npx -y @zed-industries/claude-code-acp` and
+(`npx -y @agentclientprotocol/claude-agent-acp` and
 `npx -y @zed-industries/codex-acp`), which require a working Node.js +
 `npm` + `npx` toolchain on `PATH`. You can skip this section if you only
 plan to use GitHub Copilot CLI.
@@ -187,7 +187,7 @@ install directory is added to `PATH`.
 **Status:** Supported, but **not installed by Intelligent Terminal**. You
 must install Anthropic's Claude Code CLI yourself before selecting Claude
 in the FRE. Intelligent Terminal launches Claude through the
-`@zed-industries/claude-code-acp` npx wrapper.
+`@agentclientprotocol/claude-agent-acp` npx wrapper.
 
 #### Step 3.2.1 — Install Node.js
 
@@ -212,11 +212,11 @@ claude --version
 
 Claude Code does not speak the Agent Control Protocol (ACP) directly, so
 Intelligent Terminal launches it through the
-[`@zed-industries/claude-code-acp`](https://www.npmjs.com/package/@zed-industries/claude-code-acp)
+[`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp)
 wrapper. The wrapper is fetched on demand at run time with:
 
 ```powershell
-npx -y @zed-industries/claude-code-acp
+npx -y @agentclientprotocol/claude-agent-acp
 ```
 
 You do **not** need to install anything for this — the only prerequisite

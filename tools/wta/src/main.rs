@@ -458,7 +458,7 @@ enum Command {
     /// On error: non-zero exit, message on stderr.
     ProbeModels {
         /// Full agent cmdline, same shape as `--agent` (e.g.
-        /// "copilot --acp --stdio" or "npx -y @zed-industries/claude-code-acp").
+        /// "copilot --acp --stdio" or "npx -y @agentclientprotocol/claude-agent-acp").
         #[arg(long)]
         agent: String,
     },
