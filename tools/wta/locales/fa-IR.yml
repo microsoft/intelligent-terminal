@@ -74,6 +74,7 @@ commands.help_close_hint: "  Esc        بستن این راهنما"  # {Locked
 commands.help.summary: "نمایش این فهرست دستورات"
 commands.clear.summary: "پاک کردن تاریخچه پیمایش گفتگو (نشست حفظ می‌شود)"
 commands.new.summary: "شروع یک نشست ACP تازه (حذف تاریخچه)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "راه‌اندازی مجدد عامل هوش مصنوعی"
 commands.stop.summary: "لغو درخواست در حال اجرا"
 commands.sessions.summary: "باز کردن انتخابگر نشست‌های تاریخی (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

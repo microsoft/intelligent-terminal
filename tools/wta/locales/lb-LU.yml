@@ -189,6 +189,17 @@ time.hours_other: "virun %{count} Stonnen"
 time.day_singular: "virun %{count} Dag"
 time.days_other: "virun %{count} Deeg"
 
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Restart agent"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
 # ── Ausféierung vun der Recommandatioun (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Wiel %{choice} ass feelgeschloen: %{error}"
 
