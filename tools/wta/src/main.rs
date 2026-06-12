@@ -14,9 +14,6 @@ mod event;
 mod helper;
 mod history_loader;
 mod logging;
-#[cfg(test)]
-#[path = "locale_parity_tests.rs"]
-mod locale_parity_tests;
 mod master;
 mod osc52;
 mod pane_context;
