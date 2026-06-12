@@ -79,17 +79,17 @@ The following `[UT+]` items have been implemented and are passing:
 
 - **Autofix reducer** (`tools/wta/src/autofix_tests.rs`, 6 tests): cold-start `state != Connected` drop, missing-`tab_id` drop, suggest-mode Detected-without-submit, busy same-pane re-emit vs different-pane drop, success-exit-code does-not-arm.
 - **Default agent keybindings** (`KeyBindingsTests::DefaultAgentKeybindings`): `ctrl+shift+.`/`i`/`/`, `alt+shift+b`/`/` → correct action IDs, asserted against real `LoadDefaults()`.
+- **Agent action parse** (`KeyBindingsTests::AgentActionsParse`): `openAgentPane` / `focusAgentPane` / `openAgentSessions` / `openBackgroundAgent` command keywords parse to their `ShortcutAction`, and `commandPalette` + `launchMode: agentDelegation` parses to `ToggleCommandPalette` with `CommandPaletteLaunchMode::AgentDelegation`.
 - **Built-in agent settings round-trip** (`CustomAgentAndPolicyTests`, 6 tests): built-in agent/model/pane-position/autofix round-trip + default resolution + `EffectiveAutoFixEnabled` false when detection off.
 - **Slash dispatch** (`slash_command_tests.rs`, 8 tests): `/sessions`, `/restart`, `/fix` (idle + busy), `/model` (none/bare/direct).
+- **Locale key-parity** (`locale_parity_tests.rs`): every `en-US.yml` key present in all 88 locales.
 
 Verified **already covered**, no new tests needed:
 
 - **`classify_wt_event`** exit-code split and connection-state classification (existing `app::tests`).
 - **Hooks auto-upgrade decision** (`agent_hooks_installer.rs`: `decide_upgrade` not-installed/disabled/version-compare + `upgrade_state` cache round-trip).
 
-Deferred:
-
-- _(none — all planned UT items implemented.)_
+`[UT+]` backlog status: **cleared** — every checklist item that was UT-coverable is now `[UT✓]` (or `[UT✓] [E2E]` where only the logic half is a UT). The one item that looked like a settings round-trip but isn't — "Session-management choice persists" — is reclassified `[UT~] [E2E]` because the FRE toggle installs hooks on Save rather than persisting a settings bool (read-back state is parse-tested via `AgentHooksStatusTests`, the persistence itself is E2E).
 
 Localization parity (resolved):
 
@@ -99,9 +99,10 @@ Localization parity (resolved):
   `every_locale_has_all_en_us_keys` guard test (`locale_parity_tests.rs`) now
   enforces it.
 
-## Recommended new UT work (the `[UT+]` backlog)
+## Recommended new UT work (the `[UT+]` backlog) — COMPLETED
 
-Priority order:
+All seven backlog items below have been implemented or verified-already-covered
+(see the implementation-status section above). Kept here for traceability.
 
 1. **Autofix reducer tests** (`tools\wta\src\app\autofix.rs`) — highest value, currently zero:
    - `!autofix_enabled && !forced` → emits Detected pill only, no LLM submit.

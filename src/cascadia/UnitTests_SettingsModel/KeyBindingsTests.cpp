@@ -41,6 +41,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestGetKeyBindingForAction);
         TEST_METHOD(KeybindingsWithoutVkey);
         TEST_METHOD(DefaultAgentKeybindings);
+        TEST_METHOD(AgentActionsParse);
     };
 
     void KeyBindingsTests::KeyChords()
@@ -795,6 +796,48 @@ namespace SettingsModelUnitTests
         verifyBinding(L"ctrl+shift+/", L"Terminal.OpenAgentSessions");
         verifyBinding(L"alt+shift+b", L"Terminal.OpenBackgroundAgent");
         verifyBinding(L"alt+shift+/", L"Terminal.OpenAgentDelegation");
+    }
+
+    void KeyBindingsTests::AgentActionsParse()
+    {
+        // The agent command keywords must each parse to their ShortcutAction,
+        // and the delegate-palette command must parse to a commandPalette action
+        // carrying the AgentDelegation launch mode. This pins the JSON command
+        // surface the FRE / Settings / command-palette entry points rely on
+        // (the "Command action works" checklist items), independent of which
+        // keys happen to be bound to them.
+        const std::string bindingsString{ R"([
+            { "keys": ["ctrl+a"], "id": "Test.OpenAgentPane",       "command": "openAgentPane" },
+            { "keys": ["ctrl+b"], "id": "Test.FocusAgentPane",      "command": "focusAgentPane" },
+            { "keys": ["ctrl+d"], "id": "Test.OpenAgentSessions",   "command": "openAgentSessions" },
+            { "keys": ["ctrl+e"], "id": "Test.OpenBackgroundAgent", "command": "openBackgroundAgent" },
+            { "keys": ["ctrl+g"], "id": "Test.AgentDelegation",     "command": { "action": "commandPalette", "launchMode": "agentDelegation" } }
+        ])" };
+
+        const auto json = VerifyParseSucceeded(bindingsString);
+        auto actionMap = winrt::make_self<implementation::ActionMap>();
+        actionMap->LayerJson(json, OriginTag::None);
+        VERIFY_ARE_EQUAL(5u, actionMap->_KeyMap.size());
+
+        // Look up by stable action ID — this tests the command-keyword → action
+        // parse directly, without depending on KeyChord hashing internals.
+        auto actionFor = [&](std::wstring_view id) {
+            const auto cmd = actionMap->GetActionByID(winrt::hstring{ id });
+            VERIFY_IS_NOT_NULL(cmd, NoThrowString().Format(L"action %.*s must parse and register", static_cast<int>(id.size()), id.data()));
+            return cmd.ActionAndArgs();
+        };
+
+        VERIFY_ARE_EQUAL(ShortcutAction::OpenAgentPane, actionFor(L"Test.OpenAgentPane").Action());
+        VERIFY_ARE_EQUAL(ShortcutAction::FocusAgentPane, actionFor(L"Test.FocusAgentPane").Action());
+        VERIFY_ARE_EQUAL(ShortcutAction::OpenAgentSessions, actionFor(L"Test.OpenAgentSessions").Action());
+        VERIFY_ARE_EQUAL(ShortcutAction::OpenBackgroundAgent, actionFor(L"Test.OpenBackgroundAgent").Action());
+
+        {
+            auto actionAndArgs = actionFor(L"Test.AgentDelegation");
+            VERIFY_ARE_EQUAL(ShortcutAction::ToggleCommandPalette, actionAndArgs.Action());
+            const auto& realArgs = actionAndArgs.Args().as<ToggleCommandPaletteArgs>();
+            VERIFY_ARE_EQUAL(realArgs.LaunchMode(), CommandPaletteLaunchMode::AgentDelegation);
+        }
     }
 
     void KeyBindingsTests::LayerScancodeKeybindings()

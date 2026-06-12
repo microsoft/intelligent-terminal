@@ -52,7 +52,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT~]` `[E2E]` **Codex installed:** Codex appears only when available; selecting it saves correctly; Node/npx requirement guidance appears when relevant.
 - [ ] `[UT~]` `[E2E]` **Gemini installed:** Gemini appears only when available; selecting it saves correctly and can connect in agent-pane mode.
 - [ ] `[UT~]` `[E2E]` **Unavailable non-Copilot agents:** Claude/Codex/Gemini that are not installed do not appear as broken selectable options.
-- [ ] `[UT+]` **Agent selection persists:** The selected agent remains selected after FRE completion and app restart. _(UT: settings round-trip.)_
+- [ ] `[UT✓]` `[E2E]` **Agent selection persists:** The selected agent remains selected after FRE completion and app restart. _(UT: `BuiltInAcpAgentRoundtrips`.)_
 
 ### FRE automatic error settings
 
@@ -61,7 +61,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Automatic error suggestion off:** Detection can remain on while LLM-powered suggestions are off; failures do not trigger an agent suggestion. _(UT: autofix reducer no-LLM path.)_
 - [ ] `[UT✓]` `[E2E]` **Automatic error suggestion on:** With detection on and suggestion on, failures can trigger autofix suggestions.
 - [ ] `[UT✓]` `[E2E]` **Detection/suggestion dependency:** Suggestion cannot be enabled when detection is off; the UI state is visually clear. _(UT: `EffectiveAutoFixFalseWhenDetectionOff`.)_
-- [ ] `[UT+]` **Settings persist:** Detection and suggestion choices persist after restart. _(UT: settings round-trip.)_
+- [ ] `[UT✓]` `[E2E]` **Settings persist:** Detection and suggestion choices persist after restart. _(UT: `AutoErrorSettingsRoundtrip`.)_
 
 ### FRE session management
 
@@ -69,7 +69,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[E2E]` **Session management on:** Turning it on installs or updates agent hooks where supported.
 - [ ] `[E2E]` **Session hook hints:** Informational hint rows appear only when the owning toggle is on.
 - [ ] `[UT~]` `[E2E]` **Hook install failure:** Missing CLI, disabled plugin, or partial install states show a useful message and do not block FRE completion. _(UT: `wta hooks status --json` parse.)_
-- [ ] `[UT+]` **Session-management choice persists:** The choice is reflected later in Settings. _(UT: settings round-trip.)_
+- [ ] `[UT~]` `[E2E]` **Session-management choice persists:** The choice is reflected later in Settings. _(UT: `AgentHooksStatusTests` parses the read-back state; the toggle installs hooks on Save rather than persisting a settings bool, so the persistence itself is E2E.)_
 
 ### FRE agent pane position
 
@@ -77,7 +77,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[E2E]` **Right:** Agent pane opens on the right.
 - [ ] `[E2E]` **Left:** Agent pane opens on the left.
 - [ ] `[E2E]` **Top:** Agent pane opens at the top.
-- [ ] `[UT+]` `[E2E]` **Position persists:** The selected position remains after restart and is used by the hotkey/button. _(UT: settings round-trip + default resolution.)_
+- [ ] `[UT✓]` `[E2E]` **Position persists:** The selected position remains after restart and is used by the hotkey/button. _(UT: `AgentPanePositionRoundtripsAndDefaults`.)_
 
 ## 1. Settings > AI Agents
 
@@ -85,14 +85,14 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `[E2E]` **AI Agents page opens:** Settings opens the AI Agents page without layout glitches.
 - [ ] `[UT~]` `[E2E]` **Built-in agent dropdown works:** Copilot, Claude, Codex, and Gemini entries show correct installed/available state. _(UT: registry/filter logic.)_
-- [ ] `[UT✓]` `[UT+]` **Agent pane agent save works:** Changing the agent pane provider updates future agent panes. _(UT: custom covered by CustomAgentAndPolicyTests; add built-in round-trip.)_
-- [ ] `[UT✓]` `[UT+]` **Delegate agent save works:** Changing the delegate provider updates future delegate launches. _(UT: custom covered; add built-in round-trip.)_
+- [ ] `[UT✓]` `[E2E]` **Agent pane agent save works:** Changing the agent pane provider updates future agent panes. _(UT: `BuiltInAcpAgentRoundtrips` + custom round-trip.)_
+- [ ] `[UT✓]` `[E2E]` **Delegate agent save works:** Changing the delegate provider updates future delegate launches. _(UT: `BuiltInDelegateAgentRoundtrips` + custom round-trip.)_
 - [ ] `[UT~]` `[E2E]` **Model control appears:** Model picker/textbox appears when a selected agent supports or has a configured model.
 - [ ] `[UT✓]` `[E2E]` **Model changes apply:** Changing `acpModel` affects new agent-pane sessions and does not corrupt existing settings. _(UT: `build_acp_command` model handling.)_
 - [ ] `[UT✓]` `[E2E]` **Delegate model changes apply:** Changing `delegateModel` affects new delegate-agent launches. _(UT: command construction.)_
-- [ ] `[UT+]` `[E2E]` **Pane position setting works:** Bottom/right/left/top can be selected and saved. _(UT: persistence.)_
-- [ ] `[UT+]` `[E2E]` **Automatic error detection setting works:** Toggling detection in Settings matches FRE behavior.
-- [ ] `[UT+]` `[E2E]` **Automatic error suggestion setting works:** Toggling suggestion in Settings matches FRE behavior.
+- [ ] `[UT✓]` `[E2E]` **Pane position setting works:** Bottom/right/left/top can be selected and saved. _(UT: `AgentPanePositionRoundtripsAndDefaults`.)_
+- [ ] `[UT✓]` `[E2E]` **Automatic error detection setting works:** Toggling detection in Settings matches FRE behavior. _(UT: `AutoErrorSettingsRoundtrip`.)_
+- [ ] `[UT✓]` `[E2E]` **Automatic error suggestion setting works:** Toggling suggestion in Settings matches FRE behavior. _(UT: `AutoErrorSettingsRoundtrip` + `EffectiveAutoFixFalseWhenDetectionOff`.)_
 - [ ] `[UT~]` `[E2E]` **Session hooks install works:** Install hooks button detects supported CLIs and reports success/failure clearly. _(UT: status parse.)_
 - [ ] `[E2E]` **Session hooks remove works:** Per-CLI remove buttons remove hook state without breaking the Settings page.
 - [ ] `[UT~]` `[E2E]` **Policy lock UI works:** Locked controls are disabled and show the policy message. _(UT: Effective*/IsLocked gates.)_
@@ -203,7 +203,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[E2E]` **Session button works:** The session-management button opens the session view.
 - [ ] `[UT✓]` `[E2E]` **Hotkey works:** `Ctrl+Shift+/` opens the session view. _(UT: `DefaultAgentKeybindings` binding; open behavior E2E.)_
 - [ ] `[UT✓]` `[E2E]` **Slash command works:** `/sessions` opens the session view. _(UT: `/sessions` classify.)_
-- [ ] `[UT+]` `[E2E]` **Command action works:** The `openAgentSessions` action opens the session view. _(UT: action parse/binding.)_
+- [ ] `[UT✓]` `[E2E]` **Command action works:** The `openAgentSessions` action opens the session view. _(UT: `AgentActionsParse` verifies the action parses; opening the view is E2E.)_
 - [ ] `[E2E]` **Session view empty state works:** Empty/no-session state is useful and not visually broken.
 - [ ] `[E2E]` **Session view refresh works:** Newly created sessions appear without restarting Terminal when hooks are active.
 
@@ -275,8 +275,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `[UT✓]` `[E2E]` **Add custom delegate agent:** In Settings, add a delegate custom command such as `qwen.cmd`. _(UT: `DeriveCustomAgentId`.)_
 - [x] `[UT✓]` **Save custom delegate agent:** Saving persists the delegate custom command. _(UT: round-trip.)_
-- [ ] `[UT+]` `[E2E]` **`Alt+Shift+B` uses custom delegate:** Background delegate shortcut launches the custom command. _(UT: binding + `EffectiveDelegateAgent` resolution.)_
-- [ ] `[UT+]` `[E2E]` **`Alt+Shift+/` uses custom delegate:** Agent-delegation command palette launches the custom command.
+- [ ] `[UT✓]` `[E2E]` **`Alt+Shift+B` uses custom delegate:** Background delegate shortcut launches the custom command. _(UT: `DefaultAgentKeybindings` binding + custom `EffectiveDelegateAgent` resolution.)_
+- [ ] `[UT✓]` `[E2E]` **`Alt+Shift+/` uses custom delegate:** Agent-delegation command palette launches the custom command. _(UT: `DefaultAgentKeybindings` + `AgentActionsParse` delegation mode.)_
 - [ ] `[UT~]` `[E2E]` **Custom delegate cwd is correct:** Custom delegate starts in the source pane's cwd.
 - [ ] `[UT~]` `[E2E]` **Custom delegate errors are clear:** Bad command or auth/setup failure is actionable.
 
