@@ -2170,9 +2170,26 @@ fn spawn_plugin_cli_query(
 /// Join the handle from [`spawn_plugin_cli_query`] and return the
 /// `CliRunOutcome`; if the handle is `None` (spawn failed earlier),
 /// fall back to running the query serially on the current thread.
-/// `Ok(Err(_))` (CLI spawn IO error) and `Err(_)` (thread panic) both
-/// collapse to `None` so the caller's existing
-/// `Some(o) if o.success` / fallback branch shape stays unchanged.
+///
+/// Error handling:
+///
+///   * `Ok(Ok(o))` — query ran cleanly, return the outcome.
+///   * `Ok(Err(io_err))` — `run_plugin_cli_capture` itself returned an
+///     IO error (the spawn or wait failed). It already logged the
+///     failure via its own `tracing::warn!` before returning, so we
+///     don't re-log; collapse to `None`.
+///   * `Err(panic_payload)` — the worker thread panicked. This path
+///     has **no** prior log line (panics bypass our `tracing` calls
+///     in `run_plugin_cli_capture`), so without an explicit log here
+///     a thread panic would silently fall through to the filesystem
+///     fallback and we'd never know the parallel-status code regressed.
+///     Log it at warn so it surfaces in `wta-install-hooks.log` next
+///     to the surrounding `agent_hooks` events.
+///
+/// `exe` and `args` are echoed into the log so an operator reading
+/// the file can tell which CLI / query thread failed without having
+/// to cross-reference the thread name from
+/// [`spawn_plugin_cli_query`].
 fn join_or_run_plugin_cli(
     handle: Option<std::thread::JoinHandle<std::io::Result<CliRunOutcome>>>,
     exe: &str,
@@ -2181,7 +2198,31 @@ fn join_or_run_plugin_cli(
     match handle {
         Some(h) => match h.join() {
             Ok(Ok(o)) => Some(o),
-            Ok(Err(_)) | Err(_) => None,
+            Ok(Err(_)) => {
+                // run_plugin_cli_capture already logged the IO error.
+                None
+            }
+            Err(payload) => {
+                // The query thread panicked. Extract the panic message
+                // if it's a &str / String (the common case from
+                // `panic!()` / `assert!()`); otherwise stringify the
+                // type id for a generic diagnostic.
+                let msg = if let Some(s) = payload.downcast_ref::<&'static str>() {
+                    (*s).to_string()
+                } else if let Some(s) = payload.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "(non-string panic payload)".to_string()
+                };
+                tracing::warn!(
+                    target: "agent_hooks",
+                    exe = exe,
+                    args = ?args,
+                    panic_msg = %msg,
+                    "plugin CLI query thread panicked; status verification will fall back to filesystem heuristics",
+                );
+                None
+            }
         },
         None => run_plugin_cli_capture(exe, args).ok(),
     }
