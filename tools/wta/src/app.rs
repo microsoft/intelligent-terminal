@@ -14451,7 +14451,8 @@ mod tests {
             "Esc with empty queue cancels in-flight turn (got {:?})",
             app.current_tab().turn);
         let last = app.current_tab().messages.last().expect("messages non-empty");
-        assert!(matches!(last, ChatMessage::System(s) if s.contains("Cancel")),
+        let expected = t!("system.cancelled");
+        assert!(matches!(last, ChatMessage::System(s) if s == &*expected),
             "expected Cancelled system message, got {last:?}");
     }
 
