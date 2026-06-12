@@ -195,7 +195,6 @@ time.days_other: "hace %{count} días"
 commands.help.summary: "Mostrar esta lista de comandos"
 commands.clear.summary: "Limpiar el historial del chat (mantiene la sesión)"
 commands.new.summary: "Iniciar una nueva sesión de ACP (descarta el historial)"
-commands.fix.summary: "Diagnosticar el terminal activo y sugerir una corrección (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Reiniciar agente"
 commands.stop.summary: "Cancelar el mensaje en curso"
 commands.sessions.summary: "Abrir el selector de sesiones anteriores (Ctrl+Shift+/)"

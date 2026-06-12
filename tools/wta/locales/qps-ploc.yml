@@ -196,7 +196,6 @@ time.days_other: "%{count} days ago"
 commands.help.summary: "[Śĥöŵ ţĥïś çöɱɱåñð ĺïśţ]"
 commands.clear.summary: "[Çĺéåŕ ţĥé çĥåţ śçŕöĺĺɓåçķ (ķéépś śéśśïöñ)]"
 commands.new.summary: "[Śţåŕţ å ƒŕéśĥ ACP śéśśïöñ (ðŕöpś ĥïśţöŕý)]"
-commands.fix.summary: "[Ďïåğñöśé ţĥé åçţïṽé ţéŕɱïñåĺ åñď śûğğéśţ å ƒïẋ (/fix <hint>)!!!! !!!! !!!!]"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "[Ŕéśţåŕţ åğéñţ]"
 commands.stop.summary: "[Çåñçéĺ ţĥé ïñ-ƒĺïğĥţ pŕöɱpţ]"
 commands.sessions.summary: "[Öpéñ ţĥé ĥïśţöŕïçåĺ śéśśïöñś pïçķéŕ (Ctrl+Shift+/)]"

@@ -188,17 +188,6 @@ time.hours_other: "%{count} órája"
 time.day_singular: "%{count} napja"
 time.days_other: "%{count} napja"
 
-# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
-# Command names (/help, /clear, etc.) stay English; descriptions translate.
-# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
-commands.help.summary: "A parancslista megjelenítése"
-commands.clear.summary: "A csevegés görgetési előzményeinek törlése (a munkamenet megmarad)"
-commands.new.summary: "Új ACP-munkamenet indítása (előzmények eldobása)"  # {Locked="ACP"}
-commands.fix.summary: "Az aktív terminál diagnosztizálása és javítás javaslata (/fix <hint>)"  # {Locked="/fix","<hint>"}
-commands.restart.summary: "Ügynök újraindítása"
-commands.stop.summary: "Folyamatban lévő prompt megszakítása"
-commands.sessions.summary: "Előzménybeli munkamenetek választójának megnyitása (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-
 # ── Javaslat végrehajtása (src/coordinator.rs) ──────────────────────────────
 system.choice_execution_failed: "A(z) %{choice}. választás sikertelen: %{error}"
 

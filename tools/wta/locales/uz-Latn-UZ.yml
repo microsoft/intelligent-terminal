@@ -74,7 +74,6 @@ commands.help_close_hint: "  Esc        Bu yordamni yopish"  # {Locked="Esc"}
 commands.help.summary: "Bu buyruqlar roʻyxatini koʻrsat"
 commands.clear.summary: "Chat aylantirish tarixini tozalash (seansni saqlaydi)"
 commands.new.summary: "Yangi ACP seansini boshlash (tarixni oʻchiradi)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Agentni qayta ishga tushiring"
 commands.stop.summary: "Bajarilayotgan soʻrovni bekor qilish"
 commands.sessions.summary: "Tarixiy seanslar tanlagichini ochish (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

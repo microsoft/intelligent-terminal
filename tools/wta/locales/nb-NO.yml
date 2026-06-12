@@ -189,17 +189,6 @@ time.hours_other: "%{count} timer siden"
 time.day_singular: "%{count} dag siden"
 time.days_other: "%{count} dager siden"
 
-# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
-# Command names (/help, /clear, etc.) stay English; descriptions translate.
-# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
-commands.help.summary: "Vis denne kommandolisten"
-commands.clear.summary: "Tøm chattens rullehistorikk (beholder økten)"
-commands.new.summary: "Start en ny ACP-økt (forkaster historikk)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnostiser den aktive terminalen og foreslå en løsning (/fix <hint>)"  # {Locked="/fix","<hint>"}
-commands.restart.summary: "Start agenten på nytt"
-commands.stop.summary: "Avbryt ledeteksten som pågår"
-commands.sessions.summary: "Åpne velgeren for historiske økter (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-
 # ── Utføring av anbefaling (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Valg %{choice} mislyktes: %{error}"
 

@@ -193,7 +193,6 @@ time.days_other: "[!!_%{count} days ago_!!]"
 commands.help.summary: "[!!_Show this command list_!!]"
 commands.clear.summary: "[!!_Clear the chat scrollback (keeps session)_!!]"
 commands.new.summary: "[!!_Start a fresh ACP session (drops history)_!!]"
-commands.fix.summary: "[!!_Diagnose the active terminal and suggest a fix (/fix <hint>)_!!]"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "[!!_Restart agent_!!]"
 commands.stop.summary: "[!!_Cancel the in-flight prompt_!!]"
 commands.sessions.summary: "[!!_Open the historical sessions picker (Ctrl+Shift+/)_!!]"

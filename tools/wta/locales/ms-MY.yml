@@ -189,17 +189,6 @@ time.hours_other: "%{count} jam yang lalu"
 time.day_singular: "%{count} hari yang lalu"
 time.days_other: "%{count} hari yang lalu"
 
-# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
-# Command names (/help, /clear, etc.) stay English; descriptions translate.
-# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
-commands.help.summary: "Tunjukkan senarai perintah ini"
-commands.clear.summary: "Kosongkan skrol balik sembang (kekalkan sesi)"
-commands.new.summary: "Mulakan sesi ACP baharu (buang sejarah)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnosis terminal aktif dan cadangkan pembetulan (/fix <hint>)"  # {Locked="/fix","<hint>"}
-commands.restart.summary: "Mulakan semula ejen"
-commands.stop.summary: "Batalkan gesaan yang sedang berjalan"
-commands.sessions.summary: "Buka pemilih sesi sejarah (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-
 # ── Pelaksanaan cadangan (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Pilihan %{choice} gagal: %{error}"
 

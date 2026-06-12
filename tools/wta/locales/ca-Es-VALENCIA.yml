@@ -189,17 +189,6 @@ time.hours_other: "fa %{count} hores"
 time.day_singular: "fa %{count} dia"
 time.days_other: "fa %{count} dies"
 
-# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
-# Command names (/help, /clear, etc.) stay English; descriptions translate.
-# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
-commands.help.summary: "Mostra aquesta llista d'ordres"
-commands.clear.summary: "Esborra l'historial de desplaçament del xat (manté la sessió)"
-commands.new.summary: "Inicia una sessió ACP nova (descarta l'historial)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnostica el terminal actiu i suggereix una correcció (/fix <hint>)"  # {Locked="/fix","<hint>"}
-commands.restart.summary: "Reinicia l'agent"
-commands.stop.summary: "Cancel·la la sol·licitud en curs"
-commands.sessions.summary: "Obre el selector de sessions històriques (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-
 # ── Execució de recomanacions (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "L’opció %{choice} ha fallat: %{error}"
 

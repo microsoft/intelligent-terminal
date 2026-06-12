@@ -195,7 +195,6 @@ time.days_other: "il y a %{count} jours"
 commands.help.summary: "Afficher cette liste de commandes"
 commands.clear.summary: "Effacer le contenu du clavardage (conserve la session)"
 commands.new.summary: "Démarrer une nouvelle session ACP (efface l’historique)"
-commands.fix.summary: "Diagnostiquer le terminal actif et suggérer un correctif (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Redémarrer l’agent"
 commands.stop.summary: "Annuler la requête en cours"
 commands.sessions.summary: "Ouvrir le sélecteur de sessions précédentes (Ctrl+Shift+/)"

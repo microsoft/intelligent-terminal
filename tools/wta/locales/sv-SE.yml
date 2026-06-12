@@ -189,17 +189,6 @@ time.hours_other: "%{count} timmar sedan"
 time.day_singular: "%{count} dag sedan"
 time.days_other: "%{count} dagar sedan"
 
-# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
-# Command names (/help, /clear, etc.) stay English; descriptions translate.
-# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
-commands.help.summary: "Visa den här kommandolistan"
-commands.clear.summary: "Rensa chattens rullningshistorik (behåller sessionen)"
-commands.new.summary: "Starta en ny ACP-session (slänger historiken)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnostisera den aktiva terminalen och föreslå en korrigering (/fix <hint>)"  # {Locked="/fix","<hint>"}
-commands.restart.summary: "Starta om agenten"
-commands.stop.summary: "Avbryt den pågående prompten"
-commands.sessions.summary: "Öppna väljaren för historiska sessioner (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-
 # ── Körning av rekommendation (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Val %{choice} misslyckades: %{error}"
 

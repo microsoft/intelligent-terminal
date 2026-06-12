@@ -71,7 +71,6 @@ commands.help_close_hint: "  Esc        Zavřít tuto nápovědu"  # {Locked="Es
 commands.help.summary: "Zobrazit tento seznam příkazů"
 commands.clear.summary: "Vymazat historii chatu (zachová relaci)"
 commands.new.summary: "Spustit novou relaci ACP (zahodí historii)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnostikovat aktivní terminál a navrhnout opravu (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Restartovat agenta"
 commands.stop.summary: "Zrušit probíhající výzvu"
 commands.sessions.summary: "Otevřít výběr historických relací (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

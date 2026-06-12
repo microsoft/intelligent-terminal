@@ -71,7 +71,6 @@ commands.help_close_hint: "  Esc        Затвори ја оваа помош"
 commands.help.summary: "Прикажи ја оваа листа со команди"
 commands.clear.summary: "Исчисти ја историјата на разговорот (ја задржува сесијата)"
 commands.new.summary: "Започни нова сесија ACP (ја отфрла историјата)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Рестартирај го агентот"
 commands.stop.summary: "Откажи го тековното барање"
 commands.sessions.summary: "Отвори избирач на претходни сесии (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
