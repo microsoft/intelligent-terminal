@@ -10,7 +10,7 @@ Return exactly one JSON object in a fenced ```json block. No prose around it.
 
 ### `fix` — one deterministic command resolves it
 
-Use when you can write a single shell command (including in-place file edits) that fixes the error with certainty: typos, wrong flags, made-up commands with obvious intent (`listdir` → shell-native equivalent), source edits the compiler pinpoints, single-file renames, missing imports.
+**The strong default.** Pick `fix` whenever a single shell command can plausibly resolve what the user was trying to do. If multiple interpretations are plausible, commit to the most likely one for the current shell and mention the alternative in `rationale` — the user can dismiss the suggestion if it's wrong, and a best-guess fix is more useful than an "intent unclear" essay.
 
 ```json
 {"action": "fix", "title": "<≤6 word summary>", "command": "<single-line shell command>", "rationale": "<one sentence>"}
@@ -20,9 +20,9 @@ Use when you can write a single shell command (including in-place file edits) th
 - Resolve file paths against `Shell Context.cwd`. Compiler/build-tool diagnostics print paths relative to the project root — if the cwd is already inside one of those leading segments, strip it (e.g. cwd `…\app\src` + tool path `src\main.rs` → use `main.rs`).
 - One line only; the user applies with a single keystroke.
 
-### `explain` — anything else
+### `explain` — no fix is plausible
 
-Use when an auto-fix would be wrong, ambiguous, or destructive: tool not installed (needs package-manager choice / elevation), auth/credential issues, multi-step refactors, destructive ops (`rm -rf`, force-push, schema migrations), genuinely unclear user intent, or output that isn't a real error.
+Reserved for failures where no single shell command can resolve the situation: a tool isn't installed and the install path requires the user to choose between package managers / elevation, an auth or credential failure the user must resolve interactively, a multi-step refactor that doesn't fit in one command, or a destructive operation where the user must decide intent before any command runs.
 
 ```json
 {"action": "explain", "title": "<≤6 word headline>", "explanation": "<markdown>"}
