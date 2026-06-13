@@ -20,11 +20,13 @@ mod locale_parity_tests;
 mod master;
 mod osc52;
 mod pane_context;
+mod proc_bind;
 mod protocol;
 mod rtl;
 mod runtime_paths;
 mod session_mgmt;
 mod session_registry;
+mod session_watcher;
 mod shell;
 mod telemetry;
 #[cfg(test)]

@@ -694,6 +694,14 @@ pub struct SessionInfo {
     pub origin: Option<SessionOrigin>,
     #[serde(default)]
     pub last_error: Option<String>,
+    /// PID of the process that owns this Class-B session (Copilot worker /
+    /// Codex rollout holder / cwd-matched Claude), captured at bind time.
+    /// Master's liveness poll checks it to demote shell-pane sessions whose
+    /// CLI exited without writing a "session ended" record (e.g. `Ctrl+C`).
+    /// `None` for agent-pane sessions and any session we couldn't bind to a
+    /// pid. Master-internal — skipped on the wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bound_pid: Option<u32>,
 }
 
 impl SessionInfo {
@@ -713,6 +721,7 @@ impl SessionInfo {
             last_activity_at_ms: None,
             origin: None,
             last_error: None,
+            bound_pid: None,
         }
     }
 
@@ -751,6 +760,9 @@ pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
         last_activity_at_ms,
         origin: Some(s.origin.clone()),
         last_error: s.last_error.clone(),
+        // History-scan / helper-sourced rows have no bound pid; only the
+        // file watcher's bind step populates it.
+        bound_pid: None,
     }
 }
 
@@ -1783,6 +1795,7 @@ mod tests {
             last_activity_at_ms: Some(1717012345678),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
             last_error: Some("previous failure".into()),
+            bound_pid: None,
         };
 
         let json = serde_json::to_string(&row).expect("serialize SessionInfo");
@@ -1826,6 +1839,7 @@ mod tests {
             last_activity_at_ms: Some(123),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
             last_error: None,
+            bound_pid: None,
         };
         let raw = build_sessions_list_response(vec![row.clone()]);
         let parsed = parse_sessions_list_response(&raw).expect("response parses");
@@ -1960,6 +1974,7 @@ mod tests {
             last_activity_at_ms: Some(1),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
             last_error: None,
+            bound_pid: None,
         }).await;
         reg.apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched { key: "sid".into() }).await;
 
