@@ -4,3 +4,4 @@ pub mod probe;
 pub mod prompt;
 pub mod soft_stop;
 pub(crate) mod spawn;
+pub(crate) mod cwd_format;

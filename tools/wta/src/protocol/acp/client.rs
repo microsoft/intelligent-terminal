@@ -2520,7 +2520,17 @@ pub async fn run_acp_client_over_pipe(
     // bug: master used to register both the bootstrap and the loaded
     // sid (both bound to the same WT pane) and the session management view showed two
     // Live rows for the same agent pane.
-    let cwd = std::env::current_dir().unwrap_or_default();
+    // Seed the bootstrap session's cwd from the user's active (source) pane
+    // — e.g. a WSL pane reporting `/home/yeelam` via shell integration — so
+    // the agent starts where the user is, not in the helper's own process
+    // dir (`std::env::current_dir()` = `C:\WINDOWS\system32` for the packaged
+    // helper). Master converts this into the agent's namespace and falls
+    // back if it's unusable (see `cwd_format`). `None` (e.g. the active pane
+    // is the agent pane itself) falls through to the process cwd, which
+    // master then normalizes to `%USERPROFILE%`.
+    let cwd = resolve_active_pane_cwd(&shell_mgr, wt_connected)
+        .await
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     let (session_id, available_models, current_model_id, has_bootstrap) =
         if let Some(load_sid) = initial_load_session_id.as_deref() {
             // No bootstrap. AgentConnected fires with the to-be-loaded
@@ -3422,17 +3432,77 @@ async fn run_inner(
     // Create session — also with a timeout.
     let _ = event_tx.send(AppEvent::ConnectionStage("Creating session...".to_string()));
     startup_probe.log("Creating session");
-    let cwd = active_pane_cwd
-        .clone()
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    let session_started = std::time::Instant::now();
-    let session_future = conn.new_session(acp::NewSessionRequest::new(cwd));
-    let session_result = tokio::time::timeout(std::time::Duration::from_secs(15), session_future)
-        .await;
-    log_acp_new_session_timeout_result("DirectAgentStartup", session_started, &session_result);
-    let session = session_result
-        .map_err(|_| anyhow::anyhow!("new_session timed out after 15 s"))?
-        .map_err(|e| anyhow::anyhow!("new_session failed: {}", e))?;
+    // Resolve the cwd we hand the agent's `session/new`. Direct (non-master)
+    // path: detect the agent's namespace from its own `session/list`, pick a
+    // non-junk source value, and try it converted into that namespace — with
+    // the agent's own cwd-rejection error driving the fallback. Mirrors the
+    // master path (see `cwd_format`). The *spawn* cwd above intentionally
+    // keeps the raw Windows path — the child may be `wsl.exe`, a Windows
+    // process, whose working directory must stay a Windows directory.
+    use crate::protocol::acp::cwd_format;
+    let target_format = match tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        conn.list_sessions(acp::ListSessionsRequest::new()),
+    )
+    .await
+    {
+        Ok(Ok(resp)) => {
+            let cwd_values: Vec<String> = resp
+                .sessions
+                .iter()
+                .map(|s| s.cwd.to_string_lossy().into_owned())
+                .collect();
+            cwd_format::detect_format(cwd_values.iter().map(String::as_str))
+        }
+        _ => None,
+    };
+    let value = cwd_format::pick_value(active_pane_cwd.as_deref());
+    let attempts = cwd_format::build_attempts(&value, target_format);
+    startup_probe.log(&format!(
+        "session cwd format={:?} attempts={:?}",
+        target_format, attempts
+    ));
+    let session = {
+        let mut last_err: Option<anyhow::Error> = None;
+        let mut ok = None;
+        for (i, cwd) in attempts.iter().enumerate() {
+            let session_started = std::time::Instant::now();
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(15),
+                conn.new_session(acp::NewSessionRequest::new(cwd.clone())),
+            )
+            .await;
+            log_acp_new_session_timeout_result("DirectAgentStartup", session_started, &result);
+            match result {
+                Err(_) => {
+                    last_err = Some(anyhow::anyhow!("new_session timed out after 15 s"));
+                    break;
+                }
+                Ok(Ok(s)) => {
+                    ok = Some(s);
+                    break;
+                }
+                Ok(Err(e)) => {
+                    let retryable = cwd_format::looks_like_cwd_error(&format!(
+                        "{} {:?}",
+                        e.message, e.data
+                    )) && i + 1 < attempts.len();
+                    startup_probe.log(&format!(
+                        "new_session attempt {i} cwd={} failed (retryable={retryable}): {e}",
+                        cwd.display()
+                    ));
+                    last_err = Some(anyhow::anyhow!("new_session failed: {}", e));
+                    if !retryable {
+                        break;
+                    }
+                }
+            }
+        }
+        match ok {
+            Some(s) => s,
+            None => return Err(last_err.unwrap_or_else(|| anyhow::anyhow!("new_session failed"))),
+        }
+    };
 
     let session_id = session.session_id.clone();
     startup_probe.log(&format!("Session created: {}", session_id));

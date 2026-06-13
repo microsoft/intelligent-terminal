@@ -203,6 +203,14 @@ struct MasterStateInner {
     /// don't recognize (e.g. `--agent codex` — tracked in CliSource::Unknown
     /// but not surfaced as a known session management filter).
     pub(crate) cli_source: Option<crate::agent_sessions::CliSource>,
+    /// The agent's working-directory namespace (Windows vs POSIX), learned
+    /// once at startup from the agent's own `session/list` cwd values. Used by
+    /// `new_session` / `load_session` to convert the incoming cwd into a
+    /// form the agent accepts (e.g. a WSL agent needs `/mnt/c/…`, not
+    /// `C:\WINDOWS\system32`). `None` when the agent reports no sessions or
+    /// doesn't support `session/list` — callers then try both formats. See
+    /// `protocol::acp::cwd_format`.
+    pub(crate) cwd_format: OnceLock<Option<crate::protocol::acp::cwd_format::PathFormat>>,
     /// Per-helper crash-recovery metadata, keyed by `HelperId`.
     ///
     /// Populated/refreshed by the `new_session` + `load_session`
@@ -625,6 +633,116 @@ fn notification_kind(notif: &acp::SessionNotification) -> &'static str {
     }
 }
 
+/// True when an ACP error from `new_session` looks like a cwd rejection
+/// (bad namespace / nonexistent dir) — the signal to retry with the next
+/// candidate cwd. Matches the agent's own wording, e.g. copilot's
+/// "Directory path must be absolute" / "Directory does not exist or cannot
+/// be accessed". Any other error (auth, internal, …) is not retried.
+fn is_cwd_error(e: &acp::Error) -> bool {
+    let mut hay = e.message.clone();
+    if let Some(d) = &e.data {
+        hay.push(' ');
+        hay.push_str(&d.to_string());
+    }
+    crate::protocol::acp::cwd_format::looks_like_cwd_error(&hay)
+}
+
+/// Try each cwd in `attempts` in order via `forward`, retrying only when the
+/// error is a cwd rejection (see [`is_cwd_error`]) and another candidate
+/// remains. Returns the successful response paired with the cwd that worked,
+/// or the last error when all attempts are exhausted / a non-cwd error
+/// occurs. Pure orchestration over an injected `forward`, so it's unit-
+/// testable without a live agent connection.
+async fn try_session_cwd_candidates<R, F, Fut>(
+    attempts: &[std::path::PathBuf],
+    mut forward: F,
+) -> acp::Result<(R, std::path::PathBuf)>
+where
+    F: FnMut(std::path::PathBuf) -> Fut,
+    Fut: std::future::Future<Output = acp::Result<R>>,
+{
+    let mut last_err: Option<acp::Error> = None;
+    for (i, cwd) in attempts.iter().enumerate() {
+        match forward(cwd.clone()).await {
+            Ok(r) => return Ok((r, cwd.clone())),
+            Err(e) => {
+                let retryable = is_cwd_error(&e) && i + 1 < attempts.len();
+                // Benign when retryable — the fallback ladder is working as
+                // designed, so don't inflate warn counts; reserve warn! for
+                // the terminal/non-retryable failure.
+                if retryable {
+                    tracing::info!(
+                        target: "master",
+                        op = "new_session",
+                        attempt = i,
+                        cwd = %cwd.display(),
+                        error = %e,
+                        "new_session cwd attempt failed; trying next candidate"
+                    );
+                } else {
+                    tracing::warn!(
+                        target: "master",
+                        op = "new_session",
+                        attempt = i,
+                        cwd = %cwd.display(),
+                        error = %e,
+                        "new_session attempt failed (no more candidates)"
+                    );
+                }
+                last_err = Some(e);
+                if !retryable {
+                    break;
+                }
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(acp::Error::internal_error))
+}
+
+/// Forward one `session/new` to the agent with a hard timeout. Free function
+/// (not a method) so callers can hand it owned captures into `try_session_cwd_candidates`
+/// without borrowing `&self` across awaits.
+async fn forward_new_session(
+    conn: &acp::ClientSideConnection,
+    helper_id: HelperId,
+    args: acp::NewSessionRequest,
+    timeout: std::time::Duration,
+) -> acp::Result<acp::NewSessionResponse> {
+    let timeout_secs = timeout.as_secs();
+    let started = std::time::Instant::now();
+    let result = tokio::time::timeout(timeout, conn.new_session(args)).await;
+    let session_id = result
+        .as_ref()
+        .ok()
+        .and_then(|inner| inner.as_ref().ok())
+        .map(|resp| resp.session_id.to_string());
+    let (failure_kind, acp_error_code) = match &result {
+        Ok(Ok(_)) => ("", 0),
+        Ok(Err(e)) => ("AcpError", e.code.into()),
+        Err(_) => ("Timeout", 0),
+    };
+    crate::telemetry::log_acp_new_session_complete(
+        session_id.as_deref(),
+        started.elapsed().as_secs_f64() * 1000.0,
+        matches!(result, Ok(Ok(_))),
+        "MasterForward",
+        failure_kind,
+        acp_error_code,
+    );
+    result.map_err(|_| {
+        let message = format!("agent CLI session/new timed out after {timeout_secs}s");
+        tracing::error!(
+            target: "master",
+            step = "helper→agent",
+            op = "new_session",
+            ?helper_id,
+            timeout_secs,
+            "agent CLI session/new timed out"
+        );
+        acp::Error::new(-32603, message.clone()).data(serde_json::json!({ "message": message }))
+    })?
+}
+
 /// `acp::Agent` impl wired into one helper's `AgentSideConnection`.
 /// Each helper gets its own `HelperHandler` instance.
 struct HelperHandler {
@@ -700,41 +818,7 @@ impl HelperHandler {
         args: acp::NewSessionRequest,
         timeout: std::time::Duration,
     ) -> acp::Result<acp::NewSessionResponse> {
-        let timeout_secs = timeout.as_secs();
-        let started = std::time::Instant::now();
-        let result = tokio::time::timeout(timeout, self.agent_conn.new_session(args)).await;
-        let session_id = result
-            .as_ref()
-            .ok()
-            .and_then(|inner| inner.as_ref().ok())
-            .map(|resp| resp.session_id.to_string());
-        let (failure_kind, acp_error_code) = match &result {
-            Ok(Ok(_)) => ("", 0),
-            Ok(Err(e)) => ("AcpError", e.code.into()),
-            Err(_) => ("Timeout", 0),
-        };
-        crate::telemetry::log_acp_new_session_complete(
-            session_id.as_deref(),
-            started.elapsed().as_secs_f64() * 1000.0,
-            matches!(result, Ok(Ok(_))),
-            "MasterForward",
-            failure_kind,
-            acp_error_code,
-        );
-        result.map_err(|_| {
-            let message = format!("agent CLI session/new timed out after {timeout_secs}s");
-            tracing::error!(
-                target: "master",
-                step = "helper→agent",
-                op = "new_session",
-                helper_id = ?self.helper_id,
-                timeout_secs,
-                "agent CLI session/new timed out"
-            );
-            acp::Error::new(-32603, message.clone()).data(serde_json::json!({
-                "message": message
-            }))
-        })?
+        forward_new_session(&self.agent_conn, self.helper_id, args, timeout).await
     }
 }
 
@@ -812,22 +896,46 @@ impl acp::Agent for HelperHandler {
         // in the same place as the routing entry.
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
-        let cwd_for_registry = args.cwd.clone();
+        // Resolve a cwd the agent will accept. The incoming cwd is whatever
+        // the helper computed (often `std::env::current_dir()` =
+        // `C:\WINDOWS\system32` for the packaged helper); we drop junk down
+        // to %USERPROFILE%, then convert into the agent's namespace
+        // (Windows vs POSIX) learned at startup. `build_attempts` yields an
+        // ordered set we try in turn so a wrong/empty format guess
+        // self-corrects on the agent's own cwd-rejection error. See
+        // `cwd_format`.
+        use crate::protocol::acp::cwd_format;
+        let value = cwd_format::pick_value(Some(&args.cwd));
+        let target = self.state.cwd_format.get().copied().flatten();
+        let attempts = cwd_format::build_attempts(&value, target);
         tracing::info!(
             target: "master",
             step = "helper→agent",
             op = "new_session",
             helper_id = ?self.helper_id,
+            incoming_cwd = ?args.cwd,
+            ?target,
+            attempts = ?attempts,
             mcp_servers = args.mcp_servers.len(),
             pane_session_id = ?wta_meta.pane_session_id,
-            "forwarding new_session"
+            "forwarding new_session (cwd attempts)"
         );
-        let resp = self
-            .forward_new_session_to_agent(
-                args,
-                std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
-            )
+        let resp = {
+            let timeout = std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS);
+            let conn = Arc::clone(&self.agent_conn);
+            let helper_id = self.helper_id;
+            let base = args.clone();
+            let (resp, winning_cwd) = try_session_cwd_candidates(&attempts, move |cwd| {
+                let conn = Arc::clone(&conn);
+                let mut a = base.clone();
+                a.cwd = cwd;
+                async move { forward_new_session(&conn, helper_id, a, timeout).await }
+            })
             .await?;
+            args.cwd = winning_cwd;
+            resp
+        };
+        let cwd_for_registry = args.cwd.clone();
         let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
@@ -933,6 +1041,19 @@ impl acp::Agent for HelperHandler {
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let session_id = args.session_id.clone();
+        // Mirror `new_session`: a resumed session must carry a cwd in the
+        // agent's namespace. The session already exists (its original cwd was
+        // valid), so a single conversion to the detected format is enough —
+        // no multi-attempt ladder needed here. See `cwd_format`.
+        {
+            use crate::protocol::acp::cwd_format::{self, PathFormat};
+            let value = cwd_format::pick_value(Some(&args.cwd));
+            args.cwd = match self.state.cwd_format.get().copied().flatten() {
+                Some(PathFormat::Windows) => cwd_format::to_windows_format(&value),
+                Some(PathFormat::Posix) => cwd_format::to_linux_format(&value),
+                None => value,
+            };
+        }
         let cwd_for_registry = args.cwd.clone();
         tracing::info!(
             target: "master",
@@ -1562,6 +1683,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         wt,
         cached_init_resp: OnceLock::new(),
         cli_source,
+        cwd_format: OnceLock::new(),
         helper_meta: Mutex::new(HashMap::new()),
     });
 
@@ -1729,6 +1851,53 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // is idempotent on already-populated cells — we ignore the
     // returned Err.)
     let _ = inner.cached_init_resp.set(init_resp.clone());
+
+    // Detect the agent's cwd namespace (Windows vs POSIX) from its own
+    // session history, so `new_session` sends a cwd the agent will accept
+    // (a WSL agent needs `/mnt/c/…` or `/home/…`, never `C:\WINDOWS\system32`).
+    // Best-effort: capability-gated implicitly (agents without `session/list`
+    // return an error → None → callers try both formats). Empty history also
+    // yields None. See `cwd_format`.
+    let detected_format = match tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        agent_conn.list_sessions(acp::ListSessionsRequest::new()),
+    )
+    .await
+    {
+        Ok(Ok(resp)) => {
+            let cwd_values: Vec<String> = resp
+                .sessions
+                .iter()
+                .map(|s| s.cwd.to_string_lossy().into_owned())
+                .collect();
+            let fmt = crate::protocol::acp::cwd_format::detect_format(
+                cwd_values.iter().map(String::as_str),
+            );
+            tracing::info!(
+                target: "master",
+                ?fmt,
+                sessions = cwd_values.len(),
+                "detected agent cwd format from session/list"
+            );
+            fmt
+        }
+        Ok(Err(e)) => {
+            tracing::info!(
+                target: "master",
+                error = %e,
+                "session/list unavailable; agent cwd format unknown (will try both)"
+            );
+            None
+        }
+        Err(_) => {
+            tracing::warn!(
+                target: "master",
+                "session/list timed out; agent cwd format unknown (will try both)"
+            );
+            None
+        }
+    };
+    let _ = inner.cwd_format.set(detected_format);
 
     // 4. Open the named pipe and accept helper connections.
     let mut server = ServerOptions::new()
@@ -2692,6 +2861,7 @@ mod tests {
             wt: None,
             cached_init_resp: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+            cwd_format: OnceLock::new(),
             helper_meta: Mutex::new(HashMap::new()),
         })
     }
@@ -2726,6 +2896,45 @@ mod tests {
         });
 
         Arc::new(client_conn)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn try_session_cwd_candidates_retries_only_on_cwd_errors() {
+        use std::cell::RefCell;
+        let attempts = vec![
+            PathBuf::from(r"C:\repo"),
+            PathBuf::from("/mnt/c/repo"),
+            PathBuf::from("/tmp"),
+        ];
+
+        // Fails the first attempt with a cwd-style error, succeeds on the 2nd.
+        let seen = RefCell::new(Vec::<PathBuf>::new());
+        let (resp, winning) = try_session_cwd_candidates(&attempts, |cwd| {
+            seen.borrow_mut().push(cwd.clone());
+            async move {
+                if cwd == PathBuf::from(r"C:\repo") {
+                    Err(acp::Error::new(-32603, "Directory path must be absolute: C:\\repo"))
+                } else {
+                    Ok(cwd.to_string_lossy().into_owned())
+                }
+            }
+        })
+        .await
+        .expect("should succeed on the second candidate");
+        assert_eq!(winning, PathBuf::from("/mnt/c/repo"));
+        assert_eq!(resp, "/mnt/c/repo");
+        assert_eq!(seen.borrow().len(), 2, "stops at first success");
+
+        // A non-cwd error is NOT retried: stops immediately and surfaces it.
+        let calls = RefCell::new(0u32);
+        let err = try_session_cwd_candidates::<String, _, _>(&attempts, |_cwd| {
+            *calls.borrow_mut() += 1;
+            async move { Err(acp::Error::new(-32000, "authentication required")) }
+        })
+        .await
+        .expect_err("non-cwd error should not be retried");
+        assert_eq!(*calls.borrow(), 1, "no retry on non-cwd error");
+        assert!(format!("{err}").contains("authentication"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -3602,6 +3811,7 @@ mod tests {
             wt: Some(wt),
             cached_init_resp: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+            cwd_format: OnceLock::new(),
             helper_meta: Mutex::new(HashMap::new()),
         })
     }
