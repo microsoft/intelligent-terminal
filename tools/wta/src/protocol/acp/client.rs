@@ -2217,21 +2217,8 @@ async fn handle_load_failure(
                 Some(pane_session_id.as_str())
             };
             crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
-            let (available_models, current_model_id) = match &resp.models {
-                Some(state) => {
-                    let models: Vec<crate::app::AcpModelInfo> = state
-                        .available_models
-                        .iter()
-                        .map(|m| crate::app::AcpModelInfo {
-                            id: m.model_id.0.to_string(),
-                            name: m.name.clone(),
-                            description: m.description.clone(),
-                        })
-                        .collect();
-                    (models, Some(state.current_model_id.0.to_string()))
-                }
-                None => (Vec::new(), None),
-            };
+            let (available_models, current_model_id) =
+                crate::protocol::acp::model_select::models_from_new_session(&resp);
             let _ = event_tx.send(AppEvent::SessionAttached {
                 tab_id,
                 session_id: new_sid.to_string(),
@@ -2585,21 +2572,8 @@ pub async fn run_acp_client_over_pipe(
                 crate::agent_pane_origin::append_default(session_id.0.as_ref(), pane_for_index);
             }
 
-            let (available_models, current_model_id) = match &session.models {
-                Some(state) => {
-                    let models: Vec<crate::app::AcpModelInfo> = state
-                        .available_models
-                        .iter()
-                        .map(|m| crate::app::AcpModelInfo {
-                            id: m.model_id.0.to_string(),
-                            name: m.name.clone(),
-                            description: m.description.clone(),
-                        })
-                        .collect();
-                    (models, Some(state.current_model_id.0.to_string()))
-                }
-                None => (Vec::new(), None),
-            };
+            let (available_models, current_model_id) =
+                crate::protocol::acp::model_select::models_from_new_session(&session);
             (session_id, available_models, current_model_id, true)
         };
 
@@ -2617,14 +2591,15 @@ pub async fn run_acp_client_over_pipe(
                 "Setting ACP session model to {} (over pipe)",
                 requested_model
             ));
-            conn.set_session_model(acp::SetSessionModelRequest::new(
+            crate::protocol::acp::model_select::apply_session_model(
+                &conn,
                 session_id.clone(),
                 requested_model.clone(),
-            ))
+            )
             .await
             .map_err(|e| {
                 anyhow::anyhow!(
-                    "set_session_model failed for requested model {}: {}",
+                    "failed to set requested model {}: {}",
                     requested_model,
                     e
                 )
@@ -2857,21 +2832,8 @@ pub async fn run_acp_client_over_pipe(
                         );
                         crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
                     }
-                    let (per_tab_models, per_tab_current) = match &new_session.models {
-                        Some(state) => {
-                            let models: Vec<crate::app::AcpModelInfo> = state
-                                .available_models
-                                .iter()
-                                .map(|m| crate::app::AcpModelInfo {
-                                    id: m.model_id.0.to_string(),
-                                    name: m.name.clone(),
-                                    description: m.description.clone(),
-                                })
-                                .collect();
-                            (models, Some(state.current_model_id.0.to_string()))
-                        }
-                        None => (Vec::new(), None),
-                    };
+                    let (per_tab_models, per_tab_current) =
+                        crate::protocol::acp::model_select::models_from_new_session(&new_session);
 
                     {
                         let mut g = tab_to_session_for_new.lock().await;
@@ -3405,7 +3367,7 @@ async fn run_inner(
             anyhow::anyhow!(
                 "ACP initialize timed out after {} s — '{}' did not respond. \
                  First-run npx adapters download ~5MB; check network. \
-                 Built-in ACP agents: copilot, claude (via @zed-industries/claude-code-acp), \
+                 Built-in ACP agents: copilot, claude (via @agentclientprotocol/claude-agent-acp), \
                  codex (via @zed-industries/codex-acp), gemini.",
                 init_timeout_secs,
                 agent_label
@@ -3455,31 +3417,13 @@ async fn run_inner(
     // Capture the agent's advertised model list. Settings UI rebuilds its
     // ComboBox from the `agent_status` event payload, where this gets
     // forwarded by App::publish_agent_status.
-    let (available_models, current_model_id) = match &session.models {
-        Some(state) => {
-            startup_probe.log(&format!(
-                "Session models: agent advertised {} model(s), current={}",
-                state.available_models.len(),
-                state.current_model_id.0,
-            ));
-            let models: Vec<crate::app::AcpModelInfo> = state
-                .available_models
-                .iter()
-                .map(|m| crate::app::AcpModelInfo {
-                    id: m.model_id.0.to_string(),
-                    name: m.name.clone(),
-                    description: m.description.clone(),
-                })
-                .collect();
-            (models, Some(state.current_model_id.0.to_string()))
-        }
-        None => {
-            startup_probe.log(
-                "Session models: agent did not advertise any models (NewSessionResponse.models is None)",
-            );
-            (Vec::new(), None)
-        }
-    };
+    let (available_models, current_model_id) =
+        crate::protocol::acp::model_select::models_from_new_session(&session);
+    startup_probe.log(&format!(
+        "Session models: {} model(s) advertised, current={}",
+        available_models.len(),
+        current_model_id.as_deref().unwrap_or("<none>"),
+    ));
 
     // Resolve the model to apply: explicit `--acp-model` flag wins (used by
     // adapters like claude/codex via npx that can't carry --model on the
@@ -3494,14 +3438,15 @@ async fn run_inner(
             requested_model
         )));
         startup_probe.log(&format!("Setting ACP session model to {}", requested_model));
-        conn.set_session_model(acp::SetSessionModelRequest::new(
+        crate::protocol::acp::model_select::apply_session_model(
+            &conn,
             session_id.clone(),
             requested_model.clone(),
-        ))
+        )
         .await
         .map_err(|e| {
             anyhow::anyhow!(
-                "set_session_model failed for requested model {}: {}",
+                "failed to set requested model {}: {}",
                 requested_model,
                 e
             )
@@ -3700,21 +3645,8 @@ async fn run_inner(
                         );
                         crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
                     }
-                    let (per_tab_models, per_tab_current) = match &new_session.models {
-                        Some(state) => {
-                            let models: Vec<crate::app::AcpModelInfo> = state
-                                .available_models
-                                .iter()
-                                .map(|m| crate::app::AcpModelInfo {
-                                    id: m.model_id.0.to_string(),
-                                    name: m.name.clone(),
-                                    description: m.description.clone(),
-                                })
-                                .collect();
-                            (models, Some(state.current_model_id.0.to_string()))
-                        }
-                        None => (Vec::new(), None),
-                    };
+                    let (per_tab_models, per_tab_current) =
+                        crate::protocol::acp::model_select::models_from_new_session(&new_session);
 
                     {
                         let mut g = tab_to_session_for_new.lock().await;
@@ -4098,12 +4030,12 @@ fn dispatch_master_ext_request(
                     }
                 }
                 for sid in sessions {
-                    match conn
-                        .set_session_model(acp::SetSessionModelRequest::new(
-                            sid.clone(),
-                            model.clone(),
-                        ))
-                        .await
+                    match crate::protocol::acp::model_select::apply_session_model(
+                        &conn,
+                        sid.clone(),
+                        model.clone(),
+                    )
+                    .await
                     {
                         Ok(_) => tracing::info!(
                             target: "acp",
@@ -4116,7 +4048,7 @@ fn dispatch_master_ext_request(
                             session_id = %sid.0,
                             model = %model,
                             error = ?err,
-                            "set_session_model hot-update failed"
+                            "model hot-update failed"
                         ),
                     }
                 }

@@ -113,7 +113,7 @@ WTA generates an MCP config file at startup pointing to `wta mcp` and injects it
 Claude and Codex are launched through ACP adapters:
 
 ```
-wta --agent "npx -y @zed-industries/claude-code-acp"
+wta --agent "npx -y @agentclientprotocol/claude-agent-acp"
 wta --agent "npx -y @zed-industries/codex-acp"
 ```
 

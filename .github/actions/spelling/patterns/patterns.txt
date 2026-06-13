@@ -330,3 +330,6 @@ env_remove\("[A-Z_]+"\)
 
 # test fixture in ShellIntegrationTests.cpp — synthetic exe leaf used to test lookalike-rejection (pwsh + 'ell' suffix)
 \bpwshell\b
+
+# npm scoped package for the Claude ACP adapter (renamed from @zed-industries/claude-code-acp; see issue #257)
+@agentclientprotocol/claude-agent-acp
