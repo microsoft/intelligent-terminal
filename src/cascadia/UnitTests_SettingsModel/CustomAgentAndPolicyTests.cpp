@@ -69,6 +69,14 @@ namespace SettingsModelUnitTests
         TEST_METHOD(IsAgentPolicyLockedTracksAllowedAgents);
         TEST_METHOD(IsCustomAgentPolicyLockedTracksBlocked);
 
+        // Built-in agent + feature settings round-trip
+        TEST_METHOD(BuiltInAcpAgentRoundtrips);
+        TEST_METHOD(BuiltInDelegateAgentRoundtrips);
+        TEST_METHOD(AcpAndDelegateModelRoundtrip);
+        TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
+        TEST_METHOD(AutoErrorSettingsRoundtrip);
+        TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
+
         TEST_CLASS_CLEANUP(ClassCleanup)
         {
             // Defense in depth: never leave a test snapshot lying around
@@ -313,5 +321,66 @@ namespace SettingsModelUnitTests
         settings = MakeSettings({});
         SetPolicy(MakePolicy(std::nullopt, AgentPolicy::PolicyState::Blocked));
         VERIFY_IS_TRUE(settings->GlobalSettings().IsCustomAgentPolicyLocked());
+    }
+
+    // ── Built-in agent + feature settings round-trip ────────────────────
+
+    void CustomAgentAndPolicyTests::BuiltInAcpAgentRoundtrips()
+    {
+        // A built-in agent id (no "custom:" prefix) must survive load verbatim.
+        const auto settings = MakeSettings(R"("acpAgent": "gemini")");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"gemini" }, settings->GlobalSettings().AcpAgent());
+    }
+
+    void CustomAgentAndPolicyTests::BuiltInDelegateAgentRoundtrips()
+    {
+        const auto settings = MakeSettings(R"("delegateAgent": "claude")");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, settings->GlobalSettings().DelegateAgent());
+    }
+
+    void CustomAgentAndPolicyTests::AcpAndDelegateModelRoundtrip()
+    {
+        const auto settings = MakeSettings(R"("acpModel": "gpt-5", "delegateModel": "claude-4")");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"gpt-5" }, settings->GlobalSettings().AcpModel());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"claude-4" }, settings->GlobalSettings().DelegateModel());
+    }
+
+    void CustomAgentAndPolicyTests::AgentPanePositionRoundtripsAndDefaults()
+    {
+        // Explicit value survives load.
+        const auto settings = MakeSettings(R"("agentPanePosition": "right")");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"right" }, settings->GlobalSettings().AgentPanePosition());
+
+        // Absent → falls back to the "bottom" default (MTSMSettings.h).
+        const auto defaulted = MakeSettings({});
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"bottom" }, defaulted->GlobalSettings().AgentPanePosition());
+    }
+
+    void CustomAgentAndPolicyTests::AutoErrorSettingsRoundtrip()
+    {
+        const auto settings = MakeSettings(R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
+        VERIFY_IS_TRUE(settings->GlobalSettings().AutoErrorDetectionEnabled());
+        VERIFY_IS_TRUE(settings->GlobalSettings().AutoFixEnabled());
+
+        const auto off = MakeSettings(R"("autoErrorDetectionEnabled": false, "autoFixEnabled": false)");
+        VERIFY_IS_FALSE(off->GlobalSettings().AutoErrorDetectionEnabled());
+        VERIFY_IS_FALSE(off->GlobalSettings().AutoFixEnabled());
+    }
+
+    void CustomAgentAndPolicyTests::EffectiveAutoFixFalseWhenDetectionOff()
+    {
+        // Auto-suggest depends on detection: even with autoFixEnabled=true, the
+        // effective value must be false when detection is off, so failures with
+        // nothing to detect never reach the agent.
+        const auto detectionOff = MakeSettings(
+            R"("autoErrorDetectionEnabled": false, "autoFixEnabled": true)");
+        SetPolicy(MakePolicy()); // autoFix NotConfigured → allowed
+        VERIFY_IS_FALSE(detectionOff->GlobalSettings().EffectiveAutoFixEnabled());
+
+        // Both on (and policy allows) → effective true.
+        const auto bothOn = MakeSettings(
+            R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
+        SetPolicy(MakePolicy());
+        VERIFY_IS_TRUE(bothOn->GlobalSettings().EffectiveAutoFixEnabled());
     }
 }

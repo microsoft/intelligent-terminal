@@ -9315,6 +9315,13 @@ fn prev_word_boundary(input: &str, cursor_pos: usize) -> usize {
 #[path = "slash_command_tests.rs"]
 mod slash_command_tests;
 
+// Autofix-trigger reducer tests. Same `#[path]` child-of-`app` pattern as
+// slash_command_tests so they can reach `App`'s private dispatch methods and
+// the `pub(super)` autofix state fields.
+#[cfg(test)]
+#[path = "autofix_tests.rs"]
+mod autofix_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;
