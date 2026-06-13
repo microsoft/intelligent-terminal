@@ -188,6 +188,17 @@ time.hours_other: "acum %{count} de ore"
 time.day_singular: "acum %{count} zi"
 time.days_other: "acum %{count} de zile"
 
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Afișați această listă de comenzi"
+commands.clear.summary: "Goliți istoricul derulant al chatului (păstrează sesiunea)"
+commands.new.summary: "Porniți o sesiune ACP nouă (elimină istoricul)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnosticați terminalul activ și sugerați o remediere (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Reporniți agentul"
+commands.stop.summary: "Anulați promptul în curs"
+commands.sessions.summary: "Deschideți selectorul sesiunilor istorice (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
 # ── Executarea recomandării (src/coordinator.rs) ────────────────────────────
 system.choice_execution_failed: "Alegerea %{choice} a eșuat: %{error}"
 
