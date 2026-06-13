@@ -765,6 +765,17 @@ pub trait SessionRegistry: Send + Sync {
     /// twice with the same `session_id` keeps only the latest copy.
     async fn upsert(&self, info: SessionInfo);
 
+    /// Insert `info` ONLY if no row exists for `info.session_id`. Returns
+    /// `true` if the insert happened. The check + insert run under a
+    /// single lock so a concurrent live `apply_event` for the same SID
+    /// cannot race in between (which would otherwise let an
+    /// `upsert`-after-`lookup` clobber freshly-set live state like
+    /// `status=Working` / `current_tool`). Used by the periodic
+    /// history rescan in master to surface newly-created on-disk
+    /// sessions without overwriting any live row a hook has already
+    /// installed in the same window.
+    async fn insert_if_absent(&self, info: SessionInfo) -> bool;
+
     /// Remove the row for `sid`. Returns the prior value if any (the master
     /// uses this both for routing teardown and to know what to broadcast
     /// in `session_removed` ext-notifications).
@@ -841,6 +852,15 @@ impl SessionRegistry for InMemoryRegistry {
     async fn upsert(&self, info: SessionInfo) {
         let mut guard = self.inner.lock().await;
         upsert_locked(&mut guard, info);
+    }
+
+    async fn insert_if_absent(&self, info: SessionInfo) -> bool {
+        let mut guard = self.inner.lock().await;
+        if guard.sessions.contains_key(&info.session_id) {
+            return false;
+        }
+        upsert_locked(&mut guard, info);
+        true
     }
 
     async fn remove(&self, sid: &acp::SessionId) -> Option<SessionInfo> {
@@ -1344,6 +1364,44 @@ mod tests {
             .unwrap();
         assert_eq!(found.pane_session_id.as_deref(), Some("pane-B"));
         assert_eq!(reg.snapshot().await.len(), 1, "no duplicate rows");
+    }
+
+    #[tokio::test]
+    async fn insert_if_absent_inserts_missing_row() {
+        let reg = InMemoryRegistry::new();
+        let original = info("sess-1", Some("pane-A"));
+        assert!(reg.insert_if_absent(original.clone()).await);
+        assert_eq!(reg.lookup(&original.session_id).await, Some(original));
+    }
+
+    #[tokio::test]
+    async fn insert_if_absent_preserves_existing_row() {
+        let reg = InMemoryRegistry::new();
+        let sid = acp::SessionId::new("sess-1".to_string());
+        assert!(reg.insert_if_absent(info("sess-1", Some("pane-A"))).await);
+        assert!(!reg.insert_if_absent(info("sess-1", Some("pane-B"))).await);
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().pane_session_id.as_deref(),
+            Some("pane-A")
+        );
+    }
+
+    #[tokio::test]
+    async fn insert_if_absent_allows_only_one_concurrent_insert() {
+        let reg = Arc::new(InMemoryRegistry::new());
+        let left = Arc::clone(&reg);
+        let right = Arc::clone(&reg);
+        let (left_inserted, right_inserted) = tokio::join!(
+            async move { left.insert_if_absent(info("sess-1", Some("pane-A"))).await },
+            async move { right.insert_if_absent(info("sess-1", Some("pane-B"))).await }
+        );
+
+        let inserted = [left_inserted, right_inserted]
+            .into_iter()
+            .filter(|inserted| *inserted)
+            .count();
+        assert_eq!(inserted, 1);
+        assert_eq!(reg.snapshot().await.len(), 1);
     }
 
     #[tokio::test]

@@ -379,40 +379,36 @@ impl CliChannel {
 
     /// Start background event listener (wraps `wtcli listen --json`).
     /// wtcli inherits WT_COM_CLSID from this process's env.
+    ///
+    /// If the `wtcli listen` child exits unexpectedly (silent COM blip,
+    /// transient RPC error, WT restart), we retry **once**. If the retry
+    /// also exits, we give up — at that point something is fundamentally
+    /// broken and a tight respawn loop would just spam logs.
+    ///
+    /// Session-management freshness does not depend on this path: the
+    /// 30 s master disk rescan in `serve_master` covers new on-disk
+    /// sessions even when the listener is dead. Autofix and other push
+    /// events do go dark after a permanent failure, which is the
+    /// accepted tradeoff for keeping the recovery logic trivial.
     pub async fn start_reader(self: &std::sync::Arc<Self>) {
+        const MAX_ATTEMPTS: u32 = 2;
         let wtcli = self.wtcli_path.clone();
         let weak = std::sync::Arc::downgrade(self);
         tokio::spawn(async move {
-            let Ok(mut child) = tokio::process::Command::new(&wtcli)
-                .args(["--json", "listen"])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-            else {
-                return;
-            };
-
-            let stdout = child.stdout.take().unwrap();
-            let mut reader = tokio::io::BufReader::new(stdout);
-            let mut line = String::new();
-
-            loop {
-                line.clear();
-                use tokio::io::AsyncBufReadExt;
-                match reader.read_line(&mut line).await {
-                    Ok(0) => break,
-                    Ok(_) => {
-                        let Some(this) = weak.upgrade() else { break };
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(line.trim()) {
-                            let tx = this.event_tx.lock().unwrap();
-                            if let Some(tx) = tx.as_ref() {
-                                let _ = tx.send(val);
-                            }
-                        }
-                    }
-                    Err(_) => break,
+            for attempt in 1..=MAX_ATTEMPTS {
+                if weak.upgrade().is_none() {
+                    return;
                 }
+                run_wtcli_listen_once(&wtcli, &weak, attempt).await;
             }
+            tracing::error!(
+                target: "wt_channel",
+                wtcli = %wtcli,
+                attempts = MAX_ATTEMPTS,
+                "wtcli listen exited after retry; giving up. \
+                 Push events (autofix, agent_event hooks) are now dark for the lifetime of this helper. \
+                 Session management still recovers via master's 30s disk rescan."
+            );
         });
     }
 
@@ -438,6 +434,90 @@ impl CliChannel {
             serde_json::from_str(trimmed).context("Failed to parse wtcli JSON output")?;
         Ok(val)
     }
+}
+
+/// Spawn `wtcli --json listen` once, forward each parsed JSON line to the
+/// channel's `event_tx`, and return when the child exits (clean EOF or
+/// pipe error). Returns control to the caller so it can decide whether to
+/// retry. Lifecycle (start / exit reason / events seen) is logged.
+async fn run_wtcli_listen_once(
+    wtcli: &str,
+    weak: &std::sync::Weak<CliChannel>,
+    attempt: u32,
+) {
+    use tokio::io::AsyncBufReadExt;
+
+    let mut child = match tokio::process::Command::new(wtcli)
+        .args(["--json", "listen"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        // CliChannel-dropped-mid-read → Child dropped without explicit
+        // kill → kill_on_drop reaps wtcli instead of orphaning it.
+        .kill_on_drop(true)
+        .spawn()
+    {
+        Ok(c) => {
+            tracing::info!(target: "wt_channel", wtcli, attempt, "wtcli listen spawned");
+            c
+        }
+        Err(err) => {
+            tracing::warn!(target: "wt_channel", wtcli, attempt, error = %err, "wtcli listen spawn failed");
+            return;
+        }
+    };
+
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => {
+            tracing::warn!(target: "wt_channel", attempt, "wtcli listen child missing stdout pipe");
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+            return;
+        }
+    };
+
+    let mut reader = tokio::io::BufReader::new(stdout);
+    let mut line = String::new();
+    let mut events_seen: u64 = 0;
+    let started = std::time::Instant::now();
+
+    let exit_reason = loop {
+        line.clear();
+        match reader.read_line(&mut line).await {
+            Ok(0) => break "stdout EOF",
+            Ok(_) => {
+                let Some(this) = weak.upgrade() else {
+                    let _ = child.start_kill();
+                    let _ = child.wait().await;
+                    return;
+                };
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(line.trim()) {
+                    events_seen += 1;
+                    let tx = this.event_tx.lock().unwrap();
+                    if let Some(tx) = tx.as_ref() {
+                        let _ = tx.send(val);
+                    }
+                }
+            }
+            Err(_) => break "stdout read error",
+        }
+    };
+
+    // Pipe error doesn't imply the child has exited yet — kill before
+    // wait so we don't block on a child that's otherwise healthy.
+    // Harmless on the "stdout EOF" path.
+    let _ = child.start_kill();
+    let exit_status = child.wait().await.ok();
+
+    tracing::warn!(
+        target: "wt_channel",
+        attempt,
+        events_seen,
+        exit_reason,
+        exit_status = ?exit_status,
+        lived_ms = started.elapsed().as_millis() as u64,
+        "wtcli listen exited"
+    );
 }
 
 #[async_trait::async_trait]

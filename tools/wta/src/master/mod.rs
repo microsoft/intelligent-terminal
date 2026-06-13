@@ -1633,6 +1633,80 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         });
     }
 
+
+    // Periodic disk rescan. The initial scan above only fires once at
+    // master spawn — so when the user starts their FIRST ever agent CLI
+    // session in IT (no `~/.copilot/session-state/` / `~/.claude/projects/`
+    // dirs existed at master boot), the resulting on-disk session uuid
+    // dir is never picked up until master itself restarts. Hook-based
+    // live updates *should* cover this, but copilot's SessionStart hook
+    // observably fires with an empty `session_id` on the first run,
+    // which routes through `route_agent_event_to_registry_with_hook_sink`
+    // as a synthetic `pane:<guid>` key and is dropped before reaching
+    // master (see app.rs:704 — synthetic keys are local-only). Periodic
+    // rescan recovers from that and any future hook-payload regression:
+    // whatever the CLI writes to disk surfaces in the registry within
+    // RESCAN_PERIOD_SECS, and the 5s `session/list` tick on each helper
+    // then renders it in session management view.
+    //
+    // We only insert sessions that are NOT already in the registry —
+    // never clobber a live row with disk-inferred state (history_loader
+    // can't see status=Working / Attention / current_tool, which live
+    // hooks track).
+    let inner_for_periodic = Arc::clone(&inner);
+    tokio::task::spawn_local(async move {
+        const RESCAN_PERIOD_SECS: u64 = 30;
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(RESCAN_PERIOD_SECS));
+        // Skip the first tick — initial scan above already handled boot.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            let scan_started = std::time::Instant::now();
+            let sessions = match tokio::task::spawn_blocking(|| {
+                crate::history_loader::load_all()
+            })
+            .await
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(
+                        target: "master_history",
+                        error = %e,
+                        "periodic history rescan task panicked; will retry next tick"
+                    );
+                    continue;
+                }
+            };
+            let scanned = sessions.len();
+            let mut added: usize = 0;
+            for s in &sessions {
+                let info = crate::session_registry::agent_session_to_session_info(s);
+                if inner_for_periodic.registry.insert_if_absent(info).await {
+                    added += 1;
+                }
+            }
+            tracing::debug!(
+                target: "master_history",
+                scanned,
+                added,
+                elapsed_ms = scan_started.elapsed().as_millis() as u64,
+                "periodic history rescan"
+            );
+            if added > 0 {
+                tracing::info!(
+                    target: "master_history",
+                    added,
+                    "periodic rescan found new on-disk sessions; broadcasting sessions/changed"
+                );
+                broadcast_ext_to_helpers(
+                    &inner_for_periodic,
+                    crate::session_registry::build_sessions_changed_notification(),
+                )
+                .await;
+            }
+        }
+    });
+
     let client = MasterClient {
         state: Arc::clone(&inner),
     };
