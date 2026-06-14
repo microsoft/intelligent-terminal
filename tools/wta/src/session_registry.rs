@@ -1101,6 +1101,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 }
             }
 
+            let is_new_entry = !state.sessions.contains_key(&sid);
             let entry = state
                 .sessions
                 .entry(sid.clone())
@@ -1115,10 +1116,29 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 entry.title = Some(title);
             }
             entry.cli_source = Some(cli_source);
-            entry.status = Some(AgentStatus::Idle);
-            entry.last_error = None;
-            entry.attention_reason = None;
-            entry.current_tool = None;
+            // Status baseline. Preserve a live status on an EXISTING row instead
+            // of clobbering it to Idle: some CLIs fire activity hooks before
+            // `session.start` — e.g. Copilot sends `prompt.submit` (→ Working)
+            // ~2 s before its `session.start`, so an unconditional reset here
+            // blanks the row to Idle for the rest of the turn (until the next
+            // `tool.starting`). This is the authoritative reducer behind
+            // `sessions/list`, so the clobber is what the user actually saw.
+            // Only (re)baseline to Idle for a new row or one being revived from a
+            // non-live terminal state (Ended/Error/Historical, e.g. resume /
+            // reconnect); Working/Attention/Idle are preserved. Mirrors the
+            // resurrection guards on ToolStarting/ToolCompleted below and the
+            // helper-side reducer in `agent_sessions.rs`.
+            if is_new_entry
+                || matches!(
+                    entry.status,
+                    Some(AgentStatus::Ended | AgentStatus::Error | AgentStatus::Historical)
+                )
+            {
+                entry.status = Some(AgentStatus::Idle);
+                entry.last_error = None;
+                entry.attention_reason = None;
+                entry.current_tool = None;
+            }
             entry.last_activity_at_ms = Some(now);
             if pane_known {
                 entry.pane_session_id = Some(pane_session_id.clone());
@@ -1912,6 +1932,76 @@ mod tests {
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
         assert!(row.current_tool.is_none());
         assert!(row.attention_reason.is_none());
+    }
+
+    #[tokio::test]
+    async fn master_reducer_session_started_preserves_live_working_status() {
+        // bcec31b5 ordering bug, authoritative reducer: Copilot fires
+        // `prompt.submit` (→ Working) ~2 s BEFORE its `session.start` for the
+        // same session id. A late SessionStarted must NOT reset the row to Idle —
+        // this is the reducer behind `sessions/list`, so the clobber is exactly
+        // what the user saw on screen.
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        // prompt.submit path: synthetic SessionStarted, then ToolStarting.
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        reg.apply_event(SessionEvent::ToolStarting { key: "sid".into(), tool_name: "prompt".into() }).await;
+        assert_eq!(
+            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            Some(AgentStatus::Working),
+        );
+
+        // The real session.start arrives later for the SAME key.
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        assert_eq!(
+            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            Some(AgentStatus::Working),
+            "a late SessionStarted must preserve the live Working status",
+        );
+    }
+
+    #[tokio::test]
+    async fn master_reducer_session_started_revives_ended_row_to_idle() {
+        // Counterpart: a SessionStarted for a row in a terminal state (Ended)
+        // must still re-baseline it to Idle (resume / reconnect).
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        reg.apply_event(SessionEvent::PaneClosed { pane_session_id: "p".into() }).await;
+        assert_eq!(
+            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            Some(AgentStatus::Ended),
+        );
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "p2".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        assert_eq!(
+            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            Some(AgentStatus::Idle),
+            "a SessionStarted reviving an Ended row must reset it to Idle",
+        );
     }
 
     #[tokio::test]
