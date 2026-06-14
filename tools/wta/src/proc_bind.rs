@@ -571,7 +571,7 @@ mod tests {
     #[test]
     fn copilot_pid_from_lock_ignores_malformed() {
         let dir = tmp_dir("copilot-bad");
-        std::fs::write(dir.join("inuse.notanumber.lock"), b"").unwrap();
+        std::fs::write(dir.join("inuse.bad.lock"), b"").unwrap();
         assert_eq!(copilot_pid_from_lock(&dir), None);
     }
 

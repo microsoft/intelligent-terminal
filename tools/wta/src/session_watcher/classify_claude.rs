@@ -164,7 +164,7 @@ mod tests {
         let r = rec(
             r#"{"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use","content":[
                 {"type":"text","text":"Let me check"},
-                {"type":"tool_use","id":"toolu_1","caller":{"type":"direct"},"name":"AskUserQuestion","input":{}}
+                {"type":"tool_use","id":"tool_use_1","caller":{"type":"direct"},"name":"AskUserQuestion","input":{}}
             ]}}"#,
         );
         assert_eq!(

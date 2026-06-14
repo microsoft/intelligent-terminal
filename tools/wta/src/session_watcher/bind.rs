@@ -110,32 +110,32 @@ mod tests {
 
     #[test]
     fn unique_cwd_match_binds() {
-        let cands = vec![cand(10, r"C:\Users\u\proj"), cand(20, r"C:\Users\u\other")];
+        let candidates = vec![cand(10, r"C:\Users\u\proj"), cand(20, r"C:\Users\u\other")];
         assert_eq!(
-            correlate_by_cwd(&cands, Path::new(r"C:\Users\u\proj")),
+            correlate_by_cwd(&candidates, Path::new(r"C:\Users\u\proj")),
             Some(10)
         );
     }
 
     #[test]
     fn case_and_trailing_sep_insensitive() {
-        let cands = vec![cand(10, r"c:\users\u\proj\")];
+        let candidates = vec![cand(10, r"c:\users\u\proj\")];
         assert_eq!(
-            correlate_by_cwd(&cands, Path::new(r"C:\Users\U\Proj")),
+            correlate_by_cwd(&candidates, Path::new(r"C:\Users\U\Proj")),
             Some(10)
         );
     }
 
     #[test]
     fn ambiguous_same_cwd_returns_none() {
-        let cands = vec![cand(10, r"C:\p"), cand(20, r"C:\p")];
-        assert_eq!(correlate_by_cwd(&cands, Path::new(r"C:\p")), None);
+        let candidates = vec![cand(10, r"C:\p"), cand(20, r"C:\p")];
+        assert_eq!(correlate_by_cwd(&candidates, Path::new(r"C:\p")), None);
     }
 
     #[test]
     fn no_match_returns_none() {
-        let cands = vec![cand(10, r"C:\a")];
-        assert_eq!(correlate_by_cwd(&cands, Path::new(r"C:\b")), None);
+        let candidates = vec![cand(10, r"C:\a")];
+        assert_eq!(correlate_by_cwd(&candidates, Path::new(r"C:\b")), None);
     }
 
     #[test]

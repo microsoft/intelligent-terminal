@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn codex_path_uses_full_uuid_key() {
-        let p = Path::new(r"C:\Users\u\.codex\sessions\2026\06\08\rollout-2026-06-08T21-29-13-019ea76c-4c47-7da1-9c47-5f814a9e3640.jsonl");
+        let p = Path::new(r"C:/Users/u/.codex/sessions/2026/06/08/rollout-2026-06-08T21-29-13-019ea76c-4c47-7da1-9c47-5f814a9e3640.jsonl");
         let d = identify(p).unwrap();
         assert_eq!(d.cli, CliSource::Codex);
         assert_eq!(d.key, "019ea76c-4c47-7da1-9c47-5f814a9e3640");
