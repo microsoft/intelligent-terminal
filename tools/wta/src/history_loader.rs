@@ -1499,12 +1499,12 @@ mod tests {
         let path = dir.join("rollout-x.jsonl");
         write_file(
             &path,
-            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"abc\",\"cwd\":\"C:\\\\Users\\\\yuazha\"}}\n\
+            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"abc\",\"cwd\":\"C:\\\\Users\\\\user\"}}\n\
              {\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\"}}\n",
         );
         assert_eq!(
             codex_cwd_from_rollout(&path),
-            Some(PathBuf::from("C:\\Users\\yuazha"))
+            Some(PathBuf::from("C:\\Users\\user"))
         );
     }
 
@@ -2498,7 +2498,7 @@ mod tests {
         let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T14-00-00", id);
         let agents = format!(
             "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"# AGENTS.md instructions for C:/proj\\n\\n<INSTRUCTIONS>\\nstuff\\n</INSTRUCTIONS>\"}}]}}}}\n");
+\"content\":[{{\"text\":\"# AGENTS.md instructions for C:/proj\\n\\n<INSTRUCTIONS>\\n be concise \\n</INSTRUCTIONS>\"}}]}}}}\n");
         let real = format!(
             "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
 \"content\":[{{\"text\":\"friday is wonderful\"}}]}}}}\n");

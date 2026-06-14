@@ -1936,7 +1936,7 @@ mod tests {
 
     #[tokio::test]
     async fn master_reducer_session_started_preserves_live_working_status() {
-        // bcec31b5 ordering bug, authoritative reducer: Copilot fires
+        // Prompt-before-start ordering bug, authoritative reducer: Copilot fires
         // `prompt.submit` (→ Working) ~2 s BEFORE its `session.start` for the
         // same session id. A late SessionStarted must NOT reset the row to Idle —
         // this is the reducer behind `sessions/list`, so the clobber is exactly

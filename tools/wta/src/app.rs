@@ -9478,7 +9478,7 @@ mod tests {
         );
     }
 
-    /// Turn-based hook status (bcec31b5 bug): Copilot/Gemini fire a
+    /// Turn-based hook status (multi-tool turn bug): Copilot/Gemini fire a
     /// `tool.finished` per tool — several per turn, in parallel batches — but
     /// the agent keeps working until `agent.stop`. A `tool.finished` must NOT
     /// demote the row to Idle (only `agent.stop` ends the turn); otherwise a

@@ -1589,7 +1589,7 @@ mod tests {
 
     #[test]
     fn session_started_preserves_working_set_by_earlier_prompt_submit() {
-        // bcec31b5 ordering bug: Copilot fires `prompt.submit` (→ Working) a
+        // Prompt-before-start ordering bug: Copilot fires `prompt.submit` (→ Working) a
         // couple seconds BEFORE its `session.start` for the same session id.
         // A `SessionStarted` for an already-Working row must NOT reset it to
         // Idle — otherwise the row sits at Idle from `session.start` until the

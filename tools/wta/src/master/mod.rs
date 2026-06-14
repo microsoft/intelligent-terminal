@@ -4744,7 +4744,7 @@ mod tests {
         let state = make_state();
         seed_row_with_pid(
             &state,
-            "sid-nopid",
+            "sid-no-pid",
             crate::agent_sessions::SessionOrigin::Unknown,
             crate::agent_sessions::AgentStatus::Idle,
             None,
@@ -4756,7 +4756,7 @@ mod tests {
 
         let row = state
             .registry
-            .lookup(&acp::SessionId::new("sid-nopid".to_string()))
+            .lookup(&acp::SessionId::new("sid-no-pid".to_string()))
             .await
             .unwrap();
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
@@ -4816,17 +4816,17 @@ mod tests {
         let state = make_state();
         seed_session_row(
             &state,
-            "sid-agentpane",
+            "sid-agent-pane",
             crate::agent_sessions::SessionOrigin::AgentPane,
             crate::agent_sessions::AgentStatus::Idle,
         )
         .await;
 
-        apply_watcher_event(&state, codex_emitted("sid-agentpane")).await;
+        apply_watcher_event(&state, codex_emitted("sid-agent-pane")).await;
 
         let row = state
             .registry
-            .lookup(&acp::SessionId::new("sid-agentpane".to_string()))
+            .lookup(&acp::SessionId::new("sid-agent-pane".to_string()))
             .await
             .unwrap();
         // Still Idle — the watcher's ToolStarting (Working) was dropped.

@@ -87,7 +87,7 @@ pub fn pid_alive(pid: u32) -> bool {
     if handle == 0 {
         // SAFETY: GetLastError only reads the thread-local last-error code.
         let err = unsafe { GetLastError() };
-        // ACCESS_DENIED means the process exists but is unqueryable → alive.
+        // ACCESS_DENIED means the process exists but is inaccessible → alive.
         // Any other error (typically ERROR_INVALID_PARAMETER) → no such pid.
         return err == ERROR_ACCESS_DENIED;
     }
