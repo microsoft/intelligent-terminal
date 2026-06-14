@@ -349,17 +349,27 @@ transcript (`session_watcher/classify_*.rs` -> `ToolStarting` = Working /
   `event_msg/task_started`/`task_complete` for Codex), not by the brief tool
   windows; a user-input tool *or* an explicit permission/escalation record
   (`permission.requested` / sandbox `require_escalated`) -> Attention.
-* **Gemini — best-effort only (turn-based rewrite deferred)**: a snapshot
-  classifier still runs (`toolCalls` -> Working, `ask_user` -> Attention,
-  `functionResponse` -> Idle), but it is unreliable — no turn-completion signal
-  plus a 2-phase / `$set`-interleaved transcript leave Idle-vs-Working
-  ambiguous, and it yields nothing when the file ends on a `$set:lastUpdated`
-  line. Rows still bind; only the live status is unreliable without hooks.
-* **Limitation (Claude only)**: Claude's transcript has no permission marker
-  (only `permissionMode`), so a permission prompt (`Bash`/`Edit` in default
-  mode) is indistinguishable from a running tool -> shows **Working**, not
-  Attention (only the explicit `AskUserQuestion` tool is Attention). Copilot and
-  Codex *do* surface permission waits as Attention via the records above.
+* **Gemini — Working-only (turn-based Idle deferred)**: Gemini's
+  `session-*.jsonl` is an append log (single-message records + `$set` ops),
+  read by byte offset like the others. `classify_record` **skips every `$set`
+  op** (crucially the start/resume `$set:messages` snapshot, so a resume can't
+  replay history) and maps each activity record to Working: a `user` record
+  (prompt or `functionResponse`), a `gemini` text record, or a `gemini` with
+  `toolCalls` (`ask_user` -> Attention). It **never emits Idle** — Gemini writes
+  no turn-completion signal and a completed `toolCall` doesn't mean the turn
+  ended, so a row stays Working until `PaneClosed`. A clean turn-based Idle is
+  deferred (needs a turn-end marker Gemini doesn't write).
+* **Limitation (permission / ask-for-input)**:
+  * **Claude** — no permission marker (only `permissionMode`), so a permission
+    prompt (`Bash`/`Edit` in default mode) is indistinguishable from a running
+    tool -> **Working** (only the explicit `AskUserQuestion` tool is Attention).
+  * **Gemini** — the transcript is written **post-completion** (every on-disk
+    `toolCall` is `status:success` with its result, and `ask_user` already holds
+    the answer), so the wait window shows **Working**; the `ask_user` ->
+    Attention mapping is kept but is typically superseded by the following result
+    record. Reliable wait-state Attention needs hooks.
+  * **Copilot / Codex** *do* surface permission waits as Attention via
+    `permission.requested` / `require_escalated`.
 
 ### Cold-startup race
 

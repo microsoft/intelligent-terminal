@@ -307,32 +307,46 @@ of the live states.
   because Idle is owned by the turn end. An explicit permission/escalation
   record (`permission.requested` for Copilot, sandbox `require_escalated` for
   Codex) → Attention.
-- **Gemini — best-effort only; reliable turn-based status deferred.** Gemini is
-  the weakest-bound CLI (no lock file, no reliable open-file owner → cwd
-  correlation) **and** has the messiest transcript: each `gemini` message is
-  appended **twice** under the same id (text/thoughts, then `+toolCalls`),
-  interleaved with `$set:lastUpdated` metadata lines, with **no turn-completion
-  signal** (no `stop_reason`/`finishReason`). The existing snapshot classifier
-  still runs and is best-effort (`toolCalls` → Working, `ask_user` → Attention,
-  `functionResponse` → Idle), but it is unreliable: a `gemini`-without-`toolCalls`
-  line is ambiguous (first phase of a tool turn, or a final text response — Idle
-  vs Working can't be told from one line), and it yields nothing when the file
-  ends on a `$set:lastUpdated` op (no `messages` array). A clean turn-based
-  status for Gemini is not achievable from the log alone, so that rewrite is
-  **deferred**; Gemini's born-bound rows still bind, only the live status is
-  unreliable without hooks.
+- **Gemini** (`classify_gemini.rs`) — **Working-only; turn-based Idle deferred.**
+  Gemini's `session-*.jsonl` is an **append log** (re-verified 2026-06-14): every
+  line is a standalone `{"id","type":"user"|"gemini",…}` record or a `$set` op,
+  so the watcher reads it by byte offset like the other three CLIs. Each `gemini`
+  message is appended **twice** under the same id (phase 1 text/thoughts, phase 2
+  `+toolCalls`), interleaved with `$set:lastUpdated` bumps; a full
+  `$set:{messages:[…]}` snapshot is written only at session **start** and
+  **resume**. `classify_record` **skips every `$set` op** — crucially the resume
+  snapshot, which would otherwise replay the entire prior conversation — and maps
+  each activity record to **Working**: a `type:user` record (typed prompt *or* a
+  `functionResponse` tool result), a `type:gemini` text record (phase 1 / final
+  answer), or a `type:gemini` with `toolCalls` (tool name surfaced; a user-input
+  `ask_user` → **Attention** instead). It **never emits Idle**: Gemini writes no
+  turn-completion signal (no `stop_reason`/`finishReason`), and a `toolCall`
+  carrying a `result` does **not** mean the turn ended — so a `gemini`-without-
+  `toolCalls` line is ambiguous (intermediate text vs final answer). A Gemini row
+  therefore stays **Working** through the conversation and only leaves the live
+  state on `PaneClosed`; a clean turn-based Idle is **deferred** (needs a
+  turn-end marker Gemini doesn't write, or hooks).
 
-**Limitation — permission prompts (Claude).** In Claude's transcript a tool that
-pauses for **permission** (e.g. `Bash`/`Edit` in `default` mode) is
-**indistinguishable** from a tool that is merely running — there is no
-approval/pending marker (only `permissionMode`). So a Claude permission wait
-shows as **Working**, not Attention; only an explicit user-input tool
-(`AskUserQuestion`) is Attention. Reliable permission → Attention for Claude
-would require hooks. (A `dangerous-tool → Attention` name heuristic was
-considered and rejected: it is wrong under auto-approve and conflates a running
-write-tool with a wait.) Copilot and Codex are **not** affected — they write
-explicit `permission.requested` / `require_escalated` records that map to
-Attention.
+**Limitation — permission / ask-for-input prompts.**
+
+- **Claude.** A tool that pauses for **permission** (e.g. `Bash`/`Edit` in
+  `default` mode) is **indistinguishable** from a tool that is merely running —
+  there is no approval/pending marker (only `permissionMode`). So a Claude
+  permission wait shows as **Working**, not Attention; only an explicit
+  user-input tool (`AskUserQuestion`) is Attention. (A `dangerous-tool →
+  Attention` name heuristic was considered and rejected: it is wrong under
+  auto-approve and conflates a running write-tool with a wait.)
+- **Gemini.** The transcript is written **post-completion** — every on-disk
+  `toolCall` is `status:"success"` with its `result` inlined, and an `ask_user`
+  record already contains the user's answer. So the `ask_user` line lands only
+  *after* the user replied; during the actual wait the file is silent and the
+  last record (the agent's phase-1 text) shows **Working**. The `ask_user` →
+  Attention mapping is kept (and is correct if a future Gemini build writes a
+  pending state), but in today's transcript it is typically superseded by the
+  immediately-following result record → the wait effectively shows Working,
+  same class of limitation as Claude. Reliable wait-state Attention needs hooks.
+- **Copilot / Codex** are **not** affected — they write explicit
+  `permission.requested` / `require_escalated` records that map to Attention.
 
 ## What is explicitly unchanged
 

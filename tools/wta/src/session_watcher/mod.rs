@@ -2,10 +2,10 @@
 //! crate's existing [`crate::agent_sessions::SessionEvent`]s, hook-free.
 //!
 //! The per-CLI `classify_*` functions are the pure, testable core: they take
-//! one parsed record (or, for Gemini, the rewritten snapshot) plus the
-//! session key and return zero or more `SessionEvent`s. The watch loop
-//! ([`watch`]) is the thin impure shell that tails files and feeds records
-//! through them. Binding a discovered session to its pane lives in
+//! one parsed record plus the session key and return zero or more
+//! `SessionEvent`s. The watch loop ([`watch`]) is the thin impure shell that
+//! tails files (by byte offset — all four CLIs are append logs) and feeds
+//! records through them. Binding a discovered session to its pane lives in
 //! [`bind`]; path → identity in [`discover`].
 
 pub mod bind;
@@ -49,10 +49,14 @@ pub struct Emitted {
 /// Per-file progress so we only classify new records.
 #[derive(Default)]
 pub(crate) struct Progress {
-    /// Byte offset for append-only CLIs.
+    /// Byte offset for append-only CLIs (all four are append logs).
     offset: u64,
-    /// Message count for Gemini's snapshot model.
-    gemini_msgs: usize,
+    /// Gemini's canonical session id, resolved once from the file header's
+    /// `sessionId` (the filename only carries the first 8 hex chars) and cached
+    /// so every emitted event keys to the same id the registry binds. `None`
+    /// until first read; falls back to the path-derived key if the header is
+    /// unreadable.
+    gemini_key: Option<String>,
     /// Set once if this file is a Codex multi-agent subagent fork — its records
     /// are then ignored wholesale (it inherits the parent's history and is not a
     /// user-facing session, so surfacing it would duplicate the parent's row).
@@ -74,29 +78,49 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
 
     match disc.cli {
         CliSource::Gemini => {
-            // Reparse the whole file; take the last non-empty snapshot line.
-            let Ok(text) = std::fs::read_to_string(path) else {
-                return out;
-            };
-            // Canonical key = header `sessionId` (the filename only carries the
-            // first 8 hex chars). Fall back to the path-derived key if absent.
-            let key = text
-                .lines()
-                .next()
-                .and_then(|l| serde_json::from_str::<serde_json::Value>(l).ok())
-                .and_then(|v| v.get("sessionId").and_then(|s| s.as_str()).map(str::to_string))
+            // Gemini's `session-*.jsonl` is an append log (re-verified
+            // 2026-06-14): single-message records and `$set` ops are appended at
+            // the end; the only rewrites are full `$set.messages` snapshots at
+            // start/resume, which `classify_record` skips so a resume can't
+            // replay history. Read it by byte offset like the other CLIs.
+            //
+            // Canonical key = the header `sessionId` (the filename only carries
+            // the first 8 hex chars). Resolve + cache it once; fall back to the
+            // path-derived key until the header is readable.
+            if entry.gemini_key.is_none() {
+                entry.gemini_key = read_gemini_session_id(path);
+            }
+            let key = entry
+                .gemini_key
+                .clone()
                 .unwrap_or_else(|| disc.key.clone());
-            let Some(last) = text.lines().rev().find(|l| !l.trim().is_empty()) else {
+
+            let from = entry.offset;
+            let Ok((text, len)) = read_appended(path, from) else {
                 return out;
             };
-            let Ok(val) = serde_json::from_str::<serde_json::Value>(last) else {
+            if len < from {
+                entry.offset = len;
                 return out;
-            };
-            let (events, new_len) =
-                classify_gemini::classify_snapshot(&val, &key, entry.gemini_msgs);
-            entry.gemini_msgs = new_len;
-            for event in events {
-                out.push(Emitted { cli: disc.cli.clone(), key: key.clone(), cwd: disc.cwd.clone(), event });
+            }
+            let consumed = text.rfind('\n').map(|i| i + 1).unwrap_or(0);
+            entry.offset = from + consumed as u64;
+            for line in text[..consumed].lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                let Ok(val) = serde_json::from_str::<serde_json::Value>(line) else {
+                    continue;
+                };
+                for event in classify_gemini::classify_record(&val, &key) {
+                    out.push(Emitted {
+                        cli: CliSource::Gemini,
+                        key: key.clone(),
+                        cwd: disc.cwd.clone(),
+                        event,
+                    });
+                }
             }
         }
         _ => {
@@ -192,22 +216,15 @@ pub(crate) fn seed_existing_progress_in(
                 match entry.file_type() {
                     Ok(ft) if ft.is_dir() => stack.push(path),
                     Ok(_) => {
-                        let Some(disc) = discover::identify(&path) else {
+                        let Some(_disc) = discover::identify(&path) else {
                             continue;
                         };
-                        let prog = if matches!(disc.cli, CliSource::Gemini) {
-                            // Gemini's snapshot model counts messages, not bytes.
-                            Progress {
-                                offset: 0,
-                                gemini_msgs: gemini_msg_count(&path),
-                                ..Default::default()
-                            }
-                        } else {
-                            Progress {
-                                offset: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
-                                gemini_msgs: 0,
-                                ..Default::default()
-                            }
+                        // All four CLIs are append logs — seed each file's
+                        // progress to its current end so the watcher only
+                        // processes content appended after it starts.
+                        let prog = Progress {
+                            offset: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
+                            ..Default::default()
                         };
                         progress.insert(path, prog);
                     }
@@ -218,24 +235,18 @@ pub(crate) fn seed_existing_progress_in(
     }
 }
 
-/// Current message count in a Gemini snapshot file (the last non-empty
-/// `$set.messages` array). `0` on any read/parse failure.
-fn gemini_msg_count(path: &Path) -> usize {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return 0;
-    };
-    let Some(last) = text.lines().rev().find(|l| !l.trim().is_empty()) else {
-        return 0;
-    };
-    let Ok(val) = serde_json::from_str::<serde_json::Value>(last) else {
-        return 0;
-    };
-    val.get("$set")
-        .and_then(|s| s.get("messages"))
-        .and_then(|m| m.as_array())
-        .or_else(|| val.get("messages").and_then(|m| m.as_array()))
-        .map(|a| a.len())
-        .unwrap_or(0)
+/// Gemini's canonical session id, read from the file header's `sessionId`
+/// field (the first line). `None` on any read/parse failure or if the header
+/// lacks the field. Reads only the first line, not the whole (often large) file.
+fn read_gemini_session_id(path: &Path) -> Option<String> {
+    use std::io::BufRead;
+    let file = std::fs::File::open(path).ok()?;
+    let mut first = String::new();
+    std::io::BufReader::new(file).read_line(&mut first).ok()?;
+    let val: serde_json::Value = serde_json::from_str(first.trim()).ok()?;
+    val.get("sessionId")
+        .and_then(|s| s.as_str())
+        .map(str::to_string)
 }
 
 /// Spawn a blocking `notify` watcher over the four roots. Each emitted event
