@@ -1663,18 +1663,24 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // they're applied to master's registry (same reducer as session_hook).
     {
         let (sync_tx, sync_rx) = std::sync::mpsc::channel::<crate::session_watcher::Emitted>();
-        std::thread::Builder::new()
+        if let Err(err) = std::thread::Builder::new()
             .name("wta-session-watch".into())
             .spawn(move || {
                 if let Err(err) = crate::session_watcher::watch(sync_tx) {
                     tracing::warn!(target: "session_watcher", error = %err, "watcher exited");
                 }
             })
-            .ok();
+        {
+            tracing::warn!(
+                target: "session_watcher",
+                error = %err,
+                "failed to spawn session-watch thread; hookless fallback disabled"
+            );
+        }
 
         let (async_tx, mut async_rx) =
             tokio::sync::mpsc::unbounded_channel::<crate::session_watcher::Emitted>();
-        std::thread::Builder::new()
+        if let Err(err) = std::thread::Builder::new()
             .name("wta-session-watch-bridge".into())
             .spawn(move || {
                 for emitted in sync_rx {
@@ -1683,7 +1689,13 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
                     }
                 }
             })
-            .ok();
+        {
+            tracing::warn!(
+                target: "session_watcher",
+                error = %err,
+                "failed to spawn session-watch bridge thread; watcher events will not reach master"
+            );
+        }
 
         let inner_for_watch = Arc::clone(&inner);
         tokio::task::spawn_local(async move {
@@ -2461,9 +2473,11 @@ fn watcher_row_allowed(pane: Option<&str>, live_panes: Option<&HashSet<String>>)
 /// The pane GUIDs (lowercased) currently live in this IT instance, via a
 /// `list_windows`→`list_tabs`→`list_panes` walk over the master WT channel,
 /// cached for [`LIVE_PANES_TTL`]. Returns `None` when there is no WT channel
-/// (unit tests) so callers skip the gate. On a COM error it serves the last
-/// cached set if any, else an empty set (the gate then skips, self-healing on a
-/// later event once COM succeeds).
+/// (unit tests) so callers skip the gate entirely. On a COM error it serves the
+/// last cached set if any; with no cache it returns `Some(empty)`, which makes
+/// the gate *reject* every watcher row (conservative — suppress rather than
+/// surface a possibly-dead pane), self-healing on a later event once COM
+/// succeeds and the live set repopulates.
 async fn live_it_pane_guids(state: &MasterStateInner) -> Option<HashSet<String>> {
     const LIVE_PANES_TTL: std::time::Duration = std::time::Duration::from_secs(2);
     let wt = state.wt.as_ref()?;

@@ -344,13 +344,22 @@ transcript (`session_watcher/classify_*.rs` -> `ToolStarting` = Working /
   assistant `stop_reason:tool_use` -> Working, `AskUserQuestion` -> Attention;
   `end_turn` -> Idle). Claude re-writes the same message id while streaming, so
   keying on content would flicker — `stop_reason` is stable.
-* **Copilot / Codex** — tool-based over their append-only logs.
-* **Gemini — deferred**: no turn-completion signal + a 2-phase / `$set`-
-  interleaved transcript make Idle-vs-Working ambiguous from the log; its rows
-  bind but won't show live status without hooks.
-* **Limitation**: a permission prompt (`Bash`/`Edit` in default mode) is
-  indistinguishable from a running tool in the transcript -> shows **Working**,
-  not Attention (only the explicit `AskUserQuestion` tool is Attention).
+* **Copilot / Codex** — turn-based over their append-only logs. Working is
+  bracketed by the turn boundary (`assistant.turn_start`/`turn_end` for Copilot,
+  `event_msg/task_started`/`task_complete` for Codex), not by the brief tool
+  windows; a user-input tool *or* an explicit permission/escalation record
+  (`permission.requested` / sandbox `require_escalated`) -> Attention.
+* **Gemini — best-effort only (turn-based rewrite deferred)**: a snapshot
+  classifier still runs (`toolCalls` -> Working, `ask_user` -> Attention,
+  `functionResponse` -> Idle), but it is unreliable — no turn-completion signal
+  plus a 2-phase / `$set`-interleaved transcript leave Idle-vs-Working
+  ambiguous, and it yields nothing when the file ends on a `$set:lastUpdated`
+  line. Rows still bind; only the live status is unreliable without hooks.
+* **Limitation (Claude only)**: Claude's transcript has no permission marker
+  (only `permissionMode`), so a permission prompt (`Bash`/`Edit` in default
+  mode) is indistinguishable from a running tool -> shows **Working**, not
+  Attention (only the explicit `AskUserQuestion` tool is Attention). Copilot and
+  Codex *do* surface permission waits as Attention via the records above.
 
 ### Cold-startup race
 

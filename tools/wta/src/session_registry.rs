@@ -719,8 +719,10 @@ pub struct SessionInfo {
     /// Master's liveness poll checks it to demote shell-pane sessions whose
     /// CLI exited without writing a "session ended" record (e.g. `Ctrl+C`).
     /// `None` for agent-pane sessions and any session we couldn't bind to a
-    /// pid. Master-internal — skipped on the wire.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// pid. Master-internal — never serialized (`#[serde(skip)]`), so it can
+    /// never leak into a `sessions/list` response, which serializes
+    /// `SessionInfo` directly.
+    #[serde(skip)]
     pub bound_pid: Option<u32>,
 }
 

@@ -223,6 +223,12 @@ const RUPP_OFFSET_CURDIR_BUFFER: usize = 0x40;
 // Consumed by Plan C (master wiring); unused within Plan B.
 #[allow(dead_code)]
 pub fn cwd_for_pid(pid: u32) -> Option<std::path::PathBuf> {
+    // The PEB / RTL_USER_PROCESS_PARAMETERS offsets below are x64-specific. On
+    // another Windows arch (e.g. ARM64) they would point into the wrong remote
+    // memory, so bail rather than return a garbage path.
+    if !cfg!(target_arch = "x86_64") {
+        return None;
+    }
     let handle = ProcHandle::open(pid)?;
     let pbi = basic_information(handle.0)?;
     let pp = read_remote_ptr(
@@ -256,6 +262,12 @@ pub fn cwd_for_pid(pid: u32) -> Option<std::path::PathBuf> {
 /// segment). Returns `None` if the process can't be opened or the PEB walk
 /// fails.
 fn read_process_env_block(pid: u32) -> Option<String> {
+    // x64-specific PEB / RTL_USER_PROCESS_PARAMETERS offsets (see `cwd_for_pid`);
+    // return None on other arches rather than read the wrong remote memory. This
+    // gates `env_var_for_pid` and `wt_session_for_pid`, which both route here.
+    if !cfg!(target_arch = "x86_64") {
+        return None;
+    }
     let handle = ProcHandle::open(pid)?;
     let pbi = basic_information(handle.0)?;
     let pp = read_remote_ptr(

@@ -147,11 +147,14 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
     out
 }
 
-/// The four watched roots under the user profile.
+/// The four watched roots under the user profile. Empty when `USERPROFILE` is
+/// unset: returning relative `.copilot/...` paths would make the watcher
+/// observe directories under the process CWD, so we disable the watcher cleanly
+/// (watch nothing) instead.
 pub fn watched_roots() -> Vec<PathBuf> {
-    let home = std::env::var("USERPROFILE")
-        .map(PathBuf::from)
-        .unwrap_or_default();
+    let Some(home) = std::env::var_os("USERPROFILE").map(PathBuf::from) else {
+        return Vec::new();
+    };
     vec![
         home.join(".copilot").join("session-state"),
         home.join(".claude").join("projects"),
