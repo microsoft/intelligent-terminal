@@ -20,11 +20,13 @@ mod locale_parity_tests;
 mod master;
 mod osc52;
 mod pane_context;
+mod proc_bind;
 mod protocol;
 mod rtl;
 mod runtime_paths;
 mod session_mgmt;
 mod session_registry;
+mod session_watcher;
 mod shell;
 mod telemetry;
 #[cfg(test)]
@@ -1276,12 +1278,14 @@ async fn fetch_sessions_from_master(
 }
 
 /// Best-effort: register a WTA-launched CLI session with `wta-master` as a
-/// *born-bound* row — bound to its pane, with no hooks involved. Reuses the
-/// existing `intellterm.wta/session_hook` path with a `SessionStarted` event,
-/// which the master reducer turns into a Class-B (`origin = Unknown`) row whose
-/// `pane_session_id` is the pane we just created. Best-effort: if master is
-/// unreachable there is no registry to populate, so the registration is
-/// dropped (logged at `warn`) and the tab still opens normally.
+/// *born-bound* row — bound to its pane, with no hooks involved. Sends a
+/// `SessionStarted` over the `intellterm.wta/session_born_bound` method, which
+/// the master turns into a Class-B (`origin = Unknown`) row whose
+/// `pane_session_id` is the pane we just created and records as binding-only
+/// (so the file watcher may still supply activity/status when no hook is
+/// installed). Best-effort: if master is unreachable there is no registry to
+/// populate, so the registration is dropped (logged at `warn`) and the tab
+/// still opens normally.
 async fn register_launched_session_with_master(
     session_id: &str,
     pane_session_id: &str,
@@ -1299,7 +1303,7 @@ async fn register_launched_session_with_master(
         // on-disk session artefacts once they appear.
         title: String::new(),
     };
-    let req = session_registry::build_session_hook_request(&event);
+    let req = session_registry::build_born_bound_request(&event);
 
     // Own LocalSet so the `spawn_local` transport works regardless of how the
     // delegate's runtime was set up (mirrors `run_sessions_list`).

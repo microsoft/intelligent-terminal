@@ -676,11 +676,22 @@ where
             key,
             tool_name: "prompt".to_string(),
         },
-        "agent.tool.completed"
-        | "agent.tool.finished"
-        | "agent.tool.failed"
-        | "agent.stop"
-        | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
+        // Tool completion does NOT end the turn. Copilot and Gemini fire a
+        // `tool.finished` per tool — often several per turn, in parallel
+        // batches — but the agent keeps working (thinking, streaming text,
+        // running the next tool) until it emits `agent.stop`. Mapping each
+        // `tool.finished` to `ToolCompleted` made multi-tool turns flicker to
+        // Idle and, worse, sit at Idle during the agent's between-tool thinking
+        // (Copilot fires only one `prompt.submit` + one `agent.stop` per user
+        // request, with many tool pairs in between). So ignore tool completions
+        // here and let `agent.stop` own the turn-end → Idle, mirroring the
+        // watcher's turn-based `classify_copilot` / `classify_codex`, which also
+        // ignore `tool.execution_complete`. Claude/Codex don't emit `tool.*`
+        // hook events at all, so this only affects Copilot/Gemini.
+        "agent.tool.completed" | "agent.tool.finished" | "agent.tool.failed" => {
+            return reg.take_dirty();
+        }
+        "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
         "agent.notification" => SessionEvent::Notification {
             key,
             message: payload
@@ -9464,6 +9475,70 @@ mod tests {
                 SessionEvent::Notification { key, .. } if key.starts_with("pane:")
             )),
             "no synthetic-key Notification should leak to master",
+        );
+    }
+
+    /// Turn-based hook status (multi-tool turn bug): Copilot/Gemini fire a
+    /// `tool.finished` per tool — several per turn, in parallel batches — but
+    /// the agent keeps working until `agent.stop`. A `tool.finished` must NOT
+    /// demote the row to Idle (only `agent.stop` ends the turn); otherwise a
+    /// multi-tool turn flickers to (and sits at) Idle while the agent is busy.
+    #[test]
+    fn copilot_tool_finished_keeps_working_only_agent_stop_idles() {
+        use crate::agent_sessions::{
+            AgentSessionRegistry, AgentStatus, CliSource, SessionEvent,
+        };
+        let mut reg = AgentSessionRegistry::new();
+        let pane = "11111111-1111-1111-1111-111111111111";
+        let sid = "copilot-sid";
+        reg.apply(SessionEvent::SessionStarted {
+            key: sid.into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane.into(),
+            cwd: std::path::PathBuf::from("/work"),
+            title: "copilot".into(),
+        });
+        reg.take_dirty();
+
+        let route = |reg: &mut AgentSessionRegistry, event: &str| {
+            let params = json!({
+                "event": event,
+                "cli_source": "copilot",
+                "agent_session_id": sid,
+                "payload": { "tool_name": "read_file" }
+            });
+            route_agent_event_to_registry_with_hook_sink(reg, pane, &params, |_| {});
+        };
+
+        // User prompt → Working (turn start).
+        route(&mut reg, "agent.prompt.submit");
+        assert_eq!(reg.get(&sid.to_string()).unwrap().status, AgentStatus::Working);
+
+        // A parallel batch: three starts, then three finishes.
+        route(&mut reg, "agent.tool.starting");
+        route(&mut reg, "agent.tool.starting");
+        route(&mut reg, "agent.tool.starting");
+        assert_eq!(reg.get(&sid.to_string()).unwrap().status, AgentStatus::Working);
+        route(&mut reg, "agent.tool.finished");
+        assert_eq!(
+            reg.get(&sid.to_string()).unwrap().status,
+            AgentStatus::Working,
+            "first tool.finished must NOT demote while siblings run / the turn continues",
+        );
+        route(&mut reg, "agent.tool.finished");
+        route(&mut reg, "agent.tool.finished");
+        assert_eq!(
+            reg.get(&sid.to_string()).unwrap().status,
+            AgentStatus::Working,
+            "tool completions never end the turn",
+        );
+
+        // Only agent.stop ends the turn → Idle.
+        route(&mut reg, "agent.stop");
+        assert_eq!(
+            reg.get(&sid.to_string()).unwrap().status,
+            AgentStatus::Idle,
+            "agent.stop owns the turn-end → Idle",
         );
     }
 

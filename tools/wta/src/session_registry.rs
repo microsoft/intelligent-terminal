@@ -443,6 +443,14 @@ pub fn parse_focus_session_params(
 /// ExtRequest method for "helper observed a SessionEvent; master should apply it".
 pub const INTELLTERM_METHOD_SESSION_HOOK: &str = "intellterm.wta/session_hook";
 
+/// ExtRequest method for a #266 *born-bound* registration — a WTA-launched CLI
+/// session (delegate `?<prompt>` / resume) that IT bound to its pane at launch.
+/// Same body as `session_hook`, distinct method so the master records it as
+/// *binding-only* (`born_bound`) rather than hook-owned: with no real hook
+/// installed the file watcher may still supply activity/status for it (never
+/// re-binding). A later real `session_hook` event moves it to hook-owned.
+pub const INTELLTERM_METHOD_SESSION_BORN_BOUND: &str = "intellterm.wta/session_born_bound";
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum SessionHookCliSource {
@@ -637,6 +645,18 @@ pub fn build_session_hook_request(event: &crate::agent_sessions::SessionEvent) -
     acp::ExtRequest::new(INTELLTERM_METHOD_SESSION_HOOK, Arc::from(raw))
 }
 
+/// Build a #266 *born-bound* registration ExtRequest. Identical body to
+/// [`build_session_hook_request`] but a distinct method
+/// ([`INTELLTERM_METHOD_SESSION_BORN_BOUND`]) so the master treats it as
+/// binding-only (watcher may still supply status), not hook-owned.
+pub fn build_born_bound_request(event: &crate::agent_sessions::SessionEvent) -> acp::ExtRequest {
+    let params = SessionHookParams::from(event);
+    let json = serde_json::to_string(&params).expect("SessionHookParams serialization is infallible");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::ExtRequest::new(INTELLTERM_METHOD_SESSION_BORN_BOUND, Arc::from(raw))
+}
+
 /// Parse a master-bound `session_hook` body into the canonical reducer event.
 pub fn parse_session_hook_params(
     raw: &serde_json::value::RawValue,
@@ -694,6 +714,16 @@ pub struct SessionInfo {
     pub origin: Option<SessionOrigin>,
     #[serde(default)]
     pub last_error: Option<String>,
+    /// PID of the process that owns this Class-B session (Copilot worker /
+    /// Codex rollout holder / cwd-matched Claude), captured at bind time.
+    /// Master's liveness poll checks it to demote shell-pane sessions whose
+    /// CLI exited without writing a "session ended" record (e.g. `Ctrl+C`).
+    /// `None` for agent-pane sessions and any session we couldn't bind to a
+    /// pid. Master-internal — never serialized (`#[serde(skip)]`), so it can
+    /// never leak into a `sessions/list` response, which serializes
+    /// `SessionInfo` directly.
+    #[serde(skip)]
+    pub bound_pid: Option<u32>,
 }
 
 impl SessionInfo {
@@ -713,6 +743,7 @@ impl SessionInfo {
             last_activity_at_ms: None,
             origin: None,
             last_error: None,
+            bound_pid: None,
         }
     }
 
@@ -751,6 +782,9 @@ pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
         last_activity_at_ms,
         origin: Some(s.origin.clone()),
         last_error: s.last_error.clone(),
+        // History-scan / helper-sourced rows have no bound pid; only the
+        // file watcher's bind step populates it.
+        bound_pid: None,
     }
 }
 
@@ -1067,6 +1101,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 }
             }
 
+            let is_new_entry = !state.sessions.contains_key(&sid);
             let entry = state
                 .sessions
                 .entry(sid.clone())
@@ -1081,10 +1116,29 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 entry.title = Some(title);
             }
             entry.cli_source = Some(cli_source);
-            entry.status = Some(AgentStatus::Idle);
-            entry.last_error = None;
-            entry.attention_reason = None;
-            entry.current_tool = None;
+            // Status baseline. Preserve a live status on an EXISTING row instead
+            // of clobbering it to Idle: some CLIs fire activity hooks before
+            // `session.start` — e.g. Copilot sends `prompt.submit` (→ Working)
+            // ~2 s before its `session.start`, so an unconditional reset here
+            // blanks the row to Idle for the rest of the turn (until the next
+            // `tool.starting`). This is the authoritative reducer behind
+            // `sessions/list`, so the clobber is what the user actually saw.
+            // Only (re)baseline to Idle for a new row or one being revived from a
+            // non-live terminal state (Ended/Error/Historical, e.g. resume /
+            // reconnect); Working/Attention/Idle are preserved. Mirrors the
+            // resurrection guards on ToolStarting/ToolCompleted below and the
+            // helper-side reducer in `agent_sessions.rs`.
+            if is_new_entry
+                || matches!(
+                    entry.status,
+                    Some(AgentStatus::Ended | AgentStatus::Error | AgentStatus::Historical)
+                )
+            {
+                entry.status = Some(AgentStatus::Idle);
+                entry.last_error = None;
+                entry.attention_reason = None;
+                entry.current_tool = None;
+            }
             entry.last_activity_at_ms = Some(now);
             if pane_known {
                 entry.pane_session_id = Some(pane_session_id.clone());
@@ -1783,6 +1837,7 @@ mod tests {
             last_activity_at_ms: Some(1717012345678),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
             last_error: Some("previous failure".into()),
+            bound_pid: None,
         };
 
         let json = serde_json::to_string(&row).expect("serialize SessionInfo");
@@ -1826,6 +1881,7 @@ mod tests {
             last_activity_at_ms: Some(123),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
             last_error: None,
+            bound_pid: None,
         };
         let raw = build_sessions_list_response(vec![row.clone()]);
         let parsed = parse_sessions_list_response(&raw).expect("response parses");
@@ -1876,6 +1932,76 @@ mod tests {
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
         assert!(row.current_tool.is_none());
         assert!(row.attention_reason.is_none());
+    }
+
+    #[tokio::test]
+    async fn master_reducer_session_started_preserves_live_working_status() {
+        // Prompt-before-start ordering bug, authoritative reducer: Copilot fires
+        // `prompt.submit` (→ Working) ~2 s BEFORE its `session.start` for the
+        // same session id. A late SessionStarted must NOT reset the row to Idle —
+        // this is the reducer behind `sessions/list`, so the clobber is exactly
+        // what the user saw on screen.
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        // prompt.submit path: synthetic SessionStarted, then ToolStarting.
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        reg.apply_event(SessionEvent::ToolStarting { key: "sid".into(), tool_name: "prompt".into() }).await;
+        assert_eq!(
+            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            Some(AgentStatus::Working),
+        );
+
+        // The real session.start arrives later for the SAME key.
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        assert_eq!(
+            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            Some(AgentStatus::Working),
+            "a late SessionStarted must preserve the live Working status",
+        );
+    }
+
+    #[tokio::test]
+    async fn master_reducer_session_started_revives_ended_row_to_idle() {
+        // Counterpart: a SessionStarted for a row in a terminal state (Ended)
+        // must still re-baseline it to Idle (resume / reconnect).
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+        let reg = InMemoryRegistry::new();
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        reg.apply_event(SessionEvent::PaneClosed { pane_session_id: "p".into() }).await;
+        assert_eq!(
+            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            Some(AgentStatus::Ended),
+        );
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "p2".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        }).await;
+        assert_eq!(
+            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            Some(AgentStatus::Idle),
+            "a SessionStarted reviving an Ended row must reset it to Idle",
+        );
     }
 
     #[tokio::test]
@@ -1960,6 +2086,7 @@ mod tests {
             last_activity_at_ms: Some(1),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
             last_error: None,
+            bound_pid: None,
         }).await;
         reg.apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched { key: "sid".into() }).await;
 
@@ -2398,6 +2525,28 @@ mod tests {
         let request = build_session_hook_request(&event);
         let parsed = parse_session_hook_params(&request.params)
             .expect("unknown cli_source must round-trip");
+        assert_eq!(parsed, event);
+    }
+
+    #[test]
+    fn build_born_bound_request_uses_distinct_method_and_round_trips() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+        let event = SessionEvent::SessionStarted {
+            key: "bb-1".to_string(),
+            cli_source: CliSource::Claude,
+            pane_session_id: "pane-bb".to_string(),
+            cwd: PathBuf::from(r#"C:\repo"#),
+            title: String::new(),
+        };
+        let request = build_born_bound_request(&event);
+        assert_eq!(
+            &*request.method,
+            INTELLTERM_METHOD_SESSION_BORN_BOUND,
+            "born-bound must use its own method, not session_hook"
+        );
+        // Body is the same wire shape, so the master parses it identically.
+        let parsed =
+            parse_session_hook_params(&request.params).expect("born-bound body must round-trip");
         assert_eq!(parsed, event);
     }
 

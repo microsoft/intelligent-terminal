@@ -330,3 +330,17 @@ env_remove\("[A-Z_]+"\)
 
 # test fixture in ShellIntegrationTests.cpp — synthetic exe leaf used to test lookalike-rejection (pwsh + 'ell' suffix)
 \bpwshell\b
+
+# tools/wta/src/proc_bind.rs - Win32 process FFI: Toolhelp32 snapshot APIs, Restart
+# Manager (rstrtmgr.dll), RTL_USER_PROCESS_PARAMETERS (RUPP) PEB offset constants, the
+# TH32CS_* snapshot flags, and the PROCESS_BASIC_INFORMATION local (pbi).
+\bCreateToolhelp32Snapshot\b
+\bToolhelp32\b
+\bTH32CS_[A-Z]+\b
+\brstrtmgr\b
+\bRUPP_[A-Z0-9_]+\b
+\bpbi\b
+
+# tools/wta/src/agent_sessions.rs - lowercased agent tool name (Claude AskUserQuestion)
+# matched as a string literal in is_user_input_tool.
+\baskuserquestion\b

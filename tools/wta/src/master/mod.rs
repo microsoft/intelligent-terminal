@@ -35,6 +35,7 @@
 //     `ShellManager`, etc.).
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock, Weak};
 
@@ -218,6 +219,39 @@ struct MasterStateInner {
     /// Independent lock from `session_to_helper` so the per-session
     /// routing hot path never contends on it.
     pub(crate) helper_meta: Mutex<HashMap<HelperId, HelperRecoveryMeta>>,
+    /// Session ids claimed by an *authoritative* producer — a PowerShell agent
+    /// hook (arrives via `intellterm.wta/session_hook`) or an ACP agent-pane
+    /// session (driven by ACP `session/*`), both of which fully own binding and
+    /// activity. The hookless file watcher is a **fallback** only: once a session
+    /// id appears here, its watcher-emitted events are dropped in
+    /// [`apply_watcher_event`] so hooks and the watcher never double-track the
+    /// same session.
+    /// double-track the same session. This is what lets a CLI that ships hooks
+    /// (and the WTA-launched born-bound sessions) keep their exact, hook-sourced
+    /// pane binding while the watcher still covers user-typed CLIs that have no
+    /// hook installed (notably Codex's Restart-Manager fallback).
+    ///
+    /// Grow-only for the master's lifetime: a dead session id costs a few bytes
+    /// and re-adding is idempotent, so no eviction is needed. Independent lock —
+    /// touched only on the session_hook ingest path and the watcher apply path.
+    hook_owned: Mutex<HashSet<acp::SessionId>>,
+    /// #266 born-bound sessions (WTA-launched delegate/resume — copilot/claude/
+    /// gemini). **Binding-only**: unlike `hook_owned`, the file watcher may
+    /// still supply STATUS for these when no real hook is installed
+    /// (activity-only, never re-binding the pane). A subsequent real hook moves
+    /// the session into `hook_owned` and out of here, after which the watcher
+    /// fully backs off.
+    born_bound: Mutex<HashSet<acp::SessionId>>,
+    /// Short-lived cache of the live pane GUIDs in THIS IT instance (lowercased),
+    /// from a `list_windows`→`list_tabs`→`list_panes` walk over the master's WT
+    /// channel. Used by [`apply_watcher_event`] to gate watcher-discovered
+    /// sessions: a file-watched CLI is only surfaced if it binds to a pane that
+    /// is currently live here — otherwise it's a copilot/claude/… running in
+    /// VS Code, a background host, or another terminal (its session file is on
+    /// disk machine-wide, but it is not an IT shell-pane session). Cached for a
+    /// couple seconds so a startup burst of session files triggers at most one
+    /// COM walk. `None` until first populated.
+    live_panes_cache: Mutex<Option<(std::time::Instant, HashSet<String>)>>,
 }
 
 /// Per-helper recovery metadata stashed in
@@ -1233,7 +1267,17 @@ impl acp::Agent for HelperHandler {
                 helper_id = ?self.helper_id,
                 "handling intellterm.wta/session_hook locally"
             );
-            return handle_session_hook(&self.state, &args.params).await;
+            return handle_session_hook(&self.state, &args.params, false).await;
+        }
+        if method == crate::session_registry::INTELLTERM_METHOD_SESSION_BORN_BOUND {
+            tracing::info!(
+                target: "master",
+                op = "ext_method",
+                method = %method,
+                helper_id = ?self.helper_id,
+                "handling intellterm.wta/session_born_bound locally"
+            );
+            return handle_session_hook(&self.state, &args.params, true).await;
         }
         if method == crate::session_registry::INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED {
             return handle_session_resume_dispatched(&self.state, &args.params).await;
@@ -1563,6 +1607,9 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         cached_init_resp: OnceLock::new(),
         cli_source,
         helper_meta: Mutex::new(HashMap::new()),
+        hook_owned: Mutex::new(HashSet::new()),
+        born_bound: Mutex::new(HashSet::new()),
+        live_panes_cache: Mutex::new(None),
     });
 
     // Seed the registry with historical sessions scanned from
@@ -1611,6 +1658,74 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
             .await;
         }
     });
+
+    // ── Hookless Class-B session watcher ──────────────────────────────
+    // A blocking `notify` watcher runs on its own OS thread; a bridge thread
+    // forwards emitted events into this LocalSet via a tokio channel, where
+    // they're applied to master's registry (same reducer as session_hook).
+    {
+        let (sync_tx, sync_rx) = std::sync::mpsc::channel::<crate::session_watcher::Emitted>();
+        if let Err(err) = std::thread::Builder::new()
+            .name("wta-session-watch".into())
+            .spawn(move || {
+                if let Err(err) = crate::session_watcher::watch(sync_tx) {
+                    tracing::warn!(target: "session_watcher", error = %err, "watcher exited");
+                }
+            })
+        {
+            tracing::warn!(
+                target: "session_watcher",
+                error = %err,
+                "failed to spawn session-watch thread; hookless fallback disabled"
+            );
+        }
+
+        let (async_tx, mut async_rx) =
+            tokio::sync::mpsc::unbounded_channel::<crate::session_watcher::Emitted>();
+        if let Err(err) = std::thread::Builder::new()
+            .name("wta-session-watch-bridge".into())
+            .spawn(move || {
+                for emitted in sync_rx {
+                    if async_tx.send(emitted).is_err() {
+                        break;
+                    }
+                }
+            })
+        {
+            tracing::warn!(
+                target: "session_watcher",
+                error = %err,
+                "failed to spawn session-watch bridge thread; watcher events will not reach master"
+            );
+        }
+
+        let inner_for_watch = Arc::clone(&inner);
+        tokio::task::spawn_local(async move {
+            while let Some(emitted) = async_rx.recv().await {
+                apply_watcher_event(&inner_for_watch, emitted).await;
+            }
+        });
+    }
+
+    // ── Class-B liveness poll ───────────────────────────────────────────
+    // Shell-pane CLIs (codex/claude/gemini) write no "session ended" record
+    // and don't all hold a lock file, so a `Ctrl+C` leaves the row stuck at
+    // its last status. Poll the bound pids every few seconds and end any whose
+    // owning process has exited. Each tick is cheap — an O(1) `OpenProcess`
+    // per bound Class-B session (~tens of microseconds) — so the fixed 5s
+    // interval adds no meaningful idle cost. `Skip` missed ticks so a busy
+    // executor never queues a backlog of polls.
+    {
+        let inner_for_reap = Arc::clone(&inner);
+        tokio::task::spawn_local(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(5));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                ticker.tick().await;
+                reap_dead_class_b_sessions(&inner_for_reap).await;
+            }
+        });
+    }
 
     // WT event subscriber: drive PaneClosed / ConnectionFailed into the
     // master registry directly off WT's `connection_state` events. This
@@ -2156,6 +2271,7 @@ where
 async fn handle_session_hook(
     state: &MasterStateInner,
     params: &serde_json::value::RawValue,
+    is_born_bound: bool,
 ) -> acp::Result<acp::ExtResponse> {
     let event = crate::session_registry::parse_session_hook_params(params).map_err(|err| {
         tracing::warn!(
@@ -2180,6 +2296,43 @@ async fn handle_session_hook(
     // the refresh is fine.
     let refresh_key = session_event_key(&event).map(str::to_owned);
 
+    // Resume binding events (`ResumeDispatched` / `ResumePaneAssigned`) are the
+    // hook-free born-bound binding for `/sessions` resume (published over the
+    // generic `session_hook` method by the helper). Treat them as binding-only —
+    // same as a #266 delegate registration — so the watcher can still supply
+    // status for a resumed session when no real hook is installed. Without this
+    // they'd mark the session `hook_owned` and the resumed row would sit at Idle
+    // forever (the delegate path already works because it uses the dedicated
+    // born-bound method).
+    let binding_only = is_born_bound
+        || matches!(
+            &event,
+            crate::agent_sessions::SessionEvent::ResumeDispatched { .. }
+                | crate::agent_sessions::SessionEvent::ResumePaneAssigned { .. }
+        );
+
+    // Record ownership so the file watcher (the fallback producer) coordinates
+    // with this authoritative event. Keyed variants only (PaneClosed /
+    // ConnectionFailed carry no session key — pane-keyed terminal transitions,
+    // not an ownership claim).
+    //
+    //  * binding-only (#266 delegate born-bound + resume binding events): record
+    //    in `born_bound` so the watcher may still supply STATUS when no real hook
+    //    is installed — without re-binding the pane.
+    //  * real hook / ACP agent-pane event: authoritative for binding AND
+    //    activity. Record in `hook_owned` (full watcher suppression) and, if the
+    //    session was previously born-bound, drop it from `born_bound` — the real
+    //    hook now owns it.
+    if let Some(key) = &refresh_key {
+        let sid = acp::SessionId::new(key.clone());
+        if binding_only {
+            state.born_bound.lock().await.insert(sid);
+        } else {
+            state.hook_owned.lock().await.insert(sid.clone());
+            state.born_bound.lock().await.remove(&sid);
+        }
+    }
+
     let applied = state.registry.apply_event(event).await;
 
     let title_upgraded = if let Some(key) = refresh_key {
@@ -2197,6 +2350,387 @@ async fn handle_session_hook(
     }
 
     Ok(crate::session_registry::build_session_hook_response(applied))
+}
+
+/// Apply one watcher-emitted session event to master's registry and, if it
+/// changed state, broadcast `sessions/changed` so helpers refetch. Mirrors
+/// `handle_session_hook` but for the in-process file watcher (no ext-request
+/// round-trip). `SessionStarted` synthesis + pane binding happens in
+/// `ensure_watched_session_row` before the activity event is applied; the
+/// post-apply title refresh upgrades the synthetic (cwd-basename / empty)
+/// title from the CLI's on-disk artefacts, same as the hook path.
+async fn apply_watcher_event(
+    state: &MasterStateInner,
+    emitted: crate::session_watcher::Emitted,
+) {
+    let sid = acp::SessionId::new(emitted.key.clone());
+
+    // Hybrid dedup — the watcher is a *fallback*. Coordinate with authoritative
+    // producers:
+    //   1. a real hook / ACP agent-pane event recorded the session in
+    //      `hook_owned` → drop (the hook owns binding AND activity); or
+    //   2. it's a #266 born-bound row (`born_bound`) → the watcher owns no
+    //      binding here, but with no real hook it supplies STATUS only (handled
+    //      just below); or
+    //   3. it's an agent-pane (Class A) session, driven by ACP `session/update`.
+    if state.hook_owned.lock().await.contains(&sid) {
+        return;
+    }
+
+    // Born-bound activity-only fallback: the row already exists and is bound to
+    // its pane by #266 born-bound. Born-bound emits no activity, so when no real
+    // hook is installed the watcher supplies STATUS. `emitted.event` is always a
+    // keyed status event (ToolStarting/ToolCompleted/Notification), so applying
+    // it updates the row's status without touching the pane binding / origin.
+    // Skip the liveness gate and `ensure_watched_session_row` — born-bound owns
+    // the (live, vetted) binding; we only move the status.
+    if state.born_bound.lock().await.contains(&sid) {
+        let key = emitted.key.clone();
+        let applied = state.registry.apply_event(emitted.event).await;
+        let title_upgraded =
+            try_refresh_title_from_disk(&state.registry, &acp::SessionId::new(key)).await;
+        if applied || title_upgraded {
+            broadcast_ext_to_helpers(
+                state,
+                crate::session_registry::build_sessions_changed_notification(),
+            )
+            .await;
+        }
+        return;
+    }
+
+    let existing = state.registry.lookup(&sid).await;
+    if let Some(ref e) = existing {
+        if e.origin == Some(crate::agent_sessions::SessionOrigin::AgentPane) {
+            return;
+        }
+    }
+
+    // Liveness gate (only when we'd CREATE a new row or REVIVE a terminal one).
+    // The file watcher sees session files machine-wide, so the same on-disk CLI
+    // (copilot/claude/…) may be running in VS Code, a background host, or another
+    // terminal — not an IT shell pane. Only surface it if its resolved pane is a
+    // pane that is currently live in THIS IT instance. Already-live rows skip the
+    // gate (vetted at creation) so a chatty turn doesn't re-resolve every event.
+    let needs_gate = match &existing {
+        None => true,
+        Some(e) => matches!(
+            e.status,
+            Some(crate::agent_sessions::AgentStatus::Historical | crate::agent_sessions::AgentStatus::Ended)
+        ),
+    };
+    if needs_gate {
+        let home = std::env::var("USERPROFILE")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_default();
+        let (pane, _pid, _cwd) = resolve_watched_pane_pid_cwd(&home, &emitted);
+        let live = live_it_pane_guids(state).await;
+        let allowed = watcher_row_allowed(pane.as_deref(), live.as_ref());
+        tracing::debug!(
+            target: "session_watcher",
+            cli = ?emitted.cli,
+            key = %emitted.key,
+            resolved_pane = ?pane,
+            gated = live.is_some(),
+            live_pane_count = live.as_ref().map(|s| s.len()).unwrap_or(0),
+            allowed,
+            "watcher liveness gate decision"
+        );
+        if !allowed {
+            return;
+        }
+    }
+
+    ensure_watched_session_row(state, &emitted).await;
+    let key = emitted.key.clone();
+    let applied = state.registry.apply_event(emitted.event).await;
+    let title_upgraded =
+        try_refresh_title_from_disk(&state.registry, &acp::SessionId::new(key)).await;
+    if applied || title_upgraded {
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
+    }
+}
+
+/// Pure decision for the watcher liveness gate: should a watcher-discovered
+/// session be surfaced, given its resolved `pane` and the set of `live_panes`
+/// in this IT instance?
+///
+/// * `live_panes == None` → liveness is unknown (no WT channel — e.g. unit
+///   tests); don't gate, allow.
+/// * `live_panes == Some(set)` → allow only if `pane` is `Some` and present in
+///   the set (case-insensitive). A `None` pane (CLI not in any terminal, e.g.
+///   VS Code / background host) or a pane absent from this IT (another terminal
+///   / closed pane) is rejected.
+fn watcher_row_allowed(pane: Option<&str>, live_panes: Option<&HashSet<String>>) -> bool {
+    match live_panes {
+        None => true,
+        Some(set) => pane.is_some_and(|p| set.contains(&p.to_ascii_lowercase())),
+    }
+}
+
+/// The pane GUIDs (lowercased) currently live in this IT instance, via a
+/// `list_windows`→`list_tabs`→`list_panes` walk over the master WT channel,
+/// cached for [`LIVE_PANES_TTL`]. Returns `None` when there is no WT channel
+/// (unit tests) so callers skip the gate entirely. On a COM error it serves the
+/// last cached set if any; with no cache it returns `Some(empty)`, which makes
+/// the gate *reject* every watcher row (conservative — suppress rather than
+/// surface a possibly-dead pane), self-healing on a later event once COM
+/// succeeds and the live set repopulates.
+async fn live_it_pane_guids(state: &MasterStateInner) -> Option<HashSet<String>> {
+    const LIVE_PANES_TTL: std::time::Duration = std::time::Duration::from_secs(2);
+    let wt = state.wt.as_ref()?;
+
+    {
+        let cache = state.live_panes_cache.lock().await;
+        if let Some((at, set)) = cache.as_ref() {
+            if at.elapsed() < LIVE_PANES_TTL {
+                return Some(set.clone());
+            }
+        }
+    }
+
+    let mut guids = HashSet::new();
+    let mut com_ok = false;
+    if let Ok(windows) = wt.request("list_windows", serde_json::json!({})).await {
+        com_ok = true;
+        if let Some(ws) = windows.get("windows").and_then(|v| v.as_array()) {
+            for w in ws {
+                // `window_id` / `tab_id` come back as JSON *numbers* from COM
+                // (e.g. `"window_id": 1`), so match String|Number — `as_str()`
+                // alone silently skips every window and yields an empty set,
+                // which would make the liveness gate reject every session.
+                let wid = match w.get("window_id") {
+                    Some(serde_json::Value::String(s)) => s.clone(),
+                    Some(serde_json::Value::Number(n)) => n.to_string(),
+                    _ => continue,
+                };
+                let Ok(tabs) = wt
+                    .request("list_tabs", serde_json::json!({ "window_id": wid }))
+                    .await
+                else { continue };
+                let Some(ts) = tabs.get("tabs").and_then(|v| v.as_array()) else { continue };
+                for t in ts {
+                    let tid = match t.get("tab_id") {
+                        Some(serde_json::Value::String(s)) => s.clone(),
+                        Some(serde_json::Value::Number(n)) => n.to_string(),
+                        _ => continue,
+                    };
+                    let Ok(panes) = wt
+                        .request("list_panes", serde_json::json!({ "tab_id": tid }))
+                        .await
+                    else { continue };
+                    if let Some(ps) = panes.get("panes").and_then(|v| v.as_array()) {
+                        for p in ps {
+                            let guid = match p.get("session_id") {
+                                Some(serde_json::Value::String(s)) => Some(s.clone()),
+                                Some(serde_json::Value::Number(n)) => Some(n.to_string()),
+                                _ => None,
+                            };
+                            if let Some(g) = guid {
+                                guids.insert(g.to_ascii_lowercase());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if com_ok {
+        tracing::debug!(
+            target: "session_watcher",
+            panes = ?guids,
+            "refreshed live IT pane set"
+        );
+        let mut cache = state.live_panes_cache.lock().await;
+        *cache = Some((std::time::Instant::now(), guids.clone()));
+        Some(guids)
+    } else {
+        // COM failed: serve the last good set if we have one, else empty.
+        let cache = state.live_panes_cache.lock().await;
+        Some(cache.as_ref().map(|(_, s)| s.clone()).unwrap_or_default())
+    }
+}
+
+/// Ensure master's registry has a row for the event's session key, creating a
+/// minimal one (with a best-effort pane binding) on first sight, OR reviving a
+/// Class-B (shell-pane) row the user just resumed. Binding per the spec's
+/// Decision #3: Copilot=lock, Codex=Restart Manager, Claude=cwd-correlation,
+/// Gemini=unbound (cwd not path-encoded). All resolver calls are best-effort —
+/// a failed bind never blocks row creation/revival, it just leaves
+/// `pane_session_id = None`.
+///
+/// Revival: a resumed shell-pane session is `Historical` (from the startup
+/// history scan) or `Ended`; the watcher event flips it back to `Idle` and
+/// rebinds its pane so the activity event applied immediately after can mark it
+/// `Working`. This is done here, in the watcher path, rather than by loosening
+/// the shared reducer's terminal-state guard, so Class-A agent-pane ghost rows
+/// stay protected.
+async fn ensure_watched_session_row(
+    state: &MasterStateInner,
+    emitted: &crate::session_watcher::Emitted,
+) {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+    let sid = acp::SessionId::new(emitted.key.clone());
+    let home = std::env::var("USERPROFILE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+
+    match state.registry.lookup(&sid).await {
+        None => {
+            // First sight: create the row with a best-effort pane binding.
+            let (pane, pid, cwd) = resolve_watched_pane_pid_cwd(&home, emitted);
+            let mut info = crate::session_registry::SessionInfo::new(sid, cwd);
+            info.cli_source = Some(emitted.cli.clone());
+            info.status = Some(AgentStatus::Idle);
+            info.origin = Some(SessionOrigin::Unknown);
+            info.pane_session_id = pane;
+            info.bound_pid = pid;
+            state.registry.upsert(info).await;
+        }
+        Some(existing) => {
+            // Revive a Class-B (non-agent-pane) row that the user just resumed
+            // in a shell pane: it's Historical (from the startup history scan)
+            // or Ended (pane previously closed). Rebind its pane and clear the
+            // terminal status to Idle so the activity event applied right after
+            // this can mark it Working. Doing the revival here — in the watcher
+            // path — keeps the shared reducer's terminal-state guard untouched,
+            // so Class-A agent-pane ghost rows stay protected.
+            let is_class_b = existing.origin != Some(SessionOrigin::AgentPane);
+            let is_terminal = matches!(
+                existing.status,
+                Some(AgentStatus::Historical | AgentStatus::Ended)
+            );
+            if is_class_b && is_terminal {
+                let (pane, pid, _cwd) = resolve_watched_pane_pid_cwd(&home, emitted);
+                let mut revived = existing;
+                revived.status = Some(AgentStatus::Idle);
+                // Only overwrite the pane binding / pid when we resolved a
+                // fresh one; never clobber a good binding with None.
+                if pane.is_some() {
+                    revived.pane_session_id = pane;
+                }
+                if pid.is_some() {
+                    revived.bound_pid = pid;
+                }
+                revived.last_error = None;
+                revived.attention_reason = None;
+                revived.current_tool = None;
+                state.registry.upsert(revived).await;
+            }
+            // Class-A rows, and already-live Class-B rows, are left as-is.
+        }
+    }
+}
+
+/// Best-effort `(pane GUID, owner pid, cwd)` for a watched session, per the
+/// spec's Decision #3 binding strategy. All resolver calls are best-effort — a
+/// failed bind yields `pane = None` / `pid = None` and never blocks row
+/// creation/revival. The pid feeds master's Class-B liveness poll.
+fn resolve_watched_pane_pid_cwd(
+    home: &std::path::Path,
+    emitted: &crate::session_watcher::Emitted,
+) -> (Option<String>, Option<u32>, std::path::PathBuf) {
+    use crate::agent_sessions::CliSource;
+    match &emitted.cli {
+        CliSource::Copilot => {
+            let dir = crate::history_loader::copilot_session_dir_for_key(home, &emitted.key);
+            let (pane, pid) = crate::session_watcher::bind::bind_copilot(&dir);
+            (pane, pid, emitted.cwd.clone().unwrap_or_default())
+        }
+        CliSource::Codex => {
+            match crate::history_loader::find_codex_rollout_by_id(home, &emitted.key) {
+                Some(path) => {
+                    let (pane, pid) = crate::session_watcher::bind::bind_codex(&path);
+                    // Codex's emitted.cwd is None (not path-encoded); read it
+                    // from the rollout's session_meta so the row has a
+                    // cwd-basename title fallback before the user's first
+                    // message (which is what the title is derived from) lands.
+                    let cwd = crate::history_loader::codex_cwd_from_rollout(&path)
+                        .or_else(|| emitted.cwd.clone())
+                        .unwrap_or_default();
+                    (pane, pid, cwd)
+                }
+                None => (None, None, emitted.cwd.clone().unwrap_or_default()),
+            }
+        }
+        CliSource::Claude => match &emitted.cwd {
+            Some(cwd) => {
+                let (pane, pid) = crate::session_watcher::bind::bind_by_cwd(&emitted.cli, cwd);
+                (pane, pid, cwd.clone())
+            }
+            None => (None, None, std::path::PathBuf::new()),
+        },
+        // Gemini's cwd is not path-encoded (MVP: unbound); Unknown likewise.
+        CliSource::Gemini | CliSource::Unknown(_) => {
+            (None, None, emitted.cwd.clone().unwrap_or_default())
+        }
+    }
+}
+
+/// Demote shell-pane (Class-B) sessions whose owning CLI process has exited
+/// without writing a "session ended" record — e.g. the user `Ctrl+C`'d a
+/// `codex` / `claude` / `gemini` running directly in a pane. Those CLIs leave
+/// the rollout/transcript file frozen at its last turn, so process death is the
+/// only end signal; master polls the bound pids and ends any that are gone.
+///
+/// Agent-pane (Class-A) sessions are managed by the ACP / alive-mirror path and
+/// are never touched here. Rows without a `bound_pid` (binding failed, or
+/// Gemini which is unbound) can't be polled and are left as-is. Returns the
+/// number of sessions reaped (for the caller / tests).
+async fn reap_dead_class_b_sessions(state: &MasterStateInner) -> usize {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+    let dead: Vec<String> = state
+        .registry
+        .snapshot()
+        .await
+        .into_iter()
+        .filter(|s| s.origin != Some(SessionOrigin::AgentPane))
+        .filter(|s| {
+            matches!(
+                s.status,
+                Some(AgentStatus::Working | AgentStatus::Idle | AgentStatus::Attention)
+            )
+        })
+        .filter_map(|s| s.bound_pid.map(|pid| (s.session_id.0.to_string(), pid)))
+        .filter(|(_, pid)| !crate::proc_bind::pid_alive(*pid))
+        .map(|(key, _)| key)
+        .collect();
+
+    if dead.is_empty() {
+        return 0;
+    }
+
+    let mut reaped = 0;
+    for key in &dead {
+        let applied = state
+            .registry
+            .apply_event(crate::agent_sessions::SessionEvent::SessionStopped {
+                key: key.clone(),
+                reason: "process exited".to_string(),
+            })
+            .await;
+        if applied {
+            reaped += 1;
+            tracing::info!(
+                target: "session_watcher",
+                session_id = %key,
+                "reaped Class-B session: owning process exited"
+            );
+        }
+    }
+    if reaped > 0 {
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
+    }
+    reaped
 }
 
 /// Master-side WT event subscriber. Bridges `connection_state`
@@ -2693,6 +3227,9 @@ mod tests {
             cached_init_resp: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
             helper_meta: Mutex::new(HashMap::new()),
+            hook_owned: Mutex::new(HashSet::new()),
+            born_bound: Mutex::new(HashSet::new()),
+            live_panes_cache: Mutex::new(None),
         })
     }
 
@@ -3603,6 +4140,9 @@ mod tests {
             cached_init_resp: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
             helper_meta: Mutex::new(HashMap::new()),
+            hook_owned: Mutex::new(HashSet::new()),
+            born_bound: Mutex::new(HashSet::new()),
+            live_panes_cache: Mutex::new(None),
         })
     }
 
@@ -3760,7 +4300,7 @@ mod tests {
         }))
         .unwrap();
 
-        let err = handle_session_hook(&state, &garbage)
+        let err = handle_session_hook(&state, &garbage, false)
             .await
             .expect_err("malformed session_hook params must error");
         assert_eq!(err.code, acp::ErrorCode::InvalidParams);
@@ -3785,7 +4325,7 @@ mod tests {
         };
         let req = crate::session_registry::build_session_hook_request(&event);
 
-        let response = handle_session_hook(&state, &req.params)
+        let response = handle_session_hook(&state, &req.params, false)
             .await
             .expect("valid session_hook accepted");
         assert_eq!(response.0.get(), r#"{"applied":true}"#);
@@ -3992,4 +4532,570 @@ mod tests {
             assert_eq!(session_event_key(&event), expected, "event={event:?}");
         }
     }
+    // ── ensure_watched_session_row: Class-B resume revival ──────────
+
+    async fn seed_session_row(
+        state: &MasterStateInner,
+        key: &str,
+        origin: crate::agent_sessions::SessionOrigin,
+        status: crate::agent_sessions::AgentStatus,
+    ) {
+        let mut info = crate::session_registry::SessionInfo::new(
+            acp::SessionId::new(key.to_string()),
+            std::path::PathBuf::from("C:\\repo"),
+        );
+        info.cli_source = Some(crate::agent_sessions::CliSource::Codex);
+        info.origin = Some(origin);
+        info.status = Some(status);
+        state.registry.upsert(info).await;
+    }
+
+    fn codex_emitted(key: &str) -> crate::session_watcher::Emitted {
+        crate::session_watcher::Emitted {
+            cli: crate::agent_sessions::CliSource::Codex,
+            key: key.to_string(),
+            cwd: None,
+            event: crate::agent_sessions::SessionEvent::ToolStarting {
+                key: key.to_string(),
+                tool_name: String::new(),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn ensure_row_revives_class_b_historical_session() {
+        // A shell-pane (Class B) session the user resumed is Historical from
+        // the startup history scan. The watcher's first event must revive it
+        // (Historical -> Idle) so the following activity event can mark it
+        // Working — otherwise the reducer's terminal-state guard keeps it
+        // stuck at "no status".
+        let state = make_state();
+        seed_session_row(
+            &state,
+            "sid-resumed",
+            crate::agent_sessions::SessionOrigin::Unknown,
+            crate::agent_sessions::AgentStatus::Historical,
+        )
+        .await;
+
+        ensure_watched_session_row(&state, &codex_emitted("sid-resumed")).await;
+
+        let row = state
+            .registry
+            .lookup(&acp::SessionId::new("sid-resumed".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
+    }
+
+    #[tokio::test]
+    async fn ensure_row_does_not_revive_agent_pane_session() {
+        // Class A (agent pane) terminal rows must NOT be revived by a watcher
+        // event — that's the ghost-row case the reducer guard protects
+        // against. Keep the revival scoped to Class B.
+        let state = make_state();
+        seed_session_row(
+            &state,
+            "sid-agent",
+            crate::agent_sessions::SessionOrigin::AgentPane,
+            crate::agent_sessions::AgentStatus::Historical,
+        )
+        .await;
+
+        ensure_watched_session_row(&state, &codex_emitted("sid-agent")).await;
+
+        let row = state
+            .registry
+            .lookup(&acp::SessionId::new("sid-agent".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(
+            row.status,
+            Some(crate::agent_sessions::AgentStatus::Historical),
+            "Class A agent-pane rows must stay terminal"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_row_leaves_live_class_b_session_untouched() {
+        // A live (non-terminal) Class-B row must not be re-bound or reset on
+        // every event — revival applies only to terminal rows.
+        let state = make_state();
+        let mut info = crate::session_registry::SessionInfo::new(
+            acp::SessionId::new("sid-live".to_string()),
+            std::path::PathBuf::from("C:\\repo"),
+        );
+        info.cli_source = Some(crate::agent_sessions::CliSource::Codex);
+        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+        info.status = Some(crate::agent_sessions::AgentStatus::Working);
+        info.pane_session_id = Some("pane-live".to_string());
+        state.registry.upsert(info).await;
+
+        ensure_watched_session_row(&state, &codex_emitted("sid-live")).await;
+
+        let row = state
+            .registry
+            .lookup(&acp::SessionId::new("sid-live".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Working));
+        assert_eq!(row.pane_session_id.as_deref(), Some("pane-live"));
+    }
+
+    // ── reap_dead_class_b_sessions: Ctrl+C liveness poll ────────────
+
+    async fn seed_row_with_pid(
+        state: &MasterStateInner,
+        key: &str,
+        origin: crate::agent_sessions::SessionOrigin,
+        status: crate::agent_sessions::AgentStatus,
+        pid: Option<u32>,
+    ) {
+        let mut info = crate::session_registry::SessionInfo::new(
+            acp::SessionId::new(key.to_string()),
+            std::path::PathBuf::from("C:\\repo"),
+        );
+        info.cli_source = Some(crate::agent_sessions::CliSource::Codex);
+        info.origin = Some(origin);
+        info.status = Some(status);
+        info.bound_pid = pid;
+        state.registry.upsert(info).await;
+    }
+
+    // A pid that is essentially guaranteed not to exist, so pid_alive is false.
+    const DEAD_PID: u32 = 0x7FFF_FFF0;
+
+    #[tokio::test]
+    async fn reap_ends_class_b_with_dead_pid() {
+        let state = make_state();
+        seed_row_with_pid(
+            &state,
+            "sid-dead",
+            crate::agent_sessions::SessionOrigin::Unknown,
+            crate::agent_sessions::AgentStatus::Idle,
+            Some(DEAD_PID),
+        )
+        .await;
+
+        let reaped = reap_dead_class_b_sessions(&state).await;
+        assert_eq!(reaped, 1);
+
+        let row = state
+            .registry
+            .lookup(&acp::SessionId::new("sid-dead".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Ended));
+    }
+
+    #[tokio::test]
+    async fn reap_keeps_class_b_with_live_pid() {
+        let state = make_state();
+        // Our own process is alive — the session must survive the poll.
+        seed_row_with_pid(
+            &state,
+            "sid-alive",
+            crate::agent_sessions::SessionOrigin::Unknown,
+            crate::agent_sessions::AgentStatus::Working,
+            Some(std::process::id()),
+        )
+        .await;
+
+        let reaped = reap_dead_class_b_sessions(&state).await;
+        assert_eq!(reaped, 0);
+
+        let row = state
+            .registry
+            .lookup(&acp::SessionId::new("sid-alive".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Working));
+    }
+
+    #[tokio::test]
+    async fn reap_ignores_agent_pane_sessions() {
+        // Class A (agent pane) rows are managed by the ACP / alive-mirror path;
+        // the liveness poll must never touch them even with a dead pid.
+        let state = make_state();
+        seed_row_with_pid(
+            &state,
+            "sid-a",
+            crate::agent_sessions::SessionOrigin::AgentPane,
+            crate::agent_sessions::AgentStatus::Idle,
+            Some(DEAD_PID),
+        )
+        .await;
+
+        let reaped = reap_dead_class_b_sessions(&state).await;
+        assert_eq!(reaped, 0);
+
+        let row = state
+            .registry
+            .lookup(&acp::SessionId::new("sid-a".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
+    }
+
+    #[tokio::test]
+    async fn reap_ignores_rows_without_bound_pid() {
+        // A Class-B row we couldn't bind to a pid (or Gemini, which is unbound)
+        // can't be polled, so it's left alone.
+        let state = make_state();
+        seed_row_with_pid(
+            &state,
+            "sid-no-pid",
+            crate::agent_sessions::SessionOrigin::Unknown,
+            crate::agent_sessions::AgentStatus::Idle,
+            None,
+        )
+        .await;
+
+        let reaped = reap_dead_class_b_sessions(&state).await;
+        assert_eq!(reaped, 0);
+
+        let row = state
+            .registry
+            .lookup(&acp::SessionId::new("sid-no-pid".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
+    }
+
+    // ── Hybrid event-dedup: hooks / born-bound win, watcher is fallback ──
+
+    #[tokio::test]
+    async fn watcher_event_dropped_when_session_is_hook_owned() {
+        // A session a hook (or #266 born-bound) already claimed is recorded in
+        // `hook_owned`. The watcher is a fallback and must not double-track it:
+        // its event is dropped before any row is created.
+        let state = make_state();
+        state
+            .hook_owned
+            .lock()
+            .await
+            .insert(acp::SessionId::new("sid-hooked".to_string()));
+
+        apply_watcher_event(&state, codex_emitted("sid-hooked")).await;
+
+        assert!(
+            state
+                .registry
+                .lookup(&acp::SessionId::new("sid-hooked".to_string()))
+                .await
+                .is_none(),
+            "watcher must not create a row for a hook-owned session"
+        );
+    }
+
+    #[tokio::test]
+    async fn watcher_event_applied_when_not_hook_owned() {
+        // The fallback path: a user-typed CLI with no hook installed is tracked
+        // by the watcher, which creates a Class-B row.
+        let state = make_state();
+
+        apply_watcher_event(&state, codex_emitted("sid-typed")).await;
+
+        let row = state
+            .registry
+            .lookup(&acp::SessionId::new("sid-typed".to_string()))
+            .await
+            .expect("watcher creates a row for a non-hook-owned session");
+        assert_eq!(
+            row.origin,
+            Some(crate::agent_sessions::SessionOrigin::Unknown)
+        );
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Working));
+    }
+
+    #[tokio::test]
+    async fn watcher_event_dropped_for_agent_pane_session() {
+        // Agent-pane (Class A) sessions are driven by ACP session/update; the
+        // watcher must defer to ACP even though the agent CLI also writes the
+        // on-disk session file the watcher sees.
+        let state = make_state();
+        seed_session_row(
+            &state,
+            "sid-agent-pane",
+            crate::agent_sessions::SessionOrigin::AgentPane,
+            crate::agent_sessions::AgentStatus::Idle,
+        )
+        .await;
+
+        apply_watcher_event(&state, codex_emitted("sid-agent-pane")).await;
+
+        let row = state
+            .registry
+            .lookup(&acp::SessionId::new("sid-agent-pane".to_string()))
+            .await
+            .unwrap();
+        // Still Idle — the watcher's ToolStarting (Working) was dropped.
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
+    }
+
+    #[tokio::test]
+    async fn session_hook_marks_session_hook_owned_then_watcher_is_ignored() {
+        // End-to-end: a hook SessionStarted claims the session (recording it in
+        // `hook_owned`), after which the watcher's events for that session are
+        // dropped — so the hook-sourced pane binding is never clobbered.
+        let state = make_state();
+        let event = crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "sid-claimed".to_string(),
+            cli_source: crate::agent_sessions::CliSource::Codex,
+            pane_session_id: "pane-from-hook".to_string(),
+            cwd: std::path::PathBuf::from("C:\\repo"),
+            title: String::new(),
+        };
+        let req = crate::session_registry::build_session_hook_request(&event);
+        handle_session_hook(&state, &req.params, false)
+            .await
+            .expect("valid session_hook accepted");
+
+        assert!(
+            state
+                .hook_owned
+                .lock()
+                .await
+                .contains(&acp::SessionId::new("sid-claimed".to_string())),
+            "a keyed session_hook event must mark the session hook-owned"
+        );
+
+        // A subsequent watcher event must not disturb the hook-bound row.
+        apply_watcher_event(&state, codex_emitted("sid-claimed")).await;
+        let row = state
+            .registry
+            .lookup(&acp::SessionId::new("sid-claimed".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(
+            row.pane_session_id.as_deref(),
+            Some("pane-from-hook"),
+            "watcher must not clobber the hook-sourced pane binding"
+        );
+    }
+
+    #[tokio::test]
+    async fn session_born_bound_marks_born_bound_not_hook_owned() {
+        // #266 born-bound (WTA-launched delegate/resume) is binding-only: it must
+        // land in `born_bound`, NOT `hook_owned`, so the watcher can still supply
+        // status for it when no real hook is installed.
+        let state = make_state();
+        let event = crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "bb-mark".to_string(),
+            cli_source: crate::agent_sessions::CliSource::Claude,
+            pane_session_id: "pane-bb".to_string(),
+            cwd: std::path::PathBuf::from("C:\\repo"),
+            title: String::new(),
+        };
+        let req = crate::session_registry::build_born_bound_request(&event);
+        handle_session_hook(&state, &req.params, true)
+            .await
+            .expect("valid born-bound accepted");
+
+        let sid = acp::SessionId::new("bb-mark".to_string());
+        assert!(
+            state.born_bound.lock().await.contains(&sid),
+            "born-bound registration must record the session in `born_bound`"
+        );
+        assert!(
+            !state.hook_owned.lock().await.contains(&sid),
+            "born-bound is binding-only — must NOT be hook-owned"
+        );
+    }
+
+    #[tokio::test]
+    async fn born_bound_session_gets_watcher_activity_without_rebinding() {
+        // The whole point: a born-bound row (no hook) gets STATUS from the
+        // watcher, while its pane binding (owned by born-bound) is untouched.
+        let state = make_state();
+        let sid = acp::SessionId::new("bb-activity".to_string());
+
+        let mut info =
+            crate::session_registry::SessionInfo::new(sid.clone(), std::path::PathBuf::from("C:\\repo"));
+        info.cli_source = Some(crate::agent_sessions::CliSource::Claude);
+        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+        info.status = Some(crate::agent_sessions::AgentStatus::Idle);
+        info.pane_session_id = Some("born-pane".to_string());
+        state.registry.upsert(info).await;
+        state.born_bound.lock().await.insert(sid.clone());
+
+        // Watcher observes a tool start (the Emitted's cli is irrelevant on the
+        // born-bound path — binding/gate are skipped).
+        apply_watcher_event(&state, codex_emitted("bb-activity")).await;
+
+        let row = state.registry.lookup(&sid).await.unwrap();
+        assert_eq!(
+            row.status,
+            Some(crate::agent_sessions::AgentStatus::Working),
+            "watcher must supply status for a born-bound row with no hook"
+        );
+        assert_eq!(
+            row.pane_session_id.as_deref(),
+            Some("born-pane"),
+            "watcher must NOT re-bind a born-bound row's pane"
+        );
+    }
+
+    #[tokio::test]
+    async fn real_hook_takes_over_born_bound_session() {
+        // If a real hook later fires for a born-bound session (hooks installed
+        // after launch), it becomes fully hook-owned and leaves `born_bound`, so
+        // the watcher backs off entirely.
+        let state = make_state();
+        let sid = acp::SessionId::new("bb-takeover".to_string());
+
+        let bb = crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "bb-takeover".to_string(),
+            cli_source: crate::agent_sessions::CliSource::Claude,
+            pane_session_id: "pane-bb".to_string(),
+            cwd: std::path::PathBuf::from("C:\\repo"),
+            title: String::new(),
+        };
+        handle_session_hook(
+            &state,
+            &crate::session_registry::build_born_bound_request(&bb).params,
+            true,
+        )
+        .await
+        .expect("born-bound accepted");
+        assert!(state.born_bound.lock().await.contains(&sid));
+
+        // A real hook event arrives via session_hook (is_born_bound = false).
+        let hook = crate::agent_sessions::SessionEvent::ToolStarting {
+            key: "bb-takeover".to_string(),
+            tool_name: "Bash".to_string(),
+        };
+        handle_session_hook(
+            &state,
+            &crate::session_registry::build_session_hook_request(&hook).params,
+            false,
+        )
+        .await
+        .expect("real hook accepted");
+
+        assert!(
+            state.hook_owned.lock().await.contains(&sid),
+            "the real hook must take ownership"
+        );
+        assert!(
+            !state.born_bound.lock().await.contains(&sid),
+            "the real hook must remove the stale born-bound claim"
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_binding_events_are_born_bound_not_hook_owned() {
+        // `/sessions` resume publishes ResumeDispatched / ResumePaneAssigned over
+        // the generic session_hook method. These are the hook-free resume binding,
+        // so they must record `born_bound` (watcher can supply status), NOT
+        // `hook_owned` — otherwise the resumed row sits at Idle forever.
+        let state = make_state();
+        let sid = acp::SessionId::new("sid-resume".to_string());
+
+        let dispatched = crate::agent_sessions::SessionEvent::ResumeDispatched {
+            key: "sid-resume".to_string(),
+        };
+        handle_session_hook(
+            &state,
+            &crate::session_registry::build_session_hook_request(&dispatched).params,
+            false,
+        )
+        .await
+        .expect("resume dispatched accepted");
+        assert!(
+            state.born_bound.lock().await.contains(&sid),
+            "ResumeDispatched must be born_bound"
+        );
+        assert!(
+            !state.hook_owned.lock().await.contains(&sid),
+            "ResumeDispatched must NOT be hook_owned"
+        );
+
+        let assigned = crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+            key: "sid-resume".to_string(),
+            pane_session_id: "pane-resume".to_string(),
+        };
+        handle_session_hook(
+            &state,
+            &crate::session_registry::build_session_hook_request(&assigned).params,
+            false,
+        )
+        .await
+        .expect("resume pane assigned accepted");
+        assert!(
+            state.born_bound.lock().await.contains(&sid),
+            "ResumePaneAssigned must be born_bound"
+        );
+        assert!(!state.hook_owned.lock().await.contains(&sid));
+    }
+
+    // ── Liveness gate: only surface watcher sessions bound to a live IT pane ──
+
+    #[test]
+    fn watcher_row_allowed_no_live_set_is_permissive() {
+        // No WT channel (unit tests / master without a wt channel) → can't gate
+        // → allow, preserving the watcher's create-on-first-sight behavior.
+        assert!(watcher_row_allowed(Some("pane-1"), None));
+        assert!(watcher_row_allowed(None, None));
+    }
+
+    #[test]
+    fn watcher_row_allowed_requires_membership_when_gating() {
+        let live: HashSet<String> = ["aaaa-bbbb", "cccc-dddd"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        // In the live set (case-insensitive) → allowed.
+        assert!(watcher_row_allowed(Some("aaaa-bbbb"), Some(&live)));
+        assert!(watcher_row_allowed(Some("AAAA-BBBB"), Some(&live)));
+        // Not a live IT pane (another terminal / closed pane) → rejected.
+        assert!(!watcher_row_allowed(Some("9999-9999"), Some(&live)));
+        // No pane at all (VS Code / background host, no WT_SESSION) → rejected.
+        assert!(!watcher_row_allowed(None, Some(&live)));
+    }
+
+    /// WtChannel mock that scripts a windows→tabs→panes topology so
+    /// `live_it_pane_guids` can be exercised without COM. Uses **numeric**
+    /// `window_id`/`tab_id` to match the real COM JSON shape (`"window_id": 1`),
+    /// so the walk's String|Number handling is actually covered.
+    struct PaneTopoMock;
+
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for PaneTopoMock {
+        async fn request(
+            &self,
+            method: &str,
+            _params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            Ok(match method {
+                "list_windows" => serde_json::json!({ "windows": [ { "window_id": 1 } ] }),
+                "list_tabs" => serde_json::json!({ "tabs": [ { "tab_id": 0 } ] }),
+                "list_panes" => serde_json::json!({ "panes": [
+                    { "session_id": "PANE-AAAA", "pid": 10 },
+                    { "session_id": "pane-bbbb", "pid": 20 }
+                ] }),
+                _ => serde_json::json!({ "ok": true }),
+            })
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn live_it_pane_guids_collects_lowercased_set() {
+        let state = make_state_with_wt(Arc::new(PaneTopoMock));
+        let set = live_it_pane_guids(&state).await.expect("wt present → Some");
+        assert!(set.contains("pane-aaaa"), "GUIDs are lowercased; got {:?}", set);
+        assert!(set.contains("pane-bbbb"));
+        assert_eq!(set.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn live_it_pane_guids_none_without_wt_channel() {
+        // No WT channel → None so callers skip the gate (unit-test path).
+        let state = make_state();
+        assert!(live_it_pane_guids(&state).await.is_none());
+    }
+
 }
