@@ -13769,7 +13769,7 @@ mod tests {
         app.mode = AppMode::Auth;
         app.auth = Some(AuthState {
             agent_id: "copilot".into(),
-            agent_name: "AUTHAGENTXYZ".into(),
+            agent_name: "SELECTED_AGENT_NAME_XYZ".into(),
             auth_hint: String::new(),
             login_command: String::new(),
             checking: true,
@@ -13778,7 +13778,7 @@ mod tests {
 
         let text = render_to_text(&mut app, 80, 24);
         assert!(
-            text.contains("AUTHAGENTXYZ"),
+            text.contains("SELECTED_AGENT_NAME_XYZ"),
             "the auth screen must paint the selected agent name; rendered:\n{text}"
         );
     }
@@ -13827,9 +13827,9 @@ mod tests {
             "the auth sign-in card must paint the connect prompt ({connect:?}); rendered:\n{text}"
         );
         let button = t!("auth.button_sign_in_github").into_owned();
-        let bprobe: String = button.chars().take(6).collect();
+        let button_probe: String = button.chars().take(6).collect();
         assert!(
-            !bprobe.trim().is_empty() && text.contains(&bprobe),
+            !button_probe.trim().is_empty() && text.contains(&button_probe),
             "the auth sign-in card must paint the GitHub sign-in button ({button:?}); rendered:\n{text}"
         );
     }
@@ -14027,7 +14027,7 @@ mod tests {
             tab.messages.push(ChatMessage::System("SYSTEM_MSG_XYZ".into()));
             tab.messages.push(ChatMessage::Error("ERROR_MSG_XYZ".into()));
             tab.messages
-                .push(ChatMessage::AgentEvent("AGENTEVENT_MSG_XYZ".into()));
+                .push(ChatMessage::AgentEvent("AGENT_EVENT_MSG_XYZ".into()));
             tab.messages.push(ChatMessage::Plan(vec![
                 PlanEntry {
                     content: "PLAN_DONE_XYZ".into(),
@@ -14051,7 +14051,7 @@ mod tests {
             "AGENT_MSG_XYZ",
             "SYSTEM_MSG_XYZ",
             "ERROR_MSG_XYZ",
-            "AGENTEVENT_MSG_XYZ",
+            "AGENT_EVENT_MSG_XYZ",
             "PLAN_DONE_XYZ",
             "PLAN_DOING_XYZ",
             "PLAN_TODO_XYZ",

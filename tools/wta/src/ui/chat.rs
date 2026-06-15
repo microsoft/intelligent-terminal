@@ -688,9 +688,9 @@ mod tests {
     fn json_field_returns_partial_when_unterminated() {
         // Streaming: the closing quote hasn't arrived yet — show what we have.
         assert_eq!(
-            extract_json_string_field(r#"{"explanation":"hello wor"#, "explanation")
+            extract_json_string_field(r#"{"explanation":"hello world"#, "explanation")
                 .as_deref(),
-            Some("hello wor")
+            Some("hello world")
         );
     }
 
@@ -797,7 +797,7 @@ mod tests {
 
     #[test]
     fn truncate_is_char_safe_at_boundary() {
-        // Multi-byte chars just under and over the limit must not panic and
+        // Multi-byte chars just below and above the limit must not panic and
         // must round-trip below the threshold.
         let under: String = std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS).collect();
         assert!(matches!(truncate_render_text(&under), Cow::Borrowed(_)));

@@ -4792,11 +4792,11 @@ mod tests {
 
     #[test]
     fn snippet_takes_head_or_tail() {
-        assert_eq!(super::snippet("abcdefgh", 3, true), "abc");
-        assert_eq!(super::snippet("abcdefgh", 3, false), "fgh");
+        assert_eq!(super::snippet("hello world", 5, true), "hello");
+        assert_eq!(super::snippet("hello world", 5, false), "world");
         // Budget larger than the text returns the whole thing either way.
-        assert_eq!(super::snippet("ab", 5, true), "ab");
-        assert_eq!(super::snippet("ab", 5, false), "ab");
+        assert_eq!(super::snippet("hi", 5, true), "hi");
+        assert_eq!(super::snippet("hi", 5, false), "hi");
         // Newlines are escaped for single-line logging.
         assert_eq!(super::snippet("a\nb", 5, true), "a\\nb");
     }

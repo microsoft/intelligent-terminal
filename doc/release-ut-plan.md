@@ -62,14 +62,14 @@ or manual sign-off (see `doc\release-automation-plan.md`).
 | Custom agent id derivation | `src\cascadia\ut_app\CustomAgentIdTests.cpp` | strong |
 | Hooks status JSON contract | `src\cascadia\ut_app\AgentHooksStatusTests.cpp` | strong |
 | Keychord parse/serialize | `src\cascadia\UnitTests_SettingsModel\KeyBindingsTests.cpp` | present (no agent-shortcut assertions yet) |
-| Settings JSON / actions | `DeserializationTests.cpp`, `CommandTests.cpp`, `SerializationTests.cpp` | present |
-| Session Enter routing | `tools\wta\src\session_mgmt.rs` (27 tests) | strong |
-| Session state/origin | `tools\wta\src\agent_sessions.rs` (67 markers) | strong |
+| Settings JSON / actions | `src\cascadia\UnitTests_SettingsModel\DeserializationTests.cpp`, `src\cascadia\UnitTests_SettingsModel\CommandTests.cpp`, `src\cascadia\UnitTests_SettingsModel\SerializationTests.cpp` | present |
+| Session Enter routing | `tools\wta\src\session_mgmt.rs` | strong |
+| Session state/origin | `tools\wta\src\agent_sessions.rs` | strong |
 | Slash commands | `tools\wta\src\slash_command_tests.rs` | partial (help/clear/new/stop) |
 | CLI parse / sessions list | `tools\wta\src\cli_tests.rs` | strong |
-| Agent registry | `tools\wta\src\agent_registry.rs` (8 tests) | strong |
-| ACP failure classification | `tools\wta\src\protocol\acp\failure.rs` (6 tests) | strong |
-| Runtime paths | `tools\wta\src\runtime_paths.rs` (3 tests) | present |
+| Agent registry | `tools\wta\src\agent_registry.rs` | strong |
+| ACP failure classification | `tools\wta\src\protocol\acp\failure.rs` | strong |
+| Runtime paths | `tools\wta\src\runtime_paths.rs` | present |
 | Autofix reducer | `tools\wta\src\app\autofix.rs` | **0 tests — gap** |
 | RTL | `src\cascadia\ut_app\RtlHelperTests.cpp`, `tools\wta\src\rtl.rs` | present |
 
