@@ -10,7 +10,7 @@ use crate::app::AppEvent;
 ///
 /// Load-bearing branch: only `KeyEventKind::Press` becomes an `AppEvent::Key`
 /// — key *release* / *repeat* events (which conpty/Windows can deliver) must
-/// be dropped, otherwise every keystroke would fire twice. Paste, Mouse, and
+/// be dropped; otherwise every keystroke would fire twice. Paste, Mouse, and
 /// any other variant are dropped (we never enable mouse capture; the emulator
 /// translates wheel into arrow keys in alt-screen mode).
 fn map_crossterm_event(event: Event) -> Option<AppEvent> {
