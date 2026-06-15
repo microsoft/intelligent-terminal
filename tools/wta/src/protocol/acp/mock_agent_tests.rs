@@ -29,6 +29,8 @@ enum MockBehavior {
     /// Request permission (allow-once / reject-once) and record the outcome the
     /// client sent back, then end the turn.
     AskPermission,
+    /// Stream a `ToolCall` notification (a proposed command), then end the turn.
+    ProposeToolCall,
 }
 
 /// Deterministic ACP agent. Implements only what the scenarios need; the rest
@@ -143,6 +145,19 @@ impl acp::Agent for MockAgent {
                         }
                     });
                 }
+                MockBehavior::ProposeToolCall => {
+                    tokio::task::spawn_local(async move {
+                        let _ = conn
+                            .session_notification(acp::SessionNotification::new(
+                                sid,
+                                acp::SessionUpdate::ToolCall(acp::ToolCall::new(
+                                    acp::ToolCallId::new("mock-tool-1"),
+                                    "Run: echo hi",
+                                )),
+                            ))
+                            .await;
+                    });
+                }
             }
         }
 
@@ -246,6 +261,16 @@ pub(crate) fn connect_mock_agent_asking_permission() -> (
 ) {
     let (conn, event_rx, _seen, permission_outcome) = connect_with(MockBehavior::AskPermission);
     (conn, event_rx, permission_outcome)
+}
+
+/// Tool-call harness: the mock streams a `ToolCall` (a proposed command) on each
+/// prompt. Returns the client connection and the `AppEvent` receiver.
+pub(crate) fn connect_mock_agent_proposing_tool() -> (
+    acp::ClientSideConnection,
+    mpsc::UnboundedReceiver<AppEvent>,
+) {
+    let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ProposeToolCall);
+    (conn, event_rx)
 }
 
 /// Drain `event_rx` until the first `AgentMessageChunk`, with a timeout so a

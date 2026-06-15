@@ -13299,6 +13299,67 @@ mod tests {
             .await;
     }
 
+    /// Tool-call card: when the mock proposes a command (a `ToolCall`
+    /// notification), the real `WtaClient` turns it into `AppEvent::ToolCall`
+    /// and the real `App` surfaces a tool-call card in the chat — the display
+    /// state the insert/run affordance hangs off.
+    #[tokio::test]
+    async fn tool_call_surfaces_card_in_chat() {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_proposing_tool;
+        use agent_client_protocol as acp;
+        use agent_client_protocol::Agent as _;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let (conn, mut event_rx) = connect_mock_agent_proposing_tool();
+                conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                    .await
+                    .expect("initialize failed");
+                let session = conn
+                    .new_session(acp::NewSessionRequest::new("/test"))
+                    .await
+                    .expect("new_session failed");
+                conn.prompt(acp::PromptRequest::new(
+                    session.session_id.clone(),
+                    vec!["run it".into()],
+                ))
+                .await
+                .expect("prompt failed");
+
+                let mut app = test_app();
+                submit_test_prompt(&mut app, "run it");
+
+                let pumped = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    loop {
+                        match event_rx.recv().await {
+                            Some(ev) => {
+                                let is_tool = matches!(ev, AppEvent::ToolCall { .. });
+                                app.handle_event(ev);
+                                if is_tool {
+                                    break;
+                                }
+                            }
+                            None => break,
+                        }
+                    }
+                })
+                .await;
+                assert!(pumped.is_ok(), "timed out waiting for the tool call");
+
+                // Display assertion: the proposed command shows as a tool-call card.
+                let has_card = app.current_tab().messages.iter().any(|m| {
+                    matches!(m, ChatMessage::ToolCall { title, .. } if title == "Run: echo hi")
+                });
+                assert!(
+                    has_card,
+                    "a tool-call card must surface in the chat; got {:?}",
+                    app.current_tab().messages
+                );
+            })
+            .await;
+    }
+
     fn submit_autofix_prompt(app: &mut App, pane: &str) {
         let gen = {
             let tab = app.tab_mut(DEFAULT_TAB_ID);
