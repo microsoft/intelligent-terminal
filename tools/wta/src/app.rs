@@ -13712,6 +13712,172 @@ mod tests {
         );
     }
 
+    /// Render: the auth screen's sign-in card branch (`checking == false`)
+    /// must paint the connect prompt and a Copilot-specific sign-in button.
+    /// Covers the `else` arm of `ui/auth.rs` (lines 62-122).
+    #[test]
+    fn render_auth_sign_in_card() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: String::new(),
+            checking: false,
+            status_message: String::new(),
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        let connect = t!("auth.card_connect", name = "GitHub Copilot").into_owned();
+        let probe: String = connect.chars().take(6).collect();
+        assert!(
+            !probe.trim().is_empty() && text.contains(&probe),
+            "the auth sign-in card must paint the connect prompt ({connect:?}); rendered:\n{text}"
+        );
+        let button = t!("auth.button_sign_in_github").into_owned();
+        let bprobe: String = button.chars().take(6).collect();
+        assert!(
+            !bprobe.trim().is_empty() && text.contains(&bprobe),
+            "the auth sign-in card must paint the GitHub sign-in button ({button:?}); rendered:\n{text}"
+        );
+    }
+
+    /// Render: the auth screen while checking with a non-empty status message
+    /// must paint that message (the `waiting_for_authorization` branch). Covers
+    /// `ui/auth.rs` lines 44-60.
+    #[test]
+    fn render_auth_checking_with_status_message() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: String::new(),
+            checking: true,
+            status_message: "AUTH_STATUS_XYZ".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("AUTH_STATUS_XYZ"),
+            "the auth screen must paint the status message while waiting; rendered:\n{text}"
+        );
+    }
+
+    fn agent_status_for_test(id: &str, display: &str, cli_found: bool) -> crate::agent_check::AgentStatus {
+        crate::agent_check::AgentStatus {
+            id: id.into(),
+            display_name: display.into(),
+            cli_found,
+            cli_path: None,
+            has_credential: false,
+            install_hint: String::new(),
+            auth_hint: String::new(),
+        }
+    }
+
+    /// Render: a setup screen with a full options list while a winget install
+    /// is in progress must paint each option label and the install spinner row.
+    /// Covers the `SetupOption` match arms + the install-progress block in
+    /// `ui/setup.rs`.
+    #[test]
+    fn render_setup_options_while_installing() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.setup = Some(SetupState {
+            reason: SetupReason::AgentMissing,
+            selected_index: 0,
+            preflight: PreflightResult::passed_for_custom_agent("custom:x"),
+            install_in_progress: true,
+            install_log: vec!["WINGET_LOG_XYZ".into()],
+            install_error: None,
+            options: vec![
+                SetupOption::SelectAgent {
+                    agent: agent_status_for_test("copilot", "GitHub Copilot", false),
+                },
+                SetupOption::Install {
+                    agent_id: "copilot".into(),
+                    display_name: "GitHub Copilot".into(),
+                },
+                SetupOption::SignIn {
+                    agent_id: "copilot".into(),
+                    display_name: "GitHub Copilot".into(),
+                },
+                SetupOption::SwitchAgent {
+                    agent: agent_status_for_test("gemini", "Gemini", true),
+                },
+                SetupOption::Retry,
+            ],
+            title: "INSTALLING_TITLE_XYZ".into(),
+            subtitle: "sub".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 30);
+        assert!(
+            text.contains("INSTALLING_TITLE_XYZ"),
+            "the setup screen must paint its title; rendered:\n{text}"
+        );
+        assert!(
+            text.contains("WINGET_LOG_XYZ"),
+            "the install-in-progress block must paint the winget log tail; rendered:\n{text}"
+        );
+    }
+
+    /// Render: a setup screen carrying an install error must paint the error
+    /// message. Covers the `install_error` branch in `ui/setup.rs` (line 186+).
+    #[test]
+    fn render_setup_install_error() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.setup = Some(SetupState {
+            reason: SetupReason::AgentError,
+            selected_index: 0,
+            preflight: PreflightResult::passed_for_custom_agent("custom:x"),
+            install_in_progress: false,
+            install_log: vec!["log-a".into(), "log-b".into()],
+            install_error: Some("INSTALL_ERR_XYZ".into()),
+            options: vec![SetupOption::Retry],
+            title: "err".into(),
+            subtitle: "sub".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 30);
+        assert!(
+            text.contains("INSTALL_ERR_XYZ"),
+            "the setup screen must paint the install error; rendered:\n{text}"
+        );
+    }
+
+    /// Render: a setup screen with a completed-info log (no install running,
+    /// no error) must paint the info line. Covers the info-log block in
+    /// `ui/setup.rs` (lines 75-85).
+    #[test]
+    fn render_setup_info_log() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.setup = Some(SetupState {
+            reason: SetupReason::FirstRun,
+            selected_index: 0,
+            preflight: PreflightResult::passed_for_custom_agent("custom:x"),
+            install_in_progress: false,
+            install_log: vec!["INFO_LOG_XYZ".into()],
+            install_error: None,
+            options: vec![SetupOption::SelectAgent {
+                agent: agent_status_for_test("copilot", "GitHub Copilot", true),
+            }],
+            title: "info".into(),
+            subtitle: "sub".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 30);
+        assert!(
+            text.contains("INFO_LOG_XYZ"),
+            "the setup screen must paint the completed-info log line; rendered:\n{text}"
+        );
+    }
+
     fn submit_autofix_prompt(app: &mut App, pane: &str) {
         let gen = {
             let tab = app.tab_mut(DEFAULT_TAB_ID);
