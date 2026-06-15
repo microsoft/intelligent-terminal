@@ -8185,6 +8185,32 @@ impl App {
         if self.state != ConnectionState::Connected {
             return;
         }
+        // First pass: replay any deferred autofix on tabs that have now
+        // become accepting. This runs before the prompt-queue drain so a
+        // queued user prompt doesn't race into the slot the autofix
+        // wanted. Each tab gets at most one replay per tick (autofix
+        // dispatch flips the tab to Submitted, which `is_accepting`
+        // checks here will see on the next iteration).
+        let pending_autofix_tabs: Vec<String> = self
+            .tab_sessions
+            .iter()
+            .filter(|(_, t)| t.pending_autofix.is_some())
+            .map(|(k, _)| k.clone())
+            .collect();
+        for tab_id in pending_autofix_tabs {
+            let is_accepting = {
+                let Some(t) = self.tab_sessions.get(&tab_id) else { continue; };
+                t.turn.is_idle()
+                    && t.turn.recommendations().is_none()
+                    && !t.loading_session
+                    && t.permission.is_empty()
+            };
+            if !is_accepting {
+                continue;
+            }
+            self.fire_deferred_autofix_if_any(&tab_id);
+        }
+
         // Cheap early-out: avoid the keys-clone + sort allocation when no
         // tab has anything to dispatch. This path runs after every UI tick
         // so the common "agent idle, nothing queued" case stays allocation-
@@ -15514,21 +15540,94 @@ mod tests {
 
         app.trigger_autofix_inner(&notif, /*forced=*/ true);
 
-        // Card is intact.
         assert!(
             app.tab_mut(tab).turn.recommendations().is_some(),
             "card must NOT be wiped by deferred autofix; got {:?}",
             app.tab_mut(tab).turn,
         );
-        // Request is stashed.
         let pending = app.tab_mut(tab).pending_autofix.as_ref()
             .expect("pending_autofix must be set");
         assert_eq!(pending.notification.pane_id, "failing-pane");
         assert!(pending.forced, "forced flag preserved for replay");
-        // No dispatch — autofix.pane_id only gets armed on actual dispatch.
         assert!(
             app.tab_mut(tab).autofix.pane_id.is_none(),
             "autofix must NOT arm pane_id while deferred"
+        );
+    }
+
+    #[test]
+    fn autofix_defers_when_turn_in_flight() {
+        // The bug from the user's actual repro: user submits a chat
+        // prompt, agent starts processing (turn = Submitted), then a
+        // shell command fails. User clicks the autofix pill. Pre-fix,
+        // trigger_autofix_inner hit the busy/different-pane branch and
+        // dropped the request with "skipping autofix: previous turn
+        // still in-flight". Post-fix, the in-flight turn should defer
+        // the autofix into pending_autofix instead of dropping it; the
+        // drain hook fires it once the chat turn completes.
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.autofix_enabled = true;
+        let tab = "test-tab";
+        // Simulate an in-flight chat turn — user typed a prompt and
+        // it's currently being processed by the agent.
+        let in_flight_prompt = SubmittedPrompt {
+            id: 1,
+            text: "what is rust".into(),
+            submitted_at_unix_s: 0.0,
+            autofix: None,
+        };
+        app.tab_mut(tab).turn = TurnState::Submitted(in_flight_prompt);
+
+        let notif = make_autofix_notification("failing-pane", tab, "dateime: not recognized");
+        app.trigger_autofix_inner(&notif, /*forced=*/ true);
+
+        // No dispatch — autofix is deferred.
+        assert!(
+            app.tab_mut(tab).pending_autofix.is_some(),
+            "in-flight turn must defer autofix into pending_autofix; got pending_autofix=None"
+        );
+        // The in-flight chat turn is undisturbed.
+        assert!(
+            matches!(app.tab_mut(tab).turn, TurnState::Submitted(_)),
+            "in-flight chat turn must NOT be cancelled by autofix dispatch; got {:?}",
+            app.tab_mut(tab).turn,
+        );
+        // autofix.pane_id arming happens only on dispatch.
+        assert!(
+            app.tab_mut(tab).autofix.pane_id.is_none(),
+            "autofix pane_id must NOT be armed while deferred"
+        );
+    }
+
+    #[test]
+    fn drain_replays_deferred_autofix_when_turn_becomes_idle() {
+        // The matching half of the previous test: after the in-flight
+        // chat turn completes and the tab transitions back to Idle,
+        // the next drain tick must replay the deferred autofix.
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.autofix_enabled = true;
+        app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.to_string());
+
+        // Stage a deferred autofix and an Idle turn (chat turn just
+        // finished, so the tab is now accepting).
+        app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Idle;
+        app.tab_mut(DEFAULT_TAB_ID).pending_autofix = Some(crate::app::DeferredAutofix {
+            notification: make_autofix_notification("failing-pane", DEFAULT_TAB_ID, "boom"),
+            forced: true,
+        });
+
+        app.drain_pending_prompts();
+
+        assert!(
+            app.tab_mut(DEFAULT_TAB_ID).pending_autofix.is_none(),
+            "drain must consume the deferred autofix on the next idle tick"
+        );
+        assert_eq!(
+            app.tab_mut(DEFAULT_TAB_ID).autofix.pane_id.as_deref(),
+            Some("failing-pane"),
+            "replay must arm autofix on the failing pane"
         );
     }
 

@@ -131,30 +131,48 @@ impl App {
             }
         };
 
-        // Defer when a recommendation card is visible on the target tab.
-        // Dispatching now would call `turn_submit_prompt` and wipe the
-        // card the user is interacting with. The queue PR's `Enter` path
-        // takes the same defer-and-let-card-resolve approach for user
-        // prompts; doing the same for autofix keeps both surfaces
-        // consistent (and matches what users expect now that we have a
-        // queue: "autofix should wait its turn just like everything
-        // else"). Latest-wins on overwrite — the most recent failure is
-        // what the user cares about. The card-resolution paths
-        // (`turn_execute_card` and `turn_cancel`) drain
-        // `pending_autofix` and replay it through this function once
-        // the card transitions out of `Surfaced{Recommendation}`.
-        if self
-            .tab_mut(&target_tab_id)
-            .turn
-            .recommendations()
-            .is_some()
-        {
+        // Defer when the tab is busy in any way that would block immediate
+        // dispatch: a recommendation card is on screen (dispatch would
+        // wipe it via `turn_submit_prompt`), or a turn is currently
+        // in-flight on the tab (Submitted / Streaming — dispatching now
+        // would either be dropped by the ACP single-flight guard or
+        // race the in-flight chunks). In all these cases the queue PR's
+        // "wait your turn" model applies: stash the request and replay
+        // it once the tab returns to an accepting state.
+        //
+        // Replay sites:
+        //   - `turn_execute_card` (Enter on card → Surfaced{Empty})
+        //   - `turn_cancel` (Esc on card / `/stop` / Ctrl+C → Idle)
+        //   - `drain_pending_prompts` (every event tick — catches the
+        //      normal "in-flight turn completes" path where the agent
+        //      finishes its response and the turn transitions to Idle
+        //      / Surfaced{Empty} without going through cancel/execute)
+        //
+        // Latest-wins on overwrite: the most recent failure is what the
+        // user cares about (matches the existing comment below).
+        let target_idle = {
+            let tab = self.tab_mut(&target_tab_id);
+            // Treat Surfaced{Empty, end_pending:false} as accepting —
+            // the existing busy check at line ~199 does the same.
+            tab.turn.is_idle()
+                || matches!(
+                    tab.turn,
+                    TurnState::Surfaced { end_pending: false, outcome: crate::app::TurnOutcome::Empty, .. }
+                )
+        };
+        if !target_idle {
+            let card_visible = self
+                .tab_mut(&target_tab_id)
+                .turn
+                .recommendations()
+                .is_some();
             tracing::info!(
                 target: "autofix",
                 pane_id = %notification.pane_id,
                 tab_id = %target_tab_id,
                 forced,
-                "deferring autofix: recommendation card visible — will replay on dismiss/execute",
+                card_visible,
+                "deferring autofix: tab busy (card or in-flight) — will replay when tab becomes idle",
             );
             self.tab_mut(&target_tab_id).pending_autofix = Some(crate::app::DeferredAutofix {
                 notification: notification.clone(),
