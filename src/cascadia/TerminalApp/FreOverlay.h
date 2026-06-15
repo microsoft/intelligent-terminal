@@ -7,6 +7,7 @@
 #include "FreOverlay.g.h"
 
 #include "../inc/FreWingetClassifier.h"
+#include "../inc/FreProblemKind.h"
 
 #include <mutex>
 
@@ -56,21 +57,18 @@ namespace winrt::TerminalApp::implementation
     private:
         winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings _settings{ nullptr };
 
-        // Things that can block FRE completion, in priority order (lower value
-        // = higher priority). Only the highest-priority problem is surfaced in
-        // the bottom-left error area at a time (see _ShowProblem).
+        // Things that can block FRE completion. Aliased from the
+        // free-function header in `inc/FreProblemKind.h` so the pure
+        // priority-selection logic at `inc/FreSoftFailurePriority.h`
+        // can be unit-tested without dragging in TerminalApp / WinRT
+        // / XAML. The underlying enum's numeric order is meaningful —
+        // it's the soft-failure priority used by `SelectHighestPriority`.
         //
         // WinGet install failures are not in this enum because they carry
         // richer structured state (package + failure kind + HRESULT + installer
         // exit code); those go through _ShowWingetProblem instead, which uses
         // FreWingetPackage + FreWingetFailureKind below.
-        enum class FreProblemKind
-        {
-            WingetMissing = 0, // hard prerequisite — winget itself unavailable
-            ShellIntegrationExecutionPolicy = 1, // optional feature — error detection blocked by PowerShell execution policy
-            ShellIntegration = 2, // optional feature — error detection (generic install failure)
-            Hooks = 3, // optional feature — session management
-        };
+        using FreProblemKind = ::Microsoft::Terminal::FreProblem::Kind;
 
         // Which winget-installed prerequisite a failure refers to. Used by
         // _ShowWingetProblem to pick the right package display name and

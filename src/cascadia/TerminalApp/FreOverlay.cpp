@@ -10,6 +10,8 @@
 #include "../inc/WtaProcess.h"
 #include "../inc/ShellIntegration.h"
 #include "../inc/RtlHelper.h"
+#include "../inc/FreAgentPrereq.h"
+#include "../inc/FreSoftFailurePriority.h"
 #include "AgentPaneLog.h"
 #include "ShellIntegrationSweep.h"
 #include "WindowsPackageManagerFactory.h"
@@ -23,6 +25,8 @@ using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Documents;
 namespace Automation = winrt::Windows::UI::Xaml::Automation;
 namespace FreWinget = ::Microsoft::Terminal::FreWinget;
+namespace FreAgentPrereq = ::Microsoft::Terminal::FreAgentPrereq;
+namespace FreSoftFailure = ::Microsoft::Terminal::FreSoftFailure;
 
 namespace winrt::TerminalApp::implementation
 {
@@ -349,7 +353,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
             {
                 const auto id = entry.Id();
-                const bool needsNode = (id == L"claude" || id == L"codex");
+                const bool needsNode = FreAgentPrereq::AgentNeedsNodeRuntime(id);
                 AgentInstallHintRow().Visibility(needsNode ? Visibility::Visible : Visibility::Collapsed);
             }
         }
@@ -1342,8 +1346,8 @@ namespace winrt::TerminalApp::implementation
         ErrorPanel().Visibility(Visibility::Collapsed);
 
         // 3. Install prerequisites if needed (blocking — cannot proceed without these)
-        const bool needsCopilot = (agentId == L"copilot") && !_IsAgentInstalled(L"copilot");
-        const bool needsNode = (agentId == L"claude" || agentId == L"codex") && !_IsNodeInstalled();
+        const bool needsCopilot = FreAgentPrereq::ShouldInstallCopilotFor(agentId, _IsAgentInstalled(L"copilot"));
+        const bool needsNode = FreAgentPrereq::ShouldInstallNodeFor(agentId, _IsNodeInstalled());
 
         _agentPaneLog("[FRE] Save: agent=" + winrt::to_string(agentId)
             + " needsCopilot=" + (needsCopilot ? "y" : "n")
@@ -1615,9 +1619,10 @@ namespace winrt::TerminalApp::implementation
             auto self = weak.get();
             if (!self) co_return;
 
-            _ShowProblem(shellIntegEpBlocked ? FreProblemKind::ShellIntegrationExecutionPolicy
-                                             : shellIntegFailed ? FreProblemKind::ShellIntegration
-                                                                : FreProblemKind::Hooks);
+            _ShowProblem(FreSoftFailure::SelectHighestPriority(
+                /*shellIntegExecutionPolicyBlocked*/ shellIntegEpBlocked,
+                /*shellIntegrationFailed*/ shellIntegFailed,
+                /*hooksFailed*/ hooksFailed));
             co_return;
         }
 

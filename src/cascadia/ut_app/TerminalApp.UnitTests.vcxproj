@@ -27,6 +27,8 @@
     <ClCompile Include="CustomAgentIdTests.cpp" />
     <ClCompile Include="RtlHelperTests.cpp" />
     <ClCompile Include="FreWingetClassifierTests.cpp" />
+    <ClCompile Include="FreAgentPrereqTests.cpp" />
+    <ClCompile Include="FreSoftFailurePriorityTests.cpp" />
     <ClCompile Include="precomp.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
