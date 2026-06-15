@@ -13599,6 +13599,48 @@ mod tests {
         );
     }
 
+    /// Render: the `/help` overlay must list the slash commands. Lifts
+    /// `ui/command_popup.rs`.
+    #[test]
+    fn render_help_overlay_lists_commands() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.help_overlay_visible = true;
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("/restart"),
+            "the help overlay must list slash commands; rendered:\n{text}"
+        );
+    }
+
+    /// Render: the `/model` picker must list the advertised models. Lifts
+    /// `ui/model_popup.rs`.
+    #[test]
+    fn render_model_picker_lists_models() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.available_models = vec![
+            AcpModelInfo {
+                id: "pick-1".into(),
+                name: "PickModelXYZ".into(),
+                description: None,
+            },
+            AcpModelInfo {
+                id: "pick-2".into(),
+                name: "OtherModel".into(),
+                description: None,
+            },
+        ];
+        app.current_tab_mut().model_picker_open = true;
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("PickModelXYZ"),
+            "the model picker must list the advertised models; rendered:\n{text}"
+        );
+    }
+
     fn submit_autofix_prompt(app: &mut App, pane: &str) {
         let gen = {
             let tab = app.tab_mut(DEFAULT_TAB_ID);
