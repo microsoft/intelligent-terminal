@@ -39,9 +39,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     if button_inner.width > 0 {
         // Mark the targets of the `y` / `n` quick-keys so users can discover
         // them without a separate hint line. Position-based to stay in sync
-        // with the matching logic in `App::handle_key`.
-        let y_idx = perm.options.iter().position(|o| o.kind.contains("allow"));
-        let n_idx = perm.options.iter().position(|o| o.kind.contains("reject"));
+        // with the matching logic in `App::handle_key` (both go through
+        // `PermissionState::allow_index` / `reject_index`).
+        let y_idx = perm.allow_index();
+        let n_idx = perm.reject_index();
         let labels: Vec<String> = perm
             .options
             .iter()

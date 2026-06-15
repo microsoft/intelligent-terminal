@@ -433,11 +433,42 @@ pub struct PermOption {
     pub kind: String,
 }
 
+impl PermOption {
+    /// True if this is an "allow" option. Case-insensitive because `kind`
+    /// is the ACP `PermissionOptionKind` rendered via `format!("{:?}", …)`,
+    /// which yields PascalCase variants like `AllowOnce` / `AllowAlways`.
+    /// Matching lowercase substrings here keeps the `y`/`n` quick-keys and
+    /// the `[Y]`/`[N]` button labels in sync with the real wire values.
+    pub fn is_allow(&self) -> bool {
+        self.kind.to_ascii_lowercase().contains("allow")
+    }
+
+    /// True if this is a "reject"/"deny" option. Case-insensitive — see
+    /// [`PermOption::is_allow`].
+    pub fn is_reject(&self) -> bool {
+        self.kind.to_ascii_lowercase().contains("reject")
+    }
+}
+
 pub struct PermissionState {
     pub description: String,
     pub options: Vec<PermOption>,
     pub selected: usize,
     pub responder: Option<tokio::sync::oneshot::Sender<String>>,
+}
+
+impl PermissionState {
+    /// Index of the first "allow" option, used by the `y` quick-key and the
+    /// `[Y]` button label.
+    pub fn allow_index(&self) -> Option<usize> {
+        self.options.iter().position(PermOption::is_allow)
+    }
+
+    /// Index of the first "reject" option, used by the `n` quick-key and the
+    /// `[N]` button label.
+    pub fn reject_index(&self) -> Option<usize> {
+        self.options.iter().position(PermOption::is_reject)
+    }
 }
 
 // --- WT Event Notification ---
@@ -6475,7 +6506,7 @@ impl App {
                 }
                 KeyCode::Char('y') | KeyCode::Char('Y') => {
                     // Quick allow: find first allow option
-                    if let Some(idx) = perm.options.iter().position(|o| o.kind.contains("allow")) {
+                    if let Some(idx) = perm.allow_index() {
                         let option_id = perm.options[idx].id.clone();
                         if let Some(perm) = self.current_tab_mut().permission.pop_front() {
                             if let Some(responder) = perm.responder {
@@ -6488,7 +6519,7 @@ impl App {
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') => {
                     // Quick deny: find first reject option
-                    if let Some(idx) = perm.options.iter().position(|o| o.kind.contains("reject")) {
+                    if let Some(idx) = perm.reject_index() {
                         let option_id = perm.options[idx].id.clone();
                         if let Some(perm) = self.current_tab_mut().permission.pop_front() {
                             if let Some(responder) = perm.responder {
@@ -13297,6 +13328,66 @@ mod tests {
                 "reject-once",
             ))
             .await;
+    }
+
+    /// Regression (#permission-quick-keys): the `y` quick-key must resolve to
+    /// the allow option even though the wire `kind` is PascalCase (`AllowOnce`)
+    /// while the matcher searches for the lowercase substring `allow`. Before
+    /// the case-insensitive fix this keypress was a silent no-op and the agent
+    /// never received a response — this scenario would time out.
+    #[tokio::test]
+    async fn permission_quick_allow_key_round_trips_to_agent() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(run_permission_scenario(
+                &[KeyCode::Char('y')],
+                "allow-once",
+            ))
+            .await;
+    }
+
+    /// Regression (#permission-quick-keys): the `n` quick-key must resolve to
+    /// the reject option. See [`permission_quick_allow_key_round_trips_to_agent`].
+    #[tokio::test]
+    async fn permission_quick_reject_key_round_trips_to_agent() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(run_permission_scenario(
+                &[KeyCode::Char('n')],
+                "reject-once",
+            ))
+            .await;
+    }
+
+    /// The `kind` string is the ACP `PermissionOptionKind` rendered via
+    /// `format!("{:?}", …)`, i.e. PascalCase (`AllowOnce`, `RejectAlways`).
+    /// `PermOption::is_allow`/`is_reject` must match those case-insensitively
+    /// so the `y`/`n` quick-keys and the `[Y]`/`[N]` button labels both fire.
+    #[test]
+    fn perm_option_kind_matching_is_case_insensitive() {
+        let opt = |kind: &str| PermOption {
+            id: "id".into(),
+            name: "name".into(),
+            kind: kind.into(),
+        };
+        for k in ["AllowOnce", "AllowAlways", "allow_once"] {
+            assert!(opt(k).is_allow(), "{k:?} must be recognized as allow");
+            assert!(!opt(k).is_reject(), "{k:?} must not be reject");
+        }
+        for k in ["RejectOnce", "RejectAlways", "reject_once"] {
+            assert!(opt(k).is_reject(), "{k:?} must be recognized as reject");
+            assert!(!opt(k).is_allow(), "{k:?} must not be allow");
+        }
+
+        // PermissionState index helpers pick the first matching option.
+        let perm = PermissionState {
+            description: String::new(),
+            options: vec![opt("AllowOnce"), opt("RejectOnce")],
+            selected: 0,
+            responder: None,
+        };
+        assert_eq!(perm.allow_index(), Some(0));
+        assert_eq!(perm.reject_index(), Some(1));
     }
 
     /// Tool-call card: when the mock proposes a command (a `ToolCall`
