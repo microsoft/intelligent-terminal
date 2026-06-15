@@ -105,9 +105,12 @@ impl acp::Agent for MockAgent {
 /// - the `AppEvent` receiver fed by `WtaClient`,
 /// - the mock's seen-prompts side-channel.
 ///
+/// `pub(crate)` so app-module scenarios can borrow it and assert on real `App`
+/// state (the harness must live here to build the private `WtaClient`).
+///
 /// Must be called inside a `tokio::task::LocalSet` (the connections spawn their
 /// I/O via `spawn_local`).
-fn connect_mock_agent() -> (
+pub(crate) fn connect_mock_agent() -> (
     acp::ClientSideConnection,
     mpsc::UnboundedReceiver<AppEvent>,
     Arc<Mutex<Vec<String>>>,

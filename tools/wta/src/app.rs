@@ -13118,6 +13118,78 @@ mod tests {
         app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
     }
 
+    /// Form A end-to-end (mock-acp-agent spec, "option 2"): the mock + real
+    /// `WtaClient` harness lives in the acp module (it needs the private
+    /// `WtaClient`), but this App-state assertion lives here where `App`
+    /// internals are reachable. We drive a prompt through the **real** ACP
+    /// client against the deterministic mock, pump the resulting `AppEvent`s
+    /// into a **real** `App`, and assert the streamed reply is what the chat
+    /// view would show — i.e. "该显示什么" is covered without a real terminal,
+    /// real WT, or an LLM.
+    #[tokio::test]
+    async fn mock_agent_reply_streams_into_app_chat() {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent;
+        use agent_client_protocol as acp;
+        use agent_client_protocol::Agent as _;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                // Borrow the acp-module harness: deterministic mock wired to a
+                // real WtaClient over an in-memory duplex.
+                let (conn, mut event_rx, _seen) = connect_mock_agent();
+                conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                    .await
+                    .expect("initialize failed");
+                let session = conn
+                    .new_session(acp::NewSessionRequest::new("/test"))
+                    .await
+                    .expect("new_session failed");
+                conn.prompt(acp::PromptRequest::new(
+                    session.session_id.clone(),
+                    vec!["hello".into()],
+                ))
+                .await
+                .expect("prompt failed");
+
+                // Real App with an in-flight turn so streamed chunks are accepted
+                // (the AgentMessageChunk handler drops chunks on an idle turn).
+                let mut app = test_app();
+                submit_test_prompt(&mut app, "hello");
+
+                // Pump the AppEvents the real WtaClient produced into the real
+                // App until the agent message chunk has been applied (bounded so
+                // a wiring bug fails fast instead of hanging).
+                let pumped = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    loop {
+                        match event_rx.recv().await {
+                            Some(ev) => {
+                                let is_chunk = matches!(ev, AppEvent::AgentMessageChunk { .. });
+                                app.handle_event(ev);
+                                if is_chunk {
+                                    break;
+                                }
+                            }
+                            None => break,
+                        }
+                    }
+                })
+                .await;
+                assert!(pumped.is_ok(), "timed out waiting for the agent message chunk");
+
+                // "What the chat shows" while streaming: the mock's reply is in
+                // the active tab's streaming buffer.
+                assert!(
+                    app.current_tab()
+                        .pending_agent_response
+                        .contains("MOCK_OK:hello"),
+                    "mock reply must stream into the App chat buffer; got {:?}",
+                    app.current_tab().pending_agent_response
+                );
+            })
+            .await;
+    }
+
     fn submit_autofix_prompt(app: &mut App, pane: &str) {
         let gen = {
             let tab = app.tab_mut(DEFAULT_TAB_ID);
