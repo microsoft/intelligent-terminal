@@ -212,14 +212,23 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
                                           const std::vector<std::wstring>& wslDistros)
     {
         InstallSweepResults r{};
-        if (shellPresence.pwsh)
-        {
-            r.pwsh = SI::InstallForTarget(SI::Target::Pwsh);
-        }
-        if (shellPresence.windowsPowerShell)
-        {
-            r.windowsPowerShell = SI::InstallForTarget(SI::Target::WindowsPowerShell);
-        }
+        // PowerShell hosts: the $PROFILE WRITE is profile-gated, but the
+        // execution-policy VERDICT is unconditional — a Restricted / AllSigned
+        // policy must stop FRE / Save even when the user has no Windows
+        // Terminal profile for that host, because the shell-integration .ps1
+        // can never run. ExecutionPolicyBlocksShellIntegration() is re-queried
+        // here on every call (never cached), so fixing the policy offline and
+        // clicking Save again on the same FRE re-evaluates cleanly.
+        // See SI::ResolvePowerShellHostInstall for the rationale / regression
+        // guard.
+        r.pwsh = SI::ResolvePowerShellHostInstall(
+            shellPresence.pwsh,
+            SI::ExecutionPolicyBlocksShellIntegration(SI::Target::Pwsh),
+            [] { return SI::InstallForTarget(SI::Target::Pwsh); });
+        r.windowsPowerShell = SI::ResolvePowerShellHostInstall(
+            shellPresence.windowsPowerShell,
+            SI::ExecutionPolicyBlocksShellIntegration(SI::Target::WindowsPowerShell),
+            [] { return SI::InstallForTarget(SI::Target::WindowsPowerShell); });
         if (shellPresence.bash)
         {
             r.bash = SI::InstallForTarget(SI::Target::Bash);
