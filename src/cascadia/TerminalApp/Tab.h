@@ -129,6 +129,31 @@ namespace winrt::TerminalApp::implementation
         // flag on each pane.
         void SetAgentChipOverride(std::optional<winrt::guid> sessionId);
 
+        // Per-tab AI agent override (runtime-only; not persisted). When set,
+        // this tab's agent pane runs the chosen agent/model instead of the
+        // global `acpAgent`/`acpModel`. Empty agent id means "follow the
+        // global default". Set by the agent-bar chip flyout; consumed by
+        // TerminalPage when (re)building this tab's helper. See
+        // doc/specs/Multi-window-agent-pane.md §9 (per-pane agent).
+        const winrt::hstring& AgentIdOverride() const noexcept { return _agentIdOverride; }
+        const winrt::hstring& AgentModelOverride() const noexcept { return _agentModelOverride; }
+        const winrt::hstring& AgentCustomCommandOverride() const noexcept { return _agentCustomCommandOverride; }
+        bool HasAgentOverride() const noexcept { return !_agentIdOverride.empty(); }
+        void SetAgentOverride(const winrt::hstring& agentId,
+                              const winrt::hstring& model,
+                              const winrt::hstring& customCommand)
+        {
+            _agentIdOverride = agentId;
+            _agentModelOverride = model;
+            _agentCustomCommandOverride = customCommand;
+        }
+        void ClearAgentOverride() noexcept
+        {
+            _agentIdOverride = {};
+            _agentModelOverride = {};
+            _agentCustomCommandOverride = {};
+        }
+
         // Stable per-tab identifier (GUID string). Survives tab reordering
         // and is unique across the window's lifetime, unlike the index in
         // _tabs which is reused when tabs close. Used as the tab_id for
@@ -213,6 +238,11 @@ namespace winrt::TerminalApp::implementation
         // a Send-card selected in the agent pane). When unset, the chip
         // falls back to following each pane's IsSourceOfAgentPane() flag.
         std::optional<winrt::guid> _agentChipOverride{};
+
+        // Per-tab agent override (runtime-only). Empty id = follow global.
+        winrt::hstring _agentIdOverride{};
+        winrt::hstring _agentModelOverride{};
+        winrt::hstring _agentCustomCommandOverride{};
 
         winrt::Microsoft::Terminal::Settings::Model::IconStyle _lastIconStyle;
         winrt::hstring _lastIconPath{};

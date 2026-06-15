@@ -408,6 +408,9 @@ namespace winrt::TerminalApp::implementation
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab);
         void _RebuildAgentStack();
+        // Scoped per-tab rebuild after a tab's agent override changes
+        // (agent-bar chip flyout). Does not restart the shared master.
+        void _RebuildAgentPaneForTab(const winrt::com_ptr<Tab>& tab);
         void _FlushPendingAgentRebuild();
         // Build the per-process flag/value pairs that the wta-master
         // inherits at spawn time (--agent, --agent-id, --no-autofix,

@@ -101,6 +101,11 @@ namespace winrt::TerminalApp::implementation
         // firing pane belongs to the active tab.
         til::typed_event<winrt::TerminalApp::AgentPaneContent, IInspectable> StateChanged;
 
+        // Raised when the user picks an agent from the agent-bar chip
+        // flyout. Payload = chosen agent id. TerminalPage applies it as a
+        // per-tab override and rebuilds the tab's pane.
+        til::typed_event<winrt::TerminalApp::AgentPaneContent, winrt::hstring> AgentSwitchRequested;
+
 #pragma region IPaneContent
         winrt::Windows::UI::Xaml::FrameworkElement GetRoot();
 
@@ -171,6 +176,11 @@ namespace winrt::TerminalApp::implementation
 
         void _refreshLabel();
         void _refreshLogo();
+
+        // Tap on the agent-bar chip → open a flyout of GPO-allowed agents.
+        // Picking one raises `AgentSwitchRequested`.
+        void _onAgentBarTapped(const winrt::Windows::Foundation::IInspectable& sender,
+                               const winrt::Windows::UI::Xaml::Input::TappedRoutedEventArgs& e);
     };
 }
 

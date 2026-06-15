@@ -1097,6 +1097,36 @@ namespace winrt::TerminalApp::implementation
         return _BuildAgentCommandLine(acpAgent, globals.AcpModel());
     }
 
+    // Resolve a launchable agent command line for a SPECIFIC agent id +
+    // model — the per-tab override. Mirrors `_ResolveEffectiveAgentCliPath`
+    // but for an explicit id rather than the global `acpAgent`, and honors
+    // the same GPO policy (so a per-tab pick can never escape AllowedAgents
+    // / AllowCustomAgents). Returns empty when the id is blocked or has no
+    // usable command line, which the caller treats as "fall back".
+    static winrt::hstring _ResolveAgentCliPathForId(
+        const winrt::hstring& agentId,
+        const winrt::hstring& model,
+        const winrt::hstring& customCommand)
+    {
+        if (agentId.empty())
+        {
+            return winrt::hstring{};
+        }
+        if (_IsCustomAgentId(agentId))
+        {
+            if (!AgentPolicy::IsCustomAgentAllowed() || customCommand.empty())
+            {
+                return winrt::hstring{};
+            }
+            return customCommand;
+        }
+        if (!AgentPolicy::IsAgentAllowed(std::wstring_view{ agentId }))
+        {
+            return winrt::hstring{};
+        }
+        return _BuildAgentCommandLine(agentId, model);
+    }
+
     // Resolve the effective delegate agent name from structured settings.
     static winrt::hstring _ResolveEffectiveDelegateAgent(
         const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals)
@@ -1368,6 +1398,42 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    // Rebuild a SINGLE tab's agent pane after its per-tab agent override
+    // changed (via the agent-bar chip flyout). Scoped, unlike
+    // `_RebuildAgentStack`: it touches only this tab and does NOT restart
+    // the shared master. The multi-agent master stays up; the freshly
+    // spawned helper declares this tab's new agent in its `initialize`
+    // handshake, so the master lazily spawns/reuses the matching CLI while
+    // sibling tabs (and their agents) keep running untouched.
+    //
+    // `Pane::Close()` rewrites the tab's pane tree synchronously, so
+    // `FindAgentPane()` is already null when we reopen — the conpty /
+    // `SharedWta::ReleasePane` teardown that lags behind balances against
+    // the reopen's `AcquirePane`.
+    void TerminalPage::_RebuildAgentPaneForTab(const winrt::com_ptr<Tab>& tab)
+    {
+        if (!tab)
+        {
+            return;
+        }
+        const bool hadPane = tab->FindAgentPane() != nullptr;
+        _TeardownAgentPane(tab);
+
+        const auto focusedTab = _GetFocusedTabImpl();
+        if (focusedTab && focusedTab == tab)
+        {
+            // The chip flyout lives in this tab's visible agent pane, so
+            // the tab is focused — reopen a visible pane immediately.
+            _OpenOrReuseAgentPane(false, L"AgentSwitch");
+        }
+        else if (hadPane)
+        {
+            // Background tab: respawn a stashed (pre-warmed) helper so the
+            // new agent takes effect without stealing focus.
+            _AutoCreateHiddenAgentPaneShared(tab, /*intoSessionsView*/ false, /*autoStash*/ true);
+        }
+    }
+
     std::shared_ptr<Pane> TerminalPage::_WrapInAgentPaneContent(std::shared_ptr<Pane> rawPane)
     {
         if (!rawPane)
@@ -1588,10 +1654,30 @@ namespace winrt::TerminalApp::implementation
 
         const auto& globals = _settings.GlobalSettings();
 
+        // Resolve the agent for THIS tab. A per-tab override (set via the
+        // agent-bar chip flyout) wins; otherwise we follow the global
+        // `acpAgent`/`acpModel`. This is what lets Gemini run in one tab and
+        // Claude in another within the same window — each tab's helper
+        // declares its own agent to the multi-agent master.
+        winrt::hstring effectiveAgentId;
+        winrt::hstring effectiveModel;
+        winrt::hstring agentCliPath;
+        if (tab->HasAgentOverride())
+        {
+            effectiveAgentId = tab->AgentIdOverride();
+            effectiveModel = tab->AgentModelOverride();
+            agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, tab->AgentCustomCommandOverride());
+        }
+        else
+        {
+            effectiveAgentId = globals.EffectiveAcpAgent();
+            effectiveModel = globals.AcpModel();
+            agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
+        }
+
         // GPO `AllowedAgents` enforcement — mirror the legacy path so a
         // managed environment that blocks all agents doesn't get a
         // working pane via the shared master.
-        const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
         if (agentCliPath.empty() && AgentPolicy::IsAllowedAgentsPolicyConfigured())
         {
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: ABORT — all agents blocked by GPO policy");
@@ -1664,9 +1750,12 @@ namespace winrt::TerminalApp::implementation
             helperCmd.push_back(L' ');
             QuoteAndEscapeCommandlineArg(value, helperCmd);
         };
+        // Per-tab agent identity (override or global) — the helper forwards
+        // these to the multi-agent master in its `initialize` handshake so
+        // master spawns/reuses the right agent CLI for THIS tab.
         appendHelperFlagValue(L"--agent", agentCliPath);
-        appendHelperFlagValue(L"--agent-id", globals.EffectiveAcpAgent());
-        appendHelperFlagValue(L"--acp-model", globals.AcpModel());
+        appendHelperFlagValue(L"--agent-id", effectiveAgentId);
+        appendHelperFlagValue(L"--acp-model", effectiveModel);
         appendHelperFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
         appendHelperFlagValue(L"--delegate-model", globals.DelegateModel());
         if (!globals.EffectiveAutoFixEnabled())
@@ -1898,6 +1987,39 @@ namespace winrt::TerminalApp::implementation
                     self->_UpdateBottomBarState();
                 }
             }
+        });
+
+        // User picked an agent from the chip flyout → record a per-tab
+        // override and rebuild just that tab's pane. The multi-agent
+        // master spawns/reuses the chosen agent's CLI; sibling tabs (and
+        // other agents) are untouched.
+        content.AgentSwitchRequested([weakSelf](const winrt::TerminalApp::AgentPaneContent& sender,
+                                                const winrt::hstring& agentId) {
+            const auto self = weakSelf.get();
+            if (!self || agentId.empty())
+            {
+                return;
+            }
+            const auto tab = self->_FindTabHostingAgentPaneContent(sender);
+            if (!tab)
+            {
+                return;
+            }
+            // No-op if the tab is already on this agent (its override, or
+            // — absent an override — the global default).
+            const auto currentId = tab->HasAgentOverride() ?
+                                       tab->AgentIdOverride() :
+                                       self->_settings.GlobalSettings().EffectiveAcpAgent();
+            if (currentId == agentId)
+            {
+                return;
+            }
+            // Switch this tab to the chosen agent. Model resets to the
+            // agent's default; built-in agents need no custom command.
+            // (The Tab carries model/custom-command override fields for a
+            // future per-tab model picker.)
+            tab->SetAgentOverride(agentId, winrt::hstring{}, winrt::hstring{});
+            self->_RebuildAgentPaneForTab(tab);
         });
     }
 
@@ -2407,16 +2529,18 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("_RebuildAgentStack: agent settings changed, rebuilding");
 
-        // Tear down every tab's agent pane. The user must reopen each
-        // (per-tab toggle) — there's no longer a "shared pane" to
-        // reposition.
+        // Tear down each affected tab's agent pane. The user must reopen
+        // each (per-tab toggle) — there's no longer a "shared pane" to
+        // reposition. Tabs with a per-tab agent override are SKIPPED: a
+        // change to the global default must not stomp a tab the user
+        // explicitly pinned to a different agent.
         bool hadAny = false;
         std::vector<winrt::com_ptr<Tab>> tabsThatHadAgentPane;
         for (const auto& t : _tabs)
         {
             if (auto tabImpl = _GetTabImpl(t))
             {
-                if (tabImpl->FindAgentPane())
+                if (tabImpl->FindAgentPane() && !tabImpl->HasAgentOverride())
                 {
                     hadAny = true;
                     tabsThatHadAgentPane.push_back(tabImpl);
@@ -2434,47 +2558,34 @@ namespace winrt::TerminalApp::implementation
             _TeardownAgentPane(tabImpl);
         }
 
-        // Force-respawn the master with the NEW per-process settings
-        // before reopening. Without this, the pending teardowns above
-        // leave the refcount > 0 when `_OpenOrReuseAgentPane` calls
-        // `AcquirePane`, so AcquirePane sees a live master and reuses
-        // it — silently ignoring the freshly-built --agent / --agent-id /
-        // --acp-model args, leaving the OLD agent CLI behind the pipe.
-        //
-        // `SharedWta::Restart(wtaPath, extraArgs)` does
-        // `_CleanupLocked` + `_SpawnLocked(newArgs)` while leaving the
-        // refcount alone (outgoing ReleasePane / incoming AcquirePane
-        // balance out). When the master isn't running (e.g. settings
-        // changed while no pane was open in *any* window), it no-ops
-        // — the next AcquirePane will spawn fresh with the caller's
-        // new args.
-        //
-        // This call is also why we don't gate it behind `hadAny`: even
-        // when no pane is open in *this* window, the master may still
-        // be alive serving another window. Respawning here keeps every
-        // window in sync with the new settings.
-        if (const auto wtaPath = _DetectWtaPath(); !wtaPath.empty())
-        {
-            const auto restartArgs = _BuildSharedWtaExtraArgs();
-            auto& shared = winrt::TerminalApp::implementation::SharedWta::Instance();
-            if (!shared.Restart(std::wstring_view{ wtaPath }, restartArgs))
-            {
-                _agentPaneLog("_RebuildAgentStack: SharedWta::Restart returned false");
-                // Fall through — the reopen path will retry via AcquirePane.
-            }
-        }
+        // NOTE: no `SharedWta::Restart` here anymore. The master is now a
+        // multi-agent broker — it spawns/reuses one agent CLI per distinct
+        // agent command line, driven by each helper's `initialize`
+        // handshake (which carries the tab's agent). The master's own
+        // `--agent` is only a fallback default for helpers that don't
+        // declare one (ours always do), so a global-agent change no longer
+        // requires respawning the master. Tearing down + reopening the
+        // affected (non-override) tabs' helpers is enough: each fresh
+        // helper declares the new global agent and the master lazily
+        // spawns/reuses the matching CLI, leaving overridden tabs' CLIs
+        // (and other windows) untouched.
 
         if (!hadAny)
         {
             _lastAgentSettings = current;
-            _agentPaneLog("_RebuildAgentStack: no existing agent pane, snapshot only");
+            _agentPaneLog("_RebuildAgentStack: no affected agent pane, snapshot only");
             return;
         }
 
         // Recreate on the active terminal tab so the user sees something
-        // immediately. Other tabs that had an agent pane will need to be
-        // re-toggled by the user.
-        _OpenOrReuseAgentPane(false, L"SettingsReload");
+        // immediately — but only if the active tab is one we tore down
+        // (i.e. it follows the global default). If the active tab has its
+        // own override, its pane was deliberately left intact above.
+        if (const auto activeTab = _GetFocusedTabImpl();
+            activeTab && !activeTab->HasAgentOverride())
+        {
+            _OpenOrReuseAgentPane(false, L"SettingsReload");
+        }
 
         // Snapshot update at the very end of the change-handling block
         // so any early-failure path above leaves the snapshot stale and
@@ -3996,8 +4107,21 @@ namespace winrt::TerminalApp::implementation
 
         // If WTA signals a new agent selection (e.g. from FRE or preflight),
         // persist it to settings so the next launch uses the same agent.
+        // BUT: never let a tab that the user pinned to a per-tab agent
+        // write that choice back to the global default — otherwise picking
+        // Gemini for one tab would silently change every other (non-pinned)
+        // tab's default. Tabs without an override still persist (legacy FRE
+        // behavior); a missing tab_id (broadcast context) also persists.
         const auto selectedAgent = pickStr("selected_agent");
-        if (!selectedAgent.empty())
+        bool emittingTabHasOverride = false;
+        if (const auto srcTabId = pickStr("tab_id"); !srcTabId.empty())
+        {
+            if (const auto srcTab = _FindTabByStableId(srcTabId))
+            {
+                emittingTabHasOverride = srcTab->HasAgentOverride();
+            }
+        }
+        if (!selectedAgent.empty() && !emittingTabHasOverride)
         {
             const auto& globals = _settings.GlobalSettings();
             if (globals.AcpAgent() != selectedAgent)

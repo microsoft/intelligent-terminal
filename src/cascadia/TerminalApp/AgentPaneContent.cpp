@@ -8,8 +8,12 @@
 #include <algorithm>
 #include <cwctype>
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
+#include <winrt/Windows.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
+
+#include "AgentRegistry.h"
 
 using namespace winrt::Windows::UI;
 using namespace winrt::Windows::UI::Xaml;
@@ -53,9 +57,48 @@ namespace winrt::TerminalApp::implementation
 
         _wireInnerEvents();
 
+        // Tapping the agent-bar chip opens a per-tab agent picker.
+        AgentBarRoot().Tapped({ get_weak(), &AgentPaneContent::_onAgentBarTapped });
+
         // Default label + logo until wta sends an agent_status event.
         _refreshLabel();
         _refreshLogo();
+    }
+
+    // Build + show a flyout of GPO-allowed agents anchored on the chip.
+    // Picking one raises `AgentSwitchRequested` with that agent's id; the
+    // page turns it into a per-tab override and rebuilds this tab's pane.
+    // The currently-running agent (matched by display name from the last
+    // `agent_status`) is check-marked.
+    void AgentPaneContent::_onAgentBarTapped(const winrt::Windows::Foundation::IInspectable& /*sender*/,
+                                             const winrt::Windows::UI::Xaml::Input::TappedRoutedEventArgs& /*e*/)
+    {
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+
+        MenuFlyout flyout{};
+        for (const auto& agent : Reg::FilteredAcpAgents())
+        {
+            MenuFlyoutItem item{};
+            const winrt::hstring displayName{ agent.displayName };
+            const winrt::hstring agentId{ agent.id };
+            item.Text(displayName);
+            // Mark the agent that's currently driving this pane. `_agentName`
+            // is the live name from the last `agent_status` (e.g. "Claude"),
+            // which matches the registry display names.
+            if (!_agentName.empty() && _agentName == displayName)
+            {
+                item.Icon(SymbolIcon{ Symbol::Accept });
+            }
+            item.Click([weak = get_weak(), agentId](const winrt::Windows::Foundation::IInspectable& /*s*/,
+                                                    const winrt::Windows::UI::Xaml::RoutedEventArgs& /*a*/) {
+                if (const auto self = weak.get())
+                {
+                    self->AgentSwitchRequested.raise(*self, agentId);
+                }
+            });
+            flyout.Items().Append(item);
+        }
+        flyout.ShowAt(AgentBarRoot());
     }
 
     winrt::TerminalApp::TerminalPaneContent AgentPaneContent::GetTerminalContent()
