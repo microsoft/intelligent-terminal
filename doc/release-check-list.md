@@ -101,6 +101,17 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 **Feature definition:** The agent pane is a per-tab AI chat pane backed by WTA helper/master and an ACP-capable agent. It should be reusable, able to be hidden, and stable across tab/window operations.
 
+> **Automated coverage added in this branch (PR #279):** a deterministic
+> in-process **mock-ACP agent** harness (`protocol/acp/mock_agent_tests.rs`)
+> drives the **real** `WtaClient` against scripted agent behavior, and a
+> **TestBackend render harness** (`app.rs::render_to_text`) asserts what the
+> TUI actually paints. Together they UT-lock the *display/logic half* of
+> streaming output, tool-call/plan cards, and the permission flow (see the
+> `[UT✓]` tags below). This work also surfaced and fixed **3 real bugs**: the
+> permission `y`/`n` quick-keys never matched (PascalCase vs lowercase), the
+> streaming JSON extractor dropped emoji (UTF-16 surrogate pairs), and it
+> bailed when the field name appeared earlier as a value.
+
 ### Opening, hiding, and focus
 
 - [ ] `[E2E]` **Button opens pane:** The AI assistant button opens the agent pane.
@@ -119,7 +130,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[E2E]` `[MANUAL]` **Claude chat works:** User can send a prompt and Claude responds successfully through the ACP adapter.
 - [ ] `[E2E]` `[MANUAL]` **Codex chat works:** User can send a prompt and Codex responds successfully through the ACP adapter.
 - [ ] `[E2E]` `[MANUAL]` **Gemini chat works:** User can send a prompt and Gemini responds successfully.
-- [ ] `[UT~]` `[E2E]` **Agent auth failure works:** Unauthenticated agents show clear login guidance and can recover after sign-in. _(UT: `AgentFailure::AuthRequired` classification.)_
+- [ ] `[UT~]` `[E2E]` **Agent auth failure works:** Unauthenticated agents show clear login guidance and can recover after sign-in. _(UT: `AgentFailure::AuthRequired` classification; in-pane auth screen render via `render_auth_screen_shows_agent_name` / `render_auth_sign_in_card` / `render_auth_checking_with_status_message`.)_
 - [ ] `[E2E]` **Agent restart after settings change works:** Changing the selected agent or model restarts/reconnects cleanly.
 
 ### Input and rendering
@@ -130,8 +141,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[E2E]` **Paste works:** Pasted multi-line text is handled correctly.
 - [ ] `[E2E]` **Keyboard navigation works:** Arrow keys, Tab completion, Ctrl combinations, and Esc behave correctly.
 - [ ] `[E2E]` `[MANUAL]` **IME/non-ASCII input works:** IME and non-ASCII input are usable if the release supports localized typing.
-- [ ] `[E2E]` **Streaming output renders correctly:** Agent response chunks, tool calls, plans, and status lines render without corruption.
-- [ ] `[E2E]` **Permission UI works:** When the agent requests a command/tool permission, the user can allow or reject it.
+- [ ] `[UT✓]` `[E2E]` **Streaming output renders correctly:** Agent response chunks, tool calls, plans, and status lines render without corruption. _(UT: `streaming_two_chunks_coalesce_in_app_chat`, `tool_call_surfaces_card_in_chat`, `tool_call_completion_updates_card_status` (in-place, no dup), `plan_surfaces_card_in_chat`, `render_chat_all_message_variants`; streaming-JSON unwrap incl. emoji/surrogate pairs in `ui::chat::tests`.)_
+- [ ] `[UT✓]` `[E2E]` **Permission UI works:** When the agent requests a command/tool permission, the user can allow or reject it. _(UT: `permission_allow_round_trips_to_agent`, `permission_reject_round_trips_to_agent`, `permission_quick_allow/reject_key_round_trips_to_agent`, `render_permission_card_shows_options`, `render_permission_compact_shows_hint`; the `y`/`n` quick-key case-match bug was fixed here.)_
 - [ ] `[E2E]` **Insert into pane works:** Agent-proposed command/text can be inserted into the target terminal pane without running.
 - [ ] `[E2E]` **Run in pane works:** Agent-proposed command can be run in the target terminal pane.
 - [ ] `[E2E]` **Command target is correct:** Insert/run applies to the intended active pane, not the agent pane itself or another tab.
@@ -145,7 +156,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `[UT✓]` **`/restart` works:** Restarts the agent stack and reconnects to a clean session. _(UT: `slash_restart_resets_connection_and_clears_sessions`.)_
 - [x] `[UT✓]` **`/stop` works:** Stops/cancels an in-progress turn.
 - [x] `[UT✓]` **`/sessions` works:** Switches to session-management view. _(UT: `slash_sessions_opens_agents_view`.)_
-- [ ] `[UT✓]` `[E2E]` **`/model` works:** Opens/selects model where supported; unsupported agents fail gracefully. _(UT: `slash_model_*`; picker render is E2E.)_
+- [ ] `[UT✓]` `[E2E]` **`/model` works:** Opens/selects model where supported; unsupported agents fail gracefully. _(UT: `slash_model_*`; picker render covered by `render_model_picker_lists_models`, full UI flow still E2E.)_
 - [x] `[UT✓]` **Unknown slash command is safe:** Unknown `/command` does not lose user input or crash.
 - [ ] `[E2E]` **Esc/back navigation works:** User can return from popups/session/model views to chat.
 
@@ -204,7 +215,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Hotkey works:** `Ctrl+Shift+/` opens the session view. _(UT: `DefaultAgentKeybindings` binding; open behavior E2E.)_
 - [ ] `[UT✓]` `[E2E]` **Slash command works:** `/sessions` opens the session view. _(UT: `/sessions` classify.)_
 - [ ] `[UT✓]` `[E2E]` **Command action works:** The `openAgentSessions` action opens the session view. _(UT: `AgentActionsParse` verifies the action parses; opening the view is E2E.)_
-- [ ] `[E2E]` **Session view empty state works:** Empty/no-session state is useful and not visually broken.
+- [ ] `[UT✓]` `[E2E]` **Session view empty state works:** Empty/no-session state is useful and not visually broken. _(UT: `render_sessions_view_shows_footer_hint` paints the agents-view chrome/footer with an empty registry; live data still E2E.)_
 - [ ] `[E2E]` **Session view refresh works:** Newly created sessions appear without restarting Terminal when hooks are active.
 
 ### Session states

@@ -82,6 +82,15 @@ The following `[UT+]` items have been implemented and are passing:
 - **Agent action parse** (`KeyBindingsTests::AgentActionsParse`): `openAgentPane` / `focusAgentPane` / `openAgentSessions` / `openBackgroundAgent` command keywords parse to their `ShortcutAction`, and `commandPalette` + `launchMode: agentDelegation` parses to `ToggleCommandPalette` with `CommandPaletteLaunchMode::AgentDelegation`.
 - **Built-in agent settings round-trip** (`CustomAgentAndPolicyTests`, 6 tests): built-in agent/model/pane-position/autofix round-trip + default resolution + `EffectiveAutoFixEnabled` false when detection off.
 - **Slash dispatch** (`slash_command_tests.rs`, 8 tests): `/sessions`, `/restart`, `/fix` (idle + busy), `/model` (none/bare/direct).
+- **Mock-ACP scenarios** (`protocol/acp/mock_agent_tests.rs` harness + `app::tests`): drive the real `WtaClient` against a scripted mock and assert real-`App` state — chat reply streams into the buffer, tool-call card surfaces, tool-call completion updates in place (no duplicate), plan card surfaces with entries, two chunks coalesce, permission allow/reject/`y`/`n` round-trip the option id back to the agent.
+- **TUI render harness** (`app::tests::render_to_text` over ratatui `TestBackend`): asserts the painted output for chat (all `ChatMessage` variants, completed turns, connecting/welcome lines), permission (full card + compact fallback), setup, auth, sessions view, model picker, help overlay, and the recommendation card.
+- **Streaming-display + pure helpers** (`ui::chat::tests`, `protocol::acp::client::tests`): JSON unwrap/escape/Unicode/surrogate-pair decode, `user_visible_stream_text`, `truncate_render_text`, `push_dot_prefixed_lines`, and the `client.rs` string/timing/humanize helpers.
+
+> **Bugs found and fixed via these tests:** (1) permission `y`/`n` quick-keys
+> never matched (`kind` is PascalCase `AllowOnce`/`RejectOnce`, matcher searched
+> lowercase); (2) the streaming JSON extractor dropped emoji encoded as UTF-16
+> surrogate pairs; (3) it returned `None` when the field name appeared earlier
+> as a string value. All three are fixed with regression tests.
 
 > **Localization parity** (the WTA locale backfill + `locale_parity_tests.rs`
 > guard) was split out of this test-suite branch into its own PR to keep the
