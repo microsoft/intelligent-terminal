@@ -13190,6 +13190,115 @@ mod tests {
             .await;
     }
 
+    /// Drive a prompt through the real ACP client against a mock that requests
+    /// permission, pump the `PermissionRequest` into a real `App`, then simulate
+    /// the user's key choice and assert the chosen option round-trips back to
+    /// the agent. `expected_keys` is the key sequence the user presses; `want`
+    /// is the option id the mock must end up recording.
+    async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_asking_permission;
+        use agent_client_protocol as acp;
+        use agent_client_protocol::Agent as _;
+
+        let (conn, mut event_rx, outcome) = connect_mock_agent_asking_permission();
+        conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+            .await
+            .expect("initialize failed");
+        let session = conn
+            .new_session(acp::NewSessionRequest::new("/test"))
+            .await
+            .expect("new_session failed");
+        conn.prompt(acp::PromptRequest::new(
+            session.session_id.clone(),
+            vec!["do it".into()],
+        ))
+        .await
+        .expect("prompt failed");
+
+        // Real App with an in-flight turn so the permission request is accepted.
+        let mut app = test_app();
+        submit_test_prompt(&mut app, "do it");
+
+        // Pump events until the PermissionRequest is applied to the App.
+        let pumped = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                match event_rx.recv().await {
+                    Some(ev) => {
+                        let is_perm = matches!(ev, AppEvent::PermissionRequest { .. });
+                        app.handle_event(ev);
+                        if is_perm {
+                            break;
+                        }
+                    }
+                    None => break,
+                }
+            }
+        })
+        .await;
+        assert!(pumped.is_ok(), "timed out waiting for the permission request");
+
+        // Display assertion: the permission card is queued with allow/reject,
+        // allow selected by default.
+        {
+            let perm = app
+                .current_tab()
+                .permission
+                .front()
+                .expect("a permission request must be queued for display");
+            assert_eq!(perm.options.len(), 2, "expected allow + reject options");
+            assert_eq!(perm.options[0].id, "allow-once");
+            assert_eq!(perm.options[1].id, "reject-once");
+            assert_eq!(perm.selected, 0, "allow must be selected by default");
+        }
+
+        // Simulate the user's key choice (e.g. Enter = allow, Right then Enter = reject).
+        for key in expected_keys {
+            app.handle_key(KeyEvent::from(*key));
+        }
+
+        // The choice must round-trip back to the agent.
+        let resolved = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if let Some(v) = outcome.lock().unwrap().clone() {
+                    break v;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("timed out waiting for the permission outcome to reach the agent");
+        assert_eq!(resolved, want, "the agent must receive the user's choice");
+
+        // The card is cleared once resolved.
+        assert!(
+            app.current_tab().permission.is_empty(),
+            "the permission card must clear after the user resolves it"
+        );
+    }
+
+    /// Permission allow round-trip: Enter on the default-selected option (allow)
+    /// surfaces the card, then sends `allow-once` back to the agent.
+    #[tokio::test]
+    async fn permission_allow_round_trips_to_agent() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(run_permission_scenario(&[KeyCode::Enter], "allow-once"))
+            .await;
+    }
+
+    /// Permission reject round-trip: Right moves selection to reject, Enter
+    /// sends `reject-once` back to the agent.
+    #[tokio::test]
+    async fn permission_reject_round_trips_to_agent() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(run_permission_scenario(
+                &[KeyCode::Right, KeyCode::Enter],
+                "reject-once",
+            ))
+            .await;
+    }
+
     fn submit_autofix_prompt(app: &mut App, pane: &str) {
         let gen = {
             let tab = app.tab_mut(DEFAULT_TAB_ID);

@@ -4,11 +4,13 @@
 //! agent-pane interaction can be exercised in `cargo test` with no real WT,
 //! no network, and no LLM.
 //!
-//! This is the harness + first scenario (happy-path chat round-trip). The
-//! wiring mirrors `agent-client-protocol`'s own `rpc_tests::create_connection_pair`
-//! but substitutes the real [`WtaClient`] for the crate's test client, so the
-//! ACP serialization round-trip and the real `WtaClient` notification handling
-//! are both under test.
+//! The wiring mirrors `agent-client-protocol`'s own
+//! `rpc_tests::create_connection_pair` but substitutes the real [`WtaClient`]
+//! for the crate's test client, so the ACP serialization round-trip and the
+//! real `WtaClient` handling are both under test.
+//!
+//! The constructors are `pub(crate)` so app-module scenarios can borrow the
+//! harness and assert on real `App` state (see the spec, "option 2").
 
 use super::{ClientState, PromptTimingState, WtaClient};
 use crate::app::AppEvent;
@@ -19,18 +21,31 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, OnceCell};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+/// What the mock does when it receives a `prompt`.
+#[derive(Clone, Copy)]
+enum MockBehavior {
+    /// Stream a deterministic `MOCK_OK:<echo>` reply, then end the turn.
+    Reply,
+    /// Request permission (allow-once / reject-once) and record the outcome the
+    /// client sent back, then end the turn.
+    AskPermission,
+}
+
 /// Deterministic ACP agent. Implements only what the scenarios need; the rest
 /// of `acp::Agent` keeps its trait defaults.
 ///
 /// `conn` is set after the connection is built (chicken-and-egg: the agent is
 /// moved into `AgentSideConnection::new`, so it gets its own connection handle
 /// via a `OnceCell` populated immediately afterwards). `prompt` uses it to
-/// stream the reply, exactly like a real agent does.
+/// stream replies / request permission, exactly like a real agent does.
 struct MockAgent {
     conn: Arc<OnceCell<Arc<acp::AgentSideConnection>>>,
-    /// Side-channel: every prompt's user text, for the test to assert that WTA
-    /// actually put the right thing on the wire.
+    behavior: MockBehavior,
+    /// Side-channel: every prompt's user text.
     seen_prompts: Arc<Mutex<Vec<String>>>,
+    /// Side-channel: the permission option id the client selected (or
+    /// "cancelled"), for `AskPermission` runs.
+    permission_outcome: Arc<Mutex<Option<String>>>,
 }
 
 fn first_text(blocks: &[acp::ContentBlock]) -> String {
@@ -70,25 +85,65 @@ impl acp::Agent for MockAgent {
     async fn prompt(&self, args: acp::PromptRequest) -> acp::Result<acp::PromptResponse> {
         let text = first_text(&args.prompt);
         self.seen_prompts.lock().unwrap().push(text.clone());
-
-        // Stream a deterministic reply, then end the turn. Spawned on the
-        // LocalSet so the prompt response returns promptly and the streamed
-        // notification flushes concurrently (a real agent streams during the
-        // turn; decoupling here also avoids any in-flight-request reentrancy).
-        let reply = format!("MOCK_OK:{text}");
         let sid = args.session_id.clone();
+
+        // Spawn the turn's work on the LocalSet so the prompt response returns
+        // promptly and the streamed notification / permission round-trip flushes
+        // concurrently (a real agent works during the turn; decoupling here also
+        // avoids any in-flight-request reentrancy).
         if let Some(conn) = self.conn.get() {
             let conn = conn.clone();
-            tokio::task::spawn_local(async move {
-                let _ = conn
-                    .session_notification(acp::SessionNotification::new(
-                        sid,
-                        acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
-                            reply.as_str().into(),
-                        )),
-                    ))
-                    .await;
-            });
+            match self.behavior {
+                MockBehavior::Reply => {
+                    let reply = format!("MOCK_OK:{text}");
+                    tokio::task::spawn_local(async move {
+                        let _ = conn
+                            .session_notification(acp::SessionNotification::new(
+                                sid,
+                                acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
+                                    reply.as_str().into(),
+                                )),
+                            ))
+                            .await;
+                    });
+                }
+                MockBehavior::AskPermission => {
+                    let outcome_slot = self.permission_outcome.clone();
+                    tokio::task::spawn_local(async move {
+                        let req = acp::RequestPermissionRequest::new(
+                            sid,
+                            acp::ToolCallUpdate::new(
+                                acp::ToolCallId::new("mock-tool-1"),
+                                acp::ToolCallUpdateFields::new().title("Run: echo hi"),
+                            ),
+                            // Allow first so a default-selected (index 0) Enter
+                            // means "allow"; reject is index 1.
+                            vec![
+                                acp::PermissionOption::new(
+                                    acp::PermissionOptionId::new("allow-once"),
+                                    "Allow once",
+                                    acp::PermissionOptionKind::AllowOnce,
+                                ),
+                                acp::PermissionOption::new(
+                                    acp::PermissionOptionId::new("reject-once"),
+                                    "Reject",
+                                    acp::PermissionOptionKind::RejectOnce,
+                                ),
+                            ],
+                        );
+                        if let Ok(resp) = conn.request_permission(req).await {
+                            let chosen = match resp.outcome {
+                                acp::RequestPermissionOutcome::Selected(sel) => {
+                                    sel.option_id.to_string()
+                                }
+                                acp::RequestPermissionOutcome::Cancelled => "cancelled".to_string(),
+                                _ => "unknown".to_string(),
+                            };
+                            *outcome_slot.lock().unwrap() = Some(chosen);
+                        }
+                    });
+                }
+            }
         }
 
         Ok(acp::PromptResponse::new(acp::StopReason::EndTurn))
@@ -100,20 +155,18 @@ impl acp::Agent for MockAgent {
 }
 
 /// Wire WTA's real `WtaClient` to a `MockAgent` over an in-memory duplex, spawn
-/// both I/O loops on the current `LocalSet`, and return:
-/// - the client-side connection (call `initialize` / `new_session` / `prompt`),
-/// - the `AppEvent` receiver fed by `WtaClient`,
-/// - the mock's seen-prompts side-channel.
-///
-/// `pub(crate)` so app-module scenarios can borrow it and assert on real `App`
-/// state (the harness must live here to build the private `WtaClient`).
+/// both I/O loops on the current `LocalSet`, and return the client connection,
+/// the `AppEvent` receiver fed by `WtaClient`, and both side-channels.
 ///
 /// Must be called inside a `tokio::task::LocalSet` (the connections spawn their
 /// I/O via `spawn_local`).
-pub(crate) fn connect_mock_agent() -> (
+fn connect_with(
+    behavior: MockBehavior,
+) -> (
     acp::ClientSideConnection,
     mpsc::UnboundedReceiver<AppEvent>,
     Arc<Mutex<Vec<String>>>,
+    Arc<Mutex<Option<String>>>,
 ) {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let state = Arc::new(ClientState {
@@ -124,10 +177,13 @@ pub(crate) fn connect_mock_agent() -> (
     let wta = WtaClient { state };
 
     let seen_prompts = Arc::new(Mutex::new(Vec::new()));
+    let permission_outcome = Arc::new(Mutex::new(None));
     let conn_cell: Arc<OnceCell<Arc<acp::AgentSideConnection>>> = Arc::new(OnceCell::new());
     let mock = MockAgent {
         conn: conn_cell.clone(),
+        behavior,
         seen_prompts: seen_prompts.clone(),
+        permission_outcome: permission_outcome.clone(),
     };
 
     // Bidirectional in-memory pipe. Each half is split into read/write and
@@ -155,7 +211,7 @@ pub(crate) fn connect_mock_agent() -> (
         },
     );
 
-    // Hand the mock its own connection so `prompt` can stream replies.
+    // Hand the mock its own connection so `prompt` can stream / request permission.
     let _ = conn_cell.set(Arc::new(agent_conn));
 
     tokio::task::spawn_local(async move {
@@ -165,7 +221,31 @@ pub(crate) fn connect_mock_agent() -> (
         let _ = agent_io.await;
     });
 
-    (client_conn, event_rx, seen_prompts)
+    (client_conn, event_rx, seen_prompts, permission_outcome)
+}
+
+/// Happy-path harness: the mock streams a deterministic reply on each prompt.
+/// Returns the client connection, the `AppEvent` receiver, and the seen-prompts
+/// side-channel.
+pub(crate) fn connect_mock_agent() -> (
+    acp::ClientSideConnection,
+    mpsc::UnboundedReceiver<AppEvent>,
+    Arc<Mutex<Vec<String>>>,
+) {
+    let (conn, event_rx, seen_prompts, _outcome) = connect_with(MockBehavior::Reply);
+    (conn, event_rx, seen_prompts)
+}
+
+/// Permission harness: the mock requests permission (allow-once / reject-once)
+/// on each prompt and records the selected outcome. Returns the client
+/// connection, the `AppEvent` receiver, and the permission-outcome side-channel.
+pub(crate) fn connect_mock_agent_asking_permission() -> (
+    acp::ClientSideConnection,
+    mpsc::UnboundedReceiver<AppEvent>,
+    Arc<Mutex<Option<String>>>,
+) {
+    let (conn, event_rx, _seen, permission_outcome) = connect_with(MockBehavior::AskPermission);
+    (conn, event_rx, permission_outcome)
 }
 
 /// Drain `event_rx` until the first `AgentMessageChunk`, with a timeout so a
