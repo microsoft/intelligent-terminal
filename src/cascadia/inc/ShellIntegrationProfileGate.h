@@ -59,6 +59,80 @@ namespace Microsoft::Terminal::ShellIntegration
         //     class of false positive.
         //   * `pwshell.exe` — launch leaf is pwshell.exe, not pwsh or
         //     pwsh.exe, no match ✓.
+        inline wchar_t FoldAsciiLower(wchar_t c) noexcept
+        {
+            return (c >= L'A' && c <= L'Z') ? static_cast<wchar_t>(c + (L'a' - L'A')) : c;
+        }
+
+        // True if `commandline` at `pos` begins at a filesystem root: a
+        // drive path (`X:\` or `X:/`) or a UNC path (`\\`). Only such an
+        // unquoted launch executable can legitimately contain spaces
+        // (e.g. `C:\Program Files\Git\bin\bash.exe`). A bare command like
+        // `cmd /c ...` does NOT start at a root, so its launch exe stays
+        // the first whitespace-delimited token.
+        inline bool BeginsAtPathRoot(std::wstring_view commandline, size_t pos) noexcept
+        {
+            const size_t n = commandline.size();
+            // UNC: \\server\share
+            if (pos + 1 < n && commandline[pos] == L'\\' && commandline[pos + 1] == L'\\')
+            {
+                return true;
+            }
+            // Drive: X:\ or X:/
+            if (pos + 2 < n)
+            {
+                const wchar_t d = commandline[pos];
+                const bool isAlpha = (d >= L'A' && d <= L'Z') || (d >= L'a' && d <= L'z');
+                if (isAlpha && commandline[pos + 1] == L':' &&
+                    (commandline[pos + 2] == L'\\' || commandline[pos + 2] == L'/'))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Returns the index just past the FIRST ".exe" (case-insensitive)
+        // that is immediately followed by whitespace or end-of-string,
+        // scanning from `start`. This locates the launch-executable
+        // boundary in an unquoted path that contains spaces. Returns
+        // std::wstring_view::npos when no such boundary exists.
+        //
+        // The launch exe wins over any ".exe" appearing later in the
+        // arguments because we stop at the FIRST match: in
+        // `C:\…\wsl.exe -e bash.exe` the scan stops at `wsl.exe`.
+        inline size_t FindUnquotedLaunchExeEnd(std::wstring_view commandline, size_t start) noexcept
+        {
+            constexpr std::wstring_view dotExe{ L".exe" };
+            const size_t n = commandline.size();
+            if (n < dotExe.size())
+            {
+                return std::wstring_view::npos;
+            }
+            for (size_t i = start; i + dotExe.size() <= n; ++i)
+            {
+                bool extMatch = true;
+                for (size_t j = 0; j < dotExe.size(); ++j)
+                {
+                    if (FoldAsciiLower(commandline[i + j]) != dotExe[j])
+                    {
+                        extMatch = false;
+                        break;
+                    }
+                }
+                if (!extMatch)
+                {
+                    continue;
+                }
+                const size_t after = i + dotExe.size();
+                if (after == n || commandline[after] == L' ' || commandline[after] == L'\t')
+                {
+                    return after;
+                }
+            }
+            return std::wstring_view::npos;
+        }
+
         inline bool CommandlineHasExeToken(std::wstring_view commandline, std::wstring_view leaf) noexcept
         {
             if (leaf.empty())
@@ -80,17 +154,55 @@ namespace Microsoft::Terminal::ShellIntegration
                 quoted = true;
                 ++start;
             }
-            // First token ends at the matching close-quote OR
-            // whitespace OR end-of-string.
+            // Determine the end of the launch-executable token.
             size_t end = start;
-            while (end < commandline.size())
+            if (quoted)
             {
-                const wchar_t c = commandline[end];
-                if (quoted ? (c == L'"') : (c == L' ' || c == L'\t'))
+                // Quoted: token ends at the matching close-quote.
+                while (end < commandline.size() && commandline[end] != L'"')
                 {
-                    break;
+                    ++end;
                 }
-                ++end;
+            }
+            else if (BeginsAtPathRoot(commandline, start))
+            {
+                // Unquoted path beginning at a filesystem root. The launch
+                // executable may legitimately contain spaces, e.g.
+                //   C:\Program Files\Git\bin\bash.exe -i -l
+                // which CreateProcessW launches by probing progressively
+                // longer space-split prefixes (…\Program.exe,
+                // …\Program Files\Git.exe, … \bash.exe). Git installs under
+                // "C:\Program Files\Git" by default, so this is the COMMON
+                // form — NOT a malformed edge case. Splitting on the first
+                // space would yield leaf "Program" and silently skip Git
+                // Bash integration. Extend the token to the first ".exe"
+                // boundary; fall back to first-whitespace when the path has
+                // no extension (rare — CreateProcess would auto-append .exe).
+                const size_t exeEnd = FindUnquotedLaunchExeEnd(commandline, start);
+                if (exeEnd != std::wstring_view::npos)
+                {
+                    end = exeEnd;
+                }
+                else
+                {
+                    while (end < commandline.size() &&
+                           commandline[end] != L' ' && commandline[end] != L'\t')
+                    {
+                        ++end;
+                    }
+                }
+            }
+            else
+            {
+                // Bare command (e.g. `pwsh -arg`, `bash.exe -i`, `cmd /c …`):
+                // the launch exe is the first whitespace-delimited token.
+                // It must NOT absorb a later `.exe` token in the arguments,
+                // so we never run the path-root extension scan here.
+                while (end < commandline.size() &&
+                       commandline[end] != L' ' && commandline[end] != L'\t')
+                {
+                    ++end;
+                }
             }
             if (end <= start)
             {
