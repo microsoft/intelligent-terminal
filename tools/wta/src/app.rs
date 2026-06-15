@@ -14012,6 +14012,153 @@ mod tests {
         );
     }
 
+    /// Render: every `ChatMessage` variant must paint without panicking and
+    /// surface its distinguishing text. Lifts the `build_message_lines` /
+    /// `message_height` match arms in `ui/chat.rs` (User/System/Plan/Error/
+    /// AgentEvent/Disclaimer were previously unexercised).
+    #[test]
+    fn render_chat_all_message_variants() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        {
+            let tab = app.current_tab_mut();
+            tab.messages.push(ChatMessage::User("USER_MSG_XYZ".into()));
+            tab.messages.push(ChatMessage::Agent("AGENT_MSG_XYZ".into()));
+            tab.messages.push(ChatMessage::System("SYSTEM_MSG_XYZ".into()));
+            tab.messages.push(ChatMessage::Error("ERROR_MSG_XYZ".into()));
+            tab.messages
+                .push(ChatMessage::AgentEvent("AGENTEVENT_MSG_XYZ".into()));
+            tab.messages.push(ChatMessage::Plan(vec![
+                PlanEntry {
+                    content: "PLAN_DONE_XYZ".into(),
+                    status: PlanEntryStatus::Completed,
+                },
+                PlanEntry {
+                    content: "PLAN_DOING_XYZ".into(),
+                    status: PlanEntryStatus::InProgress,
+                },
+                PlanEntry {
+                    content: "PLAN_TODO_XYZ".into(),
+                    status: PlanEntryStatus::Pending,
+                },
+            ]));
+            tab.messages.push(ChatMessage::Disclaimer);
+        }
+
+        let text = render_to_text(&mut app, 80, 40);
+        for needle in [
+            "USER_MSG_XYZ",
+            "AGENT_MSG_XYZ",
+            "SYSTEM_MSG_XYZ",
+            "ERROR_MSG_XYZ",
+            "AGENTEVENT_MSG_XYZ",
+            "PLAN_DONE_XYZ",
+            "PLAN_DOING_XYZ",
+            "PLAN_TODO_XYZ",
+        ] {
+            assert!(
+                text.contains(needle),
+                "chat must paint {needle:?}; rendered:\n{text}"
+            );
+        }
+    }
+
+    /// Render: an expanded completed turn with a trailing marker must paint
+    /// its prompt header, its detail rows, and the marker. Lifts
+    /// `build_completed_turn_lines` in `ui/chat.rs`.
+    #[test]
+    fn render_chat_completed_turn_expanded_with_marker() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: "TURN_PROMPT_XYZ".into(),
+            details: vec![ChatMessage::Agent("TURN_DETAIL_XYZ".into())],
+            expanded: true,
+            trailing_marker: Some("TURN_MARKER_XYZ".into()),
+        });
+
+        let text = render_to_text(&mut app, 80, 40);
+        for needle in ["TURN_PROMPT_XYZ", "TURN_DETAIL_XYZ", "TURN_MARKER_XYZ"] {
+            assert!(
+                text.contains(needle),
+                "expanded completed turn must paint {needle:?}; rendered:\n{text}"
+            );
+        }
+    }
+
+    /// Render: while the helper is still connecting, the chat must paint the
+    /// animated "Connecting…" activity line. Lifts the `Connecting` branch of
+    /// `build_activity_line` in `ui/chat.rs`.
+    #[test]
+    fn render_chat_connecting_activity_line() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connecting("starting".into());
+
+        let text = render_to_text(&mut app, 80, 24);
+        let label = t!("connection.connecting_activity").into_owned();
+        let probe: String = label.chars().take(6).collect();
+        assert!(
+            !probe.trim().is_empty() && text.contains(&probe),
+            "chat must paint the connecting activity line ({label:?}); rendered:\n{text}"
+        );
+    }
+
+    /// Render: the first-run welcome hint must paint its title when connected
+    /// and `show_welcome_hint` is set. Lifts the welcome branch of
+    /// `ui/chat.rs` + `ui/layout.rs`.
+    #[test]
+    fn render_chat_welcome_hint() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.show_welcome_hint = true;
+
+        let text = render_to_text(&mut app, 80, 24);
+        let title = t!("chat.welcome_title").into_owned();
+        let probe: String = title.chars().take(6).collect();
+        assert!(
+            !probe.trim().is_empty() && text.contains(&probe),
+            "chat must paint the welcome title ({title:?}); rendered:\n{text}"
+        );
+    }
+
+    /// Render: when the pane is too short for a full permission card, the
+    /// compact one-row fallback must paint the description and the `[Y/N]`
+    /// hint. Lifts `render_compact` in `ui/permission.rs`. The compact path
+    /// is gated on `terminal_rows - 3 < CARD_MIN_SIZE`.
+    #[test]
+    fn render_permission_compact_shows_hint() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.terminal_rows = 7; // ceiling = 4 < CARD_MIN_SIZE(5) → compact fallback
+        app.current_tab_mut().permission.push_back(PermissionState {
+            description: "Run: echo PERM_COMPACT_XYZ".into(),
+            options: vec![
+                PermOption {
+                    id: "allow-once".into(),
+                    name: "Allow once".into(),
+                    kind: "AllowOnce".into(),
+                },
+                PermOption {
+                    id: "reject-once".into(),
+                    name: "Reject".into(),
+                    kind: "RejectOnce".into(),
+                },
+            ],
+            selected: 0,
+            responder: None,
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("PERM_COMPACT_XYZ"),
+            "the compact permission row must paint its description; rendered:\n{text}"
+        );
+        assert!(
+            text.contains("Y/N"),
+            "the compact permission row must paint the [Y/N] hint; rendered:\n{text}"
+        );
+    }
+
     fn submit_autofix_prompt(app: &mut App, pane: &str) {
         let gen = {
             let tab = app.tab_mut(DEFAULT_TAB_ID);
