@@ -13506,6 +13506,99 @@ mod tests {
             .await;
     }
 
+    /// Render a driven `App` to a ratatui `TestBackend` and return the visible
+    /// buffer as text (rows joined by `\n`). Lets scenarios assert on what is
+    /// actually painted, not just on `App` state.
+    fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
+        use ratatui::{backend::TestBackend, Terminal};
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        terminal
+            .draw(|frame| crate::ui::render(frame, app))
+            .expect("render must not panic");
+        let buf = terminal.backend().buffer();
+        let w = buf.area.width as usize;
+        let mut out = String::new();
+        for (i, cell) in buf.content.iter().enumerate() {
+            if i > 0 && i % w == 0 {
+                out.push('\n');
+            }
+            out.push_str(cell.symbol());
+        }
+        out
+    }
+
+    /// Render: a committed agent message must actually appear in the painted
+    /// chat view (not just in `App` state). Lifts `ui/chat.rs` coverage.
+    #[test]
+    fn render_chat_shows_agent_message() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut()
+            .messages
+            .push(ChatMessage::Agent("VISIBLE_REPLY_XYZ".into()));
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("VISIBLE_REPLY_XYZ"),
+            "the chat view must paint the agent message; rendered:\n{text}"
+        );
+    }
+
+    /// Render: a queued permission request must paint its description and the
+    /// allow/reject option labels. Lifts `ui/permission.rs` coverage.
+    #[test]
+    fn render_permission_card_shows_options() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().permission.push_back(PermissionState {
+            description: "Run: echo PERM_XYZ".into(),
+            options: vec![
+                PermOption {
+                    id: "allow-once".into(),
+                    name: "Allow once".into(),
+                    kind: "AllowOnce".into(),
+                },
+                PermOption {
+                    id: "reject-once".into(),
+                    name: "Reject".into(),
+                    kind: "RejectOnce".into(),
+                },
+            ],
+            selected: 0,
+            responder: None,
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("PERM_XYZ"),
+            "the permission card must paint its description; rendered:\n{text}"
+        );
+        assert!(
+            text.contains("Allow once"),
+            "the permission card must paint the allow option; rendered:\n{text}"
+        );
+    }
+
+    /// Render: a tool-call card must paint its title in the chat. Lifts the
+    /// tool-call branch of `ui/chat.rs`.
+    #[test]
+    fn render_tool_call_card_in_chat() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().messages.push(ChatMessage::ToolCall {
+            id: "mock-tool-1".into(),
+            title: "Run: echo TOOL_XYZ".into(),
+            status: "Pending".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("TOOL_XYZ"),
+            "the tool-call card must paint its title; rendered:\n{text}"
+        );
+    }
+
     fn submit_autofix_prompt(app: &mut App, pane: &str) {
         let gen = {
             let tab = app.tab_mut(DEFAULT_TAB_ID);
