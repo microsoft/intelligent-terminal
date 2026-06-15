@@ -1567,6 +1567,13 @@ void ShellIntegrationTests::ProfileGate_PwshCommandlineLeafExeMatches()
     VERIFY_IS_FALSE(ProfileMatchesShell(Target::Pwsh,
                                          L"",
                                          L"cmd /c C:\\Program Files\\PowerShell\\7\\pwsh.exe"));
+    // Degenerate inputs: empty commandline, and a non-empty commandline
+    // matched against an empty leaf, both return false without crashing.
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::Pwsh, L"", L""));
+    // Leading whitespace before a rooted unquoted path is tolerated.
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh,
+                                        L"",
+                                        L"   C:\\Program Files\\PowerShell\\7\\pwsh.exe"));
 }
 
 void ShellIntegrationTests::ProfileGate_WindowsPowerShellOnlyWhenNotPwsh()
@@ -1635,6 +1642,23 @@ void ShellIntegrationTests::ProfileGate_BashOnlyForGitBashNotWsl()
     VERIFY_IS_FALSE(ProfileMatchesShell(Target::Pwsh,
                                          L"",
                                          L"C:\\Program Files\\Git\\bin\\bash -i -l"));
+    // UNC path root (\\server\share\...) — another filesystem root the
+    // unquoted-with-spaces heuristic must accept, both with and without
+    // the `.exe` extension.
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash,
+                                        L"",
+                                        L"\\\\server\\share\\Git\\bin\\bash.exe -i"));
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash,
+                                        L"",
+                                        L"\\\\server\\share\\Git\\bin\\bash -i"));
+    // Forward-slash separators with a drive root (C:/...). Both the root
+    // detection and the leaf/`.exe` boundary scans must treat `/` like `\`.
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash,
+                                        L"",
+                                        L"C:/Program Files/Git/bin/bash.exe"));
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash,
+                                        L"",
+                                        L"C:/Program Files/Git/bin/bash -i -l"));
     // Bare leaf — user with bash on PATH.
     VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash, L"", L"bash"));
     VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash, L"", L"bash.exe -i"));
