@@ -37,22 +37,35 @@ pub const WTA_META_NAMESPACE: &str = "wta";
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WtaMeta {
     pub pane_session_id: Option<String>,
-    /// Full agent CLI command line the helper wants its session served
-    /// by (e.g. `"copilot --acp --stdio"` or
-    /// `"npx -y @zed-industries/claude-code-acp"`). Attached by the
-    /// helper to its `initialize` request so the multi-agent master can
-    /// spawn/reuse the matching agent CLI per tab. `None` on older
-    /// helpers — master then falls back to its own `--agent` default.
+    /// Legacy/advisory full command line. **The master no longer spawns
+    /// this** — it is a security hazard to execute an arbitrary string
+    /// arriving over the pipe (any same-user process could connect and
+    /// drive process creation). The master selects the agent from
+    /// `agent_id` and reconstructs the command itself. Kept on the wire
+    /// only for diagnostics / back-compat; helpers no longer set it.
     pub agent_cmd: Option<String>,
-    /// Canonical agent id (`copilot` / `claude` / `gemini` / …) that
-    /// pairs with `agent_cmd`. Used to stamp the per-session
-    /// `cli_source` so the F2 view labels each row with its real CLI.
+    /// Canonical agent id (`copilot` / `claude` / `gemini` / …) the
+    /// helper's tab wants. **This is the authoritative selector**: the
+    /// master reconstructs the agent command internally from this id
+    /// (`agent_registry::build_acp_command`) and never executes a string
+    /// supplied over the pipe. Also stamps the per-session `cli_source`
+    /// so the F2 view labels each row with its real CLI. `None` on older
+    /// helpers — master then falls back to its own `--agent` default.
     pub agent_id: Option<String>,
+    /// Model override the tab wants (e.g. `gpt-5`). Folded into the
+    /// reconstructed command by `build_acp_command` for agents that
+    /// take a `--model` flag (adapter agents ignore it and receive the
+    /// model later via `setSessionModel`). Carried as its own field
+    /// because the master no longer trusts `agent_cmd` to carry it.
+    pub model: Option<String>,
 }
 
 impl WtaMeta {
     pub fn is_empty(&self) -> bool {
-        self.pane_session_id.is_none() && self.agent_cmd.is_none() && self.agent_id.is_none()
+        self.pane_session_id.is_none()
+            && self.agent_cmd.is_none()
+            && self.agent_id.is_none()
+            && self.model.is_none()
     }
 }
 
@@ -88,6 +101,7 @@ pub fn extract_wta_meta(meta: &mut Option<acp::Meta>) -> WtaMeta {
         pane_session_id: str_field("pane_session_id"),
         agent_cmd: str_field("agent_cmd"),
         agent_id: str_field("agent_id"),
+        model: str_field("model"),
     }
 }
 
@@ -122,6 +136,12 @@ pub fn inject_wta_meta(meta: &mut Option<acp::Meta>, wta: &WtaMeta) {
         wta_obj.insert(
             "agent_id".to_string(),
             serde_json::Value::String(id.clone()),
+        );
+    }
+    if let Some(model) = &wta.model {
+        wta_obj.insert(
+            "model".to_string(),
+            serde_json::Value::String(model.clone()),
         );
     }
     map.insert(
@@ -2455,12 +2475,15 @@ mod tests {
 
     #[test]
     fn inject_then_extract_round_trips_agent_identity() {
-        // The multi-agent master keys its CLI pool off `agent_cmd` and
-        // stamps `cli_source` from `agent_id`, both carried on the
-        // helper's `initialize` handshake. Guard the wire round-trip.
+        // The multi-agent master selects + reconstructs the CLI from
+        // `agent_id` (+ `model`) carried on the helper's `initialize`
+        // handshake. Guard the wire round-trip of all three identity
+        // fields, including `model` (which used to ride inside
+        // `agent_cmd` and now travels on its own).
         let original = WtaMeta {
             agent_cmd: Some("npx -y @zed-industries/claude-code-acp".to_string()),
-            agent_id: Some("claude".to_string()),
+            agent_id: Some("gemini".to_string()),
+            model: Some("gemini-2.5-pro".to_string()),
             ..Default::default()
         };
         let mut meta: Option<acp::Meta> = None;

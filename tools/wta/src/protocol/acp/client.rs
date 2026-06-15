@@ -2158,14 +2158,21 @@ pub async fn run_acp_client_over_pipe(
                 acp::Implementation::new("wta-helper", env!("CARGO_PKG_VERSION"))
                     .title("Windows Terminal Agent (helper)"),
             );
-        // Declare which agent this tab wants. Master keys its agent-CLI
-        // pool off `agent_cmd`, so two tabs with different agents end up
-        // on different CLIs while same-agent tabs share one.
+        // Declare which agent this tab wants by *identity* — id + model.
+        // The master selects + reconstructs the agent command from these
+        // (it deliberately does NOT execute a command string sent over
+        // the pipe — that would be an arbitrary-spawn surface for any
+        // same-user process). Two tabs with different ids land on
+        // different CLIs; same-id tabs share one. `agent_cmd` is left
+        // unset: the master ignores it for spawning.
+        let _ = &agent_cmd; // retained param; no longer sent on the wire
         crate::session_registry::inject_wta_meta(
             &mut req.meta,
             &crate::session_registry::WtaMeta {
-                agent_cmd: agent_cmd.filter(|s| !s.trim().is_empty()),
                 agent_id: agent_id.filter(|s| !s.trim().is_empty()),
+                model: acp_model_override
+                    .clone()
+                    .filter(|s| !s.trim().is_empty()),
                 ..Default::default()
             },
         );

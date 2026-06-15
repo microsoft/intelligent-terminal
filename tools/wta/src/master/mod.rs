@@ -177,11 +177,14 @@ struct MasterStateInner {
     pub(crate) wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>>,
     /// The pool of agent CLI subprocesses master is multiplexing,
     /// keyed by the agent command line (`AgentCmdKey`). Lazily
-    /// populated: a helper declares its agent in the `initialize`
-    /// handshake (`_meta.wta.agent_cmd`), and `get_or_spawn_agent`
-    /// spawns the CLI on first use and reuses it for every later helper
-    /// that asks for the same command line. This is what lets one tab
-    /// run Gemini while another runs Claude in the same window.
+    /// populated: a helper declares its agent *id* in the `initialize`
+    /// handshake (`_meta.wta.agent_id`), the master reconstructs the
+    /// command from that id (`agent_registry::build_acp_command`), and
+    /// `get_or_spawn_agent` spawns the CLI on first use and reuses it for
+    /// every later helper that resolves to the same command line. The key
+    /// is always a master-derived command, never a string off the pipe.
+    /// This is what lets one tab run Gemini while another runs Claude in
+    /// the same window.
     ///
     /// Each value is an `Arc<OnceCell<…>>` so two helpers racing the
     /// *same* new agent serialize on that key's init (one spawns, the
@@ -193,9 +196,19 @@ struct MasterStateInner {
     /// Fallback agent command line + id for helpers that don't declare
     /// their own in `_meta.wta` (older helper builds, or the rare
     /// manual launch). Comes from the master's own `--agent` / `--agent-id`,
-    /// which the C++ side still passes as the global default.
+    /// which the C++ side still passes as the global default. This command
+    /// is **trusted** (it came from the master's own argv, not the pipe),
+    /// so a rejected/unknown helper request safely falls back to it.
     pub(crate) default_agent_cmd: String,
     pub(crate) default_agent_id: Option<String>,
+    /// Allowlist of agent ids a helper may select over the pipe, from the
+    /// host's GPO-filtered set (`--allowed-agent-ids`). `None` = no host
+    /// allowlist supplied (manual runs / older hosts): any *known* agent
+    /// id is accepted. `Some(set)` = only ids in `set` are honored; any
+    /// other id falls back to the trusted default. Either way the master
+    /// reconstructs the command from the id and never spawns a string
+    /// taken off the pipe.
+    pub(crate) allowed_agent_ids: Option<std::collections::HashSet<String>>,
 }
 
 /// Canonical key for the agent-CLI pool: the full agent command line
@@ -723,26 +736,32 @@ impl acp::Agent for HelperHandler {
         &self,
         mut args: acp::InitializeRequest,
     ) -> acp::Result<acp::InitializeResponse> {
-        // The helper declares which agent this tab wants in
-        // `_meta.wta`. Strip it before it could ever reach an agent CLI,
-        // and fall back to the master default for older/manual helpers.
+        // The helper declares which agent this tab wants in `_meta.wta`
+        // by *identity* (id + model). Strip the namespace so it can never
+        // reach an agent CLI, then resolve the command the master will
+        // actually spawn. Crucially we NEVER execute a command string off
+        // the pipe: `resolve_agent_selection` reconstructs the command
+        // from the declared id (only for known, GPO-allowed ids) and
+        // otherwise falls back to the trusted `--agent` default. See
+        // `resolve_agent_selection` for the full policy.
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
-        let agent_cmd = wta_meta
-            .agent_cmd
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| self.state.default_agent_cmd.clone());
-        let agent_id = wta_meta
-            .agent_id
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| self.state.default_agent_id.clone());
+        let (agent_cmd, agent_id) = resolve_agent_selection(
+            &self.state.default_agent_cmd,
+            self.state.default_agent_id.as_deref(),
+            self.state.allowed_agent_ids.as_ref(),
+            wta_meta.agent_id.as_deref(),
+            wta_meta.model.as_deref(),
+            self.helper_id,
+        );
         tracing::info!(
             target: "master",
             step = "helper→agent",
             op = "initialize",
             helper_id = ?self.helper_id,
             protocol_version = ?args.protocol_version,
-            agent_cmd = %agent_cmd,
-            agent_id = ?agent_id,
+            requested_agent_id = ?wta_meta.agent_id,
+            resolved_agent_cmd = %agent_cmd,
+            resolved_agent_id = ?agent_id,
             "resolving agent CLI for helper"
         );
 
@@ -1310,6 +1329,160 @@ impl Drop for MasterPipeDiscoveryGuard {
     }
 }
 
+/// Owns a self-relative security descriptor (built from an SDDL string)
+/// and the `SECURITY_ATTRIBUTES` that points at it, so the named pipe can
+/// be created with a tightened ACL. Frees the descriptor on drop.
+///
+/// Must outlive every `create_*` call that consumes its `sa_ptr()` — in
+/// practice it lives for the whole accept loop (each follow-up pipe
+/// instance is created with the same attributes). Do not move it after
+/// taking `sa_ptr()`.
+struct PipeSecurity {
+    sa: windows_sys::Win32::Security::SECURITY_ATTRIBUTES,
+    /// The descriptor `sa.lpSecurityDescriptor` aliases. Kept so `Drop`
+    /// can `LocalFree` exactly the allocation Windows handed us.
+    psd: *mut std::ffi::c_void,
+}
+
+impl PipeSecurity {
+    fn sa_ptr(&self) -> *mut std::ffi::c_void {
+        &self.sa as *const _ as *mut std::ffi::c_void
+    }
+}
+
+impl Drop for PipeSecurity {
+    fn drop(&mut self) {
+        if !self.psd.is_null() {
+            // LocalFree takes/returns HLOCAL (= *mut c_void); ignore the
+            // (null on success) return.
+            unsafe {
+                windows_sys::Win32::Foundation::LocalFree(self.psd);
+            }
+        }
+    }
+}
+
+/// Resolve the current process user's SID as an SDDL string (e.g.
+/// `"S-1-5-21-…"`). Returns `None` on any failure so the caller can fall
+/// back to the default pipe ACL rather than refuse to start.
+fn current_user_sid_string() -> Option<String> {
+    use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, HANDLE};
+    use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
+    use windows_sys::Win32::Security::{GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return None;
+        }
+        // Size probe (fails with ERROR_INSUFFICIENT_BUFFER, fills `len`).
+        let mut len: u32 = 0;
+        GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut len);
+        if len == 0 {
+            CloseHandle(token);
+            return None;
+        }
+        let mut buf = vec![0u8; len as usize];
+        let ok = GetTokenInformation(
+            token,
+            TokenUser,
+            buf.as_mut_ptr() as *mut std::ffi::c_void,
+            len,
+            &mut len,
+        );
+        CloseHandle(token);
+        if ok == 0 {
+            return None;
+        }
+        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+        let mut sid_str: *mut u16 = std::ptr::null_mut();
+        if ConvertSidToStringSidW(token_user.User.Sid, &mut sid_str) == 0 || sid_str.is_null() {
+            return None;
+        }
+        // Copy out the wide string, then free Windows' allocation.
+        let mut n = 0usize;
+        while *sid_str.add(n) != 0 {
+            n += 1;
+        }
+        let slice = std::slice::from_raw_parts(sid_str, n);
+        let s = String::from_utf16_lossy(slice);
+        LocalFree(sid_str as *mut std::ffi::c_void);
+        Some(s)
+    }
+}
+
+/// Build a `PipeSecurity` granting full control only to SYSTEM and the
+/// current user (protected DACL → denies other users and, with
+/// `reject_remote_clients`, remote connectors), plus a medium-integrity
+/// no-write-up mandatory label (blocks lower-integrity / AppContainer
+/// same-user code). This is **defense in depth**: it does not separate a
+/// same-user, medium-integrity, full-trust process — which is exactly why
+/// the master never executes a command string off the pipe
+/// (`resolve_agent_selection`) and that, not this ACL, is the real fix.
+///
+/// Returns `None` (caller falls back to the default ACL) on any failure;
+/// hardening should never be the reason the master can't start.
+fn build_pipe_security_attributes() -> Option<PipeSecurity> {
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    };
+    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+
+    let user_sid = current_user_sid_string()?;
+    // D:P → protected DACL (no inheritance). GA = GENERIC_ALL.
+    //   (A;;GA;;;SY)        SYSTEM
+    //   (A;;GA;;;<user>)    the current user
+    // S:(ML;;NW;;;ME)       mandatory label: Medium IL, no-write-up.
+    let sddl = format!("D:P(A;;GA;;;SY)(A;;GA;;;{user_sid})S:(ML;;NW;;;ME)");
+    let sddl_w: Vec<u16> = sddl.encode_utf16().chain(std::iter::once(0)).collect();
+
+    let mut psd: *mut std::ffi::c_void = std::ptr::null_mut();
+    let ok = unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl_w.as_ptr(),
+            SDDL_REVISION_1 as u32,
+            &mut psd,
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0 || psd.is_null() {
+        tracing::warn!(
+            target: "master",
+            "failed to build pipe security descriptor from SDDL; using default ACL"
+        );
+        return None;
+    }
+
+    let sa = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: psd,
+        bInheritHandle: 0,
+    };
+    Some(PipeSecurity { sa, psd })
+}
+
+/// Create one named-pipe server instance, applying `security` when
+/// available. Always rejects remote clients. Shared by the first-instance
+/// and the follow-up-instance create sites so neither can silently regress
+/// to the default ACL.
+fn create_master_pipe_instance(
+    pipe_name: &str,
+    first_instance: bool,
+    security: Option<&PipeSecurity>,
+) -> std::io::Result<NamedPipeServer> {
+    let mut opts = ServerOptions::new();
+    opts.first_pipe_instance(first_instance);
+    opts.reject_remote_clients(true);
+    match security {
+        // SAFETY: `sa_ptr()` points at a `SECURITY_ATTRIBUTES` whose
+        // descriptor stays valid for the lifetime of `security` (the
+        // caller holds it across the whole accept loop).
+        Some(sec) => unsafe { opts.create_with_security_attributes_raw(pipe_name, sec.sa_ptr()) },
+        None => opts.create(pipe_name),
+    }
+}
+
 async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // Best-effort wtcli/COM channel for intellterm.wta/focus_session.
     // Master usually runs inside a WT pane (so `WT_COM_CLSID` is set and
@@ -1335,6 +1508,27 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // eager agent CLI. `cli.agent` / `cli.agent_id` become the fallback
     // default for helpers that don't declare one (older builds, manual
     // launches).
+    // Host-supplied allowlist (GPO-filtered) of agent ids a helper may
+    // select. Empty argv ⇒ `None` (no allowlist; accept any known id).
+    let allowed_agent_ids: Option<std::collections::HashSet<String>> =
+        if cli.allowed_agent_ids.is_empty() {
+            None
+        } else {
+            Some(
+                cli.allowed_agent_ids
+                    .iter()
+                    .map(|s| s.trim().to_ascii_lowercase())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+            )
+        };
+    tracing::info!(
+        target: "master",
+        allowed_agent_ids = ?allowed_agent_ids,
+        default_agent_id = ?cli.agent_id,
+        "agent allowlist resolved"
+    );
+
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
         registry: crate::session_registry::InMemoryRegistry::shared(),
@@ -1343,6 +1537,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         agents: Mutex::new(HashMap::new()),
         default_agent_cmd: cli.agent.clone(),
         default_agent_id: cli.agent_id.clone(),
+        allowed_agent_ids,
     });
 
     // Seed the registry with historical sessions scanned from
@@ -1400,13 +1595,23 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // Only a fatal pipe error returns from this loop. SharedWta on the
     // C++ side still owns the master's process lifetime (job object +
     // pane refcount).
-    let mut server = ServerOptions::new()
-        .first_pipe_instance(true)
-        .create(&pipe_name)
+    // Tighten the pipe ACL (defense in depth — see
+    // `build_pipe_security_attributes`). Held for the whole accept loop so
+    // every follow-up instance inherits the same attributes; `None` means
+    // we couldn't build it and fall back to the default ACL.
+    let pipe_security = build_pipe_security_attributes();
+    if pipe_security.is_none() {
+        tracing::warn!(
+            target: "master",
+            "named pipe uses default ACL (hardened SD unavailable)"
+        );
+    }
+    let mut server = create_master_pipe_instance(&pipe_name, true, pipe_security.as_ref())
         .with_context(|| format!("failed to create named pipe '{pipe_name}'"))?;
     tracing::info!(
         target: "master",
         pipe_name = %pipe_name,
+        secured = pipe_security.is_some(),
         "named pipe listening; awaiting helper connections"
     );
     let _pipe_discovery_guard = MasterPipeDiscoveryGuard::write(&pipe_name);
@@ -1436,9 +1641,9 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         // helper can connect concurrently.
         let connected = std::mem::replace(
             &mut server,
-            ServerOptions::new().create(&pipe_name).with_context(|| {
-                format!("failed to create follow-up pipe instance for '{pipe_name}'")
-            })?,
+            create_master_pipe_instance(&pipe_name, false, pipe_security.as_ref()).with_context(
+                || format!("failed to create follow-up pipe instance for '{pipe_name}'"),
+            )?,
         );
 
         let inner = Arc::clone(&inner);
@@ -1465,6 +1670,70 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     }
 }
 
+/// Decide which agent command the master will spawn for a helper, given
+/// what the helper declared in `_meta.wta` and the master's trusted
+/// defaults / GPO allowlist.
+///
+/// **Security invariant:** the returned command is always master-derived
+/// — either reconstructed from a *known, allowed* agent id via
+/// [`agent_registry::build_acp_command`], or the trusted `--agent`
+/// default. A command string arriving over the pipe (`wta_meta.agent_cmd`)
+/// is never returned and never executed; any same-user process that
+/// connects to the pipe therefore cannot drive arbitrary process
+/// creation by choosing the command line — only by selecting among the
+/// host-approved agent ids.
+///
+/// Returns `(command_line, agent_id_for_cli_source)`. The id is passed
+/// on to `spawn_one_agent` so the per-session `cli_source` is stamped
+/// correctly; `None` lets it be inferred from the command line.
+///
+/// Fallback to the default happens when the helper declared no id, an
+/// *unknown* id (not in [`agent_registry::KNOWN_AGENTS`] — e.g. a
+/// `custom:` agent, which the global default already covers), or an id
+/// the host's GPO allowlist excludes.
+fn resolve_agent_selection(
+    default_cmd: &str,
+    default_id: Option<&str>,
+    allowed_ids: Option<&std::collections::HashSet<String>>,
+    requested_id: Option<&str>,
+    requested_model: Option<&str>,
+    helper_id: HelperId,
+) -> (String, Option<String>) {
+    let requested = requested_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_ascii_lowercase);
+
+    if let Some(id) = requested.as_deref() {
+        let known = crate::agent_registry::lookup_profile_by_id(id).id
+            != crate::agent_registry::DEFAULT_PROFILE.id;
+        // `None` allowlist = no host policy supplied (manual run / older
+        // host) → trust any known id. `Some(set)` = honor only listed ids.
+        let allowed = allowed_ids.map_or(true, |set| set.contains(id));
+
+        if known && allowed {
+            let model = requested_model
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let cmd = crate::agent_registry::build_acp_command(id, model);
+            return (cmd, Some(id.to_string()));
+        }
+
+        // A real selection we refused — surface why, then fall back.
+        tracing::warn!(
+            target: "master",
+            helper_id = ?helper_id,
+            requested_agent_id = %id,
+            known,
+            allowed,
+            "helper requested an unknown or GPO-blocked agent id; \
+             falling back to the trusted default agent"
+        );
+    }
+
+    (default_cmd.to_string(), default_id.map(str::to_string))
+}
+
 /// Get the agent CLI for `agent_cmd`, spawning + initializing it on
 /// first use and reusing it thereafter. Two helpers racing the same
 /// new agent serialize on the per-key `OnceCell`; helpers for different
@@ -1484,9 +1753,11 @@ async fn get_or_spawn_agent(
                 .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new())),
         )
     };
-    // On spawn failure tokio's OnceCell stays uninitialized, so a later
-    // helper retries the spawn (the empty cell lingers in the map but is
-    // harmless and will be re-tried / replaced).
+    // On spawn/init failure the `OnceCell` stays uninitialized and
+    // `spawn_one_agent` kills its child, whose closing stdio ends the I/O
+    // task that then `reap_agent`s this key out of the map — so a later
+    // helper requesting the same agent gets a fresh cell and retries
+    // cleanly (no lingering dead slot, no leaked subprocess).
     let agent = cell
         .get_or_try_init(|| async { spawn_one_agent(state, &key, agent_cmd, agent_id).await })
         .await?;
@@ -1548,13 +1819,81 @@ async fn spawn_one_agent(
     });
     let conn = Arc::new(conn);
 
-    // Child reaper: when the CLI process exits, drop it from the pool so
-    // the next helper requesting the same agent respawns a fresh one.
-    // kill_on_drop reaps descendants when `child` drops at task end.
+    // I/O-loop driver + reaper. This task drives the ACP connection's
+    // I/O, so it MUST run before `initialize` (below) — initialize can't
+    // make progress otherwise. When the loop ends (clean shutdown, pipe
+    // error, or because we killed the child on an init failure) master can
+    // no longer talk to this CLI, so the agent is dropped from the pool.
+    // On the init-failure path that removes the empty `OnceCell` entry so
+    // the next helper retries cleanly instead of reusing a dead slot.
     {
         let state = Arc::clone(state);
         let key = key.clone();
-        let mut child = spawn_result.child;
+        tokio::task::spawn_local(async move {
+            match handle_io.await {
+                Ok(()) => tracing::info!(
+                    target: "master",
+                    agent = %key,
+                    "agent CLI ACP I/O loop ended cleanly — removing from pool"
+                ),
+                Err(e) => tracing::error!(
+                    target: "master",
+                    agent = %key,
+                    error = %e,
+                    "agent CLI ACP I/O loop ended with error — removing from pool"
+                ),
+            }
+            reap_agent(&state, &key).await;
+        });
+    }
+
+    // Keep the child locally-owned ACROSS `initialize`. The child reaper
+    // (which moves `child`) is installed only AFTER init succeeds. If init
+    // fails/times out we kill the child here and return `Err` without a
+    // detached task left holding a live subprocess — previously the reaper
+    // was spawned first, so a failed init leaked the agent process, its
+    // I/O task, and (via the empty `OnceCell`) triggered repeated respawns.
+    let mut child = spawn_result.child;
+
+    // Initialize this CLI. npx adapter cold starts can be slow, so keep
+    // the same generous timeout the single-agent master used.
+    let init_timeout_secs = if is_npx { 60 } else { 15 };
+    let init_outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(init_timeout_secs),
+        conn.initialize(
+            acp::InitializeRequest::new(acp::ProtocolVersion::V1)
+                .client_capabilities(acp::ClientCapabilities::new().terminal(true))
+                .client_info(
+                    acp::Implementation::new("wta-master", env!("CARGO_PKG_VERSION"))
+                        .title("Windows Terminal Agent (master)"),
+                ),
+        ),
+    )
+    .await;
+
+    let init_resp = match init_outcome {
+        Ok(Ok(resp)) => resp,
+        Ok(Err(e)) => {
+            // Kill the child so its stdio closes → the I/O task above ends
+            // → `reap_agent` clears the pool slot. `kill_on_drop` is a
+            // backstop when `child` drops at return.
+            let _ = child.start_kill();
+            return Err(anyhow!("ACP initialize failed for '{agent_cmd}': {e}"));
+        }
+        Err(_) => {
+            let _ = child.start_kill();
+            return Err(anyhow!(
+                "ACP initialize timed out after {init_timeout_secs}s — agent CLI '{agent_cmd}' did not respond"
+            ));
+        }
+    };
+
+    // Init succeeded — install the child reaper now (takes ownership of
+    // `child`). A later CLI exit drops just this agent from the pool so
+    // the next helper respawns it; the master stays up for other agents.
+    {
+        let state = Arc::clone(state);
+        let key = key.clone();
         tokio::task::spawn_local(async move {
             let status = child.wait().await;
             tracing::error!(
@@ -1566,43 +1905,6 @@ async fn spawn_one_agent(
             reap_agent(&state, &key).await;
         });
     }
-    // I/O-loop reaper: the ACP loop ending means master can't talk to
-    // this CLI anymore — same recovery as a child exit.
-    {
-        let state = Arc::clone(state);
-        let key = key.clone();
-        tokio::task::spawn_local(async move {
-            let _ = handle_io.await;
-            tracing::error!(
-                target: "master",
-                agent = %key,
-                "agent CLI ACP I/O loop ended — removing from pool"
-            );
-            reap_agent(&state, &key).await;
-        });
-    }
-
-    // Initialize this CLI. npx adapter cold starts can be slow, so keep
-    // the same generous timeout the single-agent master used.
-    let init_timeout_secs = if is_npx { 60 } else { 15 };
-    let init_resp = tokio::time::timeout(
-        std::time::Duration::from_secs(init_timeout_secs),
-        conn.initialize(
-            acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-                .client_capabilities(acp::ClientCapabilities::new().terminal(true))
-                .client_info(
-                    acp::Implementation::new("wta-master", env!("CARGO_PKG_VERSION"))
-                        .title("Windows Terminal Agent (master)"),
-                ),
-        ),
-    )
-    .await
-    .map_err(|_| {
-        anyhow!(
-            "ACP initialize timed out after {init_timeout_secs}s — agent CLI '{agent_cmd}' did not respond"
-        )
-    })?
-    .map_err(|e| anyhow!("ACP initialize failed for '{agent_cmd}': {e}"))?;
 
     // Prefer the host-supplied agent id (authoritative); fall back to
     // parsing the command line. Stamps each session's `cli_source`.
@@ -2279,6 +2581,135 @@ mod tests {
     use super::*;
     use acp::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
 
+    // ── Agent selection / security policy ───────────────────────────
+    //
+    // `resolve_agent_selection` is the single chokepoint that decides
+    // what the master will spawn for a helper. Extracting it as a pure
+    // function lets us exercise the full policy — id reconstruction,
+    // GPO allowlist, fallback, and the "never trust a command off the
+    // pipe" invariant — without launching a single subprocess (cleaner
+    // than injecting a fake spawner, which only the I/O plumbing needs).
+
+    const DEFAULT_CMD: &str = "copilot --acp --stdio";
+
+    fn allowset(ids: &[&str]) -> std::collections::HashSet<String> {
+        ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Run the resolver the way `HelperHandler::initialize` does.
+    fn resolve(
+        allowed: Option<&std::collections::HashSet<String>>,
+        requested_id: Option<&str>,
+        model: Option<&str>,
+    ) -> (String, Option<String>) {
+        resolve_agent_selection(
+            DEFAULT_CMD,
+            Some("copilot"),
+            allowed,
+            requested_id,
+            model,
+            HelperId(1),
+        )
+    }
+
+    #[test]
+    fn known_id_with_no_allowlist_is_reconstructed_not_taken_from_pipe() {
+        // No host allowlist (manual run / older host) ⇒ any known id is
+        // honored, and the command is REBUILT from the id.
+        let (cmd, id) = resolve(None, Some("gemini"), None);
+        assert_eq!(cmd, "gemini --experimental-acp");
+        assert_eq!(id.as_deref(), Some("gemini"));
+    }
+
+    #[test]
+    fn model_is_folded_in_for_native_agents_and_ignored_for_adapters() {
+        // Native agent (gemini) takes --model on the command line.
+        let (cmd, _) = resolve(None, Some("gemini"), Some("gemini-2.5-pro"));
+        assert_eq!(cmd, "gemini --experimental-acp --model gemini-2.5-pro");
+
+        // Adapter agent (claude via npx) ignores the model here — it's
+        // applied later via setSessionModel — so the command is stable.
+        let (cmd, id) = resolve(None, Some("claude"), Some("opus-4"));
+        assert_eq!(cmd, "npx -y @zed-industries/claude-code-acp");
+        assert_eq!(id.as_deref(), Some("claude"));
+    }
+
+    #[test]
+    fn id_is_case_insensitive() {
+        let (cmd, id) = resolve(Some(&allowset(&["gemini"])), Some("GeMiNi"), None);
+        assert_eq!(cmd, "gemini --experimental-acp");
+        assert_eq!(id.as_deref(), Some("gemini"));
+    }
+
+    #[test]
+    fn empty_or_missing_id_falls_back_to_default() {
+        for requested in [None, Some(""), Some("   ")] {
+            let (cmd, id) = resolve(None, requested, None);
+            assert_eq!(cmd, DEFAULT_CMD, "requested={requested:?}");
+            assert_eq!(id.as_deref(), Some("copilot"));
+        }
+    }
+
+    #[test]
+    fn unknown_or_custom_id_falls_back_to_trusted_default() {
+        // `custom:` and bogus ids aren't in KNOWN_AGENTS ⇒ the master
+        // runs the trusted global default (which is what carries the
+        // global custom command), never a string from the pipe.
+        for requested in ["custom", "custom:calc.exe", "totally-bogus"] {
+            let (cmd, id) = resolve(None, Some(requested), None);
+            assert_eq!(cmd, DEFAULT_CMD, "requested={requested}");
+            assert_eq!(id.as_deref(), Some("copilot"));
+        }
+    }
+
+    #[test]
+    fn gpo_allowlist_blocks_known_but_unlisted_ids() {
+        let allowed = allowset(&["gemini"]);
+        // gemini is listed ⇒ honored.
+        let (cmd, _) = resolve(Some(&allowed), Some("gemini"), None);
+        assert_eq!(cmd, "gemini --experimental-acp");
+        // copilot is a *known* agent but NOT in the GPO-filtered set ⇒
+        // refused, fall back to default. (Defends against a peer helper
+        // selecting a policy-blocked agent.)
+        let (cmd, id) = resolve(Some(&allowed), Some("copilot"), None);
+        assert_eq!(cmd, DEFAULT_CMD);
+        assert_eq!(id.as_deref(), Some("copilot"));
+    }
+
+    #[test]
+    fn agent_cmd_from_the_pipe_is_never_executed() {
+        // Mirror the initialize path: a malicious helper sets a dangerous
+        // `agent_cmd` alongside a benign `agent_id`. The resolver doesn't
+        // even take `agent_cmd`, and the resolved command is rebuilt from
+        // the id — so the pipe-supplied string can never be spawned.
+        let mut meta: Option<acp::Meta> = None;
+        crate::session_registry::inject_wta_meta(
+            &mut meta,
+            &crate::session_registry::WtaMeta {
+                agent_cmd: Some("calc.exe".to_string()),
+                agent_id: Some("gemini".to_string()),
+                ..Default::default()
+            },
+        );
+        let wta = crate::session_registry::extract_wta_meta(&mut meta);
+        let (cmd, _) = resolve(None, wta.agent_id.as_deref(), wta.model.as_deref());
+        assert_eq!(cmd, "gemini --experimental-acp");
+        assert!(!cmd.contains("calc.exe"), "pipe command must never appear");
+    }
+
+    #[test]
+    fn pool_key_dedupes_same_selection_and_separates_distinct_agents() {
+        // `get_or_spawn_agent` keys its CLI pool on the resolved command.
+        // Same id+model ⇒ identical key ⇒ one shared CLI; different ids ⇒
+        // different keys ⇒ separate CLIs (Gemini in one tab, Claude in
+        // another). Assert the keying that drives that dedup.
+        let (a, _) = resolve(None, Some("gemini"), Some("flash"));
+        let (b, _) = resolve(None, Some("gemini"), Some("flash"));
+        let (c, _) = resolve(None, Some("claude"), None);
+        assert_eq!(a, b, "same selection must yield one pool key");
+        assert_ne!(a, c, "different agents must get different pool keys");
+    }
+
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
             session_to_helper: Mutex::new(HashMap::new()),
@@ -2288,6 +2719,7 @@ mod tests {
             agents: Mutex::new(HashMap::new()),
             default_agent_cmd: "copilot --acp --stdio".to_string(),
             default_agent_id: Some("copilot".to_string()),
+            allowed_agent_ids: None,
         })
     }
 
@@ -3075,6 +3507,7 @@ mod tests {
             agents: Mutex::new(HashMap::new()),
             default_agent_cmd: "copilot --acp --stdio".to_string(),
             default_agent_id: Some("copilot".to_string()),
+            allowed_agent_ids: None,
         })
     }
 

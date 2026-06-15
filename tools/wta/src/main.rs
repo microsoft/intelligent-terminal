@@ -149,6 +149,18 @@ struct Cli {
     #[arg(long)]
     agent_id: Option<String>,
 
+    /// Master-only allowlist of agent ids a helper may request over the
+    /// pipe (the GPO-filtered set; built by TerminalPage::
+    /// _BuildSharedWtaExtraArgs from `FilteredAcpAgents()`). The master
+    /// reconstructs a helper's requested agent command from its declared
+    /// `agent_id` ONLY when that id is in this set — never executing a
+    /// command string sent over the pipe. An id outside the set (or a
+    /// custom/unknown id) falls back to `--agent` / `--agent-id`. Empty /
+    /// absent means "no host allowlist" (manual runs, older hosts): the
+    /// master then accepts any *known* agent id. Hidden; helper ignores it.
+    #[arg(long, hide = true, value_name = "IDS", value_delimiter = ',')]
+    allowed_agent_ids: Vec<String>,
+
     /// Model override for the ACP agent. Sent via ACP setSessionModel after
     /// handshake. Used by adapter-style launches (claude, codex via npx)
     /// where the model can't be passed on the command line; native ACP
