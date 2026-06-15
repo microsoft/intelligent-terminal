@@ -4751,6 +4751,10 @@ mod tests {
     fn humanize_model_name_special_cases_and_joins() {
         assert_eq!(super::humanize_model_name("gpt-4o"), "GPT 4o");
         assert_eq!(super::humanize_model_name("claude-opus-4.5"), "Claude Opus 4.5");
+        // Unknown tokens are title-cased generically. The humanizer is
+        // brand-agnostic, so it does NOT preserve OpenAI's lowercase "o1"
+        // styling — this documents the generic behavior / known limitation
+        // rather than endorsing "O1" as the canonical brand name.
         assert_eq!(super::humanize_model_name("o1-mini"), "O1 Mini");
     }
 

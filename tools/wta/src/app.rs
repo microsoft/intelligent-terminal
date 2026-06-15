@@ -13969,11 +13969,13 @@ mod tests {
         );
     }
 
-    /// Render: a surfaced recommendation card must paint its choice title in
-    /// the recommendations panel. Lifts `ui/recommendations.rs` (reached only
-    /// when `turn.recommendations()` is Some).
+    /// Render: a surfaced recommendation card with a `Send` action must paint
+    /// the action's command body (the card shows the command, not the choice
+    /// `title` field, which only surfaces for action-less choices) plus the
+    /// run-command button. Lifts `ui/recommendations.rs` (reached only when
+    /// `turn.recommendations()` is Some).
     #[test]
-    fn render_recommendation_card_shows_title() {
+    fn render_recommendation_card_shows_command() {
         use crate::coordinator::{RecommendationChoice, RecommendationSet, RecommendedAction};
         let mut app = test_app();
         app.state = ConnectionState::Connected;
