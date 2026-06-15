@@ -221,14 +221,28 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
         // clicking Save again on the same FRE re-evaluates cleanly.
         // See SI::ResolvePowerShellHostInstall for the rationale / regression
         // guard.
+        //
+        // The write lambda calls the path-taking install (DiscoverProfilePath +
+        // Install) directly rather than InstallForTarget, which would re-query
+        // the execution policy a second time — ResolvePowerShellHostInstall has
+        // already verified it for this host, so the extra probe is a redundant
+        // PowerShell spawn (pure FRE / Save latency).
+        const auto installSkippingPolicyProbe = [](SI::Target target) -> SI::InstallResult {
+            auto profilePath = SI::DiscoverProfilePath(target);
+            if (profilePath.empty())
+            {
+                return { false, false, L"Could not discover PowerShell profile path" };
+            }
+            return SI::Install(profilePath);
+        };
         r.pwsh = SI::ResolvePowerShellHostInstall(
             shellPresence.pwsh,
             SI::ExecutionPolicyBlocksShellIntegration(SI::Target::Pwsh),
-            [] { return SI::InstallForTarget(SI::Target::Pwsh); });
+            [&] { return installSkippingPolicyProbe(SI::Target::Pwsh); });
         r.windowsPowerShell = SI::ResolvePowerShellHostInstall(
             shellPresence.windowsPowerShell,
             SI::ExecutionPolicyBlocksShellIntegration(SI::Target::WindowsPowerShell),
-            [] { return SI::InstallForTarget(SI::Target::WindowsPowerShell); });
+            [&] { return installSkippingPolicyProbe(SI::Target::WindowsPowerShell); });
         if (shellPresence.bash)
         {
             r.bash = SI::InstallForTarget(SI::Target::Bash);

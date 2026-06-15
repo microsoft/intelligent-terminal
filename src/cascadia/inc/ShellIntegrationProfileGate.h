@@ -34,7 +34,7 @@
 #pragma once
 
 #include <string_view>
-
+#include <utility>
 #include "ShellIntegrationCommon.h"
 
 namespace Microsoft::Terminal::ShellIntegration
@@ -290,7 +290,7 @@ namespace Microsoft::Terminal::ShellIntegration
         }
         if (profilePresent)
         {
-            return performWrite();
+            return std::forward<WriteFn>(performWrite)();
         }
         // Policy is fine and the user has no Windows Terminal profile for this
         // host — nothing to write. Report success-already-satisfied so the
