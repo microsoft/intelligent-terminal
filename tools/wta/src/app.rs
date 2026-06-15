@@ -13641,6 +13641,77 @@ mod tests {
         );
     }
 
+    /// Render: the setup/first-run screen must paint its title and subtitle.
+    /// Lifts `ui/setup.rs` (reached only via `AppMode::Setup`).
+    #[test]
+    fn render_setup_screen_shows_title() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.setup = Some(SetupState {
+            reason: SetupReason::FirstRun,
+            selected_index: 0,
+            preflight: PreflightResult::passed_for_custom_agent("custom:qwen"),
+            install_in_progress: false,
+            install_log: Vec::new(),
+            install_error: None,
+            options: Vec::new(),
+            title: "SETUP_TITLE_XYZ".into(),
+            subtitle: "SETUP_SUBTITLE_XYZ".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("SETUP_TITLE_XYZ"),
+            "the setup screen must paint its title; rendered:\n{text}"
+        );
+        assert!(
+            text.contains("SETUP_SUBTITLE_XYZ"),
+            "the setup screen must paint its subtitle; rendered:\n{text}"
+        );
+    }
+
+    /// Render: the auth/sign-in screen must paint the selected agent name.
+    /// Lifts `ui/auth.rs` (reached only via `AppMode::Auth`).
+    #[test]
+    fn render_auth_screen_shows_agent_name() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "AUTHAGENTXYZ".into(),
+            auth_hint: String::new(),
+            login_command: String::new(),
+            checking: true,
+            status_message: String::new(),
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("AUTHAGENTXYZ"),
+            "the auth screen must paint the selected agent name; rendered:\n{text}"
+        );
+    }
+
+    /// Render: the sessions (agents) view must paint its footer keybinding
+    /// hint. Lifts `ui/agents_view.rs` (reached via `View::Agents`).
+    #[test]
+    fn render_sessions_view_shows_footer_hint() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().current_view = View::Agents;
+
+        let text = render_to_text(&mut app, 80, 24);
+        let expected = t!("agents.footer_hint").into_owned();
+        // Assert on a stable leading token of the localized hint so the test
+        // doesn't break on translation wording while still proving the view
+        // painted its chrome.
+        let probe: String = expected.chars().take(6).collect();
+        assert!(
+            !probe.trim().is_empty() && text.contains(&probe),
+            "the sessions view must paint its footer hint ({expected:?}); rendered:\n{text}"
+        );
+    }
+
     fn submit_autofix_prompt(app: &mut App, pane: &str) {
         let gen = {
             let tab = app.tab_mut(DEFAULT_TAB_ID);
