@@ -177,10 +177,13 @@ namespace winrt::TerminalApp::implementation
         void _refreshLabel();
         void _refreshLogo();
 
-        // Tap on the agent-bar chip → open a flyout of GPO-allowed agents.
-        // Picking one raises `AgentSwitchRequested`.
-        void _onAgentBarTapped(const winrt::Windows::Foundation::IInspectable& sender,
-                               const winrt::Windows::UI::Xaml::Input::TappedRoutedEventArgs& e);
+        // Open a flyout of GPO-allowed agents anchored on the chip; picking
+        // one raises `AgentSwitchRequested`. Driven by the agent-bar
+        // Button's `Click`, which fires for both pointer and keyboard
+        // (Enter/Space) activation, so the switch UI is keyboard-accessible.
+        void _showAgentPicker();
+        void _onAgentBarClicked(const winrt::Windows::Foundation::IInspectable& sender,
+                                const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
     };
 }
 

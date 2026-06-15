@@ -1608,6 +1608,32 @@ namespace winrt::TerminalApp::implementation
         };
         pushFlagValue(L"--agent", agentCliPath);
         pushFlagValue(L"--agent-id", globals.EffectiveAcpAgent());
+        // Pass the GPO-filtered set of allowed agent ids to the master.
+        // A per-tab helper declares the agent it wants by *id* over the
+        // pipe; the master reconstructs the command from that id only when
+        // it appears in this set (otherwise it falls back to --agent). This
+        // keeps a peer/compromised helper from driving the master to spawn
+        // a policy-blocked agent — and, combined with the master refusing
+        // to execute any command string off the pipe, closes the
+        // arbitrary-process-spawn surface. FilteredAcpAgents() is the same
+        // policy-filtered list the picker/auto-detect use.
+        {
+            namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+            std::wstring allowedIds;
+            for (const auto& agent : Reg::FilteredAcpAgents())
+            {
+                if (agent.id.empty())
+                {
+                    continue;
+                }
+                if (!allowedIds.empty())
+                {
+                    allowedIds.push_back(L',');
+                }
+                allowedIds.append(agent.id);
+            }
+            pushFlagValue(L"--allowed-agent-ids", allowedIds);
+        }
         if (!globals.EffectiveAutoFixEnabled())
         {
             extraArgs.emplace_back(L"--no-autofix");

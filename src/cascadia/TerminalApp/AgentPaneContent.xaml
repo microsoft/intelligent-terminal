@@ -23,9 +23,23 @@
                 Background="#FF000000"
                 BorderBrush="#26FFFFFF"
                 BorderThickness="0,1,0,1">
-            <Grid Padding="10,0,0,0">
-                <!--  Left cluster: logo + label. History and other actions
-                      live on the window-level bottom agent bar.  -->
+            <!--  Left cluster: logo + label, hosted in a Button so the chip
+                  is keyboard-focusable and activates on Enter/Space (not
+                  just pointer Tapped) and is announced by screen readers.
+                  The Button is chromeless (transparent over the black bar)
+                  but keeps the default hover/pressed/focus visuals as a
+                  click affordance. AutomationProperties.Name is set in
+                  code-behind from a localized resource. History and other
+                  actions live on the window-level bottom agent bar.  -->
+            <Button x:Name="AgentBarButton"
+                    Padding="10,0,0,0"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    HorizontalContentAlignment="Left"
+                    VerticalContentAlignment="Center"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    CornerRadius="0">
                 <StackPanel Orientation="Horizontal"
                             VerticalAlignment="Center"
                             Spacing="4">
@@ -43,7 +57,7 @@
                                Foreground="#FFFFFFFF"
                                Text="GitHub Copilot" />
                 </StackPanel>
-            </Grid>
+            </Button>
         </Border>
 
         <!--  ========= Inner content (the wta TermControl, set in code-behind) =========  -->

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cwctype>
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
 #include <winrt/Windows.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
@@ -57,12 +58,22 @@ namespace winrt::TerminalApp::implementation
 
         _wireInnerEvents();
 
-        // Tapping the agent-bar chip opens a per-tab agent picker.
-        AgentBarRoot().Tapped({ get_weak(), &AgentPaneContent::_onAgentBarTapped });
+        // The agent-bar chip is a Button so it opens the per-tab agent
+        // picker on both click and keyboard (Enter/Space) activation, and
+        // is reachable via Tab. `Click` covers all of those uniformly.
+        AgentBarButton().Click({ get_weak(), &AgentPaneContent::_onAgentBarClicked });
+        Automation::AutomationProperties::SetName(AgentBarButton(), RS_(L"AgentPane_SwitchAgentAutomationName"));
 
         // Default label + logo until wta sends an agent_status event.
         _refreshLabel();
         _refreshLogo();
+    }
+
+    // Agent-bar Button activation (pointer or keyboard) → open the picker.
+    void AgentPaneContent::_onAgentBarClicked(const winrt::Windows::Foundation::IInspectable& /*sender*/,
+                                              const winrt::Windows::UI::Xaml::RoutedEventArgs& /*e*/)
+    {
+        _showAgentPicker();
     }
 
     // Build + show a flyout of GPO-allowed agents anchored on the chip.
@@ -70,8 +81,7 @@ namespace winrt::TerminalApp::implementation
     // page turns it into a per-tab override and rebuilds this tab's pane.
     // The currently-running agent (matched by display name from the last
     // `agent_status`) is check-marked.
-    void AgentPaneContent::_onAgentBarTapped(const winrt::Windows::Foundation::IInspectable& /*sender*/,
-                                             const winrt::Windows::UI::Xaml::Input::TappedRoutedEventArgs& /*e*/)
+    void AgentPaneContent::_showAgentPicker()
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
@@ -98,7 +108,7 @@ namespace winrt::TerminalApp::implementation
             });
             flyout.Items().Append(item);
         }
-        flyout.ShowAt(AgentBarRoot());
+        flyout.ShowAt(AgentBarButton());
     }
 
     winrt::TerminalApp::TerminalPaneContent AgentPaneContent::GetTerminalContent()
