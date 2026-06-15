@@ -13878,6 +13878,49 @@ mod tests {
         );
     }
 
+    /// Render: a surfaced recommendation card must paint its choice title in
+    /// the recommendations panel. Lifts `ui/recommendations.rs` (reached only
+    /// when `turn.recommendations()` is Some).
+    #[test]
+    fn render_recommendation_card_shows_title() {
+        use crate::coordinator::{RecommendationChoice, RecommendationSet, RecommendedAction};
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().turn = TurnState::Surfaced {
+            prompt: SubmittedPrompt {
+                id: 1,
+                text: "fix it".into(),
+                submitted_at_unix_s: 0.0,
+                autofix: None,
+            },
+            outcome: TurnOutcome::Recommendation(RecommendationSet {
+                recommended_choice: Some(0),
+                choices: vec![RecommendationChoice {
+                    choice: 0,
+                    title: "Run the fix".into(),
+                    rationale: "because reasons".into(),
+                    actions: vec![RecommendedAction::Send {
+                        parent: String::new(),
+                        input: "echo REC_CMD_XYZ".into(),
+                    }],
+                }],
+            }),
+            end_pending: false,
+        };
+
+        let text = render_to_text(&mut app, 80, 40);
+        assert!(
+            text.contains("REC_CMD_XYZ"),
+            "the recommendation card must paint its command body; rendered:\n{text}"
+        );
+        let run_btn = t!("recommendations.button_run_command").into_owned();
+        let probe: String = run_btn.chars().take(4).collect();
+        assert!(
+            !probe.trim().is_empty() && text.contains(&probe),
+            "the recommendation card must paint the run-command button ({run_btn:?}); rendered:\n{text}"
+        );
+    }
+
     fn submit_autofix_prompt(app: &mut App, pane: &str) {
         let gen = {
             let tab = app.tab_mut(DEFAULT_TAB_ID);
