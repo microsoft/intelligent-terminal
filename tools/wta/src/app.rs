@@ -13360,6 +13360,152 @@ mod tests {
             .await;
     }
 
+    /// Pump `AppEvent`s into a real `App` until `pred` matches (inclusive), with
+    /// a timeout so a wiring bug fails fast instead of hanging.
+    async fn pump_until(
+        app: &mut App,
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
+        pred: impl Fn(&AppEvent) -> bool,
+    ) {
+        let r = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                match rx.recv().await {
+                    Some(ev) => {
+                        let stop = pred(&ev);
+                        app.handle_event(ev);
+                        if stop {
+                            break;
+                        }
+                    }
+                    None => break,
+                }
+            }
+        })
+        .await;
+        assert!(r.is_ok(), "timed out pumping events");
+    }
+
+    /// Drive a prompt, run the closure to set up the harness, and return a real
+    /// App with an in-flight turn ready to receive the streamed notifications.
+    async fn app_after_prompt(
+        conn: &agent_client_protocol::ClientSideConnection,
+    ) {
+        use agent_client_protocol as acp;
+        use agent_client_protocol::Agent as _;
+        conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+            .await
+            .expect("initialize failed");
+        let session = conn
+            .new_session(acp::NewSessionRequest::new("/test"))
+            .await
+            .expect("new_session failed");
+        conn.prompt(acp::PromptRequest::new(
+            session.session_id.clone(),
+            vec!["go".into()],
+        ))
+        .await
+        .expect("prompt failed");
+    }
+
+    /// Streaming: a reply split across two `AgentMessageChunk`s must coalesce
+    /// into one contiguous streaming buffer in the chat.
+    #[tokio::test]
+    async fn streaming_two_chunks_coalesce_in_app_chat() {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_streaming_two_chunks;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let (conn, mut event_rx) = connect_mock_agent_streaming_two_chunks();
+                app_after_prompt(&conn).await;
+
+                let mut app = test_app();
+                submit_test_prompt(&mut app, "go");
+
+                // Two chunks arrive; pump each.
+                pump_until(&mut app, &mut event_rx, |ev| {
+                    matches!(ev, AppEvent::AgentMessageChunk { .. })
+                })
+                .await;
+                pump_until(&mut app, &mut event_rx, |ev| {
+                    matches!(ev, AppEvent::AgentMessageChunk { .. })
+                })
+                .await;
+
+                assert_eq!(
+                    app.current_tab().pending_agent_response,
+                    "MOCK_OK",
+                    "streamed chunks must coalesce into one contiguous reply"
+                );
+            })
+            .await;
+    }
+
+    /// Tool-call lifecycle: a `ToolCallUpdate(Completed)` after the initial
+    /// `ToolCall` must update the card's status in-place (not duplicate it).
+    #[tokio::test]
+    async fn tool_call_completion_updates_card_status() {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_completing_tool;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let (conn, mut event_rx) = connect_mock_agent_completing_tool();
+                app_after_prompt(&conn).await;
+
+                let mut app = test_app();
+                submit_test_prompt(&mut app, "go");
+
+                pump_until(&mut app, &mut event_rx, |ev| {
+                    matches!(ev, AppEvent::ToolCallUpdate { .. })
+                })
+                .await;
+
+                let cards: Vec<_> = app
+                    .current_tab()
+                    .messages
+                    .iter()
+                    .filter_map(|m| match m {
+                        ChatMessage::ToolCall { id, status, .. } => Some((id.clone(), status.clone())),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(cards.len(), 1, "the update must edit in place, not add a card");
+                assert_eq!(cards[0].0, "mock-tool-1");
+                assert_eq!(cards[0].1, "Completed", "card status must reflect the update");
+            })
+            .await;
+    }
+
+    /// Plan: a `Plan` notification must surface as a plan card with its entries.
+    #[tokio::test]
+    async fn plan_surfaces_card_in_chat() {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_proposing_plan;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let (conn, mut event_rx) = connect_mock_agent_proposing_plan();
+                app_after_prompt(&conn).await;
+
+                let mut app = test_app();
+                submit_test_prompt(&mut app, "go");
+
+                pump_until(&mut app, &mut event_rx, |ev| matches!(ev, AppEvent::Plan { .. })).await;
+
+                let plan = app.current_tab().messages.iter().find_map(|m| match m {
+                    ChatMessage::Plan(entries) => Some(entries.clone()),
+                    _ => None,
+                });
+                let entries = plan.expect("a plan card must surface in the chat");
+                assert_eq!(entries.len(), 2);
+                assert_eq!(entries[0].content, "Step one");
+                assert_eq!(entries[0].status, PlanEntryStatus::InProgress);
+                assert_eq!(entries[1].content, "Step two");
+            })
+            .await;
+    }
+
     fn submit_autofix_prompt(app: &mut App, pane: &str) {
         let gen = {
             let tab = app.tab_mut(DEFAULT_TAB_ID);

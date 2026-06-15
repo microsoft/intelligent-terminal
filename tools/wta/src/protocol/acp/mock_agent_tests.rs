@@ -31,6 +31,13 @@ enum MockBehavior {
     AskPermission,
     /// Stream a `ToolCall` notification (a proposed command), then end the turn.
     ProposeToolCall,
+    /// Stream a `ToolCall` then a `ToolCallUpdate(Completed)`, then end the turn.
+    ToolThenComplete,
+    /// Stream a `Plan` notification with two entries, then end the turn.
+    ProposePlan,
+    /// Stream the reply in two `AgentMessageChunk`s (`MOCK_` + `OK`), then end
+    /// the turn — exercises streaming coalescing.
+    StreamTwoChunks,
 }
 
 /// Deterministic ACP agent. Implements only what the scenarios need; the rest
@@ -158,6 +165,64 @@ impl acp::Agent for MockAgent {
                             .await;
                     });
                 }
+                MockBehavior::ToolThenComplete => {
+                    tokio::task::spawn_local(async move {
+                        let _ = conn
+                            .session_notification(acp::SessionNotification::new(
+                                sid.clone(),
+                                acp::SessionUpdate::ToolCall(acp::ToolCall::new(
+                                    acp::ToolCallId::new("mock-tool-1"),
+                                    "Run: echo hi",
+                                )),
+                            ))
+                            .await;
+                        let _ = conn
+                            .session_notification(acp::SessionNotification::new(
+                                sid,
+                                acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
+                                    acp::ToolCallId::new("mock-tool-1"),
+                                    acp::ToolCallUpdateFields::new()
+                                        .status(acp::ToolCallStatus::Completed),
+                                )),
+                            ))
+                            .await;
+                    });
+                }
+                MockBehavior::ProposePlan => {
+                    tokio::task::spawn_local(async move {
+                        let _ = conn
+                            .session_notification(acp::SessionNotification::new(
+                                sid,
+                                acp::SessionUpdate::Plan(acp::Plan::new(vec![
+                                    acp::PlanEntry::new(
+                                        "Step one",
+                                        acp::PlanEntryPriority::Medium,
+                                        acp::PlanEntryStatus::InProgress,
+                                    ),
+                                    acp::PlanEntry::new(
+                                        "Step two",
+                                        acp::PlanEntryPriority::Low,
+                                        acp::PlanEntryStatus::Pending,
+                                    ),
+                                ])),
+                            ))
+                            .await;
+                    });
+                }
+                MockBehavior::StreamTwoChunks => {
+                    tokio::task::spawn_local(async move {
+                        for part in ["MOCK_", "OK"] {
+                            let _ = conn
+                                .session_notification(acp::SessionNotification::new(
+                                    sid.clone(),
+                                    acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
+                                        part.into(),
+                                    )),
+                                ))
+                                .await;
+                        }
+                    });
+                }
             }
         }
 
@@ -270,6 +335,34 @@ pub(crate) fn connect_mock_agent_proposing_tool() -> (
     mpsc::UnboundedReceiver<AppEvent>,
 ) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ProposeToolCall);
+    (conn, event_rx)
+}
+
+/// Tool-call lifecycle harness: streams a `ToolCall` then a
+/// `ToolCallUpdate(Completed)`.
+pub(crate) fn connect_mock_agent_completing_tool() -> (
+    acp::ClientSideConnection,
+    mpsc::UnboundedReceiver<AppEvent>,
+) {
+    let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ToolThenComplete);
+    (conn, event_rx)
+}
+
+/// Plan harness: the mock streams a `Plan` with two entries.
+pub(crate) fn connect_mock_agent_proposing_plan() -> (
+    acp::ClientSideConnection,
+    mpsc::UnboundedReceiver<AppEvent>,
+) {
+    let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ProposePlan);
+    (conn, event_rx)
+}
+
+/// Streaming harness: the mock streams the reply in two chunks.
+pub(crate) fn connect_mock_agent_streaming_two_chunks() -> (
+    acp::ClientSideConnection,
+    mpsc::UnboundedReceiver<AppEvent>,
+) {
+    let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::StreamTwoChunks);
     (conn, event_rx)
 }
 
