@@ -22,6 +22,13 @@ use crate::shell::{ShellManager, TerminalConfig};
 
 const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
 
+// Form A mock-ACP-agent harness + scenario tests (in-process, deterministic).
+// Lives as a sibling file so it stays out of this large module, but is a child
+// of `client` so it can reach the private `WtaClient` / `ClientState`.
+#[cfg(test)]
+#[path = "mock_agent_tests.rs"]
+mod mock_agent_tests;
+
 /// Which prompt template was last shipped on a given ACP session.
 /// Used by [`TemplateMemo`] to decide whether the next turn needs to
 /// re-include the (~10k char) template body or can ride on the
