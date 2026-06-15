@@ -1877,6 +1877,7 @@ fn inject_wta_pane_meta(meta: &mut Option<acp::Meta>) {
         meta,
         &crate::session_registry::WtaMeta {
             pane_session_id: Some(normalized),
+            ..Default::default()
         },
     );
 }
@@ -2004,6 +2005,12 @@ async fn handle_load_failure(
 pub async fn run_acp_client_over_pipe(
     pipe_name: String,
     acp_model_override: Option<String>,
+    // Per-tab agent identity. Forwarded to the multi-agent master in the
+    // `initialize` handshake's `_meta.wta` so master spawns/reuses the
+    // matching agent CLI for THIS tab. `None` → master uses its `--agent`
+    // default (the legacy single-agent behavior).
+    agent_cmd: Option<String>,
+    agent_id: Option<String>,
     owner_tab_id: Option<String>,
     initial_load_session_id: Option<String>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
@@ -2144,14 +2151,27 @@ pub async fn run_acp_client_over_pipe(
     // are fast because master just re-forwards.
     let _ = event_tx.send(AppEvent::ConnectionStage("Initializing ACP...".to_string()));
     startup_probe.log("Initializing ACP (over pipe)");
-    let init_future = conn.initialize(
-        acp::InitializeRequest::new(acp::ProtocolVersion::V1)
+    let init_request = {
+        let mut req = acp::InitializeRequest::new(acp::ProtocolVersion::V1)
             .client_capabilities(acp::ClientCapabilities::new().terminal(true))
             .client_info(
                 acp::Implementation::new("wta-helper", env!("CARGO_PKG_VERSION"))
                     .title("Windows Terminal Agent (helper)"),
-            ),
-    );
+            );
+        // Declare which agent this tab wants. Master keys its agent-CLI
+        // pool off `agent_cmd`, so two tabs with different agents end up
+        // on different CLIs while same-agent tabs share one.
+        crate::session_registry::inject_wta_meta(
+            &mut req.meta,
+            &crate::session_registry::WtaMeta {
+                agent_cmd: agent_cmd.filter(|s| !s.trim().is_empty()),
+                agent_id: agent_id.filter(|s| !s.trim().is_empty()),
+                ..Default::default()
+            },
+        );
+        req
+    };
+    let init_future = conn.initialize(init_request);
     let init_resp = tokio::time::timeout(std::time::Duration::from_secs(60), init_future)
         .await
         .map_err(|_| {

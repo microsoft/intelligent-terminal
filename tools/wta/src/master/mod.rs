@@ -175,32 +175,56 @@ struct MasterStateInner {
     /// a structured `acp::Error` so the helper can fall back to its
     /// legacy resume path.
     pub(crate) wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>>,
-    /// The agent CLI's response to the master's startup initialize.
-    /// Replayed verbatim to every helper that calls `initialize` over
-    /// its pipe — re-forwarding to the agent CLI returns a stale or
-    /// empty `agent_info`, which clears the XAML agent bar
-    /// (`AgentLabelText` goes blank, logo hides) because the helper
-    /// publishes the empty name out via `agent_status`. Caching here
-    /// is also a small perf win — initialize is otherwise a no-op
-    /// round trip on every pane open.
+    /// The pool of agent CLI subprocesses master is multiplexing,
+    /// keyed by the agent command line (`AgentCmdKey`). Lazily
+    /// populated: a helper declares its agent in the `initialize`
+    /// handshake (`_meta.wta.agent_cmd`), and `get_or_spawn_agent`
+    /// spawns the CLI on first use and reuses it for every later helper
+    /// that asks for the same command line. This is what lets one tab
+    /// run Gemini while another runs Claude in the same window.
     ///
-    /// `OnceLock` so we can construct the shared state *before* the
-    /// initialize round trip (the `MasterClient` inside
-    /// `ClientSideConnection` needs an `Arc<MasterStateInner>` first),
-    /// and fill the slot once initialize returns. Every helper
-    /// connection happens strictly after that, so the `get()` in
-    /// `HelperHandler::initialize` always sees `Some(_)`.
-    cached_init_resp: OnceLock<acp::InitializeResponse>,
-    /// The CLI provider master is multiplexing. Resolved once at
-    /// startup from `cli.agent` via `agent_registry::resolve_agent_id_from_cmd`.
-    /// Used to stamp `cli_source` on every SessionInfo upserted from
-    /// `session/new` and `session/load` so agent-pane sessions are not
-    /// reported with cli_source=None (which would make F2 Enter on a
-    /// Live row fall through to the resume path and fail with
-    /// "unknown CLI"). `None` only when running with an agent CLI we
-    /// don't recognize (e.g. `--agent codex` — tracked in CliSource::Unknown
-    /// but not surfaced as a known F2 filter).
-    pub(crate) cli_source: Option<crate::agent_sessions::CliSource>,
+    /// Each value is an `Arc<OnceCell<…>>` so two helpers racing the
+    /// *same* new agent serialize on that key's init (one spawns, the
+    /// other awaits the same `AgentCli`), while helpers for *different*
+    /// agents spawn in parallel — we hold the outer `Mutex` only long
+    /// enough to get/insert the `OnceCell`, never across the spawn.
+    pub(crate) agents:
+        Mutex<HashMap<AgentCmdKey, Arc<tokio::sync::OnceCell<Arc<AgentCli>>>>>,
+    /// Fallback agent command line + id for helpers that don't declare
+    /// their own in `_meta.wta` (older helper builds, or the rare
+    /// manual launch). Comes from the master's own `--agent` / `--agent-id`,
+    /// which the C++ side still passes as the global default.
+    pub(crate) default_agent_cmd: String,
+    pub(crate) default_agent_id: Option<String>,
+}
+
+/// Canonical key for the agent-CLI pool: the full agent command line
+/// (e.g. `"copilot --acp --stdio"` or
+/// `"npx -y @zed-industries/claude-code-acp"`). Two tabs with the same
+/// command line share one CLI; different command lines get their own.
+/// (Distinct from `agent_sessions::AgentKey`, which is a *session* id.)
+type AgentCmdKey = String;
+
+/// One spawned agent CLI subprocess and everything a helper needs to
+/// talk to it. Shared (`Arc`) across every helper currently bound to
+/// this agent.
+struct AgentCli {
+    /// Pool key (the agent command line) — lets the reaper remove the
+    /// right entry from `MasterStateInner::agents` when this CLI dies.
+    key: AgentCmdKey,
+    /// Master is the ACP *client* of this CLI. Every helper request for
+    /// a session owned by this agent forwards onto this connection.
+    conn: Arc<acp::ClientSideConnection>,
+    /// This CLI's `initialize` response, replayed verbatim to every
+    /// helper that binds to it (re-forwarding `initialize` to the CLI
+    /// returns empty `agent_info` on most backends, which blanks the
+    /// XAML agent bar). Per-agent so each tab's bar shows ITS agent.
+    cached_init_resp: acp::InitializeResponse,
+    /// The CLI provider, resolved from this agent's id/command line.
+    /// Stamped on every SessionInfo this agent's sessions upsert so the
+    /// F2 view labels each row with its real CLI (Gemini vs Claude),
+    /// not one process-wide value.
+    cli_source: Option<crate::agent_sessions::CliSource>,
 }
 
 /// Master's `acp::Client` impl: handles inbound from the agent CLI.
@@ -602,7 +626,14 @@ fn notification_kind(notif: &acp::SessionNotification) -> &'static str {
 /// Each helper gets its own `HelperHandler` instance.
 struct HelperHandler {
     helper_id: HelperId,
-    agent_conn: Arc<acp::ClientSideConnection>,
+    /// The agent CLI this helper is bound to. Resolved lazily during
+    /// `initialize` from the helper's declared `_meta.wta.agent_cmd`
+    /// (or the master default), then reused by every later request on
+    /// this connection. `OnceLock` because the binding can't be known
+    /// until the helper's `initialize` arrives, but the ACP protocol
+    /// guarantees `initialize` precedes `new_session`/`prompt`/…, so
+    /// `resolved_agent()` always finds it populated for those.
+    agent: OnceLock<Arc<AgentCli>>,
     state: Arc<MasterStateInner>,
     /// Notification fan-in for this helper. `new_session` /
     /// `load_session` writes `(SessionId → this sender)` into
@@ -667,43 +698,78 @@ impl HelperHandler {
             acp::Error::internal_error().data(serde_json::json!("helper connection dropped"))
         })
     }
+
+    /// The agent CLI this helper bound to during `initialize`. Returns
+    /// `internal_error` if called before `initialize` resolved the
+    /// binding — a protocol violation by the helper, never expected in
+    /// the normal handshake order.
+    fn resolved_agent(&self, op: &'static str) -> acp::Result<Arc<AgentCli>> {
+        self.agent.get().cloned().ok_or_else(|| {
+            tracing::error!(
+                target: "master",
+                op = op,
+                helper_id = ?self.helper_id,
+                "helper request arrived before initialize bound an agent — protocol violation"
+            );
+            acp::Error::internal_error()
+                .data(serde_json::json!("no agent bound; initialize must come first"))
+        })
+    }
 }
 
 #[async_trait::async_trait(?Send)]
 impl acp::Agent for HelperHandler {
     async fn initialize(
         &self,
-        args: acp::InitializeRequest,
+        mut args: acp::InitializeRequest,
     ) -> acp::Result<acp::InitializeResponse> {
+        // The helper declares which agent this tab wants in
+        // `_meta.wta`. Strip it before it could ever reach an agent CLI,
+        // and fall back to the master default for older/manual helpers.
+        let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
+        let agent_cmd = wta_meta
+            .agent_cmd
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| self.state.default_agent_cmd.clone());
+        let agent_id = wta_meta
+            .agent_id
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| self.state.default_agent_id.clone());
         tracing::info!(
             target: "master",
             step = "helper→agent",
             op = "initialize",
             helper_id = ?self.helper_id,
             protocol_version = ?args.protocol_version,
-            "replaying cached agent initialize to helper"
+            agent_cmd = %agent_cmd,
+            agent_id = ?agent_id,
+            "resolving agent CLI for helper"
         );
-        // Replay the master-startup initialize response. Re-forwarding
-        // to the agent CLI produced empty `agent_info` on most agent
-        // backends (they only fill name/version on the FIRST initialize),
-        // which propagated as an empty `agent_status` to C++ and blanked
-        // the XAML agent label/logo. The cached response is the one
-        // ground truth — every helper sees the same agent_info the
-        // master saw at boot.
-        match self.state.cached_init_resp.get() {
-            Some(resp) => Ok(resp.clone()),
-            None => {
-                // Shouldn't happen — `run_master_loop` always sets the
-                // cache before opening the pipe — but degrade gracefully
-                // rather than blanking the bar again.
+
+        // Lazily spawn (or reuse) the agent CLI for THIS tab's agent,
+        // then bind it to this helper for the rest of the connection.
+        let agent = get_or_spawn_agent(&self.state, &agent_cmd, agent_id.as_deref())
+            .await
+            .map_err(|e| {
                 tracing::error!(
                     target: "master",
+                    op = "initialize",
                     helper_id = ?self.helper_id,
-                    "cached_init_resp missing; falling back to live agent initialize"
+                    agent_cmd = %agent_cmd,
+                    error = %e,
+                    "failed to spawn/resolve agent CLI for helper"
                 );
-                self.agent_conn.initialize(args).await
-            }
-        }
+                acp::Error::internal_error()
+                    .data(serde_json::json!(format!("agent CLI unavailable: {e}")))
+            })?;
+        // `set` is idempotent-by-error; a helper that (incorrectly) sent
+        // initialize twice keeps its first binding, which is fine.
+        let _ = self.agent.set(Arc::clone(&agent));
+
+        // Replay the CLI's own initialize response (re-forwarding returns
+        // empty `agent_info` on most backends, blanking the agent bar).
+        // Per-agent cache means each tab's bar shows ITS agent's identity.
+        Ok(agent.cached_init_resp.clone())
     }
 
     async fn authenticate(
@@ -717,7 +783,7 @@ impl acp::Agent for HelperHandler {
             helper_id = ?self.helper_id,
             "forwarding authenticate"
         );
-        self.agent_conn.authenticate(args).await
+        self.resolved_agent("authenticate")?.conn.authenticate(args).await
     }
 
     async fn new_session(
@@ -745,7 +811,8 @@ impl acp::Agent for HelperHandler {
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
         );
-        let resp = self.agent_conn.new_session(args).await?;
+        let agent = self.resolved_agent("new_session")?;
+        let resp = agent.conn.new_session(args).await?;
         let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
@@ -780,7 +847,7 @@ impl acp::Agent for HelperHandler {
         // (those fire for shell-pane agents through PowerShell hooks
         // only), so master is the only one that can fill these fields.
         info.status = Some(crate::agent_sessions::AgentStatus::Idle);
-        info.cli_source = self.state.cli_source.clone();
+        info.cli_source = agent.cli_source.clone();
         info.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
         info.last_activity_at_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -849,6 +916,7 @@ impl acp::Agent for HelperHandler {
         // fail on. On success we upsert + broadcast `session_added`
         // atomically; on failure we just unregister routing without
         // any peer-visible flicker.
+        let agent = self.resolved_agent("load_session")?;
         let forwarder = self.forwarder_for_route("load_session")?;
         {
             let mut map = self.state.session_to_helper.lock().await;
@@ -862,7 +930,7 @@ impl acp::Agent for HelperHandler {
                 },
             );
         }
-        match self.agent_conn.load_session(args).await {
+        match agent.conn.load_session(args).await {
             Ok(resp) => {
                 let mut info = crate::session_registry::SessionInfo::new(
                     session_id.clone(),
@@ -872,7 +940,7 @@ impl acp::Agent for HelperHandler {
                 // See new_session above for rationale — load_session is the
                 // resume path and the resumed row must also be Live + tagged.
                 info.status = Some(crate::agent_sessions::AgentStatus::Idle);
-                info.cli_source = self.state.cli_source.clone();
+                info.cli_source = agent.cli_source.clone();
                 info.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
                 info.last_activity_at_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -941,7 +1009,7 @@ impl acp::Agent for HelperHandler {
         &self,
         args: acp::SetSessionModeRequest,
     ) -> acp::Result<acp::SetSessionModeResponse> {
-        self.agent_conn.set_session_mode(args).await
+        self.resolved_agent("set_session_mode")?.conn.set_session_mode(args).await
     }
 
     // Forward model selection to the agent CLI. Without this override
@@ -972,7 +1040,7 @@ impl acp::Agent for HelperHandler {
             model_id = ?args.model_id,
             "forwarding set_session_model"
         );
-        self.agent_conn.set_session_model(args).await
+        self.resolved_agent("set_session_model")?.conn.set_session_model(args).await
     }
 
     // Same story as set_session_model — the agent CLI advertises a
@@ -992,7 +1060,7 @@ impl acp::Agent for HelperHandler {
             session_id = ?args.session_id,
             "forwarding set_session_config_option"
         );
-        self.agent_conn.set_session_config_option(args).await
+        self.resolved_agent("set_session_config_option")?.conn.set_session_config_option(args).await
     }
 
     /// Answer `session/list` from our own live-session registry instead
@@ -1057,7 +1125,7 @@ impl acp::Agent for HelperHandler {
             "forwarding prompt to agent CLI"
         );
         let started = std::time::Instant::now();
-        let resp = self.agent_conn.prompt(args).await;
+        let resp = self.resolved_agent("prompt")?.conn.prompt(args).await;
         let elapsed_ms = started.elapsed().as_millis();
         match &resp {
             Ok(ok) => tracing::info!(
@@ -1091,7 +1159,7 @@ impl acp::Agent for HelperHandler {
             session_id = ?args.session_id,
             "forwarding cancel"
         );
-        self.agent_conn.cancel(args).await
+        self.resolved_agent("cancel")?.conn.cancel(args).await
     }
 
     /// Master answers our own `intellterm.wta/*` ext methods locally
@@ -1143,7 +1211,7 @@ impl acp::Agent for HelperHandler {
             helper_id = ?self.helper_id,
             "forwarding non-intellterm ext_method to agent CLI"
         );
-        self.agent_conn.ext_method(args).await
+        self.resolved_agent("ext_method")?.conn.ext_method(args).await
     }
 }
 
@@ -1243,111 +1311,11 @@ impl Drop for MasterPipeDiscoveryGuard {
 }
 
 async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
-    // 1. Spawn the agent CLI subprocess. cwd=None: master inherits
-    //    Terminal's cwd, which is fine because per-session cwd is
-    //    supplied by helpers via `new_session` params.
-    let mut spawn_result = spawn_agent_process(&cli.agent, None)
-        .with_context(|| format!("failed to spawn agent CLI: {}", cli.agent))?;
-    tracing::info!(
-        target: "master",
-        program = %spawn_result.resolved_program,
-        "agent CLI spawned"
-    );
-
-    let stdin = spawn_result
-        .child
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow!("agent CLI child has no stdin"))?;
-    let stdout = spawn_result
-        .child
-        .stdout
-        .take()
-        .ok_or_else(|| anyhow!("agent CLI child has no stdout"))?;
-    let is_npx = spawn_result.is_npx;
-
-    // Drain agent stderr to logs so failures are diagnosable.
-    if let Some(stderr) = spawn_result.child.stderr.take() {
-        tokio::task::spawn_local(async move {
-            use tokio::io::{AsyncBufReadExt, BufReader};
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                tracing::warn!(target: "agent_stderr", "{line}");
-            }
-        });
-    }
-
-    // Shutdown channel — when either the agent CLI subprocess exits or
-    // the ACP I/O loop ends, the responsible reaper task posts a reason
-    // string here, the accept loop wakes from `recv()`, and
-    // `run_master_loop` returns `Err`. Returning (rather than
-    // `process::exit`) is critical:
-    //
-    //   * The `tokio::process::Child` (`spawn_agent_process` configures
-    //     `kill_on_drop(true)`) is owned by the child reaper task. When
-    //     `LocalSet::run_until` returns, the LocalSet drops, cancels
-    //     remaining tasks, and the child handle drops — `kill_on_drop`
-    //     then reaps surviving descendants. `process::exit` would skip
-    //     that path and could orphan agent grandchildren.
-    //   * The `WorkerGuard` returned by `crate::logging::init` is held
-    //     by `run_master_mode`; it only flushes the non-blocking
-    //     tracing appender on Drop. `process::exit` skips that Drop and
-    //     the final error lines silently vanish. The graceful path
-    //     here lets the guard drop in normal stack unwinding so the
-    //     "agent CLI exited" diagnostic actually lands on disk.
-    //
-    // Capacity 2: at most one child-exit reason + one I/O-loop reason
-    // will ever be sent, and both `try_send`s are non-blocking.
-    let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<&'static str>(2);
-
-    // Reap the child so it doesn't zombie if it dies, and signal
-    // shutdown when it does. Without this, helpers would stay
-    // connected to a master whose backing agent CLI is gone — every
-    // prompt would hang waiting on a dead ACP peer, and SharedWta on
-    // the C++ side wouldn't respawn the master (its process handle is
-    // still alive). Signalling here lets `run_master_loop` return
-    // cleanly so SharedWta can spawn a fresh master + agent CLI pair
-    // on the next `AcquirePane`.
-    let mut child = spawn_result.child;
-    let shutdown_tx_child = shutdown_tx.clone();
-    tokio::task::spawn_local(async move {
-        let reason = match child.wait().await {
-            Ok(status) => {
-                tracing::error!(
-                    target: "master",
-                    ?status,
-                    "agent CLI exited — initiating master shutdown"
-                );
-                "agent CLI exited"
-            }
-            Err(err) => {
-                tracing::error!(
-                    target: "master",
-                    error = %err,
-                    "agent CLI wait failed — initiating master shutdown"
-                );
-                "agent CLI wait failed"
-            }
-        };
-        let _ = shutdown_tx_child.try_send(reason);
-        // `child` drops as this task body ends, firing kill_on_drop on
-        // any descendants that survived.
-    });
-
-    let outgoing = stdin.compat_write();
-    let incoming = stdout.compat();
-
-    // 2. Build the shared state + ClientSideConnection. `cached_init_resp`
-    //    starts empty and is filled below once the initialize round
-    //    trip with the agent CLI completes; helpers can only connect
-    //    after that, so they always see the populated cache.
-    //
-    //    `wt` is best-effort: master usually runs inside a WT pane
-    //    (so `WT_COM_CLSID` is set and `CliChannel::connect` succeeds),
-    //    but on the rare boot path where it isn't we degrade to
-    //    `None` and `handle_focus_session` returns a structured
-    //    "focus channel unavailable" error instead of crashing the
-    //    helper's ext_method call.
+    // Best-effort wtcli/COM channel for intellterm.wta/focus_session.
+    // Master usually runs inside a WT pane (so `WT_COM_CLSID` is set and
+    // `CliChannel::connect` succeeds); on the rare boot path where it
+    // isn't, we degrade to `None` and `handle_focus_session` returns a
+    // structured error instead of crashing the helper's ext_method call.
     let wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>> =
         match crate::shell::wt_channel::CliChannel::connect().await {
             Ok(ch) => Some(Arc::new(ch)),
@@ -1360,23 +1328,21 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
                 None
             }
         };
-    let resolved_agent_id = crate::agent_registry::resolve_agent_id_from_cmd(&cli.agent);
-    let cli_source = crate::agent_sessions::CliSource::from_agent_id(resolved_agent_id);
-    tracing::info!(
-        target: "master",
-        agent_cmd = %cli.agent,
-        resolved_agent_id = %resolved_agent_id,
-        cli_source = ?cli_source,
-        "master cli_source resolved for session-row stamping"
-    );
 
+    // Build the shared state. Agent CLIs are spawned LAZILY by
+    // `get_or_spawn_agent` the first time a helper declares an agent in
+    // its `initialize` handshake — the master no longer owns a single
+    // eager agent CLI. `cli.agent` / `cli.agent_id` become the fallback
+    // default for helpers that don't declare one (older builds, manual
+    // launches).
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
-        cached_init_resp: OnceLock::new(),
-        cli_source,
+        agents: Mutex::new(HashMap::new()),
+        default_agent_cmd: cli.agent.clone(),
+        default_agent_id: cli.agent_id.clone(),
     });
 
     // Seed the registry with historical sessions scanned from
@@ -1425,80 +1391,15 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
             .await;
         }
     });
-    let client = MasterClient {
-        state: Arc::clone(&inner),
-    };
-    let (conn, handle_io) = acp::ClientSideConnection::new(client, outgoing, incoming, |fut| {
-        tokio::task::spawn_local(fut);
-    });
-    let agent_conn = Arc::new(conn);
 
-    // The ACP I/O loop ending (clean or error) means the master can no
-    // longer talk to the agent CLI — same liveness problem as a child
-    // exit. Signal shutdown through the same channel so the accept
-    // loop can return cleanly and SharedWta can rebuild a fresh
-    // master on the next AcquirePane.
-    let shutdown_tx_io = shutdown_tx.clone();
-    tokio::task::spawn_local(async move {
-        let reason = match handle_io.await {
-            Ok(()) => {
-                tracing::error!(
-                    target: "master",
-                    "agent CLI I/O loop ended cleanly — initiating master shutdown"
-                );
-                "ACP I/O loop ended cleanly"
-            }
-            Err(err) => {
-                tracing::error!(
-                    target: "master",
-                    error = %err,
-                    "agent CLI I/O loop ended with error — initiating master shutdown"
-                );
-                "ACP I/O loop ended with error"
-            }
-        };
-        let _ = shutdown_tx_io.try_send(reason);
-    });
-    // Drop our original sender so the channel closes naturally when
-    // both reaper tasks exit. The receiver in the accept loop will
-    // still observe sends from `shutdown_tx_{child,io}`.
-    drop(shutdown_tx);
-
-    // 3. Initialize the agent CLI once at master startup.
-    let init_timeout_secs = if is_npx { 60 } else { 15 };
-    let init_resp = tokio::time::timeout(
-        std::time::Duration::from_secs(init_timeout_secs),
-        agent_conn.initialize(
-            acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-                .client_capabilities(acp::ClientCapabilities::new().terminal(true))
-                .client_info(
-                    acp::Implementation::new("wta-master", env!("CARGO_PKG_VERSION"))
-                        .title("Windows Terminal Agent (master)"),
-                ),
-        ),
-    )
-    .await
-    .map_err(|_| {
-        anyhow!(
-            "ACP initialize timed out after {}s — agent CLI did not respond",
-            init_timeout_secs
-        )
-    })?
-    .map_err(|e| anyhow!("ACP initialize failed: {e}"))?;
-    tracing::info!(
-        target: "master",
-        ?init_resp,
-        "agent CLI initialize OK"
-    );
-
-    // Lock in the cached response BEFORE opening the pipe so the
-    // first helper's `initialize` request always sees a populated
-    // cache. (Subsequent helpers can race the OnceLock, but `set`
-    // is idempotent on already-populated cells — we ignore the
-    // returned Err.)
-    let _ = inner.cached_init_resp.set(init_resp.clone());
-
-    // 4. Open the named pipe and accept helper connections.
+    // Open the named pipe and accept helper connections. Agent CLIs are
+    // spawned lazily per-helper (see `get_or_spawn_agent`), and an
+    // individual agent CLI dying is handled per-CLI by its reaper
+    // (`spawn_one_agent`) — it removes that agent from the pool but the
+    // master stays alive so sibling tabs on OTHER agents keep working.
+    // Only a fatal pipe error returns from this loop. SharedWta on the
+    // C++ side still owns the master's process lifetime (job object +
+    // pane refcount).
     let mut server = ServerOptions::new()
         .first_pipe_instance(true)
         .create(&pipe_name)
@@ -1516,27 +1417,10 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // "live_helpers=" reconstructs the timeline.
     let live_helpers = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     loop {
-        // Race the next helper connect against the shutdown channel:
-        // when either reaper task posts a reason, we return early so
-        // the LocalSet unwinds and drops the Child (kill_on_drop) +
-        // WorkerGuard (flush).
-        tokio::select! {
-            connect_result = server.connect() => {
-                connect_result
-                    .with_context(|| format!("named pipe connect on '{pipe_name}'"))?;
-            }
-            shutdown_reason = shutdown_rx.recv() => {
-                let reason = shutdown_reason.unwrap_or("shutdown channel closed");
-                tracing::error!(
-                    target: "master",
-                    reason,
-                    "master accept loop exiting"
-                );
-                return Err(anyhow!(
-                    "wta-master shutting down: {reason} — SharedWta will respawn a fresh master on the next AcquirePane"
-                ));
-            }
-        }
+        server
+            .connect()
+            .await
+            .with_context(|| format!("named pipe connect on '{pipe_name}'"))?;
 
         let helper_id = HelperId(next_helper_id);
         next_helper_id = next_helper_id.wrapping_add(1);
@@ -1557,11 +1441,10 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
             })?,
         );
 
-        let agent_conn = Arc::clone(&agent_conn);
         let inner = Arc::clone(&inner);
         let live_helpers = Arc::clone(&live_helpers);
         tokio::task::spawn_local(async move {
-            let result = serve_helper(helper_id, connected, agent_conn, inner).await;
+            let result = serve_helper(helper_id, connected, inner).await;
             let live = live_helpers.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) - 1;
             match result {
                 Err(err) => tracing::warn!(
@@ -1582,13 +1465,190 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     }
 }
 
+/// Get the agent CLI for `agent_cmd`, spawning + initializing it on
+/// first use and reusing it thereafter. Two helpers racing the same
+/// new agent serialize on the per-key `OnceCell`; helpers for different
+/// agents spawn in parallel because the outer map lock is held only
+/// long enough to get/insert the cell, never across the spawn.
+async fn get_or_spawn_agent(
+    state: &Arc<MasterStateInner>,
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+) -> Result<Arc<AgentCli>> {
+    let key: AgentCmdKey = agent_cmd.to_string();
+    let cell = {
+        let mut agents = state.agents.lock().await;
+        Arc::clone(
+            agents
+                .entry(key.clone())
+                .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new())),
+        )
+    };
+    // On spawn failure tokio's OnceCell stays uninitialized, so a later
+    // helper retries the spawn (the empty cell lingers in the map but is
+    // harmless and will be re-tried / replaced).
+    let agent = cell
+        .get_or_try_init(|| async { spawn_one_agent(state, &key, agent_cmd, agent_id).await })
+        .await?;
+    Ok(Arc::clone(agent))
+}
+
+/// Spawn one agent CLI subprocess, wire master as its ACP client, run
+/// the startup `initialize` round trip, and install per-CLI reapers.
+/// Unlike the old single-agent master, an agent CLI death here only
+/// removes that agent from the pool — the master process survives so
+/// other tabs' agents keep running.
+async fn spawn_one_agent(
+    state: &Arc<MasterStateInner>,
+    key: &AgentCmdKey,
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+) -> Result<Arc<AgentCli>> {
+    let mut spawn_result = spawn_agent_process(agent_cmd, None)
+        .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
+    tracing::info!(
+        target: "master",
+        program = %spawn_result.resolved_program,
+        agent_cmd = %agent_cmd,
+        "agent CLI spawned"
+    );
+
+    let stdin = spawn_result
+        .child
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow!("agent CLI child has no stdin"))?;
+    let stdout = spawn_result
+        .child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("agent CLI child has no stdout"))?;
+    let is_npx = spawn_result.is_npx;
+
+    // Drain agent stderr to logs so failures are diagnosable. Tag with
+    // the agent key so multi-agent logs stay attributable.
+    if let Some(stderr) = spawn_result.child.stderr.take() {
+        let key_for_log = key.clone();
+        tokio::task::spawn_local(async move {
+            use tokio::io::{AsyncBufReadExt, BufReader};
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::warn!(target: "agent_stderr", agent = %key_for_log, "{line}");
+            }
+        });
+    }
+
+    let outgoing = stdin.compat_write();
+    let incoming = stdout.compat();
+    let client = MasterClient {
+        state: Arc::clone(state),
+    };
+    let (conn, handle_io) = acp::ClientSideConnection::new(client, outgoing, incoming, |fut| {
+        tokio::task::spawn_local(fut);
+    });
+    let conn = Arc::new(conn);
+
+    // Child reaper: when the CLI process exits, drop it from the pool so
+    // the next helper requesting the same agent respawns a fresh one.
+    // kill_on_drop reaps descendants when `child` drops at task end.
+    {
+        let state = Arc::clone(state);
+        let key = key.clone();
+        let mut child = spawn_result.child;
+        tokio::task::spawn_local(async move {
+            let status = child.wait().await;
+            tracing::error!(
+                target: "master",
+                agent = %key,
+                ?status,
+                "agent CLI exited — removing from pool (master stays up for other agents)"
+            );
+            reap_agent(&state, &key).await;
+        });
+    }
+    // I/O-loop reaper: the ACP loop ending means master can't talk to
+    // this CLI anymore — same recovery as a child exit.
+    {
+        let state = Arc::clone(state);
+        let key = key.clone();
+        tokio::task::spawn_local(async move {
+            let _ = handle_io.await;
+            tracing::error!(
+                target: "master",
+                agent = %key,
+                "agent CLI ACP I/O loop ended — removing from pool"
+            );
+            reap_agent(&state, &key).await;
+        });
+    }
+
+    // Initialize this CLI. npx adapter cold starts can be slow, so keep
+    // the same generous timeout the single-agent master used.
+    let init_timeout_secs = if is_npx { 60 } else { 15 };
+    let init_resp = tokio::time::timeout(
+        std::time::Duration::from_secs(init_timeout_secs),
+        conn.initialize(
+            acp::InitializeRequest::new(acp::ProtocolVersion::V1)
+                .client_capabilities(acp::ClientCapabilities::new().terminal(true))
+                .client_info(
+                    acp::Implementation::new("wta-master", env!("CARGO_PKG_VERSION"))
+                        .title("Windows Terminal Agent (master)"),
+                ),
+        ),
+    )
+    .await
+    .map_err(|_| {
+        anyhow!(
+            "ACP initialize timed out after {init_timeout_secs}s — agent CLI '{agent_cmd}' did not respond"
+        )
+    })?
+    .map_err(|e| anyhow!("ACP initialize failed for '{agent_cmd}': {e}"))?;
+
+    // Prefer the host-supplied agent id (authoritative); fall back to
+    // parsing the command line. Stamps each session's `cli_source`.
+    let resolved_agent_id = match agent_id {
+        Some(id) if !id.trim().is_empty() => id.to_string(),
+        _ => crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string(),
+    };
+    let cli_source = crate::agent_sessions::CliSource::from_agent_id(&resolved_agent_id);
+    tracing::info!(
+        target: "master",
+        agent_cmd = %agent_cmd,
+        resolved_agent_id = %resolved_agent_id,
+        cli_source = ?cli_source,
+        "agent CLI initialize OK; cli_source resolved"
+    );
+
+    Ok(Arc::new(AgentCli {
+        key: key.clone(),
+        conn,
+        cached_init_resp: init_resp,
+        cli_source,
+    }))
+}
+
+/// Remove a dead agent CLI from the pool. Helpers still holding an
+/// `Arc<AgentCli>` for it will error on their next request (and the
+/// pane gets rebuilt); a fresh helper requesting the same `agent_cmd`
+/// re-runs `spawn_one_agent`. Sessions owned by the dead agent are left
+/// for the owning helper's disconnect cleanup (`drop_sessions_for_helper`).
+async fn reap_agent(state: &Arc<MasterStateInner>, key: &AgentCmdKey) {
+    let removed = { state.agents.lock().await.remove(key).is_some() };
+    if removed {
+        tracing::info!(
+            target: "master",
+            agent = %key,
+            "dead agent removed from pool; next pane for this agent will respawn it"
+        );
+    }
+}
+
 /// Per-helper-connection task. Wraps the named pipe in an
 /// `AgentSideConnection`, runs both its I/O loop and a notification
 /// forwarder until the helper disconnects.
 async fn serve_helper(
     helper_id: HelperId,
     pipe: NamedPipeServer,
-    agent_conn: Arc<acp::ClientSideConnection>,
     state: Arc<MasterStateInner>,
 ) -> Result<()> {
     tracing::info!(target: "master", helper_id = ?helper_id, "helper connected");
@@ -1622,7 +1682,9 @@ async fn serve_helper(
 
     let handler = HelperHandler {
         helper_id,
-        agent_conn,
+        // Resolved lazily during this helper's `initialize` (see
+        // HelperHandler::initialize → get_or_spawn_agent).
+        agent: OnceLock::new(),
         state: Arc::clone(&state),
         notif_tx,
         agent_side_slot: Arc::clone(&agent_side_slot),
@@ -2223,8 +2285,9 @@ mod tests {
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: None,
-            cached_init_resp: OnceLock::new(),
-            cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+            agents: Mutex::new(HashMap::new()),
+            default_agent_cmd: "copilot --acp --stdio".to_string(),
+            default_agent_id: Some("copilot".to_string()),
         })
     }
 
@@ -3009,8 +3072,9 @@ mod tests {
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: Some(wt),
-            cached_init_resp: OnceLock::new(),
-            cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+            agents: Mutex::new(HashMap::new()),
+            default_agent_cmd: "copilot --acp --stdio".to_string(),
+            default_agent_id: Some("copilot".to_string()),
         })
     }
 

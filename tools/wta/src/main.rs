@@ -2141,12 +2141,20 @@ async fn run_acp_app(
                 let event_tx_for_pipe = event_tx.clone();
                 let shell_mgr_for_pipe = Arc::clone(&shell_mgr);
                 let acp_model = cli.acp_model.clone();
+                // Per-tab agent identity passed through to the multi-agent
+                // master via the initialize handshake. The helper has had
+                // these on its `Cli` all along; pre-multi-agent it dropped
+                // them (master owned the single agent CLI).
+                let agent_cmd = Some(cli.agent.clone());
+                let agent_id = cli.agent_id.clone();
                 let owner_tab = cli.owner_tab_id.clone();
                 let initial_load_sid = cli.initial_load_session_id.clone();
                 tokio::task::spawn_local(async move {
                     if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
                         acp_model,
+                        agent_cmd,
+                        agent_id,
                         owner_tab,
                         initial_load_sid,
                         event_tx_for_pipe.clone(),

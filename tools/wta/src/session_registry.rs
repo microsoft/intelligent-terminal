@@ -37,11 +37,22 @@ pub const WTA_META_NAMESPACE: &str = "wta";
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WtaMeta {
     pub pane_session_id: Option<String>,
+    /// Full agent CLI command line the helper wants its session served
+    /// by (e.g. `"copilot --acp --stdio"` or
+    /// `"npx -y @zed-industries/claude-code-acp"`). Attached by the
+    /// helper to its `initialize` request so the multi-agent master can
+    /// spawn/reuse the matching agent CLI per tab. `None` on older
+    /// helpers — master then falls back to its own `--agent` default.
+    pub agent_cmd: Option<String>,
+    /// Canonical agent id (`copilot` / `claude` / `gemini` / …) that
+    /// pairs with `agent_cmd`. Used to stamp the per-session
+    /// `cli_source` so the F2 view labels each row with its real CLI.
+    pub agent_id: Option<String>,
 }
 
 impl WtaMeta {
     pub fn is_empty(&self) -> bool {
-        self.pane_session_id.is_none()
+        self.pane_session_id.is_none() && self.agent_cmd.is_none() && self.agent_id.is_none()
     }
 }
 
@@ -68,11 +79,15 @@ pub fn extract_wta_meta(meta: &mut Option<acp::Meta>) -> WtaMeta {
     let Some(serde_json::Value::Object(obj)) = wta_val else {
         return WtaMeta::default();
     };
-    WtaMeta {
-        pane_session_id: obj
-            .get("pane_session_id")
+    let str_field = |key: &str| {
+        obj.get(key)
             .and_then(|v| v.as_str())
-            .map(String::from),
+            .map(String::from)
+    };
+    WtaMeta {
+        pane_session_id: str_field("pane_session_id"),
+        agent_cmd: str_field("agent_cmd"),
+        agent_id: str_field("agent_id"),
     }
 }
 
@@ -97,6 +112,18 @@ pub fn inject_wta_meta(meta: &mut Option<acp::Meta>, wta: &WtaMeta) {
             serde_json::Value::String(pid.clone()),
         );
     }
+    if let Some(cmd) = &wta.agent_cmd {
+        wta_obj.insert(
+            "agent_cmd".to_string(),
+            serde_json::Value::String(cmd.clone()),
+        );
+    }
+    if let Some(id) = &wta.agent_id {
+        wta_obj.insert(
+            "agent_id".to_string(),
+            serde_json::Value::String(id.clone()),
+        );
+    }
     map.insert(
         WTA_META_NAMESPACE.to_string(),
         serde_json::Value::Object(wta_obj),
@@ -118,6 +145,7 @@ pub fn to_acp_session_info(info: &SessionInfo) -> acp::SessionInfo {
         &mut out.meta,
         &WtaMeta {
             pane_session_id: info.pane_session_id.clone(),
+            ..Default::default()
         },
     );
     out
@@ -2382,6 +2410,7 @@ mod tests {
             &mut meta,
             &WtaMeta {
                 pane_session_id: Some("pane-A".to_string()),
+                ..Default::default()
             },
         );
         let map = meta.expect("meta created");
@@ -2399,6 +2428,7 @@ mod tests {
             &mut meta,
             &WtaMeta {
                 pane_session_id: Some("pane-A".to_string()),
+                ..Default::default()
             },
         );
         let map = meta.unwrap();
@@ -2414,12 +2444,29 @@ mod tests {
     fn inject_then_extract_is_identity() {
         let original = WtaMeta {
             pane_session_id: Some("pane-X".to_string()),
+            ..Default::default()
         };
         let mut meta: Option<acp::Meta> = None;
         inject_wta_meta(&mut meta, &original);
         let parsed = extract_wta_meta(&mut meta);
         assert_eq!(parsed, original, "round-trip preserves data");
         assert!(meta.is_none(), "round-trip ends with empty meta");
+    }
+
+    #[test]
+    fn inject_then_extract_round_trips_agent_identity() {
+        // The multi-agent master keys its CLI pool off `agent_cmd` and
+        // stamps `cli_source` from `agent_id`, both carried on the
+        // helper's `initialize` handshake. Guard the wire round-trip.
+        let original = WtaMeta {
+            agent_cmd: Some("npx -y @zed-industries/claude-code-acp".to_string()),
+            agent_id: Some("claude".to_string()),
+            ..Default::default()
+        };
+        let mut meta: Option<acp::Meta> = None;
+        inject_wta_meta(&mut meta, &original);
+        let parsed = extract_wta_meta(&mut meta);
+        assert_eq!(parsed, original, "agent identity survives the wire");
     }
 
     // ── apply_ext_notification ──────────────────────────────────────
