@@ -1552,6 +1552,16 @@ void ShellIntegrationTests::ProfileGate_PwshCommandlineLeafExeMatches()
     VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh,
                                         L"",
                                         L"C:\\Program Files\\PowerShell\\7\\pwsh.exe -NoLogo"));
+    // Extensionless rooted pwsh path with spaces — resolved by .exe probing.
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh,
+                                        L"",
+                                        L"C:\\Program Files\\PowerShell\\7\\pwsh -NoLogo"));
+    // The "PowerShell" directory component must NOT be mistaken for a
+    // `powershell` launch leaf (the leaf scan requires a trailing
+    // whitespace/end after the segment, which "\PowerShell\" lacks).
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::WindowsPowerShell,
+                                         L"Windows.Terminal.PowershellCore",
+                                         L"C:\\Program Files\\PowerShell\\7\\pwsh -NoLogo"));
     // Bare command whose launch exe is NOT a path-root MUST NOT absorb a
     // later `.exe` arg: launch is cmd, not pwsh.
     VERIFY_IS_FALSE(ProfileMatchesShell(Target::Pwsh,
@@ -1610,6 +1620,21 @@ void ShellIntegrationTests::ProfileGate_BashOnlyForGitBashNotWsl()
     VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash,
                                         L"",
                                         L"C:\\Program Files\\Git\\bin\\bash.exe -i -l"));
+    // Git Bash — UNQUOTED rooted path with spaces and NO `.exe` extension.
+    // CreateProcessW resolves it by probing space-split prefixes and
+    // appending `.exe`, so the profile launches bash and integration MUST
+    // be recognized (regression guard for the reviewer-flagged gap).
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash,
+                                        L"",
+                                        L"C:\\Program Files\\Git\\bin\\bash -i -l"));
+    VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash,
+                                        L"",
+                                        L"C:\\Program Files\\Git\\bin\\bash"));
+    // Extensionless rooted bash path must NOT be mistaken for pwsh — the
+    // leaf scan only matches `\<leaf>` segments terminated by whitespace/end.
+    VERIFY_IS_FALSE(ProfileMatchesShell(Target::Pwsh,
+                                         L"",
+                                         L"C:\\Program Files\\Git\\bin\\bash -i -l"));
     // Bare leaf — user with bash on PATH.
     VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash, L"", L"bash"));
     VERIFY_IS_TRUE(ProfileMatchesShell(Target::Bash, L"", L"bash.exe -i"));

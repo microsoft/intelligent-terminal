@@ -133,6 +133,58 @@ namespace Microsoft::Terminal::ShellIntegration
             return std::wstring_view::npos;
         }
 
+        // Fallback for an unquoted rooted path whose launch executable is
+        // written WITHOUT the `.exe` extension, e.g.
+        //   C:\Program Files\Git\bin\bash -i -l
+        // CreateProcessW resolves this by probing space-split prefixes and
+        // auto-appending `.exe` (…\Program.exe fails, …\bin\bash.exe
+        // resolves), so the profile launches `bash` — we must recognize it.
+        // Returns the index just past the FIRST path segment `[\\/]<leaf>`
+        // (case-insensitive) that is immediately followed by whitespace or
+        // end-of-string, scanning from `start`; std::wstring_view::npos when
+        // none exists.
+        //
+        // Requiring a leading separator AND a trailing whitespace/end keeps
+        // this from matching a directory component (e.g. the "\PowerShell\"
+        // folder when looking for `powershell`) or a bare argument token.
+        // Only reached after FindUnquotedLaunchExeEnd has already failed, so
+        // no earlier `.exe`-terminated launch exe can be shadowed. (A
+        // contrived commandline with two rooted extensionless paths — a
+        // launcher plus a path-shaped argument ending in `\<leaf>` — could
+        // still false-match, but such a form never appears in a real profile
+        // commandline.)
+        inline size_t FindUnquotedLeafEnd(std::wstring_view commandline, size_t start, std::wstring_view leaf) noexcept
+        {
+            const size_t n = commandline.size();
+            // Need at least a separator + the leaf.
+            for (size_t i = start; i + 1 + leaf.size() <= n; ++i)
+            {
+                if (commandline[i] != L'\\' && commandline[i] != L'/')
+                {
+                    continue;
+                }
+                bool leafMatch = true;
+                for (size_t j = 0; j < leaf.size(); ++j)
+                {
+                    if (FoldAsciiLower(commandline[i + 1 + j]) != FoldAsciiLower(leaf[j]))
+                    {
+                        leafMatch = false;
+                        break;
+                    }
+                }
+                if (!leafMatch)
+                {
+                    continue;
+                }
+                const size_t after = i + 1 + leaf.size();
+                if (after == n || commandline[after] == L' ' || commandline[after] == L'\t')
+                {
+                    return after;
+                }
+            }
+            return std::wstring_view::npos;
+        }
+
         inline bool CommandlineHasExeToken(std::wstring_view commandline, std::wstring_view leaf) noexcept
         {
             if (leaf.empty())
@@ -182,6 +234,15 @@ namespace Microsoft::Terminal::ShellIntegration
                 if (exeEnd != std::wstring_view::npos)
                 {
                     end = exeEnd;
+                }
+                else if (const size_t leafEnd = FindUnquotedLeafEnd(commandline, start, leaf);
+                         leafEnd != std::wstring_view::npos)
+                {
+                    // Extensionless rooted launch exe (e.g.
+                    // `C:\Program Files\Git\bin\bash -i -l`): match on the
+                    // `\<leaf>` segment CreateProcess would resolve via
+                    // .exe probing.
+                    end = leafEnd;
                 }
                 else
                 {
