@@ -304,7 +304,10 @@ fn connect_with(
     );
 
     // Hand the mock its own connection so `prompt` can stream / request permission.
-    let _ = conn_cell.set(Arc::new(agent_conn));
+    assert!(
+        conn_cell.set(Arc::new(agent_conn)).is_ok(),
+        "mock agent connection cell must be set exactly once"
+    );
 
     tokio::task::spawn_local(async move {
         let _ = client_io.await;
@@ -436,7 +439,8 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
 // The tests above act AS the orchestrator (they call `client_conn.prompt`
 // directly). The tests below instead drive WTA's real `dispatch_prompt`
 // orchestration — the per-prompt arm of the `run_acp_client_over_pipe` /
-// `run_inner` select loops — against the same mock agent, so the "司机" logic
+// `run_inner` select loops — against the same mock agent, so the dispatcher
+// ("driver") logic
 // (single-flight gating, lazy session create, prompt assembly, response
 // routing) is itself under test, not just `WtaClient`'s ACP↔AppEvent
 // translation.
@@ -505,7 +509,10 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
             tokio::task::spawn_local(fut);
         },
     );
-    let _ = conn_cell.set(Arc::new(agent_conn));
+    assert!(
+        conn_cell.set(Arc::new(agent_conn)).is_ok(),
+        "mock agent connection cell must be set exactly once"
+    );
     tokio::task::spawn_local(async move {
         let _ = client_io.await;
     });

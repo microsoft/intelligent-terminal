@@ -118,8 +118,8 @@ Write-Host ""
 Write-Host "==> Summary" -ForegroundColor Cyan
 # Branch coverage is intentionally NOT collected. It requires a nightly
 # toolchain (`-Z coverage-options=branch`), and on Windows `llvm-cov`'s branch
-# report segfaults (0xc0000005) on this crate's profdata. This script forces
-# `stable`, so the profdata has no branch regions and llvm-cov's summary prints
+# report segfaults (0xc0000005) on this crate's profile data. This script forces
+# `stable`, so the profile data has no branch regions and llvm-cov's summary prints
 # an always-empty `Branches / Missed Branches / Cover` triplet. Strip it so the
 # report shows only the metrics we actually measure: regions, functions, lines.
 $summary = & cargo llvm-cov report --summary-only --manifest-path $Manifest

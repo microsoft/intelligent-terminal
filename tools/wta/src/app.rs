@@ -13157,8 +13157,8 @@ mod tests {
     /// internals are reachable. We drive a prompt through the **real** ACP
     /// client against the deterministic mock, pump the resulting `AppEvent`s
     /// into a **real** `App`, and assert the streamed reply is what the chat
-    /// view would show — i.e. "该显示什么" is covered without a real terminal,
-    /// real WT, or an LLM.
+    /// view would show — i.e. what the chat should display is covered without a
+    /// real terminal, real WT, or an LLM.
     #[tokio::test]
     async fn mock_agent_reply_streams_into_app_chat() {
         use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent;
