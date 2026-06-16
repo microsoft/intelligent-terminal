@@ -437,16 +437,18 @@ impl PermOption {
     /// True if this is an "allow" option. Case-insensitive because `kind`
     /// is the ACP `PermissionOptionKind` rendered via `format!("{:?}", …)`,
     /// which yields PascalCase variants like `AllowOnce` / `AllowAlways`.
-    /// Matching lowercase substrings here keeps the `y`/`n` quick-keys and
-    /// the `[Y]`/`[N]` button labels in sync with the real wire values.
+    /// Matching the leading `allow` prefix here keeps the `y`/`n` quick-keys
+    /// and the `[Y]`/`[N]` button labels in sync with the real wire values.
+    /// Prefix-checked (not lowercased) to stay allocation-free on the render /
+    /// key-handling hot path.
     pub fn is_allow(&self) -> bool {
-        self.kind.to_ascii_lowercase().contains("allow")
+        self.kind.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("allow"))
     }
 
-    /// True if this is a "reject"/"deny" option. Case-insensitive — see
-    /// [`PermOption::is_allow`].
+    /// True if this is a "reject" option. Allocation-free, case-insensitive —
+    /// see [`PermOption::is_allow`].
     pub fn is_reject(&self) -> bool {
-        self.kind.to_ascii_lowercase().contains("reject")
+        self.kind.get(..6).is_some_and(|p| p.eq_ignore_ascii_case("reject"))
     }
 }
 
@@ -13476,8 +13478,10 @@ mod tests {
         assert!(r.is_ok(), "timed out pumping events");
     }
 
-    /// Drive a prompt, run the closure to set up the harness, and return a real
-    /// App with an in-flight turn ready to receive the streamed notifications.
+    /// Drive initialize → new_session → prompt against the harness connection,
+    /// leaving an in-flight turn whose streamed notifications the caller pumps
+    /// into a real `App`. Returns `()` — it only drives ACP traffic; the caller
+    /// owns the `App`.
     async fn app_after_prompt(
         conn: &agent_client_protocol::ClientSideConnection,
     ) {

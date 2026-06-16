@@ -49,7 +49,7 @@ or manual sign-off (see `doc\release-automation-plan.md`).
 
 - FRE/Settings actually opening, rendering, focusing, persisting through the UI.
 - Agent pane open/hide/stash, pane position layout, view switching.
-- Real or mock agent chat round-trips, streaming render, permission UI, insert/run.
+- Real agent chat quality (an actual LLM responding usefully), real streaming render fidelity, insert/run into a live terminal pane.
 - Real install (`winget`), real auth/login, real CLI hook install/remove.
 - `wtcli`/COM activation, master/helper spawn, multi-window drag.
 - Visual polish, high-contrast/RTL layout, scaling, screen-reader quality.

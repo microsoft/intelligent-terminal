@@ -311,7 +311,7 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
 }
 
 /// Incrementally extracts a JSON string field's decoded value from a
-/// possibly-truncated text. Handles `\"`, `\\`, `\n`, `\t`, `\u{XXXX}` and
+/// possibly-truncated text. Handles `\"`, `\\`, `\n`, `\t`, `\uXXXX` and
 /// UTF-16 surrogate pairs (e.g. emoji). Returns the partial value if the
 /// closing quote hasn't arrived yet.
 pub(crate) fn extract_json_string_field(text: &str, field: &str) -> Option<String> {
