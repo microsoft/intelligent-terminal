@@ -280,14 +280,11 @@ namespace Microsoft::Terminal::ShellIntegration
                 }
             }
             const std::wstring_view leafToken = commandline.substr(leafStart, end - leafStart);
-            const auto fold = [](wchar_t c) noexcept -> wchar_t {
-                return (c >= L'A' && c <= L'Z') ? static_cast<wchar_t>(c + (L'a' - L'A')) : c;
-            };
-            const auto equalsCi = [&](std::wstring_view a, std::wstring_view b) noexcept -> bool {
+            const auto equalsCi = [](std::wstring_view a, std::wstring_view b) noexcept -> bool {
                 if (a.size() != b.size()) return false;
                 for (size_t i = 0; i < a.size(); ++i)
                 {
-                    if (fold(a[i]) != fold(b[i])) return false;
+                    if (FoldAsciiLower(a[i]) != FoldAsciiLower(b[i])) return false;
                 }
                 return true;
             };
@@ -302,13 +299,13 @@ namespace Microsoft::Terminal::ShellIntegration
                 bool exeMatch = true;
                 for (size_t i = 0; i < leaf.size(); ++i)
                 {
-                    if (fold(leafToken[i]) != fold(leaf[i])) { exeMatch = false; break; }
+                    if (FoldAsciiLower(leafToken[i]) != FoldAsciiLower(leaf[i])) { exeMatch = false; break; }
                 }
                 if (exeMatch)
                 {
                     for (size_t i = 0; i < dotExe.size(); ++i)
                     {
-                        if (fold(leafToken[leaf.size() + i]) != fold(dotExe[i])) { exeMatch = false; break; }
+                        if (FoldAsciiLower(leafToken[leaf.size() + i]) != dotExe[i]) { exeMatch = false; break; }
                     }
                     if (exeMatch) return true; // <leaf>.exe form
                 }
