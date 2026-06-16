@@ -2172,13 +2172,27 @@ async fn handle_session_hook(
         acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
     })?;
 
-    // Per-session-hook event — debug, not info (paired with the master-side
-    // "handling …session_hook locally" line; together they dominated info).
-    tracing::debug!(
-        target: "session_hook",
-        event = ?event,
-        "received helper session hook"
-    );
+    // Split by event kind so field diagnosis of session-state bugs survives at
+    // the default release level: terminal/lifecycle transitions (session
+    // start/stop, pane closed, connection failed) stay at info; the
+    // high-frequency routine events (tool start/stop, notifications, resume
+    // bookkeeping) go to debug. Keeps the load-bearing transitions visible
+    // without the per-tool flood that dominated the info logs.
+    {
+        use crate::agent_sessions::SessionEvent;
+        let lifecycle = matches!(
+            event,
+            SessionEvent::SessionStarted { .. }
+                | SessionEvent::SessionStopped { .. }
+                | SessionEvent::ConnectionFailed { .. }
+                | SessionEvent::PaneClosed { .. }
+        );
+        if lifecycle {
+            tracing::info!(target: "session_hook", event = ?event, "received helper session hook");
+        } else {
+            tracing::debug!(target: "session_hook", event = ?event, "received helper session hook");
+        }
+    }
 
     // Capture the session key BEFORE moving `event` into the reducer so
     // we can dispatch the post-apply title refresh against the right
