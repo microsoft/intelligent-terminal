@@ -88,9 +88,18 @@ namespace winrt::TerminalApp::implementation
         MenuFlyout flyout{};
         for (const auto& agent : Reg::FilteredAcpAgents())
         {
-            MenuFlyoutItem item{};
-            const winrt::hstring displayName{ agent.displayName };
             const winrt::hstring agentId{ agent.id };
+            const winrt::hstring displayName{ agent.displayName };
+            // Skip entries with no usable id: picking one would raise
+            // AgentSwitchRequested with an empty id, which TerminalPage's
+            // per-tab override handler ignores — i.e. a dead menu item.
+            // Mirrors the empty-id filter TerminalPage uses when enumerating
+            // agents for the master allowlist / detection.
+            if (agentId.empty())
+            {
+                continue;
+            }
+            MenuFlyoutItem item{};
             item.Text(displayName);
             // Mark the agent that's currently driving this pane. `_agentName`
             // is the live name from the last `agent_status` (e.g. "Claude"),
