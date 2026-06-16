@@ -13,12 +13,14 @@
 //! harness and assert on real `App` state (see the spec, "option 2").
 
 use super::{ClientState, PromptTimingState, WtaClient};
+use super::{dispatch_prompt, PromptSubmission, TemplateMemo};
 use crate::app::AppEvent;
 use crate::shell::ShellManager;
 use agent_client_protocol as acp;
 use agent_client_protocol::{Agent as _, Client as _};
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use tokio::sync::{mpsc, OnceCell};
+use tokio::sync::{mpsc, oneshot, OnceCell};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 /// What the mock does when it receives a `prompt`.
@@ -418,3 +420,300 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
         })
         .await;
 }
+
+// ─── A2.1: dispatch_* orchestration harness + tests ─────────────────────────
+//
+// The tests above act AS the orchestrator (they call `client_conn.prompt`
+// directly). The tests below instead drive WTA's real `dispatch_prompt`
+// orchestration — the per-prompt arm of the `run_acp_client_over_pipe` /
+// `run_inner` select loops — against the same mock agent, so the "司机" logic
+// (single-flight gating, lazy session create, prompt assembly, response
+// routing) is itself under test, not just `WtaClient`'s ACP↔AppEvent
+// translation.
+
+/// Everything a `dispatch_prompt` call needs that the harness owns: the
+/// client connection (as the `Arc` the dispatcher takes), a *shared* event
+/// channel (so chunks emitted by `WtaClient` and lifecycle events emitted by
+/// the dispatcher land on one stream), and the `shell_mgr` / `prompt_timing`
+/// the dispatcher threads into prompt assembly. `seen_prompts` is the
+/// agent-side record of every assembled prompt that reached the wire.
+pub(crate) struct DispatchHarness {
+    pub conn: Arc<acp::ClientSideConnection>,
+    pub event_tx: mpsc::UnboundedSender<AppEvent>,
+    pub event_rx: mpsc::UnboundedReceiver<AppEvent>,
+    pub shell_mgr: Arc<ShellManager>,
+    pub prompt_timing: Arc<PromptTimingState>,
+    pub seen_prompts: Arc<Mutex<Vec<String>>>,
+}
+
+/// Wire a real `WtaClient` to a `MockAgent` like [`connect_with`], but expose
+/// the shared `event_tx` / `shell_mgr` / `prompt_timing` so the dispatcher can
+/// be invoked with the same handles the production loop would.
+fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let shell_mgr = Arc::new(ShellManager::new());
+    let prompt_timing = Arc::new(PromptTimingState::default());
+    let state = Arc::new(ClientState {
+        event_tx: event_tx.clone(),
+        shell_mgr: shell_mgr.clone(),
+        prompt_timing: prompt_timing.clone(),
+    });
+    let wta = WtaClient { state };
+
+    let seen_prompts = Arc::new(Mutex::new(Vec::new()));
+    let permission_outcome = Arc::new(Mutex::new(None));
+    let conn_cell: Arc<OnceCell<Arc<acp::AgentSideConnection>>> = Arc::new(OnceCell::new());
+    let mock = MockAgent {
+        conn: conn_cell.clone(),
+        behavior,
+        seen_prompts: seen_prompts.clone(),
+        permission_outcome,
+    };
+
+    let (wta_io, mock_io) = tokio::io::duplex(64 * 1024);
+    let (wta_r, wta_w) = tokio::io::split(wta_io);
+    let (mock_r, mock_w) = tokio::io::split(mock_io);
+
+    let (client_conn, client_io) = acp::ClientSideConnection::new(
+        wta,
+        wta_w.compat_write(),
+        wta_r.compat(),
+        |fut| {
+            tokio::task::spawn_local(fut);
+        },
+    );
+    let (agent_conn, agent_io) = acp::AgentSideConnection::new(
+        mock,
+        mock_w.compat_write(),
+        mock_r.compat(),
+        |fut| {
+            tokio::task::spawn_local(fut);
+        },
+    );
+    let _ = conn_cell.set(Arc::new(agent_conn));
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+
+    DispatchHarness {
+        conn: Arc::new(client_conn),
+        event_tx,
+        event_rx,
+        shell_mgr,
+        prompt_timing,
+        seen_prompts,
+    }
+}
+
+/// Fresh, empty per-tab dispatcher state (session map, single-flight set,
+/// cancel registry, template memo) for one `dispatch_prompt` invocation.
+#[allow(clippy::type_complexity)]
+fn fresh_dispatch_state() -> (
+    Arc<tokio::sync::Mutex<HashMap<String, acp::SessionId>>>,
+    Arc<std::sync::Mutex<HashSet<String>>>,
+    Arc<std::sync::Mutex<HashMap<String, oneshot::Sender<()>>>>,
+    TemplateMemo,
+) {
+    (
+        Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        Arc::new(std::sync::Mutex::new(HashSet::new())),
+        Arc::new(std::sync::Mutex::new(HashMap::new())),
+        TemplateMemo::default(),
+    )
+}
+
+fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
+    PromptSubmission {
+        id,
+        text: text.to_string(),
+        pane_context: None,
+        submitted_at_unix_s: 0.0,
+        is_autofix,
+    }
+}
+
+/// Single-flight: a prompt for a tab that already has a turn in flight must
+/// emit `AgentBusy` and NOT start a second turn (no `conn.prompt`, the agent
+/// never sees the text).
+#[tokio::test]
+async fn dispatch_prompt_busy_tab_emits_agent_busy_and_drops() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            // A turn is already running for the default tab ("0").
+            in_flight.lock().unwrap().insert("0".to_string());
+            let mut event_rx = h.event_rx;
+
+            dispatch_prompt(
+                test_prompt(1, "hi", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                false, // wt_connected
+                false, // is_agent_pane
+            );
+
+            match tokio::time::timeout(std::time::Duration::from_secs(2), event_rx.recv()).await {
+                Ok(Some(AppEvent::AgentBusy { tab_id })) => assert_eq!(tab_id, "0"),
+                Ok(_) => panic!("expected AgentBusy, got a different event"),
+                _ => panic!("expected AgentBusy, got nothing"),
+            }
+            // The in-flight set is unchanged (the busy prompt did not remove or
+            // duplicate the owner), and the agent never received a prompt.
+            assert_eq!(in_flight.lock().unwrap().len(), 1);
+            assert!(
+                h.seen_prompts.lock().unwrap().is_empty(),
+                "a busy-dropped prompt must never reach the agent"
+            );
+        })
+        .await;
+}
+
+/// Full round-trip through the dispatcher: a fresh tab lazily creates a
+/// session, the assembled prompt reaches the agent, and the streamed reply is
+/// surfaced as an `AgentMessageChunk`. Proves the prompt arm wires
+/// new_session → prompt assembly → response routing end to end.
+#[tokio::test]
+async fn dispatch_prompt_round_trips_through_agent() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            // Handshake so the lazy `new_session` inside the dispatcher succeeds.
+            h.conn
+                .initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                .await
+                .expect("initialize failed");
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let mut event_rx = h.event_rx;
+
+            dispatch_prompt(
+                test_prompt(1, "hello", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                false,
+                false,
+            );
+
+            // Pump until the agent's streamed reply surfaces — implies lazy
+            // new_session, prompt assembly + send, and response routing all ran.
+            // The mock echoes the *assembled* prompt, which the dispatcher wraps
+            // in the planner template, so we assert structure rather than exact
+            // equality.
+            let chunk = next_agent_chunk(&mut event_rx).await;
+            assert!(
+                chunk.starts_with("MOCK_OK:"),
+                "reply must be the mock's echo of the assembled prompt"
+            );
+            assert!(
+                chunk.contains("hello"),
+                "the user's text must survive into the assembled prompt"
+            );
+
+            // The assembled prompt that reached the agent must contain the user
+            // text (build_prompt_text wraps it with the planner template).
+            let seen = h.seen_prompts.lock().unwrap().clone();
+            assert_eq!(seen.len(), 1, "exactly one prompt reached the agent");
+            assert!(
+                seen[0].contains("hello"),
+                "the agent must receive the user's text inside the assembled prompt"
+            );
+            assert!(
+                seen[0].contains("Terminal Agent"),
+                "a non-autofix prompt must carry the planner template"
+            );
+
+            // The session is cached before the prompt is sent, so it's already
+            // present by the time the reply arrives.
+            assert!(tab_to_session.lock().await.contains_key("0"));
+
+            // in-flight is cleared at turn *completion* (AgentMessageEnd), which
+            // lands after the first chunk — pump until then before asserting.
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match event_rx.recv().await {
+                        Some(AppEvent::AgentMessageEnd { .. }) => break,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before turn end"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for turn end");
+            assert!(
+                in_flight.lock().unwrap().is_empty(),
+                "single-flight slot must be released when the turn completes"
+            );
+        })
+        .await;
+}
+
+/// Template selection: an autofix prompt (`is_autofix=true`) must be assembled
+/// with the *autofix* template ("A command failed. Diagnose…"), NOT the planner
+/// persona. Picking the wrong template would make autofix behave like the
+/// general planner and fail to diagnose the failure.
+#[tokio::test]
+async fn dispatch_prompt_autofix_uses_autofix_template() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                .await
+                .expect("initialize failed");
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let mut event_rx = h.event_rx;
+
+            dispatch_prompt(
+                test_prompt(1, "fix the build", true), // is_autofix = true
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                false,
+                false,
+            );
+
+            let _ = next_agent_chunk(&mut event_rx).await; // wait for the round-trip
+            let seen = h.seen_prompts.lock().unwrap().clone();
+            assert_eq!(seen.len(), 1);
+            assert!(
+                seen[0].contains("A command failed. Diagnose the error"),
+                "autofix prompt must carry the auto-fix template"
+            );
+            assert!(
+                !seen[0].contains("You are Terminal Agent"),
+                "autofix prompt must NOT carry the planner persona template"
+            );
+            assert!(
+                seen[0].contains("fix the build"),
+                "autofix prompt must still carry the user's text"
+            );
+        })
+        .await;
+}
+
+
