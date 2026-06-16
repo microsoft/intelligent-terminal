@@ -2002,8 +2002,11 @@ fn resolve_agent_selection(
         .map(str::to_ascii_lowercase);
 
     if let Some(id) = requested.as_deref() {
-        let known = crate::agent_registry::lookup_profile_by_id(id).id
-            != crate::agent_registry::DEFAULT_PROFILE.id;
+        // Membership test against KNOWN_AGENTS — NOT a comparison against
+        // DEFAULT_PROFILE.id, which would treat the default agent as
+        // "unknown" (and drop model folding) the day the default profile's
+        // id becomes a real, selectable agent id.
+        let known = crate::agent_registry::is_known_id(id);
         // `None` allowlist = no host policy supplied (manual run / older
         // host) → trust any known id. `Some(set)` = honor only listed ids.
         let allowed = allowed_ids.map_or(true, |set| set.contains(id));
@@ -3598,6 +3601,23 @@ mod tests {
             let (cmd, id) = resolve(None, requested, None);
             assert_eq!(cmd, DEFAULT_CMD, "requested={requested:?}");
             assert_eq!(id.as_deref(), Some("copilot"));
+        }
+    }
+
+    #[test]
+    fn every_known_agent_id_is_honored_not_conflated_with_default_fallback() {
+        // Regression guard for the conflation flagged in review: the `known`
+        // check must test KNOWN_AGENTS membership directly, NOT
+        // `lookup_profile_by_id(id).id != DEFAULT_PROFILE.id`. The latter
+        // silently treats a real agent as "unknown" — forcing the default and
+        // dropping requested-model folding — the day DEFAULT_PROFILE.id is set
+        // to a genuine, selectable agent id. Every known agent must resolve to
+        // its own rebuilt command and stamp its own id.
+        for profile in crate::agent_registry::KNOWN_AGENTS {
+            let (cmd, id) = resolve(None, Some(profile.id), None);
+            let expected = crate::agent_registry::build_acp_command(profile.id, None);
+            assert_eq!(cmd, expected, "agent {} must be honored, not fall back", profile.id);
+            assert_eq!(id.as_deref(), Some(profile.id), "id stamp for {}", profile.id);
         }
     }
 

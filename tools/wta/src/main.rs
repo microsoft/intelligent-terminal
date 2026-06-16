@@ -2573,7 +2573,7 @@ async fn run_acp_app(
                 );
                 let agent_id = canonical_id.as_str();
                 let preflight_result = if agent_id.starts_with("custom:")
-                    || agent_registry::lookup_profile_by_id(agent_id).id == "unknown"
+                    || !agent_registry::is_known_id(agent_id)
                 {
                     // Custom/unknown agents: command is opaque (`.cmd`, `node script.js`,
                     // shell function, …); a PATH probe would lie. The real spawn produces
