@@ -12,14 +12,14 @@ parameters:
   - name: branding
     displayName: "Branding"
     type: string
-    default: Canary
+    default: Release
     values:
       - Canary
       - Release
   - name: publishToAzure
     displayName: "Deploy to **PUBLIC** Azure Storage"
     type: boolean
-    default: true
+    default: false
   - name: official
     displayName: "Run on Official 1ES Pipeline Templates"
     type: boolean
