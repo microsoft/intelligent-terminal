@@ -239,7 +239,10 @@ pub fn install_ctrl_handler() {
     // process-global, thread-safe Win32 operation.
     unsafe {
         if SetConsoleCtrlHandler(Some(handler), 1) == 0 {
-            tracing::debug!(
+            // warn (not debug): this is the diagnosability feature failing to
+            // arm, so release logs (info) must explain why later teardown
+            // signals are absent rather than leaving it a silent mystery.
+            tracing::warn!(
                 target: "lifecycle",
                 "SetConsoleCtrlHandler failed — teardown signals will not be logged"
             );

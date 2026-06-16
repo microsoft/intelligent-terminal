@@ -1433,13 +1433,19 @@ namespace winrt::TerminalApp::implementation
             // disconnect correlates (to the millisecond) with the Rust logs.
             // This fires even when the master itself is gone and so can't emit
             // restart_agent_pane.
-            if (isClosed)
+            //
+            // Edge-triggered: this method runs on every pane's connection-state
+            // change and on focus changes, so log only on the open→closed
+            // transition (the `_agentPaneConnectionClosed` guard re-arms when
+            // the agent pane reconnects or is removed) to avoid spamming the log
+            // after the helper dies.
+            const auto agentPane = FindAgentPane();
+            const bool agentClosed = agentPane && agentPane->IsConnectionClosed();
+            if (agentClosed && !_agentPaneConnectionClosed)
             {
-                if (const auto agentPane = FindAgentPane(); agentPane && agentPane->IsConnectionClosed())
-                {
-                    _agentPaneLog("agent pane connection closed — wta helper backend disconnected");
-                }
+                _agentPaneLog("agent pane connection closed — wta helper backend disconnected");
             }
+            _agentPaneConnectionClosed = agentClosed;
         }
     }
 
