@@ -4,12 +4,15 @@
 #pragma once
 
 #include <mutex>
+#include <string>
+#include <thread>
 #include <vector>
 
 #include <wrl/implements.h>
 #include <wrl/client.h>
 
 #include "ITerminalProtocol.h"
+#include "../inc/BoundedDispatchQueue.h"
 
 // Per-brand CLSIDs — same pattern as CTerminalHandoff. Reused unchanged from the
 // previous WinRT/MBM server, so WT_COM_CLSID discovery on the client is identical.
@@ -79,6 +82,33 @@ private:
     // Unsubscribe).
     std::mutex _callbackMutex;
     Microsoft::WRL::ComPtr<IAgileReference> _sinkRef;
+
+    // ── Per-subscriber asynchronous event delivery (issue #239) ──
+    //
+    // Each connected client (= one instance) owns a bounded FIFO queue and a
+    // dedicated MTA worker thread that drains it. The producer
+    // (s_NotifyEventToComClients, raised on the UI/STA thread for VT events and
+    // on a COM MTA thread for SendEvent broadcasts) only ever ENQUEUES and
+    // returns immediately. The worker resolves the agile sink reference and
+    // makes the SYNCHRONOUS cross-process OnEvent call on its own thread — so a
+    // slow or blocked subscriber (e.g. wtcli's stdout pipe full because wta
+    // isn't draining it) can no longer stall the terminal UI thread, and
+    // subscribers are isolated from one another (one stuck client only backs up
+    // its own bounded queue; the others keep flowing).
+    //
+    // The bounded-queue / back-pressure / subscribe-gate logic lives in the
+    // dependency-free Microsoft::Terminal::BoundedDispatchQueue (unit-tested in
+    // ut_app); only the COM resolve + OnEvent + thread shell lives here.
+    static constexpr size_t s_maxQueuedEvents = 4096;
+
+    Microsoft::Terminal::BoundedDispatchQueue<std::string> _deliveryQueue{ s_maxQueuedEvents };
+    std::mutex _workerMutex;
+    std::thread _worker;
+
+    void _enqueueEvent(const std::string& eventJson);
+    void _startWorkerIfNeeded();
+    void _stopWorker() noexcept;
+    void _workerLoop();
 
     // Static tracking of live COM instances for event delivery.
     static std::mutex s_instancesMutex;

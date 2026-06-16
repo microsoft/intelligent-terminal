@@ -118,6 +118,11 @@ HRESULT TerminalProtocolComServer::s_StopListening()
 
 TerminalProtocolComServer::~TerminalProtocolComServer()
 {
+    // Stop + join this subscriber's delivery thread BEFORE _removeInstance so
+    // the worker (which dereferences `this`) cannot outlive the object. The
+    // join also runs before the queue/mutex/condvar members destruct, since
+    // member teardown happens only after the destructor body returns.
+    _stopWorker();
     _removeInstance();
 }
 
@@ -345,59 +350,107 @@ void TerminalProtocolComServer::s_OnWindowAdded(AppHost* /*host*/)
 
 void TerminalProtocolComServer::s_NotifyEventToComClients(const std::string& eventJson)
 {
-    wil::unique_bstr eventBstr{ ::SysAllocString(winrt::to_hstring(eventJson).c_str()) };
-    if (!eventBstr)
+    // Enqueue the event into every connected subscriber's bounded queue and
+    // return immediately. Each subscriber's dedicated worker thread performs
+    // the synchronous cross-process OnEvent OFF this (producer) thread, so a
+    // slow or blocked subscriber can no longer stall the terminal UI thread,
+    // and subscribers are isolated from one another. See issue #239.
+    //
+    // Instance members are touched only under s_instancesMutex; _removeInstance
+    // takes the same lock, so an instance cannot be erased mid-iteration. This
+    // matches the locking discipline of the previous (synchronous) fan-out.
+    std::lock_guard lock{ s_instancesMutex };
+    for (auto* instance : s_instances)
     {
-        // OOM allocating the event payload — skip this delivery rather than
-        // calling OnEvent with a null BSTR, which would break the documented
-        // JSON-string event contract.
+        instance->_enqueueEvent(eventJson);
+    }
+}
+
+void TerminalProtocolComServer::_enqueueEvent(const std::string& eventJson)
+{
+    // Hand the event to this subscriber's bounded queue and return. The queue
+    // applies the subscribe-gate (drops while inactive) and drop-oldest
+    // back-pressure; the producer never blocks. The dedicated worker thread
+    // performs the actual cross-process OnEvent. See BoundedDispatchQueue.
+    _deliveryQueue.try_push(eventJson);
+}
+
+void TerminalProtocolComServer::_startWorkerIfNeeded()
+{
+    std::lock_guard lock{ _workerMutex };
+    if (_worker.joinable())
+    {
+        // Already running from a prior Subscribe; it picks up the new _sinkRef
+        // on its next iteration (read under _callbackMutex).
         return;
     }
+    _worker = std::thread([this]() { _workerLoop(); });
+}
 
-    // Snapshot the agile sink references under lock, then invoke outside the
-    // lock to avoid deadlocks if a callback reenters the server (e.g. via
-    // SendEvent).
-    std::vector<ComPtr<IAgileReference>> sinks;
+void TerminalProtocolComServer::_stopWorker() noexcept
+{
+    std::lock_guard lock{ _workerMutex };
+    _deliveryQueue.stop();
+    if (_worker.joinable())
     {
-        std::lock_guard lock{ s_instancesMutex };
-        for (auto* instance : s_instances)
-        {
-            std::lock_guard cbLock{ instance->_callbackMutex };
-            if (instance->_sinkRef)
-                sinks.push_back(instance->_sinkRef);
-        }
+        // NOTE: if the worker is currently blocked inside a stuck OnEvent (a
+        // subscriber that is alive but permanently not draining), this join
+        // waits for that call to return. It never blocks the UI thread — the
+        // UI thread only ever enqueues. A future hardening could add an
+        // OnEvent cancel/timeout (ICancelMethodCalls) to bound this wait.
+        _worker.join();
     }
+}
 
-    // TODO: event fan-out runs on the UI/STA thread (ProtocolVtSequenceReceived
-    // is raised there), and each OnEvent below is a SYNCHRONOUS cross-process
-    // call. A slow or blocked subscriber (e.g. wtcli's stdout pipe full because
-    // wta isn't draining it) therefore stalls the terminal UI thread, and the
-    // cost is serial across all subscribers. For high event volume this should
-    // be moved off the UI thread — queue events and drain them on a dedicated
-    // background MTA thread (mind ordering, back-pressure, and subscriber
-    // add/remove thread-safety), and/or give OnEvent a timeout. Tracked as
-    // follow-up; not addressed in the WinRT->classic-COM migration.
-    for (auto& ref : sinks)
+void TerminalProtocolComServer::_workerLoop()
+{
+    // Resolve the agile sink reference and call OnEvent on THIS dedicated MTA
+    // thread, so the synchronous cross-process call never runs on the producer
+    // (UI/STA or COM MTA) thread. MTA init is required so the agile reference's
+    // Resolve hands back a proxy valid on this thread.
+    auto coInit = wil::CoInitializeEx(COINIT_MULTITHREADED);
+
+    std::string eventJson;
+    while (_deliveryQueue.wait_pop(eventJson))
     {
+        // Snapshot the agile ref under the callback lock, then resolve + call
+        // outside it so Unsubscribe can swap/clear the sink without waiting on
+        // a long OnEvent.
+        ComPtr<IAgileReference> ref;
+        {
+            std::lock_guard lock{ _callbackMutex };
+            ref = _sinkRef;
+        }
+        if (!ref)
+        {
+            // Not subscribed (yet / anymore) — drop this event and idle until
+            // the next Subscribe or until _stopWorker tears the thread down.
+            continue;
+        }
+
+        wil::unique_bstr eventBstr{ ::SysAllocString(winrt::to_hstring(eventJson).c_str()) };
+        if (!eventBstr)
+        {
+            // OOM allocating the payload — skip rather than call OnEvent with a
+            // null BSTR, which would break the JSON-string event contract.
+            continue;
+        }
+
         // Resolve the agile reference to a sink proxy valid on THIS thread,
-        // then call it — this is the cross-apartment-safe callback path.
+        // then call it — the cross-apartment-safe callback path.
         ComPtr<ITerminalProtocolEventSink> sink;
         if (FAILED(ref->Resolve(IID_PPV_ARGS(&sink))) || !sink)
+        {
             continue;
+        }
 
         if (FAILED(sink->OnEvent(eventBstr.get())))
         {
-            // Client disconnected — clear the matching sink reference.
-            std::lock_guard lock{ s_instancesMutex };
-            for (auto* instance : s_instances)
-            {
-                std::lock_guard cbLock{ instance->_callbackMutex };
-                if (instance->_sinkRef.Get() == ref.Get())
-                {
-                    instance->_sinkRef.Reset();
-                    break;
-                }
-            }
+            // Client disconnected — clear our sink. Subsequent iterations see a
+            // null ref and idle until the instance is torn down (the client's
+            // COM ref release drives ~TerminalProtocolComServer -> _stopWorker).
+            std::lock_guard lock{ _callbackMutex };
+            _sinkRef.Reset();
         }
     }
 }
@@ -916,6 +969,12 @@ try
         _sinkRef = ref;
     }
 
+    // Spin up this subscriber's dedicated delivery thread so OnEvent never runs
+    // on the producer thread (no-op if already running from a prior Subscribe).
+    // set_active() opens the queue's subscribe-gate and clears any prior stop.
+    _deliveryQueue.set_active(true);
+    _startWorkerIfNeeded();
+
     // Ensure page events are wired up (one-time global init).
     _ensurePageEventsRegistered();
     return S_OK;
@@ -924,8 +983,18 @@ CATCH_RETURN()
 
 STDMETHODIMP TerminalProtocolComServer::Unsubscribe()
 {
-    std::lock_guard lock{ _callbackMutex };
-    _sinkRef.Reset();
+    // Close the subscribe-gate first so nothing new is enqueued during teardown.
+    _deliveryQueue.set_active(false);
+    {
+        std::lock_guard lock{ _callbackMutex };
+        _sinkRef.Reset();
+    }
+
+    // Tear down the delivery thread (stop() wakes wait_pop and drops backlog).
+    // Unsubscribe is driven by the client, which is therefore actively
+    // draining — the worker's in-flight OnEvent (if any) returns promptly, so
+    // the join is quick.
+    _stopWorker();
     return S_OK;
 }
 
