@@ -26,7 +26,8 @@ const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
 // Lives as a sibling file so it stays out of this large module, but is a child
 // of `client` so it can reach the private `WtaClient` / `ClientState`.
 // `pub(crate)` so app-module tests can borrow `connect_mock_agent` and assert
-// on App state (see doc/release-ut-plan.md).
+// on App state.
+#[cfg(test)]
 #[path = "mock_agent_tests.rs"]
 pub(crate) mod mock_agent_tests;
 
