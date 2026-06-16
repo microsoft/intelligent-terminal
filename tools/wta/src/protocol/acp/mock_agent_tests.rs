@@ -21,6 +21,7 @@ use crate::shell::ShellManager;
 use agent_client_protocol as acp;
 use agent_client_protocol::{Agent as _, Client as _};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot, OnceCell};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -59,6 +60,9 @@ struct MockAgent {
     /// Side-channel: the permission option id the client selected (or
     /// "cancelled"), for `AskPermission` runs.
     permission_outcome: Arc<Mutex<Option<String>>>,
+    /// When set, `new_session` returns an error instead of a session id —
+    /// simulates the agent/transport dropping during session establishment.
+    fail_new_session: Arc<AtomicBool>,
 }
 
 fn first_text(blocks: &[acp::ContentBlock]) -> String {
@@ -85,6 +89,9 @@ impl acp::Agent for MockAgent {
         &self,
         _args: acp::NewSessionRequest,
     ) -> acp::Result<acp::NewSessionResponse> {
+        if self.fail_new_session.load(Ordering::SeqCst) {
+            return Err(acp::Error::internal_error().data("mock new_session failure".to_string()));
+        }
         Ok(acp::NewSessionResponse::new(acp::SessionId::new("mock-session-1")))
     }
 
@@ -268,6 +275,7 @@ fn connect_with(
         behavior,
         seen_prompts: seen_prompts.clone(),
         permission_outcome: permission_outcome.clone(),
+        fail_new_session: Arc::new(AtomicBool::new(false)),
     };
 
     // Bidirectional in-memory pipe. Each half is split into read/write and
@@ -446,6 +454,9 @@ pub(crate) struct DispatchHarness {
     pub shell_mgr: Arc<ShellManager>,
     pub prompt_timing: Arc<PromptTimingState>,
     pub seen_prompts: Arc<Mutex<Vec<String>>>,
+    /// Flip to `true` before dispatching to make the mock's `new_session`
+    /// fail, exercising the dispatcher's session-establishment error path.
+    pub fail_new_session: Arc<AtomicBool>,
 }
 
 /// Wire a real `WtaClient` to a `MockAgent` like [`connect_with`], but expose
@@ -464,12 +475,14 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
 
     let seen_prompts = Arc::new(Mutex::new(Vec::new()));
     let permission_outcome = Arc::new(Mutex::new(None));
+    let fail_new_session = Arc::new(AtomicBool::new(false));
     let conn_cell: Arc<OnceCell<Arc<acp::AgentSideConnection>>> = Arc::new(OnceCell::new());
     let mock = MockAgent {
         conn: conn_cell.clone(),
         behavior,
         seen_prompts: seen_prompts.clone(),
         permission_outcome,
+        fail_new_session: fail_new_session.clone(),
     };
 
     let (wta_io, mock_io) = tokio::io::duplex(64 * 1024);
@@ -507,6 +520,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         shell_mgr,
         prompt_timing,
         seen_prompts,
+        fail_new_session,
     }
 }
 
@@ -663,6 +677,61 @@ async fn dispatch_prompt_round_trips_through_agent() {
                 in_flight.lock().unwrap().is_empty(),
                 "single-flight slot must be released when the turn completes"
             );
+        })
+        .await;
+}
+
+/// Error path: if the lazy `new_session` fails (agent/transport dropped during
+/// session establishment), the dispatcher must surface `AgentError`, release
+/// the single-flight slot, and never reach the prompt — not hang the turn.
+#[tokio::test]
+async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                .await
+                .expect("initialize failed");
+            // Make the mock reject session establishment.
+            h.fail_new_session.store(true, Ordering::SeqCst);
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let mut event_rx = h.event_rx;
+
+            dispatch_prompt(
+                test_prompt(1, "hello", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                false,
+                false,
+            );
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::AgentError { message, .. })) => {
+                    assert!(
+                        message.contains("new_session failed"),
+                        "error must name the failed step; got {message:?}"
+                    );
+                }
+                Ok(_) => panic!("expected AgentError"),
+                _ => panic!("expected AgentError, got nothing"),
+            }
+            // The slot is released so a retry isn't permanently blocked, no
+            // session was cached, and the agent never saw the prompt.
+            assert!(
+                in_flight.lock().unwrap().is_empty(),
+                "single-flight slot must be released on new_session failure"
+            );
+            assert!(tab_to_session.lock().await.is_empty());
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
         })
         .await;
 }
