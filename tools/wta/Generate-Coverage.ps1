@@ -116,7 +116,21 @@ if ($Lcov) {
 
 Write-Host ""
 Write-Host "==> Summary" -ForegroundColor Cyan
-& cargo llvm-cov report --summary-only --manifest-path $Manifest
+# Branch coverage is intentionally NOT collected. It requires a nightly
+# toolchain (`-Z coverage-options=branch`), and on Windows `llvm-cov`'s branch
+# report segfaults (0xc0000005) on this crate's profdata. This script forces
+# `stable`, so the profdata has no branch regions and llvm-cov's summary prints
+# an always-empty `Branches / Missed Branches / Cover` triplet. Strip it so the
+# report shows only the metrics we actually measure: regions, functions, lines.
+$summary = & cargo llvm-cov report --summary-only --manifest-path $Manifest
+$summary | ForEach-Object {
+    # Header: drop the trailing "Branches  Missed Branches  Cover" labels.
+    $line = $_ -replace '\s+Branches\s+Missed Branches\s+Cover\s*$', ''
+    # Data / TOTAL rows: drop the trailing branch triplet (count count cover),
+    # which is always "0  0  -" under the stable (no-branch) profile.
+    $line = $line -replace '\s+\d+\s+\d+\s+(?:[\d.]+%|-)\s*$', ''
+    $line
+}
 
 $htmlIndex = Join-Path $OutputDir 'html\index.html'
 Write-Host ""
