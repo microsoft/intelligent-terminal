@@ -207,11 +207,15 @@
                                   supported-shells list, so it is built from
                                   Run + Hyperlink populated in code-behind (RS_)
                                   rather than a single x:Uid (x:Uid on inline Run
-                                  is not honored in this codebase).  -->
+                                  is not honored in this codebase). The muted
+                                  "secondary" foreground is applied only to the
+                                  prefix Run so the Hyperlink keeps its full theme
+                                  accent contrast (matches the page-subtitle
+                                  pattern above).  -->
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap">
-                                <Run x:Name="AutoErrorDetectionCaptionPrefix" /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-dependency#4-shell-integration">
+                                <Run x:Name="AutoErrorDetectionCaptionPrefix"
+                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-dependency#4-shell-integration">
                                     <Run x:Name="AutoErrorDetectionCaptionLink" />
                                 </Hyperlink>
                             </TextBlock>
