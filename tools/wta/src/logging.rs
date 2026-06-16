@@ -212,7 +212,7 @@ pub fn shutdown_flush() {
 ///     a key event (not `CTRL_C_EVENT`), so this handler doesn't normally see
 ///     it and doesn't alter the TUI's Ctrl+C behavior.
 pub fn install_ctrl_handler() {
-    use windows_sys::Win32::Foundation::GetLastError;
+    use windows_sys::Win32::Foundation::{GetLastError, ERROR_INVALID_HANDLE};
     use windows_sys::Win32::System::Console::{
         SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT,
         CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT,
@@ -251,16 +251,28 @@ pub fn install_ctrl_handler() {
             // Capture the Win32 error immediately, before any other call (incl.
             // the logging macro's own work) can reset thread-last-error.
             let error_code = GetLastError();
-            // warn (not debug): this is the diagnostic feature itself failing
-            // to arm, so release logs (info) must explain why later teardown
-            // signals are absent rather than leaving it a silent mystery. The
-            // error code distinguishes the likely causes (e.g. no console
-            // attached vs. a permission failure).
-            tracing::warn!(
-                target: "lifecycle",
-                error_code,
-                "SetConsoleCtrlHandler failed — teardown signals will not be logged"
-            );
+            if error_code == ERROR_INVALID_HANDLE {
+                // Expected for a windowless wta process (the CREATE_NO_WINDOW
+                // master, a detached CLI invocation): there's no console to
+                // signal, and teardown for those is covered elsewhere (the C++
+                // side observes the master via its wait callback). Benign —
+                // debug only, so it never spams release logs.
+                tracing::debug!(
+                    target: "lifecycle",
+                    error_code,
+                    "SetConsoleCtrlHandler: no console attached (expected for windowless process)"
+                );
+            } else {
+                // Any other failure is the diagnostic feature itself failing to
+                // arm where we DID expect a console (e.g. the helper) — warn so
+                // release (info) logs explain why later teardown signals are
+                // absent rather than leaving it a silent mystery.
+                tracing::warn!(
+                    target: "lifecycle",
+                    error_code,
+                    "SetConsoleCtrlHandler failed — teardown signals will not be logged"
+                );
+            }
         }
     }
 }

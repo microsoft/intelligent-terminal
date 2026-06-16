@@ -2180,8 +2180,10 @@ async fn handle_session_hook(
     // without the per-tool flood that dominated the info logs.
     {
         use crate::agent_sessions::SessionEvent;
+        // Match on a reference so the level decision borrows rather than
+        // consumes `event` (it's used again below for the reducer).
         let lifecycle = matches!(
-            event,
+            &event,
             SessionEvent::SessionStarted { .. }
                 | SessionEvent::SessionStopped { .. }
                 | SessionEvent::ConnectionFailed { .. }

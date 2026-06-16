@@ -1439,8 +1439,17 @@ namespace winrt::TerminalApp::implementation
             // transition (the `_agentPaneConnectionClosed` guard re-arms when
             // the agent pane reconnects or is removed) to avoid spamming the log
             // after the helper dies.
-            const auto agentPane = FindAgentPane();
-            const bool agentClosed = agentPane && agentPane->IsConnectionClosed();
+            //
+            // Only search for the agent pane when SOMETHING is closed: on the
+            // common all-healthy path no pane is closed, so the agent pane can't
+            // be either — skip the extra FindAgentPane() tree walk. agentClosed
+            // staying false there also re-arms the guard.
+            bool agentClosed = false;
+            if (isClosed)
+            {
+                const auto agentPane = FindAgentPane();
+                agentClosed = agentPane && agentPane->IsConnectionClosed();
+            }
             if (agentClosed && !_agentPaneConnectionClosed)
             {
                 _agentPaneLog("agent pane connection closed — wta helper backend disconnected");
