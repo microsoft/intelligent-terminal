@@ -156,7 +156,6 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     // IsWslProfile — pure, Source-independent WSL recognizer (no parsing;
     // the installer reuses the commandline + probes $WSL_DISTRO_NAME).
     TEST_METHOD(IsWslProfile_WslLauncherForms_True);
-    TEST_METHOD(IsWslProfile_WslSource_True);
     TEST_METHOD(IsWslProfile_System32BashLauncher_True);
     TEST_METHOD(IsWslProfile_GitBashAndOthers_False);
 
@@ -1725,28 +1724,21 @@ void ShellIntegrationTests::ProfileGate_BashRejectsSystem32WslLauncher()
 
 void ShellIntegrationTests::IsWslProfile_WslLauncherForms_True()
 {
-    // Every wsl.exe launch form is a WSL profile regardless of Source —
-    // the installer reuses the commandline and probes the distro, so we
-    // never parse `-d` / `--distribution-id` / Name(). This covers the
-    // common sourceless custom-profile gap AND the modern Store form.
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"wsl.exe -d Ubuntu"));
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"wsl -d Ubuntu"));
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"wsl.exe ~ -d Ubuntu"));
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"wsl.exe --distribution Debian"));
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"C:\\Windows\\System32\\wsl.exe -d Ubuntu-22.04"));
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"C:\\Windows\\system32\\wsl.exe --distribution-id {6f8e9a45-40ca-470d-a649-30afc57d2a57}"));
-    // Bare wsl.exe (default distro) is now supported — the probe resolves
-    // the default distro at runtime, so we no longer have to skip it.
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"wsl.exe"));
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"wsl"));
-}
-
-void ShellIntegrationTests::IsWslProfile_WslSource_True()
-{
-    // A WSL generator Source marks it as WSL even if the commandline form
-    // changes in future.
-    VERIFY_IS_TRUE(IsWslProfile(L"Windows.Terminal.Wsl", L"C:\\Windows\\System32\\wsl.exe -d Ubuntu"));
-    VERIFY_IS_TRUE(IsWslProfile(L"Microsoft.WSL", L"C:\\Windows\\system32\\wsl.exe --distribution-id {GUID}"));
+    // Every wsl.exe launch form is a WSL profile, recognized purely from the
+    // commandline (no Source) — the installer reuses the commandline and
+    // probes the distro, so we never parse `-d` / `--distribution-id` /
+    // Name(). This covers the common sourceless custom-profile gap, the
+    // legacy generator form, AND the modern Store `--distribution-id` form.
+    VERIFY_IS_TRUE(IsWslProfile(L"wsl.exe -d Ubuntu"));
+    VERIFY_IS_TRUE(IsWslProfile(L"wsl -d Ubuntu"));
+    VERIFY_IS_TRUE(IsWslProfile(L"wsl.exe ~ -d Ubuntu"));
+    VERIFY_IS_TRUE(IsWslProfile(L"wsl.exe --distribution Debian"));
+    VERIFY_IS_TRUE(IsWslProfile(L"C:\\Windows\\System32\\wsl.exe -d Ubuntu-22.04"));
+    VERIFY_IS_TRUE(IsWslProfile(L"C:\\Windows\\system32\\wsl.exe --distribution-id {6f8e9a45-40ca-470d-a649-30afc57d2a57}"));
+    // Bare wsl.exe (default distro) is supported — the probe resolves the
+    // default distro at runtime, so we no longer have to skip it.
+    VERIFY_IS_TRUE(IsWslProfile(L"wsl.exe"));
+    VERIFY_IS_TRUE(IsWslProfile(L"wsl"));
 }
 
 void ShellIntegrationTests::IsWslProfile_System32BashLauncher_True()
@@ -1755,21 +1747,21 @@ void ShellIntegrationTests::IsWslProfile_System32BashLauncher_True()
     // launcher (runs bash in the default distro), so it's a WSL profile —
     // even though ProfileMatchesShell(Bash) deliberately excludes it from
     // Git Bash.
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"C:\\Windows\\System32\\bash.exe"));
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"C:\\Windows\\System32\\bash.exe ~"));
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"C:\\Windows\\Sysnative\\bash.exe"));
-    VERIFY_IS_TRUE(IsWslProfile(L"", L"C:/Windows/System32/bash.exe"));
+    VERIFY_IS_TRUE(IsWslProfile(L"C:\\Windows\\System32\\bash.exe"));
+    VERIFY_IS_TRUE(IsWslProfile(L"C:\\Windows\\System32\\bash.exe ~"));
+    VERIFY_IS_TRUE(IsWslProfile(L"C:\\Windows\\Sysnative\\bash.exe"));
+    VERIFY_IS_TRUE(IsWslProfile(L"C:/Windows/System32/bash.exe"));
 }
 
 void ShellIntegrationTests::IsWslProfile_GitBashAndOthers_False()
 {
     // Git Bash (under Program Files) is NOT WSL.
-    VERIFY_IS_FALSE(IsWslProfile(L"", L"\"C:\\Program Files\\Git\\bin\\bash.exe\" -i -l"));
-    VERIFY_IS_FALSE(IsWslProfile(L"", L"C:\\Program Files\\Git\\bin\\bash.exe -i -l"));
-    VERIFY_IS_FALSE(IsWslProfile(L"", L"bash.exe -i"));
-    VERIFY_IS_FALSE(IsWslProfile(L"", L"pwsh.exe"));
+    VERIFY_IS_FALSE(IsWslProfile(L"\"C:\\Program Files\\Git\\bin\\bash.exe\" -i -l"));
+    VERIFY_IS_FALSE(IsWslProfile(L"C:\\Program Files\\Git\\bin\\bash.exe -i -l"));
+    VERIFY_IS_FALSE(IsWslProfile(L"bash.exe -i"));
+    VERIFY_IS_FALSE(IsWslProfile(L"pwsh.exe"));
     // Anchored on the launch exe: `cmd /c wsl …` launches cmd, not wsl.
-    VERIFY_IS_FALSE(IsWslProfile(L"", L"cmd.exe /c wsl -d Ubuntu"));
+    VERIFY_IS_FALSE(IsWslProfile(L"cmd.exe /c wsl -d Ubuntu"));
 }
 
 void ShellIntegrationTests::ProfileGate_AnyProfileEmptyCollection()

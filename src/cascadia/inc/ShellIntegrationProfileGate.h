@@ -13,12 +13,16 @@
 // file the user will never source — pure noise that pollutes their
 // HOME and the diff in their version-controlled dotfiles.
 //
-// This header exposes two pure functions:
+// This header exposes these pure functions:
 //
 //   * ProfileMatchesShell(target, source, commandline) — pure,
 //     trivially unit-testable. Launch-exe leaf token matching with
 //     a source discriminator for the Pwsh dynamic generator; see
 //     the rules table at the function body.
+//
+//   * IsWslProfile(commandline) — pure predicate recognizing a WSL
+//     profile (launch leaf `wsl(.exe)`, or the legacy System32
+//     `bash.exe` WSL launcher) purely from the commandline.
 //
 //   * AnyProfileUsesShell<ProfilesT>(target, profiles) — template
 //     iterator that calls ProfileMatchesShell on every profile in
@@ -26,10 +30,9 @@
 //     (a profile whose Source() or Commandline() throws simply does
 //     not contribute to the result; it never tanks the whole gate).
 //
-// Note: WSL distros are NOT covered here. The caller already iterates
-// `_settings.AllProfiles()` filtering on `Source=="Windows.Terminal.Wsl"`
-// and emits one Install call per matched profile — that path is
-// already profile-gated by construction.
+// WSL profiles are recognized by IsWslProfile (commandline-based, no
+// Source); the caller (ShellIntegrationSweep) snapshots the matching
+// commandlines and emits one Install call per distinct command.
 
 #pragma once
 
@@ -323,9 +326,10 @@ namespace Microsoft::Terminal::ShellIntegration
         }
 
         // The Windows directory (e.g. "C:\Windows"), resolved once per
-        // process via the OS API `GetWindowsDirectoryW` — which reads the
-        // real install path and cannot be spoofed by a tampered
-        // `%SystemRoot%` / `%windir%` environment variable.
+        // process via the OS API `GetWindowsDirectoryW` — i.e. the OS-reported
+        // install path rather than the `%SystemRoot%` / `%windir%` environment
+        // variables (which a process can override). This is a heuristic for
+        // where the OS WSL launcher lives, not a security/trust boundary.
         inline const std::wstring& WindowsDir()
         {
             static const std::wstring dir = []() -> std::wstring {
@@ -341,17 +345,17 @@ namespace Microsoft::Terminal::ShellIntegration
         }
 
         // True when the LAUNCH exe is the OS WSL launcher
-        // `%SystemRoot%\System32\bash.exe` (or the `\Sysnative\` alias for
+        // `<WindowsDir>\System32\bash.exe` (or the `\Sysnative\` alias for
         // 32-bit callers) — it has a `bash.exe` leaf but is NOT Git Bash; it
-        // runs bash in the DEFAULT WSL distro. We anchor on the REAL Windows
-        // directory (from %SystemRoot%) so a non-OS folder merely named
-        // "System32" cannot spoof it, AND we only inspect the LAUNCH token
-        // (the commandline prefix, after optional whitespace + an opening
-        // quote) so a System32 path appearing in the ARGUMENTS can't
+        // runs bash in the DEFAULT WSL distro. We anchor on the OS-reported
+        // Windows directory (GetWindowsDirectoryW) so a non-OS folder merely
+        // named "System32" isn't mistaken for it, AND we only inspect the
+        // LAUNCH token (the commandline prefix, after optional whitespace + an
+        // opening quote) so a System32 path appearing in the ARGUMENTS can't
         // false-match. These OS paths never contain spaces.
         inline bool IsSystem32BashLauncher(std::wstring_view commandline) noexcept
         {
-            // Lowercase + slash-normalized `%SystemRoot%\system32\bash` /
+            // Lowercase + slash-normalized `<WindowsDir>\system32\bash` /
             // `…\sysnative\bash` needles, built once per process.
             static const auto makeNeedle = [](std::wstring_view sub) {
                 std::wstring n = WindowsDir();
@@ -416,11 +420,12 @@ namespace Microsoft::Terminal::ShellIntegration
     //           and `pwsh.exe` ≠ `powershell.exe` as leaf tokens, so
     //           no NOT-pwsh discriminator is needed — pwsh launches
     //           naturally fail the powershell-leaf check.
-    //   * Bash (Git Bash): launch-exe leaf is `bash` or `bash.exe`.
+    //   * Bash (Git Bash): launch-exe leaf is `bash` or `bash.exe`,
+    //           EXCLUDING the System32/Sysnative `bash.exe` WSL launcher.
     //           WSL distro profiles whose launch is wsl.exe naturally
     //           fail this check (their leaf is `wsl(.exe)`, not
-    //           `bash(.exe)`) — they're covered by the Wsl-source
-    //           iteration on the caller side, not here.
+    //           `bash(.exe)`) — they're recognized by IsWslProfile, not
+    //           here.
     //
     // Commandline matching is case-insensitive (token-bounded leaf).
     // The source-string check is case-SENSITIVE because the WT
@@ -468,34 +473,34 @@ namespace Microsoft::Terminal::ShellIntegration
     }
 
     // Pure predicate: is this profile a WSL profile we should install bash
-    // integration into? True when ANY of:
-    //   * launch exe leaf is `wsl(.exe)` (covers `-d <name>`,
+    // integration into? True when EITHER:
+    //   * the launch exe leaf is `wsl(.exe)` (covers `-d <name>`,
     //     `--distribution <name>`, `--distribution-id {GUID}`, and bare
-    //     `wsl.exe` for the default distro — regardless of Source);
-    //   * Source is a WSL generator (`Windows.Terminal.Wsl` /
-    //     `Microsoft.WSL`);
-    //   * launch exe is the legacy WSL launcher `…\System32\bash.exe` /
+    //     `wsl.exe` for the default distro — regardless of profile Source);
+    //   * the launch exe is the legacy WSL launcher `…\System32\bash.exe` /
     //     `…\Sysnative\bash.exe` (runs bash in the DEFAULT distro — it IS
     //     WSL, just not Git Bash; ProfileMatchesShell(Bash) excludes it).
     //
-    // We deliberately do NOT parse the distro out of the commandline. The
-    // profile's commandline already selects the distro correctly, so the
-    // installer runs that exact commandline with a probe appended and reads
-    // `$WSL_DISTRO_NAME` / `$HOME` from the distro itself — no `-d` parse,
-    // no `Name()` fallback, no Source-specific handling, and renamed
-    // profiles / `--distribution-id {GUID}` / default-distro all just work.
+    // Recognition is purely commandline-based: every real WSL profile already
+    // launches `wsl.exe` (the legacy generator emits `…\wsl.exe -d <name>`,
+    // the Store generator `wsl.exe --distribution-id {GUID}`), so we don't
+    // need — and deliberately don't use — the profile Source. That also
+    // avoids a false positive for a WSL-source profile that left its
+    // commandline at the inherited `cmd.exe` default.
+    //
+    // We do NOT parse the distro out of the commandline. The profile's
+    // commandline already selects the distro, so the installer runs that exact
+    // command with a probe appended and reads `$WSL_DISTRO_NAME` / `$HOME`
+    // from the distro itself — no `-d` parse, no `Name()` fallback, no Source
+    // handling; renamed / `--distribution-id {GUID}` / default-distro profiles
+    // all just work.
     //
     // Anchored on the launch exe: `cmd.exe /c wsl -d Ubuntu` is NOT a WSL
     // profile here (its launch exe is cmd.exe), consistent with the rest of
     // the gate.
-    inline bool IsWslProfile(std::wstring_view source,
-                             std::wstring_view commandline) noexcept
+    inline bool IsWslProfile(std::wstring_view commandline) noexcept
     {
         if (details::CommandlineHasExeToken(commandline, L"wsl"))
-        {
-            return true;
-        }
-        if (source == L"Windows.Terminal.Wsl" || source == L"Microsoft.WSL")
         {
             return true;
         }

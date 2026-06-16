@@ -64,8 +64,10 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
     // Return the profile's launch commandline IF it is a WSL profile
     // (else empty). Uses the pure SI::IsWslProfile predicate (unit-tested in
     // ShellIntegrationTests.cpp): a WSL profile is one whose launch leaf is
-    // `wsl(.exe)`, OR whose Source is a WSL generator, OR which launches the
-    // legacy System32 `bash.exe` (the WSL default-distro launcher).
+    // `wsl(.exe)`, or which launches the legacy System32 `bash.exe` (the WSL
+    // default-distro launcher). Recognition is purely commandline-based — no
+    // Source needed — so a hand-made / sourceless `wsl -d <distro>` profile is
+    // covered too.
     //
     // We return the COMMANDLINE, not a parsed distro name: the installer
     // runs this exact commandline with a probe appended and reads the
@@ -74,9 +76,8 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
     // profiles all work uniformly with no parsing.
     inline std::wstring WslProfileCommandline(const Profile& profile)
     {
-        const std::wstring src{ profile.Source() };
-        const std::wstring cmd{ profile.Commandline() };
-        if (cmd.empty() || !SI::IsWslProfile(src, cmd))
+        std::wstring cmd{ profile.Commandline() };
+        if (cmd.empty() || !SI::IsWslProfile(cmd))
         {
             return {};
         }
