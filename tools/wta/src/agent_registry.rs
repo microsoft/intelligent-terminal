@@ -156,7 +156,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
     AgentProfile {
         id: "ollama",
         display_name: "Ollama",
-        exe_search_order: &[".exe", ".cmd"],
+        exe_search_order: &[".exe", ".cmd", ""],
         acp_flags: &[],
         acp_launch_command: "",
         acp_auth_flow: AcpAuthFlow::None,
