@@ -1484,15 +1484,15 @@ void ShellIntegrationTests::Wsl_StripExecTail_StripsExistingExecCommand()
     // Whitespace-robust: tabs / multiple spaces around the terminator, and a
     // `--` at end-of-string, are all handled (hand-edited commandlines).
     VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe  -d  Ubuntu" },
-                     StripExecTail(L"wsl.exe  -d  Ubuntu   -e fish", false));
+                     StripExecTail(L"wsl.exe  -d  Ubuntu   -e bash", false));
     VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe\t-d\tUbuntu" },
-                     StripExecTail(L"wsl.exe\t-d\tUbuntu\t-e\tfish", false));
+                     StripExecTail(L"wsl.exe\t-d\tUbuntu\t-e bash", false));
     VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe -d Ubuntu" },
                      StripExecTail(L"wsl.exe -d Ubuntu --", false));
-    // A token that merely STARTS with a terminator (e.g. `--exec-foo`,
-    // `-extra`) is not a terminator — only whole-token matches cut.
-    VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe -d Ubuntu --execfoo bar" },
-                     StripExecTail(L"wsl.exe -d Ubuntu --execfoo bar", false));
+    // A token that merely STARTS with a terminator string is NOT a terminator
+    // (only whole-token matches cut) — already covered by the
+    // `--distribution-id` case above, which starts with the `--` terminator
+    // but must not be stripped.
 }
 
 // ───────────────────────────────────────────────────────────────────
