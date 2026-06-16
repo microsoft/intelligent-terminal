@@ -701,9 +701,12 @@ fn notification_kind(notif: &acp::SessionNotification) -> &'static str {
 struct HelperHandler {
     helper_id: HelperId,
     /// The agent CLI this helper is bound to. Resolved lazily during
-    /// `initialize` from the helper's declared `_meta.wta.agent_cmd`
-    /// (or the master default), then reused by every later request on
-    /// this connection. `OnceLock` because the binding can't be known
+    /// `initialize` from the helper's declared `_meta.wta.agent_id`
+    /// (+ `model`): the master reconstructs the command from that id and
+    /// never executes a command string off the pipe (falling back to the
+    /// master default when no / unknown id is declared). Reused by every
+    /// later request on this connection. `OnceLock` because the binding
+    /// can't be known
     /// until the helper's `initialize` arrives, but the ACP protocol
     /// guarantees `initialize` precedes `new_session`/`prompt`/…, so
     /// `resolved_agent()` always finds it populated for those.
@@ -1713,19 +1716,10 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // no longer owns a single eager agent CLI. `cli.agent` / `cli.agent_id`
     // become the fallback default for helpers that don't declare one.
     // Host-supplied allowlist (GPO-filtered) of agent ids a helper may
-    // select. Empty argv ⇒ `None` (no allowlist; accept any known id).
-    let allowed_agent_ids: Option<std::collections::HashSet<String>> =
-        if cli.allowed_agent_ids.is_empty() {
-            None
-        } else {
-            Some(
-                cli.allowed_agent_ids
-                    .iter()
-                    .map(|s| s.trim().to_ascii_lowercase())
-                    .filter(|s| !s.is_empty())
-                    .collect(),
-            )
-        };
+    // select. An empty / all-blank argv means "no allowlist; accept any
+    // known id" (`None`) — see `normalize_allowed_agent_ids` for why that
+    // must NOT collapse to `Some(empty_set)` (a silent block-all).
+    let allowed_agent_ids = normalize_allowed_agent_ids(&cli.allowed_agent_ids);
     tracing::info!(
         target: "master",
         allowed_agent_ids = ?allowed_agent_ids,
@@ -1967,6 +1961,29 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     }
 }
 
+/// Normalize the host-supplied `--allowed-agent-ids` argv into the
+/// allowlist [`resolve_agent_selection`] consumes: trim + lowercase each
+/// entry, drop blanks, then collapse an empty result to `None` ("no
+/// allowlist supplied; accept any known id") rather than `Some(empty_set)`.
+///
+/// The collapse is load-bearing: with clap `value_delimiter = ','` an
+/// empty `--allowed-agent-ids ""` parses to `[""]` — a non-empty argv
+/// carrying zero real ids. Returning `Some({})` there would make
+/// [`resolve_agent_selection`] refuse EVERY id (a silent block-all);
+/// `None` correctly means "no host policy".
+fn normalize_allowed_agent_ids(raw: &[String]) -> Option<std::collections::HashSet<String>> {
+    let set: std::collections::HashSet<String> = raw
+        .iter()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if set.is_empty() {
+        None
+    } else {
+        Some(set)
+    }
+}
+
 /// Decide which agent command the master will spawn for a helper, given
 /// what the helper declared in `_meta.wta` and the master's trusted
 /// defaults / GPO allowlist.
@@ -2096,15 +2113,18 @@ async fn spawn_one_agent(
         .ok_or_else(|| anyhow!("agent CLI child has no stdout"))?;
     let is_npx = spawn_result.is_npx;
 
-    // Drain agent stderr to logs so failures are diagnosable. Tag with
-    // the agent key so multi-agent logs stay attributable.
+    // Drain agent stderr to logs so failures are diagnosable. Logged at
+    // `debug`, NOT `warn`: agent stderr routinely carries prompt / file
+    // content and routine adapter chatter, so emitting it at `warn` would
+    // be noisy and an information-leak in release builds. The `agent` tag
+    // keeps multi-agent logs attributable.
     if let Some(stderr) = spawn_result.child.stderr.take() {
         let key_for_log = key.clone();
         tokio::task::spawn_local(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                tracing::warn!(target: "agent_stderr", agent = %key_for_log, "{line}");
+                tracing::debug!(target: "agent_stderr", agent = %key_for_log, "{line}");
             }
         });
     }
@@ -3631,6 +3651,48 @@ mod tests {
             assert_eq!(cmd, DEFAULT_CMD, "requested={requested}");
             assert_eq!(id.as_deref(), Some("copilot"));
         }
+    }
+
+    #[test]
+    fn empty_or_blank_allowed_ids_argv_is_no_allowlist_not_block_all() {
+        // clap `value_delimiter = ','` turns `--allowed-agent-ids ""` into
+        // `[""]`: a non-empty argv carrying zero real ids. It MUST normalize
+        // to `None` ("no host allowlist; accept any known id"), never
+        // `Some({})` — the latter makes `resolve_agent_selection` refuse
+        // every id and silently fall back to the default for ALL tabs.
+        assert_eq!(normalize_allowed_agent_ids(&[]), None, "no argv");
+        assert_eq!(
+            normalize_allowed_agent_ids(&[String::new()]),
+            None,
+            "single empty string"
+        );
+        assert_eq!(
+            normalize_allowed_agent_ids(&["   ".to_string(), "\t".to_string()]),
+            None,
+            "all-whitespace entries"
+        );
+
+        // Real ids survive — trimmed + lowercased, blanks dropped.
+        let set = normalize_allowed_agent_ids(&[
+            "  Gemini ".to_string(),
+            String::new(),
+            "COPILOT".to_string(),
+        ])
+        .expect("non-empty allowlist");
+        assert_eq!(set, allow_set(&["gemini", "copilot"]));
+
+        // End-to-end: a surviving allowlist still blocks a known-but-unlisted
+        // id, while an empty one (→ None) honors any known id.
+        let listed = normalize_allowed_agent_ids(&["gemini".to_string()]);
+        let (cmd, id) = resolve(listed.as_ref(), Some("copilot"), None);
+        assert_eq!(cmd, DEFAULT_CMD, "unlisted id is refused");
+        assert_eq!(id.as_deref(), Some("copilot"));
+        let (cmd, _) = resolve(None, Some("copilot"), None);
+        assert_eq!(
+            cmd,
+            crate::agent_registry::build_acp_command("copilot", None),
+            "no allowlist ⇒ known id honored (reconstructed)"
+        );
     }
 
     #[test]

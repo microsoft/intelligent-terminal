@@ -672,7 +672,7 @@ GMEM
 Goldmine
 gonce
 goutput
-GPO
+gpo
 GPUs
 GREENSCROLL
 Grehan

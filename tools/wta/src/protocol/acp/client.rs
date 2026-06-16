@@ -2247,10 +2247,10 @@ pub async fn run_acp_client_over_pipe(
     pipe_name: String,
     acp_model_override: Option<String>,
     // Per-tab agent identity. Forwarded to the multi-agent master in the
-    // `initialize` handshake's `_meta.wta` so master spawns/reuses the
-    // matching agent CLI for THIS tab. `None` → master uses its `--agent`
-    // default (the legacy single-agent behavior).
-    agent_cmd: Option<String>,
+    // `initialize` handshake's `_meta.wta.agent_id` so master selects and
+    // reconstructs the matching agent CLI for THIS tab from the id alone
+    // (it never executes a command string sent over the pipe). `None` →
+    // master uses its `--agent` default (the legacy single-agent behavior).
     agent_id: Option<String>,
     owner_tab_id: Option<String>,
     initial_load_session_id: Option<String>,
@@ -2427,9 +2427,8 @@ pub async fn run_acp_client_over_pipe(
         // (it deliberately does NOT execute a command string sent over
         // the pipe — that would be an arbitrary-spawn surface for any
         // same-user process). Two tabs with different ids land on
-        // different CLIs; same-id tabs share one. `agent_cmd` is left
-        // unset: the master ignores it for spawning.
-        let _ = &agent_cmd; // retained param; no longer sent on the wire
+        // different CLIs; same-id tabs share one. No command string is
+        // ever put on the wire.
         crate::session_registry::inject_wta_meta(
             &mut req.meta,
             &crate::session_registry::WtaMeta {

@@ -2433,7 +2433,6 @@ impl App {
                             crate::protocol::acp::client::run_acp_client_over_pipe(
                                 pipe_name,
                                 acp_model,
-                                agent_cmd_opt,
                                 agent_id_opt,
                                 owner_tab_opt,
                                 None, // initial_load_session_id: already handled by the dead initial task

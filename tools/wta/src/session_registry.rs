@@ -99,9 +99,16 @@ pub fn extract_wta_meta(meta: &mut Option<acp::Meta>) -> WtaMeta {
     let Some(serde_json::Value::Object(obj)) = wta_val else {
         return WtaMeta::default();
     };
+    // Treat empty / whitespace-only values as absent (`None`) rather than
+    // `Some("")`: an empty string on the wire would otherwise make
+    // `WtaMeta::is_empty()` return false and keep `_meta.wta` alive for a
+    // semantically-empty field. Mirrors the helper's injection-side filter
+    // (`.filter(|s| !s.trim().is_empty())`) so values round-trip the same
+    // way in both directions.
     let str_field = |key: &str| {
         obj.get(key)
             .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
             .map(String::from)
     };
     WtaMeta {
@@ -109,11 +116,7 @@ pub fn extract_wta_meta(meta: &mut Option<acp::Meta>) -> WtaMeta {
         agent_cmd: str_field("agent_cmd"),
         agent_id: str_field("agent_id"),
         model: str_field("model"),
-        owner_tab_id: obj
-            .get("owner_tab_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(String::from),
+        owner_tab_id: str_field("owner_tab_id"),
     }
 }
 
@@ -2697,6 +2700,30 @@ mod tests {
         inject_wta_meta(&mut meta, &original);
         let parsed = extract_wta_meta(&mut meta);
         assert_eq!(parsed, original, "agent identity survives the wire");
+    }
+
+    #[test]
+    fn extract_drops_empty_and_whitespace_string_fields_to_none() {
+        // An empty / whitespace-only value on the wire must parse back to
+        // `None`, not `Some("")` — otherwise `WtaMeta::is_empty()` stays
+        // false and a semantically-empty `_meta.wta` is kept alive on the
+        // wire and in registry rows.
+        let mut map = serde_json::Map::new();
+        map.insert(
+            WTA_META_NAMESPACE.to_string(),
+            serde_json::json!({
+                "pane_session_id": "",
+                "agent_cmd": "",
+                "agent_id": "   ",
+                "model": "\t",
+                "owner_tab_id": " ",
+            }),
+        );
+        let mut meta: Option<acp::Meta> = Some(map);
+        let parsed = extract_wta_meta(&mut meta);
+        assert_eq!(parsed, WtaMeta::default(), "all-blank fields ⇒ default");
+        assert!(parsed.is_empty(), "is_empty() true for all-blank input");
+        assert!(meta.is_none(), "_meta with only-blank wta collapses to None");
     }
 
     // ── apply_ext_notification ──────────────────────────────────────

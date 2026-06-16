@@ -1838,13 +1838,23 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring effectiveAgentId;
         winrt::hstring effectiveModel;
         winrt::hstring agentCliPath;
-        if (tab->HasAgentOverride())
+        const bool hasAgentOverride = tab->HasAgentOverride();
+        if (hasAgentOverride)
         {
             effectiveAgentId = tab->AgentIdOverride();
             effectiveModel = tab->AgentModelOverride();
             agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, tab->AgentCustomCommandOverride());
         }
-        else
+        // `_ResolveAgentCliPathForId` returns empty to signal "fall back"
+        // (the override id is unknown / blocked by GPO, or a custom override
+        // has no usable command line). Honor that contract here instead of
+        // proceeding with an empty command line — otherwise the helper is
+        // launched with no `--agent` but a stale `--agent-id`, and the tab
+        // silently runs whatever the master happens to default to. Fall back
+        // to the global/default agent (the same resolution as the
+        // no-override case). The GPO all-agents-blocked case is still caught
+        // by the policy check below.
+        if (!hasAgentOverride || agentCliPath.empty())
         {
             effectiveAgentId = globals.EffectiveAcpAgent();
             effectiveModel = globals.AcpModel();
