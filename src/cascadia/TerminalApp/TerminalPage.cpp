@@ -1859,6 +1859,20 @@ namespace winrt::TerminalApp::implementation
             effectiveAgentId = globals.EffectiveAcpAgent();
             effectiveModel = globals.AcpModel();
             agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
+            // When the global selection is absent/blocked,
+            // _ResolveEffectiveAgentCliPath falls back to auto-detection and
+            // returns a command line — but the *id* it detected is discarded,
+            // leaving effectiveAgentId empty while agentCliPath is non-empty.
+            // The helper would then forward no --agent-id, and the multi-agent
+            // master would pick its own default agent (and mis-stamp the
+            // session's cli_source) instead of the one we actually resolved a
+            // CLI for. Recover the detected id so the helper declares it.
+            // _DetectAgentCli() is deterministic and is the same fallback the
+            // resolver used internally, so it yields the matching id.
+            if (effectiveAgentId.empty() && !agentCliPath.empty())
+            {
+                effectiveAgentId = _DetectAgentCli();
+            }
         }
 
         // GPO `AllowedAgents` enforcement — mirror the legacy path so a
