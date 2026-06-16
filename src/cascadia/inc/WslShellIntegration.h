@@ -255,6 +255,23 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                     cmdLine += L" -e sh -c \"echo $WSL_DISTRO_NAME; echo $HOME\"";
                 }
 
+                // Expand %VAR% in the launcher path. CreateProcessW does NOT
+                // expand environment variables, but Windows Terminal expands
+                // them when it launches a profile, so a profile commandline
+                // such as `%SystemRoot%\System32\wsl.exe -d Ubuntu` must
+                // resolve here too (matching how it actually runs). The probe
+                // suffix uses shell `$VAR` syntax, which Expand… leaves alone.
+                if (const DWORD needed = ExpandEnvironmentStringsW(cmdLine.c_str(), nullptr, 0); needed > 1)
+                {
+                    std::wstring expanded(needed, L'\0');
+                    const DWORD wrote = ExpandEnvironmentStringsW(cmdLine.c_str(), expanded.data(), needed);
+                    if (wrote != 0 && wrote <= needed)
+                    {
+                        expanded.resize(wrote - 1); // drop trailing NUL
+                        cmdLine = std::move(expanded);
+                    }
+                }
+
                 // Pass WSL_UTF8=1 via a child-only environment block
                 // instead of mutating the process-wide environment.
                 // SetEnvironmentVariableW would let other threads in
