@@ -6530,9 +6530,7 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Up
-                if self.current_tab().input.is_empty()
-                    && self.current_tab().turn.recommendations().is_some() =>
+            KeyCode::Up if self.current_tab().turn.recommendations().is_some() =>
             {
                 if self.current_tab_mut().selected_recommendation > 0 {
                     self.current_tab_mut().selected_recommendation -= 1;
@@ -6544,9 +6542,7 @@ impl App {
                     self.recompute_chip_override(&tab_id);
                 }
             }
-            KeyCode::Down
-                if self.current_tab().input.is_empty()
-                    && self.current_tab().turn.recommendations().is_some() =>
+            KeyCode::Down if self.current_tab().turn.recommendations().is_some() =>
             {
                 let choices_len = self
                     .current_tab()
@@ -6586,8 +6582,7 @@ impl App {
                 self.current_tab_mut().chat_scroll.by(-1);
             }
             KeyCode::Right | KeyCode::Tab
-                if self.current_tab().input.is_empty()
-                    && self.current_tab().turn.recommendations().is_some() =>
+                if self.current_tab().turn.recommendations().is_some() =>
             {
                 // Cycle button focus forward within the selected card.
                 // Send: 0=Run, 1=Insert. OpenAndSend has only index 0.
@@ -6616,9 +6611,8 @@ impl App {
                 // effect. Lets the user back out of the history nav cleanly.
                 self.current_tab_mut().selected_completed_turn_idx = None;
             }
-            KeyCode::Left
-                if self.current_tab().input.is_empty()
-                    && self.current_tab().turn.recommendations().is_some() =>
+            KeyCode::Left | KeyCode::BackTab
+                if self.current_tab().turn.recommendations().is_some() =>
             {
                 // Cycle button focus backward.
                 let button_count = self.button_count_for_selected();
@@ -6778,6 +6772,41 @@ impl App {
                 self.current_tab_mut().toggle_selected_completed_turn();
             }
             KeyCode::Enter => {
+                if self.current_tab().turn.recommendations().is_some() {
+                    // Card is visible — it owns focus even when the input box
+                    // already has draft text. Keep the draft intact and route
+                    // Enter to the selected card action instead of submitting
+                    // or slash-parsing the input.
+                    if self.state == ConnectionState::Connected {
+                        let session_id = self.current_tab().session_id.clone();
+                        if let Some(session_id) = session_id {
+                            let label_choice = self
+                                .selected_recommendation_choice()
+                                .map(|c| c.choice)
+                                .unwrap_or(0);
+                            let insert_only = self.current_tab().selected_button == 1
+                                && self
+                                    .selected_recommendation_choice()
+                                    .map(|c| self.is_send_choice(c))
+                                    .unwrap_or(false);
+                            tracing::info!(
+                                target: "autofix",
+                                choice = label_choice,
+                                insert_only,
+                                "Executing choice",
+                            );
+                            let label = if insert_only {
+                                "Inserting"
+                            } else {
+                                "Executing"
+                            };
+                            self.push_execution_info(format!("{} choice {}.", label, label_choice));
+                            self.turn_execute_card(&session_id);
+                        }
+                    }
+                    return;
+                }
+
                 // Slash-command intercept (popup selection, known command, or
                 // unknown-command warning). Runs before the prompt path so
                 // commands like /stop work even mid-flight, and /help / /clear
@@ -6789,41 +6818,7 @@ impl App {
                 }
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
-                if self.current_tab().input.is_empty()
-                    && self.state == ConnectionState::Connected
-                    && self.current_tab().turn.recommendations().is_some()
-                {
-                    // Card is visible — Enter executes the selected choice.
-                    // `turn_execute_card` dispatches the choice to the
-                    // coordinator, transitions the state machine to
-                    // `Surfaced{Empty, end_pending preserved}`, and emits
-                    // the autofix-cleared bottom-bar event when applicable.
-                    let session_id = self.current_tab().session_id.clone();
-                    if let Some(session_id) = session_id {
-                        let label_choice = self
-                            .selected_recommendation_choice()
-                            .map(|c| c.choice)
-                            .unwrap_or(0);
-                        let insert_only = self.current_tab().selected_button == 1
-                            && self
-                                .selected_recommendation_choice()
-                                .map(|c| self.is_send_choice(c))
-                                .unwrap_or(false);
-                        tracing::info!(
-                            target: "autofix",
-                            choice = label_choice,
-                            insert_only,
-                            "Executing choice",
-                        );
-                        let label = if insert_only {
-                            "Inserting"
-                        } else {
-                            "Executing"
-                        };
-                        self.push_execution_info(format!("{} choice {}.", label, label_choice));
-                        self.turn_execute_card(&session_id);
-                    }
-                } else if !self.current_tab().input.is_empty()
+                if !self.current_tab().input.is_empty()
                     && self.state == ConnectionState::Connected
                 {
                     // Same-tab single-flight: refuse a new prompt if the
@@ -13807,6 +13802,77 @@ mod tests {
             app.current_tab().chat_scroll.offset,
             3,
             "non-empty input must NOT trigger the chat-scroll fallback",
+        );
+    }
+
+    #[test]
+    fn recommendation_card_keeps_focus_when_input_has_draft() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("pane-A", "ls"), send_choice("pane-B", "pwd")],
+            0,
+            None,
+        );
+        app.current_tab_mut().input = "draft".into();
+        app.current_tab_mut().cursor_pos = "draft".len();
+        app.current_tab_mut().chat_scroll.offset = 7;
+
+        assert!(
+            !app.current_tab().input_has_nav_focus(),
+            "a visible card owns focus even when the input keeps draft text",
+        );
+
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_recommendation, 1);
+        assert_eq!(app.current_tab().input, "draft");
+        assert_eq!(
+            app.current_tab().chat_scroll.offset,
+            7,
+            "card navigation must not fall through to chat scrolling",
+        );
+
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_recommendation, 0);
+
+        app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_button, 1);
+        app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_button, 0);
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert_eq!(
+            app.current_tab().input,
+            "draft",
+            "typing stays locked while the card owns focus",
+        );
+    }
+
+    #[test]
+    fn recommendation_card_enter_wins_over_draft_input() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+        stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+        app.current_tab_mut().input = "/help".into();
+        app.current_tab_mut().cursor_pos = "/help".len();
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert_eq!(
+            app.current_tab().input,
+            "/help",
+            "executing the card must preserve the user's draft",
+        );
+        assert!(
+            app.current_tab().turn.recommendations().is_none(),
+            "Enter should execute the visible card, not submit or slash-parse the draft",
+        );
+        assert!(
+            !app.help_overlay_visible,
+            "draft slash commands must not run while a recommendation card owns focus",
         );
     }
 
