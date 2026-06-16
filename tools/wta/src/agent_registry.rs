@@ -153,6 +153,22 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         resume_flag: "--resume",
         new_session_id_flag: Some("--session-id"),
     },
+    AgentProfile {
+        id: "ollama",
+        display_name: "Ollama",
+        exe_search_order: &[".exe", ".cmd"],
+        acp_flags: &[],
+        acp_launch_command: "",
+        acp_auth_flow: AcpAuthFlow::None,
+        delegate_prompt_flag: PromptFlag::Positional,
+        model_flags: &[],
+        install_hint: "Install Ollama from https://ollama.com",
+        install_url: "https://ollama.com",
+        auth_check_command: "",
+        auth_hint: "Install Ollama and ensure `ollama` is on PATH.",
+        resume_flag: "",
+        new_session_id_flag: None,
+    },
 ];
 
 pub const DEFAULT_PROFILE: AgentProfile = AgentProfile {
@@ -475,6 +491,12 @@ mod tests {
         assert_eq!(resolve_agent_id_from_cmd("copilot --acp --stdio"), "copilot");
         assert_eq!(resolve_agent_id_from_cmd("gemini --experimental-acp"), "gemini");
         assert_eq!(resolve_agent_id_from_cmd("claude --resume foo"), "claude");
+    }
+
+    #[test]
+    fn resolve_agent_id_from_cmd_recognises_ollama_as_a_known_delegate_agent() {
+        assert_eq!(resolve_agent_id_from_cmd("ollama"), "ollama");
+        assert_eq!(lookup_profile_by_id("ollama").display_name, "Ollama");
     }
 
     #[test]
