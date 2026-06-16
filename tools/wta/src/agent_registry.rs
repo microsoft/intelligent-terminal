@@ -45,7 +45,7 @@ pub struct AgentProfile {
     pub acp_flags: &'static [&'static str],
     /// Override command for ACP mode. When non-empty, this is the full
     /// commandline used to spawn the ACP server (e.g.
-    /// `"npx -y @zed-industries/claude-code-acp"` for an adapter package).
+    /// `"npx -y @agentclientprotocol/claude-agent-acp"` for an adapter package).
     /// When empty, `build_acp_command` falls back to `id + acp_flags`.
     pub acp_launch_command: &'static str,
     /// Authentication flow required for ACP sessions.
@@ -101,10 +101,12 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         display_name: "Claude",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &[],
-        // Claude CLI itself doesn't speak ACP. We launch the Zed-maintained
-        // adapter via npx; npm-installed `claude` shim implies node/npx
-        // are present, so this works whenever delegate mode does.
-        acp_launch_command: "npx -y @zed-industries/claude-code-acp",
+        // Claude CLI itself doesn't speak ACP. We launch the
+        // ACP-project-maintained adapter via npx; npm-installed
+        // `claude` shim implies node/npx are present, so this works whenever
+        // delegate mode does. (Renamed from the deprecated
+        // `@zed-industries/claude-code-acp`; see issue #257.)
+        acp_launch_command: "npx -y @agentclientprotocol/claude-agent-acp",
         acp_auth_flow: AcpAuthFlow::External,
         delegate_prompt_flag: PromptFlag::Positional,
         model_flags: &[],
@@ -211,7 +213,7 @@ pub fn lookup_profile_by_id(id: &str) -> &'static AgentProfile {
 /// shapes:
 ///
 ///   1. Bare names with flags:  `"copilot --acp --stdio"` → `"copilot"`.
-///   2. Adapter launches:        `"npx -y @zed-industries/claude-code-acp"`
+///   2. Adapter launches:        `"npx -y @agentclientprotocol/claude-agent-acp"`
 ///      → `"claude"` (matched against each profile's `acp_launch_command`).
 ///   3. Full executable paths:   `"C:\\Tools\\copilot.exe --acp --stdio"`
 ///      → `"copilot"` (via [`lookup_profile`] which strips path and
@@ -225,7 +227,7 @@ pub fn resolve_agent_id_from_cmd(agent_cmd: &str) -> &'static str {
     }
 
     // Adapter-style: the whole command equals a known profile's
-    // `acp_launch_command` (e.g. `"npx -y @zed-industries/claude-code-acp"`).
+    // `acp_launch_command` (e.g. `"npx -y @agentclientprotocol/claude-agent-acp"`).
     // Match exact first; fall back to prefix match so trailing flags don't
     // hide the adapter (e.g. someone appending `--debug`).
     if let Some(profile) = KNOWN_AGENTS
@@ -249,7 +251,7 @@ pub fn resolve_agent_id_from_cmd(agent_cmd: &str) -> &'static str {
 /// E.g. `build_acp_command("copilot", Some("gpt-5"))` → `"copilot --acp --stdio --model gpt-5"`.
 /// For agents whose CLI doesn't speak ACP natively (claude, codex), this
 /// returns the adapter launch command instead — e.g.
-/// `build_acp_command("claude", None)` → `"npx -y @zed-industries/claude-code-acp"`.
+/// `build_acp_command("claude", None)` → `"npx -y @agentclientprotocol/claude-agent-acp"`.
 pub fn build_acp_command(agent_id: &str, model: Option<&str>) -> String {
     let profile = lookup_profile_by_id(agent_id);
 
@@ -280,7 +282,7 @@ pub fn build_acp_command(agent_id: &str, model: Option<&str>) -> String {
 /// strip ACP-specific flags to produce a clean delegate commandline,
 /// preserving model flags.  Returns `None` if the command is not a known ACP agent.
 ///
-/// For adapter-style launches (e.g. `"npx -y @zed-industries/claude-code-acp"`),
+/// For adapter-style launches (e.g. `"npx -y @agentclientprotocol/claude-agent-acp"`),
 /// returns the bare agent id (e.g. `"claude"`) — delegate mode invokes the
 /// agent's own CLI directly, not the ACP adapter.
 pub fn strip_acp_flags_for_delegate(agent_cmd: &str) -> Option<String> {
@@ -479,7 +481,7 @@ mod tests {
     fn resolve_agent_id_from_cmd_recognises_adapter_launches() {
         // Exact match against the known adapter command.
         assert_eq!(
-            resolve_agent_id_from_cmd("npx -y @zed-industries/claude-code-acp"),
+            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/claude-agent-acp"),
             "claude",
         );
         assert_eq!(
@@ -488,7 +490,7 @@ mod tests {
         );
         // Adapter prefix with extra trailing args still resolves.
         assert_eq!(
-            resolve_agent_id_from_cmd("npx -y @zed-industries/claude-code-acp --debug"),
+            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/claude-agent-acp --debug"),
             "claude",
         );
     }

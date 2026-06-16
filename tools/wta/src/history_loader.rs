@@ -42,13 +42,16 @@
 //             - cwd          = `session_meta` payload.cwd
 //             - title        = first `event_msg` payload.user_message,
 //                              else first `response_item` role=user content
-//                              (skipping synthetic `<environment_context>`
-//                              prefixes injected by the CLI)
+//                              (skipping codex's synthetic injections —
+//                              `<environment_context>` & friends plus the
+//                              `# AGENTS.md instructions for <dir>` block;
+//                              see `codex_user_text_is_synthetic`)
 //             - last_activity= `session_meta` payload.timestamp (fallback file mtime)
 //             - skip "phantom" sessions whose jsonl contains only the
-//               `session_meta` header and/or synthetic
-//               `<environment_context>` response_items (no real user
-//               turn). `codex resume <id>` would reject these as having
+//               `session_meta` header and/or synthetic injected
+//               response_items (`<environment_context>`, AGENTS.md docs, …;
+//               see `codex_user_text_is_synthetic`) with no real user
+//               turn. `codex resume <id>` would reject these as having
 //               no conversation to resume.
 //
 // (Note: per-subagent JSONL files may live in nested `<UUID>/` subdirs of
@@ -681,6 +684,10 @@ fn load_codex(home: &Path) -> Vec<AgentSession> {
                     if !name.starts_with("rollout-") || !name.ends_with(".jsonl") { continue; }
                     if !codex_session_has_real_content(&path) { continue; }
                     let Some(meta) = read_codex_session_meta(&path) else { continue; };
+                    // Skip Codex internal multi-agent subagent forks: they get
+                    // their own rollout file but inherit the parent's history
+                    // (same title) and are not user-facing sessions.
+                    if meta.is_subagent { continue; }
                     let title = codex_title_from_file(&path)
                         .unwrap_or_else(|| short_id(&meta.id, "codex"));
                     let last_activity_at = meta.timestamp
@@ -712,9 +719,10 @@ fn load_codex(home: &Path) -> Vec<AgentSession> {
 }
 
 struct CodexSessionMeta {
-    id:        String,
-    cwd:       PathBuf,
-    timestamp: Option<SystemTime>,
+    id:          String,
+    cwd:         PathBuf,
+    timestamp:   Option<SystemTime>,
+    is_subagent: bool,
 }
 
 fn read_codex_session_meta(path: &Path) -> Option<CodexSessionMeta> {
@@ -728,10 +736,31 @@ fn read_codex_session_meta(path: &Path) -> Option<CodexSessionMeta> {
     let payload = v.get("payload")?;
     let ts_str = payload.get("timestamp").and_then(|s| s.as_str());
     Some(CodexSessionMeta {
-        id:        payload.get("id")?.as_str()?.to_string(),
-        cwd:       PathBuf::from(payload.get("cwd")?.as_str()?),
-        timestamp: ts_str.and_then(parse_iso_to_system_time),
+        id:          payload.get("id")?.as_str()?.to_string(),
+        cwd:         PathBuf::from(payload.get("cwd")?.as_str()?),
+        timestamp:   ts_str.and_then(parse_iso_to_system_time),
+        is_subagent: codex_payload_is_subagent(payload),
     })
+}
+
+/// True if a Codex rollout record is the `session_meta` of an internal
+/// multi-agent subagent / forked thread. Codex's `multi_agent_v1` / `spawn_agent`
+/// tool forks a child thread that gets its own `rollout-*.jsonl` (carrying
+/// `source.subagent` in its meta) and inherits the parent's full history — so it
+/// shows the same first user message / title. It is a codex-internal worker, not
+/// a user-facing session, and must not surface as its own session row.
+pub(crate) fn codex_record_is_subagent_meta(v: &serde_json::Value) -> bool {
+    v.get("type").and_then(|t| t.as_str()) == Some("session_meta")
+        && v.get("payload").map(codex_payload_is_subagent).unwrap_or(false)
+}
+
+/// True if a Codex `session_meta` payload's `source` is the subagent variant
+/// (`{"subagent": …}`) rather than a top-level session (`"cli"` / `"user"`).
+pub(crate) fn codex_payload_is_subagent(payload: &serde_json::Value) -> bool {
+    payload
+        .get("source")
+        .and_then(|s| s.get("subagent"))
+        .is_some()
 }
 
 fn codex_session_has_real_content(path: &Path) -> bool {
@@ -759,7 +788,7 @@ fn codex_session_has_real_content(path: &Path) -> bool {
                         .and_then(|c0| c0.get("text"))
                         .and_then(|s| s.as_str())
                         .unwrap_or("");
-                    if !text.starts_with("<environment_context>") { return true; }
+                    if !codex_user_text_is_synthetic(text) { return true; }
                 }
             }
             _ => {}
@@ -792,7 +821,7 @@ fn codex_title_from_file(path: &Path) -> Option<String> {
                         .and_then(|c0| c0.get("text"))
                         .and_then(|s| s.as_str())
                         .unwrap_or("");
-                    if !text.starts_with("<environment_context>") {
+                    if !codex_user_text_is_synthetic(text) {
                         let title = first_nonblank_line(text);
                         if !title.is_empty() { return Some(title); }
                     }
@@ -808,9 +837,50 @@ fn first_nonblank_line(raw: &str) -> String {
     raw.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string()
 }
 
+/// Is this codex user-role `content.text` a *synthetic* record codex injects
+/// around the real conversation rather than something the user typed?
+///
+/// Codex prepends/interleaves several non-prompt user-role records: XML-ish
+/// wrapper blocks (`<environment_context>`, `<user_instructions>`,
+/// `<subagent_notification>`, `<turn_aborted>`, …) and one
+/// `# AGENTS.md instructions for <dir>` block per project doc it auto-loads.
+/// These appear *before* the user's first real prompt in the rollout, so both
+/// the title scanner and the "has real content" (phantom) check must skip them
+/// — otherwise a freshly opened, never-prompted codex session is treated as
+/// real and titled with a doc heading (e.g.
+/// `# AGENTS.md instructions for C:\…\intelligent-terminal`) instead of the
+/// user's prompt. Add new codex wrapper tags to `WRAPPER_TAGS` as they appear.
+fn codex_user_text_is_synthetic(text: &str) -> bool {
+    const WRAPPER_TAGS: &[&str] = &[
+        "<environment_context",
+        "<user_instructions",
+        "<subagent_notification",
+        "<turn_aborted",
+    ];
+    let t = text.trim_start();
+    WRAPPER_TAGS.iter().any(|tag| t.starts_with(tag))
+        || t.starts_with("# AGENTS.md instructions for ")
+}
+
 pub fn codex_title_for_key(home: &Path, key: &str) -> Option<String> {
     let path = find_codex_rollout_by_id(home, key)?;
     codex_title_from_file(&path)
+}
+
+/// Read a Codex session's working directory from its rollout `session_meta`
+/// record (always the first line). Shell-pane Codex rows have no path-encoded
+/// cwd (unlike Claude), and Codex writes no title until the user's first
+/// message — so without this the row would have an empty cwd and the session
+/// view's cwd-basename title fallback would render a placeholder for the ~20s
+/// before that first message. Returns `None` if the file/field is absent.
+pub(crate) fn codex_cwd_from_rollout(path: &Path) -> Option<PathBuf> {
+    let first = stream_jsonl_lines(path, CLASSIFY_SCAN_BYTES_CAP)?.next()?;
+    let v: serde_json::Value = serde_json::from_str(&first).ok()?;
+    let cwd = v.get("payload")?.get("cwd")?.as_str()?;
+    if cwd.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(cwd))
 }
 
 /// Locate the rollout file for a given session UUID.
@@ -823,7 +893,7 @@ pub fn codex_title_for_key(home: &Path, key: &str) -> Option<String> {
 /// The filename suffix `<id>.jsonl` is a fast pre-filter; we still verify
 /// `payload.id == id` to guard against renamed files or UUID-prefix
 /// collisions.
-fn find_codex_rollout_by_id(home: &Path, id: &str) -> Option<PathBuf> {
+pub(crate) fn find_codex_rollout_by_id(home: &Path, id: &str) -> Option<PathBuf> {
     let root = home.join(".codex").join("sessions");
     let Ok(years) = fs::read_dir(&root) else { return None };
     for y in years.flatten() {
@@ -1421,6 +1491,29 @@ mod tests {
         assert_eq!(parse_simple_yaml(text, "summary_count").as_deref(), Some("0"));
         // Querying a nonexistent prefix must not partial-match a longer key.
         assert_eq!(parse_simple_yaml(text, "summa"), None);
+    }
+
+    #[test]
+    fn codex_cwd_from_rollout_reads_session_meta() {
+        let dir = tmp_root("codex-cwd");
+        let path = dir.join("rollout-x.jsonl");
+        write_file(
+            &path,
+            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"abc\",\"cwd\":\"C:\\\\Users\\\\user\"}}\n\
+             {\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\"}}\n",
+        );
+        assert_eq!(
+            codex_cwd_from_rollout(&path),
+            Some(PathBuf::from("C:\\Users\\user"))
+        );
+    }
+
+    #[test]
+    fn codex_cwd_from_rollout_none_when_absent() {
+        let dir = tmp_root("codex-cwd-none");
+        let path = dir.join("rollout-y.jsonl");
+        write_file(&path, "{\"type\":\"session_meta\",\"payload\":{\"id\":\"abc\"}}\n");
+        assert_eq!(codex_cwd_from_rollout(&path), None);
     }
 
     #[test]
@@ -2228,6 +2321,14 @@ mod tests {
 \"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\"source\":\"cli\"}}}}\n")
     }
 
+    fn codex_subagent_meta_line(id: &str, parent: &str, ts: &str, cwd: &str) -> String {
+        format!(
+            "{{\"timestamp\":\"{ts}\",\"type\":\"session_meta\",\
+\"payload\":{{\"id\":\"{id}\",\"forked_from_id\":\"{parent}\",\"timestamp\":\"{ts}\",\"cwd\":\"{cwd}\",\
+\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\
+\"source\":{{\"subagent\":{{\"thread_spawn\":{{\"parent_thread_id\":\"{parent}\",\"depth\":1}}}}}}}}}}\n")
+    }
+
     fn codex_user_msg_line(ts: &str, text: &str) -> String {
         format!(
             "{{\"timestamp\":\"{ts}\",\"type\":\"event_msg\",\
@@ -2260,6 +2361,42 @@ mod tests {
         write_file(&path, &codex_meta_line(id, "2026-05-28T11:00:00Z", "C:/x"));
         assert_eq!(load_codex(&home).len(), 0, "phantom (meta-only) must be filtered out");
         let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn load_codex_skips_subagent_fork() {
+        // Codex's multi_agent_v1/spawn_agent forks a child thread that gets its
+        // own rollout (source.subagent) and inherits the parent's first user
+        // message — so it has an identical title. It is a codex-internal worker,
+        // not a user session, and must not appear as a (duplicate) row.
+        let home = tmp_root("load-codex-subagent");
+        let parent = "11111111-2222-3333-4444-555555555555";
+        let child  = "99999999-2222-3333-4444-555555555555";
+        let pp = codex_session_path(&home, "2026", "06", "10", "2026-06-10T13-14-32", parent);
+        write_file(
+            &pp,
+            &(codex_meta_line(parent, "2026-06-10T13:14:32Z", "C:/w")
+                + &codex_user_msg_line("2026-06-10T13:14:43Z", "start new tab agent pane session")),
+        );
+        let cp = codex_session_path(&home, "2026", "06", "10", "2026-06-10T13-15-12", child);
+        write_file(
+            &cp,
+            &(codex_subagent_meta_line(child, parent, "2026-06-10T13:15:12Z", "C:/w")
+                + &codex_user_msg_line("2026-06-10T13:15:12Z", "start new tab agent pane session")),
+        );
+
+        let rows = load_codex(&home);
+        assert_eq!(rows.len(), 1, "subagent fork must be filtered, got {:?}", rows);
+        assert_eq!(rows[0].key, parent, "only the top-level session should survive");
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_payload_is_subagent_discriminates_source() {
+        let cli = serde_json::json!({ "source": "cli" });
+        assert!(!codex_payload_is_subagent(&cli), "top-level source=\"cli\" is not a subagent");
+        let sub = serde_json::json!({ "source": { "subagent": { "thread_spawn": { "depth": 1 } } } });
+        assert!(codex_payload_is_subagent(&sub), "source.subagent must be detected");
     }
 
     #[test]
@@ -2346,6 +2483,51 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert!(rows[0].title.contains("refactor the parser"),
                 "got title: {:?}", rows[0].title);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_title_skips_injected_agents_md_instructions() {
+        // codex auto-loads AGENTS.md when the cwd has one and prepends it as a
+        // synthetic user-role response_item ("# AGENTS.md instructions for …")
+        // BEFORE the real prompt. It must not become the session title — the
+        // real prompt must win. Regression for the 69-char AGENTS.md-heading
+        // title seen on sessions run inside the intelligent-terminal repo.
+        let home = tmp_root("codex-title-agents-md");
+        let id = "abcdef00-4444-4444-4444-444444444444";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T14-00-00", id);
+        let agents = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"# AGENTS.md instructions for C:/proj\\n\\n<INSTRUCTIONS>\\n be concise \\n</INSTRUCTIONS>\"}}]}}}}\n");
+        let real = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"friday is wonderful\"}}]}}}}\n");
+        write_file(&path, &(codex_meta_line(id, "2026-05-28T14:00:00Z", "C:/proj") + &agents + &real));
+        let rows = load_codex(&home);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].title, "friday is wonderful",
+                   "AGENTS.md injection must be skipped; got: {:?}", rows[0].title);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_session_with_only_injected_context_is_phantom() {
+        // meta + <environment_context> + AGENTS.md injection, but no real user
+        // turn → phantom (must not surface as a resumable session titled with a
+        // doc heading). Guards the shared `codex_user_text_is_synthetic` used by
+        // `codex_session_has_real_content`.
+        let home = tmp_root("codex-phantom-agents-md");
+        let id = "abcdef00-5555-5555-5555-555555555555";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T15-00-00", id);
+        let env = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"<environment_context>cwd=C:/proj</environment_context>\"}}]}}}}\n");
+        let agents = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"# AGENTS.md instructions for C:/proj\"}}]}}}}\n");
+        write_file(&path, &(codex_meta_line(id, "2026-05-28T15:00:00Z", "C:/proj") + &env + &agents));
+        assert_eq!(load_codex(&home).len(), 0,
+                   "meta + env_context + AGENTS.md injection alone must be phantom");
         let _ = fs::remove_dir_all(&home);
     }
 

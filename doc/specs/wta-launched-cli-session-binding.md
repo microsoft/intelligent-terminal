@@ -101,10 +101,14 @@ At each in-scope launch:
 
 No file discovery, no hooks, no PEB read — the row is **born bound** to the pane.
 
-> **As built:** that "register" step is the existing
-> `intellterm.wta/session_hook` ext-method with a `SessionStarted` event — the
-> master reducer already turns it into a born-bound Class-B row, so no new
-> message type was needed.
+> **As built:** the register step sends a `SessionStarted` over a dedicated
+> `intellterm.wta/session_born_bound` ext-method (same wire body as
+> `…/session_hook`). The distinct method lets the master record the session as
+> *binding-only* (`born_bound`) rather than hook-owned, so the file/process
+> watcher can still supply **status** (Working/Idle/Attention) for it when no
+> hook is installed — without re-binding the pane. Resume's
+> `ResumeDispatched`/`ResumePaneAssigned` get the same binding-only treatment.
+> See [hybrid-agent-session-tracking.md](./hybrid-agent-session-tracking.md).
 
 **Precedent**: master already records `(session_id, pane_session_id)` for Class A
 agent panes (`agent_pane_origin.rs` v2), and the registry already carries the

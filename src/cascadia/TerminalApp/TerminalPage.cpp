@@ -1064,7 +1064,7 @@ namespace winrt::TerminalApp::implementation
         // Adapter-style launches: claude/codex CLIs don't speak ACP themselves.
         if (lower == "claude")
         {
-            return winrt::hstring{ L"npx -y @zed-industries/claude-code-acp" };
+            return winrt::hstring{ L"npx -y @agentclientprotocol/claude-agent-acp" };
         }
         if (lower == "codex")
         {

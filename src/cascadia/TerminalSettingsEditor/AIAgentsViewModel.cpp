@@ -1075,7 +1075,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         if (lower == "claude")
         {
-            return L"npx -y @zed-industries/claude-code-acp";
+            return L"npx -y @agentclientprotocol/claude-agent-acp";
         }
         if (lower == "codex")
         {

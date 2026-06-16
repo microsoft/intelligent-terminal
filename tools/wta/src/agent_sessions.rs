@@ -291,8 +291,9 @@ pub enum SessionEvent {
 /// block until the user answers — so the row should show ATTENTION, not
 /// WORKING. Match list is case-insensitive.
 ///
-/// Known matches (verified against actual hook payloads):
+/// Known matches (verified against actual hook payloads / transcripts):
 ///   - Copilot CLI: `ask_user` (carries `tool_input.question` + `choices`)
+///   - Claude CLI: `AskUserQuestion` (assistant `tool_use`, `caller.type=direct`)
 /// Speculative aliases for other CLIs are included so the heuristic catches
 /// the common variants without needing per-CLI plumbing.
 pub fn is_user_input_tool(name: &str) -> bool {
@@ -302,6 +303,8 @@ pub fn is_user_input_tool(name: &str) -> bool {
         | "ask-user"
         | "ask_question"
         | "askquestion"
+        | "askuserquestion"
+        | "ask_user_question"
         | "ask_for_clarification"
         | "request_input"
         | "request_user_input"
@@ -399,6 +402,7 @@ impl AgentSessionRegistry {
                     }
                 }
 
+                let is_new_entry = !self.sessions.contains_key(&key);
                 let entry = self.sessions.entry(key.clone()).or_insert_with(|| AgentSession {
                     key:               key.clone(),
                     cli_source:        cli_source.clone(),
@@ -457,10 +461,26 @@ impl AgentSessionRegistry {
                 } else {
                     entry.pane_session_id  = None;
                 }
-                entry.status           = AgentStatus::Idle;
-                entry.last_error       = None;
-                entry.attention_reason = None;
-                entry.current_tool     = None;
+                // Status baseline. A brand-new row starts Idle. For a row that
+                // ALREADY exists, preserve a live status instead of clobbering
+                // it: some CLIs fire activity hooks BEFORE `session.start` — e.g.
+                // Copilot sends `prompt.submit` (→ Working) ~2 s before its
+                // `session.start`, so an unconditional reset here would blank the
+                // row to Idle for the rest of the turn (until the next
+                // `tool.starting`). Only (re)baseline to Idle when the row is new
+                // or being revived from a non-live state (Ended/Error/Historical,
+                // e.g. resume / reconnect); Working/Attention/Idle are preserved.
+                if is_new_entry
+                    || matches!(
+                        entry.status,
+                        AgentStatus::Ended | AgentStatus::Error | AgentStatus::Historical
+                    )
+                {
+                    entry.status           = AgentStatus::Idle;
+                    entry.last_error       = None;
+                    entry.attention_reason = None;
+                    entry.current_tool     = None;
+                }
                 entry.last_activity_at = now;
                 if pane_known {
                     self.active_by_pane.insert(pane_session_id, key);
@@ -1565,6 +1585,63 @@ mod tests {
         assert_eq!(new.status, AgentStatus::Idle);
         assert_eq!(new.pane_session_id.as_deref(), Some(pane("p").as_str()));
         assert_eq!(reg.active_by_pane.get(&pane("p")), Some(&k("new")));
+    }
+
+    #[test]
+    fn session_started_preserves_working_set_by_earlier_prompt_submit() {
+        // Prompt-before-start ordering bug: Copilot fires `prompt.submit` (→ Working) a
+        // couple seconds BEFORE its `session.start` for the same session id.
+        // A `SessionStarted` for an already-Working row must NOT reset it to
+        // Idle — otherwise the row sits at Idle from `session.start` until the
+        // next `tool.starting`, mid-turn.
+        let mut reg = AgentSessionRegistry::new();
+        // prompt.submit lands first as Working (route synthesizes a
+        // SessionStarted, then ToolStarting flips it to Working).
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.apply(SessionEvent::ToolStarting { key: k("s"), tool_name: "prompt".into() });
+        assert_eq!(reg.sessions.get("s").unwrap().status, AgentStatus::Working);
+
+        // The real session.start arrives ~2 s later for the SAME key.
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        assert_eq!(
+            reg.sessions.get("s").unwrap().status,
+            AgentStatus::Working,
+            "a late SessionStarted must preserve the live Working status",
+        );
+    }
+
+    #[test]
+    fn session_started_revives_ended_row_to_idle() {
+        // Counterpart to the preserve case: a SessionStarted for a row that is
+        // in a non-live terminal state (Ended) must still (re)baseline it to
+        // Idle — e.g. a resume / reconnect of a previously-ended session id.
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        reg.apply(SessionEvent::PaneClosed { pane_session_id: pane("p") });
+        assert_eq!(reg.sessions.get("s").unwrap().status, AgentStatus::Ended);
+
+        reg.apply(SessionEvent::SessionStarted {
+            key: k("s"), cli_source: CliSource::Copilot,
+            pane_session_id: pane("p2"), cwd: PathBuf::from("/x"),
+            title: "t".into(),
+        });
+        assert_eq!(
+            reg.sessions.get("s").unwrap().status,
+            AgentStatus::Idle,
+            "a SessionStarted reviving an Ended row must reset it to Idle",
+        );
     }
 
     #[test]
