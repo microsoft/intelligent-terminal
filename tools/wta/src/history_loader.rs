@@ -82,146 +82,10 @@ const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 /// case (treated as phantom — conservative but safe).
 const CLASSIFY_SCAN_BYTES_CAP: u64 = 8 * 1024 * 1024;
 
-// ─── Profiling instrumentation (diagnostic) ─────────────────────────────
-//
-// Temporary instrumentation to measure where `load_all` spends its time:
-// reading + parsing file *content* (the work a two-phase "filter by a
-// cheap time signal, then read only the survivors" optimization would
-// eliminate) versus directory traversal + `stat`. Every content-reading
-// call site is wrapped in `prof_content`; the per-thread accumulator is
-// sampled around each per-CLI loader in `load_all_profiled`.
-// "traversal/stat" is derived as `total - content`, so it also absorbs
-// the (negligible) sort/push cost.
-
-thread_local! {
-    static PROF_CONTENT_NS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
-    static PROF_CONTENT_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-}
-
-/// Time `f` (a file content read + parse) and add it to the per-thread
-/// content-IO accumulator. Returns `f`'s result unchanged.
-fn prof_content<T>(f: impl FnOnce() -> T) -> T {
-    let started = std::time::Instant::now();
-    let out = f();
-    let elapsed = started.elapsed().as_nanos();
-    PROF_CONTENT_NS.with(|c| c.set(c.get().saturating_add(elapsed)));
-    PROF_CONTENT_CALLS.with(|c| c.set(c.get() + 1));
-    out
-}
-
-fn prof_content_snapshot() -> (u128, u64) {
-    (
-        PROF_CONTENT_NS.with(|c| c.get()),
-        PROF_CONTENT_CALLS.with(|c| c.get()),
-    )
-}
-
-/// Per-CLI timing slice produced by [`load_all_profiled`].
-#[derive(Default, Clone)]
-pub(crate) struct CliTiming {
-    pub total: std::time::Duration,
-    pub content: std::time::Duration,
-    pub content_calls: u64,
-    pub rows: usize,
-}
-
-impl CliTiming {
-    /// Time spent on directory traversal + `stat` (everything that is not
-    /// reading file content), derived so it also absorbs sort/push cost.
-    fn traversal_stat(&self) -> std::time::Duration {
-        self.total.saturating_sub(self.content)
-    }
-}
-
-impl std::fmt::Debug for CliTiming {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "rows={} total={:.1}ms content={:.1}ms({} reads) traversal_stat={:.1}ms",
-            self.rows,
-            self.total.as_secs_f64() * 1000.0,
-            self.content.as_secs_f64() * 1000.0,
-            self.content_calls,
-            self.traversal_stat().as_secs_f64() * 1000.0,
-        )
-    }
-}
-
-/// Whole-scan timing breakdown produced by [`load_all_profiled`].
-#[derive(Default)]
-pub(crate) struct LoadProfile {
-    pub total: std::time::Duration,
-    pub copilot: CliTiming,
-    pub claude: CliTiming,
-    pub gemini: CliTiming,
-    pub codex: CliTiming,
-}
-
-impl LoadProfile {
-    fn content(&self) -> std::time::Duration {
-        self.copilot.content + self.claude.content + self.gemini.content + self.codex.content
-    }
-
-    fn content_calls(&self) -> u64 {
-        self.copilot.content_calls
-            + self.claude.content_calls
-            + self.gemini.content_calls
-            + self.codex.content_calls
-    }
-
-    fn traversal_stat(&self) -> std::time::Duration {
-        self.total.saturating_sub(self.content())
-    }
-}
-
-/// Run one per-CLI loader, capturing its wall-clock total and the slice of
-/// that spent reading file content (via the `prof_content` accumulator).
-fn run_cli_profiled(
-    loader: impl FnOnce() -> Vec<AgentSession>,
-) -> (Vec<AgentSession>, CliTiming) {
-    let (content_ns_before, content_calls_before) = prof_content_snapshot();
-    let started = std::time::Instant::now();
-    let rows = loader();
-    let total = started.elapsed();
-    let (content_ns_after, content_calls_after) = prof_content_snapshot();
-    let content_ns = content_ns_after.saturating_sub(content_ns_before);
-    let timing = CliTiming {
-        total,
-        content: std::time::Duration::from_nanos(content_ns as u64),
-        content_calls: content_calls_after.saturating_sub(content_calls_before),
-        rows: rows.len(),
-    };
-    (rows, timing)
-}
-
 pub fn load_all() -> Vec<AgentSession> {
-    let (sessions, profile) = load_all_profiled();
-    tracing::info!(
-        target: "history_loader",
-        total_ms = profile.total.as_secs_f64() * 1000.0,
-        content_ms = profile.content().as_secs_f64() * 1000.0,
-        content_reads = profile.content_calls(),
-        traversal_stat_ms = profile.traversal_stat().as_secs_f64() * 1000.0,
-        copilot = ?profile.copilot,
-        claude = ?profile.claude,
-        gemini = ?profile.gemini,
-        codex = ?profile.codex,
-        "load_all timing distribution: content-read vs traversal/stat"
-    );
-    sessions
-}
-
-/// [`load_all`] plus a [`LoadProfile`] breaking down where the scan spent
-/// its time. Kept separate so the profiling test and the production
-/// `tracing` line share one measured code path.
-pub(crate) fn load_all_profiled() -> (Vec<AgentSession>, LoadProfile) {
-    let mut out = Vec::new();
-    let mut profile = LoadProfile::default();
     let scan_started = std::time::Instant::now();
-    let Some(home) = home_dir() else {
-        profile.total = scan_started.elapsed();
-        return (out, profile);
-    };
+    let mut out = Vec::new();
+    let Some(home) = home_dir() else { return out };
 
     // Load the agent-pane (Class A) index once. Each per-CLI loader uses it
     // to skip WTA-created agent-pane sessions in its cheap discovery phase,
@@ -232,27 +96,19 @@ pub(crate) fn load_all_profiled() -> (Vec<AgentSession>, LoadProfile) {
     // off Gemini's many seeded-prompt agent-pane phantoms.
     let agent_pane_index = crate::agent_pane_origin::load_default_set();
 
-    let (copilot, copilot_timing) =
-        run_cli_profiled(|| load_copilot_indexed(&home, &agent_pane_index));
-    let (claude, claude_timing) =
-        run_cli_profiled(|| load_claude_indexed(&home, &agent_pane_index));
-    let (gemini, gemini_timing) =
-        run_cli_profiled(|| load_gemini_indexed(&home, &agent_pane_index));
-    let (codex, codex_timing) =
-        run_cli_profiled(|| load_codex_indexed(&home, &agent_pane_index));
-    profile.copilot = copilot_timing;
-    profile.claude = claude_timing;
-    profile.gemini = gemini_timing;
-    profile.codex = codex_timing;
-
     // Each loader already caps at MAX_PER_CLI; take_n is a defensive no-op.
-    out.extend(take_n(copilot, MAX_PER_CLI));
-    out.extend(take_n(claude, MAX_PER_CLI));
-    out.extend(take_n(gemini, MAX_PER_CLI));
-    out.extend(take_n(codex, MAX_PER_CLI));
+    out.extend(take_n(load_copilot_indexed(&home, &agent_pane_index), MAX_PER_CLI));
+    out.extend(take_n(load_claude_indexed(&home, &agent_pane_index), MAX_PER_CLI));
+    out.extend(take_n(load_gemini_indexed(&home, &agent_pane_index), MAX_PER_CLI));
+    out.extend(take_n(load_codex_indexed(&home, &agent_pane_index), MAX_PER_CLI));
 
-    profile.total = scan_started.elapsed();
-    (out, profile)
+    tracing::info!(
+        target: "history_loader",
+        total_ms = scan_started.elapsed().as_secs_f64() * 1000.0,
+        rows = out.len(),
+        "history scan complete"
+    );
+    out
 }
 
 /// Best-effort title lookup for a single live session. Reads the same
@@ -717,7 +573,7 @@ fn load_copilot_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<
         let started_at = workspace.metadata()
             .and_then(|m| m.modified()).ok()
             .unwrap_or(c.sort_time);
-        let yaml = prof_content(|| fs::read_to_string(&workspace)).unwrap_or_default();
+        let yaml = fs::read_to_string(&workspace).unwrap_or_default();
         let cwd = parse_simple_yaml(&yaml, "cwd")
             .map(PathBuf::from)
             .unwrap_or_default();
@@ -796,7 +652,7 @@ fn load_claude_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<A
         // <id>` rejects it with `No conversation found with session ID:
         // <id>`. Mirror the Copilot ghost-session filter so these rows never
         // appear in the session management view, where Enter would dead-end.
-        if !prof_content(|| claude_session_has_real_content(&path)) { continue; }
+        if !claude_session_has_real_content(&path) { continue; }
         // Claude's directory-name encoding (`\` -> `-`) is lossy: paths whose
         // segments contain `-` can't be recovered from the directory name
         // alone. Use it only as a fallback — prefer the per-record `cwd`
@@ -806,9 +662,9 @@ fn load_claude_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<A
             .and_then(|n| n.to_str())
             .map(decode_claude_cwd)
             .unwrap_or_default();
-        let title = prof_content(|| first_user_text_jsonl(&path, ClaudeOrGemini::Claude))
+        let title = first_user_text_jsonl(&path, ClaudeOrGemini::Claude)
             .unwrap_or_else(|| short_id(&c.id, "claude"));
-        let cwd = prof_content(|| read_cwd_from_claude_jsonl(&path)).unwrap_or(cwd_fallback);
+        let cwd = read_cwd_from_claude_jsonl(&path).unwrap_or(cwd_fallback);
 
         out.push(AgentSession {
             key:               c.id,
@@ -862,7 +718,7 @@ fn load_gemini_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<A
             // A JSONL with content must have a resolvable `sessionId` in its
             // header; if we can't parse it, skip rather than synthesise an
             // un-resumable key (Enter on such rows used to silently no-op).
-            let Some(sid) = prof_content(|| gemini_session_id_from_header(&path)) else { continue; };
+            let Some(sid) = gemini_session_id_from_header(&path) else { continue; };
             let sort_time = path.metadata().and_then(|m| m.modified()).ok()
                 .unwrap_or(SystemTime::UNIX_EPOCH);
             candidates.push(Candidate { id: sid, sort_time, path, cwd: None });
@@ -878,7 +734,7 @@ fn load_gemini_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<A
         // exchanging a turn leaves a JSONL containing only header line(s) —
         // `gemini --resume <id>` would reject it. Mirrors the Claude and
         // Copilot loader-side filters.
-        if !prof_content(|| gemini_jsonl_has_real_content(&path)) { continue; }
+        if !gemini_jsonl_has_real_content(&path) { continue; }
         // cwd: `~/.gemini/tmp/<slug>/chats/session-*.jsonl` → look up <slug>.
         let cwd = path.parent()
             .and_then(|p| p.parent())
@@ -886,7 +742,7 @@ fn load_gemini_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<A
             .and_then(|n| n.to_str())
             .and_then(|slug| cwd_lookup.get(slug).cloned())
             .unwrap_or_default();
-        let title = prof_content(|| first_user_text_jsonl(&path, ClaudeOrGemini::Gemini))
+        let title = first_user_text_jsonl(&path, ClaudeOrGemini::Gemini)
             .unwrap_or_else(|| short_id(&c.id, "gemini"));
 
         out.push(AgentSession {
@@ -959,7 +815,7 @@ fn load_codex_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<Ag
                     let path = f.path();
                     let Some(name) = path.file_name().and_then(|s| s.to_str()) else { continue };
                     if !name.starts_with("rollout-") || !name.ends_with(".jsonl") { continue; }
-                    let Some(meta) = prof_content(|| read_codex_session_meta(&path)) else { continue; };
+                    let Some(meta) = read_codex_session_meta(&path) else { continue; };
                     // Skip Codex internal multi-agent subagent forks: they get
                     // their own rollout file but inherit the parent's history
                     // (same title) and are not user-facing sessions.
@@ -983,8 +839,8 @@ fn load_codex_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<Ag
     let mut out = Vec::new();
     for c in select_top_candidates(candidates, agent_pane_index, MAX_PER_CLI) {
         let path = c.path;
-        if !prof_content(|| codex_session_has_real_content(&path)) { continue; }
-        let title = prof_content(|| codex_title_from_file(&path))
+        if !codex_session_has_real_content(&path) { continue; }
+        let title = codex_title_from_file(&path)
             .unwrap_or_else(|| short_id(&c.id, "codex"));
         let cwd = c.cwd.unwrap_or_default();
         out.push(AgentSession {
@@ -1755,39 +1611,6 @@ fn truncate_chars(s: &str, n: usize) -> String {
 mod tests {
     use super::*;
     use std::io::Write;
-
-    /// Diagnostic profiling (run manually): prints where `load_all` spends
-    /// its time against the *real* user home, so we can see the
-    /// content-read vs traversal/stat split before/after the two-phase
-    /// optimization.
-    ///
-    /// Ignored by default — it reads the real `~/.copilot`, `~/.claude`,
-    /// `~/.gemini`, `~/.codex`, and is meaningless on an empty CI home.
-    /// Run with:
-    ///   cargo test --manifest-path tools/wta/Cargo.toml \
-    ///       profile_load_all_distribution -- --ignored --nocapture
-    #[test]
-    #[ignore = "diagnostic: profiles load_all against the real home; run with --ignored --nocapture"]
-    fn profile_load_all_distribution() {
-        let (sessions, profile) = load_all_profiled();
-        eprintln!("\n=== load_all() timing distribution (real home) ===");
-        eprintln!("rows returned : {}", sessions.len());
-        eprintln!("TOTAL         : {:.1} ms", profile.total.as_secs_f64() * 1000.0);
-        eprintln!(
-            "  content read : {:.1} ms ({} reads)",
-            profile.content().as_secs_f64() * 1000.0,
-            profile.content_calls(),
-        );
-        eprintln!(
-            "  traversal/stat: {:.1} ms",
-            profile.traversal_stat().as_secs_f64() * 1000.0,
-        );
-        eprintln!("per-CLI (rows / total / content / traversal+stat):");
-        eprintln!("  copilot: {:?}", profile.copilot);
-        eprintln!("  claude : {:?}", profile.claude);
-        eprintln!("  gemini : {:?}", profile.gemini);
-        eprintln!("  codex  : {:?}", profile.codex);
-    }
 
     fn tmp_root(label: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
