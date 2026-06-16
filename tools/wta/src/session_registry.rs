@@ -133,38 +133,31 @@ pub fn inject_wta_meta(meta: &mut Option<acp::Meta>, wta: &WtaMeta) {
     if wta.is_empty() {
         return;
     }
-    let map = meta.get_or_insert_with(serde_json::Map::new);
+    // Mirror `extract_wta_meta`'s filter: only serialize fields whose value
+    // is non-empty after trimming. A whitespace-only `Some(" ")` (which any
+    // caller could construct) would otherwise be written as a real field —
+    // reintroducing the "semantically empty but present `_meta.wta`" problem
+    // that `extract_wta_meta` exists to avoid, and flipping
+    // `WtaMeta::is_empty()` off on the wire. Values then round-trip the same
+    // way in both directions.
     let mut wta_obj = serde_json::Map::new();
-    if let Some(pid) = &wta.pane_session_id {
-        wta_obj.insert(
-            "pane_session_id".to_string(),
-            serde_json::Value::String(pid.clone()),
-        );
+    let mut put = |key: &str, val: &Option<String>| {
+        if let Some(s) = val.as_ref().filter(|s| !s.trim().is_empty()) {
+            wta_obj.insert(key.to_string(), serde_json::Value::String(s.clone()));
+        }
+    };
+    put("pane_session_id", &wta.pane_session_id);
+    put("agent_cmd", &wta.agent_cmd);
+    put("agent_id", &wta.agent_id);
+    put("model", &wta.model);
+    put("owner_tab_id", &wta.owner_tab_id);
+    // Every field was absent/whitespace-only after filtering — nothing
+    // meaningful to attach, so don't litter the wire with an empty
+    // `_meta.wta` object (a strict downstream implementer might reject it).
+    if wta_obj.is_empty() {
+        return;
     }
-    if let Some(cmd) = &wta.agent_cmd {
-        wta_obj.insert(
-            "agent_cmd".to_string(),
-            serde_json::Value::String(cmd.clone()),
-        );
-    }
-    if let Some(id) = &wta.agent_id {
-        wta_obj.insert(
-            "agent_id".to_string(),
-            serde_json::Value::String(id.clone()),
-        );
-    }
-    if let Some(model) = &wta.model {
-        wta_obj.insert(
-            "model".to_string(),
-            serde_json::Value::String(model.clone()),
-        );
-    }
-    if let Some(tab) = &wta.owner_tab_id {
-        wta_obj.insert(
-            "owner_tab_id".to_string(),
-            serde_json::Value::String(tab.clone()),
-        );
-    }
+    let map = meta.get_or_insert_with(serde_json::Map::new);
     map.insert(
         WTA_META_NAMESPACE.to_string(),
         serde_json::Value::Object(wta_obj),
@@ -2724,6 +2717,42 @@ mod tests {
         assert_eq!(parsed, WtaMeta::default(), "all-blank fields ⇒ default");
         assert!(parsed.is_empty(), "is_empty() true for all-blank input");
         assert!(meta.is_none(), "_meta with only-blank wta collapses to None");
+    }
+
+    #[test]
+    fn inject_drops_whitespace_only_string_fields() {
+        // `inject_wta_meta` must mirror `extract_wta_meta`: a whitespace-only
+        // `Some(" ")` is semantically empty and must not be serialized as a
+        // real field (that would flip `is_empty()` off on the wire and keep an
+        // empty `_meta.wta` alive). When *every* field is blank, no `_meta.wta`
+        // is attached at all.
+        let mut meta: Option<acp::Meta> = None;
+        inject_wta_meta(
+            &mut meta,
+            &WtaMeta {
+                pane_session_id: Some("  ".to_string()),
+                agent_cmd: Some(String::new()),
+                agent_id: Some("\t".to_string()),
+                model: Some(" ".to_string()),
+                owner_tab_id: Some("\n".to_string()),
+            },
+        );
+        assert!(meta.is_none(), "all-blank meta ⇒ no _meta.wta on the wire");
+
+        // A blank field alongside a real one drops only the blank; the real
+        // value survives and round-trips.
+        let mut meta2: Option<acp::Meta> = None;
+        inject_wta_meta(
+            &mut meta2,
+            &WtaMeta {
+                agent_id: Some("claude".to_string()),
+                model: Some("   ".to_string()),
+                ..Default::default()
+            },
+        );
+        let parsed = extract_wta_meta(&mut meta2);
+        assert_eq!(parsed.agent_id.as_deref(), Some("claude"), "real id kept");
+        assert_eq!(parsed.model, None, "blank model dropped on inject");
     }
 
     // ── apply_ext_notification ──────────────────────────────────────
