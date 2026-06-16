@@ -102,9 +102,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 **Feature definition:** The agent pane is a per-tab AI chat pane backed by WTA helper/master and an ACP-capable agent. It should be reusable, able to be hidden, and stable across tab/window operations.
 
 > **Automated coverage for the agent pane:** a deterministic in-process
-> **mock-ACP agent** harness (`protocol/acp/mock_agent_tests.rs`) drives the
+> **mock-ACP agent** harness (`tools/wta/src/protocol/acp/mock_agent_tests.rs`) drives the
 > **real** `WtaClient` against scripted agent behavior, and a **TestBackend
-> render harness** (`app.rs::render_to_text`) asserts what the TUI actually
+> render harness** (`tools/wta/src/app.rs::tests::render_to_text`) asserts what the TUI actually
 > paints. Together they UT-lock the *display/logic half* of streaming output,
 > tool-call/plan cards, and the permission flow (see the `[UT✓]` tags below).
 > This work also surfaced and fixed **3 real bugs**: the permission `y`/`n`
