@@ -178,31 +178,39 @@ pub fn shutdown_flush() {
 /// Install a Windows console control handler that records the teardown
 /// signal and drains the log appender before the OS terminates us.
 ///
-/// WTA helper/master processes run as ConPTY children of Windows Terminal.
-/// When a pane/tab/window closes — or the user logs off / shuts down — the
-/// OS delivers a control event (`CTRL_CLOSE`/`CTRL_LOGOFF`/`CTRL_SHUTDOWN`)
-/// to those children and then terminates them at the end of a short grace
-/// window. Without a handler those deaths are invisible: the process
-/// vanishes mid-stream and the non-blocking appender's last buffered
-/// records are lost, because [`shutdown_flush`] never runs (the
-/// `WorkerGuard` lives in a `static` and `static`s don't `Drop` at
-/// teardown). That is exactly the "helper just stopped responding"
-/// signature where the success path is logged exhaustively but the
-/// teardown path is silent and the incident is undiagnosable.
+/// The wta-**helper** runs as a ConPTY child of Windows Terminal (it's the
+/// process rendered in the agent pane). When its pane/tab/window closes — or
+/// the user logs off / shuts down — the OS delivers a control event
+/// (`CTRL_CLOSE`/`CTRL_LOGOFF`/`CTRL_SHUTDOWN`) and then terminates it at the
+/// end of a short grace window. Without a handler those deaths are invisible:
+/// the process vanishes mid-stream and the non-blocking appender's last
+/// buffered records are lost, because [`shutdown_flush`] never runs (the
+/// `WorkerGuard` lives in a `static` and `static`s don't `Drop` at teardown).
+/// That is exactly the "helper just stopped responding" signature where the
+/// success path is logged exhaustively but the teardown path is silent and
+/// the incident is undiagnosable.
 ///
-/// This closes that gap: it logs WHICH control event tore the process down
-/// and flushes so the final records (e.g. the transport-lost WARN in
-/// `run_acp_client_over_pipe`) actually reach disk. The handler returns
-/// FALSE so the default handler still runs and the process terminates as
-/// before — we only ADD a log line + flush, we never change termination
-/// behavior.
+/// This closes that gap for the helper: it logs WHICH control event tore the
+/// process down and flushes so the final records (e.g. the transport-lost
+/// WARN in `run_acp_client_over_pipe`) reach disk. The handler returns FALSE
+/// so the default handler still runs and the process terminates as before —
+/// we only ADD a log line + flush, never changing termination behavior. It's
+/// installed process-wide (cheap and harmless), so any wta process that does
+/// receive a console control event benefits.
 ///
-/// Limitation: a hard `TerminateProcess` (Task Manager "End task",
-/// `taskkill /F`, an OS resource kill) delivers NO control event and stays
-/// untraceable from inside the process — nothing in-process can observe it.
-/// Note also that while the Ratatui TUI holds the console in raw mode,
-/// Ctrl+C is delivered as a key event (not `CTRL_C_EVENT`), so this handler
-/// does not normally see it and does not alter the TUI's Ctrl+C behavior.
+/// Coverage limits — what this does NOT catch:
+///   * The wta-**master** is spawned `CREATE_NO_WINDOW` and contained in a
+///     Job Object with `KILL_ON_JOB_CLOSE` (see C++ `SharedWta`). Its normal
+///     teardown is the parent dropping that job, which reaps the master like
+///     a `TerminateProcess` — NO control event — so this handler does NOT make
+///     routine master teardown traceable. It fires for the master only on
+///     genuine console signals (logoff/shutdown), if delivered at all.
+///   * A hard `TerminateProcess` (Task Manager "End task", `taskkill /F`, an
+///     OS resource kill, or the Job-Object reap above) delivers no control
+///     event and stays untraceable from inside the process.
+///   * While the Ratatui TUI holds the console in raw mode, Ctrl+C arrives as
+///     a key event (not `CTRL_C_EVENT`), so this handler doesn't normally see
+///     it and doesn't alter the TUI's Ctrl+C behavior.
 pub fn install_ctrl_handler() {
     use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::System::Console::{

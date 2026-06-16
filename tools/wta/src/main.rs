@@ -590,10 +590,11 @@ async fn main() -> Result<()> {
     // is held in a global and flushed via `logging::shutdown_flush()` on every
     // exit path (see the calls below and before each `process::exit`).
     logging::init(&process_label(&cli));
-    // Log + flush on console teardown signals (tab/window close, logoff,
-    // shutdown) so a torn-down helper/master isn't a silent disappearance —
-    // see `install_ctrl_handler` for why the success path alone left these
-    // deaths undiagnosable.
+    // Log + flush on console teardown signals (pane/tab/window close, logoff,
+    // shutdown) so a torn-down helper isn't a silent disappearance. Installed
+    // process-wide; see `install_ctrl_handler` for coverage limits — notably
+    // the master is job-killed (KILL_ON_JOB_CLOSE) and won't observe these, so
+    // its routine teardown stays a known blind spot.
     logging::install_ctrl_handler();
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "=== wta starting ===");
 
