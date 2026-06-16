@@ -1476,11 +1476,18 @@ void ShellIntegrationTests::Wsl_StripExecTail_StripsExistingExecCommand()
                      StripExecTail(L"wsl.exe -d Ubuntu --exec zsh", false));
     VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe -d Ubuntu" },
                      StripExecTail(L"wsl.exe -d Ubuntu -- fish -l", false));
-    // bash.exe takes its command via -c.
+    // bash.exe: keep ONLY the launcher token; ALL its args are dropped (we
+    // replace them with our own `-c "probe"`). bash treats a leading operand
+    // like `~` as the script and would ignore a later `-c`, so the legacy
+    // `bash.exe ~` launcher form must strip the operand too.
     VERIFY_ARE_EQUAL(std::wstring_view{ L"bash.exe" },
                      StripExecTail(L"bash.exe", true));
     VERIFY_ARE_EQUAL(std::wstring_view{ L"C:\\Windows\\System32\\bash.exe" },
                      StripExecTail(L"C:\\Windows\\System32\\bash.exe -c \"ls -la\"", true));
+    VERIFY_ARE_EQUAL(std::wstring_view{ L"C:\\Windows\\System32\\bash.exe" },
+                     StripExecTail(L"C:\\Windows\\System32\\bash.exe ~", true));
+    VERIFY_ARE_EQUAL(std::wstring_view{ L"\"C:\\Windows\\System32\\bash.exe\"" },
+                     StripExecTail(L"\"C:\\Windows\\System32\\bash.exe\" ~ -l", true));
     // Whitespace-robust: tabs / multiple spaces around the terminator, and a
     // `--` at end-of-string, are all handled (hand-edited commandlines).
     VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe  -d  Ubuntu" },

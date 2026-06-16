@@ -116,29 +116,31 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
             bool valid() const noexcept { return !name.empty() && !home.empty(); }
         };
 
-        // Return the distro-SELECTION portion of a profile commandline: the
-        // launcher + its options (`-d`/`--distribution`/`--distribution-id`/
-        // `-u`/…), with any command the profile already specifies stripped.
-        // We must strip it before appending our own probe; a leftover second
-        // exec/command flag corrupts argument parsing and the probe fails for
-        // profiles like `wsl.exe -d Ubuntu -e fish`, `wsl.exe --exec zsh`, or
-        // `bash.exe -c "..."`.
-        //   * wsl.exe terminates the option list at `-e` / `--exec` / `--`.
-        //   * bash.exe takes its command via `-c`.
+        // Return the portion of a profile commandline we should append our own
+        // identity probe to. We must drop any command/operands the profile
+        // already specifies, or the appended probe collides and fails.
+        //
+        //   * wsl.exe: KEEP the launcher + its distro-selection options
+        //     (`-d` / `--distribution` / `--distribution-id` / `-u` / …) and
+        //     cut at the command terminator (`-e` / `--exec` / `--`). Probe is
+        //     then appended as `-e sh -c "…"`.
+        //   * bash.exe: KEEP ONLY the launcher token and drop ALL its args
+        //     (`~`, `-l`, `-c "…"`, …). bash treats the first non-option
+        //     operand (e.g. `~`) as the script and ignores a later `-c`, so we
+        //     replace the whole arg tail with our own `-c "…"`. bash.exe is the
+        //     System32 WSL default-distro launcher and has no distro-selection
+        //     options to preserve.
+        //
         // Token-aware (whitespace-delimited, quote-respecting) so it tolerates
         // tabs / multiple spaces and a `--` at end-of-string, and only matches
         // a WHOLE token (never inside `--distribution-id` or a distro name).
-        // Cuts at the EARLIEST such terminator token.
         inline std::wstring_view StripExecTail(std::wstring_view cmd, bool isBash) noexcept
         {
             const auto isWs = [](wchar_t c) noexcept { return c == L' ' || c == L'\t'; };
-            const auto isTerminator = [&](std::wstring_view tok) noexcept {
-                return isBash ? (tok == L"-c")
-                              : (tok == L"-e" || tok == L"--exec" || tok == L"--");
-            };
+            // Advance `i` past one token starting at the current position
+            // (quote-aware); returns [tokStart, i).
             size_t i = 0;
-            while (i < cmd.size())
-            {
+            const auto nextToken = [&]() noexcept -> std::wstring_view {
                 while (i < cmd.size() && isWs(cmd[i]))
                 {
                     ++i;
@@ -163,9 +165,24 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                         ++i;
                     }
                 }
-                if (isTerminator(cmd.substr(tokStart, i - tokStart)))
+                return cmd.substr(tokStart, i - tokStart);
+            };
+
+            // bash.exe: keep only the launcher token.
+            (void)nextToken();
+            if (isBash)
+            {
+                return cmd.substr(0, i);
+            }
+
+            // wsl.exe: keep distro-selection options; cut at the first command
+            // terminator token.
+            while (i < cmd.size())
+            {
+                const size_t tokStart = i;
+                const std::wstring_view tok = nextToken();
+                if (tok == L"-e" || tok == L"--exec" || tok == L"--")
                 {
-                    // Trim trailing whitespace before the terminator token.
                     size_t cut = tokStart;
                     while (cut > 0 && isWs(cmd[cut - 1]))
                     {
