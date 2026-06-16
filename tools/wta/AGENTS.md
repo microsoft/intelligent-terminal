@@ -191,6 +191,25 @@ For normal local WTA development, always produce the binary at `tools/wta/target
   - `cargo build --manifest-path tools/wta/Cargo.toml`
 - Do not switch to an alternate `--target-dir` just to work around a locked `wta.exe` unless that is explicitly the task. The default expectation is to refresh `tools/wta/target/debug/wta.exe`.
 
+## Test Rule
+
+For any WTA change that is covered by — or should be covered by — unit tests,
+**run the WTA test suite locally before committing/pushing.** `cargo build` and
+the C++ F5 / `bcz` flow do **not** compile or run the `#[cfg(test)]` code, so a
+green build says nothing about the tests.
+
+- Kill any live `wta.exe` first (same as the Build Rule), then run from the repo
+  root so the manifest's toolchain pin doesn't force the unavailable channel:
+  - `cargo test --manifest-path tools/wta/Cargo.toml`
+- All tests must pass before you push. CI runs the same `cargo test` and fails
+  the build on any failure
+  (`build/pipelines/templates-v2/job-build-project.yml`), so a local run just
+  catches it earlier.
+- Run the suite even when the change "looks trivial" — especially for tested
+  logic like `protocol/acp/client.rs`, `ui/chat.rs`, and permission handling.
+  The mock-ACP (`protocol/acp/mock_agent_tests.rs`) and render harnesses guard
+  real behavior and have caught real regressions.
+
 ## Key Crates
 
 | Crate | Version | Purpose |
