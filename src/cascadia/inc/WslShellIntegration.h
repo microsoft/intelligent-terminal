@@ -367,7 +367,7 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         // callers for the same command can both spawn; that's intentional
         // (serializing across the up-to-30s cold-start would block unrelated
         // callers). The second writer's insert is dropped on the re-check.
-        inline WslIdentity GetWslIdentityCached(std::wstring_view launchCommandline)
+        inline WslIdentity GetWslIdentityCached(std::wstring_view launchCommandline, bool allowProbe = true)
         {
             static std::mutex cacheMu;
             static std::map<std::wstring, WslIdentity, std::less<>> cache;
@@ -378,6 +378,13 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                 {
                     return it->second;
                 }
+            }
+            // Cache-only peek (allowProbe=false): used to read back a distro
+            // identity already resolved by a prior Install, without paying
+            // (or risking) another cold-start probe.
+            if (!allowProbe)
+            {
+                return {};
             }
             // Probe without the lock (see comment above).
             auto id = QueryWslIdentityRaw(launchCommandline);
@@ -394,6 +401,15 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
             }
             return id;
         }
+    }
+
+    // Returns the distro name a prior Install/Uninstall already resolved for
+    // this commandline, or empty if none is cached (never triggers a probe).
+    // Used for human-readable labels (e.g. error dialogs) so we surface the
+    // actual `$WSL_DISTRO_NAME` instead of the raw launch commandline.
+    inline std::wstring ProbedDistroName(std::wstring_view launchCommandline)
+    {
+        return details::GetWslIdentityCached(launchCommandline, /*allowProbe*/ false).name;
     }
 
     // Build a Win32 UNC path for an arbitrary POSIX path inside a WSL

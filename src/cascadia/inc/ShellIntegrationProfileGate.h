@@ -344,33 +344,62 @@ namespace Microsoft::Terminal::ShellIntegration
             return dir;
         }
 
-        // True when the launch exe is the OS WSL launcher
+        // True when the LAUNCH exe is the OS WSL launcher
         // `%SystemRoot%\System32\bash.exe` (or the `\Sysnative\` alias for
         // 32-bit callers) — it has a `bash.exe` leaf but is NOT Git Bash; it
         // runs bash in the DEFAULT WSL distro. We anchor on the REAL Windows
         // directory (from %SystemRoot%) so a non-OS folder merely named
-        // "System32" cannot spoof it. Simple case-insensitive substring
-        // match — these OS paths never contain spaces.
+        // "System32" cannot spoof it, AND we only inspect the LAUNCH token
+        // (the commandline prefix, after optional whitespace + an opening
+        // quote) so a System32 path appearing in the ARGUMENTS can't
+        // false-match. These OS paths never contain spaces.
         inline bool IsSystem32BashLauncher(std::wstring_view commandline) noexcept
         {
-            try
+            // Lowercase + slash-normalized `%SystemRoot%\system32\bash` /
+            // `…\sysnative\bash` needles, built once per process.
+            static const auto makeNeedle = [](std::wstring_view sub) {
+                std::wstring n = WindowsDir();
+                n += sub;
+                for (auto& c : n)
+                {
+                    c = FoldAsciiLower(c == L'/' ? L'\\' : c);
+                }
+                return n;
+            };
+            static const std::wstring sys32 = makeNeedle(L"\\system32\\bash");
+            static const std::wstring sysnative = makeNeedle(L"\\sysnative\\bash");
+
+            // Skip leading whitespace + one optional opening quote to reach
+            // the launch token.
+            size_t i = 0;
+            while (i < commandline.size() && (commandline[i] == L' ' || commandline[i] == L'\t'))
             {
-                const auto lower = [](std::wstring s) {
-                    for (auto& c : s)
+                ++i;
+            }
+            if (i < commandline.size() && commandline[i] == L'"')
+            {
+                ++i;
+            }
+            const auto launch = commandline.substr(i);
+
+            // Case-insensitive, slash-normalized prefix match against either
+            // needle — no allocation, no full tokenizer.
+            const auto startsWith = [&](const std::wstring& needle) noexcept {
+                if (launch.size() < needle.size())
+                {
+                    return false;
+                }
+                for (size_t k = 0; k < needle.size(); ++k)
+                {
+                    const wchar_t c = FoldAsciiLower(launch[k] == L'/' ? L'\\' : launch[k]);
+                    if (c != needle[k])
                     {
-                        c = FoldAsciiLower(c == L'/' ? L'\\' : c);
+                        return false;
                     }
-                    return s;
-                };
-                const std::wstring cmd = lower(std::wstring{ commandline });
-                const std::wstring root = lower(WindowsDir());
-                return cmd.find(root + L"\\system32\\bash") != std::wstring::npos ||
-                       cmd.find(root + L"\\sysnative\\bash") != std::wstring::npos;
-            }
-            catch (...)
-            {
-                return false; // low-memory: fail-closed (treat as not-system32)
-            }
+                }
+                return true;
+            };
+            return startsWith(sys32) || startsWith(sysnative);
         }
     }
 

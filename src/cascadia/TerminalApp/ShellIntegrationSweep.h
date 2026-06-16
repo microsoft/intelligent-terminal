@@ -205,7 +205,13 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
         r.wsl.reserve(wslCommandlines.size());
         for (const auto& cmd : wslCommandlines)
         {
-            r.wsl.emplace_back(cmd, SI::InstallWslBash(cmd));
+            const auto res = SI::InstallWslBash(cmd);
+            // Label the result by the distro name the install probe resolved
+            // (cache-only read — no extra spawn), so error dialogs show e.g.
+            // "WSL bash (Ubuntu)" rather than the raw launch commandline.
+            // Falls back to the commandline when the probe never succeeded.
+            auto name = SI::Wsl::ProbedDistroName(cmd);
+            r.wsl.emplace_back(name.empty() ? cmd : std::move(name), res);
         }
         return r;
     }
