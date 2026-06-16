@@ -1589,7 +1589,15 @@ fn current_user_sid_string() -> Option<String> {
         if ok == 0 {
             return None;
         }
-        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+        // `buf` is a `Vec<u8>` (alignment 1), but `TOKEN_USER` contains a
+        // pointer and so needs pointer alignment — forming
+        // `&*(buf.as_ptr() as *const TOKEN_USER)` would create a reference to
+        // a potentially-misaligned address, which is UB in Rust. Copy the
+        // header out with an unaligned read into a properly-aligned local
+        // instead. `token_user.User.Sid` still points *into* `buf` (kept
+        // alive until after the conversion below), which is what
+        // `ConvertSidToStringSidW` dereferences.
+        let token_user = std::ptr::read_unaligned(buf.as_ptr() as *const TOKEN_USER);
         let mut sid_str: *mut u16 = std::ptr::null_mut();
         if ConvertSidToStringSidW(token_user.User.Sid, &mut sid_str) == 0 || sid_str.is_null() {
             return None;
