@@ -579,7 +579,8 @@ where
         }
     }
     let key_for_refresh = key.clone();
-    tracing::info!(
+    // Per-agent-event — debug, not info.
+    tracing::debug!(
         target: "agent_route",
         event = %event,
         asid = %asid,
@@ -764,7 +765,8 @@ where
     }
 
     let dirty = reg.take_dirty();
-    tracing::info!(
+    // Per-agent-event (partner of "routing") — debug, not info.
+    tracing::debug!(
         target: "agent_route",
         event = %event,
         dirty = dirty,

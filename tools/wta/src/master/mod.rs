@@ -1228,7 +1228,9 @@ impl acp::Agent for HelperHandler {
             return handle_sessions_list(&self.state, &args.params).await;
         }
         if method == crate::session_registry::INTELLTERM_METHOD_SESSION_HOOK {
-            tracing::info!(
+            // Per-session-hook (every tool start/stop/session event) — debug,
+            // not info; the reducer logs its own outcome where it matters.
+            tracing::debug!(
                 target: "master",
                 op = "ext_method",
                 method = %method,
@@ -2170,7 +2172,9 @@ async fn handle_session_hook(
         acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
     })?;
 
-    tracing::info!(
+    // Per-session-hook event — debug, not info (paired with the master-side
+    // "handling …session_hook locally" line; together they dominated info).
+    tracing::debug!(
         target: "session_hook",
         event = ?event,
         "received helper session hook"
