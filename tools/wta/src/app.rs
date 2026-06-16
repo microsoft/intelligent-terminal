@@ -25,19 +25,15 @@ struct DeferredAcpParams {
     master_ext_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::MasterExtRequest>>,
     shell_mgr: Arc<crate::shell::ShellManager>,
     wt_connected: bool,
-    /// Pipe-mode marker. When `Some`, [`App::try_start_acp`] reconnects
-    /// via [`run_acp_client_over_pipe`] instead of the direct
-    /// [`run_acp_client`] path. Pre-stashed at boot in helper mode
-    /// (main.rs) so that a post-FRE-login reconnect goes back through
-    /// wta-master — without this, the reconnected helper would spawn
-    /// its own copilot CLI subprocess directly, master would never see
-    /// it, and ext-methods like `intellterm.wta/sessions/list` would
-    /// fail with "Method not found" (the ACP SDK forwards unknown
-    /// extensions to the agent with a `_` prefix, and the agent CLI
-    /// doesn't know about master-side extensions).
+    /// Master pipe name for a pipe-mode reconnect. Pre-stashed at boot in
+    /// helper mode (main.rs) so that a post-FRE-login reconnect via
+    /// [`App::try_start_acp`] goes back through wta-master over
+    /// `run_acp_client_over_pipe`. Always `Some` in the shipped product
+    /// (wta only runs as a wta-master-attached helper); a `None` here is a
+    /// defensive error path since direct-agent mode was removed.
     master_pipe_name: Option<String>,
     /// Owner tab id for pipe-mode reconnect (mirrors the original
-    /// `--owner-tab-id` CLI arg). Unused in direct mode.
+    /// `--owner-tab-id` CLI arg).
     owner_tab_id: Option<String>,
 }
 
@@ -1283,7 +1279,7 @@ pub enum AppEvent {
     /// `spawn_blocking` task wrapping `history_loader::load_all()`. Posted
     /// instead of running the scan inline so a large `~/.copilot/session-state`
     /// (hundreds of dirs, each with an `events.jsonl` to sniff) doesn't block
-    /// the LocalSet — which would otherwise stall `run_acp_client`,
+    /// the LocalSet — which would otherwise stall the ACP client loop,
     /// the first frame, and therefore the user-visible "connecting" state.
     HistoricalSessionsLoaded(Vec<crate::agent_sessions::AgentSession>),
     /// Initial bootstrap of the alive-session mirror from master, in
@@ -2269,62 +2265,19 @@ impl App {
         }
     }
 
-    /// Store ACP launch parameters for deferred start (after login).
-    pub fn set_acp_params(
-        &mut self,
-        agent_cmd: String,
-        acp_model: Option<String>,
-        prompt_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>,
-        cancel_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::CancelRequest>,
-        new_session_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::NewSessionForTab>,
-        load_session_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::LoadSessionForTab>,
-        drop_session_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::DropSessionRequest>,
-        rename_session_rx: mpsc::UnboundedReceiver<
-            crate::protocol::acp::client::RenameSessionRequest,
-        >,
-        restart_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::RestartRequest>,
-        master_ext_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::MasterExtRequest>,
-        shell_mgr: Arc<crate::shell::ShellManager>,
-        wt_connected: bool,
-    ) {
-        self.deferred_acp = Some(DeferredAcpParams {
-            agent_cmd,
-            acp_model,
-            prompt_rx: Some(prompt_rx),
-            cancel_rx: Some(cancel_rx),
-            new_session_rx: Some(new_session_rx),
-            load_session_rx: Some(load_session_rx),
-            drop_session_rx: Some(drop_session_rx),
-            rename_session_rx: Some(rename_session_rx),
-            restart_rx: Some(restart_rx),
-            master_ext_rx: Some(master_ext_rx),
-            shell_mgr,
-            wt_connected,
-            master_pipe_name: None,
-            owner_tab_id: None,
-        });
-    }
-
     /// Stash pipe-mode launch parameters on App so that a post-FRE-login
     /// reconnect via [`Self::try_start_acp`] goes back through
-    /// [`run_acp_client_over_pipe`] (talking to wta-master) instead of
-    /// the direct [`run_acp_client`] path (which would spawn its own
-    /// copilot CLI subprocess and bypass master entirely).
+    /// `run_acp_client_over_pipe` (talking to wta-master).
     ///
     /// The bug this guards against: in helper mode (`--connect-master`),
     /// the initial `run_acp_client_over_pipe` task fails immediately with
     /// `Authentication required` if the user is in FRE / not yet logged
     /// in. The helper falls into the setup screen, the user logs in, and
     /// `LoginComplete` fires `try_start_acp`. Without this pre-stash,
-    /// `LoginComplete` finds `deferred_acp.is_none()` and synthesizes a
-    /// direct-mode `DeferredAcpParams`, then `try_start_acp` calls
-    /// `run_acp_client` — bypassing master. The resulting helper:
-    ///   * never registers with master (no `HelperId` in master log),
-    ///   * gets `Method not found` for every `intellterm.wta/...`
-    ///     ext-request (the ACP SDK forwards them to the agent CLI
-    ///     prefixed with `_`, and the agent doesn't know them),
-    ///   * has `session_hook` events that go nowhere (the channel's
-    ///     receiver was already consumed by the dead pipe-mode task).
+    /// `LoginComplete` finds `deferred_acp.is_none()` and `try_start_acp`
+    /// has no pipe name to reconnect with — the agent pane never comes
+    /// back. With it, `try_start_acp` reuses the stashed pipe name to
+    /// re-attach to master.
     ///
     /// All `_rx` fields are seeded `None`; `try_start_acp` creates fresh
     /// channels on reconnect and re-binds the `_tx` halves on App, plus
@@ -2369,10 +2322,10 @@ impl App {
     /// half on `self.session_hook_tx`, because the original receiver was
     /// consumed (and dropped) by the dead initial pipe-mode task.
     ///
-    /// **Direct-mode branch.** When `master_pipe_name.is_none()` we keep
-    /// the legacy behavior: spawn [`run_acp_client`], which runs its own
-    /// agent CLI subprocess. This is the FRE path for non-helper
-    /// invocations (`wta` launched without `--connect-master`).
+    /// **No-pipe branch.** When `master_pipe_name.is_none()` we surface a
+    /// defensive `AgentError` rather than starting an agent: direct-agent
+    /// mode was removed, so wta only runs as a wta-master-attached helper
+    /// and a missing pipe here means a wiring bug.
     pub fn try_start_acp(&mut self) {
         if !self.pending_acp_start {
             return;
@@ -2494,27 +2447,26 @@ impl App {
                         }
                     });
                 } else {
-                    // Direct-mode reconnect (non-helper FRE path).
-                    // Resolve the agent executable path (bare "copilot" may not
-                    // be on PATH in packaged apps — use WinGet Links fallback).
-                    let agent_cmd = resolve_agent_cmd(&params.agent_cmd);
-                    let owner_tab_id = self.tab_id.clone();
-                    tokio::task::spawn_local(crate::protocol::acp::client::run_acp_client(
-                        agent_cmd,
-                        acp_model,
-                        owner_tab_id,
-                        event_tx,
-                        prompt_rx,
-                        cancel_rx,
-                        new_session_rx,
-                        load_session_rx,
-                        drop_session_rx,
-                        rename_session_rx,
-                        restart_rx,
-                        master_ext_rx,
-                        shell_mgr,
-                        wt_connected,
-                    ));
+                    // Unreachable in the shipped product: wta only runs as a
+                    // wta-master-attached helper, so deferred reconnect params
+                    // always carry a master pipe name. Direct-agent mode was
+                    // removed; surface a clear error rather than panicking if
+                    // we somehow reach here with no pipe.
+                    tracing::error!(
+                        target: "acp",
+                        "try_start_acp: no master pipe in deferred params — \
+                         direct-agent mode was removed; cannot start ACP client"
+                    );
+                    let _ = event_tx.send(AppEvent::AgentError {
+                        session_id: None,
+                        failure: crate::protocol::acp::failure::AgentFailure::HandshakeFailed {
+                            stage: crate::protocol::acp::failure::HandshakeStage::Initialize,
+                            detail: "missing wta-master connection".to_string(),
+                        },
+                        message: "Agent pane could not start: missing wta-master \
+                                  connection (direct mode is no longer supported)."
+                            .to_string(),
+                    });
                 }
             }
         }

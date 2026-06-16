@@ -1,17 +1,14 @@
-use super::failure::{classify_anyhow, AgentFailure, HandshakeStage};
+use super::failure::AgentFailure;
 use super::prompt;
 use super::soft_stop::SoftStopReason;
 use acp::Agent as _;
 use agent_client_protocol as acp;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
-use std::pin::Pin;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
 };
-use std::task::{Context, Poll};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader, ReadBuf};
 use tokio::sync::mpsc;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
@@ -210,17 +207,6 @@ pub struct DropSessionRequest {
 pub struct RenameSessionRequest {
     pub old_tab_id: String,
     pub new_tab_id: String,
-}
-
-/// How [`run_inner`] terminated. The outer driver in [`run_acp_client`]
-/// uses this to decide whether to respawn the agent.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ExitReason {
-    /// Loop exited because all sender halves dropped (process shutdown).
-    Done,
-    /// `/restart` requested. Outer driver should re-enter `run_inner`.
-    /// If `agent_cmd` is set, the supervisor should switch to that agent.
-    Restart { agent_cmd: Option<String> },
 }
 
 impl PromptSubmission {
@@ -469,69 +455,6 @@ impl PromptTimingState {
                 drop(guard);
                 prompt_timing_log(turn_id, submitted_at_unix_s, "first_event", &details);
             }
-        }
-    }
-
-    fn observe_stdin_write(&self, bytes: usize) {
-        let now = now_unix_s();
-        let mut guard = self.active.lock().unwrap();
-        let mut updates = Vec::new();
-        for active in guard.values_mut() {
-            if active.prompt_sent_at_unix_s.is_none() {
-                continue;
-            }
-            active.bytes_written_after_prompt += bytes as u64;
-            if active.first_stdin_write_at_unix_s.is_none() {
-                active.first_stdin_write_at_unix_s = Some(now);
-                updates.push((
-                    active.id,
-                    active.submitted_at_unix_s,
-                    format!(
-                        "bytes={} since_prompt_sent={}",
-                        bytes,
-                        format_elapsed(active.prompt_sent_at_unix_s, Some(now))
-                    ),
-                ));
-            }
-        }
-        drop(guard);
-        for (turn_id, submitted, details) in updates {
-            prompt_timing_log(turn_id, submitted, "first_transport_write", &details);
-        }
-    }
-
-    fn observe_stdout_read(&self, bytes: usize) {
-        // NOTE: in the (rare) case of multiple concurrent prompts on the
-        // same Client (= same agent CLI subprocess), this attributes every
-        // stdout read to every in-flight prompt. ACP's transport doesn't
-        // split stdout per session, so per-session `bytes_read_after_prompt`
-        // becomes an upper bound rather than an exact count when prompts
-        // overlap. The `AgentResponseComplete.TotalResponseBytes`
-        // telemetry field documents this caveat.
-        let now = now_unix_s();
-        let mut guard = self.active.lock().unwrap();
-        let mut updates = Vec::new();
-        for active in guard.values_mut() {
-            if active.prompt_sent_at_unix_s.is_none() {
-                continue;
-            }
-            active.bytes_read_after_prompt += bytes as u64;
-            if active.first_stdout_byte_at_unix_s.is_none() {
-                active.first_stdout_byte_at_unix_s = Some(now);
-                updates.push((
-                    active.id,
-                    active.submitted_at_unix_s,
-                    format!(
-                        "bytes={} since_prompt_sent={}",
-                        bytes,
-                        format_elapsed(active.prompt_sent_at_unix_s, Some(now))
-                    ),
-                ));
-            }
-        }
-        drop(guard);
-        for (turn_id, submitted, details) in updates {
-            prompt_timing_log(turn_id, submitted, "first_transport_read", &details);
         }
     }
 
@@ -805,19 +728,6 @@ impl PromptTimingState {
     }
 }
 
-fn summarize_agent_identity(program: &str, args: &[&str]) -> (String, Option<String>) {
-    let brand = crate::agent_registry::display_name_for(program);
-    let profile = crate::agent_registry::lookup_profile(program);
-    let model =
-        crate::agent_registry::extract_model_from_args(args, profile).map(humanize_model_name);
-    (brand, model)
-}
-
-fn requested_model_id(program: &str, args: &[&str]) -> Option<String> {
-    let profile = crate::agent_registry::lookup_profile(program);
-    crate::agent_registry::extract_model_from_args(args, profile).map(str::to_string)
-}
-
 async fn complete_prompt_request<T>(
     result: std::result::Result<T, acp::Error>,
     soft_stop: Option<SoftStopReason>,
@@ -876,52 +786,6 @@ async fn complete_prompt_request<T>(
                 failure,
                 message: format!("prompt error: {}", error_message),
             });
-        }
-    }
-}
-
-fn humanize_model_name(model: &str) -> String {
-    let tokens: Vec<String> = model
-        .split(|ch| ch == '-' || ch == '_')
-        .filter(|token| !token.is_empty())
-        .map(humanize_identifier)
-        .collect();
-
-    if tokens.is_empty() {
-        model.to_string()
-    } else {
-        tokens.join(" ")
-    }
-}
-
-fn humanize_identifier(token: &str) -> String {
-    if token.is_empty() {
-        return String::new();
-    }
-
-    let lower = token.to_ascii_lowercase();
-    match lower.as_str() {
-        "gpt" => "GPT".to_string(),
-        "claude" => "Claude".to_string(),
-        "haiku" => "Haiku".to_string(),
-        "sonnet" => "Sonnet".to_string(),
-        "opus" => "Opus".to_string(),
-        "codex" => "Codex".to_string(),
-        "mini" => "Mini".to_string(),
-        "turbo" => "Turbo".to_string(),
-        "max" => "Max".to_string(),
-        _ if lower.chars().all(|ch| ch.is_ascii_digit() || ch == '.') => token.to_string(),
-        _ => {
-            let mut chars = lower.chars();
-            match chars.next() {
-                Some(first) => {
-                    let mut title = String::with_capacity(token.len());
-                    title.push(first.to_ascii_uppercase());
-                    title.extend(chars);
-                    title
-                }
-                None => String::new(),
-            }
         }
     }
 }
@@ -1070,36 +934,6 @@ async fn read_pane_last_message(
     }
 
     result
-}
-
-/// Resolve the user's active pane cwd via WT's `get_active_pane` COM call.
-///
-/// Used at agent-session startup to pin both the agent child process cwd and
-/// the ACP `new_session` cwd to the user's project, so `execute_command` lands
-/// there on its first call. Returns `None` when WT isn't connected, when WT
-/// reports the active pane is the agent pane itself (no source resolved yet),
-/// or when the cwd field is missing/empty — callers fall back to
-/// `std::env::current_dir()`.
-async fn resolve_active_pane_cwd(
-    shell_mgr: &ShellManager,
-    wt_connected: bool,
-) -> Option<std::path::PathBuf> {
-    if !wt_connected {
-        return None;
-    }
-    let active = shell_mgr.wt_get_active_pane().await.ok()?;
-    let is_agent = active
-        .get("is_agent_pane")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if is_agent {
-        return None;
-    }
-    active
-        .get("cwd")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(std::path::PathBuf::from)
 }
 
 /// Best-effort canonical shell executable for a pid — e.g. `pwsh.exe`,
@@ -1558,98 +1392,6 @@ impl StartupProbe {
     }
 }
 
-struct StartupInstrumentedReader<R> {
-    inner: R,
-    probe: StartupProbe,
-    label: &'static str,
-    saw_data: bool,
-    prompt_timing: Arc<PromptTimingState>,
-}
-
-impl<R> StartupInstrumentedReader<R> {
-    fn new(
-        inner: R,
-        probe: StartupProbe,
-        label: &'static str,
-        prompt_timing: Arc<PromptTimingState>,
-    ) -> Self {
-        Self {
-            inner,
-            probe,
-            label,
-            saw_data: false,
-            prompt_timing,
-        }
-    }
-}
-
-impl<R: AsyncRead + Unpin> AsyncRead for StartupInstrumentedReader<R> {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
-        let filled_before = buf.filled().len();
-        match Pin::new(&mut self.inner).poll_read(cx, buf) {
-            Poll::Ready(Ok(())) => {
-                let read_len = buf.filled().len().saturating_sub(filled_before);
-                if read_len > 0 && !self.saw_data {
-                    self.saw_data = true;
-                    self.probe.log(&format!(
-                        "first data received on agent {}: {} byte(s)",
-                        self.label, read_len
-                    ));
-                }
-                if read_len > 0 {
-                    self.prompt_timing.observe_stdout_read(read_len);
-                }
-                Poll::Ready(Ok(()))
-            }
-            other => other,
-        }
-    }
-}
-
-struct InstrumentedAgentWriter<W> {
-    inner: W,
-    prompt_timing: Arc<PromptTimingState>,
-}
-
-impl<W> InstrumentedAgentWriter<W> {
-    fn new(inner: W, prompt_timing: Arc<PromptTimingState>) -> Self {
-        Self {
-            inner,
-            prompt_timing,
-        }
-    }
-}
-
-impl<W: AsyncWrite + Unpin> AsyncWrite for InstrumentedAgentWriter<W> {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<std::io::Result<usize>> {
-        match Pin::new(&mut self.inner).poll_write(cx, buf) {
-            Poll::Ready(Ok(written)) => {
-                if written > 0 {
-                    self.prompt_timing.observe_stdin_write(written);
-                }
-                Poll::Ready(Ok(written))
-            }
-            other => other,
-        }
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.inner).poll_flush(cx)
-    }
-
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.inner).poll_shutdown(cx)
-    }
-}
-
 /// Shared state accessible from the Client trait impl.
 struct ClientState {
     event_tx: mpsc::UnboundedSender<AppEvent>,
@@ -1999,13 +1741,13 @@ impl acp::Client for WtaClient {
     }
 }
 
-/// Helper-mode variant of [`run_acp_client`]. Instead of spawning the
-/// agent CLI as a child process and talking ACP over its stdio, this
-/// connects to a wta-master singleton over the named pipe whose path
-/// is passed in `pipe_name` and speaks ACP over that pipe. The master
-/// (from this helper's perspective) plays the role of the agent.
+/// The helper-mode ACP client loop. Instead of spawning the agent CLI
+/// as a child process and talking ACP over its stdio, this connects to
+/// a wta-master singleton over the named pipe whose path is passed in
+/// `pipe_name` and speaks ACP over that pipe. The master (from this
+/// helper's perspective) plays the role of the agent.
 ///
-/// Wires the same App-facing select-loop as `run_inner`, minus the
+/// Wires the App-facing select-loop, minus the
 /// restart-loop wrapper: helper mode doesn't own the agent CLI lifetime
 /// (master does). `/restart` is delegated to the C++ side via a
 /// `restart_agent_stack` `SendEvent`; that path tears down every agent
@@ -2133,30 +1875,6 @@ fn log_acp_new_session_result(
     );
 }
 
-fn log_acp_new_session_timeout_result(
-    route: &str,
-    started: std::time::Instant,
-    result: &std::result::Result<
-        acp::Result<acp::NewSessionResponse>,
-        tokio::time::error::Elapsed,
-    >,
-) {
-    let session_id = result
-        .as_ref()
-        .ok()
-        .and_then(|inner| inner.as_ref().ok())
-        .map(|resp| resp.session_id.to_string());
-    let (failure_kind, acp_error_code) = timeout_result_failure_fields(result);
-    crate::telemetry::log_acp_new_session_complete(
-        session_id.as_deref(),
-        elapsed_ms_since(started),
-        matches!(result, Ok(Ok(_))),
-        route,
-        failure_kind,
-        acp_error_code,
-    );
-}
-
 /// Handle a `session/load` failure (Err or timeout) in the
 /// `load_session_rx` arm of `run_acp_client_over_pipe`.
 ///
@@ -2276,7 +1994,7 @@ pub async fn run_acp_client_over_pipe(
     ));
 
     // Whether this WTA process is hosting an Intelligent Terminal agent
-    // pane. Same semantics as in `run_inner`: `--owner-tab-id` is the
+    // pane: `--owner-tab-id` is the
     // load-bearing signal. Helper mode is always spawned by WT with an
     // owner-tab-id, but we keep the same defensive default.
     let is_agent_pane = owner_tab_id
@@ -2648,7 +2366,7 @@ pub async fn run_acp_client_over_pipe(
         load_session_supported,
     });
 
-    // Per-tab session cache. Same semantics as in `run_inner`. Only
+    // Per-tab session cache. Only
     // prepopulate the owner-tab binding when we actually have a
     // bootstrap session — otherwise the `load_session_rx` arm would
     // see the placeholder sid as a prior session, try to `cancel` it,
@@ -2681,9 +2399,10 @@ pub async fn run_acp_client_over_pipe(
     // Burn the first tick (fires immediately on creation).
     periodic_refetch.tick().await;
 
-    // Main event loop. Mirrors `run_inner`'s select arms, minus the
-    // restart-loop wrapper (helper mode can't restart in-process — master
-    // owns the agent CLI). `/restart` fires a `restart_agent_stack`
+    // Main event loop. The select arms are extracted into `dispatch_*`
+    // free fns (so they're unit-testable). No restart-loop wrapper here:
+    // helper mode can't restart in-process — master
+    // owns the agent CLI. `/restart` fires a `restart_agent_stack`
     // `SendEvent` to the C++ side; that path force-restarts the whole
     // agent stack (tear down panes → `SharedWta::Restart()` → respawn on
     // the same stable pipe name → re-toggle active pane).
@@ -2798,549 +2517,6 @@ pub async fn run_acp_client_over_pipe(
 
     startup_probe.log("run_acp_client_over_pipe loop ended");
     Ok(())
-}
-
-/// Top-level ACP client task: spawn agent, handshake, prompt loop.
-pub async fn run_acp_client(
-    mut agent_cmd: String,
-    acp_model_override: Option<String>,
-    owner_tab_id: Option<String>,
-    event_tx: mpsc::UnboundedSender<AppEvent>,
-    mut prompt_rx: mpsc::UnboundedReceiver<PromptSubmission>,
-    mut cancel_rx: mpsc::UnboundedReceiver<CancelRequest>,
-    mut new_session_rx: mpsc::UnboundedReceiver<NewSessionForTab>,
-    mut load_session_rx: mpsc::UnboundedReceiver<LoadSessionForTab>,
-    mut drop_session_rx: mpsc::UnboundedReceiver<DropSessionRequest>,
-    mut rename_session_rx: mpsc::UnboundedReceiver<RenameSessionRequest>,
-    mut restart_rx: mpsc::UnboundedReceiver<RestartRequest>,
-    mut master_ext_rx: mpsc::UnboundedReceiver<MasterExtRequest>,
-    shell_mgr: Arc<ShellManager>,
-    wt_connected: bool,
-) {
-    let startup_probe = StartupProbe::new();
-    startup_probe.log(&format!(
-        "run_acp_client task start agent_cmd={} acp_model={:?} wt_connected={}",
-        agent_cmd, acp_model_override, wt_connected
-    ));
-
-    // Restart loop. `run_inner` returns `ExitReason::Restart` when the
-    // user invokes `/restart`; we re-enter to spawn a fresh agent
-    // process. Any other return (Done or Err) breaks the loop.
-    loop {
-        startup_probe.log("run_acp_client entering run_inner");
-        match run_inner(
-            &agent_cmd,
-            acp_model_override.clone(),
-            owner_tab_id.clone(),
-            event_tx.clone(),
-            &mut prompt_rx,
-            &mut cancel_rx,
-            &mut new_session_rx,
-            &mut load_session_rx,
-            &mut drop_session_rx,
-            &mut rename_session_rx,
-            &mut restart_rx,
-            &mut master_ext_rx,
-            Arc::clone(&shell_mgr),
-            wt_connected,
-        )
-        .await
-        {
-            Ok(ExitReason::Done) => {
-                startup_probe.log("run_acp_client completed");
-                break;
-            }
-            Ok(ExitReason::Restart { agent_cmd: new_cmd }) => {
-                if let Some(cmd) = new_cmd {
-                    startup_probe.log(&format!("run_acp_client switching agent to: {}", cmd));
-                    agent_cmd = cmd;
-                } else {
-                    startup_probe.log("run_acp_client restart requested — respawning agent");
-                }
-                let _ = event_tx.send(AppEvent::ConnectionStage("Restarting agent...".to_string()));
-                continue;
-            }
-            Err(e) => {
-                startup_probe.log(&format!(
-                    "run_acp_client failed: {:#} — waiting for /restart",
-                    e
-                ));
-                let _ = event_tx.send(AppEvent::AgentError {
-                    session_id: None,
-                    failure: classify_anyhow(&e, HandshakeStage::Initialize),
-                    message: format!("{:#}", e),
-                });
-                // Don't break — a transient failure (e.g. agent crashed
-                // during a self-update race) shouldn't permanently kill
-                // the supervisor. Park here listening for /restart so the
-                // user can recover without restarting the whole terminal.
-                match restart_rx.recv().await {
-                    Some(req) => {
-                        if let Some(new_cmd) = req.agent_cmd {
-                            startup_probe.log(&format!(
-                                "run_acp_client switching agent: {} -> {}",
-                                agent_cmd, new_cmd
-                            ));
-                            agent_cmd = new_cmd;
-                        } else {
-                            startup_probe.log(
-                                "run_acp_client restart requested after failure — respawning agent",
-                            );
-                        }
-                        let _ = event_tx
-                            .send(AppEvent::ConnectionStage("Restarting agent...".to_string()));
-                        continue;
-                    }
-                    None => {
-                        startup_probe
-                            .log("run_acp_client restart channel closed — exiting supervisor");
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
-
-async fn run_inner(
-    agent_cmd: &str,
-    acp_model_override: Option<String>,
-    owner_tab_id: Option<String>,
-    event_tx: mpsc::UnboundedSender<AppEvent>,
-    prompt_rx: &mut mpsc::UnboundedReceiver<PromptSubmission>,
-    cancel_rx: &mut mpsc::UnboundedReceiver<CancelRequest>,
-    new_session_rx: &mut mpsc::UnboundedReceiver<NewSessionForTab>,
-    load_session_rx: &mut mpsc::UnboundedReceiver<LoadSessionForTab>,
-    drop_session_rx: &mut mpsc::UnboundedReceiver<DropSessionRequest>,
-    rename_session_rx: &mut mpsc::UnboundedReceiver<RenameSessionRequest>,
-    restart_rx: &mut mpsc::UnboundedReceiver<RestartRequest>,
-    master_ext_rx: &mut mpsc::UnboundedReceiver<MasterExtRequest>,
-    shell_mgr: Arc<ShellManager>,
-    wt_connected: bool,
-) -> Result<ExitReason> {
-    let startup_probe = StartupProbe::new();
-
-    // Local re-parse for downstream model-handling (selection,
-    // identity summary). The spawn itself reparses inside
-    // `spawn_agent_process` — keeping a local parse avoids threading
-    // lifetimes through the shared helper.
-    let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
-    let raw_program = parts
-        .first()
-        .ok_or_else(|| anyhow::anyhow!("empty agent command"))?;
-    let args = &parts[1..];
-
-    // Whether this WTA process is hosting an Intelligent Terminal agent
-    // pane (vs. a plain `wta --agent ...` invocation from a shell). Used
-    // by `agent_pane_origin` to record only agent-pane-originated ACP
-    // sessions in the on-disk index. `--owner-tab-id` is the load-bearing
-    // signal: TerminalPage sets it when spawning the agent pane's WTA;
-    // manual runs never set it.
-    let is_agent_pane = owner_tab_id
-        .as_ref()
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
-
-    // Resolve the user's active pane cwd before spawning the agent. Both the
-    // child's working directory and the ACP `new_session` cwd derive from it,
-    // so the agent's `execute_command` tool runs in the user's project rather
-    // than wta.exe's own process cwd (which is typically %USERPROFILE% under
-    // packaged identity — that's the bug we saw where `cargo run` resolved
-    // against C:\Users\<user> and failed to find Cargo.toml).
-    let active_pane_cwd = resolve_active_pane_cwd(&shell_mgr, wt_connected).await;
-    startup_probe.log(&format!(
-        "resolved active pane cwd: {:?}",
-        active_pane_cwd.as_ref().map(|p| p.display().to_string())
-    ));
-
-    let spawned =
-        crate::protocol::acp::spawn::spawn_agent_process(agent_cmd, active_pane_cwd.as_deref())?;
-    let resolved_program = spawned.resolved_program.clone();
-    let is_npx_launch = spawned.is_npx;
-    let adapter_package = spawned.adapter_package.clone();
-    let mut child = spawned.child;
-
-    // For npx adapter launches, first run downloads the package
-    // (~10s); surface that instead of a generic "Spawning…".
-    let spawn_stage = if is_npx_launch {
-        format!(
-            "Setting up {} (first run downloads adapter, ~10s)…",
-            adapter_package.as_deref().unwrap_or("agent")
-        )
-    } else {
-        format!("Spawning {}...", resolved_program)
-    };
-    let _ = event_tx.send(AppEvent::ConnectionStage(spawn_stage.clone()));
-    startup_probe.log(&format!(
-        "{} cmd={} resolved={} pid={:?}",
-        spawn_stage,
-        agent_cmd,
-        resolved_program,
-        child.id()
-    ));
-
-    let prompt_timing = Arc::new(PromptTimingState::default());
-    let outgoing = InstrumentedAgentWriter::new(child.stdin.take().unwrap(), prompt_timing.clone())
-        .compat_write();
-    startup_probe.log("Agent stdin pipe attached");
-
-    let stdout = child.stdout.take().unwrap();
-    startup_probe.log("Agent stdout pipe attached");
-    let incoming = StartupInstrumentedReader::new(
-        stdout,
-        startup_probe.clone(),
-        "stdout",
-        prompt_timing.clone(),
-    )
-    .compat();
-
-    if let Some(stderr) = child.stderr.take() {
-        let stderr_probe = startup_probe.clone();
-        tokio::task::spawn_local(async move {
-            stderr_probe.log("Agent stderr pipe attached");
-            let mut lines = BufReader::new(stderr).lines();
-            let mut line_no = 0usize;
-            loop {
-                match lines.next_line().await {
-                    Ok(Some(line)) => {
-                        line_no += 1;
-                        stderr_probe.log(&format!("agent stderr[{line_no}]: {}", line));
-                    }
-                    Ok(None) => {
-                        stderr_probe.log("Agent stderr closed");
-                        break;
-                    }
-                    Err(e) => {
-                        stderr_probe.log(&format!("Agent stderr read error: {}", e));
-                        break;
-                    }
-                }
-            }
-        });
-    }
-
-    // The wait task either logs a natural agent exit, or — when the
-    // /restart slash-command fires `kill_req_tx` — terminates the child
-    // synchronously so the next `run_inner` iteration can spawn a fresh
-    // process without orphaning the old one.
-    let (kill_req_tx, kill_req_rx) = tokio::sync::oneshot::channel::<()>();
-    let mut kill_req_tx = Some(kill_req_tx);
-    tokio::task::spawn_local(async move {
-        let mut kill_req_rx = kill_req_rx;
-        tokio::select! {
-            _ = &mut kill_req_rx => {
-                if let Err(e) = child.kill().await {
-                    tracing::warn!(target: "acp", error = %e, "agent kill failed (restart)");
-                } else {
-                    tracing::info!(target: "acp", "agent process killed (restart)");
-                }
-                // Reap to avoid zombies on Unix; on Windows it's a no-op.
-                let _ = child.wait().await;
-            }
-            status = child.wait() => {
-                match status {
-                    Ok(s) => tracing::info!(target: "acp", ?s, "agent process exited"),
-                    Err(e) => tracing::warn!(target: "acp", error = %e, "agent wait failed"),
-                }
-            }
-        }
-    });
-
-    let state = Arc::new(ClientState {
-        event_tx: event_tx.clone(),
-        shell_mgr: shell_mgr.clone(),
-        prompt_timing,
-    });
-
-    let client = WtaClient {
-        state: state.clone(),
-    };
-
-    let (conn, handle_io) = acp::ClientSideConnection::new(client, outgoing, incoming, |fut| {
-        tokio::task::spawn_local(fut);
-    });
-    startup_probe.log("ACP client connection created");
-
-    let io_probe = startup_probe.clone();
-    tokio::task::spawn_local(async move {
-        io_probe.log("ACP handle_io task started");
-        if let Err(e) = handle_io.await {
-            // I/O loop ending with an error means the ACP connection to the
-            // agent CLI is dead — connection-fatal, log at warn (ships).
-            tracing::warn!(target: "acp", error = %format!("{:#}", e), "ACP I/O loop failed");
-        } else {
-            io_probe.log("ACP handle_io completed");
-        }
-    });
-
-    // Initialize — with a timeout so misconfigured agents (e.g. non-ACP CLIs)
-    // fail fast instead of hanging forever.
-    let _ = event_tx.send(AppEvent::ConnectionStage("Initializing ACP...".to_string()));
-    startup_probe.log("Initializing ACP");
-    let init_started = std::time::Instant::now();
-    let init_future = conn.initialize(
-        acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-            .client_capabilities(acp::ClientCapabilities::new().terminal(true))
-            .client_info(
-                acp::Implementation::new("wta", env!("CARGO_PKG_VERSION"))
-                    .title("Windows Terminal Agent"),
-            ),
-    );
-    // npx first-run downloads the adapter package (~5MB, can take
-    // 20–30s on slow links). Native CLIs respond in <1s so the longer
-    // timeout costs nothing on the hot path.
-    let init_timeout_secs = if is_npx_launch { 60 } else { 15 };
-    let agent_label: String = adapter_package
-        .clone()
-        .unwrap_or_else(|| raw_program.to_string());
-    let init_result =
-        tokio::time::timeout(std::time::Duration::from_secs(init_timeout_secs), init_future).await;
-    log_acp_initialize_timeout_result("DirectAgent", init_started, &init_result);
-    let init_resp = init_result
-        .map_err(|_| {
-            tracing::error!(
-                target: "acp",
-                step = "acp_initialize",
-                timeout_secs = init_timeout_secs,
-                agent = %agent_label,
-                "ACP initialize timed out — agent CLI did not respond"
-            );
-            anyhow::anyhow!(
-                "ACP initialize timed out after {} s — '{}' did not respond. \
-                 First-run npx adapters download ~5MB; check network. \
-                 Built-in ACP agents: copilot, claude (via @agentclientprotocol/claude-agent-acp), \
-                 codex (via @zed-industries/codex-acp), gemini.",
-                init_timeout_secs,
-                agent_label
-            )
-        })?
-        .map_err(|e| {
-            tracing::error!(target: "acp", step = "acp_initialize", error = %e, "ACP initialize failed");
-            anyhow::anyhow!("initialize failed: {}", e)
-        })?;
-
-    // Log the agent's initialize response for debugging
-    startup_probe.log(&format!("Agent init response received: {:?}", init_resp));
-
-    // Create session — also with a timeout.
-    let _ = event_tx.send(AppEvent::ConnectionStage("Creating session...".to_string()));
-    startup_probe.log("Creating session");
-    let cwd = active_pane_cwd
-        .clone()
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    let session_started = std::time::Instant::now();
-    let session_future = conn.new_session(acp::NewSessionRequest::new(cwd));
-    let session_result = tokio::time::timeout(std::time::Duration::from_secs(15), session_future)
-        .await;
-    log_acp_new_session_timeout_result("DirectAgentStartup", session_started, &session_result);
-    let session = session_result
-        .map_err(|_| anyhow::anyhow!("new_session timed out after 15 s"))?
-        .map_err(|e| anyhow::anyhow!("new_session failed: {}", e))?;
-
-    let session_id = session.session_id.clone();
-    startup_probe.log(&format!("Session created: {}", session_id));
-    if is_agent_pane {
-        let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
-        let pane_for_index = if pane_session_id.is_empty() {
-            None
-        } else {
-            Some(pane_session_id.as_str())
-        };
-        tracing::info!(
-            target: "agent_pane_origin",
-            session_id = %session_id,
-            pane_session_id = %pane_session_id,
-            "recording agent-pane session origin (startup)",
-        );
-        crate::agent_pane_origin::append_default(session_id.0.as_ref(), pane_for_index);
-    }
-
-    // Capture the agent's advertised model list. Settings UI rebuilds its
-    // ComboBox from the `agent_status` event payload, where this gets
-    // forwarded by App::publish_agent_status.
-    let (available_models, current_model_id) =
-        crate::protocol::acp::model_select::models_from_new_session(&session);
-    startup_probe.log(&format!(
-        "Session models: {} model(s) advertised, current={}",
-        available_models.len(),
-        current_model_id.as_deref().unwrap_or("<none>"),
-    ));
-
-    // Resolve the model to apply: explicit `--acp-model` flag wins (used by
-    // adapters like claude/codex via npx that can't carry --model on the
-    // adapter cmdline), else fall back to extracting from the agent's own
-    // `--model X` flag (copilot, gemini).
-    let requested_model = acp_model_override
-        .filter(|s| !s.trim().is_empty())
-        .or_else(|| requested_model_id(raw_program, args));
-    if let Some(requested_model) = requested_model {
-        let _ = event_tx.send(AppEvent::ConnectionStage(format!(
-            "Selecting model {}...",
-            requested_model
-        )));
-        startup_probe.log(&format!("Setting ACP session model to {}", requested_model));
-        crate::protocol::acp::model_select::apply_session_model(
-            &conn,
-            session_id.clone(),
-            requested_model.clone(),
-        )
-        .await
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "failed to set requested model {}: {}",
-                requested_model,
-                e
-            )
-        })?;
-        startup_probe.log(&format!("ACP session model set to {}", requested_model));
-    }
-
-    // Notify app of connection
-    let (registry_name, agent_model) = summarize_agent_identity(raw_program, args);
-    let agent_version = init_resp
-        .agent_info
-        .as_ref()
-        .map(|info| format!("v{}", info.version));
-    // Prefer the agent's self-reported title/name from ACP over the registry fallback.
-    let agent_name = init_resp
-        .agent_info
-        .as_ref()
-        .and_then(|info| info.title.clone().or_else(|| Some(info.name.clone())))
-        .unwrap_or(registry_name);
-    let load_session_supported = init_resp.agent_capabilities.load_session;
-    startup_probe.log(&format!(
-        "Agent capabilities: loadSession={}",
-        load_session_supported
-    ));
-    let _ = event_tx.send(AppEvent::AgentConnected {
-        name: agent_name,
-        model: agent_model,
-        version: agent_version,
-        session_id: session_id.to_string(),
-        available_models,
-        current_model_id,
-        load_session_supported,
-    });
-
-    // Per-tab session cache, shared across all in-flight prompt tasks.
-    // The startup session is bound to the owner tab GUID passed in by WT
-    // (via --owner-tab-id) so the first prompt on that tab reuses the
-    // already-created session instead of spawning a redundant one. When
-    // `owner_tab_id` is None (manual `wta` runs, no host pane), fall back
-    // to the legacy "0" key to match the App-side DEFAULT_TAB_ID
-    // placeholder.
-    let tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::SessionId>>> =
-        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-    {
-        let mut g = tab_to_session.lock().await;
-        let initial_tab_key = owner_tab_id.clone().unwrap_or_else(|| "0".to_string());
-        g.insert(initial_tab_key, session_id.clone());
-    }
-
-    // Tracks which template each session last saw, so we can drop the
-    // template body on subsequent same-kind turns. Cleared on session
-    // teardown (see new_session_rx / drop_session_rx arms).
-    let template_memo = TemplateMemo::default();
-
-    // Same-tab single-flight guard: at most one prompt in flight per tab.
-    // The ACP protocol allows concurrent prompts across sessions, but
-    // within a session the turns must be ordered, so we enforce per-tab
-    // serialization here. Per-tab + per-session match because each tab
-    // gets its own session.
-    let in_flight_tabs: Arc<std::sync::Mutex<HashSet<String>>> =
-        Arc::new(std::sync::Mutex::new(HashSet::new()));
-
-    // Per-prompt cancel oneshot, keyed on SessionId. Each spawned prompt
-    // task registers a sender here on entry and removes it on exit. The
-    // cancel listener task signals through it to break the spawned task
-    // out of `conn.prompt().await` even if the agent is slow to honor
-    // session/cancel.
-    let cancel_signals: Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>> =
-        Arc::new(std::sync::Mutex::new(HashMap::new()));
-
-    // The connection is shared across all spawned prompt tasks.
-    let conn = Arc::new(conn);
-
-    // Main event loop. `tokio::select!` lets the cancel/new_session/restart
-    // receivers stay borrowed by `&mut` (rather than moved into detached
-    // tasks via `mem::replace`) so they survive across reconnects.
-    //
-    // The async work for cancel and new_session is offloaded to
-    // `spawn_local` subtasks so a slow agent (e.g. a 15s new_session
-    // call) doesn't stall prompt dispatch.
-    let exit_reason = loop {
-        tokio::select! {
-            biased;
-            // /restart: priority over other arms via `biased;` so a
-            // queued prompt can't sneak in front of a kill request.
-            Some(req) = master_ext_rx.recv() => {
-                dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
-            }
-            Some(req) = restart_rx.recv() => {
-                tracing::info!(target: "acp_restart", "restart requested, new_agent={:?}", req.agent_cmd);
-                if let Some(tx) = kill_req_tx.take() {
-                    let _ = tx.send(());
-                }
-                // Signal every in-flight prompt task to drop out, so
-                // they don't keep emitting chunks against the dead
-                // connection.
-                drain_cancel_signals(&cancel_signals);
-                break ExitReason::Restart { agent_cmd: req.agent_cmd };
-            }
-            Some(req) = cancel_rx.recv() => {
-                dispatch_cancel(req, &conn, &cancel_signals);
-            }
-            Some(req) = new_session_rx.recv() => {
-                dispatch_new_session(
-                    req,
-                    &conn,
-                    &tab_to_session,
-                    &template_memo,
-                    &cancel_signals,
-                    &event_tx,
-                    is_agent_pane,
-                    false,
-                    "DirectAgentNewSessionForTab",
-                );
-            }
-            Some(req) = load_session_rx.recv() => {
-                dispatch_load_session(
-                    req,
-                    &conn,
-                    &tab_to_session,
-                    &cancel_signals,
-                    &event_tx,
-                    false,
-                    false,
-                    std::time::Duration::from_secs(60),
-                );
-            }
-            Some(req) = drop_session_rx.recv() => {
-                dispatch_drop_session(req, &conn, &tab_to_session, &template_memo, &cancel_signals);
-            }
-            Some(req) = rename_session_rx.recv() => {
-                dispatch_rename_session(req, &tab_to_session);
-            }
-            Some(prompt) = prompt_rx.recv() => {
-                dispatch_prompt(
-                    prompt,
-                    &conn,
-                    &tab_to_session,
-                    &template_memo,
-                    &in_flight_tabs,
-                    &cancel_signals,
-                    &event_tx,
-                    &shell_mgr,
-                    &state.prompt_timing,
-                    wt_connected,
-                    is_agent_pane,
-                );
-            }
-            else => break ExitReason::Done,
-        }
-    };
-
-    Ok(exit_reason)
 }
 
 /// Spawn a per-prompt task that resolves the tab's ACP session (lazily
@@ -3520,8 +2696,7 @@ fn dispatch_master_ext_request(
 /// (the session-management Enter/Shift+Enter resume path). Cancels and
 /// drops any existing binding, calls `load_session` under a timeout, and
 /// on success rebinds the tab and emits `SessionAttached` +
-/// `TabSystemMessage`. Shared by `run_inner` and
-/// `run_acp_client_over_pipe`.
+/// `TabSystemMessage`. Called by `run_acp_client_over_pipe`.
 ///
 /// `inject_pane_meta` injects WT_SESSION into the request meta so master
 /// records `pane_session_id` on the resumed row (helper path only).
@@ -3719,8 +2894,8 @@ async fn dispatch_load_failure(
 /// Spin up a fresh ACP session for a tab (the `/new` path), atomically
 /// replacing any existing session. Cancels and forgets the old session,
 /// calls `new_session`, records the agent-pane origin, rebinds the tab,
-/// and emits `SessionAttached` (or `AgentError` on failure). Shared by
-/// `run_inner` and `run_acp_client_over_pipe`.
+/// and emits `SessionAttached` (or `AgentError` on failure). Called by
+/// `run_acp_client_over_pipe`.
 ///
 /// `inject_pane_meta` controls whether WT_SESSION is injected into the
 /// request meta — the helper pipe path needs it so master can record
@@ -3832,7 +3007,7 @@ fn dispatch_new_session(
 /// (Ctrl+C×2 close-pane path). Signals any in-flight prompt for that
 /// session to bail out of `conn.prompt().await`, forgets its template
 /// memo, and best-effort notifies the agent via `session/cancel`.
-/// No-op when the tab holds no session. Shared by `run_inner` and
+/// No-op when the tab holds no session. Called by
 /// `run_acp_client_over_pipe`.
 fn dispatch_drop_session(
     req: DropSessionRequest,
@@ -3882,8 +3057,8 @@ fn dispatch_drop_session(
 
 /// Fire the local per-session cancel oneshot (the critical path that
 /// breaks a spawned prompt task out of `conn.prompt().await`) and
-/// best-effort notify the agent via `session/cancel`. Shared by
-/// `run_inner` and `run_acp_client_over_pipe`.
+/// best-effort notify the agent via `session/cancel`. Called by
+/// `run_acp_client_over_pipe`.
 fn dispatch_cancel(
     req: CancelRequest,
     conn: &Arc<acp::ClientSideConnection>,
@@ -3910,22 +3085,10 @@ fn dispatch_cancel(
     });
 }
 
-/// Fire every registered per-session cancel oneshot and clear the
-/// registry. Used on `/restart` to drop all in-flight prompt tasks out
-/// of `conn.prompt().await` before the connection is torn down.
-fn drain_cancel_signals(
-    cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
-) {
-    let mut signals = cancel_signals.lock().unwrap();
-    for (_, sig) in signals.drain() {
-        let _ = sig.send(());
-    }
-}
-
 /// Rekey the `tab_to_session` binding when WT mints a new stable tab id
 /// for an existing tab (cross-window tab drag). Extracted from the
-/// `rename_session_rx` arm — shared by both `run_inner` and
-/// `run_acp_client_over_pipe` — so the rekey can be unit-tested against
+/// `rename_session_rx` arm of `run_acp_client_over_pipe`, so the rekey
+/// can be unit-tested against
 /// the shared map. No-op when `old_tab_id` is absent.
 fn dispatch_rename_session(
     req: RenameSessionRequest,
@@ -4233,8 +3396,8 @@ async fn dispatch_prompt_body(
 #[cfg(test)]
 mod tests {
     use super::{
-        complete_prompt_request, inject_wta_pane_meta, requested_model_id, shell_from_active,
-        summarize_agent_identity, user_locale_tag, PromptTimingState, SoftStopReason,
+        complete_prompt_request, inject_wta_pane_meta, shell_from_active, user_locale_tag,
+        PromptTimingState, SoftStopReason,
     };
     use super::acp;
     use crate::app::AppEvent;
@@ -4372,33 +3535,6 @@ mod tests {
         let args = ["--acp", "--stdio", "--model", "claude-haiku-4.5"];
         assert_eq!(
             crate::agent_registry::extract_model_from_args(&args, profile),
-            Some("claude-haiku-4.5")
-        );
-    }
-
-    #[test]
-    fn humanizes_brand_and_model_for_copilot() {
-        let args = ["--acp", "--stdio", "--model=claude-haiku-4.5"];
-        let (brand, model) = summarize_agent_identity("copilot", &args);
-
-        assert_eq!(brand, "GitHub Copilot");
-        assert_eq!(model.as_deref(), Some("Claude Haiku 4.5"));
-    }
-
-    #[test]
-    fn humanizes_gpt_5_mini_for_copilot() {
-        let args = ["--acp", "--stdio", "--model=gpt-5-mini"];
-        let (brand, model) = summarize_agent_identity("copilot", &args);
-
-        assert_eq!(brand, "GitHub Copilot");
-        assert_eq!(model.as_deref(), Some("GPT 5 Mini"));
-    }
-
-    #[test]
-    fn requested_model_returns_owned_value() {
-        let args = ["--acp", "--stdio", "--model", "claude-haiku-4.5"];
-        assert_eq!(
-            requested_model_id("copilot", &args).as_deref(),
             Some("claude-haiku-4.5")
         );
     }
@@ -4559,37 +3695,6 @@ mod tests {
             note,
             "submit->context_ready 0.200s | prompt_sent->options_shown 0.500s"
         );
-    }
-
-    // ── humanize ────────────────────────────────────────────────────────────
-
-    #[test]
-    fn humanize_model_name_special_cases_and_joins() {
-        assert_eq!(super::humanize_model_name("gpt-4o"), "GPT 4o");
-        assert_eq!(super::humanize_model_name("claude-opus-4.5"), "Claude Opus 4.5");
-        // Unknown tokens are title-cased generically. The humanizer is
-        // brand-agnostic, so it does NOT preserve OpenAI's lowercase "o1"
-        // styling — this documents the generic behavior / known limitation
-        // rather than endorsing "O1" as the canonical brand name.
-        assert_eq!(super::humanize_model_name("o1-mini"), "O1 Mini");
-    }
-
-    #[test]
-    fn humanize_model_name_tolerates_empty_and_delimiter_only() {
-        // Empty / delimiter-only input falls back to the raw string rather
-        // than producing an empty label.
-        assert_eq!(super::humanize_model_name(""), "");
-        assert_eq!(super::humanize_model_name("---"), "---");
-        // Doubled / leading / trailing delimiters collapse, no blank tokens.
-        assert_eq!(super::humanize_model_name("-gpt--4o-"), "GPT 4o");
-    }
-
-    #[test]
-    fn humanize_identifier_keeps_pure_numeric_tokens_verbatim() {
-        assert_eq!(super::humanize_identifier("4.5"), "4.5");
-        assert_eq!(super::humanize_identifier("20241022"), "20241022");
-        assert_eq!(super::humanize_identifier("gpt"), "GPT");
-        assert_eq!(super::humanize_identifier("sonnet"), "Sonnet");
     }
 
     // ── truncate / snippet / session_short ──────────────────────────────────

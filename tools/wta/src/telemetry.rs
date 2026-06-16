@@ -239,7 +239,7 @@ pub fn log_agent_response_first_token(
 ///
 /// Caveat: when multiple ACP sessions are active concurrently on one
 /// agent CLI subprocess, stdout bytes cannot be cleanly attributed to a
-/// single session — `observe_stdout_read()` charges every read to every
+/// single session — the transport-read accounting charges every read to every
 /// in-flight prompt. In overlapping turns this over-counts; aggregate it
 /// as a coarse upper bound, not a per-session ground truth.
 ///

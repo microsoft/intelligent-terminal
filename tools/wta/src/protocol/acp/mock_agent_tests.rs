@@ -15,7 +15,7 @@
 use super::{ClientState, PromptTimingState, WtaClient};
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
-    dispatch_new_session, dispatch_prompt, dispatch_rename_session, drain_cancel_signals,
+    dispatch_new_session, dispatch_prompt, dispatch_rename_session,
     CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab,
     PromptSubmission, RenameSessionRequest, TemplateMemo,
 };
@@ -465,8 +465,8 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
 //
 // The tests above act AS the orchestrator (they call `client_conn.prompt`
 // directly). The tests below instead drive WTA's real `dispatch_prompt`
-// orchestration — the per-prompt arm of the `run_acp_client_over_pipe` /
-// `run_inner` select loops — against the same mock agent, so the dispatcher
+// orchestration — the per-prompt arm of the `run_acp_client_over_pipe`
+// select loop — against the same mock agent, so the dispatcher
 // ("driver") logic
 // (single-flight gating, lazy session create, prompt assembly, response
 // routing) is itself under test, not just `WtaClient`'s ACP↔AppEvent
@@ -936,31 +936,6 @@ async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
             }
         })
         .await;
-}
-
-/// `drain_cancel_signals` must fire every registered oneshot and empty the
-/// registry — the `/restart` precondition that drops all in-flight prompt
-/// tasks before the connection is torn down.
-#[test]
-fn drain_cancel_signals_fires_all_and_clears() {
-    let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-    let (tx_a, mut rx_a) = oneshot::channel::<()>();
-    let (tx_b, mut rx_b) = oneshot::channel::<()>();
-    {
-        let mut g = cancel_signals.lock().unwrap();
-        g.insert("a".to_string(), tx_a);
-        g.insert("b".to_string(), tx_b);
-    }
-
-    drain_cancel_signals(&cancel_signals);
-
-    assert!(rx_a.try_recv().is_ok(), "signal a must be fired");
-    assert!(rx_b.try_recv().is_ok(), "signal b must be fired");
-    assert!(
-        cancel_signals.lock().unwrap().is_empty(),
-        "registry must be emptied after drain"
-    );
 }
 
 /// `dispatch_drop_session` must unbind the tab's session, fire its in-flight

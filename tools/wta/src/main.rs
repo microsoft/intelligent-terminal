@@ -875,7 +875,11 @@ async fn main() -> Result<()> {
             } else if let Some(pipe_name) = cli.connect_master.clone() {
                 helper::run_helper_mode(cli, pipe_name).await
             } else {
-                run_default_tui(cli).await
+                Err(anyhow::anyhow!(
+                    "wta has no standalone agent mode: it runs as a Windows \
+                     Terminal agent pane (launched by WT with --connect-master) \
+                     or via a subcommand (delegate, mcp, hooks, …)"
+                ))
             }
         }
     };
@@ -1863,63 +1867,13 @@ async fn delegate_with_context(
 
 // ─── Default ACP TUI mode ───────────────────────────────────────────────────
 
-async fn run_default_tui(cli: Cli) -> Result<()> {
-    tracing::info!("=== run_default_tui started ===");
-
-    // Debug channel for TUI debug panel (WT protocol traffic viewer)
-    let (debug_tx, debug_rx) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
-
-    // Try to connect to the Windows Terminal protocol.
-    let mut shell_mgr = ShellManager::new();
-    let mut wt_event_rx = None;
-    let mut wt_protocol_channel: Option<Arc<CliChannel>> = None;
-    let wt_connected = match connect_to_wt_protocol(debug_tx.clone()).await {
-        Ok(channel) => {
-            tracing::info!("Connected to WT COM protocol — subscribing to events");
-            // Subscribe to push events before wrapping in Arc.
-            wt_event_rx = Some(channel.subscribe_events());
-            let cli_arc = Arc::new(channel);
-            wt_protocol_channel = Some(Arc::clone(&cli_arc));
-
-            shell_mgr =
-                shell_mgr.with_wt_channel(cli_arc.clone() as Arc<dyn shell::wt_channel::WtChannel>);
-            true
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "NO WT protocol connection");
-            false
-        }
-    };
-    let shell_mgr = Arc::new(shell_mgr);
-
-    // Try to discover our own pane identity by PID matching
-    let pane_identity = if wt_connected {
-        discover_pane_identity(&shell_mgr).await
-    } else {
-        None
-    };
-
-    run_acp_tui_mode(
-        cli,
-        shell_mgr,
-        wt_connected,
-        debug_rx,
-        pane_identity,
-        wt_event_rx,
-        wt_protocol_channel,
-        None,
-    )
-    .await
-}
-
 /// Drive the standard ACP TUI but use `pipe_name` as the ACP transport
-/// (helper mode). Same setup as `run_default_tui` minus the implicit
-/// "spawn agent CLI" path: the helper attaches to wta-master over the
-/// supplied named pipe and forwards ACP traffic over it.
+/// (helper mode). The helper attaches to wta-master over the supplied
+/// named pipe and forwards ACP traffic over it.
 pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Result<()> {
     tracing::info!(target: "helper", pipe = %pipe_name, "=== wta-helper starting (TUI) ===");
 
-    // Debug channel — same wiring as run_default_tui.
+    // Debug channel for the helper TUI.
     let (debug_tx, debug_rx) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
 
     let mut shell_mgr = ShellManager::new();
@@ -1960,7 +1914,7 @@ pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Re
         pane_identity,
         wt_event_rx,
         wt_protocol_channel,
-        Some(pipe_name),
+        pipe_name,
     )
     .await
 }
@@ -2013,7 +1967,7 @@ async fn run_acp_tui_mode(
     pane_identity: Option<(String, String, String)>,
     wt_event_rx: Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>,
     wt_protocol_channel: Option<Arc<CliChannel>>,
-    connect_master_pipe: Option<String>,
+    connect_master_pipe: String,
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -2225,7 +2179,7 @@ async fn run_acp_app(
     pane_identity: Option<(String, String, String)>,
     wt_event_rx: Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>,
     wt_protocol_channel: Option<Arc<CliChannel>>,
-    connect_master_pipe: Option<String>,
+    connect_master_pipe: String,
 ) -> Result<()> {
     let agent_cmd = cli.agent.clone();
 
@@ -2325,7 +2279,7 @@ async fn run_acp_app(
             let shell_mgr_for_recs = Arc::clone(&shell_mgr);
 
             // Cancel channel for Ctrl+C handling: App produces, ACP client
-            // task consumes (one listener task inside run_acp_client).
+            // task consumes (one listener task inside the ACP client loop).
             let (cancel_tx, cancel_rx) = tokio::sync::mpsc::unbounded_channel();
             // /new channel: App emits a NewSessionForTab, the ACP client
             // drops the cached SessionId for that tab and re-issues
@@ -2365,12 +2319,9 @@ async fn run_acp_app(
             // this the agent loses turn context after a drag.
             let (rename_session_tx, rename_session_rx) =
                 tokio::sync::mpsc::unbounded_channel();
-            let (session_hook_tx_opt, session_hook_rx_opt) = if connect_master_pipe.is_some() {
-                let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-                (Some(tx), Some(rx))
-            } else {
-                (None, None)
-            };
+            // Helper mode always speaks to wta-master, so the session-hook
+            // channel is always live.
+            let (session_hook_tx, session_hook_rx) = tokio::sync::mpsc::unbounded_channel();
             let (master_ext_tx, master_ext_rx) = tokio::sync::mpsc::unbounded_channel();
 
             // Seed the process-wide owner tab StableId so `inject_wta_pane_meta`
@@ -2385,10 +2336,14 @@ async fn run_acp_app(
             // In helper mode (`--connect-master <pipe>`) we always spawn the
             // pipe-attached variant regardless of `--setup`: master owns
             // the agent lifecycle, so there's no FRE flow to defer to.
-            let deferred_channels = if let Some(ref pipe_name) = connect_master_pipe {
-                let pipe_name = pipe_name.clone();
-                let session_hook_rx = session_hook_rx_opt
-                    .expect("session_hook receiver exists in helper mode");
+            // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
+            // master owns the agent lifecycle, so we always spawn the
+            // pipe-attached variant immediately — there's no FRE flow to defer
+            // to. If the user is mid-FRE the initial handshake fails with
+            // `Authentication required` and `try_start_acp` re-spawns this task
+            // post-login.
+            {
+                let pipe_name = connect_master_pipe.clone();
                 let event_tx_for_pipe = event_tx.clone();
                 let shell_mgr_for_pipe = Arc::clone(&shell_mgr);
                 let acp_model = cli.acp_model.clone();
@@ -2437,28 +2392,7 @@ async fn run_acp_app(
                         });
                     }
                 });
-                None
-            } else if cli.setup.is_none() {
-                tokio::task::spawn_local(protocol::acp::client::run_acp_client(
-                    agent_cmd.clone(),
-                    cli.acp_model.clone(),
-                    cli.owner_tab_id.clone(),
-                    event_tx.clone(),
-                    prompt_rx,
-                    cancel_rx,
-                    new_session_rx,
-                    load_session_rx,
-                    drop_session_rx,
-                    rename_session_rx,
-                    restart_rx,
-                    master_ext_rx,
-                    Arc::clone(&shell_mgr),
-                    wt_connected,
-                ));
-                None
-            } else {
-                Some((prompt_rx, cancel_rx, new_session_rx, load_session_rx, drop_session_rx, rename_session_rx, restart_rx, master_ext_rx))
-            };
+            }
 
             let (recommendation_tx, recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
             let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -2497,17 +2431,15 @@ async fn run_acp_app(
                 cli.agent.clone(),
                 cli.acp_model.clone(),
             );
-            if let Some(session_hook_tx) = session_hook_tx_opt {
-                app_state.set_session_hook_tx(session_hook_tx);
-            }
+            app_state.set_session_hook_tx(session_hook_tx);
 
             // Pipe-mode reconnect pre-stash. In helper mode the initial
             // `run_acp_client_over_pipe` task fails immediately with
             // `Authentication required` if the user is in FRE (not yet
             // logged in). The post-login `LoginComplete` handler fires
-            // `try_start_acp`; without this stash it would synthesize a
-            // direct-mode `DeferredAcpParams` and spawn `run_acp_client`,
-            // bypassing master and breaking every `intellterm.wta/...`
+            // `try_start_acp`; without this stash it would have no master
+            // pipe to reconnect with and could not resume the agent pane
+            // — breaking every `intellterm.wta/...`
             // ext-method (e.g. `sessions/list` — session view would stay
             // empty on the first tab forever). With the stash in place,
             // `try_start_acp` sees `master_pipe_name = Some(...)` and
@@ -2515,16 +2447,14 @@ async fn run_acp_app(
             //
             // No effect when the initial connection succeeds: the
             // stashed params just sit unused for the helper's lifetime.
-            if let Some(ref pipe_name) = connect_master_pipe {
-                app_state.set_master_pipe_acp_params(
-                    pipe_name.clone(),
-                    agent_cmd.clone(),
-                    cli.acp_model.clone(),
-                    cli.owner_tab_id.clone(),
-                    Arc::clone(&shell_mgr),
-                    wt_connected,
-                );
-            }
+            app_state.set_master_pipe_acp_params(
+                connect_master_pipe.clone(),
+                agent_cmd.clone(),
+                cli.acp_model.clone(),
+                cli.owner_tab_id.clone(),
+                Arc::clone(&shell_mgr),
+                wt_connected,
+            );
 
             // ── Preflight: check the agent CLI before connecting ──────────
             // Skip preflight when FRE is active — FRE has its own agent
@@ -2745,7 +2675,7 @@ async fn run_acp_app(
             // `initial_load_tx` is no longer used (the runtime
             // `load_session_tx` path is now reached via the App's
             // WtEvent handler) but we still need to drop the cloned
-            // sender so the receiver future inside `run_acp_client`
+            // sender so the receiver future inside the ACP client loop
             // doesn't keep an extra producer alive past shutdown.
             drop(initial_load_tx);
 
@@ -2848,24 +2778,6 @@ async fn run_acp_app(
             // and CLI subcommands never construct an App that wires
             // `event_tx`, so they don't pay this cost.
             app_state.ensure_history_loaded();
-
-            // If in setup mode, store ACP params for deferred start after login.
-            if let Some((prompt_rx, cancel_rx, new_session_rx, load_session_rx, drop_session_rx, rename_session_rx, restart_rx, master_ext_rx)) = deferred_channels {
-                app_state.set_acp_params(
-                    agent_cmd.clone(),
-                    cli.acp_model.clone(),
-                    prompt_rx,
-                    cancel_rx,
-                    new_session_rx,
-                    load_session_rx,
-                    drop_session_rx,
-                    rename_session_rx,
-                    restart_rx,
-                    master_ext_rx,
-                    Arc::clone(&shell_mgr),
-                    wt_connected,
-                );
-            }
 
             if let Some((pane_id, _tab_id, window_id)) = pane_identity {
                 app_state.pane_id = Some(pane_id);
