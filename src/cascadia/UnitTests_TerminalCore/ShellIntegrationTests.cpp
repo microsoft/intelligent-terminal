@@ -89,6 +89,14 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(QueryExecutionPolicy_ParsesStdoutAndLowercases);
     TEST_METHOD(QueryExecutionPolicy_TrimsWhitespaceAndStopsAtFirstLine);
 
+    // ResolvePowerShellHostInstall — pure install/EP verdict for one PS host.
+    // Guards the regression where profile-gating silently skipped the
+    // execution-policy block (FRE no longer stopped on a Restricted host).
+    TEST_METHOD(ResolveHost_NoProfile_PolicyBlocked_StopsWithEpFlagWithoutWriting);
+    TEST_METHOD(ResolveHost_NoProfile_PolicyOk_SucceedsWithoutWriting);
+    TEST_METHOD(ResolveHost_Profile_PolicyOk_PerformsWrite);
+    TEST_METHOD(ResolveHost_Profile_PolicyBlocked_StopsWithEpFlagWithoutWriting);
+
     // ─── Bash flavor ──────────────────────────────────────────────────────
     // FindShellIntegrationBashBlock — pure parser.
     TEST_METHOD(Bash_FindBlock_EmptyContent_ReturnsNpos);
@@ -864,6 +872,77 @@ void ShellIntegrationTests::QueryExecutionPolicy_TrimsWhitespaceAndStopsAtFirstL
     const auto first = details::QueryExecutionPolicy(L"powershell.exe");
     const auto second = details::QueryExecutionPolicy(L"powershell.exe");
     VERIFY_ARE_EQUAL(first, second, L"QueryExecutionPolicy must be deterministic for the same host");
+}
+
+// ─── ResolvePowerShellHostInstall ─────────────────────────────────────────────
+// These cover the seam that the string-only PolicyName_* tests above cannot:
+// the verdict that decides whether FRE / Save stops. The regression (PR #222)
+// profile-gated this verdict so a Restricted host with no matching Windows
+// Terminal profile silently reported success and FRE never stopped. The
+// no-profile + blocked case below fails on that exact bug.
+
+void ShellIntegrationTests::ResolveHost_NoProfile_PolicyBlocked_StopsWithEpFlagWithoutWriting()
+{
+    // The host has NO Windows Terminal profile, but its execution policy
+    // blocks unsigned scripts. The verdict MUST still be a failure carrying
+    // executionPolicyBlocked=true (so FRE shows the policy error + turns auto
+    // detection off), and the $PROFILE write must NOT be attempted.
+    int writeCalls = 0;
+    const auto result = ResolvePowerShellHostInstall(
+        /*profilePresent*/ false,
+        /*executionPolicyBlocked*/ true,
+        [&] { ++writeCalls; return InstallResult{ true, false, {}, false }; });
+
+    VERIFY_IS_FALSE(result.success, L"A blocking policy must fail the verdict even with no profile");
+    VERIFY_IS_TRUE(result.executionPolicyBlocked, L"executionPolicyBlocked must propagate so FRE shows the policy error");
+    VERIFY_ARE_EQUAL(0, writeCalls, L"No $PROFILE write may be attempted when the policy blocks");
+}
+
+void ShellIntegrationTests::ResolveHost_NoProfile_PolicyOk_SucceedsWithoutWriting()
+{
+    // No profile and a permissive policy: nothing to do. Report
+    // success-already-satisfied (so the sweep's all-installed verdict isn't
+    // tripped) without writing.
+    int writeCalls = 0;
+    const auto result = ResolvePowerShellHostInstall(
+        /*profilePresent*/ false,
+        /*executionPolicyBlocked*/ false,
+        [&] { ++writeCalls; return InstallResult{ true, false, {}, false }; });
+
+    VERIFY_IS_TRUE(result.success);
+    VERIFY_IS_FALSE(result.executionPolicyBlocked);
+    VERIFY_ARE_EQUAL(0, writeCalls, L"No write when the user has no profile for this host");
+}
+
+void ShellIntegrationTests::ResolveHost_Profile_PolicyOk_PerformsWrite()
+{
+    // Profile present and policy OK: delegate to the write, returning exactly
+    // what it reports.
+    int writeCalls = 0;
+    const auto result = ResolvePowerShellHostInstall(
+        /*profilePresent*/ true,
+        /*executionPolicyBlocked*/ false,
+        [&] { ++writeCalls; return InstallResult{ true, false, L"sentinel", false }; });
+
+    VERIFY_ARE_EQUAL(1, writeCalls, L"The write must run when a profile is present and the policy is fine");
+    VERIFY_IS_TRUE(result.success);
+    VERIFY_ARE_EQUAL(std::wstring{ L"sentinel" }, result.errorMessage, L"The write's own result must be returned verbatim");
+}
+
+void ShellIntegrationTests::ResolveHost_Profile_PolicyBlocked_StopsWithEpFlagWithoutWriting()
+{
+    // Profile present but policy blocks: short-circuit before writing (the
+    // block would only throw PSSecurityException on every shell start anyway)
+    // and surface the policy verdict.
+    int writeCalls = 0;
+    const auto result = ResolvePowerShellHostInstall(
+        /*profilePresent*/ true,
+        /*executionPolicyBlocked*/ true,
+        [&] { ++writeCalls; return InstallResult{ true, false, {}, false }; });
+
+    VERIFY_IS_FALSE(result.success);
+    VERIFY_IS_TRUE(result.executionPolicyBlocked);
+    VERIFY_ARE_EQUAL(0, writeCalls, L"A blocking policy must short-circuit before the write");
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

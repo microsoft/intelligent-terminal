@@ -34,7 +34,7 @@
 #pragma once
 
 #include <string_view>
-
+#include <utility>
 #include "ShellIntegrationCommon.h"
 
 namespace Microsoft::Terminal::ShellIntegration
@@ -249,5 +249,52 @@ namespace Microsoft::Terminal::ShellIntegration
             // exact bug this gate exists to prevent.
         }
         return false;
+    }
+
+    // Resolves the install verdict for a single PowerShell host, keeping the
+    // two concerns that must NOT be conflated cleanly separate:
+    //
+    //   * The $PROFILE WRITE is profile-gated — `performWrite` only runs when
+    //     the user actually has a Windows Terminal profile launching this host
+    //     (so we never append a pwsh block for someone who only uses Windows
+    //     PowerShell, and vice-versa).
+    //
+    //   * The execution-policy VERDICT is UNCONDITIONAL. A Restricted /
+    //     AllSigned policy means the shell-integration .ps1 can never run, so
+    //     the FRE / Settings save MUST stop and surface the policy error even
+    //     when no profile triggers a write. Tying this verdict to profile
+    //     presence is exactly the regression this helper exists to prevent:
+    //     the EP block was silently skipped (and reported as success) whenever
+    //     `RunInstall` gated the host out, so the FRE never stopped.
+    //
+    // `executionPolicyBlocked` is supplied by the caller (a freshly-evaluated
+    // `ExecutionPolicyBlocksShellIntegration(target)` probe) rather than
+    // cached, so a user who fixes their policy offline and clicks Save again on
+    // the SAME FRE is re-evaluated and allowed through.
+    //
+    // Order matters: the EP check is evaluated FIRST so a blocking policy
+    // short-circuits before any write is attempted (a write would only
+    // silent-no-op or throw PSSecurityException on every shell start anyway).
+    //
+    // `performWrite` is a callable returning InstallResult (e.g. a lambda
+    // wrapping InstallForTarget); templated so unit tests can inject a counting
+    // / sentinel double without spawning a real PowerShell.
+    template<typename WriteFn>
+    inline InstallResult ResolvePowerShellHostInstall(bool profilePresent,
+                                                      bool executionPolicyBlocked,
+                                                      WriteFn&& performWrite)
+    {
+        if (executionPolicyBlocked)
+        {
+            return { false, false, L"PowerShell execution policy blocks scripts", true };
+        }
+        if (profilePresent)
+        {
+            return std::forward<WriteFn>(performWrite)();
+        }
+        // Policy is fine and the user has no Windows Terminal profile for this
+        // host — nothing to write. Report success-already-satisfied so the
+        // sweep's all-installed verdict doesn't flag a missing shell.
+        return { true, true, {}, false };
     }
 }

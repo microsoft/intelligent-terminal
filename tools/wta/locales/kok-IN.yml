@@ -74,6 +74,7 @@ commands.help_close_hint: "  Esc        ही मजत बंद करात"
 commands.help.summary: "ही कमांड वळेरी दाखयात"
 commands.clear.summary: "चॅट स्क्रोलबॅक साफ करात (सत्र दवरता)"
 commands.new.summary: "नवें ACP सत्र सुरू करात (इतिहास काडून उडयता)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "एजंट परत सुरू करात"
 commands.stop.summary: "चालू आशिल्लो प्रॉम्प्ट रद्द करात"
 commands.sessions.summary: "इतिहासीक सत्र पिकर उगडात (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

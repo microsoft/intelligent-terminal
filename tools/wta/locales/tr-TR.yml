@@ -74,6 +74,7 @@ commands.help_close_hint: "  Esc        Bu yardımı kapat"  # {Locked="Esc"}
 commands.help.summary: "Bu komut listesini göster"
 commands.clear.summary: "Sohbet kaydırma geçmişini temizle (oturumu korur)"
 commands.new.summary: "Yeni bir ACP oturumu başlat (geçmişi bırakır)"  # {Locked="ACP"}
+commands.fix.summary: "Etkin terminali tanıla ve bir düzeltme öner (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Aracıyı yeniden başlat"
 commands.stop.summary: "Devam eden istemi iptal et"
 commands.sessions.summary: "Geçmiş oturum seçicisini aç (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

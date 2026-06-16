@@ -271,6 +271,27 @@ pub struct CliStatus {
     pub detection_fallback: Option<&'static str>,
 }
 
+impl CliStatus {
+    /// Empty placeholder used by [`status_scoped`] for CLIs that fall
+    /// outside the requested scope. `binary_on_path = false` matches what
+    /// "the CLI isn't on this machine" would report, so callers that
+    /// filter on it (e.g. `run_hooks_install`'s `c.binary_on_path &&
+    /// !c.plugin_installed` failure check) naturally skip these rows.
+    fn stub_skipped(kind: CliKind) -> Self {
+        Self {
+            name: kind.name(),
+            binary_on_path: false,
+            binary_path: None,
+            marketplace_registered: false,
+            marketplace_path: None,
+            marketplace_path_valid: false,
+            plugin_installed: false,
+            plugin_enabled: false,
+            detection_fallback: None,
+        }
+    }
+}
+
 /// Top-level shape of `wta hooks status --json`. `bundle_source`
 /// reports which entry in the bundle lookup chain supplied the hook
 /// files for the running `wta` process — useful when debugging "why is
@@ -949,12 +970,35 @@ fn install_for_gemini(home: &Path) {
 /// every supported CLI under the user's home directory. Side-effect
 /// free: spawns CLIs in read-only mode and stats files; never writes.
 pub fn status() -> StatusReport {
+    status_scoped(CliScope::All)
+}
+
+/// Same as [`status`] but only inspects CLIs in `scope`. Used by
+/// `run_hooks_install` to avoid spawning `claude`/`gemini` query
+/// subprocesses when the install was scoped to a single CLI — those
+/// spawns are ~1-3s of Node startup each (verified in
+/// `wta-install-hooks.log` against a `--cli copilot` install) and add
+/// nothing to the verification of a Copilot-only install.
+///
+/// CLIs that aren't `scope.includes(...)`d get a stub `CliStatus`
+/// (everything `false`/`None`) so callers can still iterate
+/// `report.clis` uniformly without indexing tricks; the field
+/// `binary_on_path` being `false` is indistinguishable from "the CLI
+/// isn't on this machine", which is the correct semantics — we know
+/// nothing because we didn't ask.
+pub fn status_scoped(scope: CliScope) -> StatusReport {
     let home = home_dir();
     StatusReport {
         schema_version: STATUS_SCHEMA_VERSION,
         clis: CliKind::ALL
             .iter()
-            .map(|k| status_for(*k, home.as_deref()))
+            .map(|k| {
+                if scope.includes(*k) {
+                    status_for(*k, home.as_deref())
+                } else {
+                    CliStatus::stub_skipped(*k)
+                }
+            })
             .collect(),
         bundle_source: bundle::resolve_source(),
     }
@@ -997,16 +1041,36 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
         return out;
     }
 
+    // Spawn both read-only queries on threads. Both are pure reads of
+    // `~/.copilot/` — `plugin list` and `plugin marketplace list` neither
+    // mutate state nor lock files, and Windows opens these for shared
+    // read by default. Running them concurrently cuts wall-clock from
+    // ~2.8s (serial — each is a cold Node CLI startup) to ~1.5s on a
+    // dev box; the peak memory cost is ~150 MB extra for the brief
+    // window both Node processes are live. The two `tracing::info!`
+    // lines they emit may interleave in `wta-install-hooks.log` (each
+    // line stays atomic — `tracing` synchronizes per-event), but the
+    // log payload is unambiguous because each carries its own
+    // `args=` field.
+    let plugin_handle = spawn_plugin_cli_query("copilot", "plugin-list", &["plugin", "list"]);
+    let mkt_handle = spawn_plugin_cli_query(
+        "copilot",
+        "marketplace-list",
+        &["plugin", "marketplace", "list"],
+    );
+
     // 1. plugin list (text — Copilot 1.0.44-2 has no --json).
-    let plugin_ok = match run_plugin_cli_capture("copilot", &["plugin", "list"]) {
-        Ok(o) if o.success => Some(parse_copilot_plugin_list(&o.stdout)),
-        Ok(_) | Err(_) => None,
-    };
+    let plugin_ok = join_or_run_plugin_cli(plugin_handle, "copilot", &["plugin", "list"])
+        .filter(|o| o.success)
+        .map(|o| parse_copilot_plugin_list(&o.stdout));
     // 2. marketplace list (text).
-    let mkt_ok = match run_plugin_cli_capture("copilot", &["plugin", "marketplace", "list"]) {
-        Ok(o) if o.success => Some(parse_copilot_marketplace_list(&o.stdout)),
-        Ok(_) | Err(_) => None,
-    };
+    let mkt_ok = join_or_run_plugin_cli(
+        mkt_handle,
+        "copilot",
+        &["plugin", "marketplace", "list"],
+    )
+    .filter(|o| o.success)
+    .map(|o| parse_copilot_marketplace_list(&o.stdout));
 
     if let (Some(p), Some(m)) = (plugin_ok, mkt_ok) {
         out.plugin_installed = p;
@@ -1179,15 +1243,36 @@ fn claude_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
         return out;
     }
 
-    let plugin_json = match run_plugin_cli_capture("claude", &["plugin", "list", "--json"]) {
-        Ok(o) if o.success => parse_claude_plugin_list_json(&o.stdout),
-        Ok(_) | Err(_) => None,
-    };
-    let mkt_json =
-        match run_plugin_cli_capture("claude", &["plugin", "marketplace", "list", "--json"]) {
-            Ok(o) if o.success => parse_claude_marketplace_list_json(&o.stdout),
-            Ok(_) | Err(_) => None,
-        };
+    // Spawn both read-only queries on threads (see the equivalent
+    // pattern in `copilot_status` for the full rationale: pure reads,
+    // no shared state, ~2-3s wall-clock saved when Node CLI startup
+    // dominates). `Builder::spawn` failures fall back to serial
+    // execution via `join_or_run_plugin_cli`.
+    let plugin_handle = spawn_plugin_cli_query(
+        "claude",
+        "plugin-list",
+        &["plugin", "list", "--json"],
+    );
+    let mkt_handle = spawn_plugin_cli_query(
+        "claude",
+        "marketplace-list",
+        &["plugin", "marketplace", "list", "--json"],
+    );
+
+    let plugin_json = join_or_run_plugin_cli(
+        plugin_handle,
+        "claude",
+        &["plugin", "list", "--json"],
+    )
+    .filter(|o| o.success)
+    .and_then(|o| parse_claude_plugin_list_json(&o.stdout));
+    let mkt_json = join_or_run_plugin_cli(
+        mkt_handle,
+        "claude",
+        &["plugin", "marketplace", "list", "--json"],
+    )
+    .filter(|o| o.success)
+    .and_then(|o| parse_claude_marketplace_list_json(&o.stdout));
 
     if let (Some(p), Some(m)) = (plugin_json, mkt_json) {
         out.plugin_installed = p.installed;
@@ -2039,6 +2124,110 @@ fn run_plugin_cli_capture(exe: &str, args: &[&str]) -> std::io::Result<CliRunOut
     run_plugin_cli_capture_with_env(exe, args, &[])
 }
 
+/// Spawn `<exe> <args...>` on a background thread and return a handle the
+/// caller can join later. Used to run two independent read-only `*_status`
+/// queries (`plugin list` + `plugin marketplace list`, or any future
+/// equivalents for claude/gemini/codex) concurrently so an N-CLI status
+/// scan pays max(query_time) per CLI instead of sum(query_time).
+///
+/// Returns `None` when `Builder::spawn` reports `Err` — typically when
+/// the OS refuses thread creation under handle-table or memory pressure.
+/// Callers must pair this with [`join_or_run_plugin_cli`], which falls
+/// back to a serial in-process run when the handle is `None`. That keeps
+/// the verification flow functional under degraded conditions (it just
+/// loses the parallelism speedup).
+///
+/// `label` is a short descriptive string used for the thread name and
+/// the warning log; it does not affect behavior.
+///
+/// The `'static` lifetimes on `exe` and `args` are required by
+/// `thread::Builder::spawn`'s `F: Send + 'static` bound — the closure
+/// captures them by move and outlives the calling frame. Static string
+/// literals at every call site satisfy this naturally.
+fn spawn_plugin_cli_query(
+    exe: &'static str,
+    label: &'static str,
+    args: &'static [&'static str],
+) -> Option<std::thread::JoinHandle<std::io::Result<CliRunOutcome>>> {
+    match std::thread::Builder::new()
+        .name(format!("{exe}-status-{label}"))
+        .spawn(move || run_plugin_cli_capture(exe, args))
+    {
+        Ok(h) => Some(h),
+        Err(e) => {
+            tracing::warn!(
+                target: "agent_hooks",
+                err = %e,
+                exe = exe,
+                query = label,
+                "thread spawn failed; will run query serially as fallback",
+            );
+            None
+        }
+    }
+}
+
+/// Join the handle from [`spawn_plugin_cli_query`] and return the
+/// `CliRunOutcome`; if the handle is `None` (spawn failed earlier),
+/// fall back to running the query serially on the current thread.
+///
+/// Error handling:
+///
+///   * `Ok(Ok(o))` — query ran cleanly, return the outcome.
+///   * `Ok(Err(io_err))` — `run_plugin_cli_capture` itself returned an
+///     IO error (the spawn or wait failed). It already logged the
+///     failure via its own `tracing::warn!` before returning, so we
+///     don't re-log; collapse to `None`.
+///   * `Err(panic_payload)` — the worker thread panicked. This path
+///     has **no** prior log line (panics bypass our `tracing` calls
+///     in `run_plugin_cli_capture`), so without an explicit log here
+///     a thread panic would silently fall through to the filesystem
+///     fallback and we'd never know the parallel-status code regressed.
+///     Log it at warn so it surfaces in `wta-install-hooks.log` next
+///     to the surrounding `agent_hooks` events.
+///
+/// `exe` and `args` are echoed into the log so an operator reading
+/// the file can tell which CLI / query thread failed without having
+/// to cross-reference the thread name from
+/// [`spawn_plugin_cli_query`].
+fn join_or_run_plugin_cli(
+    handle: Option<std::thread::JoinHandle<std::io::Result<CliRunOutcome>>>,
+    exe: &str,
+    args: &[&str],
+) -> Option<CliRunOutcome> {
+    match handle {
+        Some(h) => match h.join() {
+            Ok(Ok(o)) => Some(o),
+            Ok(Err(_)) => {
+                // run_plugin_cli_capture already logged the IO error.
+                None
+            }
+            Err(payload) => {
+                // The query thread panicked. Extract the panic message
+                // if it's a &str / String (the common case from
+                // `panic!()` / `assert!()`); otherwise stringify the
+                // type id for a generic diagnostic.
+                let msg = if let Some(s) = payload.downcast_ref::<&'static str>() {
+                    (*s).to_string()
+                } else if let Some(s) = payload.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "(non-string panic payload)".to_string()
+                };
+                tracing::warn!(
+                    target: "agent_hooks",
+                    exe = exe,
+                    args = ?args,
+                    panic_msg = %msg,
+                    "plugin CLI query thread panicked; status verification will fall back to filesystem heuristics",
+                );
+                None
+            }
+        },
+        None => run_plugin_cli_capture(exe, args).ok(),
+    }
+}
+
 /// Same as [`run_plugin_cli_capture`] but injects the supplied
 /// `(name, value)` pairs into the spawned child's environment.
 /// Used by `install_for_gemini` to set
@@ -2556,22 +2745,37 @@ fn codex_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) ->
         return out;
     }
 
-    let mkt = match run_plugin_cli_capture("codex", &["plugin", "marketplace", "list"]) {
-        Ok(o) if o.success => Some(parse_codex_marketplace_list(&o.stdout)),
-        Ok(_) | Err(_) => None,
-    };
-    // `--marketplace wt-local` scopes the listing to just our marketplace
-    // (the only plugin there is wt-agent-hooks). Without this flag Codex
-    // dumps every plugin from every registered marketplace (e.g. the
-    // ~150-entry `openai-curated` snapshot), which is pure noise for our
-    // parser and pollutes the master log.
-    let plugin = match run_plugin_cli_capture(
+    // Spawn both read-only queries on threads. `--marketplace wt-local`
+    // on the plugin list scopes it to our marketplace only — without
+    // that flag Codex dumps every plugin from every registered
+    // marketplace (e.g. the ~150-entry `openai-curated` snapshot),
+    // which is pure noise. See `copilot_status` for the full parallel
+    // rationale.
+    let mkt_handle = spawn_plugin_cli_query(
+        "codex",
+        "marketplace-list",
+        &["plugin", "marketplace", "list"],
+    );
+    let plugin_handle = spawn_plugin_cli_query(
+        "codex",
+        "plugin-list",
+        &["plugin", "list", "--marketplace", MARKETPLACE_NAME],
+    );
+
+    let mkt = join_or_run_plugin_cli(
+        mkt_handle,
+        "codex",
+        &["plugin", "marketplace", "list"],
+    )
+    .filter(|o| o.success)
+    .map(|o| parse_codex_marketplace_list(&o.stdout));
+    let plugin = join_or_run_plugin_cli(
+        plugin_handle,
         "codex",
         &["plugin", "list", "--marketplace", MARKETPLACE_NAME],
-    ) {
-        Ok(o) if o.success => Some(parse_codex_plugin_list(&o.stdout)),
-        Ok(_) | Err(_) => None,
-    };
+    )
+    .filter(|o| o.success)
+    .map(|o| parse_codex_plugin_list(&o.stdout));
 
     match (mkt, plugin) {
         (Some((registered, path)), Some(installed)) => {

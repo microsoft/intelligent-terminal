@@ -263,7 +263,7 @@ int main()
 {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
 
-    CLI::App app{ "wtcli — Windows Terminal CLI" };
+    CLI::App app{ "wtcli - Windows Terminal CLI" };
     app.require_subcommand(0, 1);
 
     bool jsonMode = false;
@@ -866,7 +866,7 @@ int main()
     app.callback([&]() {
         if (app.get_subcommands().empty())
         {
-            printf("wtcli — Windows Terminal CLI\n\n");
+            printf("wtcli - Windows Terminal CLI\n\n");
             printf("Usage: wtcli [--json] <subcommand>\n\n");
             printf("Run 'wtcli --help' for available subcommands.\n");
         }
