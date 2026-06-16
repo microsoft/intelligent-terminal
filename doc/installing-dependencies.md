@@ -2,10 +2,10 @@
 
 Intelligent Terminal's **first-run experience (FRE)** is designed to install
 the dependencies it owns for you automatically — the default agent
-(GitHub Copilot), Node.js when it is needed, shell integration for both
-PowerShell flavors, and so on. For most users on a typical Windows
-machine who stay with the default agent, finishing the FRE is all you
-ever need to do.
+(GitHub Copilot), Node.js when it is needed, shell integration for the shells
+it supports (PowerShell, bash, and WSL bash), and so on. For most users on a
+typical Windows machine who stay with the default agent, finishing the FRE is
+all you ever need to do.
 
 This document exists for the circumstances where the FRE cannot do the job
 on its own, including:
@@ -31,7 +31,10 @@ on its own, including:
    - 3.4 [Gemini CLI (bring your own)](#34-gemini-cli-bring-your-own)
    - 3.5 [Signing in to your agent](#35-signing-in-to-your-agent)
    - 3.6 [Agent hooks for session management](#36-agent-hooks-for-session-management)
-4. [PowerShell shell integration](#4-powershell-shell-integration)
+4. [Shell integration](#4-shell-integration) — supported shells + setup
+   - 4.1 [PowerShell](#41-powershell) (PowerShell 7+ and Windows PowerShell 5.1)
+   - 4.2 [Bash (Git Bash)](#42-bash-git-bash)
+   - 4.3 [WSL bash](#43-wsl-bash)
 
 ---
 
@@ -440,17 +443,41 @@ without it) and restart Intelligent Terminal once.
 
 ---
 
-## 4. PowerShell shell integration
+## 4. Shell integration
 
-**Why you need it:** Shell integration teaches PowerShell to emit
-**OSC 133** marks after every prompt. Intelligent Terminal uses these marks
-to detect command boundaries and exit codes, which powers the auto-fix
-feature, command navigation, and the bottom-bar agent state. Without these
-marks Intelligent Terminal cannot tell when a command finished or whether
-it failed.
+**Why you need it:** Shell integration teaches your shell to emit **OSC 133**
+marks after every prompt. Intelligent Terminal uses these marks to detect
+command boundaries and exit codes, which powers the auto-fix feature, command
+navigation, and the bottom-bar agent state. Without these marks Intelligent
+Terminal cannot tell when a command finished or whether it failed.
 
-The first-run experience writes the shell-integration profile snippet for
-you, for both **PowerShell 7+** (`pwsh.exe`) and **Windows PowerShell 5.1**
+The first-run experience installs shell integration automatically for every
+**supported shell it detects** on your system — you usually don't have to do
+anything. This section documents which shells are supported and the only
+manual step you may occasionally need (adjusting the PowerShell execution
+policy).
+
+### What's supported
+
+| Shell | Supported | Where integration is installed |
+|---|---|---|
+| PowerShell 7+ (`pwsh.exe`) | ✅ | `$PROFILE` (see [4.1](#41-powershell)) |
+| Windows PowerShell 5.1 (`powershell.exe`) | ✅ | `$PROFILE` (see [4.1](#41-powershell)) |
+| Bash — Git Bash on Windows | ✅ | `~/.bashrc` (see [4.2](#42-bash-git-bash)) |
+| WSL bash | ✅ | `\\wsl$\<distro>\…\.bashrc` (see [4.3](#43-wsl-bash)) |
+| Command Prompt (`cmd.exe`) | ❌ | `cmd.exe` cannot emit OSC 133 marks |
+| Other shells (zsh, fish, Nushell, …) | ❌ | Not yet supported |
+| Non-bash WSL login shells (zsh, fish, …) | ❌ | Only WSL distros whose login shell is bash are covered |
+
+> [!NOTE]
+> The set of supported shells grows over time. This page is the **authoritative
+> list** — if a shell you use isn't here yet, check back after updating
+> Intelligent Terminal.
+
+### 4.1 PowerShell
+
+The first-run experience writes the shell-integration profile snippet for you,
+for both **PowerShell 7+** (`pwsh.exe`) and **Windows PowerShell 5.1**
 (`powershell.exe`). The snippet is appended to each host's
 **current-user / current-host profile** — the same file `$PROFILE` (also
 known as `$PROFILE.CurrentUserCurrentHost`) points at when you run that
@@ -470,7 +497,7 @@ $PROFILE.CurrentUserCurrentHost
 The only step you may need to perform by hand is adjusting the PowerShell
 execution policy so the profile is allowed to run.
 
-### Step 4.1 — Set the PowerShell execution policy
+#### Set the PowerShell execution policy
 
 Shell-integration scripts are PowerShell `.ps1` files loaded from your
 profile. PowerShell will refuse to run them under the default `Restricted`
@@ -515,12 +542,56 @@ is the recommended Microsoft default for developer machines.
 > shows `Restricted` or `AllSigned` for your scope after running the
 > command above.
 
-### Step 4.2 — Enable auto-error detection and auto-error fix
+### 4.2 Bash (Git Bash)
 
-Once the execution policy is set, open **Settings → AI Agents** inside
-Intelligent Terminal and turn on **Auto-error detection** (and, optionally,
-the auto-fix follow-up). With shell integration loading correctly, the
-agent pane will now:
+For **Git Bash on Windows**, the first-run experience installs a small,
+versioned script under `~/.intelligent-terminal/` (resolved from your
+`%USERPROFILE%`) and sources it from a guarded block appended to **`~/.bashrc`**:
+
+| What | Path |
+|---|---|
+| Integration script | `%USERPROFILE%\.intelligent-terminal\shell-integration_v1.sh` |
+| Sourced from | `%USERPROFILE%\.bashrc` |
+
+There is **no execution-policy equivalent** for bash, so no manual step is
+normally required. A few notes:
+
+- The script targets **bash 3.2+** and is safe to source multiple times. It
+  silently no-ops in non-interactive shells and in non-bash shells, so a
+  `.bashrc` that roams (via dotfiles / OneDrive) to a machine without
+  Intelligent Terminal won't break.
+- To uninstall, remove the Intelligent Terminal block from `~/.bashrc`. The
+  versioned script files under `~/.intelligent-terminal/` are intentionally
+  left in place to support side-by-side rollback; delete that directory by
+  hand if you want a full sweep.
+
+### 4.3 WSL bash
+
+For **WSL** distributions, integration is installed **per distro** using the
+same bash script as above, written through the distro's `\\wsl$\` UNC mount:
+
+| What | Path |
+|---|---|
+| Integration script | `\\wsl$\<distro>\<home>\.intelligent-terminal\shell-integration_v1.sh` |
+| Sourced from | `\\wsl$\<distro>\<home>\.bashrc` |
+
+Notes and limitations:
+
+- The `\\wsl$\` mount requires **Windows 10 1903 (build 18362)+**, which every
+  supported Intelligent Terminal host meets. The first access auto-starts the
+  distro, so the very first install pays a one-time VM cold-start cost.
+- Only distros whose **login shell is bash** are covered (integration is
+  written to `~/.bashrc`). Distros that default to — or where you have
+  changed your default shell to — **zsh, fish, or another non-bash shell**,
+  or that ship **without bash** (for example, Alpine), are **not yet
+  supported**.
+
+### Enable auto-error detection and auto-error fix
+
+Once shell integration is in place (and, for PowerShell, the execution policy
+is set), open **Settings → AI Agents** inside Intelligent Terminal and turn on
+**Auto-error detection** (and, optionally, the auto-fix follow-up). With shell
+integration loading correctly, the agent pane will now:
 
 - Detect failing commands automatically (via the OSC 133 exit-code marks).
 - Offer to diagnose and propose a fix for the most recent failure.
