@@ -13,7 +13,9 @@
 //! harness and assert on real `App` state (see the spec, "option 2").
 
 use super::{ClientState, PromptTimingState, WtaClient};
-use super::{dispatch_prompt, PromptSubmission, TemplateMemo};
+use super::{
+    dispatch_master_ext_request, dispatch_prompt, MasterExtRequest, PromptSubmission, TemplateMemo,
+};
 use crate::app::AppEvent;
 use crate::shell::ShellManager;
 use agent_client_protocol as acp;
@@ -712,6 +714,74 @@ async fn dispatch_prompt_autofix_uses_autofix_template() {
                 seen[0].contains("fix the build"),
                 "autofix prompt must still carry the user's text"
             );
+        })
+        .await;
+}
+
+/// `dispatch_master_ext_request(SessionsList)` must call `ext_method` and turn
+/// the response into an `AgentsSnapshotLoaded` carrying the same `request_id`.
+/// Against a mock that returns an empty/null ext response, the snapshot is an
+/// empty session list (the graceful "view opened, nothing live yet" state).
+#[tokio::test]
+async fn dispatch_master_ext_sessions_list_loads_snapshot() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let mut event_rx = h.event_rx;
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SessionsList { request_id: 7 },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+            );
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::AgentsSnapshotLoaded {
+                    request_id,
+                    sessions,
+                })) => {
+                    assert_eq!(request_id, 7, "request_id must round-trip");
+                    assert!(sessions.is_empty(), "null ext response -> empty snapshot");
+                }
+                Ok(_) => panic!("expected AgentsSnapshotLoaded"),
+                _ => panic!("expected AgentsSnapshotLoaded, got nothing"),
+            }
+        })
+        .await;
+}
+
+/// `dispatch_master_ext_request(SessionFocus)` always emits
+/// `MasterMutationCompleted` with the request_id once the ext-method call
+/// returns, so the App can clear its pending-mutation state.
+#[tokio::test]
+async fn dispatch_master_ext_session_focus_completes() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let mut event_rx = h.event_rx;
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SessionFocus {
+                    request_id: 9,
+                    sid: acp::SessionId::new("sess-focus"),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+            );
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::MasterMutationCompleted { request_id })) => {
+                    assert_eq!(request_id, 9)
+                }
+                Ok(_) => panic!("expected MasterMutationCompleted"),
+                _ => panic!("expected MasterMutationCompleted, got nothing"),
+            }
         })
         .await;
 }
