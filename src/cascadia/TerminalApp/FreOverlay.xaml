@@ -355,7 +355,7 @@
                                                        FontSize="12" Foreground="#99FFFFFF"
                                                        TextWrapping="Wrap">
                                                 <Run x:Name="AutoDetectShellIntegrationHintPrefix" />
-                                                <Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal/blob/main/doc/installing-dependencies.md#8-powershell-shell-integration"
+                                                <Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-dependency#4-shell-integration"
                                                            Foreground="#FF99EBFF">
                                                     <Run x:Name="AutoDetectShellIntegrationHintLink" />
                                                 </Hyperlink>

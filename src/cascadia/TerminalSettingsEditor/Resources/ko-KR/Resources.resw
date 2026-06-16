@@ -2931,13 +2931,16 @@
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>자동 오류 검색</value>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
-    <value>Intelligent Terminal이 셸에 액세스하여 오류를 자동으로 검색하도록 허용합니다. PowerShell 및 Windows PowerShell에서 사용할 수 있습니다.</value>
+  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
+    <value>지능형 터미널이 셸에 액세스하여 오류를 자동으로 검색하도록 허용합니다. PowerShell, bash 및 WSL bash에서 사용할 수 있습니다. </value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+    <value>지원되는 모든 셸 보기</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
     <value>자동 오류 제안</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Intelligent Terminal이 오류를 에이전트로 보내 수정 사항을 자동으로 제안하도록 허용합니다.</value>
+    <value>지능형 터미널이 오류를 에이전트로 보내 수정 사항을 자동으로 제안하도록 허용합니다.</value>
   </data>
 </root>
