@@ -14,11 +14,16 @@
     <!-- Mandatory.  Name of the NuGet package which will contain PGO databases for consumption by build system. -->
     <PGOPackageName>Microsoft.Internal.Windows.Terminal.PGODatabase</PGOPackageName>
 
-    <!-- Mandatory.  Major version number of the PGO database which should match the version of the product.  This can be hard-coded or obtained from other sources in build system. -->
-    <PGOPackageVersionMajor>$(VersionMajor)</PGOPackageVersionMajor>
+    <!-- Mandatory.  Major/Minor version number of the PGO database. This is normally derived from the
+         product version ($(VersionMajor).$(VersionMinor)), but the Intelligent Terminal fork rebranded to
+         0.1, and no 0.1.x PGODatabase exists on the TerminalDependencies feed (which only carries upstream
+         Windows Terminal versions, currently up to 1.26.0). Pin to the latest available upstream PGO data so
+         Optimize builds can find a matching package. Revisit when newer upstream PGO data is published, or
+         once the fork publishes its own PGODatabase via the instrumentation pipeline (build/pipelines/pgo.yml). -->
+    <PGOPackageVersionMajor>1</PGOPackageVersionMajor>
 
-    <!-- Mandatory.  Minor version number of the PGO database which should match the version of the product.  This can be hard-coded or obtained from other sources in build system. -->
-    <PGOPackageVersionMinor>$(VersionMinor)</PGOPackageVersionMinor>
+    <!-- Mandatory.  Minor version number of the PGO database.  See note above on PGOPackageVersionMajor. -->
+    <PGOPackageVersionMinor>26</PGOPackageVersionMinor>
 
     <!-- Mandatory, defaults to 0.  Patch version number of the PGO database which should match the version of the product.  This can be hard-coded or obtained from other sources in build system. -->
     <PGOPackageVersionPatch>0</PGOPackageVersionPatch>
