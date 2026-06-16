@@ -863,12 +863,15 @@ async fn main() -> Result<()> {
         // ── ACP model list probe ──
         Some(Command::ProbeModels { agent }) => run_probe_models(&agent).await,
 
-        // ── No subcommand = ACP TUI mode (default), or one of the
-        //    singleton-service modes ──
+        // ── No subcommand: a singleton-service mode, or an error. There
+        //    is no standalone/default ACP TUI mode — the direct agent-spawn
+        //    path was removed, so bare `wta` always runs as a WT-launched
+        //    agent pane via `--connect-master`:
         //    - `--master <pipe>`: wta-master (Z architecture; owns
         //      agent CLI, serves helper connections over named pipe)
         //    - `--connect-master <pipe>`: wta-helper (Z architecture;
         //      per-pane child that speaks ACP to master over the pipe)
+        //    - neither: error — there is no standalone agent mode.
         None => {
             if let Some(pipe_name) = cli.master.clone() {
                 master::run_master_mode(cli, pipe_name).await
@@ -2330,12 +2333,6 @@ async fn run_acp_app(
             // events by the same StableId C++ routes per-tab events with.
             protocol::acp::client::set_helper_owner_tab_id(cli.owner_tab_id.as_deref());
 
-            // Spawn the ACP client -- but not in setup mode, where the user
-            // hasn't chosen an agent yet. Store params for deferred start.
-            //
-            // In helper mode (`--connect-master <pipe>`) we always spawn the
-            // pipe-attached variant regardless of `--setup`: master owns
-            // the agent lifecycle, so there's no FRE flow to defer to.
             // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
             // master owns the agent lifecycle, so we always spawn the
             // pipe-attached variant immediately — there's no FRE flow to defer
