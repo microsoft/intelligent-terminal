@@ -3744,6 +3744,257 @@ mod tests {
         assert_eq!(timeout_result_failure_fields(&timed_out), ("Timeout", 0));
     }
 
+    // ── pane-context / template-kind formatting ─────────────────────────────
+
+    #[test]
+    fn format_pane_context_summary_none_is_literal_none() {
+        assert_eq!(super::format_pane_context_summary(None), "none");
+    }
+
+    /// The summary must surface `effective_source_pane_id`, which drives autofix
+    /// routing: it prefers `source_pane_id` (the pane that produced the failing
+    /// command) and only falls back to `pane_id` (the agent pane) when absent.
+    #[test]
+    fn format_pane_context_summary_reflects_effective_source_precedence() {
+        let ctx = crate::pane_context::PaneContext {
+            pane_id: Some("agent-pane".to_string()),
+            tab_id: Some("tab-1".to_string()),
+            window_id: Some("win-1".to_string()),
+            cwd: Some("C:\\work".to_string()),
+            source_pane_id: Some("src-pane".to_string()),
+        };
+        let s = super::format_pane_context_summary(Some(&ctx));
+        assert!(s.contains("pane_id=Some(\"agent-pane\")"), "got: {s}");
+        assert!(s.contains("source_pane_id=Some(\"src-pane\")"), "got: {s}");
+        assert!(
+            s.contains("effective_source_pane_id=Some(\"src-pane\")"),
+            "effective must prefer source_pane_id; got: {s}"
+        );
+
+        let ctx2 = crate::pane_context::PaneContext {
+            pane_id: Some("agent-pane".to_string()),
+            source_pane_id: None,
+            ..Default::default()
+        };
+        let s2 = super::format_pane_context_summary(Some(&ctx2));
+        assert!(
+            s2.contains("effective_source_pane_id=Some(\"agent-pane\")"),
+            "effective must fall back to pane_id; got: {s2}"
+        );
+    }
+
+    #[test]
+    fn template_kind_display_matches_label() {
+        assert_eq!(super::TemplateKind::Planner.to_string(), "planner");
+        assert_eq!(super::TemplateKind::Autofix.to_string(), "autofix");
+    }
+
+    // ── terminal-context / prompt assembly ──────────────────────────────────
+
+    /// Minimal [`WtChannel`] that answers `get_active_pane` with a canned pane
+    /// and errors every other request. `read_pane_last_message` degrades to
+    /// `None` on those errors, which is all the assembly tests need (no buffer
+    /// content is asserted).
+    struct MockWtChannel {
+        active_pane: serde_json::Value,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for MockWtChannel {
+        async fn request(
+            &self,
+            method: &str,
+            _params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            match method {
+                "get_active_pane" => Ok(self.active_pane.clone()),
+                other => Err(anyhow::anyhow!("MockWtChannel: unhandled method {other}")),
+            }
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    fn shell_mgr_with_pane(active: serde_json::Value) -> crate::shell::ShellManager {
+        crate::shell::ShellManager::new()
+            .with_wt_channel(std::sync::Arc::new(MockWtChannel { active_pane: active }))
+    }
+
+    #[tokio::test]
+    async fn build_terminal_context_json_none_without_wt_channel() {
+        let mgr = crate::shell::ShellManager::new();
+        assert!(super::build_terminal_context_json(&mgr).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn build_terminal_context_json_skips_agent_pane() {
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "p1",
+            "is_agent_pane": true,
+        }));
+        assert!(
+            super::build_terminal_context_json(&mgr).await.is_none(),
+            "an active agent pane has no terminal output to ship"
+        );
+    }
+
+    #[tokio::test]
+    async fn build_terminal_context_json_assembles_fields_for_real_pane() {
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "pane-9",
+            "title": "My Tab",
+            "cwd": "C:\\workspace",
+            "pid": std::process::id(),
+            "is_agent_pane": false,
+        }));
+        let json = super::build_terminal_context_json(&mgr)
+            .await
+            .expect("a non-agent active pane must yield context json");
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["activeTarget"], "pane-9");
+        assert_eq!(v["window_title"], "My Tab");
+        assert_eq!(v["cwd"], "C:\\workspace");
+        // The mock errors the buffer reads, so `buffer` is null.
+        assert!(v["buffer"].is_null());
+        // pid is our own test process → shell resolves to the test binary exe.
+        if cfg!(windows) {
+            assert!(
+                v["shell"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+                    .ends_with(".exe"),
+                "shell should resolve from pid; got {:?}",
+                v["shell"]
+            );
+        }
+    }
+
+    /// A planner turn with `include_template=true` ships the persona template,
+    /// the delegate-agents section, and appends the user request. It never
+    /// resolves a fix pane.
+    #[tokio::test]
+    async fn build_prompt_text_planner_includes_template_and_user_request() {
+        let mgr = crate::shell::ShellManager::new();
+        let expected = super::prompt::load_planner_prompt_template();
+        let (prompt, _source, display_name, fix_pane) =
+            super::build_prompt_text(1, 0.0, "list files", false, true, &mgr, false, None).await;
+        assert_eq!(display_name, expected.display_name);
+        assert!(
+            prompt.contains("### Supported Delegate Agents"),
+            "planner must ship the delegate-agents section"
+        );
+        assert!(
+            prompt.contains("## User Request\nlist files"),
+            "planner must append the user text"
+        );
+        assert!(fix_pane.is_none(), "planner turns never resolve a fix pane");
+    }
+
+    /// An autofix turn loads the *autofix* persona (not the planner), appends a
+    /// non-empty hint as a User Request, and omits planner-only sections.
+    #[tokio::test]
+    async fn build_prompt_text_autofix_appends_hint_and_omits_planner_sections() {
+        let mgr = crate::shell::ShellManager::new();
+        let planner = super::prompt::load_planner_prompt_template();
+        let autofix = super::prompt::load_autofix_prompt_template();
+        let (prompt, _s, display_name, fix_pane) =
+            super::build_prompt_text(2, 0.0, "fix the build", true, true, &mgr, false, None).await;
+        assert_eq!(display_name, autofix.display_name);
+        assert_ne!(
+            display_name, planner.display_name,
+            "autofix must not reuse the planner persona"
+        );
+        assert!(
+            !prompt.contains("### Supported Delegate Agents"),
+            "autofix prompt is not the planner prompt"
+        );
+        assert!(
+            prompt.contains("## User Request\nfix the build"),
+            "a non-empty autofix hint is appended"
+        );
+        assert!(fix_pane.is_none(), "no wt channel → nothing to resolve");
+    }
+
+    /// A blank autofix hint must not produce an empty `## User Request` section.
+    #[tokio::test]
+    async fn build_prompt_text_autofix_blank_hint_has_no_user_request() {
+        let mgr = crate::shell::ShellManager::new();
+        let (prompt, _s, _d, _f) =
+            super::build_prompt_text(3, 0.0, "   ", true, true, &mgr, false, None).await;
+        assert!(
+            !prompt.contains("## User Request"),
+            "blank autofix hint must not add a User Request section"
+        );
+    }
+
+    /// With `include_template=false` the (large) persona body is dropped — only
+    /// runtime sections and the user request remain. This is the per-session
+    /// "template already in history" optimization.
+    #[tokio::test]
+    async fn build_prompt_text_without_template_drops_persona_body() {
+        let mgr = crate::shell::ShellManager::new();
+        let planner = super::prompt::load_planner_prompt_template();
+        assert!(
+            !planner.content.trim().is_empty(),
+            "test precondition: planner template body is non-empty"
+        );
+        let (prompt, _s, _d, _f) =
+            super::build_prompt_text(4, 0.0, "hi", false, false, &mgr, false, None).await;
+        assert!(
+            !prompt.contains(planner.content.trim()),
+            "include_template=false must omit the template body"
+        );
+        assert!(prompt.contains("## User Request\nhi"));
+    }
+
+    /// A manual `/fix` (autofix, no explicit `source_pane_id`) resolves the
+    /// active working pane from WT and reports it as the fix target so the App
+    /// can address the eventual fix command.
+    #[tokio::test]
+    async fn build_prompt_text_autofix_fix_resolves_active_pane() {
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "work-pane",
+            "cwd": "C:\\proj",
+            "pid": std::process::id(),
+            "is_agent_pane": false,
+        }));
+        let (prompt, _s, _d, fix_pane) =
+            super::build_prompt_text(5, 0.0, "", true, true, &mgr, true, None).await;
+        assert_eq!(
+            fix_pane.as_deref(),
+            Some("work-pane"),
+            "manual /fix must resolve the active working pane"
+        );
+        assert!(
+            prompt.contains("### Shell Context"),
+            "autofix with a wt channel must ship shell context"
+        );
+    }
+
+    /// Error-triggered autofix carries its own `source_pane_id`; the explicit
+    /// source wins and `resolved_fix_pane` stays `None` (the App already knows
+    /// the target).
+    #[tokio::test]
+    async fn build_prompt_text_autofix_explicit_source_not_reported_as_resolved() {
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "work-pane",
+            "pid": std::process::id(),
+            "is_agent_pane": false,
+        }));
+        let ctx = crate::pane_context::PaneContext {
+            source_pane_id: Some("explicit-src".to_string()),
+            ..Default::default()
+        };
+        let (_p, _s, _d, fix_pane) =
+            super::build_prompt_text(6, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
+        assert!(
+            fix_pane.is_none(),
+            "error-triggered autofix carries its source; resolved_fix_pane stays None"
+        );
+    }
+
     // ── truncate / snippet / session_short ──────────────────────────────────
 
     #[test]

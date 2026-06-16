@@ -1439,5 +1439,313 @@ async fn dispatch_master_ext_session_focus_completes() {
         .await;
 }
 
+// ── inbound Client-trait routing (session_notification / request_permission) ──
+
+/// Build a bare `WtaClient` (no agent connection) plus the `AppEvent` receiver
+/// its handlers write to. Lets us drive the inbound `Client` trait methods
+/// directly and assert the `SessionUpdate → AppEvent` translation without
+/// spinning up the ACP I/O loop.
+fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let state = Arc::new(ClientState {
+        event_tx,
+        shell_mgr: Arc::new(ShellManager::new()),
+        prompt_timing: Arc::new(PromptTimingState::default()),
+    });
+    (WtaClient { state }, event_rx)
+}
+
+fn notif(sid: &str, update: acp::SessionUpdate) -> acp::SessionNotification {
+    acp::SessionNotification::new(acp::SessionId::new(sid), update)
+}
+
+/// An `AgentThoughtChunk` update becomes an `AgentThoughtChunk` event carrying
+/// the session id and the chunk text.
+#[tokio::test]
+async fn session_notification_routes_agent_thought_chunk() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::AgentThoughtChunk(acp::ContentChunk::new("thinking".into())),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::AgentThoughtChunk { session_id, text }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(text, "thinking");
+        }
+        _ => panic!("expected AgentThoughtChunk"),
+    }
+}
+
+/// A `user_message_chunk` (only emitted during a `session/load` replay) becomes
+/// a `UserMessageReplayChunk` event.
+#[tokio::test]
+async fn session_notification_routes_user_message_replay_chunk() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::UserMessageChunk(acp::ContentChunk::new("prior prompt".into())),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::UserMessageReplayChunk { session_id, text }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(text, "prior prompt");
+        }
+        _ => panic!("expected UserMessageReplayChunk"),
+    }
+}
+
+/// A `ToolCall` update becomes a `ToolCall` event with the tool id and title.
+#[tokio::test]
+async fn session_notification_routes_tool_call() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::ToolCall(acp::ToolCall::new(
+                acp::ToolCallId::new("tc-1"),
+                "Run: echo hi",
+            )),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall {
+            session_id,
+            id,
+            title,
+            status,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(id, "tc-1");
+            assert_eq!(title, "Run: echo hi");
+            assert!(!status.is_empty(), "status should be a rendered enum name");
+        }
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+/// A `ToolCallUpdate` carrying only a status becomes a `ToolCallUpdate` event
+/// whose status string is the rendered enum name.
+#[tokio::test]
+async fn session_notification_routes_tool_call_update_status_only() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
+                acp::ToolCallId::new("tc-1"),
+                acp::ToolCallUpdateFields::new().status(acp::ToolCallStatus::Completed),
+            )),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCallUpdate {
+            session_id,
+            id,
+            status,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(id, "tc-1");
+            assert_eq!(status, "Completed");
+        }
+        _ => panic!("expected ToolCallUpdate"),
+    }
+}
+
+/// A failed `ToolCallUpdate` that carries a `raw_output.message` surfaces that
+/// reason appended to the status, so the chat shows *why* a tool call failed
+/// instead of a bare "Failed".
+#[tokio::test]
+async fn session_notification_tool_call_update_surfaces_raw_output_message() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
+                acp::ToolCallId::new("tc-1"),
+                acp::ToolCallUpdateFields::new()
+                    .status(acp::ToolCallStatus::Failed)
+                    .raw_output(serde_json::json!({
+                        "message": "The user rejected this tool call."
+                    })),
+            )),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCallUpdate { status, .. }) => {
+            assert!(status.contains("Failed"), "got: {status}");
+            assert!(
+                status.contains("The user rejected this tool call."),
+                "the raw_output reason must be surfaced; got: {status}"
+            );
+        }
+        _ => panic!("expected ToolCallUpdate"),
+    }
+}
+
+/// A `ToolCallUpdate` with no status is dropped (nothing actionable to show).
+#[tokio::test]
+async fn session_notification_tool_call_update_without_status_is_dropped() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
+                acp::ToolCallId::new("tc-1"),
+                acp::ToolCallUpdateFields::new(),
+            )),
+        ))
+        .await
+        .unwrap();
+    assert!(
+        rx.try_recv().is_err(),
+        "a status-less ToolCallUpdate must not emit an event"
+    );
+}
+
+/// A `Plan` update becomes a `Plan` event whose entries preserve content and
+/// map each ACP status onto the app's `PlanEntryStatus`.
+#[tokio::test]
+async fn session_notification_routes_plan_with_status_mapping() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::Plan(acp::Plan::new(vec![
+                acp::PlanEntry::new(
+                    "Step one",
+                    acp::PlanEntryPriority::Medium,
+                    acp::PlanEntryStatus::InProgress,
+                ),
+                acp::PlanEntry::new(
+                    "Step two",
+                    acp::PlanEntryPriority::Low,
+                    acp::PlanEntryStatus::Completed,
+                ),
+                acp::PlanEntry::new(
+                    "Step three",
+                    acp::PlanEntryPriority::Low,
+                    acp::PlanEntryStatus::Pending,
+                ),
+            ])),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::Plan { session_id, entries }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(
+                entries,
+                vec![
+                    crate::app::PlanEntry {
+                        content: "Step one".to_string(),
+                        status: crate::app::PlanEntryStatus::InProgress,
+                    },
+                    crate::app::PlanEntry {
+                        content: "Step two".to_string(),
+                        status: crate::app::PlanEntryStatus::Completed,
+                    },
+                    crate::app::PlanEntry {
+                        content: "Step three".to_string(),
+                        status: crate::app::PlanEntryStatus::Pending,
+                    },
+                ]
+            );
+        }
+        _ => panic!("expected Plan"),
+    }
+}
+
+fn permission_request(sid: &str) -> acp::RequestPermissionRequest {
+    acp::RequestPermissionRequest::new(
+        acp::SessionId::new(sid),
+        acp::ToolCallUpdate::new(
+            acp::ToolCallId::new("mock-tool-1"),
+            acp::ToolCallUpdateFields::new().title("Run: echo hi"),
+        ),
+        vec![acp::PermissionOption::new(
+            acp::PermissionOptionId::new("allow-once"),
+            "Allow once",
+            acp::PermissionOptionKind::AllowOnce,
+        )],
+    )
+}
+
+/// `request_permission` surfaces a `PermissionRequest` event and, once the user
+/// picks an option through the responder, returns `Selected(option_id)`.
+#[tokio::test]
+async fn request_permission_returns_selected_option() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let handle = tokio::task::spawn_local(async move {
+                client.request_permission(permission_request("s1")).await
+            });
+
+            let responder = match rx.recv().await {
+                Some(AppEvent::PermissionRequest {
+                    session_id,
+                    description,
+                    options,
+                    responder,
+                }) => {
+                    assert_eq!(session_id, "s1");
+                    assert_eq!(description, "Run: echo hi");
+                    assert_eq!(options.len(), 1);
+                    assert_eq!(options[0].id, "allow-once");
+                    responder
+                }
+                _ => panic!("expected PermissionRequest"),
+            };
+            responder.send("allow-once".to_string()).unwrap();
+
+            let resp = handle.await.unwrap().unwrap();
+            match resp.outcome {
+                acp::RequestPermissionOutcome::Selected(sel) => {
+                    assert_eq!(sel.option_id.to_string(), "allow-once");
+                }
+                _ => panic!("expected Selected outcome"),
+            }
+        })
+        .await;
+}
+
+/// If the responder is dropped without a choice (e.g. the pane closes), the
+/// permission resolves as `Cancelled` rather than hanging.
+#[tokio::test]
+async fn request_permission_cancelled_when_responder_dropped() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let handle = tokio::task::spawn_local(async move {
+                client.request_permission(permission_request("s1")).await
+            });
+
+            let responder = match rx.recv().await {
+                Some(AppEvent::PermissionRequest { responder, .. }) => responder,
+                _ => panic!("expected PermissionRequest"),
+            };
+            drop(responder);
+
+            let resp = handle.await.unwrap().unwrap();
+            assert!(matches!(
+                resp.outcome,
+                acp::RequestPermissionOutcome::Cancelled
+            ));
+        })
+        .await;
+}
+
 
 
