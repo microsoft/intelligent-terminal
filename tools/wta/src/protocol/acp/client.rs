@@ -2699,10 +2699,10 @@ fn dispatch_master_ext_request(
 /// `TabSystemMessage`. Called by `run_acp_client_over_pipe`.
 ///
 /// `inject_pane_meta` injects WT_SESSION into the request meta so master
-/// records `pane_session_id` on the resumed row (helper path only).
+/// records `pane_session_id` on the resumed row.
 /// `use_load_failure_handler` selects the richer [`handle_load_failure`]
-/// (restore prior binding / boot-time fallback `new_session`) used by the
-/// helper path; the direct path instead surfaces a plain `TabError`.
+/// (restore prior binding / boot-time fallback `new_session`); when
+/// `false`, a load failure instead surfaces a plain `TabError`.
 /// `timeout` bounds the `session/load` call (60s in production; injectable
 /// for tests).
 #[allow(clippy::too_many_arguments)]
@@ -2720,6 +2720,9 @@ fn dispatch_load_session(
         target: "acp_load_session",
         tab = %req.tab_id,
         session_id = %req.session_id,
+        inject_pane_meta,
+        use_load_failure_handler,
+        timeout_ms = timeout.as_millis() as u64,
         "load_session requested"
     );
     let conn = Arc::clone(conn);
@@ -2834,9 +2837,15 @@ fn dispatch_load_session(
                     session_id = %req.session_id,
                     "load_session timed out"
                 );
-                let message = "Resume timed out after 60s — the agent \
-                               did not respond to `session/load`."
-                    .to_string();
+                let human_timeout = if timeout.as_secs() >= 1 {
+                    format!("{}s", timeout.as_secs())
+                } else {
+                    format!("{}ms", timeout.as_millis())
+                };
+                let message = format!(
+                    "Resume timed out after {human_timeout} — the agent \
+                     did not respond to `session/load`."
+                );
                 dispatch_load_failure(
                     use_load_failure_handler,
                     old_sid.as_ref(),
@@ -3396,8 +3405,8 @@ async fn dispatch_prompt_body(
 #[cfg(test)]
 mod tests {
     use super::{
-        complete_prompt_request, inject_wta_pane_meta, shell_from_active, user_locale_tag,
-        PromptTimingState, SoftStopReason,
+        acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta, shell_from_active,
+        timeout_result_failure_fields, user_locale_tag, PromptTimingState, SoftStopReason,
     };
     use super::acp;
     use crate::app::AppEvent;
@@ -3695,6 +3704,44 @@ mod tests {
             note,
             "submit->context_ready 0.200s | prompt_sent->options_shown 0.500s"
         );
+    }
+
+    // ── telemetry failure-field mapping ─────────────────────────────────────
+
+    /// `acp_result_failure_fields` reports no failure for `Ok`, and surfaces
+    /// the ACP error code (as i32) under the `AcpError` kind for `Err`.
+    #[test]
+    fn acp_result_failure_fields_maps_ok_and_err() {
+        let ok: acp::Result<()> = Ok(());
+        assert_eq!(acp_result_failure_fields(&ok), ("", 0));
+
+        let err: acp::Result<()> = Err(acp::Error::new(-32603, "boom"));
+        assert_eq!(acp_result_failure_fields(&err), ("AcpError", -32603));
+    }
+
+    /// `timeout_result_failure_fields` forwards the inner ACP result when the
+    /// call completed in time (both Ok and Err), and reports the `Timeout`
+    /// kind only when the outer future actually elapsed.
+    #[tokio::test]
+    async fn timeout_result_failure_fields_maps_inner_and_elapsed() {
+        // Completed in time, inner Ok → no failure.
+        let inner_ok: Result<acp::Result<()>, tokio::time::error::Elapsed> = Ok(Ok(()));
+        assert_eq!(timeout_result_failure_fields(&inner_ok), ("", 0));
+
+        // Completed in time, inner Err → surface the ACP error code.
+        let inner_err: Result<acp::Result<()>, tokio::time::error::Elapsed> =
+            Ok(Err(acp::Error::new(-32000, "nope")));
+        assert_eq!(timeout_result_failure_fields(&inner_err), ("AcpError", -32000));
+
+        // Outer future elapsed → Timeout, no ACP code.
+        let elapsed = tokio::time::timeout(
+            std::time::Duration::ZERO,
+            std::future::pending::<()>(),
+        )
+        .await
+        .expect_err("a zero-duration timeout over a pending future must elapse");
+        let timed_out: Result<acp::Result<()>, tokio::time::error::Elapsed> = Err(elapsed);
+        assert_eq!(timeout_result_failure_fields(&timed_out), ("Timeout", 0));
     }
 
     // ── truncate / snippet / session_short ──────────────────────────────────

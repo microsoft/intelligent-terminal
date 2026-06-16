@@ -260,8 +260,9 @@ impl acp::Agent for MockAgent {
     ) -> acp::Result<acp::LoadSessionResponse> {
         if self.slow_load.load(Ordering::SeqCst) {
             // Outlast any short injected dispatch timeout so the
-            // dispatcher takes its `Err(_)` (timeout) branch.
-            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            // dispatcher takes its `Err(_)` (timeout) branch, but stay
+            // bounded so the task doesn't linger after the test returns.
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
         if self.fail_load_session.load(Ordering::SeqCst) {
             return Err(acp::Error::internal_error().data("mock load_session failure".to_string()));
@@ -836,7 +837,7 @@ async fn dispatch_prompt_autofix_uses_autofix_template() {
 /// tab id to the new one (cross-window drag), preserving the SessionId, and
 /// be a no-op when the old tab id is absent.
 #[tokio::test]
-async fn dispatch_rename_session_rekeys_existing_and_noops_on_missing() {
+async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
@@ -856,9 +857,10 @@ async fn dispatch_rename_session_rekeys_existing_and_noops_on_missing() {
                 &tab_to_session,
             );
 
-            // The rekey runs on a spawned task; wait for it to land.
+            // The rekey runs on a spawned task; wait (bounded) for it to land.
             let mut rekeyed = false;
-            for _ in 0..200 {
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            while tokio::time::Instant::now() < deadline {
                 {
                     let g = tab_to_session.lock().await;
                     if !g.contains_key("old-tab") && g.get("new-tab") == Some(&sid) {
@@ -866,7 +868,7 @@ async fn dispatch_rename_session_rekeys_existing_and_noops_on_missing() {
                         break;
                     }
                 }
-                tokio::task::yield_now().await;
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
             assert!(rekeyed, "old-tab must be rekeyed to new-tab with same SessionId");
 
@@ -941,7 +943,7 @@ async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
 /// `dispatch_drop_session` must unbind the tab's session, fire its in-flight
 /// cancel signal, and be a no-op for a tab that holds no session.
 #[tokio::test]
-async fn dispatch_drop_session_unbinds_and_fires_cancel_then_noops() {
+async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
