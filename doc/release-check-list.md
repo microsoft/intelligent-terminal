@@ -2,7 +2,7 @@
 
 Use this checklist to validate and sign off an Intelligent Terminal release. Each test item should be checked only after the expected behavior is confirmed on the release build.
 
-**Coverage markers** (see `doc\release-ut-plan.md` for the full UT plan):
+**Coverage markers:**
 
 - `[UT✓]` — already covered by an existing unit test.
 - `[UT+]` — UT-coverable; test not written yet (recommended to add).
