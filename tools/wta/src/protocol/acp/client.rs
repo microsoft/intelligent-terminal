@@ -2432,7 +2432,17 @@ pub async fn run_acp_client_over_pipe(
         crate::session_registry::inject_wta_meta(
             &mut req.meta,
             &crate::session_registry::WtaMeta {
-                agent_id: agent_id.filter(|s| !s.trim().is_empty()),
+                // Canonicalize + filter the same way the master does (trim,
+                // ASCII-lowercase) and forward only *known* selectable ids.
+                // The master reconstructs the command from the id and rejects
+                // unknown / `custom:*` ids — forwarding those would trip an
+                // "unknown selection" warn on every connect and then fall back
+                // to the default anyway. Sending `None` makes that fallback
+                // silent (master applies its own `--agent` default).
+                agent_id: agent_id.and_then(|s| {
+                    let id = s.trim().to_ascii_lowercase();
+                    crate::agent_registry::is_known_id(&id).then_some(id)
+                }),
                 model: acp_model_override
                     .clone()
                     .filter(|s| !s.trim().is_empty()),
