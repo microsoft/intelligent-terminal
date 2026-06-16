@@ -15,14 +15,17 @@ use crate::app::HistoryLoadState;
 use crate::session_registry::SessionInfo;
 use crate::ui::shimmer;
 
-// Figma palette — keep these in one place so the row renderer and any
-// future status indicators stay in sync with the design tokens.
-const ACCENT_CYAN: Color = Color::Rgb(0x60, 0xcd, 0xff); // Selected-row title / cursor
-const ACCENT_GREEN: Color = Color::Rgb(0x6c, 0xcb, 0x5f); // Active status badge
-const ACCENT_YELLOW: Color = Color::Rgb(0xfa, 0xe2, 0x46); // Waiting for input
-const ACCENT_RED: Color = Color::Rgb(0xff, 0x6b, 0x6b); // Error
+// Status accents use named ANSI colors (not fixed RGB from Figma) so they map
+// through the active color scheme and stay readable on light schemes too — a
+// hardcoded bright yellow/cyan washed out on a light background (#234).
+const ACCENT_CYAN: Color = Color::Cyan; // Selected-row title / cursor
+const ACCENT_GREEN: Color = Color::Green; // Active status badge
+const ACCENT_YELLOW: Color = Color::Yellow; // Waiting for input
+const ACCENT_RED: Color = Color::Red; // Error
+// Idle / timestamp: a fixed mid-gray reads as "muted" on both light and dark
+// backgrounds (a true middle gray, unlike ANSI 7/8 which flip per scheme).
 const SOFT_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
-const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // 54% white — timestamp
+const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // timestamp
 
 pub fn render(
     f: &mut Frame,
@@ -34,12 +37,12 @@ pub fn render(
     activity_frame: usize,
     cli_filter: Option<&CliSource>,
     // MVP origin filter — `ShellOnly` by default, see
-    // `app.rs::MVP_F2_ORIGIN_FILTER`. Must match whatever filter
+    // `app.rs::MVP_SESSIONS_ORIGIN_FILTER`. Must match whatever filter
     // `App::agents_rows_for_tab` applies so the rendered rows line
     // up with the cursor / Enter dispatch model. Caller threads the
-    // stored `app.f2_origin_filter`.
+    // stored `app.sessions_origin_filter`.
     origin_filter: OriginFilter,
-    // True iff the F2 view is waiting on its first `session/list`
+    // True iff the session management view is waiting on its first `session/list`
     // snapshot from master (snapshot is currently empty AND a refetch
     // request is in flight). Without this signal we have no way to
     // distinguish "view just opened, master hasn't responded yet" from
@@ -121,7 +124,7 @@ pub fn render(
         }
         // MVP origin filter. Stays in sync with the same retain inside
         // `App::agents_rows_for_tab` (which feeds the cursor / Enter
-        // dispatch); both call sites read `app.f2_origin_filter`.
+        // dispatch); both call sites read `app.sessions_origin_filter`.
         // `session_info_to_agent_session` collapses None origin to
         // SessionOrigin::Unknown so `matches(&s.origin)` is correct
         // for the snapshot path too.
@@ -137,7 +140,10 @@ pub fn render(
         (rows, total)
     };
     let filter_elapsed_us = filter_start.elapsed().as_micros() as u64;
-    tracing::debug!(
+    // These three fire on every render frame while the F2 view is open (the TUI
+    // redraws continuously), so they're trace-only — at info/debug a single
+    // open F2 view balloons the helper log by thousands of lines.
+    tracing::trace!(
         target: "f2_filter_perf",
         total      = pre_filter_total,
         kept       = sorted.len(),
@@ -147,7 +153,7 @@ pub fn render(
         source     = if using_snapshot { "snapshot" } else { "registry" },
         "f2 origin/cli filter applied"
     );
-    tracing::info!(
+    tracing::trace!(
         target: "agents_view_filter",
         filter = ?cli_filter,
         origin = ?origin_filter,
@@ -155,15 +161,16 @@ pub fn render(
         total = pre_filter_total,
         "rendering agent sessions list"
     );
-    tracing::debug!(
+    tracing::trace!(
         target: "agents_render",
         total = sorted.len(),
         filter = ?cli_filter,
         origin = ?origin_filter,
+        // Session titles are agent-generated from conversation content — log
+        // only key + status here, not the title.
         first_three = ?sorted.iter().take(3).map(|s| (
             s.key.clone(),
             format!("{:?}", s.status),
-            s.title.clone(),
         )).collect::<Vec<_>>(),
         area_w = area.width,
         area_h = area.height,
@@ -182,7 +189,7 @@ pub fn render(
     //     on-disk history scan still in progress (pre-PR-#73 behaviour,
     //     kept for completeness — `using_snapshot` is now always true
     //     when the view is open).
-    //   * Snapshot path: F2 was just opened, master hasn't yet replied
+    //   * Snapshot path: session management view was just opened, master hasn't yet replied
     //     to our `session/list` refetch, and the placeholder snapshot
     //     is still the empty Vec primed by `open_agents_view_for_tab`.
     //     Without this branch the user sees a blank list (no shimmer,
@@ -458,7 +465,7 @@ fn badge_style(s: &AgentSession) -> Style {
     }
 }
 
-/// Show the CLI provider (`copilot`, `claude`, `gemini`) only on the
+/// Show the CLI provider (`claude`, `codex`, `copilot`, `gemini`) only on the
 /// active row or the keyboard-selected row — matches the Figma where the
 /// agent icon appears only on the currently-engaged session and avoids
 /// cluttering the historical list.
@@ -469,6 +476,7 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
     }
     let label = match s.cli_source {
         CliSource::Claude => "claude",
+        CliSource::Codex => "codex",
         CliSource::Copilot => "copilot",
         CliSource::Gemini => "gemini",
         CliSource::Unknown(_) => return String::new(),
@@ -858,5 +866,28 @@ mod tests {
         assert!(s.contains("April"), "expected month name in {:?}", s);
         assert!(s.contains("20"), "expected day in {:?}", s);
         assert!(s.contains("2026"), "expected year in {:?}", s);
+    }
+
+    #[test]
+    fn cli_suffix_renders_codex_label_on_selected_row() {
+        let s = AgentSession {
+            key:              "k".to_string(),
+            cli_source:       CliSource::Codex,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "codex — test".to_string(),
+            cwd:              std::path::PathBuf::from("."),
+            started_at:       SystemTime::now(),
+            last_activity_at: SystemTime::now(),
+            status:           AgentStatus::Idle,
+            last_error:       None,
+            current_tool:     None,
+            attention_reason: None,
+            log_path:         None,
+            origin:           SessionOrigin::default(),
+        };
+        assert_eq!(cli_suffix_for(&s, true),  "· codex");
+        assert_eq!(cli_suffix_for(&s, false), String::new());
     }
 }

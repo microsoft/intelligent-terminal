@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. rodyti / slėpti agento skydelį • Ctrl+
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Paleidžiamas agentas..."
 connection.reconnecting: "Jungiamasi iš naujo..."
+connection.connecting_activity: "Jungiamasi prie agento…"
+connection.lost: "Ryšys su agentu nutrūko. Įveskite /restart, kad prisijungtumėte iš naujo."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Atšaukta."
 system.no_prompt_in_flight: "Nėra vykdomos užklausos."
 system.authentication_failed: "Autentifikavimas nepavyko"
 system.command_copied_retry: "Komanda nukopijuota — paleiskite ją kitame terminale, tada paspauskite Enter, kad bandytumėte iš naujo"  # {Locked="Enter"}
+system.stopped_max_tokens: "Atsakymas buvo nutrauktas pasiekus modelio išvesties ribą."
+system.stopped_max_turn_requests: "Agentas sustojo pasiekęs šio ėjimo užklausų ribą."
+system.stopped_refusal: "Agentas atsisakė tęsti šią užklausą."
+system.agent_busy: "Agentas šiame skirtuke užimtas — palaukite, kol dabartinė užklausa bus baigta."
+system.resuming_session: "Tęsiamas seansas %{session_id}..."
+system.unknown_command: "Nežinoma komanda \"%{command}\" — išsiųsta kaip užklausa. Sąrašui įveskite /help."  # {Locked="/help"}
+system.busy_use_stop: "Palaukite, kol dabartinė užklausa bus baigta, arba pirmiausia naudokite /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nepavyksta sufokusuoti seanso %{session_id}: jis atrodo aktyvus, bet dar nėra susietas joks srities GUID. Bandykite dar kartą po akimirkos."
+system.cannot_resume_no_load_session: "Nepavyksta tęsti agento srityje: %{agent} nepaskelbė ACP `loadSession` galimybės. Paspauskite Enter (be Shift), kad vietoj to tęstumėte naujoje terminalo srityje."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nepavyksta tęsti %{agent} seanso: šis agentas neturi `--resume` tipo vėliavėlės. Paspauskite Shift+Enter, kad pabandytumėte tęsti agento srityje per ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nepavyksta tęsti seanso %{session_id}: jo šaltinio agentas šiai WTA komponuotei nežinomas."
+system.cannot_resume_phantom_via_flag: "Nepavyksta tęsti %{agent} seanso %{session_id}: jis buvo paleistas, bet nesukaupė jokio pokalbio, todėl pats %{agent} atmestų tęsimą. Eilutė šalinama."
+system.cannot_resume_phantom_via_load: "Nepavyksta tęsti %{agent} seanso %{session_id}: jis buvo paleistas, bet nesukaupė jokio pokalbio, todėl %{agent} atmestų įkėlimą. Eilutė šalinama."
+system.fallback.this_agent: "šis agentas"
+system.fallback.connected_agent: "prijungtas agentas"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Langų nerasta."
@@ -171,3 +188,24 @@ time.hour_singular: "prieš %{count} valandą"
 time.hours_other: "prieš %{count} valandų"
 time.day_singular: "prieš %{count} dieną"
 time.days_other: "prieš %{count} dienų"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Restart agent"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Rekomendacijos vykdymas (src/coordinator.rs) ────────────────────────────
+system.choice_execution_failed: "Pasirinkimas %{choice} nepavyko: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Pasirinkite šios srities modelį (/model <id> norėdami perjungti tiesiogiai)"  # {Locked="/model","<id>"}
+model_picker.title: "Pasirinkite modelį (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Prijungtas agentas nepaskelbė jokių pasirenkamų modelių."
+system.model_set: "Šios srities modelis nustatytas į %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Nežinomas modelis %{model} — įveskite /model, kad pamatytumėte galimų sąrašą."  # {Locked="%{model}","/model"}

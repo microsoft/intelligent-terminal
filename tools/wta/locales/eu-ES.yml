@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. agente-panela erakusteko/ezkutatzeko • C
 # ── Konexio-egoera ────────────────────────────────────────────────────────
 connection.starting: "Agentea abiarazten..."
 connection.reconnecting: "Birkonektatzen..."
+connection.connecting_activity: "Agentearekin konektatzen…"
+connection.lost: "Agentearekiko konexioa galdu da. Idatzi /restart berriro konektatzeko."  # {Locked="/restart"}
 
 # ── Sistema-mezuak (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Bertan behera utzia."
 system.no_prompt_in_flight: "Ez dago gonbidapenik abian."
 system.authentication_failed: "Autentifikazioak huts egin du"
 system.command_copied_retry: "Komandoa kopiatu da — exekutatu beste terminal batean, eta sakatu Enter berriro saiatzeko"  # {Locked="Enter"}
+system.stopped_max_tokens: "Erantzuna eten egin da modeloaren irteera-muga gainditu ondoren."
+system.stopped_max_turn_requests: "Agentea gelditu egin da txanda honetako eskaera-muga gainditu ondoren."
+system.stopped_refusal: "Agenteak eskaera honekin jarraitzeari uko egin dio."
+system.agent_busy: "Agentea lanpetuta dago fitxa honetan — itxaron uneko gonbita amaitu arte."
+system.resuming_session: "%{session_id} saioa berrekiten..."
+system.unknown_command: "Komando ezezaguna \"%{command}\" — gonbita gisa bidali da. Idatzi /help zerrenda ikusteko."
+system.busy_use_stop: "Itxaron uneko gonbita amaitu arte, edo erabili /stop lehenik."
+system.cannot_focus_session: "Ezin da %{session_id} saioa fokuratu: aktibo dagoela dirudi, baina oraindik ez dago panelaren GUIDik lotuta. Saiatu berriro une batean."
+system.cannot_resume_no_load_session: "Ezin da agente-panelean berrekin: %{agent} agenteak ez du ACP `loadSession` gaitasuna iragarri. Sakatu Enter (Shift gabe) terminal-panel berri batean berrekiteko."
+system.cannot_resume_no_resume_flag: "Ezin da %{agent} saioa berrekin: agente honek ez du `--resume` estiloko banderarik. Sakatu Shift+Enter ACP bidez agente-panelaren barruan berrekiten saiatzeko."
+system.cannot_resume_unknown_agent: "Ezin da %{session_id} saioa berrekin: bere jatorrizko agentea ezezaguna da eraikuntza honentzat."
+system.cannot_resume_phantom_via_flag: "Ezin da %{agent} saioa %{session_id} berrekin: hasi zen, baina ez zuen inoiz elkarrizketarik metatu; beraz, %{agent} agenteak berak berrekitea baztertuko luke. Errenkada kentzen."
+system.cannot_resume_phantom_via_load: "Ezin da %{agent} saioa %{session_id} berrekin: hasi zen, baina ez zuen inoiz elkarrizketarik metatu; beraz, %{agent} agenteak karga baztertuko luke. Errenkada kentzen."
+system.fallback.this_agent: "agente hau"
+system.fallback.connected_agent: "konektatutako agentea"
 
 # ── CLI irteera exekuzio-unean (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ez da leihorik aurkitu."
@@ -171,3 +188,24 @@ time.hour_singular: "duela %{count} ordu"
 time.hours_other: "duela %{count} ordu"
 time.day_singular: "duela %{count} egun"
 time.days_other: "duela %{count} egun"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Restart agent"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Gomendioaren exekuzioa (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "%{choice} aukera huts egin du: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Aukeratu panel honetarako modeloa (/model <id> zuzenean aldatzeko)"  # {Locked="/model","<id>"}
+model_picker.title: "Hautatu modeloa (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Konektatutako agenteak ez du modelo hautagarririk iragarri."
+system.model_set: "Panel honetarako modeloa %{model} gisa ezarri da."  # {Locked="%{model}"}
+system.model_unknown: "%{model} modelo ezezaguna — idatzi /model erabilgarri dagoen zerrenda ikusteko."  # {Locked="%{model}","/model"}

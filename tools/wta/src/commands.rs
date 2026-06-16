@@ -14,6 +14,14 @@ pub enum CommandKind {
     Clear,
     Stop,
     New,
+    /// Run the auto-fix prompt on demand.
+    ///
+    /// Submits the dedicated `auto-fix.md` template plus the active
+    /// terminal pane's recent output to the agent — the same pipeline the
+    /// error-triggered autofix uses (`PromptSubmission::is_autofix`), but
+    /// invoked manually. Any text after `/fix` is passed through as an
+    /// extra hint to steer the diagnosis (`/fix the path looks wrong`).
+    Fix,
     /// Reset the agent CLI subprocess.
     ///
     /// * Standalone wta: tears down + respawns the agent CLI in-process;
@@ -29,6 +37,14 @@ pub enum CommandKind {
     ///   restart Windows Terminal.
     Restart,
     Sessions,
+    /// Pick the ACP model for *this* agent pane.
+    ///
+    /// Bare `/model` opens an interactive picker listing the models the
+    /// connected agent advertised; `/model <id-or-name>` switches directly.
+    /// The choice is a transient per-pane override that survives `/new` for
+    /// the life of the pane but is reset by a global `acpModel` settings
+    /// change — see `App::apply_global_acp_model`.
+    Model,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -77,6 +93,13 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_args: false,
     },
     CommandSpec {
+        name: "fix",
+        summary_key: "commands.fix.summary",
+        kind: CommandKind::Fix,
+        // `/fix <hint>` — free-form text after the name steers the fix.
+        takes_args: true,
+    },
+    CommandSpec {
         name: "restart",
         summary_key: "commands.restart.summary",
         kind: CommandKind::Restart,
@@ -94,17 +117,47 @@ pub const REGISTRY: &[CommandSpec] = &[
         kind: CommandKind::Sessions,
         takes_args: false,
     },
+    CommandSpec {
+        name: "model",
+        summary_key: "commands.model.summary",
+        // `/model <id>` switches directly; bare `/model` opens the picker.
+        kind: CommandKind::Model,
+        takes_args: true,
+    },
 ];
 
 #[derive(Debug, Clone)]
 pub struct ParsedCommand {
     pub kind: CommandKind,
     pub spec: &'static CommandSpec,
-    /// Anything after the command name (trimmed, may be empty).
-    /// MVP commands ignore this; reserved for future `/model`, `/cwd`, …
-    #[allow(dead_code)]
+    /// Anything after the command name (trimmed, may be empty). Consumed by
+    /// arg-taking commands (`/fix <hint>`); zero-arg commands ignore it.
     pub rest: String,
 }
+
+/// Outcome of classifying a committed input line. Lets the caller branch on
+/// *intent* without re-deriving the "is this a slash attempt?" predicate —
+/// that escaping rule (`/` yes, `//` no) lives only here and in [`parse`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParseOutcome {
+    /// A registered command. Run it; consume the keystroke.
+    Command(ParsedCommand),
+    /// Looks like a slash-command attempt (`/foo`) but `foo` isn't
+    /// registered. Carries the attempted token *with* its leading `/`
+    /// (e.g. `"/nope"`) for the "Unknown command" advisory. The caller
+    /// still sends the raw line as a prompt so the user doesn't lose input.
+    Unknown(String),
+    /// Not a command at all (no `/`, or `//literal` escape). Send as prompt.
+    NotCommand,
+}
+
+impl PartialEq for ParsedCommand {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.spec.name == other.spec.name && self.rest == other.rest
+    }
+}
+
+impl Eq for ParsedCommand {}
 
 /// Parse an input line as a slash-command, or return `None` if the line
 /// should be sent as a normal prompt.
@@ -141,6 +194,35 @@ pub fn parse(input: &str) -> Option<ParsedCommand> {
         spec,
         rest: args.to_string(),
     })
+}
+
+/// Classify a committed input line into [`ParseOutcome`]. This is the entry
+/// point the Enter handler should use: it folds the "known command",
+/// "unknown-but-looks-like-a-command", and "plain prompt" cases into one
+/// match so the caller never re-implements the slash/escape rules.
+///
+/// - `/help` → [`ParseOutcome::Command`]
+/// - `/nope foo` → [`ParseOutcome::Unknown`]`("/nope")`
+/// - `hello`, `//etc/hosts`, `/` (bare) → [`ParseOutcome::NotCommand`]
+pub fn classify(input: &str) -> ParseOutcome {
+    if let Some(cmd) = parse(input) {
+        return ParseOutcome::Command(cmd);
+    }
+
+    // Not a known command. Was it at least an *attempt* at one? Reuse the
+    // same trimming + `//` escape rules as `parse`/`is_command_prefix`.
+    let trimmed = input.trim_start();
+    if let Some(rest) = trimmed.strip_prefix('/') {
+        if !rest.starts_with('/') {
+            // First whitespace-delimited token after the `/`.
+            let name = rest.split_whitespace().next().unwrap_or("");
+            if !name.is_empty() {
+                return ParseOutcome::Unknown(format!("/{name}"));
+            }
+        }
+    }
+
+    ParseOutcome::NotCommand
 }
 
 /// Return the [`CommandSpec`] for the given name (case-insensitive), or
@@ -201,6 +283,20 @@ mod tests {
         let s_matches: Vec<&str> = matches("s").into_iter().map(|c| c.name).collect();
         assert!(s_matches.contains(&"stop"));
         assert!(s_matches.contains(&"sessions"));
+    }
+
+    #[test]
+    fn fix_parses_with_optional_hint() {
+        // Bare /fix: no hint.
+        let bare = parse("/fix").unwrap();
+        assert_eq!(bare.kind, CommandKind::Fix);
+        assert_eq!(bare.rest, "");
+        // /fix <hint>: the trailing text is captured verbatim.
+        let hinted = parse("/fix the path looks wrong").unwrap();
+        assert_eq!(hinted.kind, CommandKind::Fix);
+        assert_eq!(hinted.rest, "the path looks wrong");
+        // takes_args is advertised so Tab-completion leaves a trailing space.
+        assert!(lookup("fix").unwrap().takes_args);
     }
 
     #[test]

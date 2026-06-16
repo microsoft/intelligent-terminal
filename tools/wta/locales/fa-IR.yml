@@ -74,6 +74,7 @@ commands.help_close_hint: "  Esc        بستن این راهنما"  # {Locked
 commands.help.summary: "نمایش این فهرست دستورات"
 commands.clear.summary: "پاک کردن تاریخچه پیمایش گفتگو (نشست حفظ می‌شود)"
 commands.new.summary: "شروع یک نشست ACP تازه (حذف تاریخچه)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "راه‌اندازی مجدد عامل هوش مصنوعی"
 commands.stop.summary: "لغو درخواست در حال اجرا"
 commands.sessions.summary: "باز کردن انتخابگر نشست‌های تاریخی (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -130,12 +131,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. نمایش/پنهان کردن پنل عا
 # ── وضعیت اتصال ────────────────────────────────────────────────────────
 connection.starting: "در حال راه‌اندازی عامل هوش مصنوعی..."
 connection.reconnecting: "در حال اتصال مجدد..."
+connection.connecting_activity: "در حال اتصال به عامل هوش مصنوعی…"
+connection.lost: "اتصال به عامل هوش مصنوعی قطع شد. برای اتصال مجدد، /restart را تایپ کنید."  # {Locked="/restart"}
 
 # ── پیام‌های سیستم (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "لغو شد."
 system.no_prompt_in_flight: "هیچ درخواستی در حال اجرا نیست."
 system.authentication_failed: "احراز هویت ناموفق بود"
 system.command_copied_retry: "دستور کپی شد — آن را در ترمینال دیگری اجرا کنید، سپس Enter را برای تلاش مجدد فشار دهید"  # {Locked="Enter"}
+system.stopped_max_tokens: "پاسخ پس از رسیدن به حد خروجی مدل قطع شد."
+system.stopped_max_turn_requests: "عامل پس از رسیدن به حد درخواست خود برای این نوبت متوقف شد."
+system.stopped_refusal: "عامل از ادامه‌دادن این درخواست خودداری کرد."
+system.agent_busy: "عامل در این زبانه مشغول است — منتظر بمانید تا درخواست فعلی تمام شود."
+system.resuming_session: "در حال ازسرگیری جلسه %{session_id}..."
+system.unknown_command: "فرمان ناشناخته \"%{command}\" — به‌عنوان درخواست ارسال شد. برای فهرست، /help را تایپ کنید."  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "منتظر بمانید درخواست فعلی تمام شود، یا ابتدا /stop را اجرا کنید."  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "نمی‌توان روی جلسه %{session_id} تمرکز کرد: به نظر زنده است اما هنوز هیچ GUID صفحه‌ای به آن متصل نشده است. چند لحظه دیگر دوباره امتحان کنید."
+system.cannot_resume_no_load_session: "نمی‌توان در صفحه عامل ازسر گرفت: %{agent} قابلیت ACP `loadSession` را اعلام نکرده است. برای ازسرگیری در یک صفحه پایانه جدید، Enter (بدون Shift) را فشار دهید."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "نمی‌توان جلسه %{agent} را ازسر گرفت: این عامل هیچ پرچمی به سبک `--resume` ندارد. برای تلاش جهت ازسرگیری داخل صفحه عامل از طریق ACP، Shift+Enter را فشار دهید."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "نمی‌توان جلسه %{session_id} را ازسر گرفت: عامل مبدأ آن برای این ساخت WTA ناشناخته است."
+system.cannot_resume_phantom_via_flag: "نمی‌توان جلسه %{agent} %{session_id} را ازسر گرفت: شروع شده بود اما هیچ گفت‌وگویی جمع نکرد، بنابراین خود %{agent} ازسرگیری را رد می‌کند. در حال حذف ردیف."
+system.cannot_resume_phantom_via_load: "نمی‌توان جلسه %{agent} %{session_id} را ازسر گرفت: شروع شده بود اما هیچ گفت‌وگویی جمع نکرد، بنابراین %{agent} بارگذاری را رد می‌کند. در حال حذف ردیف."
+system.fallback.this_agent: "این عامل"
+system.fallback.connected_agent: "عامل متصل"
 
 # ── خروجی CLI در زمان اجرا (src/main.rs) ────────────────────────────────────────
 output.no_windows: "هیچ پنجره‌ای یافت نشد."
@@ -181,3 +199,13 @@ time.hour_singular: "1 ساعت پیش"
 time.hours_other: "%{count} ساعت پیش"
 time.day_singular: "1 روز پیش"
 time.days_other: "%{count} روز پیش"
+
+# ── اجرای توصیه (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "انتخاب %{choice} ناموفق بود: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "مدل این پنل را انتخاب کنید (/model <id> برای تغییر مستقیم)"  # {Locked="/model","<id>"}
+model_picker.title: "انتخاب مدل (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "عامل هوش مصنوعی متصل هیچ مدل قابل انتخابی را اعلام نکرد."
+system.model_set: "مدل این پنل روی %{model} تنظیم شد."  # {Locked="%{model}"}
+system.model_unknown: "مدل ناشناخته %{model} — برای دیدن فهرست در دسترس، /model را تایپ کنید."  # {Locked="%{model}","/model"}

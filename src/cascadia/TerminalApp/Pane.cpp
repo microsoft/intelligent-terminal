@@ -2871,7 +2871,7 @@ std::shared_ptr<Pane> Pane::FindPaneBySessionId(const winrt::guid& sessionId)
         // would walk every tab without finding a match → throw E_FAIL
         // (0x80004005), which surfaces in WTA as
         // `FocusPane failed: 0x80004005` whenever the user presses
-        // Enter on an active agent-pane session row in the F2 list.
+        // Enter on an active agent-pane session row in the session management list.
         const auto termContent = p->_getTerminalContent();
         if (!termContent)
             return false;

@@ -45,6 +45,8 @@ use std::sync::{Arc, OnceLock, Weak};
 /// back-pressure the agent CLI's I/O loop and freeze every other
 /// helper sharing this master.
 const NOTIF_CHANNEL_CAPACITY: usize = 1024;
+const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
+const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 
 use acp::Agent as _;
 use acp::Client as _;
@@ -135,7 +137,7 @@ struct MasterStateInner {
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::SessionId, HelperRoute>>,
     /// Authoritative live-session set, owned by master. Mirrors what
-    /// helpers learn via ext-notifications and what the F2 view sees
+    /// helpers learn via ext-notifications and what the session management view sees
     /// via the standard ACP `session/list` request. Kept beside
     /// `session_to_helper` (rather than fused with it) so the
     /// per-row metadata that `SessionInfo` carries — cwd, future
@@ -209,6 +211,21 @@ struct MasterStateInner {
     /// reconstructs the command from the id and never spawns a string
     /// taken off the pipe.
     pub(crate) allowed_agent_ids: Option<std::collections::HashSet<String>>,
+    /// Per-helper crash-recovery metadata, keyed by `HelperId`.
+    ///
+    /// Populated/refreshed by the `new_session` + `load_session`
+    /// handlers (which see the helper-supplied `_meta.wta.owner_tab_id`
+    /// and the resulting `SessionId`), and consumed by `serve_helper`
+    /// when a helper's pipe disconnects: if the entry carries an
+    /// `owner_tab_id`, master emits a `restart_agent_pane` event so C++
+    /// re-warms a fresh helper for that tab (resuming the recorded
+    /// `last_session_id`). One entry per helper — `last_session_id` is
+    /// the most recently created/loaded session, i.e. the one the user
+    /// was last looking at, which is the right one to resume.
+    ///
+    /// Independent lock from `session_to_helper` so the per-session
+    /// routing hot path never contends on it.
+    pub(crate) helper_meta: Mutex<HashMap<HelperId, HelperRecoveryMeta>>,
 }
 
 /// Canonical key for the agent-CLI pool: the full agent command line
@@ -238,6 +255,19 @@ struct AgentCli {
     /// F2 view labels each row with its real CLI (Gemini vs Claude),
     /// not one process-wide value.
     cli_source: Option<crate::agent_sessions::CliSource>,
+}
+
+/// Per-helper recovery metadata stashed in
+/// [`MasterStateInner::helper_meta`]. See the field doc for lifecycle.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct HelperRecoveryMeta {
+    /// The WT tab StableId that owns this helper's agent pane, from
+    /// `_meta.wta.owner_tab_id`. `None` for non-agent-pane helpers — in
+    /// which case no `restart_agent_pane` is emitted on disconnect.
+    pub(crate) owner_tab_id: Option<String>,
+    /// The most recently created/loaded session for this helper — the
+    /// one to resume via `--initial-load-session-id` on recovery.
+    pub(crate) last_session_id: Option<acp::SessionId>,
 }
 
 /// Master's `acp::Client` impl: handles inbound from the agent CLI.
@@ -501,7 +531,6 @@ impl acp::Client for MasterClient {
             op = "write_text_file",
             helper_id = ?helper_id,
             session_id = ?sid,
-            path = ?args.path,
             "forwarding fs/write_text_file to helper"
         );
         forwarder.write_text_file(args).await
@@ -519,7 +548,6 @@ impl acp::Client for MasterClient {
             op = "read_text_file",
             helper_id = ?helper_id,
             session_id = ?sid,
-            path = ?args.path,
             "forwarding fs/read_text_file to helper"
         );
         forwarder.read_text_file(args).await
@@ -537,7 +565,6 @@ impl acp::Client for MasterClient {
             op = "create_terminal",
             helper_id = ?helper_id,
             session_id = ?sid,
-            command = %args.command,
             args_len = args.args.len(),
             "forwarding terminal/create to helper"
         );
@@ -728,6 +755,53 @@ impl HelperHandler {
                 .data(serde_json::json!("no agent bound; initialize must come first"))
         })
     }
+
+    /// Forward `session/new` to this helper's bound agent CLI with a
+    /// timeout (moved to the master per #268) plus ACP telemetry. The
+    /// timeout breaks an ACP cancellation-safety deadlock so a hung
+    /// agent surfaces as an error instead of wedging the helper.
+    async fn forward_new_session_to_agent(
+        &self,
+        args: acp::NewSessionRequest,
+        timeout: std::time::Duration,
+    ) -> acp::Result<acp::NewSessionResponse> {
+        let timeout_secs = timeout.as_secs();
+        let started = std::time::Instant::now();
+        let agent = self.resolved_agent("new_session")?;
+        let result = tokio::time::timeout(timeout, agent.conn.new_session(args)).await;
+        let session_id = result
+            .as_ref()
+            .ok()
+            .and_then(|inner| inner.as_ref().ok())
+            .map(|resp| resp.session_id.to_string());
+        let (failure_kind, acp_error_code) = match &result {
+            Ok(Ok(_)) => ("", 0),
+            Ok(Err(e)) => ("AcpError", e.code.into()),
+            Err(_) => ("Timeout", 0),
+        };
+        crate::telemetry::log_acp_new_session_complete(
+            session_id.as_deref(),
+            started.elapsed().as_secs_f64() * 1000.0,
+            matches!(result, Ok(Ok(_))),
+            "MasterForward",
+            failure_kind,
+            acp_error_code,
+        );
+        result.map_err(|_| {
+            let message = format!("agent CLI session/new timed out after {timeout_secs}s");
+            tracing::error!(
+                target: "master",
+                step = "helper→agent",
+                op = "new_session",
+                helper_id = ?self.helper_id,
+                timeout_secs,
+                "agent CLI session/new timed out"
+            );
+            acp::Error::new(-32603, message.clone()).data(serde_json::json!({
+                "message": message
+            }))
+        })?
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -825,13 +899,19 @@ impl acp::Agent for HelperHandler {
             step = "helper→agent",
             op = "new_session",
             helper_id = ?self.helper_id,
-            cwd = ?args.cwd,
             mcp_servers = args.mcp_servers.len(),
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
         );
+        let resp = self
+            .forward_new_session_to_agent(
+                args,
+                std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
+            )
+            .await?;
+        // Resolve the bound agent for `cli_source` stamping below (cheap
+        // Arc clone; the forward above already used it for the RPC).
         let agent = self.resolved_agent("new_session")?;
-        let resp = agent.conn.new_session(args).await?;
         let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
@@ -859,7 +939,7 @@ impl acp::Agent for HelperHandler {
         info.pane_session_id = wta_meta.pane_session_id;
         // Stamp the row as a Live agent-pane session. Without this, the
         // row lands in master's registry with status=cli_source=origin=None,
-        // and helper-side F2 routing treats it as Historical (the default
+        // and helper-side session management routing treats it as Historical (the default
         // fallback in session_info_to_agent_session). Enter on it then
         // tries to resume and fails with "unknown CLI" since cli_source
         // is None. Agent-pane sessions never get a SessionStarted hook
@@ -873,7 +953,18 @@ impl acp::Agent for HelperHandler {
             .ok()
             .map(|d| d.as_millis() as u64);
         self.state.registry.upsert(info.clone()).await;
-        // Fan a `session_added` ExtNotification out to every other
+        // Record crash-recovery metadata for this helper: the owning
+        // WT tab StableId (so master can address a `restart_agent_pane`
+        // event on disconnect) and the just-created session as the
+        // resume target. See `MasterStateInner::helper_meta`.
+        {
+            let mut meta = self.state.helper_meta.lock().await;
+            let entry = meta.entry(self.helper_id).or_default();
+            if wta_meta.owner_tab_id.is_some() {
+                entry.owner_tab_id = wta_meta.owner_tab_id.clone();
+            }
+            entry.last_session_id = Some(resp.session_id.clone());
+        }
         // helper so their mirrors learn about this new row without
         // having to re-run `session/list`. The disconnecting-helper
         // race is benign: if a peer disconnects between us picking it
@@ -889,6 +980,22 @@ impl acp::Agent for HelperHandler {
             crate::session_registry::build_sessions_changed_notification(),
         )
         .await;
+        // Trace the model the agent actually selected for this session at
+        // INFO. When the WT `acpModel` setting is empty (the "agent default"
+        // case) we forward no setSessionModel, so this current_model_id from
+        // the agent's NewSessionResponse is the only INFO-level record of
+        // which model is really in effect — the acp-client current_model_id
+        // line is debug-only. The explicit case is already covered by the
+        // "forwarding set_session_model" log.
+        let agent_current_model = resp
+            .models
+            .as_ref()
+            .map(|state| state.current_model_id.0.to_string());
+        let agent_model_count = resp
+            .models
+            .as_ref()
+            .map(|state| state.available_models.len())
+            .unwrap_or(0);
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -896,6 +1003,8 @@ impl acp::Agent for HelperHandler {
             helper_id = ?self.helper_id,
             session_id = ?resp.session_id,
             registry_size = registry_size,
+            current_model_id = ?agent_current_model,
+            available_models = agent_model_count,
             "session bound to helper"
         );
         Ok(resp)
@@ -971,7 +1080,7 @@ impl acp::Agent for HelperHandler {
                 // which include the disk-derived chat title (e.g.
                 // "# Terminal AgentYou"). A naked `SessionInfo::new`
                 // upsert would clobber that title with `None`, leaving
-                // the resumed Live row showing "—" in F2. By copying
+                // the resumed Live row showing "—" in session management view. By copying
                 // the prior title we keep the resumed row identifiable
                 // to the user.
                 if let Some(existing) =
@@ -985,22 +1094,16 @@ impl acp::Agent for HelperHandler {
                     }
                 }
                 self.state.registry.upsert(info.clone()).await;
-                crate::master::broadcast_ext_to_helpers(
-                    &self.state,
-                    crate::session_registry::build_session_added_notification(&info),
-                )
-                .await;
-                crate::master::broadcast_ext_to_helpers(
-                    &self.state,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
-                tracing::info!(
-                    target: "master",
-                    helper_id = ?self.helper_id,
-                    session_id = ?session_id,
-                    "loaded session bound to helper"
-                );
+                // Mirror new_session: refresh crash-recovery metadata so
+                // a resume targets the session the user is now looking at.
+                {
+                    let mut meta = self.state.helper_meta.lock().await;
+                    let entry = meta.entry(self.helper_id).or_default();
+                    if wta_meta.owner_tab_id.is_some() {
+                        entry.owner_tab_id = wta_meta.owner_tab_id.clone();
+                    }
+                    entry.last_session_id = Some(session_id.clone());
+                }
                 Ok(resp)
             }
             Err(err) => {
@@ -1085,8 +1188,8 @@ impl acp::Agent for HelperHandler {
     /// Answer `session/list` from our own live-session registry instead
     /// of forwarding to the agent CLI.
     ///
-    /// Rationale: the only live-session view that matters to the F2
-    /// Terminal session-management panel is "what's wired up through
+    /// Rationale: the only live-session view that matters to the
+    /// Terminal session management panel is "what's wired up through
     /// master right now" — agent-CLI-side dormant history is exposed
     /// separately through `agent-pane-sessions.jsonl` + per-CLI
     /// `<cli> --resume`. Forwarding to the agent CLI would conflate
@@ -1236,7 +1339,9 @@ impl acp::Agent for HelperHandler {
 
 /// Master mode entry point.
 pub async fn run_master_mode(cli: Cli, pipe_name: String) -> Result<()> {
-    let _guard = crate::logging::init("main_master");
+    // Logging is initialized once in `main()`; the WorkerGuard lives there for
+    // the whole process so the non-blocking appender flushes on the graceful
+    // shutdown path (see the `run_master_loop` shutdown notes below).
     tracing::info!(
         target: "master",
         pipe_name = %pipe_name,
@@ -1250,10 +1355,49 @@ pub async fn run_master_mode(cli: Cli, pipe_name: String) -> Result<()> {
         ));
     }
 
+    // Kick off the auto-upgrade check on a blocking-pool thread. Fire-and-
+    // forget — the agent CLI spawn below proceeds concurrently. Fast-path
+    // cache (see `agent_hooks_installer::upgrade_installed_hooks` doc) keeps
+    // the common no-upgrade case under ~10ms; only the first run after an
+    // IT install/upgrade does any per-CLI work. Caveat: when an upgrade is
+    // actually needed, the agent CLI process master is about to spawn may
+    // miss the new hooks until its next restart.
+    //
+    // Wrap in `catch_unwind` so an unexpected panic inside the upgrade flow
+    // (or any of its transitive dependencies) doesn't get silently swallowed
+    // by tokio's fire-and-forget JoinHandle. Master keeps running either
+    // way; this just promotes the panic into a visible trace event.
+    tokio::task::spawn_blocking(|| {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+            crate::agent_hooks_installer::upgrade_installed_hooks,
+        ));
+        if let Err(panic) = result {
+            let msg = panic
+                .downcast_ref::<&'static str>()
+                .copied()
+                .or_else(|| panic.downcast_ref::<String>().map(|s| s.as_str()))
+                .unwrap_or("<non-string panic payload>");
+            tracing::error!(
+                target: "agent_hooks",
+                panic = %msg,
+                "upgrade_installed_hooks panicked; master continues",
+            );
+        }
+    });
+
     let local_set = LocalSet::new();
-    local_set
+    let result = local_set
         .run_until(async move { run_master_loop(cli, pipe_name).await })
-        .await
+        .await;
+
+    // Every master-side failure (named-pipe create/connect, agent CLI spawn,
+    // ACP initialize timeout/failure, accept-loop shutdown) funnels through
+    // here. Log with target=master so connection failures are always present
+    // in wta-main_master.log, greppable alongside the success-path traces.
+    if let Err(err) = &result {
+        tracing::error!(target: "master", error = ?err, "wta-master exiting with error");
+    }
+    result
 }
 
 
@@ -1270,7 +1414,8 @@ impl MasterPipeDiscoveryGuard {
                 if let Err(err) = std::fs::create_dir_all(parent) {
                     tracing::warn!(
                         target: "master",
-                        path = %path.display(),
+                        discovery_file = MASTER_PIPE_DISCOVERY_FILE,
+                        pipe_name = %pipe_name,
                         error = %err,
                         "failed to create master pipe discovery directory"
                     );
@@ -1283,14 +1428,15 @@ impl MasterPipeDiscoveryGuard {
             match std::fs::write(path, pipe_name) {
                 Ok(()) => tracing::info!(
                     target: "master",
-                    path = %path.display(),
+                    discovery_file = MASTER_PIPE_DISCOVERY_FILE,
                     pipe_name = %pipe_name,
                     "master pipe discovery file written"
                 ),
                 Err(err) => {
                     tracing::warn!(
                         target: "master",
-                        path = %path.display(),
+                        discovery_file = MASTER_PIPE_DISCOVERY_FILE,
+                        pipe_name = %pipe_name,
                         error = %err,
                         "failed to write master pipe discovery file"
                     );
@@ -1320,7 +1466,8 @@ impl Drop for MasterPipeDiscoveryGuard {
             if let Err(err) = std::fs::remove_file(path) {
                 tracing::warn!(
                     target: "master",
-                    path = %path.display(),
+                    discovery_file = MASTER_PIPE_DISCOVERY_FILE,
+                    pipe_name = %self.pipe_name,
                     error = %err,
                     "failed to remove master pipe discovery file"
                 );
@@ -1484,30 +1631,43 @@ fn create_master_pipe_instance(
 }
 
 async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
-    // Best-effort wtcli/COM channel for intellterm.wta/focus_session.
-    // Master usually runs inside a WT pane (so `WT_COM_CLSID` is set and
-    // `CliChannel::connect` succeeds); on the rare boot path where it
-    // isn't, we degrade to `None` and `handle_focus_session` returns a
-    // structured error instead of crashing the helper's ext_method call.
-    let wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>> =
+    // Best-effort wtcli/COM channel for intellterm.wta/focus_session AND
+    // the WT connection_state -> PaneClosed bridge: master demotes F2 rows
+    // to Ended on pane-close even when no helper publishes a `PaneClosed`
+    // hook (notably Gemini's hard-close, whose SessionEnd hook doesn't run
+    // reliably). Event subscription needs the concrete `CliChannel` (the
+    // `WtChannel` trait surface doesn't expose it), so bind `wt_cli` first,
+    // subscribe, then wrap as `dyn WtChannel`. On the rare boot path with
+    // no WT (`WT_COM_CLSID` unset) we degrade to `None`.
+    let wt_cli: Option<Arc<crate::shell::wt_channel::CliChannel>> =
         match crate::shell::wt_channel::CliChannel::connect().await {
             Ok(ch) => Some(Arc::new(ch)),
             Err(err) => {
                 tracing::warn!(
                     target: "master",
                     error = %err,
-                    "CliChannel unavailable; intellterm.wta/focus_session will error"
+                    "CliChannel unavailable; intellterm.wta/focus_session will error, \
+                     and master will not bridge WT connection_state -> PaneClosed"
                 );
                 None
             }
         };
+    // Subscribe to WT events + start the reader BEFORE wrapping as
+    // `dyn WtChannel` (the trait surface doesn't expose subscription).
+    // Single-consumer: focus_session uses the same channel via request/
+    // response, which doesn't touch the event sender.
+    let wt_event_rx = wt_cli.as_ref().map(|c| c.subscribe_events());
+    if let Some(ref c) = wt_cli {
+        c.start_reader().await;
+    }
+    let wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>> = wt_cli
+        .clone()
+        .map(|c| c as Arc<dyn crate::shell::wt_channel::WtChannel>);
 
-    // Build the shared state. Agent CLIs are spawned LAZILY by
-    // `get_or_spawn_agent` the first time a helper declares an agent in
-    // its `initialize` handshake — the master no longer owns a single
-    // eager agent CLI. `cli.agent` / `cli.agent_id` become the fallback
-    // default for helpers that don't declare one (older builds, manual
-    // launches).
+    // Agent CLIs are spawned LAZILY by `get_or_spawn_agent` the first time
+    // a helper declares an agent in its `initialize` handshake — the master
+    // no longer owns a single eager agent CLI. `cli.agent` / `cli.agent_id`
+    // become the fallback default for helpers that don't declare one.
     // Host-supplied allowlist (GPO-filtered) of agent ids a helper may
     // select. Empty argv ⇒ `None` (no allowlist; accept any known id).
     let allowed_agent_ids: Option<std::collections::HashSet<String>> =
@@ -1538,16 +1698,17 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         default_agent_cmd: cli.agent.clone(),
         default_agent_id: cli.agent_id.clone(),
         allowed_agent_ids,
+        helper_meta: Mutex::new(HashMap::new()),
     });
 
     // Seed the registry with historical sessions scanned from
     // `~/.copilot/`, `~/.claude/`, `~/.gemini/` so `wta sessions list`
-    // and helper F2 viewers see the full set, not just live sessions
+    // and helper session management viewers see the full set, not just live sessions
     // created via `session/new` after master booted. Disk scan can take
     // ~100ms-1s for users with many sessions, so we run it in
     // spawn_blocking and broadcast `sessions/changed` once when done.
-    // Helpers that have F2 open at that moment will refetch and pick
-    // up the historicals; helpers that open F2 later will see them on
+    // Helpers that have session management view open at that moment will refetch and pick
+    // up the historicals; helpers that open session management view later will see them on
     // the next `sessions/list` call.
     let inner_for_history = Arc::clone(&inner);
     tokio::task::spawn_local(async move {
@@ -1586,6 +1747,26 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
             .await;
         }
     });
+    // WT event subscriber: drive PaneClosed / ConnectionFailed into the
+    // master registry directly off WT's `connection_state` events. This
+    // is the fallback for cases where no helper publishes the event —
+    // see the `wt_cli` setup above for the Gemini hard-close motivation.
+    if let Some(mut rx) = wt_event_rx {
+        let inner_for_wt = Arc::clone(&inner);
+        tokio::task::spawn_local(async move {
+            tracing::info!(
+                target: "master_wt_event",
+                "master WT event subscriber task started"
+            );
+            while let Some(event_json) = rx.recv().await {
+                handle_master_wt_event(&inner_for_wt, event_json).await;
+            }
+            tracing::warn!(
+                target: "master_wt_event",
+                "master WT event subscriber channel closed"
+            );
+        });
+    }
 
     // Open the named pipe and accept helper connections. Agent CLIs are
     // spawned lazily per-helper (see `get_or_spawn_agent`), and an
@@ -2086,7 +2267,58 @@ async fn serve_helper(
         "helper disconnected"
     );
 
+    // Crash-recovery: if this helper owned an agent pane (we recorded an
+    // `owner_tab_id` from its `_meta.wta` at session/new|load), tell C++
+    // to re-warm a fresh helper for that tab. A clean helper EXIT also
+    // takes this path, but C++ suppresses the restart when the pane was
+    // torn down deliberately (Ctrl+C×2, tab close) — see
+    // `OnAgentPaneRestartRequested`. The pipe-disconnect that brings us
+    // here is the same signal for both crash and clean exit, which is
+    // exactly what we want: respawn unless C++ knows it was intentional.
+    let recovery = {
+        let mut meta = state.helper_meta.lock().await;
+        meta.remove(&helper_id)
+    };
+    if let Some(recovery) = recovery {
+        if let Some(tab_id) = recovery.owner_tab_id {
+            emit_restart_agent_pane(&tab_id, recovery.last_session_id.as_ref());
+        }
+    }
+
     result
+}
+
+/// Emit a `restart_agent_pane` WT-protocol event so C++ re-warms a fresh
+/// helper for `tab_id`, resuming `session_id` (when known) via
+/// `--initial-load-session-id`. Routed per-tab by StableId, mirroring
+/// `close_agent_pane`. See `doc/specs/connection-resilience.md` §8.
+fn emit_restart_agent_pane(tab_id: &str, session_id: Option<&acp::SessionId>) {
+    let evt = build_restart_agent_pane_event(tab_id, session_id);
+    tracing::info!(
+        target: "master",
+        tab_id = %tab_id,
+        session_id = ?session_id,
+        "emitting restart_agent_pane (helper disconnected)"
+    );
+    crate::app::send_wt_protocol_event(evt.to_string());
+}
+
+/// Pure builder for the `restart_agent_pane` WT-protocol event payload.
+/// Split out from [`emit_restart_agent_pane`] so the envelope shape is
+/// unit-testable without the `wtcli publish` side effect.
+fn build_restart_agent_pane_event(
+    tab_id: &str,
+    session_id: Option<&acp::SessionId>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "type": "event",
+        "method": "restart_agent_pane",
+        "params": {
+            "tab_id": tab_id,
+            "session_id": session_id.map(|s| s.0.as_ref()),
+            "reason": "helper_disconnect",
+        }
+    })
 }
 
 /// Remove every `session_to_helper` entry owned by `helper_id`.
@@ -2166,6 +2398,34 @@ async fn handle_sessions_list(
     state: &MasterStateInner,
     params: &serde_json::value::RawValue,
 ) -> acp::Result<acp::ExtResponse> {
+    handle_sessions_list_with(state, params, |cli, key| {
+        crate::history_loader::lookup_title_for_session(cli, key)
+    })
+    .await
+}
+
+/// Testable inner of [`handle_sessions_list`]: the per-CLI disk title lookup is
+/// injected so tests can avoid touching `USERPROFILE`. Production uses the
+/// wrapper above pinned to `history_loader::lookup_title_for_session`.
+///
+/// Before returning the snapshot, opportunistically upgrade any row whose title
+/// is still synthetic (empty / cwd-basename) from the CLI's on-disk artefacts.
+/// This is what gets a title onto **born-bound** rows — e.g. `?<prompt>`
+/// delegate sessions, which register a single `SessionStarted` with an empty
+/// title at launch (before the CLI has written its generated `name:`) and, being
+/// hook-independent, receive no follow-up events to re-trigger
+/// `handle_session_hook`'s refresh. The `/sessions` view re-polls `sessions/list`
+/// every 5s, so refreshing here surfaces the title once the CLI writes it. The
+/// `is_synthetic` early-out inside `try_refresh_title_from_disk_with` keeps this
+/// cheap: a row is read from disk only while it still lacks a real title.
+async fn handle_sessions_list_with<F>(
+    state: &MasterStateInner,
+    params: &serde_json::value::RawValue,
+    lookup: F,
+) -> acp::Result<acp::ExtResponse>
+where
+    F: Fn(crate::agent_sessions::CliSource, &str) -> Option<String> + Copy,
+{
     crate::session_registry::parse_sessions_list_params(params).map_err(|err| {
         tracing::warn!(
             target: "master",
@@ -2175,6 +2435,13 @@ async fn handle_sessions_list(
         );
         acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
     })?;
+
+    for row in state.registry.snapshot().await {
+        // `try_refresh_title_from_disk_with` no-ops internally unless the title
+        // is still synthetic and a `cli_source` is present, so we can call it
+        // for every row without pre-filtering.
+        try_refresh_title_from_disk_with(&state.registry, &row.session_id, lookup).await;
+    }
 
     let mut sessions = state.registry.snapshot().await;
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
@@ -2193,7 +2460,7 @@ async fn handle_sessions_list(
 /// row for a "synthetic" title (cwd basename / empty) and try to upgrade it
 /// by reading the CLI's on-disk session artefacts (Copilot's `workspace.yaml
 /// summary:`/`name:`, Claude/Gemini's first user prompt). The helper already
-/// runs the equivalent refresh against its *local* registry, but F2 renders
+/// runs the equivalent refresh against its *local* registry, but session management view renders
 /// from master's snapshot — without this refresh master never sees the
 /// upgraded title and the row keeps showing the cwd basename forever for
 /// shell-pane CLI sessions whose first hook arrives before the CLI has
@@ -2243,6 +2510,101 @@ async fn handle_session_hook(
     }
 
     Ok(crate::session_registry::build_session_hook_response(applied))
+}
+
+/// Master-side WT event subscriber. Bridges `connection_state`
+/// notifications from the COM channel into the master's session
+/// registry so that closing a pane (Ctrl+Shift+W, close-tab, hard kill)
+/// reliably demotes any session bound to that pane — even when no
+/// `wta-helper` publishes a `session_hook` for it. Two cases this
+/// covers in practice:
+///
+///   * Helper in the closing pane dies before its
+///     `connection_state` handler runs.
+///   * Shell-pane Gemini sessions on hard close: Gemini's `SessionEnd`
+///     hook is unreliable on `CTRL_CLOSE_EVENT` (confirmed via
+///     `hook-trace.log`), and the helper observation path may not
+///     publish for reasons we have not finished isolating.
+///
+/// Copilot / Claude's Stop / SessionEnd hooks fire fast enough that
+/// the publish-from-helper path works for them today; this subscriber
+/// makes the behavior uniform across CLIs and resilient to helper
+/// teardown order.
+async fn handle_master_wt_event(
+    state: &MasterStateInner,
+    event_json: serde_json::Value,
+) {
+    let method = event_json
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if method != "connection_state" {
+        return;
+    }
+    let params = event_json
+        .get("params")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    // Match the helper-side fallback in `main.rs` (line ~2048): prefer
+    // `pane_id`; fall back to legacy `session_id` so a hypothetical
+    // older WT build still works.
+    let pane_id = params
+        .get("pane_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .or_else(|| params.get("session_id").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .to_string();
+    if pane_id.is_empty() {
+        return;
+    }
+    let pane_state = params
+        .get("state")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let event = match pane_state {
+        "closed" => crate::agent_sessions::SessionEvent::PaneClosed {
+            pane_session_id: pane_id.clone(),
+        },
+        "failed" => {
+            let reason = params
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("connection failed")
+                .to_string();
+            crate::agent_sessions::SessionEvent::ConnectionFailed {
+                pane_session_id: pane_id.clone(),
+                reason,
+            }
+        }
+        _ => return,
+    };
+    tracing::info!(
+        target: "master_wt_event",
+        pane_id = %pane_id,
+        state = %pane_state,
+        event = ?event,
+        "applying WT connection_state event to master registry"
+    );
+    let applied = state.registry.apply_event(event).await;
+    if applied {
+        tracing::info!(
+            target: "master_wt_event",
+            pane_id = %pane_id,
+            "broadcasting sessions/changed after WT-driven demotion"
+        );
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
+    } else {
+        tracing::debug!(
+            target: "master_wt_event",
+            pane_id = %pane_id,
+            "WT connection_state event was a no-op (pane not bound to any session)"
+        );
+    }
 }
 
 /// Extract the session key from event variants that carry one. Returns
@@ -2334,7 +2696,7 @@ where
         tracing::info!(
             target: "session_hook",
             session_id = %sid.0,
-            new_title = %disk_title,
+            title_len = disk_title.chars().count(),
             "upgraded synthetic title from on-disk session artefacts",
         );
     }
@@ -2580,6 +2942,60 @@ async fn handle_session_focus(
 mod tests {
     use super::*;
     use acp::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
+    use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+
+    struct NoopClient;
+
+    #[async_trait::async_trait(?Send)]
+    impl acp::Client for NoopClient {
+        async fn request_permission(
+            &self,
+            _args: acp::RequestPermissionRequest,
+        ) -> acp::Result<acp::RequestPermissionResponse> {
+            Err(acp::Error::method_not_found())
+        }
+
+        async fn session_notification(
+            &self,
+            _args: acp::SessionNotification,
+        ) -> acp::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct PendingNewSessionAgent;
+
+    #[async_trait::async_trait(?Send)]
+    impl acp::Agent for PendingNewSessionAgent {
+        async fn initialize(
+            &self,
+            _args: acp::InitializeRequest,
+        ) -> acp::Result<acp::InitializeResponse> {
+            Ok(acp::InitializeResponse::new(acp::ProtocolVersion::V1))
+        }
+
+        async fn authenticate(
+            &self,
+            _args: acp::AuthenticateRequest,
+        ) -> acp::Result<acp::AuthenticateResponse> {
+            Ok(acp::AuthenticateResponse::new())
+        }
+
+        async fn new_session(
+            &self,
+            _args: acp::NewSessionRequest,
+        ) -> acp::Result<acp::NewSessionResponse> {
+            futures::future::pending().await
+        }
+
+        async fn prompt(&self, _args: acp::PromptRequest) -> acp::Result<acp::PromptResponse> {
+            Err(acp::Error::method_not_found())
+        }
+
+        async fn cancel(&self, _args: acp::CancelNotification) -> acp::Result<()> {
+            Ok(())
+        }
+    }
 
     // ── Agent selection / security policy ───────────────────────────
     //
@@ -2720,7 +3136,100 @@ mod tests {
             default_agent_cmd: "copilot --acp --stdio".to_string(),
             default_agent_id: Some("copilot".to_string()),
             allowed_agent_ids: None,
+            helper_meta: Mutex::new(HashMap::new()),
         })
+    }
+
+    fn client_connection_to_pending_new_session_agent() -> Arc<acp::ClientSideConnection> {
+        let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client_pipe);
+        let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+
+        let (_agent_conn, agent_io) = acp::AgentSideConnection::new(
+            PendingNewSessionAgent,
+            agent_write.compat_write(),
+            agent_read.compat(),
+            |fut| {
+                tokio::task::spawn_local(fut);
+            },
+        );
+        tokio::task::spawn_local(async move {
+            let _ = agent_io.await;
+        });
+
+        let (client_conn, client_io) = acp::ClientSideConnection::new(
+            NoopClient,
+            client_write.compat_write(),
+            client_read.compat(),
+            |fut| {
+                tokio::task::spawn_local(fut);
+            },
+        );
+        tokio::task::spawn_local(async move {
+            let _ = client_io.await;
+        });
+
+        Arc::new(client_conn)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn new_session_timeout_is_enforced_by_master_forwarder() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+                // The multi-agent HelperHandler binds its agent during
+                // `initialize`; pre-bind one wrapping the pending
+                // (hangs-on-session/new) connection so
+                // `forward_new_session_to_agent` resolves it and exercises
+                // the timeout path.
+                let agent = OnceLock::new();
+                let _ = agent.set(Arc::new(AgentCli {
+                    key: "test-agent".to_string(),
+                    conn: client_connection_to_pending_new_session_agent(),
+                    cached_init_resp: acp::InitializeResponse::new(acp::ProtocolVersion::V1),
+                    cli_source: None,
+                }));
+                let handler = HelperHandler {
+                    helper_id: HelperId(1),
+                    agent,
+                    state: make_state(),
+                    notif_tx,
+                    agent_side_slot: Arc::new(OnceLock::new()),
+                };
+
+                let err = handler
+                    .forward_new_session_to_agent(
+                        acp::NewSessionRequest::new(PathBuf::from(r"C:\repo")),
+                        std::time::Duration::from_millis(1),
+                    )
+                    .await
+                    .expect_err("master should return an ACP error when agent session/new hangs");
+
+                assert_eq!(err.code, acp::ErrorCode::InternalError);
+                assert!(
+                    format!("{err}").contains("agent CLI session/new timed out"),
+                    "error should identify master->agent session/new timeout: {err}"
+                );
+            })
+            .await;
+    }
+
+    #[test]
+    fn restart_agent_pane_event_shape_carries_tab_and_session() {
+        let sid = SessionId::from("sess-abc");
+        let evt = build_restart_agent_pane_event("tab-42", Some(&sid));
+        assert_eq!(evt["type"], "event");
+        assert_eq!(evt["method"], "restart_agent_pane");
+        assert_eq!(evt["params"]["tab_id"], "tab-42");
+        assert_eq!(evt["params"]["session_id"], "sess-abc");
+        assert_eq!(evt["params"]["reason"], "helper_disconnect");
+    }
+
+    #[test]
+    fn restart_agent_pane_event_null_session_when_none() {
+        let evt = build_restart_agent_pane_event("tab-7", None);
+        assert!(evt["params"]["session_id"].is_null());
+        assert_eq!(evt["params"]["tab_id"], "tab-7");
     }
 
     fn make_notif(sid: &SessionId) -> SessionNotification {
@@ -3013,7 +3522,7 @@ mod tests {
     /// the same teardown call must also remove the corresponding rows
     /// from `state.registry`. Otherwise, a `session/list` response (or
     /// a downstream `intellterm.wta/focus_session` lookup) could hand
-    /// out a SessionId whose helper is already gone, and the F2 view
+    /// out a SessionId whose helper is already gone, and the session management view
     /// would route Enter to a dead pane.
     #[tokio::test]
     async fn drop_sessions_for_helper_also_clears_registry() {
@@ -3299,6 +3808,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sessions_list_upgrades_synthetic_title_from_disk() {
+        // Born-bound rows (e.g. ?<prompt> delegate sessions) register a single
+        // SessionStarted with an empty title — before the CLI has written its
+        // generated `name:` — and, being hook-independent, get no follow-up
+        // events to re-trigger the per-hook title refresh. The /sessions view
+        // re-polls sessions/list every 5s, so the list handler must surface the
+        // CLI-generated title once it lands on disk.
+        use crate::session_registry::{self, SessionInfo};
+        use std::path::PathBuf;
+
+        let state = make_state();
+        let mut row = SessionInfo::new(
+            SessionId::new("born-bound"),
+            PathBuf::from("C:\\Windows\\system32"),
+        );
+        row.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
+        // title left None → synthetic, exactly as at born-bound launch time.
+        state.registry.upsert(row).await;
+
+        let req = session_registry::build_sessions_list_request();
+        let resp = handle_sessions_list_with(&state, &req.params, |cli, key| {
+            assert_eq!(cli, crate::agent_sessions::CliSource::Copilot);
+            assert_eq!(key, "born-bound");
+            Some("Implement Greeting Function".to_string())
+        })
+        .await
+        .expect("sessions/list succeeds");
+        let parsed =
+            session_registry::parse_sessions_list_response(&resp.0).expect("response parses");
+
+        let upgraded = parsed
+            .sessions
+            .iter()
+            .find(|s| s.session_id == SessionId::new("born-bound"))
+            .expect("born-bound row present in snapshot");
+        assert_eq!(
+            upgraded.title.as_deref(),
+            Some("Implement Greeting Function"),
+            "synthetic born-bound title should be upgraded from on-disk artefacts"
+        );
+    }
+
+    #[tokio::test]
     async fn drop_sessions_for_helper_broadcasts_sessions_changed() {
         use crate::session_registry::{self, SessionInfo};
         use std::path::PathBuf;
@@ -3508,6 +4060,7 @@ mod tests {
             default_agent_cmd: "copilot --acp --stdio".to_string(),
             default_agent_id: Some("copilot".to_string()),
             allowed_agent_ids: None,
+            helper_meta: Mutex::new(HashMap::new()),
         })
     }
 

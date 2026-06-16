@@ -74,6 +74,7 @@ commands.help_close_hint: "  Esc        ਇਹ ਮਦਦ ਬੰਦ ਕਰੋ"  #
 commands.help.summary: "ਇਹ ਕਮਾਂਡ ਸੂਚੀ ਦਿਖਾਓ"
 commands.clear.summary: "ਚੈਟ ਸਕ੍ਰੋਲਬੈਕ ਸਾਫ਼ ਕਰੋ (ਸੈਸ਼ਨ ਰੱਖਦਾ ਹੈ)"
 commands.new.summary: "ਨਵਾਂ ACP ਸੈਸ਼ਨ ਸ਼ੁਰੂ ਕਰੋ (ਇਤਿਹਾਸ ਹਟਾਉਂਦਾ ਹੈ)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "ਏਜੰਟ ਮੁੜ-ਚਾਲੂ ਕਰੋ"
 commands.stop.summary: "ਚੱਲ ਰਹੇ ਪ੍ਰਾਂਪਟ ਨੂੰ ਰੱਦ ਕਰੋ"
 commands.sessions.summary: "ਇਤਿਹਾਸਕ ਸੈਸ਼ਨ ਪਿਕਰ ਖੋਲ੍ਹੋ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -130,12 +131,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. ਏਜੰਟ ਪੈਨ ਦਿਖਾਓ/ਲ
 # ── ਕਨੈਕਸ਼ਨ ਸਥਿਤੀ ────────────────────────────────────────────────────────
 connection.starting: "ਏਜੰਟ ਸ਼ੁਰੂ ਹੋ ਰਿਹਾ ਹੈ..."
 connection.reconnecting: "ਮੁੜ-ਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ..."
+connection.connecting_activity: "ਏਜੰਟ ਨਾਲ ਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ…"
+connection.lost: "ਏਜੰਟ ਨਾਲ ਕਨੈਕਸ਼ਨ ਟੁੱਟ ਗਿਆ। ਮੁੜ ਕਨੈਕਟ ਕਰਨ ਲਈ /restart ਟਾਈਪ ਕਰੋ।"  # {Locked="/restart"}
 
 # ── ਸਿਸਟਮ ਸੁਨੇਹੇ (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "ਰੱਦ ਕੀਤਾ ਗਿਆ।"
 system.no_prompt_in_flight: "ਕੋਈ ਪ੍ਰੋਮਪਟ ਚੱਲ ਨਹੀਂ ਰਿਹਾ।"
 system.authentication_failed: "ਪ੍ਰਮਾਣਿਕਤਾ ਅਸਫਲ"
 system.command_copied_retry: "ਕਮਾਂਡ ਕਾਪੀ ਕੀਤੀ ਗਈ — ਇਸ ਨੂੰ ਕਿਸੇ ਹੋਰ ਟਰਮੀਨਲ ਵਿੱਚ ਚਲਾਓ, ਫਿਰ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਲਈ Enter ਦਬਾਓ"  # {Locked="Enter"}
+system.stopped_max_tokens: "ਮਾਡਲ ਦੀ ਆਉਟਪੁੱਟ ਸੀਮਾ 'ਤੇ ਪਹੁੰਚਣ ਤੋਂ ਬਾਅਦ ਜਵਾਬ ਕੱਟ ਦਿੱਤਾ ਗਿਆ।"
+system.stopped_max_turn_requests: "ਇਸ ਵਾਰੀ ਲਈ ਆਪਣੀ ਬੇਨਤੀ ਸੀਮਾ 'ਤੇ ਪਹੁੰਚਣ ਤੋਂ ਬਾਅਦ ਏਜੰਟ ਰੁਕ ਗਿਆ।"
+system.stopped_refusal: "ਏਜੰਟ ਨੇ ਇਸ ਬੇਨਤੀ ਨੂੰ ਜਾਰੀ ਰੱਖਣ ਤੋਂ ਇਨਕਾਰ ਕਰ ਦਿੱਤਾ।"
+system.agent_busy: "ਇਸ ਟੈਬ 'ਤੇ Agent ਰੁੱਝਿਆ ਹੈ — ਮੌਜੂਦਾ ਪ੍ਰੌਮਪਟ ਮੁਕਣ ਤੱਕ ਉਡੀਕ ਕਰੋ।"
+system.resuming_session: "ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ..."
+system.unknown_command: "ਅਣਜਾਣ ਕਮਾਂਡ \"%{command}\" — ਪ੍ਰੌਮਪਟ ਵਜੋਂ ਭੇਜੀ ਗਈ। ਸੂਚੀ ਲਈ /help ਟਾਈਪ ਕਰੋ।"  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "ਮੌਜੂਦਾ ਪ੍ਰੌਮਪਟ ਮੁਕਣ ਤੱਕ ਉਡੀਕ ਕਰੋ, ਜਾਂ ਪਹਿਲਾਂ /stop ਕਰੋ।"  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "ਸੈਸ਼ਨ %{session_id} 'ਤੇ ਫੋਕਸ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਹ live ਦਿਸਦਾ ਹੈ ਪਰ ਹਾਲੇ ਕੋਈ pane GUID ਬਾਊਂਡ ਨਹੀਂ ਹੈ। ਕੁਝ ਪਲਾਂ ਬਾਅਦ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।"
+system.cannot_resume_no_load_session: "agent pane ਵਿੱਚ ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: %{agent} ਨੇ ACP `loadSession` ਸਮਰੱਥਾ ਦਾ ਐਲਾਨ ਨਹੀਂ ਕੀਤਾ। ਇਸ ਦੀ ਬਜਾਏ ਨਵੇਂ terminal pane ਵਿੱਚ ਮੁੜ ਸ਼ੁਰੂ ਕਰਨ ਲਈ Enter (Shift ਤੋਂ ਬਿਨਾਂ) ਦਬਾਓ।"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} ਸੈਸ਼ਨ ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਸ agent ਕੋਲ `--resume`-ਸ਼ੈਲੀ ਦਾ flag ਨਹੀਂ ਹੈ। ਇਸ ਦੀ ਬਜਾਏ ACP ਰਾਹੀਂ agent pane ਦੇ ਅੰਦਰ ਮੁੜ ਸ਼ੁਰੂ ਕਰਨ ਦੀ ਕੋਸ਼ਿਸ਼ ਲਈ Shift+Enter ਦਬਾਓ।"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਸ ਦਾ ਸਰੋਤ agent ਇਸ WTA build ਲਈ ਅਣਜਾਣ ਹੈ।"
+system.cannot_resume_phantom_via_flag: "%{agent} ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਹ ਸ਼ੁਰੂ ਹੋਇਆ ਸੀ ਪਰ ਕੋਈ ਗੱਲਬਾਤ ਇਕੱਠੀ ਨਹੀਂ ਹੋਈ, ਇਸ ਲਈ %{agent} ਖੁਦ resume ਨੂੰ ਰੱਦ ਕਰੇਗਾ। ਕਤਾਰ ਹਟਾਈ ਜਾ ਰਹੀ ਹੈ।"
+system.cannot_resume_phantom_via_load: "%{agent} ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਹ ਸ਼ੁਰੂ ਹੋਇਆ ਸੀ ਪਰ ਕੋਈ ਗੱਲਬਾਤ ਇਕੱਠੀ ਨਹੀਂ ਹੋਈ, ਇਸ ਲਈ %{agent} load ਨੂੰ ਰੱਦ ਕਰੇਗਾ। ਕਤਾਰ ਹਟਾਈ ਜਾ ਰਹੀ ਹੈ।"
+system.fallback.this_agent: "ਇਹ agent"
+system.fallback.connected_agent: "ਜੁੜਿਆ agent"
 
 # ── ਰਨਟਾਈਮ CLI ਆਉਟਪੁੱਟ (src/main.rs) ────────────────────────────────────────
 output.no_windows: "ਕੋਈ ਵਿੰਡੋ ਨਹੀਂ ਮਿਲੀ।"
@@ -182,3 +200,13 @@ time.hour_singular: "%{count} ਘੰਟਾ ਪਹਿਲਾਂ"
 time.hours_other: "%{count} ਘੰਟੇ ਪਹਿਲਾਂ"
 time.day_singular: "%{count} ਦਿਨ ਪਹਿਲਾਂ"
 time.days_other: "%{count} ਦਿਨ ਪਹਿਲਾਂ"
+
+# ── ਸਿਫਾਰਸ਼ ਚਲਾਉਣਾ (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "ਚੋਣ %{choice} ਅਸਫਲ ਰਹੀ: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ ਚੁਣੋ (ਸਿੱਧਾ ਬਦਲਣ ਲਈ /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "ਮਾਡਲ ਚੁਣੋ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "ਜੁੜੇ ਏਜੰਟ ਨੇ ਕੋਈ ਚੁਣਨਯੋਗ ਮਾਡਲ ਦਾ ਐਲਾਨ ਨਹੀਂ ਕੀਤਾ।"
+system.model_set: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ %{model} 'ਤੇ ਸੈੱਟ ਕੀਤਾ ਗਿਆ।"  # {Locked="%{model}"}
+system.model_unknown: "ਅਣਜਾਣ ਮਾਡਲ %{model} — ਉਪਲਬਧ ਸੂਚੀ ਵੇਖਣ ਲਈ /model ਟਾਈਪ ਕਰੋ।"  # {Locked="%{model}","/model"}

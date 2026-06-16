@@ -163,11 +163,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Vælg den agent, der bruges i agentpanelet. Alle kompatible ACP-agenter registreres automatisk.</value>
+    <value>Vælg den agent, der bruges i agentpanelet, og som understøtter ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Denne agent kræver Node.js og NPX, som installeres automatisk, hvis de ikke allerede er til stede.</value>
+    <value>Denne agent kræver Node.js og NPX, som installeres automatisk, hvis de ikke allerede er til stede.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -186,7 +186,7 @@
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Aktivering af dette vil installere integrationshooks til at spore sessioner på tværs af dine agenter.</value>
+    <value>Aktivering af dette vil installere integrationshooks til at spore sessioner på tværs af dine agenter.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -221,13 +221,49 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Konfigurerer...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Installation af GitHub Copilot mislykkedes. Kontroller din netværksforbindelse, og prøv igen.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Installation af {0} blev blokeret af en Windows Package Manager-politik. Hvis du bruger en administreret enhed, skal du kontakte din it-administrator.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Installation af Node.js mislykkedes. Kontroller din netværksforbindelse, og prøv igen.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Kunne ikke installere {0} (fejlkode {1}). Kontroller loggen for detaljer, eller installer {0} manuelt.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Kunne ikke installere {0}. Kontroller loggen for detaljer, eller installer {0} manuelt.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ Installationsprogrammet til {0} rapporterede en fejl (kode {1}). Kontroller loggen for detaljer, eller installer {0} manuelt.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Kunne ikke oprette forbindelse til Windows Package Manager under installation af {0}. Kontroller din internetforbindelse (VPN, proxy eller firewall blokerer den muligvis), og prøv igen.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Der findes ikke et kompatibelt installationsprogram til {0} på dette system (OS-versionen eller arkitekturen understøttes muligvis ikke). Installer {0} manuelt.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} blev ikke fundet i Windows Package Manager-kataloget. Prøv at opdatere winget-kilderne, eller installer {0} manuelt.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Installation af {0} tog mere end 20 minutter. Intelligent Terminal holdt op med at vente, men installationsprogrammet kører muligvis stadig i baggrunden. Kontroller Task Manager, eller prøv igen senere.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows Package Manager (winget) er ikke installeret eller er ikke tilgængelig. Installer den først, og prøv igen.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Til</value>
@@ -304,5 +340,27 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Giv Intelligent Terminal tilladelse til at få adgang til din shell og automatisk registrere fejl.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Installation af shell-integration mislykkedes. Fejlregistrering er blevet deaktiveret. Du kan genaktivere den og prøve igen, eller gemme for at fortsætte uden den.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Installation af session hooks mislykkedes. Sessionsstyring er blevet deaktiveret. Du kan genaktivere den og prøve igen, eller gemme for at fortsætte uden den.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Få mere at vide om, hvordan du løser dette manuelt</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Aktivering af dette vil installere shellintegration for at registrere kommandofejl. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Få mere at vide</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>PowerShell-udførelsespolitikken blokerer scripts.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell-udførelsespolitikken blokerer scripts. Fejlregistrering deaktiveret.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

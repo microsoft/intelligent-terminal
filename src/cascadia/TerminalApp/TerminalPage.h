@@ -29,6 +29,11 @@ namespace Microsoft::Terminal::Core
     class ControlKeyStates;
 }
 
+namespace Json
+{
+    class Value;
+}
+
 namespace winrt::Microsoft::Terminal::Settings
 {
     struct TerminalSettingsCreateResult;
@@ -210,6 +215,7 @@ namespace winrt::TerminalApp::implementation
         void OnResumeInNewAgentTabRequested(hstring eventJson);
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
+        void OnAgentPaneRestartRequested(hstring eventJson);
 
         til::property_changed_event PropertyChanged;
 
@@ -358,6 +364,12 @@ namespace winrt::TerminalApp::implementation
         // Hot-reload of agent/model settings. Snapshot is captured on first
         // SetSettings and after every rebuild; a diff drives teardown/rebuild
         // of the agent pane.
+        //
+        // Only the agent-CLI *identity* (acpAgent / acpCustomCommand, which
+        // resolve --agent + --agent-id = the actual agent binary) forces a
+        // master respawn via _RebuildAgentStack. Model + delegate config are
+        // hot-updated over the event channel (see AgentRuntimeConfigSnapshot
+        // + _EmitAgentRuntimeConfigIfChanged) and must NOT restart the pane.
         struct AgentSettingsSnapshot
         {
             std::wstring acpAgent;
@@ -369,12 +381,42 @@ namespace winrt::TerminalApp::implementation
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
-        // Snapshot of AutoFixEnabled at last SetSettings call. When the
-        // user toggles "Auto-suggest fixes" we send the new value to WTA
-        // over the protocol so it can update its in-memory gate without
-        // requiring the agent pane to be torn down and restarted.
-        bool _lastAutoFixEnabled{ false };
-        bool _autoFixEnabledSnapshotInitialized{ false };
+        // Hot-updatable runtime agent config. When any of these change we
+        // push a single consolidated `agent_config_changed` event to the
+        // running wta-helper(s) so they update in place — no agent-pane
+        // teardown/restart. This is the unified dispatch point for every
+        // agent setting that can be hot-reloaded (autofix gate, acp-model,
+        // delegate agent/model). `delegateAgent` holds the *resolved effective*
+        // value (custom-command ids already expanded).
+        struct AgentRuntimeConfigSnapshot
+        {
+            std::wstring acpModel;
+            std::wstring delegateAgent;
+            std::wstring delegateModel;
+            bool autofixEnabled{ false };
+        };
+        AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
+        bool _agentRuntimeConfigInitialized{ false };
+        // Snapshot of EffectiveAutoErrorDetectionEnabled at last
+        // SetSettings call. Drives the silent shell-integration reconcile
+        // (Install when ON, Uninstall when OFF) on first-load and on
+        // every change — handles both Settings-UI toggle-off (which
+        // previously left our $PROFILE block behind) and roaming
+        // settings.json arriving on a fresh machine (which previously
+        // never ran the install).
+        bool _lastAutoErrorDetectionEnabled{ false };
+        bool _lastAutoErrorDetectionHasExplicit{ false };
+        bool _autoErrorDetectionSnapshotInitialized{ false };
+        // Cross-thread "latest desired state" for the shell-integration
+        // reconcile. SetSettings (UI thread) stores the current value
+        // *before* spawning the fire-and-forget reconcile; the coroutine
+        // reads this inside the serialization mutex so the last lock
+        // acquirer always observes the most recent setting. Together
+        // with idempotent Install/Uninstall this guarantees the on-disk
+        // state matches the latest setting even when reconciles arrive
+        // back-to-back (e.g. file-watcher reload storms).
+        std::atomic<bool> _shellIntegrationDesiredEnabled{ false };
+        std::mutex _shellIntegrationReconcileMutex;
         bool _agentRebuilding{ false };
         // Set when a settings change wants a rebuild but the active
         // tab can't host an agent pane (e.g. the Settings tab itself).
@@ -382,7 +424,7 @@ namespace winrt::TerminalApp::implementation
         // _OnTabSelectionChanged once a terminal tab is active.
         bool _pendingAgentRebuild{ false };
 
-        // Plan-C resume-into-new-tab bookkeeping. When the F2 session
+        // Plan-C resume-into-new-tab bookkeeping. When the session
         // manager's Enter handler on a Historical/Ended row creates a
         // new tab, it stashes the requested session id + cwd here keyed
         // by the new tab's StableId. `OnAgentStateChanged` consumes the
@@ -404,9 +446,30 @@ namespace winrt::TerminalApp::implementation
             std::string cwd;
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
+        // Short-lived marks keyed by tab StableId: set whenever an agent
+        // pane is torn down deliberately (Ctrl+C×2, settings rebuild,
+        // /restart, recovery re-warm). `OnAgentPaneRestartRequested`
+        // consumes a mark to skip respawning a pane the user/we just
+        // closed — the master's `restart_agent_pane` event fires for both
+        // deliberate teardown and genuine crash, so this is how C++
+        // distinguishes them. Entries are consumed on read and otherwise
+        // expire after a few seconds.
+        std::unordered_map<winrt::hstring, std::chrono::steady_clock::time_point> _agentPaneRestartSuppression;
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
+        // Compares only agent-CLI *identity* fields — the change that forces
+        // a master respawn. Model/delegate changes are handled by
+        // _EmitAgentRuntimeConfigIfChanged instead.
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
-        void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab);
+        AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
+        // Diffs the hot-updatable runtime config against the last snapshot
+        // and, on change, emits one `agent_config_changed` event carrying
+        // only the changed fields. No agent-pane teardown.
+        void _EmitAgentRuntimeConfigIfChanged();
+        // Serialize and raise a `{type:"event", method, params}` envelope on
+        // ProtocolVtSequenceReceived. Single source of the wta protocol-event
+        // wire shape — callers just supply the method name and a params object.
+        void _RaiseProtocolEvent(std::string_view method, const Json::Value& params);
+        void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab, bool suppressMasterRestart = true);
         void _RebuildAgentStack();
         // Scoped per-tab rebuild after a tab's agent override changes
         // (agent-bar chip flyout). Does not restart the shared master.
@@ -433,7 +496,7 @@ namespace winrt::TerminalApp::implementation
         // resume hint down to the helper: when non-empty, the spawned wta
         // process gets `--initial-load-session-id` (+ `--initial-load-cwd`)
         // on its cmdline and immediately calls `session/load` instead of
-        // creating a fresh session. Used by the F2 "Enter on Historical /
+        // creating a fresh session. Used by the "Enter on Historical /
         // Ended row" path to bundle spawn + resume atomically (replacing
         // the prior race-prone "spawn, then broadcast `load_session` VT"
         // design).
@@ -503,6 +566,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowLargePasteWarningDialog();
 
         safe_void_coroutine _InitShellIntegration(const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
+        safe_void_coroutine _ReconcileShellIntegration();
         void _ShowShellIntegrationDialog(const winrt::hstring& title, const winrt::hstring& message);
         void _OnSettingsInitShellIntegration(const winrt::Windows::Foundation::IInspectable& sender, const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
 
@@ -601,6 +665,7 @@ namespace winrt::TerminalApp::implementation
         TerminalApp::Tab _GetTabByTabViewItem(const IInspectable& tabViewItem) const noexcept;
 
         void _HandleClosePaneRequested(std::shared_ptr<Pane> pane);
+        void _NotifyPanesClosing(const std::shared_ptr<Pane>& rootPane);
         bool _ShouldWarnOnClose() const;
         bool _ShouldWarnOnCloseTab(const winrt::com_ptr<Tab>& tab) const;
         safe_void_coroutine _SetFocusedTab(const winrt::TerminalApp::Tab tab);
@@ -629,7 +694,7 @@ namespace winrt::TerminalApp::implementation
 
         safe_void_coroutine _OpenHyperlinkHandler(const IInspectable sender, const Microsoft::Terminal::Control::OpenHyperlinkEventArgs eventArgs);
         static bool _IsUriSupported(const winrt::Windows::Foundation::Uri& parsedUri);
-        static bool _IsUriConsideredSomewhatSafe(const winrt::Windows::Foundation::Uri& parsedUri);
+        bool _IsUriConsideredSomewhatSafe(const winrt::Windows::Foundation::Uri& parsedUri) const;
 
         void _ShowCouldNotOpenDialog(winrt::hstring reason, winrt::hstring uri);
         bool _CopyText(bool dismissSelection, bool singleLine, bool withControlSequences, Microsoft::Terminal::Control::CopyFormat formats);

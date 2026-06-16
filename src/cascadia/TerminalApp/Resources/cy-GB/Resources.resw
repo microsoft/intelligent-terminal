@@ -50,11 +50,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Dewiswch yr asiant a ddefnyddir yn y paen asiant. Bydd unrhyw asiant ACP cydnaws yn cael ei ganfod yn awtomatig.</value>
+    <value>Dewiswch yr asiant a ddefnyddir yn y paen asiant ac sy'n cefnogi ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Mae'r asiant hwn angen Node.js a NPX, a fydd yn cael eu gosod yn awtomatig os nad ydynt eisoes yn bresennol.</value>
+    <value>Mae'r asiant hwn angen Node.js a NPX, a fydd yn cael eu gosod yn awtomatig os nad ydynt eisoes yn bresennol.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -72,7 +72,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Bydd galluogi hyn yn gosod hooks integreiddio i olrhain sesiynau ar draws eich asiantau.</value>
+    <value>Bydd galluogi hyn yn gosod hooks integreiddio i olrhain sesiynau ar draws eich asiantau.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -107,13 +107,49 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Yn gosod...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Methodd gosod GitHub Copilot. Gwiriwch eich cysylltiad rhwydwaith a cheisiwch eto.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Cafodd gosod {0} ei rwystro gan bolisi Rheolwr Pecynnau Windows. Os ydych ar ddyfais a reolir, cysylltwch â'ch gweinyddwr TG.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Methodd gosod Node.js. Gwiriwch eich cysylltiad rhwydwaith a cheisiwch eto.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Methu gosod {0} (cod gwall {1}). Gweler y log am fanylion, neu gosodwch {0} â llaw.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Methu gosod {0}. Gweler y log am fanylion, neu gosodwch {0} â llaw.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ Adroddodd gosodwr {0} wall (cod {1}). Gwiriwch y log am fanylion, neu gosodwch {0} â llaw.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Methu cyrraedd Rheolwr Pecynnau Windows wrth osod {0}. Gwiriwch eich cysylltiad â'r rhyngrwyd (gallai VPN, dirprwy neu fur gwarchod fod yn ei rwystro) a cheisiwch eto.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Nid oes gosodwr cydnaws ar gyfer {0} ar gael ar y system hon (efallai nad yw fersiwn y system weithredu neu'r bensaernïaeth yn cael ei chefnogi). Gosodwch {0} â llaw.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ Ni chafwyd hyd i {0} yng nghatalog Rheolwr Pecynnau Windows. Ceisiwch adnewyddu ffynonellau winget, neu gosodwch {0} â llaw.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Cymerodd gosod {0} fwy na 20 munud. Rhoddodd Intelligent Terminal y gorau i aros, ond gallai'r gosodwr fod yn rhedeg yn y cefndir o hyd. Gwiriwch Task Manager, neu ceisiwch eto'n nes ymlaen.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Nid yw Rheolwr Pecynnau Windows (winget) wedi'i osod neu nid yw ar gael. Gosodwch ef yn gyntaf, ac yna ceisiwch eto.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Ymlaen</value>
@@ -190,5 +226,27 @@
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Rhowch ganiatâd i Intelligent Terminal gael mynediad i'ch cragen a chanfod gwallau yn awtomatig.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Methodd gosod integreiddio plisgyn. Mae canfod gwallau wedi'i ddiffodd. Gallwch ei ail-alluogi a rhoi cynnig arall arni, neu gadw i barhau hebddo.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Methodd gosod session hooks. Mae rheoli sesiynau wedi'i ddiffodd. Gallwch ei ail-alluogi a rhoi cynnig arall arni, neu gadw i barhau hebddo.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Dysgwch sut i drwsio hyn â llaw</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Bydd galluogi hyn yn gosod integreiddio shell i ganfod methiannau gorchmynion. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Dysgu mwy</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>Mae polisi gweithredu PowerShell yn rhwystro sgriptiau.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ Mae polisi gweithredu PowerShell yn rhwystro sgriptiau. Canfod gwallau wedi'i ddiffodd.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

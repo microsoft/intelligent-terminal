@@ -16,6 +16,7 @@ backplating
 bitmaps
 BOMs
 checkcflags
+combase
 COMPUTERNAME
 CPLs
 cpptools
@@ -72,6 +73,7 @@ Virtualization
 vscode
 VSTHRD
 WINBASEAPI
+winver
 wscript
 wslpath
 wtl

@@ -8,9 +8,13 @@ const SPINNER: &[char] = &[
     '\u{2827}', '\u{2807}', '\u{280F}',
 ];
 
-// Figma: rgba(255,255,255,0.6) ≈ #999999
-const DIM_TEXT: Style = Style::new().fg(Color::Rgb(153, 153, 153));
-const SELECTED_COLOR: Color = Color::Rgb(96, 205, 255);
+// Muted secondary text. Dimmed default fg (not a fixed gray) so it tracks the
+// color scheme and stays readable on light schemes (#234). Figma reference was
+// rgba(255,255,255,0.6) ≈ #999999, which only worked on a dark background.
+const DIM_TEXT: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
+// Named ANSI (not fixed RGB) so the selection accent follows the color scheme
+// and stays readable on light schemes (#234).
+const SELECTED_COLOR: Color = Color::Cyan;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let setup = match &app.setup {
@@ -31,15 +35,15 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Title — bold white with bullet
+    // Title — bold, scheme default foreground, with bullet
     lines.push(Line::from(vec![
         Span::styled(
             "\u{25CF} ",
-            Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             &setup.title,
-            Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
         ),
     ]));
 
@@ -132,7 +136,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         } else if is_selected {
             Style::new().fg(SELECTED_COLOR)
         } else {
-            Style::new().fg(Color::White)
+            Style::new().fg(Color::Reset)
         };
 
         if is_selected {
@@ -149,7 +153,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         } else {
             lines.push(Line::from(vec![
                 Span::raw("    "),
-                Span::styled(label, Style::new().fg(Color::White)),
+                Span::styled(label, Style::new().fg(Color::Reset)),
                 Span::styled(status_text, status_style),
             ]));
         }
@@ -166,7 +170,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             ),
             Span::styled(
                 t!("setup.status.installing_winget").into_owned(),
-                Style::new().fg(Color::White),
+                Style::new().fg(Color::Reset),
             ),
         ]));
         for log_line in setup.install_log.iter() {

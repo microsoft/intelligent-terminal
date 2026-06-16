@@ -71,6 +71,7 @@ commands.help_close_hint: "  Esc        Zatvori ovu pomoć"  # {Locked="Esc"}
 commands.help.summary: "Prikaži ovaj popis naredbi"
 commands.clear.summary: "Očisti povijest razgovora (zadržava sesiju)"
 commands.new.summary: "Pokreni novu sesiju ACP (odbacuje povijest)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Ponovno pokreni agenta"
 commands.stop.summary: "Otkaži upit u tijeku"
 commands.sessions.summary: "Otvori birač prethodnih sesija (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -126,12 +127,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. prikaži/sakrij okno agenta • Ctrl+Shift
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Pokretanje agenta..."
 connection.reconnecting: "Ponovno povezivanje..."
+connection.connecting_activity: "Povezivanje s agentom…"
+connection.lost: "Veza s agentom je izgubljena. Upišite /restart za ponovno povezivanje."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Otkazano."
 system.no_prompt_in_flight: "Nema aktivnog upita."
 system.authentication_failed: "Provjera autentičnosti nije uspjela"
 system.command_copied_retry: "Naredba kopirana — pokrenite je u drugom terminalu, zatim pritisnite Enter za ponovni pokušaj"  # {Locked="Enter"}
+system.stopped_max_tokens: "Odgovor je odrezan nakon dosezanja izlaznog ograničenja modela."
+system.stopped_max_turn_requests: "Agent se zaustavio nakon dosezanja ograničenja zahtjeva za ovaj potez."
+system.stopped_refusal: "Agent je odbio nastaviti s ovim zahtjevom."
+system.agent_busy: "Agent je zauzet na ovoj kartici — pričekajte da se trenutni upit dovrši."
+system.resuming_session: "Nastavlja se sesija %{session_id}..."
+system.unknown_command: "Nepoznata naredba \"%{command}\" — poslana kao upit. Upišite /help za popis."  # {Locked="/help"}
+system.busy_use_stop: "Pričekajte da se trenutni upit dovrši ili najprije upotrijebite /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nije moguće fokusirati sesiju %{session_id}: izgleda aktivna, ali još nije povezan GUID okna. Pokušajte ponovno za trenutak."
+system.cannot_resume_no_load_session: "Nije moguće nastaviti u oknu agenta: %{agent} nije oglasio mogućnost ACP `loadSession`. Pritisnite Enter (bez Shift) da umjesto toga nastavite u novom terminalskom oknu."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nije moguće nastaviti sesiju agenta %{agent}: ovaj agent nema zastavicu u stilu `--resume`. Pritisnite Shift+Enter da pokušate nastaviti unutar okna agenta putem ACP-a."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nije moguće nastaviti sesiju %{session_id}: njezin izvorni agent nije poznat ovoj verziji WTA."
+system.cannot_resume_phantom_via_flag: "Nije moguće nastaviti sesiju agenta %{agent} %{session_id}: pokrenuta je, ali nikada nije prikupila razgovor, pa bi sam %{agent} odbio nastavak. Redak se uklanja."
+system.cannot_resume_phantom_via_load: "Nije moguće nastaviti sesiju agenta %{agent} %{session_id}: pokrenuta je, ali nikada nije prikupila razgovor, pa bi %{agent} odbio učitavanje. Redak se uklanja."
+system.fallback.this_agent: "ovaj agent"
+system.fallback.connected_agent: "povezani agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nisu pronađeni prozori."
@@ -181,3 +199,13 @@ time.hour_singular: "prije 1 sat"
 time.hours_other: "prije %{count} sati"
 time.day_singular: "prije 1 dan"
 time.days_other: "prije %{count} dana"
+
+# ── Izvršavanje preporuke (src/coordinator.rs) ──────────────────────────────
+system.choice_execution_failed: "Odabir %{choice} nije uspio: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Odaberite model za ovo okno (/model <id> za izravno prebacivanje)"  # {Locked="/model","<id>"}
+model_picker.title: "Odaberite model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Povezani agent nije oglasio nijedan model koji se može odabrati."
+system.model_set: "Model za ovo okno postavljen je na %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Nepoznat model %{model} — upišite /model za prikaz dostupnog popisa."  # {Locked="%{model}","/model"}

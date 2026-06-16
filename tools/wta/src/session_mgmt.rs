@@ -1,4 +1,4 @@
-//! Pure-function core of F2 Enter / Shift+Enter routing for the agent
+//! Pure-function core of session management Enter / Shift+Enter routing for the agent
 //! session manager.
 //!
 //! `decide_enter_action` is a closed, side-effect-free mapping from a
@@ -45,7 +45,7 @@ use crate::agent_sessions::{AgentKey, CliSource, SessionOrigin};
 /// one-dimensional `AgentStatus` so callers can express "session is
 /// alive somewhere" independently of activity (Idle/Working/...).
 ///
-/// This enum is the input we *want* the F2 view to feed in; for now,
+/// This enum is the input we *want* the session management view to feed in; for now,
 /// the caller can collapse `AgentStatus` into it (see
 /// [`liveness_from_status`]). Once `agent_sessions::AgentSession` itself
 /// splits to activity + liveness fields, this becomes a direct copy.
@@ -78,8 +78,7 @@ pub enum NotResumableReason {
     /// Wanted `ResumeInAgentPane` but the connected agent didn't
     /// advertise the `loadSession` capability.
     LoadSessionNotSupported,
-    /// Wanted `ResumeCliFlag` but the CLI has no `--resume`-style flag
-    /// (Codex today).
+    /// Wanted `ResumeCliFlag` but the CLI has no `--resume`-style flag.
     CliHasNoResumeFlag,
     /// `CliSource::Unknown(_)` — we don't know how to spawn the CLI, so
     /// neither dead-row path applies.
@@ -123,7 +122,8 @@ pub struct RowSnapshot {
     /// ACP) advertised the `loadSession` capability at initialize.
     pub load_session_supported: bool,
     /// Whether the CLI has a `--resume`-style flag. True for
-    /// Claude/Copilot/Gemini, false for Codex.
+    /// Claude/Copilot/Codex/Gemini (all four CLIs accept some form of
+    /// `--resume`/`resume <id>` re-attach surface).
     pub cli_supports_resume_flag: bool,
 }
 
@@ -267,6 +267,39 @@ mod tests {
     }
 
     #[test]
+    fn codex_class_a_live_with_pane_enter_focuses() {
+        let r = row(
+            SessionOrigin::AgentPane,
+            Liveness::Live {
+                pane_session_id: Some("pane-A".into()),
+            },
+            CliSource::Codex,
+            true,
+            true,
+        );
+        assert_eq!(
+            decide_enter_action(&r, false),
+            EnterAction::Focus {
+                pane_session_id: "pane-A".into()
+            }
+        );
+    }
+
+    #[test]
+    fn codex_class_a_live_with_pane_shift_same_as_enter() {
+        let r = row(
+            SessionOrigin::AgentPane,
+            Liveness::Live {
+                pane_session_id: Some("pane-A".into()),
+            },
+            CliSource::Codex,
+            true,
+            true,
+        );
+        assert_eq!(decide_enter_action(&r, true), decide_enter_action(&r, false));
+    }
+
+    #[test]
     fn class_b_live_with_pane_enter_focuses() {
         let r = row(
             SessionOrigin::Unknown,
@@ -360,11 +393,46 @@ mod tests {
     }
 
     #[test]
+    fn codex_class_a_ended_enter_resumes_in_agent_pane_when_supported() {
+        let r = row(
+            SessionOrigin::AgentPane,
+            Liveness::Ended,
+            CliSource::Codex,
+            true,
+            true,
+        );
+        assert_eq!(
+            decide_enter_action(&r, false),
+            EnterAction::ResumeInAgentPane {
+                key: "k".into(),
+                cli: CliSource::Codex
+            }
+        );
+    }
+
+    #[test]
     fn class_a_ended_enter_not_resumable_when_load_unsupported() {
         let r = row(
             SessionOrigin::AgentPane,
             Liveness::Ended,
             CliSource::Copilot,
+            false, // load_session not supported
+            true,
+        );
+        assert_eq!(
+            decide_enter_action(&r, false),
+            EnterAction::NotResumable {
+                reason: NotResumableReason::LoadSessionNotSupported
+            }
+        );
+    }
+
+    #[test]
+    fn codex_class_a_ended_enter_not_resumable_when_load_unsupported() {
+        let r = row(
+            SessionOrigin::AgentPane,
+            Liveness::Ended,
+            CliSource::Codex,
             false, // load_session not supported
             true,
         );
@@ -395,11 +463,46 @@ mod tests {
     }
 
     #[test]
+    fn codex_class_a_ended_shift_resumes_via_cli_flag() {
+        let r = row(
+            SessionOrigin::AgentPane,
+            Liveness::Ended,
+            CliSource::Codex,
+            true,
+            true,
+        );
+        assert_eq!(
+            decide_enter_action(&r, true),
+            EnterAction::ResumeCliFlag {
+                key: "k".into(),
+                cli: CliSource::Codex
+            }
+        );
+    }
+
+    #[test]
     fn class_a_ended_shift_not_resumable_when_cli_has_no_flag() {
         let r = row(
             SessionOrigin::AgentPane,
             Liveness::Ended,
             CliSource::Claude,
+            true,
+            false, // no --resume flag
+        );
+        assert_eq!(
+            decide_enter_action(&r, true),
+            EnterAction::NotResumable {
+                reason: NotResumableReason::CliHasNoResumeFlag
+            }
+        );
+    }
+
+    #[test]
+    fn codex_class_a_ended_shift_not_resumable_when_cli_has_no_flag() {
+        let r = row(
+            SessionOrigin::AgentPane,
+            Liveness::Ended,
+            CliSource::Codex,
             true,
             false, // no --resume flag
         );
@@ -425,6 +528,24 @@ mod tests {
             EnterAction::ResumeInAgentPane {
                 key: "k".into(),
                 cli: CliSource::Gemini
+            }
+        );
+    }
+
+    #[test]
+    fn codex_class_a_historical_enter_routes_like_ended() {
+        let r = row(
+            SessionOrigin::AgentPane,
+            Liveness::Historical,
+            CliSource::Codex,
+            true,
+            true,
+        );
+        assert_eq!(
+            decide_enter_action(&r, false),
+            EnterAction::ResumeInAgentPane {
+                key: "k".into(),
+                cli: CliSource::Codex
             }
         );
     }

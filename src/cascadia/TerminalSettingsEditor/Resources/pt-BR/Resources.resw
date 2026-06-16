@@ -1553,6 +1553,10 @@
     <value>Piscar janela</value>
     <comment>An option to choose from for the "bell style" setting. When selected, a visual notification is used to notify the user. In this case, the window is flashed.</comment>
   </data>
+  <data name="Profile_BellStyleNotification.Content" xml:space="preserve">
+    <value>Notificação da área de trabalho</value>
+    <comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment>
+  </data>
   <data name="ColorScheme_AddNewButton.Text" xml:space="preserve">
     <value>Adicionar novo</value>
     <comment>Button label that creates a new color scheme.</comment>
@@ -2197,6 +2201,26 @@
     <value>Avisar ao fechar mais de uma guia</value>
     <comment>Header for a control to toggle whether to show a confirm dialog box when closing the application with multiple tabs open.</comment>
   </data>
+  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
+    <value>Avisar ao fechar</value>
+    <comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
+    <value>Controla quando uma caixa de diálogo de confirmação aparece antes de fechar guias ou janelas. "Sempre" apresenta a caixa de diálogo ao fechar qualquer painel.</value>
+    <comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
+    <value>Nunca</value>
+    <comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
+    <value>Sempre</value>
+    <comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
+    <value>Múltiplas guias ou painéis</value>
+    <comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment>
+  </data>
   <data name="Globals_InputServiceWarning.Header" xml:space="preserve">
     <value>Avisar quando o "Serviço de Teclado Virtual e Painel de Manuscrito" estiver desabilitado</value>
   </data>
@@ -2370,8 +2394,8 @@
     <comment>Accessible name for a control allowing the user to select the icon from a list of built in icons.</comment>
   </data>
   <data name="Nav_NewTabMenu.Content" xml:space="preserve">
-    <value>Menu nova guia</value>
-    <comment>Header for the "new tab menu" menu item. This navigates to a page that lets you see and modify settings related to the app's new tab menu (i.e. profile ordering, nested folders, dividers, etc.)</comment>
+    <value>Menu Suspenso</value>
+    <comment>Header for the "dropdown menu" menu item (formerly "new tab menu"). This navigates to a page that lets you see and modify settings related to the app's dropdown menu (i.e. profile ordering, nested folders, dividers, etc.)</comment>
   </data>
   <data name="NewTabMenuEntry_Separator.Text" xml:space="preserve">
     <value>&lt;Separador&gt;</value>
@@ -2835,26 +2859,8 @@
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
     <value>Atualizar</value>
   </data>
-  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
-    <value>Avisar ao fechar</value>
-  </data>
-  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
-    <value>Controla quando uma caixa de diálogo de confirmação aparece antes de fechar guias ou janelas. "Sempre" exibe a caixa de diálogo ao fechar qualquer painel.</value>
-  </data>
-  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
-    <value>Nunca</value>
-  </data>
-  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
-    <value>Sempre</value>
-  </data>
-  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
-    <value>Várias guias ou painéis</value>
-  </data>
-  <data name="Profile_BellStyleNotification.Content" xml:space="preserve">
-    <value>Notificação da área de trabalho</value>
-  </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
-    <value>https://aka.ms/intelligentterminal/portable-mode</value>
+    <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
     <comment>{Locked}</comment>
   </data>
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
@@ -2876,6 +2882,14 @@
   <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
     <value>Removendo hooks do Gemini...</value>
     <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCodexSummary" xml:space="preserve">
+    <value>Removendo hooks do Codex...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
+  </data>
+  <data name="AIAgents_CodexTrustHint.Text" xml:space="preserve">
+    <value>Após instalar, execute /hooks no Codex e aprove para confiar nos novos manipuladores de eventos.</value>
+    <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
   </data>
   <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
     <value>Falha: não foi possível localizar wta.exe</value>

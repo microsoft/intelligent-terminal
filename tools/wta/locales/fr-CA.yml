@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. pour afficher/masquer le volet de l'agent 
 # ── État de la connexion ────────────────────────────────────────────────────────────
 connection.starting: "Démarrage de l'agent..."
 connection.reconnecting: "Reconnexion..."
+connection.connecting_activity: "Connexion à l'agent…"
+connection.lost: "La connexion à l'agent a été perdue. Tapez /restart pour vous reconnecter."  # {Locked="/restart"}
 
 # ── Messages système (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Annulé."
 system.no_prompt_in_flight: "Aucune invite en cours."
 system.authentication_failed: "Échec de l'authentification"
 system.command_copied_retry: "Commande copiée — exécutez-la dans un autre terminal, puis appuyez sur Enter pour réessayer"  # {Locked="Enter"}
+system.stopped_max_tokens: "La réponse a été tronquée après avoir atteint la limite de sortie du modèle."
+system.stopped_max_turn_requests: "L'agent s'est arrêté après avoir atteint sa limite de requêtes pour ce tour."
+system.stopped_refusal: "L'agent a refusé de poursuivre cette requête."
+system.agent_busy: "L’agent est occupé dans cet onglet — attendez que l’invite actuelle soit terminée."
+system.resuming_session: "Reprise de la session %{session_id}..."
+system.unknown_command: "Commande inconnue \"%{command}\" — envoyée comme invite. Tapez /help pour afficher la liste."
+system.busy_use_stop: "Attendez que l’invite actuelle soit terminée, ou utilisez d’abord /stop."
+system.cannot_focus_session: "Impossible de cibler la session %{session_id} : elle semble active, mais aucun GUID de volet n’est encore lié. Réessayez dans un instant."
+system.cannot_resume_no_load_session: "Impossible de reprendre dans le volet de l’agent : %{agent} n’a pas annoncé la capacité ACP `loadSession`. Appuyez sur Enter (sans Shift) pour reprendre plutôt dans un nouveau volet de terminal."
+system.cannot_resume_no_resume_flag: "Impossible de reprendre la session %{agent} : cet agent n’a pas d’indicateur de type `--resume`. Appuyez sur Shift+Enter pour tenter une reprise dans le volet de l’agent via ACP."
+system.cannot_resume_unknown_agent: "Impossible de reprendre la session %{session_id} : son agent source est inconnu de cette version."
+system.cannot_resume_phantom_via_flag: "Impossible de reprendre la session %{agent} %{session_id} : elle a été démarrée, mais n’a jamais accumulé de conversation; %{agent} rejetterait donc lui-même la reprise. Suppression de la ligne."
+system.cannot_resume_phantom_via_load: "Impossible de reprendre la session %{agent} %{session_id} : elle a été démarrée, mais n’a jamais accumulé de conversation; %{agent} rejetterait donc le chargement. Suppression de la ligne."
+system.fallback.this_agent: "cet agent"
+system.fallback.connected_agent: "l’agent connecté"
 
 # ── Sortie CLI d'exécution (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Aucune fenêtre trouvée."
@@ -178,6 +195,17 @@ time.days_other: "il y a %{count} jours"
 commands.help.summary: "Afficher cette liste de commandes"
 commands.clear.summary: "Effacer le contenu du clavardage (conserve la session)"
 commands.new.summary: "Démarrer une nouvelle session ACP (efface l’historique)"
+commands.fix.summary: "Diagnostiquer le terminal actif et suggérer un correctif (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Redémarrer l’agent"
 commands.stop.summary: "Annuler la requête en cours"
 commands.sessions.summary: "Ouvrir le sélecteur de sessions précédentes (Ctrl+Shift+/)"
+
+# ── Exécution des recommandations (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Le choix %{choice} a échoué : %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Choisissez le modèle pour ce volet (/model <id> pour changer directement)"  # {Locked="/model","<id>"}
+model_picker.title: "Sélectionner le modèle (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "L'agent connecté n'a annoncé aucun modèle sélectionnable."
+system.model_set: "Le modèle pour ce volet est défini sur %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Modèle inconnu %{model} — tapez /model pour afficher la liste disponible."  # {Locked="%{model}","/model"}

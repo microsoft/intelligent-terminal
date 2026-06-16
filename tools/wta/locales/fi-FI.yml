@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. näyttää/piilottaa agenttipaneelin • C
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Käynnistetään agenttia..."
 connection.reconnecting: "Yhdistetään uudelleen..."
+connection.connecting_activity: "Yhdistetään agenttiin…"
+connection.lost: "Yhteys agenttiin katkesi. Muodosta yhteys uudelleen kirjoittamalla /restart."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Peruutettu."
 system.no_prompt_in_flight: "Ei käynnissä olevaa kehotetta."
 system.authentication_failed: "Todennus epäonnistui"
 system.command_copied_retry: "Komento kopioitu — suorita se toisessa terminaalissa ja paina sitten Enter yrittääksesi uudelleen"  # {Locked="Enter"}
+system.stopped_max_tokens: "Vastaus katkaistiin mallin tulostusrajan saavuttamisen jälkeen."
+system.stopped_max_turn_requests: "Agentti pysähtyi saavutettuaan tämän vuoron pyyntörajan."
+system.stopped_refusal: "Agentti kieltäytyi jatkamasta tätä pyyntöä."
+system.agent_busy: "Agentti on varattu tässä välilehdessä — odota, että nykyinen kehote valmistuu."
+system.resuming_session: "Jatketaan istuntoa %{session_id}..."
+system.unknown_command: "Tuntematon komento \"%{command}\" — lähetetty kehotteena. Näytä luettelo kirjoittamalla /help."
+system.busy_use_stop: "Odota, että nykyinen kehote valmistuu, tai käytä ensin /stop."
+system.cannot_focus_session: "Istuntoon %{session_id} ei voi kohdistaa: se näyttää olevan käytössä, mutta ruudun GUID-tunnusta ei ole vielä sidottu. Yritä hetken kuluttua uudelleen."
+system.cannot_resume_no_load_session: "Agenttiruudussa ei voi jatkaa: %{agent} ei ilmoittanut ACP `loadSession` -ominaisuutta. Jatka sen sijaan uudessa pääteruudussa painamalla Enter (ilman Shift-näppäintä)."
+system.cannot_resume_no_resume_flag: "%{agent}-istuntoa ei voi jatkaa: tällä agentilla ei ole `--resume`-tyylistä lippua. Kokeile jatkamista agenttiruudussa ACP:n kautta painamalla Shift+Enter."
+system.cannot_resume_unknown_agent: "Istuntoa %{session_id} ei voi jatkaa: sen lähdeagenttia ei tunneta tässä koontiversiossa."
+system.cannot_resume_phantom_via_flag: "%{agent}-istuntoa %{session_id} ei voi jatkaa: se käynnistettiin, mutta siihen ei koskaan kertynyt keskustelua, joten %{agent} itse hylkäisi jatkamisen. Poistetaan rivi."
+system.cannot_resume_phantom_via_load: "%{agent}-istuntoa %{session_id} ei voi jatkaa: se käynnistettiin, mutta siihen ei koskaan kertynyt keskustelua, joten %{agent} hylkäisi latauksen. Poistetaan rivi."
+system.fallback.this_agent: "tämä agentti"
+system.fallback.connected_agent: "yhdistetty agentti"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Ikkunoita ei löytynyt."
@@ -171,3 +188,24 @@ time.hour_singular: "%{count} tunti sitten"
 time.hours_other: "%{count} tuntia sitten"
 time.day_singular: "%{count} päivä sitten"
 time.days_other: "%{count} päivää sitten"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Näytä tämä komentoluettelo"
+commands.clear.summary: "Tyhjennä keskustelun vierityshistoria (säilyttää istunnon)"
+commands.new.summary: "Aloita uusi ACP-istunto (poistaa historian)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnosoi aktiivinen pääte ja ehdota korjausta (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Käynnistä agentti uudelleen"
+commands.stop.summary: "Peruuta käynnissä oleva kehote"
+commands.sessions.summary: "Avaa aiempien istuntojen valitsin (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Suosituksen suorittaminen (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Valinta %{choice} epäonnistui: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Valitse tämän paneelin malli (/model <id> vaihtaaksesi suoraan)"  # {Locked="/model","<id>"}
+model_picker.title: "Valitse malli (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Yhdistetty agentti ei ilmoittanut yhtään valittavissa olevaa mallia."
+system.model_set: "Tämän paneelin malliksi asetettiin %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Tuntematon malli %{model} — kirjoita /model nähdäksesi käytettävissä olevien mallien luettelon."  # {Locked="%{model}","/model"}

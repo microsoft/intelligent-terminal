@@ -163,11 +163,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Chọn tác tử được sử dụng trong bảng tác tử. Bất kỳ tác tử ACP tương thích nào cũng sẽ được phát hiện tự động.</value>
+    <value>Chọn tác tử được sử dụng trong bảng tác tử hỗ trợ ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Tác tử này yêu cầu Node.js và NPX, sẽ được cài đặt tự động nếu chưa có.</value>
+    <value>Tác tử này yêu cầu Node.js và NPX, sẽ được cài đặt tự động nếu chưa có.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -185,7 +185,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Bật tính năng này sẽ cài đặt các hooks tích hợp để theo dõi phiên trên các tác tử của bạn.</value>
+    <value>Bật tính năng này sẽ cài đặt các hooks tích hợp để theo dõi phiên trên các tác tử của bạn.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -220,13 +220,49 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Đang thiết lập...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Cài đặt GitHub Copilot thất bại. Kiểm tra mạng của bạn và thử lại.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Việc cài đặt {0} đã bị chặn bởi chính sách Windows Package Manager. Nếu bạn đang dùng thiết bị được quản lý, hãy liên hệ với quản trị viên IT.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Cài đặt Node.js thất bại. Kiểm tra mạng của bạn và thử lại.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Không thể cài đặt {0} (mã lỗi {1}). Xem nhật ký để biết chi tiết, hoặc cài đặt {0} theo cách thủ công.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Không thể cài đặt {0}. Xem nhật ký để biết chi tiết, hoặc cài đặt {0} theo cách thủ công.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ Trình cài đặt {0} đã báo cáo lỗi (mã {1}). Xem nhật ký để biết chi tiết, hoặc cài đặt {0} theo cách thủ công.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Không thể kết nối với Windows Package Manager trong khi cài đặt {0}. Kiểm tra kết nối Internet của bạn (VPN, proxy hoặc tường lửa có thể đang chặn) rồi thử lại.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Không có trình cài đặt tương thích cho {0} trên hệ thống này (phiên bản OS hoặc kiến trúc có thể không được hỗ trợ). Cài đặt {0} theo cách thủ công.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ Không tìm thấy {0} trong danh mục Windows Package Manager. Hãy thử làm mới các nguồn winget, hoặc cài đặt {0} theo cách thủ công.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Cài đặt {0} mất hơn 20 phút. Intelligent Terminal đã ngừng chờ, nhưng trình cài đặt vẫn có thể đang chạy trong nền. Kiểm tra Task Manager, hoặc thử lại sau.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows Package Manager (winget) chưa được cài đặt hoặc không khả dụng. Hãy cài đặt trước, rồi thử lại.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Bật</value>
@@ -239,5 +275,27 @@
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Cho phép Intelligent Terminal truy cập shell của bạn và tự động phát hiện lỗi.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Không thể cài đặt tích hợp shell. Phát hiện lỗi đã bị tắt. Bạn có thể bật lại và thử lại, hoặc lưu để tiếp tục mà không có nó.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Không thể cài đặt session hooks. Quản lý phiên đã bị tắt. Bạn có thể bật lại và thử lại, hoặc lưu để tiếp tục mà không có nó.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Tìm hiểu cách khắc phục theo cách thủ công</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Bật tính năng này sẽ cài đặt tích hợp shell để phát hiện lỗi lệnh. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Tìm hiểu thêm</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>Chính sách thực thi PowerShell đang chặn các tập lệnh.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ Chính sách thực thi PowerShell đang chặn các tập lệnh. Phát hiện lỗi đã bị tắt.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

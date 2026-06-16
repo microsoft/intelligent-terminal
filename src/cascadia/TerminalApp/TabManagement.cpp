@@ -668,6 +668,7 @@ namespace winrt::TerminalApp::implementation
         // index slot starts with a clean conversation.
         winrt::hstring closedTabStableId{};
         size_t agentPanesOnTab = 0;
+        std::shared_ptr<Pane> rootPaneForClose{};
         if (const auto tabImpl = _GetTabImpl(tab))
         {
             closedTabStableId = tabImpl->StableId();
@@ -677,6 +678,7 @@ namespace winrt::TerminalApp::implementation
             // below — see the long comment after `tab.Shutdown()`.
             if (const auto rootPane = tabImpl->GetRootPane())
             {
+                rootPaneForClose = rootPane;
                 rootPane->WalkTree([&agentPanesOnTab](const std::shared_ptr<Pane>& p) -> void {
                     if (p && p->IsAgentPane())
                     {
@@ -685,6 +687,18 @@ namespace winrt::TerminalApp::implementation
                 });
             }
         }
+
+        // Notify wta of every terminal pane in this tab BEFORE
+        // `tab.Shutdown()` destroys their controls. Tab shutdown goes
+        // through `Pane::Shutdown` -> `_setPaneContent(nullptr)` which
+        // doesn't fire `Pane::Closed` and doesn't drive the connection
+        // through its Closed state with our listener attached, so the
+        // normal ConnectionStateChanged bridge never emits
+        // `connection_state:closed`. Explicit emit here is what lets
+        // wta demote agent-session rows bound to the tab's panes to
+        // Ended on tab close (the `_HandleClosePaneRequested`
+        // counterpart covers single-pane Ctrl+Shift+W).
+        _NotifyPanesClosing(rootPaneForClose);
 
         // Removing the tab from the collection should destroy its control and disconnect its connection,
         // but it doesn't always do so. The UI tree may still be holding the control and preventing its destruction.
@@ -1046,6 +1060,12 @@ namespace winrt::TerminalApp::implementation
             state.args.emplace(state.args.begin(), std::move(splitPaneAction));
         }
         _AddPreviouslyClosedPaneOrTab(std::move(state.args));
+
+        // Notify wta of pane closure BEFORE destruction (see
+        // `_NotifyPanesClosing` for the revoker-race rationale). Must
+        // happen before `pane->Close()` since Close destroys the
+        // TermControl and the SessionId becomes unresolvable.
+        _NotifyPanesClosing(pane);
 
         // If specified, detach before closing to directly update the pane structure
         pane->Close();

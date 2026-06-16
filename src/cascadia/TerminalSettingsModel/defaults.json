@@ -43,7 +43,6 @@
             "name": "Agent Pane",
             "hidden": true,
             "padding": "8, 8, 8, 0",
-            "background": "#0c0c0c",
             "scrollbarState": "hidden",
             "closeOnExit": "always",
             "suppressApplicationTitle": true

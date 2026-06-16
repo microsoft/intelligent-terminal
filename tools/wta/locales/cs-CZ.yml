@@ -71,6 +71,7 @@ commands.help_close_hint: "  Esc        Zavřít tuto nápovědu"  # {Locked="Es
 commands.help.summary: "Zobrazit tento seznam příkazů"
 commands.clear.summary: "Vymazat historii chatu (zachová relaci)"
 commands.new.summary: "Spustit novou relaci ACP (zahodí historii)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnostikovat aktivní terminál a navrhnout opravu (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Restartovat agenta"
 commands.stop.summary: "Zrušit probíhající výzvu"
 commands.sessions.summary: "Otevřít výběr historických relací (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -126,12 +127,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. zobrazit/skrýt panel agenta • Ctrl+Shif
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Spouštění agenta..."
 connection.reconnecting: "Opětovné připojování..."
+connection.connecting_activity: "Připojování k agentovi…"
+connection.lost: "Připojení k agentovi bylo ztraceno. Zadáním /restart se znovu připojíte."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Zrušeno."
 system.no_prompt_in_flight: "Žádný dotaz neprobíhá."
 system.authentication_failed: "Ověření se nezdařilo"
 system.command_copied_retry: "Příkaz zkopírován — spusťte ho v jiném terminálu a stiskněte Enter pro opakování"  # {Locked="Enter"}
+system.stopped_max_tokens: "Odpověď byla oříznuta po dosažení výstupního limitu modelu."
+system.stopped_max_turn_requests: "Agent se zastavil po dosažení limitu požadavků pro toto kolo."
+system.stopped_refusal: "Agent odmítl pokračovat v tomto požadavku."
+system.agent_busy: "Agent je na této kartě zaneprázdněn — počkejte, až aktuální výzva skončí."
+system.resuming_session: "Obnovuje se relace %{session_id}..."
+system.unknown_command: "Neznámý příkaz \"%{command}\" — odeslán jako výzva. Seznam zobrazíte zadáním /help."  # {Locked="/help"}
+system.busy_use_stop: "Počkejte, až aktuální výzva skončí, nebo nejdřív použijte /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nelze zaměřit relaci %{session_id}: vypadá jako živá, ale zatím není navázán žádný GUID podokna. Zkuste to znovu za chvíli."
+system.cannot_resume_no_load_session: "Nelze obnovit v podokně agenta: %{agent} neohlásil schopnost ACP `loadSession`. Stisknutím Enter (bez Shift) místo toho obnovíte relaci v novém terminálovém podokně."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nelze obnovit relaci %{agent}: tento agent nemá příznak ve stylu `--resume`. Stiskněte Shift+Enter a zkuste obnovit uvnitř podokna agenta přes ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nelze obnovit relaci %{session_id}: její zdrojový agent není této verzi WTA známý."
+system.cannot_resume_phantom_via_flag: "Nelze obnovit relaci %{agent} %{session_id}: byla spuštěna, ale nikdy neshromáždila žádnou konverzaci, takže samotný %{agent} by obnovení odmítl. Řádek se odebírá."
+system.cannot_resume_phantom_via_load: "Nelze obnovit relaci %{agent} %{session_id}: byla spuštěna, ale nikdy neshromáždila žádnou konverzaci, takže %{agent} by načtení odmítl. Řádek se odebírá."
+system.fallback.this_agent: "tento agent"
+system.fallback.connected_agent: "připojený agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nebyla nalezena žádná okna."
@@ -181,3 +199,13 @@ time.hour_singular: "před 1 hodinou"
 time.hours_other: "před %{count} hodinami"
 time.day_singular: "před 1 dnem"
 time.days_other: "před %{count} dny"
+
+# ── Provedení doporučení (src/coordinator.rs) ───────────────────────────────
+system.choice_execution_failed: "Volba %{choice} selhala: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Vyberte model pro tento panel (/model <id> pro přímé přepnutí)"  # {Locked="/model","<id>"}
+model_picker.title: "Vyberte model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Připojený agent neohlásil žádné dostupné modely."
+system.model_set: "Model pro tento panel nastaven na %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Neznámý model %{model} — zadáním /model zobrazíte dostupný seznam."  # {Locked="%{model}","/model"}

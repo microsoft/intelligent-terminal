@@ -156,7 +156,7 @@ namespace winrt::TerminalApp::implementation
 
     // Swap the bar between two modes:
     //   * chat / connecting / etc. (active=false) — agent logo + "<name> <version>"
-    //   * session-management view  (active=true)  — no logo, "Agent sessions"
+    //   * session management view (active=true)  — no logo, "Agent sessions"
     // Idempotent so callers don't need to dedupe.
     void AgentPaneContent::SetSessionsView(bool active)
     {

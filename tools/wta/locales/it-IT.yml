@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. per mostrare/nascondere il riquadro agente
 # ── Stato della connessione ────────────────────────────────────────────────────────────
 connection.starting: "Avvio dell'agente..."
 connection.reconnecting: "Riconnessione..."
+connection.connecting_activity: "Connessione all'agente…"
+connection.lost: "La connessione all'agente è stata persa. Digita /restart per riconnetterti."  # {Locked="/restart"}
 
 # ── Messaggi di sistema (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Annullato."
 system.no_prompt_in_flight: "Nessun prompt in corso."
 system.authentication_failed: "Autenticazione non riuscita"
 system.command_copied_retry: "Comando copiato — eseguilo in un altro terminale, quindi premi Enter per riprovare"  # {Locked="Enter"}
+system.stopped_max_tokens: "La risposta è stata troncata dopo aver raggiunto il limite di output del modello."
+system.stopped_max_turn_requests: "L'agente si è fermato dopo aver raggiunto il limite di richieste per questo turno."
+system.stopped_refusal: "L'agente ha rifiutato di continuare con questa richiesta."
+system.agent_busy: "L’agente è occupato in questa scheda — attendere il completamento del prompt corrente."
+system.resuming_session: "Ripresa della sessione %{session_id}..."
+system.unknown_command: "Comando sconosciuto \"%{command}\" — inviato come prompt. Digitare /help per visualizzare l’elenco."
+system.busy_use_stop: "Attendere il completamento del prompt corrente oppure usare prima /stop."
+system.cannot_focus_session: "Non è possibile attivare la sessione %{session_id}: sembra attiva, ma nessun GUID di riquadro è ancora associato. Riprovare tra qualche istante."
+system.cannot_resume_no_load_session: "Non è possibile riprendere nel riquadro dell’agente: %{agent} non ha annunciato la funzionalità ACP `loadSession`. Premere Enter (senza Shift) per riprendere invece in un nuovo riquadro del terminale."
+system.cannot_resume_no_resume_flag: "Non è possibile riprendere la sessione %{agent}: questo agente non dispone di un flag in stile `--resume`. Premere Shift+Enter per provare a riprendere all’interno del riquadro dell’agente tramite ACP."
+system.cannot_resume_unknown_agent: "Non è possibile riprendere la sessione %{session_id}: l’agente di origine è sconosciuto a questa build."
+system.cannot_resume_phantom_via_flag: "Non è possibile riprendere la sessione %{agent} %{session_id}: è stata avviata ma non ha mai accumulato alcuna conversazione, quindi %{agent} rifiuterebbe la ripresa. Rimozione della riga."
+system.cannot_resume_phantom_via_load: "Non è possibile riprendere la sessione %{agent} %{session_id}: è stata avviata ma non ha mai accumulato alcuna conversazione, quindi %{agent} rifiuterebbe il caricamento. Rimozione della riga."
+system.fallback.this_agent: "questo agente"
+system.fallback.connected_agent: "l’agente connesso"
 
 # ── Output CLI di runtime (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nessuna finestra trovata."
@@ -178,6 +195,17 @@ time.days_other: "%{count} giorni fa"
 commands.help.summary: "Mostra questo elenco di comandi"
 commands.clear.summary: "Cancella la cronologia chat (mantiene la sessione)"
 commands.new.summary: "Avvia una nuova sessione ACP (cancella la cronologia)"
+commands.fix.summary: "Diagnostica il terminale attivo e suggerisci una correzione (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Riavvia agente"
 commands.stop.summary: "Annulla la richiesta in corso"
 commands.sessions.summary: "Apri il selettore delle sessioni storiche (Ctrl+Shift+/)"
+
+# ── Esecuzione della raccomandazione (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Scelta %{choice} non riuscita: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Scegli il modello per questo riquadro (/model <id> per cambiare direttamente)"  # {Locked="/model","<id>"}
+model_picker.title: "Seleziona modello (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "L'agente connesso non ha annunciato alcun modello selezionabile."
+system.model_set: "Modello per questo riquadro impostato su %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Modello sconosciuto %{model} — digita /model per visualizzare l'elenco disponibile."  # {Locked="%{model}","/model"}

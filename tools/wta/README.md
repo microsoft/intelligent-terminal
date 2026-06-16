@@ -134,13 +134,14 @@ Press **F12** to open a side panel showing all JSON-RPC messages between WTA and
 
 ## Debug Logs
 
-WTA writes structured logs under `%LOCALAPPDATA%\IntelligentTerminal\logs\`
-(or the package-sandboxed equivalent when launched packaged):
+WTA writes structured logs under the package log dir, in a per-version
+subfolder: `…\LocalCache\Local\IntelligentTerminal\logs\<pkgver>\` when
+packaged (or bare `%LOCALAPPDATA%\IntelligentTerminal\logs\` unpackaged):
 
 | File | Contents |
 |------|----------|
 | `wta-main.log` | Main TUI runtime: lifecycle, agent events, protocol calls |
-| `wta-agent-pane.log` | Agent-pane session (per-pane wta instance) |
+| `terminal-agent-pane.log` | Agent-pane chrome (C++ TerminalApp side) |
 | `wta-ensure-host.log` | Background host startup / COM connection |
 | `wta-acp-debug.log` | ACP protocol debug trace |
 | `wta-delegate.log` | `?<prompt>` delegation flow |

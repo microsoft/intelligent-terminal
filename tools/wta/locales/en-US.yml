@@ -71,7 +71,7 @@ input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
 # Input box placeholder while agent connection is being established
 input.placeholder.connecting: "connecting..."
 # Input box placeholder when agent is disconnected
-input.placeholder.disconnected: "disconnect"
+input.placeholder.disconnected: "disconnected"
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -82,15 +82,27 @@ commands.help_header: "Slash commands — type / in the input box."
 commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command parser)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 # Slash-command summaries shown in the popup and /help overlay.
-# Command names (/help, /clear, /new, /restart, /stop, /sessions) stay in
-# English. Only the descriptions are localized.
+# Command names (/help, /clear, /new, /fix, /restart, /stop, /sessions) stay
+# in English. Only the descriptions are localized.
 # {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
 commands.help.summary: "Show this command list"
 commands.clear.summary: "Clear the chat scrollback (keeps session)"
 commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
+
+# ── Model picker (src/ui/model_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+model_picker.title: "Select model (↑ ↓ • Enter • Esc)"
+# Shown when the connected agent advertised no selectable models.
+system.no_models: "The connected agent did not advertise any selectable models."
+# {model} is the agent's model id/name, inserted verbatim.
+system.model_set: "Model for this pane set to %{model}."
+# {model} is the unrecognized text the user typed after /model.
+system.model_unknown: "Unknown model %{model} — type /model to see the available list."
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key
@@ -159,12 +171,40 @@ layout.welcome_hint: "  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Shift+/ t
 connection.starting: "Starting agent..."
 # Status text shown while re-establishing agent connection
 connection.reconnecting: "Reconnecting..."
+# Animated activity line shown in the chat while the helper is still
+# establishing its connection to the agent (pipe connect → ACP init → session).
+# First agent launch can pull the npx adapter, so this can sit for tens of
+# seconds — the animation is what tells the user it isn't frozen.
+connection.connecting_activity: "Connecting to agent…"
+# Error line: the connection to the agent was lost after it had been working
+# (e.g. the agent CLI exited and took wta-master down). /restart is a slash command.
+connection.lost: "Connection to the agent was lost. Type /restart to reconnect."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"
 system.command_copied_retry: "Command copied — run it in another terminal, then press Enter to retry"  # {Locked="Enter"}
+# Soft stops: the prompt turn succeeded at the protocol level but ended for a
+# reason worth telling the user about. Shown as a system line after the reply.
+system.stopped_max_tokens: "The response was cut off after reaching the model's output limit."
+system.stopped_max_turn_requests: "The agent stopped after reaching its request limit for this turn."
+system.stopped_refusal: "The agent declined to continue with this request."
+system.agent_busy: "Agent is busy on this tab — wait for the current prompt to finish."  # Shown when the user presses Enter to submit a new prompt while the agent is still processing the previous one on the same tab.
+system.resuming_session: "Resuming session %{session_id}..."  # Shown briefly while ACP `loadSession` rehydrates a previous conversation. %{session_id} is an opaque id (e.g. UUID); not translated.
+system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."  # Slash-command fallback when the user types an unknown /command. %{command} is the raw token (e.g. "foo"). {Locked="/help"} — slash-command name.
+system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."  # Shown when the user runs /new while a prompt is still in flight. {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "Cannot focus session %{session_id}: it appears live but no pane GUID is bound yet. Try again in a moment."  # Shown when Enter on a Session-management row says Live but no terminal pane is bound yet (cold-startup race). %{session_id} is an opaque id.
+system.cannot_resume_no_load_session: "Cannot resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability. Press Enter (without Shift) to resume in a new terminal pane instead."  # Shown when Shift+Enter tries to resume a session in a new agent pane but the connected agent did not advertise the ACP `loadSession` capability. %{agent} is the agent display name (e.g. "Copilot"). {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "Cannot resume %{agent} session: this agent has no `--resume`-style flag. Press Shift+Enter to try resuming inside the agent pane via ACP instead."  # Shown when Enter tries to resume a session via the agent's own --resume flag, but that agent's CLI has no resume flag (e.g. Codex). %{agent} is the agent display name. {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "Cannot resume session %{session_id}: its source agent is unknown to this build."  # Shown when Enter on a Session-management row references an agent that this build of WTA doesn't recognize. %{session_id} is an opaque id.
+system.cannot_resume_phantom_via_flag: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} itself would reject the resume. Removing the row."  # Shown when Enter on a Session-management row matches an on-disk session that was started but never accumulated any conversation. %{agent} = display name, %{session_id} = opaque id.
+system.cannot_resume_phantom_via_load: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row."  # Same case as cannot_resume_phantom_via_flag but via ACP loadSession (Shift+Enter path).
+system.fallback.this_agent: "this agent"  # Fallback noun used inside the cannot_resume_* messages above when the source agent is unknown (e.g. a custom agent).
+system.fallback.connected_agent: "the connected agent"  # Fallback noun used inside cannot_resume_no_load_session when the connected agent display name is empty.
+
+# ── Recommendation execution (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Choice %{choice} failed: %{error}"  # Shown when a recommendation card's choice fails to execute. %{choice} = numeric choice index, %{error} = error message string from the underlying failure.
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "No windows found."

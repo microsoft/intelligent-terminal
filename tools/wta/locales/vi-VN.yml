@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. để hiện/ẩn bảng tác nhân AI •
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Đang khởi động tác nhân AI..."
 connection.reconnecting: "Đang kết nối lại..."
+connection.connecting_activity: "Đang kết nối với tác nhân AI…"
+connection.lost: "Đã mất kết nối với tác nhân AI. Nhập /restart để kết nối lại."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Đã hủy."
 system.no_prompt_in_flight: "Không có lệnh nào đang chạy."
 system.authentication_failed: "Xác thực thất bại"
 system.command_copied_retry: "Đã sao chép lệnh — chạy trong terminal khác, sau đó nhấn Enter để thử lại"  # {Locked="Enter"}
+system.stopped_max_tokens: "Phản hồi đã bị cắt sau khi đạt đến giới hạn đầu ra của mô hình."
+system.stopped_max_turn_requests: "Tác nhân đã dừng sau khi đạt đến giới hạn yêu cầu cho lượt này."
+system.stopped_refusal: "Tác nhân đã từ chối tiếp tục với yêu cầu này."
+system.agent_busy: "Tác nhân đang bận trên tab này — hãy đợi lời nhắc hiện tại hoàn tất."
+system.resuming_session: "Đang tiếp tục phiên %{session_id}..."
+system.unknown_command: "Lệnh không xác định \"%{command}\" — đã gửi dưới dạng lời nhắc. Nhập /help để xem danh sách."  # {Locked="/help"}
+system.busy_use_stop: "Hãy đợi lời nhắc hiện tại hoàn tất, hoặc chạy /stop trước."  # {Locked="/stop"}
+system.cannot_focus_session: "Không thể tập trung vào phiên %{session_id}: phiên có vẻ đang hoạt động nhưng chưa có GUID bảng nào được liên kết. Hãy thử lại sau giây lát."
+system.cannot_resume_no_load_session: "Không thể tiếp tục trong bảng tác nhân: %{agent} không quảng bá khả năng ACP `loadSession`. Thay vào đó, nhấn Enter (không nhấn Shift) để tiếp tục trong bảng terminal mới."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Không thể tiếp tục phiên %{agent}: tác nhân này không có cờ kiểu `--resume`. Nhấn Shift+Enter để thử tiếp tục bên trong bảng tác nhân thông qua ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Không thể tiếp tục phiên %{session_id}: tác nhân nguồn của phiên không được bản dựng này nhận dạng."
+system.cannot_resume_phantom_via_flag: "Không thể tiếp tục phiên %{agent} %{session_id}: phiên đã được khởi tạo nhưng chưa từng tích lũy cuộc trò chuyện nào, nên chính %{agent} sẽ từ chối tiếp tục. Đang xóa hàng."
+system.cannot_resume_phantom_via_load: "Không thể tiếp tục phiên %{agent} %{session_id}: phiên đã được khởi tạo nhưng chưa từng tích lũy cuộc trò chuyện nào, nên %{agent} sẽ từ chối tải. Đang xóa hàng."
+system.fallback.this_agent: "tác nhân này"
+system.fallback.connected_agent: "tác nhân đã kết nối"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Không tìm thấy cửa sổ nào."
@@ -171,3 +188,24 @@ time.hour_singular: "%{count} giờ trước"
 time.hours_other: "%{count} giờ trước"
 time.day_singular: "%{count} ngày trước"
 time.days_other: "%{count} ngày trước"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Hiển thị danh sách lệnh này"
+commands.clear.summary: "Xóa phần cuộn lại của cuộc trò chuyện (giữ phiên)"
+commands.new.summary: "Bắt đầu phiên ACP mới (bỏ lịch sử)"  # {Locked="ACP"}
+commands.fix.summary: "Chẩn đoán terminal đang hoạt động và đề xuất cách khắc phục (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Khởi động lại tác nhân"
+commands.stop.summary: "Hủy prompt đang chạy"
+commands.sessions.summary: "Mở bộ chọn phiên lịch sử (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Thực thi đề xuất (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Lựa chọn %{choice} không thành công: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Chọn mô hình cho bảng này (/model <id> để chuyển trực tiếp)"  # {Locked="/model","<id>"}
+model_picker.title: "Chọn mô hình (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Tác nhân AI đã kết nối không quảng bá bất kỳ mô hình nào có thể chọn."
+system.model_set: "Mô hình cho bảng này được đặt thành %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Mô hình không xác định %{model} — nhập /model để xem danh sách khả dụng."  # {Locked="%{model}","/model"}

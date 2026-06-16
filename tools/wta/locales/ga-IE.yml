@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. chun pána gníomhaire a thaispeáint/a ch
 # ── Staid ceangail ────────────────────────────────────────────────────────
 connection.starting: "Gníomhaire á thosú..."
 connection.reconnecting: "Ag athcheangal..."
+connection.connecting_activity: "Ag ceangal leis an ngníomhaire…"
+connection.lost: "Cailleadh an ceangal leis an ngníomhaire. Clóscríobh /restart chun athcheangal."  # {Locked="/restart"}
 
 # ── Teachtaireachtaí córais (src/app.rs) ────────────────────────────────────
 system.cancelled: "Cealaithe."
 system.no_prompt_in_flight: "Níl aon leid ar siúl."
 system.authentication_failed: "Theip ar fhíordheimhniú"
 system.command_copied_retry: "Ordú cóipeáilte — rith i dteirminéal eile é, ansin brúigh Enter chun triail eile a bhaint as"  # {Locked="Enter"}
+system.stopped_max_tokens: "Gearradh an freagra tar éis teorainn aschuir an mhúnla a bhaint amach."
+system.stopped_max_turn_requests: "Stop an gníomhaire tar éis a theorainn iarratas don seal seo a bhaint amach."
+system.stopped_refusal: "Dhiúltaigh an gníomhaire leanúint ar aghaidh leis an iarratas seo."
+system.agent_busy: "Tá an gníomhaire gnóthach ar an gcluaisín seo — fan go gcríochnóidh an leid reatha."
+system.resuming_session: "Seisiún %{session_id} á atosú..."
+system.unknown_command: "Ordú anaithnid \"%{command}\" — seolta mar leid. Clóscríobh /help don liosta."
+system.busy_use_stop: "Fan go gcríochnóidh an leid reatha, nó úsáid /stop ar dtús."
+system.cannot_focus_session: "Ní féidir díriú ar sheisiún %{session_id}: is cosúil go bhfuil sé beo ach níl GUID pána ceangailte fós. Bain triail eile as i gceann nóiméid."
+system.cannot_resume_no_load_session: "Ní féidir atosú i bpána gníomhaire: níor fhógair %{agent} cumas ACP `loadSession`. Brúigh Enter (gan Shift) chun atosú i bpána teirminéil nua ina ionad sin."
+system.cannot_resume_no_resume_flag: "Ní féidir seisiún %{agent} a atosú: níl bratach de stíl `--resume` ag an ngníomhaire seo. Brúigh Shift+Enter chun iarracht a dhéanamh atosú laistigh den phána gníomhaire trí ACP ina ionad sin."
+system.cannot_resume_unknown_agent: "Ní féidir seisiún %{session_id} a atosú: níl a ghníomhaire foinse ar eolas ag an leagan seo."
+system.cannot_resume_phantom_via_flag: "Ní féidir seisiún %{agent} %{session_id} a atosú: cuireadh tús leis ach níor charnaigh sé aon chomhrá riamh, mar sin dhiúltódh %{agent} féin don atosú. An ró á bhaint."
+system.cannot_resume_phantom_via_load: "Ní féidir seisiún %{agent} %{session_id} a atosú: cuireadh tús leis ach níor charnaigh sé aon chomhrá riamh, mar sin dhiúltódh %{agent} don lódáil. An ró á bhaint."
+system.fallback.this_agent: "an gníomhaire seo"
+system.fallback.connected_agent: "an gníomhaire ceangailte"
 
 # ── Aschur CLI ag am rite (src/main.rs) ────────────────────────────────────
 output.no_windows: "Níor aimsíodh aon fhuinneoga."
@@ -170,3 +187,24 @@ time.hour_singular: "%{count} uair an chloig ó shin"
 time.hours_other: "%{count} uair an chloig ó shin"
 time.day_singular: "%{count} lá ó shin"
 time.days_other: "%{count} lá ó shin"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Restart agent"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Rith moltaí (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Theip ar rogha %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Roghnaigh an samhail don phána seo (/model <id> chun athrú go díreach)"  # {Locked="/model","<id>"}
+model_picker.title: "Roghnaigh samhail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Níor fhógair an gníomhaire ceangailte aon tsamhail in-roghnaithe."
+system.model_set: "Samhail an phána seo socraithe go %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Samhail anaithnid %{model} — clóscríobh /model chun an liosta atá ar fáil a fheiceáil."  # {Locked="%{model}","/model"}

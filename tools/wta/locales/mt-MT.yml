@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. biex turi/taħbi l-pannell tal-aġent • 
 # ── Stat tal-konnessjoni ────────────────────────────────────────────────────────
 connection.starting: "L-aġent qed jibda..."
 connection.reconnecting: "Qed jerġa' jikkonnettja..."
+connection.connecting_activity: "Qed tikkonnettja mal-aġent…"
+connection.lost: "Il-konnessjoni mal-aġent intilfet. Ittajpja /restart biex terġa' tikkonnettja."  # {Locked="/restart"}
 
 # ── Messaġġi tas-sistema (src/app.rs) ────────────────────────────────────────
 system.cancelled: "Ikkanċellat."
 system.no_prompt_in_flight: "L-ebda prompt fl-arja."
 system.authentication_failed: "L-awtentikazzjoni falliet"
 system.command_copied_retry: "Kmand ikkupjat — ħaddmu f'terminal ieħor, imbagħad agħfas Enter biex terġa' tipprova"  # {Locked="Enter"}
+system.stopped_max_tokens: "It-tweġiba nqatgħet wara li ntlaħaq il-limitu tal-output tal-mudell."
+system.stopped_max_turn_requests: "L-aġent waqaf wara li laħaq il-limitu tat-talbiet tiegħu għal din id-dawra."
+system.stopped_refusal: "L-aġent irrifjuta li jkompli b'din it-talba."
+system.agent_busy: "L-aġent huwa okkupat fuq din it-tab — stenna sakemm jintemm il-prompt kurrenti."
+system.resuming_session: "Qed tkompli s-sessjoni %{session_id}..."
+system.unknown_command: "Kmand mhux magħruf \"%{command}\" — intbagħat bħala prompt. Ittajpja /help għal-lista."
+system.busy_use_stop: "Stenna sakemm jintemm il-prompt kurrenti, jew uża /stop l-ewwel."
+system.cannot_focus_session: "Ma tistax tiffoka s-sessjoni %{session_id}: tidher live iżda għad m’hemm l-ebda GUID tal-panew marbut. Erġa’ pprova fi ftit."
+system.cannot_resume_no_load_session: "Ma tistax tkompli fil-panew tal-aġent: %{agent} ma ħabbarx il-kapaċità ACP `loadSession`. Agħfas Enter (mingħajr Shift) biex minflok tkompli f’panew tat-terminal ġdid."
+system.cannot_resume_no_resume_flag: "Ma tistax tkompli s-sessjoni ta’ %{agent}: dan l-aġent m’għandux flag stil `--resume`. Agħfas Shift+Enter biex tipprova tkompli ġewwa l-panew tal-aġent permezz ta’ ACP minflok."
+system.cannot_resume_unknown_agent: "Ma tistax tkompli s-sessjoni %{session_id}: l-aġent tas-sors tagħha mhuwiex magħruf għal din il-build."
+system.cannot_resume_phantom_via_flag: "Ma tistax tkompli s-sessjoni ta’ %{agent} %{session_id}: inbdiet iżda qatt ma akkumulat konverżazzjoni, għalhekk %{agent} innifsu jirrifjuta t-tkomplija. Qed titneħħa r-ringiela."
+system.cannot_resume_phantom_via_load: "Ma tistax tkompli s-sessjoni ta’ %{agent} %{session_id}: inbdiet iżda qatt ma akkumulat konverżazzjoni, għalhekk %{agent} jirrifjuta t-tagħbija. Qed titneħħa r-ringiela."
+system.fallback.this_agent: "dan l-aġent"
+system.fallback.connected_agent: "l-aġent konness"
 
 # ── Output CLI waqt l-eżekuzzjoni (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ma nstabet l-ebda tieqa."
@@ -170,3 +187,24 @@ time.hour_singular: "%{count} siegħa ilu"
 time.hours_other: "%{count}-il siegħa ilu"
 time.day_singular: "%{count} ġurnata ilu"
 time.days_other: "%{count}-il ġurnata ilu"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Restart agent"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Eżekuzzjoni tar-rakkomandazzjoni (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "L-għażla %{choice} falliet: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Agħżel il-mudell għal dan il-pannell (/model <id> biex tibdel direttament)"  # {Locked="/model","<id>"}
+model_picker.title: "Agħżel mudell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "L-aġent konness ma rreklama l-ebda mudell li jista' jintgħażel."
+system.model_set: "Il-mudell għal dan il-pannell ġie ssettjat għal %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}

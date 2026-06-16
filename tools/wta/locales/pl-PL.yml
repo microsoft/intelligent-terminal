@@ -71,6 +71,7 @@ commands.help_close_hint: "  Esc        Zamknij tę pomoc"  # {Locked="Esc"}
 commands.help.summary: "Pokaż tę listę poleceń"
 commands.clear.summary: "Wyczyść historię czatu (zachowuje sesję)"
 commands.new.summary: "Rozpocznij nową sesję ACP (usuwa historię)"  # {Locked="ACP"}
+commands.fix.summary: "Zdiagnozuj aktywny terminal i zasugeruj poprawkę (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Uruchom ponownie agenta"
 commands.stop.summary: "Anuluj trwający monit"
 commands.sessions.summary: "Otwórz wybór historycznych sesji (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -126,12 +127,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. pokaż/ukryj panel agenta • Ctrl+Shift+/
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Uruchamianie agenta..."
 connection.reconnecting: "Ponowne łączenie..."
+connection.connecting_activity: "Łączenie z agentem…"
+connection.lost: "Połączenie z agentem zostało utracone. Wpisz /restart, aby połączyć się ponownie."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Anulowano."
 system.no_prompt_in_flight: "Brak aktywnego zapytania."
 system.authentication_failed: "Uwierzytelnianie nie powiodło się"
 system.command_copied_retry: "Polecenie skopiowane — uruchom je w innym terminalu, a następnie naciśnij Enter, aby ponowić próbę"  # {Locked="Enter"}
+system.stopped_max_tokens: "Odpowiedź została obcięta po osiągnięciu limitu danych wyjściowych modelu."
+system.stopped_max_turn_requests: "Agent zatrzymał się po osiągnięciu limitu żądań dla tej tury."
+system.stopped_refusal: "Agent odmówił kontynuowania tego żądania."
+system.agent_busy: "Agent jest zajęty na tej karcie — poczekaj, aż bieżący monit się zakończy."
+system.resuming_session: "Wznawianie sesji %{session_id}..."
+system.unknown_command: "Nieznane polecenie \"%{command}\" — wysłano jako monit. Wpisz /help, aby wyświetlić listę."  # {Locked="/help"}
+system.busy_use_stop: "Poczekaj, aż bieżący monit się zakończy, albo najpierw użyj /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nie można ustawić fokusu na sesji %{session_id}: wygląda na aktywną, ale nie powiązano jeszcze żadnego identyfikatora GUID panelu. Spróbuj ponownie za chwilę."
+system.cannot_resume_no_load_session: "Nie można wznowić w panelu agenta: %{agent} nie ogłosił możliwości ACP `loadSession`. Naciśnij Enter (bez Shift), aby zamiast tego wznowić w nowym panelu terminala."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nie można wznowić sesji %{agent}: ten agent nie ma flagi w stylu `--resume`. Naciśnij Shift+Enter, aby spróbować wznowić wewnątrz panelu agenta przez ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nie można wznowić sesji %{session_id}: jej agent źródłowy jest nieznany tej kompilacji WTA."
+system.cannot_resume_phantom_via_flag: "Nie można wznowić sesji %{agent} %{session_id}: została uruchomiona, ale nigdy nie zgromadziła żadnej konwersacji, więc sam %{agent} odrzuciłby wznowienie. Usuwanie wiersza."
+system.cannot_resume_phantom_via_load: "Nie można wznowić sesji %{agent} %{session_id}: została uruchomiona, ale nigdy nie zgromadziła żadnej konwersacji, więc %{agent} odrzuciłby załadowanie. Usuwanie wiersza."
+system.fallback.this_agent: "ten agent"
+system.fallback.connected_agent: "połączony agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nie znaleziono okien."
@@ -181,3 +199,13 @@ time.hour_singular: "1 godzinę temu"
 time.hours_other: "%{count} godzin temu"
 time.day_singular: "1 dzień temu"
 time.days_other: "%{count} dni temu"
+
+# ── Wykonywanie rekomendacji (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Wybór %{choice} nie powiódł się: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Wybierz model dla tego panelu (/model <id>, aby przełączyć bezpośrednio)"  # {Locked="/model","<id>"}
+model_picker.title: "Wybierz model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Połączony agent nie ogłosił żadnych modeli do wyboru."
+system.model_set: "Model dla tego panelu ustawiono na %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Nieznany model %{model} — wpisz /model, aby zobaczyć dostępną listę."  # {Locked="%{model}","/model"}

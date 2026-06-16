@@ -9,6 +9,7 @@
 #include "EnumEntry.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentHooksStatus.h"
+#include "../inc/CustomAgentId.h"
 #include "../inc/WtaProcess.h"
 
 #include <json/json.h>
@@ -67,21 +68,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     winrt::hstring AIAgentsViewModel::_DeriveId(const winrt::hstring& command)
     {
-        const auto str = winrt::to_string(command);
-        const auto pos = str.find(' ');
-        auto token = (pos != std::string::npos) ? str.substr(0, pos) : str;
-        auto slash = token.rfind('\\');
-        if (slash == std::string::npos) slash = token.rfind('/');
-        if (slash != std::string::npos) token = token.substr(slash + 1);
-        for (const auto* ext : { ".exe", ".cmd", ".bat" })
-        {
-            if (token.size() > strlen(ext) && token.substr(token.size() - strlen(ext)) == ext)
-            {
-                token = token.substr(0, token.size() - strlen(ext));
-                break;
-            }
-        }
-        return winrt::to_hstring(token);
+        // Delegate to the header-only helper shared with the unit tests.
+        return ::Microsoft::Terminal::Settings::Model::DeriveCustomAgentId(
+            std::wstring_view{ command });
     }
 
     void AIAgentsViewModel::_AppendAddNewEntry(IObservableVector<Editor::AgentEntry>& list)
@@ -100,9 +89,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         const auto bareId = _DeriveId(customCommand);
         const bool isBuiltIn = _IsKnownAgent(bareId);
-        const auto settingsId = isBuiltIn
-            ? winrt::hstring{ L"custom:" + std::wstring_view{ bareId } }
-            : bareId;
+        // Mirror SaveCustom*: the saved id always carries "custom:".
+        const auto settingsId = winrt::hstring{ L"custom:" + std::wstring_view{ bareId } };
         const auto displayName = isBuiltIn
             ? winrt::hstring{ std::wstring_view{ bareId } + L" (custom)" }
             : bareId;
@@ -121,6 +109,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _GlobalSettings{ globalSettings }
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+
+        // Refresh PATH from the Windows registry so SearchPathW can find
+        // CLIs installed after Terminal launched (e.g. WinGet\Links).
+        try
+        {
+            ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
 
         // ACP-capable agents — use GPO-filtered list so only policy-allowed
         // agents appear in the dropdown. Also skip agents whose CLI isn't
@@ -246,15 +245,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // Reconcile a *stale* persisted id with the authoritative list.
         // Only fires when the user has actively configured a specific model
         // (non-empty) that this agent doesn't advertise — e.g. switching
-        // agents leaves a leftover id. In that case rewrite to the agent's
-        // advertised default ("default" / "auto") so the dropdown and the
-        // runtime --acp-model value stay in sync.
+        // agents leaves a leftover id. In that case reset to the empty
+        // "agent default" sentinel rather than picking the agent's
+        // "auto"/"default" entry: empty is the unambiguous "send no model
+        // override" state and renders as the ComboBox's "Default"
+        // placeholder, so we never silently mislabel a stale id as a real
+        // model the user didn't choose.
         //
-        // We *don't* reconcile when the persisted id is empty: empty is a
-        // legitimate "use whatever default the agent picks" sentinel that
-        // the user never typed in, and silently writing "default" into
-        // settings.json would be surprising. The visual fallback for that
-        // case lives in CurrentAcpModelEntry().
+        // Empty is already the legitimate "use whatever default the agent
+        // picks" sentinel, so the empty case needs no reconciliation.
         if (newSize > 0)
         {
             const auto current = _GlobalSettings.AcpModel();
@@ -271,24 +270,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
                 if (!matched)
                 {
-                    winrt::hstring fallbackId{};
-                    for (uint32_t i = 0; i < newSize; ++i)
-                    {
-                        const auto id = _acpModelList.GetAt(i).Id();
-                        if (id == L"default" || id == L"auto")
-                        {
-                            fallbackId = id;
-                            break;
-                        }
-                    }
-                    if (fallbackId.empty())
-                    {
-                        fallbackId = _acpModelList.GetAt(0).Id();
-                    }
-                    if (_GlobalSettings.AcpModel() != fallbackId)
-                    {
-                        _GlobalSettings.AcpModel(fallbackId);
-                    }
+                    // Stale leftover id this agent doesn't advertise → reset
+                    // to the empty "agent default" sentinel (send no model
+                    // override), which renders as the "Default" placeholder.
+                    _GlobalSettings.AcpModel(L"");
                 }
             }
         }
@@ -372,26 +357,19 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             const auto entry = _acpModelList.GetAt(i);
             if (entry.Id() == current) return entry;
         }
-        // Visual-only fallback for the unconfigured case: the user has
-        // never picked a model (empty persisted id), so we surface the
-        // agent's advertised default entry as the selected item instead
-        // of letting the ComboBox render dim PlaceholderText. We *don't*
-        // write to settings here — leaving the empty id in place keeps
-        // wta's "use the agent's own default" semantics intact.
-        // The stale-id case (non-empty + no match) is handled at the
-        // data layer by _RebuildAcpModelListFromCache.
-        if (current.empty() && _acpModelList.Size() > 0)
-        {
-            for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
-            {
-                const auto entry = _acpModelList.GetAt(i);
-                const auto id = entry.Id();
-                if (id == L"default" || id == L"auto") return entry;
-            }
-            return _acpModelList.GetAt(0);
-        }
-        // Empty list (probe hasn't run yet) → ComboBox shows PlaceholderText
-        // briefly until the agent's model list arrives.
+        // Unconfigured case (empty persisted id): return null so the
+        // ComboBox renders its "Default" PlaceholderText. This is the
+        // distinct "agent default — send no model override" state and is
+        // intentionally NOT mapped onto the agent's advertised
+        // "auto"/"default" entry. That advertised entry is a real model in
+        // the agent's support list (e.g. copilot's "auto" router) which,
+        // when explicitly selected, gets forwarded via setSessionModel;
+        // conflating the two would mislabel "no override" (which resolves
+        // to the agent's own server-side default, e.g. claude-sonnet-4.6)
+        // as the "auto" model. The stale-id case (non-empty + no match) is
+        // reset to empty at the data layer by _RebuildAcpModelListFromCache,
+        // so it also lands here and shows the placeholder.
+        // Empty list (probe hasn't run yet) likewise → PlaceholderText.
         return nullptr;
     }
 
@@ -410,15 +388,24 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     bool AIAgentsViewModel::ShowAcpModel()
     {
+        // Show for every built-in agent AND for custom agents. The original
+        // code hid the row for custom:* which then trapped users when a
+        // previously-selected acpModel turned invalid (e.g. credentials
+        // expired) — the stale value was invisible and unclearable.
+        // HasAcpModelList / ShowAcpModelTextBox pick between the dropdown
+        // (when the helper has published available_models via agent_status)
+        // and the free-form textbox fallback.
         if (_isAddingCustomAcpAgent) return false;
-        if (_StartsWithCustom(_GlobalSettings.AcpAgent())) return false;
+        if (_StartsWithCustom(_GlobalSettings.AcpAgent())) return true;
         return _IsKnownAgent(_GlobalSettings.AcpAgent());
     }
 
     bool AIAgentsViewModel::ShowDelegateModel()
     {
+        // Same rationale as ShowAcpModel: show the row for custom delegate
+        // agents so a stale delegateModel value remains visible / clearable.
         if (_isAddingCustomDelegateAgent) return false;
-        if (_StartsWithCustom(_GlobalSettings.DelegateAgent())) return false;
+        if (_StartsWithCustom(_GlobalSettings.DelegateAgent())) return true;
         return _IsKnownAgent(_GlobalSettings.DelegateAgent());
     }
 
@@ -564,12 +551,19 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (_GlobalSettings.IsCustomAgentPolicyLocked()) return;
         if (_customAcpCommand.empty()) return;
         const auto bareId = _DeriveId(_customAcpCommand);
+        // Whitespace-only / quote-only commands derive to an empty id and
+        // would otherwise be saved as a bare "custom:" entry, leaving the
+        // UI with a blank, unusable custom agent. Reject before persisting.
+        if (bareId.empty()) return;
         _GlobalSettings.AcpCustomCommand(_customAcpCommand);
 
+        // Custom agents always carry the "custom:" discriminator — every
+        // downstream consumer (EffectiveAcpAgent policy gate, command-line
+        // resolver, custom-edit/delete UI gates) keys on this prefix.
+        // Storing a bare id silently breaks all of them and makes the page
+        // revert to the default agent on next load.
         const bool isBuiltIn = _IsKnownAgent(bareId);
-        const auto settingsId = isBuiltIn
-            ? winrt::hstring{ L"custom:" + std::wstring_view{ bareId } }
-            : bareId;
+        const auto settingsId = winrt::hstring{ L"custom:" + std::wstring_view{ bareId } };
         const auto displayName = isBuiltIn
             ? winrt::hstring{ std::wstring_view{ bareId } + L" (custom)" }
             : bareId;
@@ -601,12 +595,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (_GlobalSettings.IsCustomAgentPolicyLocked()) return;
         if (_customDelegateCommand.empty()) return;
         const auto bareId = _DeriveId(_customDelegateCommand);
+        // See SaveCustomAcpAgent — reject empty derivations before persisting.
+        if (bareId.empty()) return;
         _GlobalSettings.DelegateCustomCommand(_customDelegateCommand);
 
+        // See SaveCustomAcpAgent — always carry the "custom:" prefix.
         const bool isBuiltIn = _IsKnownAgent(bareId);
-        const auto settingsId = isBuiltIn
-            ? winrt::hstring{ L"custom:" + std::wstring_view{ bareId } }
-            : bareId;
+        const auto settingsId = winrt::hstring{ L"custom:" + std::wstring_view{ bareId } };
         const auto displayName = isBuiltIn
             ? winrt::hstring{ std::wstring_view{ bareId } + L" (custom)" }
             : bareId;
@@ -865,22 +860,27 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _copilotCliDetected = false;
             _claudeCliDetected = false;
             _geminiCliDetected = false;
+            _codexCliDetected = false;
             _showCopilotHookRow = false;
             _showClaudeHookRow = false;
             _showGeminiHookRow = false;
+            _showCodexHookRow = false;
             _copilotHooksSubtitle = {};
             _claudeHooksSubtitle = {};
             _geminiHooksSubtitle = {};
+            _codexHooksSubtitle = {};
         }
         else
         {
             const auto* copilot = FindCli(*report, "copilot");
             const auto* claude = FindCli(*report, "claude");
             const auto* gemini = FindCli(*report, "gemini");
+            const auto* codex = FindCli(*report, "codex");
 
             _copilotCliDetected = copilot && copilot->binaryOnPath;
             _claudeCliDetected = claude && claude->binaryOnPath;
             _geminiCliDetected = gemini && gemini->binaryOnPath;
+            _codexCliDetected = codex && codex->binaryOnPath;
 
             const auto hasState = [](const CliStatus* cli) {
                 return cli && (cli->marketplaceRegistered || cli->pluginInstalled);
@@ -888,26 +888,32 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _showCopilotHookRow = hasState(copilot);
             _showClaudeHookRow = hasState(claude);
             _showGeminiHookRow = hasState(gemini);
+            _showCodexHookRow = hasState(codex);
 
             _copilotHooksSubtitle = _ComputeHooksSubtitle(copilot);
             _claudeHooksSubtitle = _ComputeHooksSubtitle(claude);
             _geminiHooksSubtitle = _ComputeHooksSubtitle(gemini);
+            _codexHooksSubtitle = _ComputeHooksSubtitle(codex);
         }
 
         _NotifyChanges(L"IsCopilotCliDetected",
                        L"IsClaudeCliDetected",
                        L"IsGeminiCliDetected",
+                       L"IsCodexCliDetected",
                        L"IsAnyAgentCliDetected",
                        L"CanInstallAgentHooks",
                        L"ShowCopilotHookRow",
                        L"ShowClaudeHookRow",
                        L"ShowGeminiHookRow",
+                       L"ShowCodexHookRow",
                        L"CopilotHooksSubtitle",
                        L"ClaudeHooksSubtitle",
                        L"GeminiHooksSubtitle",
+                       L"CodexHooksSubtitle",
                        L"ShowCopilotHooksSubtitle",
                        L"ShowClaudeHooksSubtitle",
-                       L"ShowGeminiHooksSubtitle");
+                       L"ShowGeminiHooksSubtitle",
+                       L"ShowCodexHooksSubtitle");
     }
 
     void AIAgentsViewModel::RefreshAgentHooksStatus()
@@ -971,6 +977,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _agentHooksInstallSummary = RS_(L"AIAgents_HooksRemovingGeminiSummary");
         _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
         _RunHooksWtaAsync(L"hooks uninstall --cli gemini");
+    }
+
+    void AIAgentsViewModel::RemoveCodexHooks()
+    {
+        if (_installingAgentHooks) return;
+        _installingAgentHooks = true;
+        _agentHooksInstallSummary = RS_(L"AIAgents_HooksRemovingCodexSummary");
+        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
+        _RunHooksWtaAsync(L"hooks uninstall --cli codex");
     }
 
     winrt::fire_and_forget AIAgentsViewModel::_RunHooksWtaAsync(std::wstring wtaArgs)

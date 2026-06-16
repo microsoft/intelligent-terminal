@@ -32,7 +32,7 @@
   <Description>
       Windows ターミナルは、コマンド プロンプト、PowerShell、WSL などのコマンドライン ツールおよびシェルのユーザーのための、高速、効率的、強力な、生産性を向上させる最新のターミナル アプリケーションです。主な機能には、複数のタブ、ウィンドウ、Unicode および UTF-8 文字のサポート、GPU アクセラレータによるテキスト レンダリング エンジン、カスタマイズできるテーマ、スタイル、構成が含まれます。
 
-これはオープン ソース プロジェクトで、コミュニティへの参加をお待ちしております。参加する場合は、https://aka.ms/intelligentterminal/source にアクセスしてください </Description>
+これはオープン ソース プロジェクトで、コミュニティへの参加をお待ちしております。参加する場合は、https://aka.ms/intelligent-terminal-source にアクセスしてください </Description>
   <ShortDescription>
     <!-- Only used for games. This description appears in the Information section of the Game Hub on Xbox One, and helps customers understand more about your game. -->
     
@@ -173,9 +173,9 @@
     
   </AdditionalLicenseTerms>
   <WebsiteURL>
-    https://aka.ms/intelligentterminal/source</WebsiteURL>
+    https://aka.ms/intelligent-terminal-source</WebsiteURL>
   <SupportContactInfo>
-    https://aka.ms/intelligentterminal/feedback</SupportContactInfo>
+    https://aka.ms/intelligent-terminal-feedback</SupportContactInfo>
   <PrivacyPolicyURL>
-    https://aka.ms/intelligentterminal/privacy</PrivacyPolicyURL>
+    https://aka.ms/intelligent-terminal-privacy</PrivacyPolicyURL>
 </ProductDescription>

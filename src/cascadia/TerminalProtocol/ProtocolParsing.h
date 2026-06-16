@@ -38,6 +38,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         ResumeInNewAgentTab,  // Direct to TerminalPage, no broadcast
         AgentChipTarget,      // Direct to TerminalPage, no broadcast — "draw the Agent chip on this pane (or hide override)"
         RestartAgentStack,    // Direct to TerminalPage, no broadcast — `/restart` from any agent pane TUI
+        RestartAgentPane,     // Direct to TerminalPage, no broadcast — master detected helper death; re-warm a fresh helper for this tab
         Broadcast,            // Normalize envelope + broadcast to all subscribers
         Invalid               // Failed validation
     };
@@ -94,6 +95,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "restart_agent_stack")
             {
                 return SendEventRoute::RestartAgentStack;
+            }
+            if (method == "restart_agent_pane")
+            {
+                return SendEventRoute::RestartAgentPane;
             }
         }
 

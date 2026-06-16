@@ -37,6 +37,7 @@ CMMI
 colorbrewer
 commandlines
 consvc
+contextualizing
 copyable
 crossterm
 Crossterm
@@ -76,6 +77,8 @@ Ghostty
 github
 githubnext
 godbolt
+gotcha
+gotchas
 gpt
 greenfield
 greppable
@@ -128,6 +131,7 @@ muxer
 myproj
 nafter
 ncwd
+newtypes
 neww
 NOAGGREGATION
 noname
@@ -152,6 +156,8 @@ parallelizable
 passthrough
 peekable
 perlw
+pinnable
+pkgver
 postmodern
 Powerline
 Prereq
@@ -205,6 +211,8 @@ screenshots
 serde
 servicebus
 sessionless
+shrx
+shtx
 sidechain
 sideload
 sids

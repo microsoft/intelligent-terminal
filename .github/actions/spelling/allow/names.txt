@@ -27,6 +27,8 @@ jantari
 jerrysh
 kaitao
 Kaiyu
+Kimi
+Kiro
 leonardder
 lhecker
 Lovecraft
@@ -47,6 +49,8 @@ Panos
 paulcam
 PGP
 Pham
+Qwen
+qwen
 Rincewind
 Schoonover
 shadertoy

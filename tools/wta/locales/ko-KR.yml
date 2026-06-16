@@ -115,12 +115,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. 에이전트 창 표시/숨기기 • Ctrl
 # ── 연결 상태 ────────────────────────────────────────────────────────────
 connection.starting: "에이전트 시작 중..."
 connection.reconnecting: "다시 연결 중..."
+connection.connecting_activity: "에이전트에 연결 중…"
+connection.lost: "에이전트와의 연결이 끊어졌습니다. 다시 연결하려면 /restart 명령을 입력하세요."  # {Locked="/restart"}
 
 # ── 시스템 메시지 (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "취소되었습니다."
 system.no_prompt_in_flight: "진행 중인 프롬프트가 없습니다."
 system.authentication_failed: "인증 실패"
 system.command_copied_retry: "명령이 복사되었습니다 — 다른 터미널에서 실행한 후 Enter를 눌러 재시도하세요"  # {Locked="Enter"}
+system.stopped_max_tokens: "모델의 출력 한도에 도달하여 응답이 잘렸습니다."
+system.stopped_max_turn_requests: "이 턴의 요청 한도에 도달하여 에이전트가 중지되었습니다."
+system.stopped_refusal: "에이전트가 이 요청을 계속하기를 거부했습니다."
+system.agent_busy: "이 탭에서 에이전트가 사용 중입니다 — 현재 프롬프트가 완료될 때까지 기다리세요."
+system.resuming_session: "세션 %{session_id} 재개 중..."
+system.unknown_command: "알 수 없는 명령 \"%{command}\" — 프롬프트로 보냈습니다. 목록을 보려면 /help를 입력하세요."  # {Locked="/help"}
+system.busy_use_stop: "현재 프롬프트가 완료될 때까지 기다리거나 먼저 /stop을 실행하세요."  # {Locked="/stop"}
+system.cannot_focus_session: "세션 %{session_id}에 포커스할 수 없습니다. 라이브 상태로 보이지만 아직 창 GUID가 바인딩되지 않았습니다. 잠시 후 다시 시도하세요."
+system.cannot_resume_no_load_session: "에이전트 창에서 재개할 수 없습니다. %{agent}이(가) ACP `loadSession` 기능을 알리지 않았습니다. 대신 Enter(Shift 제외)를 눌러 새 터미널 창에서 재개하세요."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "%{agent} 세션을 재개할 수 없습니다. 이 에이전트에는 `--resume` 스타일 플래그가 없습니다. 대신 Shift+Enter를 눌러 ACP를 통해 에이전트 창 안에서 재개를 시도하세요."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "세션 %{session_id}을(를) 재개할 수 없습니다. 원본 에이전트를 이 빌드에서 인식할 수 없습니다."
+system.cannot_resume_phantom_via_flag: "%{agent} 세션 %{session_id}을(를) 재개할 수 없습니다. 시작되었지만 대화가 전혀 누적되지 않았으므로 %{agent} 자체에서 재개를 거부합니다. 행을 제거합니다."
+system.cannot_resume_phantom_via_load: "%{agent} 세션 %{session_id}을(를) 재개할 수 없습니다. 시작되었지만 대화가 전혀 누적되지 않았으므로 %{agent}이(가) 로드를 거부합니다. 행을 제거합니다."
+system.fallback.this_agent: "이 에이전트"
+system.fallback.connected_agent: "연결된 에이전트"
 
 # ── 런타임 CLI 출력 (src/main.rs) ────────────────────────────────────────
 output.no_windows: "창을 찾을 수 없습니다."
@@ -173,6 +190,17 @@ time.days_other: "%{count}일 전"
 commands.help.summary: "이 명령 목록 표시"
 commands.clear.summary: "채팅 스크롤백 지우기(세션 유지)"
 commands.new.summary: "새 ACP 세션 시작(기록 삭제)"
+commands.fix.summary: "활성 터미널을 진단하고 수정 방법 제안 (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "에이전트 다시 시작"
 commands.stop.summary: "진행 중인 프롬프트 취소"
 commands.sessions.summary: "기록된 세션 선택기 열기(Ctrl+Shift+/)"
+
+# ── 추천 실행 (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "선택 %{choice} 실패: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}
+model_picker.title: "모델 선택 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "연결된 에이전트가 선택 가능한 모델을 알리지 않았습니다."
+system.model_set: "이 창의 모델이 %{model}(으)로 설정되었습니다."  # {Locked="%{model}"}
+system.model_unknown: "알 수 없는 모델 %{model} — 사용 가능한 목록을 보려면 /model을 입력하세요."  # {Locked="%{model}","/model"}

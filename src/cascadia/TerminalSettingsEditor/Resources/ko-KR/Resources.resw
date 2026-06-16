@@ -1553,6 +1553,10 @@
     <value>플래시 창</value>
     <comment>An option to choose from for the "bell style" setting. When selected, a visual notification is used to notify the user. In this case, the window is flashed.</comment>
   </data>
+  <data name="Profile_BellStyleNotification.Content" xml:space="preserve">
+    <value>데스크톱 알림</value>
+    <comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment>
+  </data>
   <data name="ColorScheme_AddNewButton.Text" xml:space="preserve">
     <value>새로 추가</value>
     <comment>Button label that creates a new color scheme.</comment>
@@ -2197,6 +2201,26 @@
     <value>두 개 이상의 탭을 닫을 때 경고</value>
     <comment>Header for a control to toggle whether to show a confirm dialog box when closing the application with multiple tabs open.</comment>
   </data>
+  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
+    <value>닫을 때 경고 표시</value>
+    <comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
+    <value>탭이나 창을 닫기 전에 확인 대화 상자가 나타나는 시기를 제어합니다. "항상"은 창을 닫을 때 대화 상자를 표시합니다.</value>
+    <comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
+    <value>사용 안 함</value>
+    <comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
+    <value>항상</value>
+    <comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
+    <value>여러 탭 또는 창</value>
+    <comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment>
+  </data>
   <data name="Globals_InputServiceWarning.Header" xml:space="preserve">
     <value>"터치 키보드 및 필기 패널 서비스"를 사용할 수 없는 경우 경고</value>
   </data>
@@ -2370,8 +2394,8 @@
     <comment>Accessible name for a control allowing the user to select the icon from a list of built in icons.</comment>
   </data>
   <data name="Nav_NewTabMenu.Content" xml:space="preserve">
-    <value>새 탭 메뉴</value>
-    <comment>Header for the "new tab menu" menu item. This navigates to a page that lets you see and modify settings related to the app's new tab menu (i.e. profile ordering, nested folders, dividers, etc.)</comment>
+    <value>드롭다운 메뉴</value>
+    <comment>Header for the "dropdown menu" menu item (formerly "new tab menu"). This navigates to a page that lets you see and modify settings related to the app's dropdown menu (i.e. profile ordering, nested folders, dividers, etc.)</comment>
   </data>
   <data name="NewTabMenuEntry_Separator.Text" xml:space="preserve">
     <value>&lt;구분 기호&gt;</value>
@@ -2846,38 +2870,14 @@
   </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Hooks 설치</value>
-    <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Gemini).</comment>
+    <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Codex, Gemini).</comment>
   </data>
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
     <value>새로 고침</value>
     <comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment>
   </data>
-  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
-    <value>닫을 때 경고</value>
-    <comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment>
-  </data>
-  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
-    <value>탭이나 창을 닫기 전에 확인 대화 상자를 표시할 시점을 제어합니다. "항상"은 창을 닫을 때마다 대화 상자를 표시합니다.</value>
-    <comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment>
-  </data>
-  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
-    <value>사용 안 함</value>
-    <comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment>
-  </data>
-  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
-    <value>항상</value>
-    <comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment>
-  </data>
-  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
-    <value>여러 탭 또는 창</value>
-    <comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment>
-  </data>
-  <data name="Profile_BellStyleNotification.Content" xml:space="preserve">
-    <value>데스크톱 알림</value>
-    <comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment>
-  </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
-    <value>https://aka.ms/intelligentterminal/portable-mode</value>
+    <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
     <comment>{Locked}</comment>
   </data>
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
@@ -2899,6 +2899,14 @@
   <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
     <value>Gemini hooks 제거 중...</value>
     <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCodexSummary" xml:space="preserve">
+    <value>Codex hooks 제거 중...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
+  </data>
+  <data name="AIAgents_CodexTrustHint.Text" xml:space="preserve">
+    <value>설치 후 Codex에서 /hooks를 실행하고 승인하여 새 이벤트 처리기를 신뢰하세요.</value>
+    <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
   </data>
   <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
     <value>실패: wta.exe를 찾을 수 없습니다</value>

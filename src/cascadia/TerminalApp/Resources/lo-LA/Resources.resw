@@ -50,11 +50,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>ເລືອກ agent ທີ່ໃຊ້ໃນແຜງ agent. ACP agent ທີ່ເຂົ້າກັນໄດ້ຈະຖືກກວດພົບໂດຍອັດຕະໂນມັດ.</value>
+    <value>ເລືອກ agent ທີ່ໃຊ້ໃນແຜງ agent ແລະຮອງຮັບ ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Agent ນີ້ຕ້ອງການ Node.js ແລະ NPX ຊຶ່ງຈະຖືກຕິດຕັ້ງໂດຍອັດຕະໂນມັດຫາກຍັງບໍ່ມີ.</value>
+    <value>Agent ນີ້ຕ້ອງການ Node.js ແລະ NPX ຊຶ່ງຈະຖືກຕິດຕັ້ງໂດຍອັດຕະໂນມັດຫາກຍັງບໍ່ມີ.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -72,7 +72,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ ການເປີດໃຊ້ນີ້ຈະຕິດຕັ້ງ hooks ເຊື່ອມຕໍ່ເພື່ອຕິດຕາມພາກສ່ວນຂອງ agent ຂອງທ່ານ.</value>
+    <value>ການເປີດໃຊ້ນີ້ຈະຕິດຕັ້ງ hooks ເຊື່ອມຕໍ່ເພື່ອຕິດຕາມພາກສ່ວນຂອງ agent ຂອງທ່ານ.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -107,13 +107,49 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>ກຳລັງຕັ້ງຄ່າ...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ ການຕິດຕັ້ງ GitHub Copilot ລົ້ມເຫລວ. ກວດເບິ່ງການເຊື່ອມຕໍ່ເຄືອຂ່າຍແລະລອງໃຫມ່.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ ການຕິດຕັ້ງ {0} ຖືກບລັອກໂດຍນະໂຍບາຍ Windows Package Manager. ຖ້າທ່ານໃຊ້ອຸປະກອນທີ່ຖືກຈັດການ, ຕິດຕໍ່ຜູ້ດູແລ IT ຂອງທ່ານ.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ ການຕິດຕັ້ງ Node.js ລົ້ມເຫລວ. ກວດເບິ່ງການເຊື່ອມຕໍ່ເຄືອຂ່າຍແລະລອງໃຫມ່.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ ບໍ່ສາມາດຕິດຕັ້ງ {0} ໄດ້ (ລະຫັດຂໍ້ຜິດພາດ {1}). ເບິ່ງບັນທຶກສຳລັບລາຍລະອຽດ ຫຼືຕິດຕັ້ງ {0} ດ້ວຍຕົນເອງ.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ ບໍ່ສາມາດຕິດຕັ້ງ {0} ໄດ້. ເບິ່ງບັນທຶກສຳລັບລາຍລະອຽດ ຫຼືຕິດຕັ້ງ {0} ດ້ວຍຕົນເອງ.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ ໂຕຕິດຕັ້ງ {0} ໄດ້ລາຍງານຂໍ້ຜິດພາດ (ລະຫັດ {1}). ເບິ່ງບັນທຶກສຳລັບລາຍລະອຽດ ຫຼືຕິດຕັ້ງ {0} ດ້ວຍຕົນເອງ.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ ບໍ່ສາມາດເຊື່ອມຕໍ່ Windows Package Manager ຂະນະຕິດຕັ້ງ {0}. ກວດເບິ່ງການເຊື່ອມຕໍ່ອິນເຕີເນັດຂອງທ່ານ (VPN, proxy ຫຼືໄຟວໍອາດຈະບລັອກຢູ່) ແລ້ວລອງໃໝ່.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ ບໍ່ມີໂຕຕິດຕັ້ງທີ່ເຂົ້າກັນໄດ້ສຳລັບ {0} ໃນລະບົບນີ້ (ອາດບໍ່ຮອງຮັບລຸ້ນ OS ຫຼືສະຖາປັດຕະຍະກຳ). ຕິດຕັ້ງ {0} ດ້ວຍຕົນເອງ.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ ບໍ່ພົບ {0} ໃນແຄັດຕາລັອກ Windows Package Manager. ລອງຣີເຟຣດແຫຼ່ງ winget ຫຼືຕິດຕັ້ງ {0} ດ້ວຍຕົນເອງ.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ ການຕິດຕັ້ງ {0} ໃຊ້ເວລາເກີນ 20 ນາທີ. Intelligent Terminal ຢຸດລໍຖ້າແລ້ວ, ແຕ່ໂຕຕິດຕັ້ງອາດຍັງເຮັດວຽກໃນພື້ນຫຼັງ. ກວດເບິ່ງ Task Manager ຫຼືລອງໃໝ່ພາຍຫຼັງ.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows Package Manager (winget) ຍັງບໍ່ໄດ້ຕິດຕັ້ງ ຫຼື ບໍ່ພ້ອມໃຊ້ງານ. ຕິດຕັ້ງມັນກ່ອນ ແລ້ວລອງໃໝ່.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>ເປີດ</value>
@@ -126,5 +162,27 @@
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>ອະນຸຍາດໃຫ້ Intelligent Terminal ເຂົ້າເຖິງເຊລຂອງທ່ານ ແລະກວດຫາຂໍ້ຜິດພາດໂດຍອັດຕະໂນມັດ.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ ການຕິດຕັ້ງ shell integration ລົ້ມເຫລວ. ການກວດຫາຂໍ້ຜິດພາດໄດ້ຖືກປິດແລ້ວ. ທ່ານສາມາດເປີດໃຊ້ງານມັນອີກຄັ້ງແລະລອງໃຫມ່, ຫຼືບັນທຶກເພື່ອສືບຕໍ່ໂດຍບໍ່ມີມັນ.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ ການຕິດຕັ້ງ session hooks ລົ້ມເຫລວ. ການຈັດການ session ໄດ້ຖືກປິດແລ້ວ. ທ່ານສາມາດເປີດໃຊ້ງານມັນອີກຄັ້ງແລະລອງໃຫມ່, ຫຼືບັນທຶກເພື່ອສືບຕໍ່ໂດຍບໍ່ມີມັນ.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>ຮຽນຮູ້ວິທີແກ້ໄຂສິ່ງນີ້ດ້ວຍຕົນເອງ</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>ການເປີດໃຊ້ນີ້ຈະຕິດຕັ້ງການເຊື່ອມຕໍ່ shell ເພື່ອກວດພົບຄຳສັ່ງທີ່ລົ້ມເຫຼວ. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>ຮຽນຮູ້ເພີ່ມເຕີມ</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>ນະໂຍບາຍການດຳເນີນການຂອງ PowerShell ກໍາລັງບລັອກສະຄຣິບ.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ ນະໂຍບາຍການດຳເນີນການຂອງ PowerShell ກໍາລັງບລັອກສະຄຣິບ. ການກວດຫາຂໍ້ຜິດພາດຖືກປິດແລ້ວ.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

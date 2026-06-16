@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. shfaq/fshih panelin e agjentit • Ctrl+Sh
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Po niset agjenti..."
 connection.reconnecting: "Po rilidhet..."
+connection.connecting_activity: "Po lidhet me agjentin…"
+connection.lost: "Lidhja me agjentin u humb. Shkruani /restart për t'u rilidhur."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "U anulua."
 system.no_prompt_in_flight: "Asnjë kërkesë nuk është në proces."
 system.authentication_failed: "Vërtetimi dështoi"
 system.command_copied_retry: "Komanda u kopjua — ekzekutojeni në një terminal tjetër, pastaj shtypni Enter për të riprovuar"  # {Locked="Enter"}
+system.stopped_max_tokens: "Përgjigja u ndërpre pasi u arrit kufiri i daljes së modelit."
+system.stopped_max_turn_requests: "Agjenti ndaloi pasi arriti kufirin e kërkesave për këtë radhë."
+system.stopped_refusal: "Agjenti refuzoi të vazhdojë me këtë kërkesë."
+system.agent_busy: "Agjenti është i zënë në këtë skedë — prisni që kërkesa aktuale të përfundojë."
+system.resuming_session: "Po rifillon sesioni %{session_id}..."
+system.unknown_command: "Komandë e panjohur \"%{command}\" — u dërgua si kërkesë. Shkruani /help për listën."  # {Locked="/help"}
+system.busy_use_stop: "Prisni që kërkesa aktuale të përfundojë, ose përdorni më parë /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nuk mund të fokusohet sesioni %{session_id}: duket aktiv, por ende nuk është lidhur asnjë GUID paneli. Provojeni përsëri pas pak."
+system.cannot_resume_no_load_session: "Nuk mund të rifillohet në panelin e agjentit: %{agent} nuk shpalli aftësinë ACP `loadSession`. Shtypni Enter (pa Shift) për ta rifilluar në një panel të ri terminali në vend të kësaj."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nuk mund të rifillohet sesioni %{agent}: ky agjent nuk ka flamur të stilit `--resume`. Shtypni Shift+Enter për të provuar rifillimin brenda panelit të agjentit përmes ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nuk mund të rifillohet sesioni %{session_id}: agjenti i tij burimor është i panjohur për këtë ndërtim të WTA."
+system.cannot_resume_phantom_via_flag: "Nuk mund të rifillohet sesioni %{agent} %{session_id}: ai u nis, por nuk grumbulloi kurrë asnjë bisedë, prandaj vetë %{agent} do ta refuzonte rifillimin. Po hiqet rreshti."
+system.cannot_resume_phantom_via_load: "Nuk mund të rifillohet sesioni %{agent} %{session_id}: ai u nis, por nuk grumbulloi kurrë asnjë bisedë, prandaj %{agent} do ta refuzonte ngarkimin. Po hiqet rreshti."
+system.fallback.this_agent: "ky agjent"
+system.fallback.connected_agent: "agjenti i lidhur"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nuk u gjetën dritare."
@@ -170,3 +187,24 @@ time.hour_singular: "%{count} orë më parë"
 time.hours_other: "%{count} orë më parë"
 time.day_singular: "%{count} ditë më parë"
 time.days_other: "%{count} ditë më parë"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Restart agent"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Ekzekutimi i rekomandimit (src/coordinator.rs) ──────────────────────────
+system.choice_execution_failed: "Zgjedhja %{choice} dështoi: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Zgjidhni modelin për këtë panel (/model <id> për të kaluar drejtpërdrejt)"  # {Locked="/model","<id>"}
+model_picker.title: "Zgjidhni modelin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Agjenti i lidhur nuk shpalli asnjë model të zgjedhshëm."
+system.model_set: "Modeli për këtë panel u caktua në %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model i panjohur %{model} — shkruani /model për të parë listën e disponueshme."  # {Locked="%{model}","/model"}

@@ -496,23 +496,47 @@
     <value>Уведомления третьих лиц</value>
     <comment>A hyperlink name for the Terminal's third-party notices</comment>
   </data>
-  <data name="QuitDialog.CloseButtonText" xml:space="preserve">
+  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve">
     <value>Отмена</value>
   </data>
-  <data name="QuitDialog.PrimaryButtonText" xml:space="preserve">
-    <value>Закрыть все</value>
-  </data>
-  <data name="QuitDialog.Title" xml:space="preserve">
+  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve">
     <value>Закрыть все окна?</value>
   </data>
-  <data name="CloseAllDialog.CloseButtonText" xml:space="preserve">
-    <value>Отмена</value>
-  </data>
-  <data name="CloseAllDialog.PrimaryButtonText" xml:space="preserve">
+  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve">
     <value>Закрыть все</value>
   </data>
-  <data name="CloseAllDialog.Title" xml:space="preserve">
+  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve">
     <value>Закрыть все вкладки?</value>
+  </data>
+  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve">
+    <value>Закрыть все</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve">
+    <value>Закрыть эту вкладку?</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve">
+    <value>Закрыть вкладку</value>
+  </data>
+  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve">
+    <value>Закрыть эту панель?</value>
+  </data>
+  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve">
+    <value>Закрыть область</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve">
+    <value>Закрыть эти вкладки?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve">
+    <value>Закрыть вкладки</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve">
+    <value>Закрыть эти панели?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve">
+    <value>Закрыть панели</value>
+  </data>
+  <data name="DontAskAgainCheckBox.Content" xml:space="preserve">
+    <value>Больше не спрашивать</value>
   </data>
   <data name="CloseReadOnlyDialog.CloseButtonText" xml:space="preserve">
     <value>Отмена</value>
@@ -745,6 +769,14 @@
     <value>Windows</value>
     <comment>This is displayed as a label for the context menu item that holds the submenu of available windows.</comment>
   </data>
+  <data name="NotificationMessage_TabActivity" xml:space="preserve">
+    <value>Активность на вкладке "{0}"</value>
+    <comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment>
+  </data>
+  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">
+    <value>Активность на вкладке "{0}" (окно "{1}")</value>
+    <comment>{0} is the tab title, {1} is the window name. Shown as the body of a desktop notification when tab activity is detected and the window has a name.</comment>
+  </data>
   <data name="DropPathTabRun.Text" xml:space="preserve">
     <value>Открыть новую вкладку в указанном начальном каталоге</value>
   </data>
@@ -881,10 +913,10 @@
     <value>Если этот параметр настроен, команда будет добавлена к стандартной команде профиля, а не заменит ее.</value>
   </data>
   <data name="RestartConnectionText" xml:space="preserve">
-    <value>Перезапустить подключение</value>
+    <value>Перезапустить сеанс</value>
   </data>
   <data name="RestartConnectionToolTip" xml:space="preserve">
-    <value>Перезапустить соединение с активной панелью.</value>
+    <value>Перезапустите сеанс в активной панели</value>
   </data>
   <data name="SnippetPaneTitle.Text" xml:space="preserve">
     <value>Фрагменты</value>
@@ -929,45 +961,6 @@
   <data name="InvalidRegex" xml:space="preserve">
     <value>Обнаружено недопустимое регулярное выражение.</value>
   </data>
-  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve">
-    <value>Отмена</value>
-  </data>
-  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve">
-    <value>Вы хотите закрыть все окна?</value>
-  </data>
-  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve">
-    <value>Закрыть все</value>
-  </data>
-  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve">
-    <value>Вы хотите закрыть все вкладки?</value>
-  </data>
-  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve">
-    <value>Закрыть все</value>
-  </data>
-  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve">
-    <value>Вы хотите закрыть эту вкладку?</value>
-  </data>
-  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve">
-    <value>Закрыть вкладку</value>
-  </data>
-  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve">
-    <value>Вы хотите закрыть эту панель?</value>
-  </data>
-  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve">
-    <value>Закрыть панель</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve">
-    <value>Вы хотите закрыть эти вкладки?</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve">
-    <value>Закрыть вкладки</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve">
-    <value>Вы хотите закрыть эти панели?</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve">
-    <value>Закрыть панели</value>
-  </data>
   <data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve">
     <value>Режим запроса к агенту</value>
   </data>
@@ -980,32 +973,26 @@
   <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve">
     <value>Запустить задачу агента в фоновом режиме...</value>
   </data>
-  <data name="NotificationMessage_TabActivity" xml:space="preserve">
-    <value>Активность на вкладке "{0}"</value>
-  </data>
-  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">
-    <value>Активность на вкладке "{0}" (окно "{1}")</value>
-  </data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve">
     <value>Интеграция с оболочкой настроена</value>
   </data>
   <data name="InitShellIntegrationSuccessMessage" xml:space="preserve">
-    <value>Интеграция с оболочкой настроена. Перезапустите сеанс PowerShell или откройте новую вкладку, чтобы изменения вступили в силу.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Интеграция с оболочкой настроена. Изменения вступят в силу только в новых сеансах оболочки (PowerShell, bash или WSL bash).</value>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve">
     <value>Интеграция с оболочкой уже настроена</value>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve">
-    <value>Интеграция с оболочкой уже настроена в вашем профиле PowerShell.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Интеграция с оболочкой уже настроена для оболочек, обнаруженных в вашей системе (PowerShell, bash или WSL bash).</value>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve">
     <value>Ошибка интеграции с оболочкой</value>
   </data>
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve">
-    <value>Не удалось инициализировать интеграцию с оболочкой. Не удалось определить путь к вашему профилю PowerShell. Убедитесь, что целевая оболочка установлена.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Не удалось инициализировать интеграцию с оболочкой. Просмотрите сведения ниже и повторите попытку.</value>
+    <comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment>
   </data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve">
     <value>ИИ-агент недоступен</value>
@@ -1060,11 +1047,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Выберите агента, используемого в панели агента. Любой совместимый агент ACP будет обнаружен автоматически.</value>
+    <value>Выберите агента, используемого в панели агента, который поддерживает ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Этот агент требует Node.js и NPX, которые будут установлены автоматически, если ещё не установлены.</value>
+    <value>Этот агент требует Node.js и NPX, которые будут установлены автоматически, если ещё не установлены.</value>
     <comment>{Locked="Node.js","NPX"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
@@ -1083,7 +1070,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Включение этой функции установит интеграционные hooks для отслеживания сеансов во всех ваших агентах.</value>
+    <value>Включение этой функции установит интеграционные hooks для отслеживания сеансов во всех ваших агентах.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -1118,13 +1105,61 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Настройка...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Не удалось установить GitHub Copilot. Проверьте подключение к сети и попробуйте снова.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Установка {0} заблокирована политикой Диспетчера пакетов Windows. Если вы используете управляемое устройство, обратитесь к ИТ-администратору.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Не удалось установить Node.js. Проверьте подключение к сети и попробуйте снова.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Не удалось установить {0} (код ошибки {1}). Подробности см. в журнале или установите {0} вручную.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Не удалось установить {0}. Подробности см. в журнале или установите {0} вручную.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ Установщик {0} сообщил об ошибке (код {1}). Подробности см. в журнале или установите {0} вручную.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Не удалось связаться с Диспетчером пакетов Windows при установке {0}. Проверьте подключение к Интернету (VPN, прокси-сервер или брандмауэр могут его блокировать) и повторите попытку.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ В этой системе нет совместимого установщика для {0} (версия ОС или архитектура могут не поддерживаться). Установите {0} вручную.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} не найден в каталоге Диспетчера пакетов Windows. Попробуйте обновить источники winget или установите {0} вручную.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Установка {0} заняла более 20 минут. Intelligent Terminal перестал ожидать, но установщик может по-прежнему выполняться в фоновом режиме. Проверьте Task Manager или повторите попытку позже.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Диспетчер пакетов Windows (winget) не установлен или недоступен. Сначала установите его, а затем повторите попытку.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  </data>
+
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Не удалось установить session hooks. Управление сеансами отключено. Вы можете повторно включить его и попробовать снова или сохранить, чтобы продолжить без него.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Не удалось установить интеграцию с оболочкой. Обнаружение ошибок отключено. Вы можете повторно включить его и попробовать снова или сохранить, чтобы продолжить без него.</value>
+  </data>
+  <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Узнайте, как исправить это вручную</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Вкл</value>
@@ -1213,5 +1248,19 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Разрешите Intelligent Terminal доступ к оболочке и автоматическое обнаружение ошибок.</value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Включение этой функции установит интеграцию оболочки для обнаружения сбоев команд. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Подробнее</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>Политика выполнения PowerShell блокирует скрипты.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ Политика выполнения PowerShell блокирует скрипты. Обнаружение ошибок отключено.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

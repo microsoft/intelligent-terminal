@@ -50,11 +50,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>በኤጅንት ገጽታ ውስጥ የሚጠቀመውን ኤጅንት ይምረጡ። ማንኛውም ተዋሃጅ የሆነ ACP ኤጅንት በራሱ ይታወቃል።</value>
+    <value>በኤጅንት ገጽታ ውስጥ የሚጠቀመውን እና ACP የሚደግፈውን ኤጅንት ይምረጡ።</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ ይህ ኤጅንት Node.js እና NPX ያስፈልጋል፣ ገና ካልተጠቀሙ በራሱ ይጠቀማሉ።</value>
+    <value>ይህ ኤጅንት Node.js እና NPX ያስፈልጋል፣ ገና ካልተጠቀሙ በራሱ ይጠቀማሉ።</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -72,7 +72,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ ይህን ማንቃት በኤጅንቶችዎ ውስጥ ክፍለጊዜዎችን ለመከታተል የውህደት hooks ይጭናል።</value>
+    <value>ይህን ማንቃት በኤጅንቶችዎ ውስጥ ክፍለጊዜዎችን ለመከታተል የውህደት hooks ይጭናል።</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -107,13 +107,49 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>በማያቄር ላይ...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot መጠቀም አልተሳካም። የመረብዎን ይፈትሩ እና እንደገና ይሞክሩ።</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ የ{0} ጭነት በWindows Package Manager ፖሊሲ ታግዷል። በሚተዳደር መሣሪያ ላይ ከሆኑ፣ የIT አስተዳዳሪዎን ያግኙ።</value>
+    <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js መጠቀም አልተሳካም። የመረብዎን ይፈትሩ እና እንደገና ይሞክሩ።</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ {0}ን መጫን አልተቻለም (የስህተት ኮድ {1})። ለዝርዝሮች ሎጉን ይመልከቱ፣ ወይም {0}ን በእጅ ይጫኑ።</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ {0}ን መጫን አልተቻለም። ለዝርዝሮች ሎጉን ይመልከቱ፣ ወይም {0}ን በእጅ ይጫኑ።</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ የ{0} ጫኚ ስህተት አሳውቋል (ኮድ {1})። ለዝርዝሮች ሎጉን ይመልከቱ፣ ወይም {0}ን በእጅ ይጫኑ።</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ {0}ን በመጫን ላይ ሳለ Windows Package Managerን መድረስ አልተቻለም። የኢንተርኔት ግንኙነትዎን ይፈትሹ (VPN፣ ፕሮክሲ ወይም ፋየርዎል ሊከለክለው ይችላል) እና እንደገና ይሞክሩ።</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ በዚህ ስርዓት ላይ ለ{0} ተኳኋኝ ጫኚ አይገኝም (የOS ስሪት ወይም አርክቴክቸር ላይደገፍ ይችላል)። {0}ን በእጅ ይጫኑ።</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} በWindows Package Manager ካታሎግ ውስጥ አልተገኘም። የwinget ምንጮችን ለማደስ ይሞክሩ፣ ወይም {0}ን በእጅ ይጫኑ።</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0}ን መጫን ከ20 ደቂቃ በላይ ወሰደ። Intelligent Terminal መጠበቁን አቁሟል፣ ግን ጫኚው አሁንም ከበስተጀርባ እየሰራ ሊሆን ይችላል። Task Managerን ይፈትሹ፣ ወይም በኋላ እንደገና ይሞክሩ።</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows Package Manager (winget) አልተጫነም ወይም አይገኝም። መጀመሪያ ይጫኑት፣ ከዚያ እንደገና ይሞክሩ።</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>እንቅ</value>
@@ -190,5 +226,27 @@
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal ወደ ሼልዎ መድረስ እና ስህተቶችን ራስ-ሰር እንዲያውቅ ይፍቀዱ።</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ የሼል ውህደት መጫን አልተሳካም። የስህተት ማወቂያ ጠፍቷል። እንደገና ማንቃት እና መሞከር ይችላሉ፣ ወይም ያለ እሱ ለመቀጠል ያስቀምጡ።</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks መጫን አልተሳካም። የክፍለ ጊዜ አስተዳደር ጠፍቷል። እንደገና ማንቃት እና መሞከር ይችላሉ፣ ወይም ያለ እሱ ለመቀጠል ያስቀምጡ።</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>ይህንን በእጅ እንዴት እንደሚያስተካክሉ ይወቁ</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>ይህን ማንቃት የትዕዛዝ ውድቀቶችን ለመለየት የshell ውህደት ይጭናል። </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>ተጨማሪ ይወቁ</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>የPowerShell ማስፈጸሚያ ፖሊሲ ስክሪፕቶችን እያገደ ነው።</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ የPowerShell ማስፈጸሚያ ፖሊሲ ስክሪፕቶችን እያገደ ነው። የስህተት ማወቂያ ጠፍቷል።</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

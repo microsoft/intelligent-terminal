@@ -34,6 +34,7 @@ pub type AgentKey = String;
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CliSource {
     Claude,
+    Codex,
     Copilot,
     Gemini,
     Unknown(String),
@@ -43,6 +44,7 @@ impl CliSource {
     pub fn parse(s: Option<&str>) -> Self {
         match s.unwrap_or("").to_ascii_lowercase().as_str() {
             "claude"  => Self::Claude,
+            "codex"   => Self::Codex,
             "copilot" => Self::Copilot,
             "gemini"  => Self::Gemini,
             ""        => Self::Unknown(String::new()),
@@ -50,15 +52,16 @@ impl CliSource {
         }
     }
 
-    /// Map an `agent_registry` agent id (`"copilot"`, `"claude"`, `"gemini"`,
+    /// Map an `agent_registry` agent id (`"copilot"`, `"claude"`, `"codex"`, `"gemini"`,
     /// ...) to the matching `CliSource` variant. Returns `None` for agents
-    /// the session registry does not track (e.g. `"codex"`, `"unknown"`, or
+    /// the session registry does not track (e.g. `"unknown"`, or
     /// an empty string), which the session-management view treats as
     /// "no filter — show all rows".
     pub fn from_agent_id(agent_id: &str) -> Option<Self> {
         match agent_id.to_ascii_lowercase().as_str() {
-            "copilot" => Some(Self::Copilot),
             "claude"  => Some(Self::Claude),
+            "codex"   => Some(Self::Codex),
+            "copilot" => Some(Self::Copilot),
             "gemini"  => Some(Self::Gemini),
             _ => None,
         }
@@ -77,8 +80,8 @@ pub enum AgentStatus {
 
 /// 2D session-state model — **activity** dimension.
 ///
-/// Captured separately from [`LivenessState`] so the session-management
-/// view (F2) can answer two orthogonal questions independently:
+/// Captured separately from [`LivenessState`] so the session management
+/// view can answer two orthogonal questions independently:
 ///
 ///   * "Is this row still alive?" → [`LivenessState`]
 ///   * "If alive, what's it doing?" → [`ActivityState`]
@@ -141,13 +144,13 @@ pub enum SessionOrigin {
     AgentPane,
 }
 
-/// View-layer filter for `SessionOrigin`. Used by the F2 / `/sessions`
+/// View-layer filter for `SessionOrigin`. Used by the `/sessions`
 /// picker so an MVP build can restrict the list to shell-pane sessions
 /// (user typed `copilot` in a normal shell) and hide WTA-spawned
 /// agent-pane sessions, without removing the data from the registry.
 ///
-/// Set the MVP default in `app.rs::MVP_F2_ORIGIN_FILTER`. Set
-/// `WTA_F2_SHOW_AGENT_PANE=1` to flip a single helper process to
+/// Set the MVP default in `app.rs::MVP_SESSIONS_ORIGIN_FILTER`. Set
+/// `WTA_SESSIONS_SHOW_AGENT_PANE=1` to flip a single helper process to
 /// `All` for debugging. The `wta sessions list` CLI also accepts
 /// `--origin <shell|agent-pane|all>` for the same purpose.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -679,7 +682,7 @@ impl AgentSessionRegistry {
 
     /// Like [`iter_sorted`], but keeps only rows whose `cli_source` matches
     /// the supplied filter. Passing `None` disables filtering and returns
-    /// the same list as `iter_sorted`. Used by the session-management view
+    /// the same list as `iter_sorted`. Used by the session management view
     /// so that, when the agent pane is running a known CLI (copilot /
     /// claude / gemini), the list only shows sessions for that CLI.
     pub fn iter_sorted_filtered(&self, filter: Option<&CliSource>) -> Vec<&AgentSession> {
@@ -689,7 +692,7 @@ impl AgentSessionRegistry {
     /// Two-axis variant of [`iter_sorted_filtered`]: filter on both
     /// `cli_source` (CLI the row belongs to) and `origin` (whether the
     /// session was started in a shell pane or by WTA's own agent pane).
-    /// Used by the F2 / `/sessions` picker and by `wta sessions list
+    /// Used by the `/sessions` picker and by `wta sessions list
     /// --origin`; the registry itself stays complete so other consumers
     /// (Enter routing, alive-mirror reconciliation, `wta sessions list`
     /// without `--origin`) see every row.
@@ -750,7 +753,7 @@ impl AgentSessionRegistry {
     /// no-ops because no session matches, AND the event never reaches
     /// master (the routing layer drops synthetic keys to avoid duplicate
     /// rows). Net effect: the row stays at `Working` from the prior
-    /// `tool.starting` and never flips to `Attention`, so F2 shows
+    /// `tool.starting` and never flips to `Attention`, so session management view shows
     /// "Active" instead of "Waiting for input".
     ///
     /// Returns `None` for [`CliSource::Unknown`] — we never want to
@@ -983,7 +986,7 @@ impl AgentSessionRegistry {
     /// to an existing master in another WT window may never see the
     /// originating `SessionStarted` hook event. Without this join, a
     /// session that is still alive in some pane would be shown as
-    /// Historical in F2 and Enter would mis-route to "resume new"
+    /// Historical in session management view and Enter would mis-route to "resume new"
     /// instead of "focus existing".
     ///
     /// Idempotent — re-applying with the same snapshot is a no-op
@@ -1006,7 +1009,7 @@ impl AgentSessionRegistry {
     /// and refuse to resurrect them, because the alternative (a stale
     /// `session_added` broadcast arriving before master detects the
     /// helper disconnect) would silently resurrect a pane that's
-    /// already gone, leaving the F2 row Live forever with no demotion
+    /// already gone, leaving the session management row Live forever with no demotion
     /// path. Cross-WTA-process resume-after-disconnect is rare;
     /// preferring the safe direction.
     ///
@@ -1016,7 +1019,7 @@ impl AgentSessionRegistry {
     /// however, are upgraded just enough to bind the pane carried in
     /// the snapshot — without touching `status` or any tool/attention
     /// state. This handles the cross-window resume race: in the tab
-    /// that issued the F2 Enter on a Historical row,
+    /// that issued the session management Enter on a Historical row,
     /// `dispatch_resume_in_agent_pane` fires `ResumeDispatched`, which
     /// optimistically flips the row to `Idle (Live)` so a rapid double
     /// press can't dispatch twice — but leaves `pane_session_id =
@@ -1026,7 +1029,7 @@ impl AgentSessionRegistry {
     /// helper (the one that pressed Enter) is no longer `Historical`,
     /// so without this rebind it would drop the broadcast on the floor
     /// and leave the row permanently `Live` without a pane — every
-    /// subsequent F2 Enter on the same row would return `NotResumable
+    /// subsequent session management Enter on the same row would return `NotResumable
     /// { LiveWithoutPane }`.
     pub fn apply_alive_session_join<'a>(
         &mut self,
@@ -1156,15 +1159,16 @@ impl AgentSessionRegistry {
 
     /// Populate the registry with synthetic data covering all 6 statuses.
     /// Triggered by the `WTA_DEMO_AGENTS=1` env var on App startup so the
-    /// Agents view (F2) can be exercised without running any real CLI.
+    /// agent session view can be exercised without running any real CLI.
     ///
     /// Layout (sorted by last_activity_at desc, newest first):
     ///   1. copilot  WORKING    — currently running a tool
-    ///   2. claude   ATTENTION  — needs user approval
-    ///   3. gemini   IDLE       — sitting waiting for input
-    ///   4. copilot  ERROR      — connection failed
-    ///   5. claude   ENDED      — exited normally a moment ago
-    ///   6. gemini   HISTORICAL — loaded from an old log (no live pane)
+    ///   2. codex    WORKING    — running a tool (second active session)
+    ///   3. claude   ATTENTION  — needs user approval
+    ///   4. gemini   IDLE       — sitting waiting for input
+    ///   5. copilot  ERROR      — connection failed
+    ///   6. claude   ENDED      — exited normally a moment ago
+    ///   7. gemini   HISTORICAL — loaded from an old log (no live pane)
     pub fn populate_demo_data(&mut self) {
         use std::time::Duration;
 
@@ -1184,7 +1188,20 @@ impl AgentSessionRegistry {
             tool_name: "shell".to_string(),
         });
 
-        // 2. Attention — claude waiting for tool approval
+        // 2. Working — codex running a tool concurrently
+        self.apply(SessionEvent::SessionStarted {
+            key:             "demo-codex-working".to_string(),
+            cli_source:      CliSource::Codex,
+            pane_session_id: "77777777-7777-7777-7777-777777777777".to_string(),
+            cwd:             cwd.clone(),
+            title:           "codex — implement refactor parser".to_string(),
+        });
+        self.apply(SessionEvent::ToolStarting {
+            key:       "demo-codex-working".to_string(),
+            tool_name: "shell".to_string(),
+        });
+
+        // 3. Attention — claude waiting for tool approval
         self.apply(SessionEvent::SessionStarted {
             key:             "demo-claude-attention".to_string(),
             cli_source:      CliSource::Claude,
@@ -1197,7 +1214,7 @@ impl AgentSessionRegistry {
             message: "Allow tool: write_file ./src/lib.rs?".to_string(),
         });
 
-        // 3. Idle — gemini waiting for next prompt
+        // 4. Idle — gemini waiting for next prompt
         self.apply(SessionEvent::SessionStarted {
             key:             "demo-gemini-idle".to_string(),
             cli_source:      CliSource::Gemini,
@@ -1206,7 +1223,7 @@ impl AgentSessionRegistry {
             title:           "gemini — explain build system".to_string(),
         });
 
-        // 4. Error — copilot lost network
+        // 5. Error — copilot lost network
         self.apply(SessionEvent::SessionStarted {
             key:             "demo-copilot-error".to_string(),
             cli_source:      CliSource::Copilot,
@@ -1219,7 +1236,7 @@ impl AgentSessionRegistry {
             reason:          "API request failed: 503 Service Unavailable".to_string(),
         });
 
-        // 5. Ended — claude finished cleanly a moment ago
+        // 6. Ended — claude finished cleanly a moment ago
         self.apply(SessionEvent::SessionStarted {
             key:             "demo-claude-ended".to_string(),
             cli_source:      CliSource::Claude,
@@ -1227,7 +1244,7 @@ impl AgentSessionRegistry {
             cwd:             cwd.clone(),
             title:           "claude — review PR diff".to_string(),
         });
-        // 5. Ended — claude finished cleanly a moment ago. Origin is the
+        // 6. Ended — claude finished cleanly a moment ago. Origin is the
         // default (Unknown), so SessionStopped takes the original
         // immediate-Ended path — no PaneClosed needed.
         self.apply(SessionEvent::SessionStopped {
@@ -1235,7 +1252,7 @@ impl AgentSessionRegistry {
             reason: "end_turn".to_string(),
         });
 
-        // 6. Historical — loaded from old log, no live pane
+        // 7. Historical — loaded from old log, no live pane
         let two_hours_ago = now - Duration::from_secs(2 * 60 * 60);
         let key = "demo-gemini-historical".to_string();
         self.sessions.insert(key.clone(), AgentSession {
@@ -1260,6 +1277,7 @@ impl AgentSessionRegistry {
         // narrative (working newest, historical oldest).
         let stagger = |secs: u64| now - Duration::from_secs(secs);
         if let Some(s) = self.sessions.get_mut("demo-copilot-working")  { s.last_activity_at = stagger(2); }
+        if let Some(s) = self.sessions.get_mut("demo-codex-working")    { s.last_activity_at = stagger(5); }
         if let Some(s) = self.sessions.get_mut("demo-claude-attention") { s.last_activity_at = stagger(15); }
         if let Some(s) = self.sessions.get_mut("demo-gemini-idle")      { s.last_activity_at = stagger(45); }
         if let Some(s) = self.sessions.get_mut("demo-copilot-error")    { s.last_activity_at = stagger(120); }
@@ -1937,12 +1955,12 @@ mod tests {
         let mut reg = AgentSessionRegistry::new();
         reg.populate_demo_data();
         let sessions = reg.iter_sorted();
-        assert_eq!(sessions.len(), 6, "demo data should yield exactly 6 sessions");
+        assert_eq!(sessions.len(), 7, "demo data should yield exactly 7 sessions");
 
-        // Verify each status appears exactly once.
+        // Verify each non-Working status appears exactly once; Working appears
+        // twice (copilot + codex are both running tools concurrently).
         let statuses: Vec<AgentStatus> = sessions.iter().map(|s| s.status.clone()).collect();
         for st in [
-            AgentStatus::Working,
             AgentStatus::Attention,
             AgentStatus::Idle,
             AgentStatus::Error,
@@ -1951,12 +1969,16 @@ mod tests {
         ] {
             assert_eq!(statuses.iter().filter(|s| **s == st).count(), 1, "expected exactly one {:?}", st);
         }
+        assert_eq!(
+            statuses.iter().filter(|s| **s == AgentStatus::Working).count(), 2,
+            "expected exactly two Working sessions (copilot + codex)",
+        );
 
         // Working session must come first (most recent activity).
         assert_eq!(sessions[0].status, AgentStatus::Working);
         // Historical session must be last and have no live pane binding.
-        assert_eq!(sessions[5].status, AgentStatus::Historical);
-        assert!(sessions[5].pane_session_id.is_none());
+        assert_eq!(sessions[6].status, AgentStatus::Historical);
+        assert!(sessions[6].pane_session_id.is_none());
 
         // Error session must carry the failure reason.
         let err = sessions.iter().find(|s| s.status == AgentStatus::Error).unwrap();
@@ -2086,12 +2108,29 @@ mod tests {
 
     #[test]
     fn from_agent_id_returns_none_for_untracked_or_empty() {
-        // Empty / unknown / codex are all "no filter" — the F2 view will
+        // Empty / unknown are "no filter" — the session management view will
         // fall back to showing every row.
         assert_eq!(CliSource::from_agent_id(""),         None);
-        assert_eq!(CliSource::from_agent_id("codex"),    None);
         assert_eq!(CliSource::from_agent_id("unknown"),  None);
         assert_eq!(CliSource::from_agent_id("bogus"),    None);
+    }
+
+    #[test]
+    fn cli_source_from_agent_id_recognizes_codex() {
+        assert_eq!(
+            CliSource::from_agent_id("codex"),
+            Some(CliSource::Codex),
+        );
+    }
+
+    #[test]
+    fn cli_source_parse_round_trips_codex() {
+        // Wire format used by SessionHookCliSource::Known("Codex" | "codex")
+        // must parse back to the typed variant — otherwise Codex hook events
+        // would degrade to CliSource::Unknown after a serde round-trip.
+        // Note: CliSource has `pub fn parse(Option<&str>) -> Self` (not FromStr).
+        assert_eq!(CliSource::parse(Some("Codex")), CliSource::Codex);
+        assert_eq!(CliSource::parse(Some("codex")), CliSource::Codex);
     }
 
     #[test]
@@ -2180,7 +2219,7 @@ mod tests {
     fn iter_sorted_with_filters_partitions_by_origin() {
         // Two rows, identical CLI, different SessionOrigin. ShellOnly
         // must hide the AgentPane row; AgentPaneOnly is the inverse;
-        // All keeps both. Confirms the MVP F2 filter contract.
+        // All keeps both. Confirms the MVP sessions filter contract.
         let mut reg = AgentSessionRegistry::new();
         reg.apply(SessionEvent::SessionStarted {
             key: k("shell-row"),
@@ -2422,7 +2461,7 @@ mod tests {
     #[test]
     fn apply_alive_pane_snapshot_is_idempotent_when_replayed() {
         // Calling the same snapshot twice must not flag the registry
-        // dirty the second time — the F2 view re-applies snapshots
+        // dirty the second time — the session management view re-applies snapshots
         // every time master pushes a session_added/removed batch.
         let mut reg = AgentSessionRegistry::new();
         reg.apply(SessionEvent::SessionStarted {
@@ -2495,7 +2534,7 @@ mod tests {
         // row as Historical (it pre-dates this WTA process), but the
         // master's alive snapshot says the session is still running in
         // some pane. The join must upgrade the row to Live (Idle) and
-        // bind the pane so a subsequent F2 Enter routes to "focus".
+        // bind the pane so a subsequent session management Enter routes to "focus".
         let mut reg = AgentSessionRegistry::new();
         reg.merge_historical(vec![make_historical("sid-hist")]);
         assert_eq!(reg.sessions.get("sid-hist").unwrap().liveness(),
@@ -2562,7 +2601,7 @@ mod tests {
 
     #[test]
     fn apply_alive_session_join_binds_pane_to_live_without_pane_row() {
-        // Regression for the cross-window F2-Enter focus bug:
+        // Regression for the cross-window session management Enter focus bug:
         // `dispatch_resume_in_agent_pane` fires `ResumeDispatched`,
         // which optimistically promotes a Historical row to `Idle (Live)`
         // *without* binding a pane (the resume runs in a freshly spawned
@@ -2571,7 +2610,7 @@ mod tests {
         // the new helper-pane's GUID, the gating helper's row is no
         // longer Historical — but it must still adopt the pane binding,
         // otherwise the row stays Live-without-pane forever and every
-        // subsequent F2 Enter on the same row returns
+        // subsequent session management Enter on the same row returns
         // `NotResumable { LiveWithoutPane }` ("Cannot focus session …:
         // it appears live but no pane GUID is bound yet").
         let mut reg = AgentSessionRegistry::new();
@@ -2675,7 +2714,7 @@ mod tests {
         // Mirrors PaneClosed: Live row → Ended with pane binding cleared.
         // Driven by master's `intellterm.wta/session_removed` broadcast
         // when a helper exits — without this path the agent_sessions
-        // reducer never sees the disappearance and the F2 row stays
+        // reducer never sees the disappearance and the session management row stays
         // stuck on Live.
         let mut reg = AgentSessionRegistry::new();
         reg.apply(SessionEvent::SessionStarted {
@@ -2849,7 +2888,7 @@ mod tests {
         // Ended/Historical rows must NOT be candidates — the fallback is
         // for routing a *live* event to the right *live* session, and
         // resurrecting a dead session via a stray notification would be
-        // worse than no-op (it would resurface a terminated row in F2
+        // worse than no-op (it would resurface a terminated row in session management view
         // with bogus Attention state).
         let mut reg = AgentSessionRegistry::new();
         reg.apply(SessionEvent::SessionStarted {

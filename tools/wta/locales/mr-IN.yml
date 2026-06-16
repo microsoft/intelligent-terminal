@@ -74,6 +74,7 @@ commands.help_close_hint: "  Esc        ही मदत बंद करा"  #
 commands.help.summary: "ही कमांड सूची दाखवा"
 commands.clear.summary: "चॅट स्क्रोलबॅक साफ करा (सत्र कायम ठेवते)"
 commands.new.summary: "नवे ACP सत्र सुरू करा (इतिहास काढून टाकते)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "एजंट पुन्हा सुरू करा"
 commands.stop.summary: "चालू असलेला प्रॉम्प्ट रद्द करा"
 commands.sessions.summary: "ऐतिहासिक सत्र निवडक उघडा (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -130,12 +131,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. एजंट पेन दाखवा/ल
 # ── कनेक्शन स्थिती ────────────────────────────────────────────────────────
 connection.starting: "एजंट सुरू होत आहे..."
 connection.reconnecting: "पुन्हा कनेक्ट होत आहे..."
+connection.connecting_activity: "एजंटशी कनेक्ट होत आहे…"
+connection.lost: "एजंटशी कनेक्शन तुटले. पुन्हा कनेक्ट करण्यासाठी /restart टाइप करा."  # {Locked="/restart"}
 
 # ── सिस्टम संदेश (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "रद्द केले."
 system.no_prompt_in_flight: "प्रगतीत कोणताही प्रॉम्प्ट नाही."
 system.authentication_failed: "प्रमाणीकरण अयशस्वी"
 system.command_copied_retry: "कमांड कॉपी केली — ती दुसऱ्या टर्मिनलमध्ये चालवा, नंतर पुन्हा प्रयत्न करण्यासाठी Enter दाबा"  # {Locked="Enter"}
+system.stopped_max_tokens: "मॉडेलची आउटपुट मर्यादा गाठल्यानंतर प्रतिसाद कापला गेला."
+system.stopped_max_turn_requests: "या फेरीसाठी आपली विनंती मर्यादा गाठल्यानंतर एजंट थांबला."
+system.stopped_refusal: "एजंटने ही विनंती सुरू ठेवण्यास नकार दिला."
+system.agent_busy: "या टॅबवर Agent व्यस्त आहे — सध्याचा प्रॉम्प्ट पूर्ण होईपर्यंत प्रतीक्षा करा."
+system.resuming_session: "सत्र %{session_id} पुन्हा सुरू करत आहे..."
+system.unknown_command: "अज्ञात आदेश \"%{command}\" — प्रॉम्प्ट म्हणून पाठवला. यादीसाठी /help टाइप करा."  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "सध्याचा प्रॉम्प्ट पूर्ण होईपर्यंत प्रतीक्षा करा, किंवा आधी /stop करा."  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "सत्र %{session_id} वर फोकस करता येत नाही: ते live दिसते पण अजून कोणताही pane GUID जोडलेला नाही. थोड्या वेळाने पुन्हा प्रयत्न करा."
+system.cannot_resume_no_load_session: "agent pane मध्ये पुन्हा सुरू करता येत नाही: %{agent} ने ACP `loadSession` क्षमता जाहीर केलेली नाही. त्याऐवजी नवीन terminal pane मध्ये पुन्हा सुरू करण्यासाठी Enter (Shift शिवाय) दाबा."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} सत्र पुन्हा सुरू करता येत नाही: या agent कडे `--resume`-शैलीचा flag नाही. त्याऐवजी ACP द्वारे agent pane मध्ये पुन्हा सुरू करण्याचा प्रयत्न करण्यासाठी Shift+Enter दाबा."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "सत्र %{session_id} पुन्हा सुरू करता येत नाही: त्याचा स्रोत agent या WTA build साठी अज्ञात आहे."
+system.cannot_resume_phantom_via_flag: "%{agent} सत्र %{session_id} पुन्हा सुरू करता येत नाही: ते सुरू झाले होते पण कोणतेही संभाषण साठवले गेले नाही, म्हणून %{agent} स्वतः resume नाकारेल. पंक्ती काढत आहे."
+system.cannot_resume_phantom_via_load: "%{agent} सत्र %{session_id} पुन्हा सुरू करता येत नाही: ते सुरू झाले होते पण कोणतेही संभाषण साठवले गेले नाही, म्हणून %{agent} load नाकारेल. पंक्ती काढत आहे."
+system.fallback.this_agent: "हा agent"
+system.fallback.connected_agent: "कनेक्ट केलेला agent"
 
 # ── रनटाइम CLI आउटपुट (src/main.rs) ────────────────────────────────────────
 output.no_windows: "कोणत्याही विंडो आढळल्या नाहीत."
@@ -182,3 +200,13 @@ time.hour_singular: "%{count} तासापूर्वी"
 time.hours_other: "%{count} तासांपूर्वी"
 time.day_singular: "%{count} दिवसापूर्वी"
 time.days_other: "%{count} दिवसांपूर्वी"
+
+# ── शिफारस अंमलबजावणी (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "निवड %{choice} अयशस्वी झाली: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "या पेनसाठी मॉडेल निवडा (थेट स्विच करण्यासाठी /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "मॉडेल निवडा (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "कनेक्ट केलेल्या agent ने कोणतेही निवडण्यायोग्य मॉडेल जाहीर केले नाही."
+system.model_set: "या पेनसाठी मॉडेल %{model} वर सेट केले."  # {Locked="%{model}"}
+system.model_unknown: "अज्ञात मॉडेल %{model} — उपलब्ध यादी पाहण्यासाठी /model टाइप करा."  # {Locked="%{model}","/model"}

@@ -50,11 +50,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Ընտրեք գործակալը, որը օգտագործվում է գործակալի վահանակում։ Ցանկացած համատեղելի ACP գործակալ կհայտնաբերվի ինքնաշխատորեն:</value>
+    <value>Ընտրեք գործակալի վահանակում օգտագործվող և ACP աջակցող գործակալը։</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Այս գործակալը պահանջում է Node.js և NPX, որոնք կտեղադրվեն ինքնաշխատորեն, եթե արդեն տեղադրված չեն:</value>
+    <value>Այս գործակալը պահանջում է Node.js և NPX, որոնք կտեղադրվեն ինքնաշխատորեն, եթե արդեն տեղադրված չեն:</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -72,7 +72,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Սա միացնելը կտեղադրի ինտեգրացիոն hooks՝ ձեր գործակալներում նիստերին հետևելու համար:</value>
+    <value>Սա միացնելը կտեղադրի ինտեգրացիոն hooks՝ ձեր գործակալներում նիստերին հետևելու համար:</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -107,13 +107,49 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Կարգավորում...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot-ի տեղադրումը ձախողվեց։ Ստուգեք ցանցի հանգույցը և նորից փորձեք:</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ {0}-ի տեղադրումն արգելափակվել է Windows Package Manager-ի քաղաքականության կողմից։ Եթե կառավարելի սարքի վրա եք, կապվեք ձեր IT ադմինիստրատորի հետ։</value>
+    <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js-ի տեղադրումը ձախողվեց։ Ստուգեք ցանցի հանգույցը և նորից փորձեք:</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Չհաջողվեց տեղադրել {0}-ը (սխալի կոդը՝ {1})։ Մանրամասների համար դիտեք գրանցամատյանը, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Չհաջողվեց տեղադրել {0}-ը։ Մանրամասների համար դիտեք գրանցամատյանը, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0}-ի տեղադրիչը հաղորդեց սխալ (կոդ՝ {1})։ Ստուգեք գրանցամատյանը մանրամասների համար, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ {0}-ը տեղադրելիս չհաջողվեց կապ հաստատել Windows Package Manager-ի հետ։ Ստուգեք ինտերնետ կապը (VPN-ը, պրոքսին կամ հրապատը կարող են արգելափակել այն) և նորից փորձեք։</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Այս համակարգում {0}-ի համար համատեղելի տեղադրիչ հասանելի չէ (OS-ի տարբերակը կամ ճարտարապետությունը կարող է չաջակցվել)։ Տեղադրեք {0}-ը ձեռքով։</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0}-ը չի գտնվել Windows Package Manager-ի կատալոգում։ Փորձեք թարմացնել winget աղբյուրները, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0}-ի տեղադրումը տևեց ավելի քան 20 րոպե։ Intelligent Terminal-ը դադարեց սպասել, բայց տեղադրիչը կարող է դեռ աշխատել հետին պլանում։ Ստուգեք Task Manager-ը, կամ փորձեք ավելի ուշ։</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows Package Manager-ը (winget) տեղադրված չէ կամ հասանելի չէ։ Նախ տեղադրեք այն, ապա նորից փորձեք:</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Միաց</value>
@@ -190,5 +226,27 @@
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Թույլ տվեք Intelligent Terminal-ին մուտք գործել ձեր թաղանթ և ավտոմատ կերպով հայտնաբերել սխալները։</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Shell-ի ինտեգրացիայի տեղադրումը ձախողվեց։ Սխալների հայտնաբերումը անջատվել է։ Կարող եք նորից միացնել և նորից փորձել, կամ պահել առանց դրա շարունակելու համար։</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Session hooks տեղադրումը ձախողվեց։ Նիստերի կառավարումը անջատվել է։ Կարող եք նորից միացնել և նորից փորձել, կամ պահել առանց դրա շարունակելու համար։</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Իմացեք, թե ինչպես սա շտկել ձեռքով</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Սա միացնելը կտեղադրի shell ինտեգրացիա՝ հրամանների ձախողումները հայտնաբերելու համար: </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Իմացեք ավելին</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>PowerShell-ի կատարման քաղաքականությունն արգելափակում է սկրիպտները։</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell-ի կատարման քաղաքականությունն արգելափակում է սկրիպտները։ Սխալների հայտնաբերումն անջատված է։</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

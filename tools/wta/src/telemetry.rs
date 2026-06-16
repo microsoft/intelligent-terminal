@@ -46,6 +46,8 @@
 // processes only via fields explicitly shared (e.g. `PaneId`).
 //
 // Events emitted from this module:
+//   - AcpInitializeComplete  (ACP initialize RPC completes)
+//   - AcpNewSessionComplete  (ACP session/new RPC completes)
 //   - AgentPromptSent          (WTA dispatches a prompt over ACP)
 //   - AgentResponseFirstToken  (ACP returns the first text chunk)
 //   - AgentResponseComplete    (ACP prompt request completes)
@@ -102,6 +104,74 @@ pub fn register() {
 #[allow(dead_code)]
 pub fn unregister() {
     AGENT_PROVIDER.unregister();
+}
+
+/// Emitted when an ACP `initialize` RPC completes. `duration_ms` is a
+/// monotonic duration measured around the RPC attempt, not wall-clock.
+///
+/// `route` identifies the WTA path that issued the RPC (for example,
+/// master startup versus direct agent mode) so downstream queries can avoid
+/// mixing cached/helper handshakes with agent CLI handshakes.
+///
+/// `failure_kind` is empty on success, `Timeout` when no response arrived
+/// before the local timeout, or `AcpError` when the agent returned a
+/// JSON-RPC/ACP error. `acp_error_code` is the agent-provided code for
+/// `AcpError`; otherwise it is 0.
+pub fn log_acp_initialize_complete(
+    duration_ms: f64,
+    success: bool,
+    route: &str,
+    failure_kind: &str,
+    acp_error_code: i32,
+) {
+    let success_i32: i32 = if success { 1 } else { 0 };
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "AcpInitializeComplete",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        f64("DurationMs", &duration_ms),
+        bool32("Success", &success_i32),
+        str8("Route", route),
+        str8("FailureKind", failure_kind),
+        i32("AcpErrorCode", &acp_error_code),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
+    );
+}
+
+/// Emitted when an ACP `session/new` RPC completes. `duration_ms` is a
+/// monotonic duration measured around the RPC attempt, not wall-clock.
+///
+/// `session_id` is present only on success. Failed attempts still emit the
+/// event with an empty `SessionId` so the ETW schema remains stable.
+///
+/// `failure_kind` is empty on success, `Timeout` when no response arrived
+/// before the local timeout, or `AcpError` when the agent returned a
+/// JSON-RPC/ACP error. `acp_error_code` is the agent-provided code for
+/// `AcpError`; otherwise it is 0.
+pub fn log_acp_new_session_complete(
+    session_id: Option<&str>,
+    duration_ms: f64,
+    success: bool,
+    route: &str,
+    failure_kind: &str,
+    acp_error_code: i32,
+) {
+    let success_i32: i32 = if success { 1 } else { 0 };
+    let session_id = session_id.unwrap_or("");
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "AcpNewSessionComplete",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("SessionId", session_id),
+        f64("DurationMs", &duration_ms),
+        bool32("Success", &success_i32),
+        str8("Route", route),
+        str8("FailureKind", failure_kind),
+        i32("AcpErrorCode", &acp_error_code),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
+    );
 }
 
 /// Emitted when WTA dispatches a prompt over the ACP stream to an agent.

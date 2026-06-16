@@ -245,6 +245,12 @@ ROY\sG\.\sBIV
 # Win32 SDK LOCALE_* constants (locale-info field identifiers from winnls.h)
 \bLOCALE_[A-Z][A-Z0-9_]+\b
 
+# COM/RPC HRESULT constants from rpcerror.h (e.g. RPC_E_SERVERFAULT)
+\bRPC_E_[A-Z][A-Z0-9_]+\b
+
+# combase/rpcss WinRT activation-catalog class names (referenced in comments)
+\bCWinRT[A-Za-z]+\b
+
 # AppX package
 _\d[0-9a-z]{12}['\.]
 
@@ -311,3 +317,16 @@ equals_insensitive_ascii\("\w+", "\w+"
 
 # tools/wta/src/protocol/acp/spawn.rs - external env var name passed as string literal
 env_remove\("[A-Z_]+"\)
+
+# Shell flag combos (e.g. set -euo pipefail) used in hooks.instructions.md
+\b(?:bash|(?<!\.)sh|set)(?:\s+[-+][abefimouxE]{1,2})*\s+[-+][abefimouxE]{3,}(?:\s+[-+][abefimouxE]+)*(?:\s+pipefail\b)?
+
+# GitHub GraphQL node ID prefix for PullRequestReviewThread
+\bPRRT_[A-Za-z0-9_-]+\b
+
+# src/cascadia/inc/BashShellIntegration.h - private namespace for the bash shell-integration script (variables we set in the user's bash environment)
+\b__IT_SHELLINTEG_[A-Z_]+\b
+\b__it_(si|pc_[a-z]+|shellinteg_[a-z]+)\b
+
+# test fixture in ShellIntegrationTests.cpp — synthetic exe leaf used to test lookalike-rejection (pwsh + 'ell' suffix)
+\bpwshell\b

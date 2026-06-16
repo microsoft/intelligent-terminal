@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Inspect, install, or remove the wt-agent-hooks bridge for one or all
-    supported agent CLIs (Copilot, Claude, Gemini).
+    supported agent CLIs (Copilot, Claude, Gemini, Codex).
 
 .DESCRIPTION
     Wrapper around `wta hooks status --json` / `wta install-hooks` /
@@ -25,8 +25,8 @@
 
 .PARAMETER CliFilter
     Restrict Uninstall (and the SmokeTest) to one CLI. Defaults to `all`.
-    Has no effect on Check / Install (Install always installs all three;
-    Check always reports all three).
+    Has no effect on Check / Install (Install always installs all four;
+    Check always reports all four).
 
 .PARAMETER SmokeTest
     After Check / Install, fire a no-op prompt at each detected CLI and
@@ -57,7 +57,7 @@ param(
     [string]$Mode = 'Check',
 
     [Parameter()]
-    [ValidateSet('all', 'copilot', 'claude', 'gemini')]
+    [ValidateSet('all', 'copilot', 'claude', 'gemini', 'codex')]
     [string]$CliFilter = 'all',
 
     [Parameter()]
@@ -82,6 +82,7 @@ $script:CliDisplayNames = @{
     copilot = 'Copilot CLI'
     claude  = 'Claude Code'
     gemini  = 'Gemini CLI'
+    codex   = 'Codex CLI'
 }
 
 # ── Helpers ──────────────────────────────────────────────────────────

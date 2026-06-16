@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. i ddangos/cuddio'r paen asiant • Ctrl+Sh
 # ── Cyflwr cysylltiad ────────────────────────────────────────────────────────
 connection.starting: "Yn cychwyn yr asiant..."
 connection.reconnecting: "Yn ailgysylltu..."
+connection.connecting_activity: "Yn cysylltu â'r asiant…"
+connection.lost: "Collwyd y cysylltiad â'r asiant. Teipiwch /restart i ailgysylltu."  # {Locked="/restart"}
 
 # ── Negeseuon system (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Wedi'i ganslo."
 system.no_prompt_in_flight: "Dim anogaeth ar y gweill."
 system.authentication_failed: "Methwyd â dilysu"
 system.command_copied_retry: "Gorchymyn wedi'i gopïo — rhedwch ef mewn terfynell arall, yna pwyswch Enter i ailgeisio"  # {Locked="Enter"}
+system.stopped_max_tokens: "Cafodd yr ymateb ei dorri ar ôl cyrraedd terfyn allbwn y model."
+system.stopped_max_turn_requests: "Stopiodd yr asiant ar ôl cyrraedd ei derfyn ceisiadau ar gyfer y tro hwn."
+system.stopped_refusal: "Gwrthododd yr asiant barhau â'r cais hwn."
+system.agent_busy: "Mae’r asiant yn brysur ar y tab hwn — arhoswch i’r anogiad presennol orffen."
+system.resuming_session: "Yn ailddechrau sesiwn %{session_id}..."
+system.unknown_command: "Gorchymyn anhysbys \"%{command}\" — anfonwyd fel anogiad. Teipiwch /help am y rhestr."
+system.busy_use_stop: "Arhoswch i’r anogiad presennol orffen, neu defnyddiwch /stop yn gyntaf."
+system.cannot_focus_session: "Methu canolbwyntio ar sesiwn %{session_id}: mae’n ymddangos yn fyw ond nid oes GUID cwarel wedi’i rwymo eto. Rhowch gynnig arall arni mewn eiliad."
+system.cannot_resume_no_load_session: "Methu ailddechrau mewn cwarel asiant: ni hysbysebodd %{agent} y gallu ACP `loadSession`. Pwyswch Enter (heb Shift) i ailddechrau mewn cwarel terfynell newydd yn lle hynny."
+system.cannot_resume_no_resume_flag: "Methu ailddechrau sesiwn %{agent}: nid oes gan yr asiant hwn faner arddull `--resume`. Pwyswch Shift+Enter i geisio ailddechrau y tu mewn i’r cwarel asiant drwy ACP yn lle hynny."
+system.cannot_resume_unknown_agent: "Methu ailddechrau sesiwn %{session_id}: mae ei asiant ffynhonnell yn anhysbys i’r adeilad hwn."
+system.cannot_resume_phantom_via_flag: "Methu ailddechrau sesiwn %{agent} %{session_id}: cafodd ei dechrau ond ni chasglodd unrhyw sgwrs erioed, felly byddai %{agent} ei hun yn gwrthod yr ailddechrau. Yn tynnu’r rhes."
+system.cannot_resume_phantom_via_load: "Methu ailddechrau sesiwn %{agent} %{session_id}: cafodd ei dechrau ond ni chasglodd unrhyw sgwrs erioed, felly byddai %{agent} yn gwrthod y llwytho. Yn tynnu’r rhes."
+system.fallback.this_agent: "yr asiant hwn"
+system.fallback.connected_agent: "yr asiant cysylltiedig"
 
 # ── Allbwn CLI amser rhedeg (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ni chanfuwyd unrhyw ffenestri."
@@ -170,3 +187,24 @@ time.hour_singular: "%{count} awr yn ôl"
 time.hours_other: "%{count} awr yn ôl"
 time.day_singular: "%{count} diwrnod yn ôl"
 time.days_other: "%{count} diwrnod yn ôl"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Restart agent"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Gweithredu argymhelliad (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Methodd dewis %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Dewiswch y model ar gyfer y paen hwn (/model <id> i newid yn uniongyrchol)"  # {Locked="/model","<id>"}
+model_picker.title: "Dewiswch model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Ni hysbysebodd yr asiant cysylltiedig unrhyw fodelau dethol."
+system.model_set: "Gosodwyd y model ar gyfer y paen hwn i %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model anhysbys %{model} — teipiwch /model i weld y rhestr sydd ar gael."  # {Locked="%{model}","/model"}

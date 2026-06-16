@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. gus panail àidseant a shealltainn/fhalach
 # ── Staid ceangail ────────────────────────────────────────────────────────
 connection.starting: "A' tòiseachadh an àidseant..."
 connection.reconnecting: "Ag ath-cheangal..."
+connection.connecting_activity: "A' ceangal ris an àidseant…"
+connection.lost: "Chaidh an ceangal ris an àidseant a chall. Sgrìobh /restart gus ath-cheangal."  # {Locked="/restart"}
 
 # ── Teachdaireachdan siostam (src/app.rs) ────────────────────────────────────
 system.cancelled: "Air a sgur dheth."
 system.no_prompt_in_flight: "Chan eil brodadh air an t-slighe."
 system.authentication_failed: "Dh'fhàillig an dearbhadh"
 system.command_copied_retry: "Àithne air a chopaigeadh — ruith e ann an teirmineal eile, an uair sin brùth Enter gus feuchainn a-rithist"  # {Locked="Enter"}
+system.stopped_max_tokens: "Chaidh am freagairt a ghearradh às dèidh crìoch toraidh a' mhodail a ruighinn."
+system.stopped_max_turn_requests: "Stad an riochdaire às dèidh a chrìoch iarrtais airson a' chuairt seo a ruighinn."
+system.stopped_refusal: "Dhiùlt an riochdaire leantainn air adhart leis an iarrtas seo."
+system.agent_busy: "Tha an t-àidseant trang air an taba seo — fuirich gus an crìochnaich am brosnachadh làithreach."
+system.resuming_session: "Ag ath-thòiseachadh seisean %{session_id}..."
+system.unknown_command: "Àithne neo-aithnichte \"%{command}\" — air a cur mar bhrosnachadh. Taidhp /help airson an liosta."
+system.busy_use_stop: "Fuirich gus an crìochnaich am brosnachadh làithreach, no cleachd /stop an toiseach."
+system.cannot_focus_session: "Cha ghabh fòcas a chur air seisean %{session_id}: tha e a’ coimhead beò ach chan eil GUID pana ceangailte fhathast. Feuch ris a-rithist an ceann tiota."
+system.cannot_resume_no_load_session: "Cha ghabh ath-thòiseachadh ann am pana àidseint: cha do dh’ainmich %{agent} comas ACP `loadSession`. Brùth Enter (gun Shift) gus ath-thòiseachadh ann am pana teirmineil ùr na àite."
+system.cannot_resume_no_resume_flag: "Cha ghabh seisean %{agent} ath-thòiseachadh: chan eil bratach stoidhle `--resume` aig an àidseant seo. Brùth Shift+Enter gus feuchainn ri ath-thòiseachadh taobh a-staigh pana an àidseint tro ACP na àite."
+system.cannot_resume_unknown_agent: "Cha ghabh seisean %{session_id} ath-thòiseachadh: chan eil an t-àidseant tùsail aithnichte dhan togail seo."
+system.cannot_resume_phantom_via_flag: "Cha ghabh seisean %{agent} %{session_id} ath-thòiseachadh: chaidh a thòiseachadh ach cha do chruinnich e còmhradh sam bith, mar sin dhiùltadh %{agent} fhèin an ath-thòiseachadh. A’ toirt air falbh an ràigh."
+system.cannot_resume_phantom_via_load: "Cha ghabh seisean %{agent} %{session_id} ath-thòiseachadh: chaidh a thòiseachadh ach cha do chruinnich e còmhradh sam bith, mar sin dhiùltadh %{agent} an luchdadh. A’ toirt air falbh an ràigh."
+system.fallback.this_agent: "an t-àidseant seo"
+system.fallback.connected_agent: "an t-àidseant ceangailte"
 
 # ── Toradh CLI àm-ruith (src/main.rs) ────────────────────────────────────
 output.no_windows: "Cha deach uinneagan a lorg."
@@ -170,3 +187,24 @@ time.hour_singular: "%{count} uair a thìde air ais"
 time.hours_other: "%{count} uairean a thìde air ais"
 time.day_singular: "%{count} latha air ais"
 time.days_other: "%{count} làithean air ais"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Restart agent"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Cur an gnìomh molaidh (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Dh’fhàillig roghainn %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Tagh am modail airson a' phana seo (/model <id> gus atharrachadh gu dìreach)"  # {Locked="/model","<id>"}
+model_picker.title: "Tagh modail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Cha do dh'ainmich an t-àidseant ceangailte modail sam bith a ghabhas taghadh."
+system.model_set: "Chaidh modail a' phana seo a shuidheachadh gu %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Modail neo-aithnichte %{model} — sgrìobh /model gus an liosta a tha ri làimh fhaicinn."  # {Locked="%{model}","/model"}

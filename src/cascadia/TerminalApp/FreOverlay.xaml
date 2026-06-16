@@ -167,7 +167,10 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="48" />
+                    <!--  Bottom zone grows to fit a two-line error (message +
+                          manual-fix link) without clipping; MinHeight keeps the
+                          Save button area stable when there's no error.  -->
+                    <RowDefinition Height="Auto" MinHeight="48" />
                 </Grid.RowDefinitions>
 
                 <!--  Top: Title + Subtitle  -->
@@ -191,8 +194,13 @@
                     </TextBlock>
                 </StackPanel>
 
-                <!--  Content: Settings Form  -->
-                <ScrollViewer Grid.Row="1"
+                <!--  Content: Settings Form. Named so we can disable it as
+                      a group while a save/install is in progress
+                      (keyboard input blocking — see
+                      FreOverlay::_SetSavingState). A SavingOverlay
+                      sibling sits on top for the visual + spinner.  -->
+                <ScrollViewer x:Name="SettingsFormScroller"
+                              Grid.Row="1"
                               HorizontalAlignment="Stretch"
                               VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="4"
@@ -203,8 +211,14 @@
                                 BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
                                 BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
                                 CornerRadius="{ThemeResource ControlCornerRadius}"
+                                MinHeight="64"
                                 Padding="16,12">
-                            <Grid>
+                            <!--  ColumnSpacing="24" matches SettingContainer's
+                                  standard 24px gap between the title column
+                                  and the right-side control. Without it, long
+                                  wrapped descriptions visually butt up
+                                  against the ComboBox / ToggleSwitch.  -->
+                            <Grid ColumnSpacing="24">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -213,14 +227,49 @@
                                     <TextBlock x:Uid="FreOverlay_AgentLabel"
                                                FontSize="14" FontWeight="SemiBold"
                                                Foreground="White" />
-                                    <TextBlock x:Uid="FreOverlay_AgentDescription"
+                                    <!--  Run.Text values populated from code-behind by splitting on "ACP".  -->
+                                    <TextBlock x:Name="AgentDescriptionText"
                                                FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap" />
-                                    <TextBlock x:Uid="FreOverlay_AgentInstallHint"
-                                               x:Name="AgentInstallHint"
-                                               FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap" Visibility="Collapsed"
-                                               Margin="0,4,0,0" />
+                                               TextWrapping="Wrap">
+                                        <Run x:Name="AgentDescriptionBefore" />
+                                        <Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-dependency#agent-clis"
+                                                   Foreground="#FF99EBFF">
+                                            <Run x:Name="AgentDescriptionAcpToken" />
+                                        </Hyperlink>
+                                        <Run x:Name="AgentDescriptionAfter" />
+                                    </TextBlock>
+                                    <!--  AgentInstallHint row: monochrome
+                                          info glyph + text, same pattern as
+                                          the Session-management hint.  -->
+                                    <!--  Two-column Grid (NOT a horizontal
+                                          StackPanel) so the wrapping
+                                          TextBlock is constrained to the
+                                          remaining width — a horizontal
+                                          StackPanel measures its children
+                                          with infinite width and the long
+                                          localized hint would overflow the
+                                          card instead of wrapping.  -->
+                                    <Grid x:Name="AgentInstallHintRow"
+                                          Visibility="Collapsed"
+                                          Margin="0,4,0,0"
+                                          ColumnSpacing="6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Grid.Column="0"
+                                                  Glyph="&#xE946;"
+                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                  FontSize="12"
+                                                  Foreground="#99FFFFFF"
+                                                  VerticalAlignment="Top"
+                                                  Margin="0,2,0,0" />
+                                        <TextBlock Grid.Column="1"
+                                                   x:Uid="FreOverlay_AgentInstallHint"
+                                                   x:Name="AgentInstallHint"
+                                                   FontSize="12" Foreground="#99FFFFFF"
+                                                   TextWrapping="Wrap" />
+                                    </Grid>
                                     <TextBlock x:Name="AgentPolicyNotice"
                                                FontSize="12" FontStyle="Italic"
                                                Foreground="#CCFFA500" TextWrapping="Wrap"
@@ -252,19 +301,66 @@
                                       HorizontalAlignment="Stretch"
                                       HorizontalContentAlignment="Stretch"
                                       IsExpanded="True">
+                            <!--  Use Margin (not theme-resource keys) to force
+                                  the header to match sibling Border-card
+                                  height. WinUI's ExpanderHeaderPadding /
+                                  ExpanderHeaderMinHeight resource overrides
+                                  silently fail to reach the header on this
+                                  version, but Margin on the inner Grid is
+                                  honored directly by the layout pass.
+                                  We DO override ExpanderContentPadding for
+                                  the body row to mirror the same 12-px
+                                  vertical breathing room.  -->
+                            <mux:Expander.Resources>
+                                <Thickness x:Key="ExpanderContentPadding">16,12,16,12</Thickness>
+                            </mux:Expander.Resources>
                             <mux:Expander.Header>
-                                <Grid>
+                                <Grid ColumnSpacing="24" Margin="0,12,0,12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                    <StackPanel Grid.Column="0" Spacing="2">
                                         <TextBlock x:Uid="FreOverlay_AutoDetectLabel"
                                                    FontSize="14" FontWeight="SemiBold"
                                                    Foreground="White" />
                                         <TextBlock x:Uid="FreOverlay_AutoDetectDescription"
                                                    FontSize="12" Foreground="#99FFFFFF"
                                                    TextWrapping="Wrap" />
+                                        <!--  Hint row: monochrome info glyph
+                                              + text with inline "Learn more"
+                                              link to the shell-integration
+                                              docs. Same Grid + FontIcon
+                                              pattern as SessionManagementHint
+                                              (2 cols so the wrapping
+                                              TextBlock is width-bounded).
+                                              Run texts can't use x:Uid, so
+                                              they're set in code-behind via
+                                              RS_.  -->
+                                        <Grid x:Name="AutoDetectShellIntegrationHintRow"
+                                              Margin="0,4,0,0"
+                                              ColumnSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon Grid.Column="0"
+                                                      Glyph="&#xE946;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="12"
+                                                      Foreground="#99FFFFFF"
+                                                      VerticalAlignment="Top"
+                                                      Margin="0,2,0,0" />
+                                            <TextBlock Grid.Column="1"
+                                                       FontSize="12" Foreground="#99FFFFFF"
+                                                       TextWrapping="Wrap">
+                                                <Run x:Name="AutoDetectShellIntegrationHintPrefix" />
+                                                <Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal/blob/main/doc/installing-dependencies.md#8-powershell-shell-integration"
+                                                           Foreground="#FF99EBFF">
+                                                    <Run x:Name="AutoDetectShellIntegrationHintLink" />
+                                                </Hyperlink>
+                                            </TextBlock>
+                                        </Grid>
                                     </StackPanel>
                                     <ToggleSwitch x:Name="AutoDetectToggle" Grid.Column="1"
                                                   IsOn="True" VerticalAlignment="Center"
@@ -276,12 +372,12 @@
                                   no separate card — forced off + disabled when
                                   detection is off.  -->
                             <StackPanel Spacing="4">
-                                <Grid>
+                                <Grid ColumnSpacing="24">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                    <StackPanel Grid.Column="0" Spacing="2">
                                         <TextBlock x:Uid="FreOverlay_AutoErrorLabel"
                                                    FontSize="14" FontWeight="SemiBold"
                                                    Foreground="White" />
@@ -306,9 +402,10 @@
                                 BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
                                 BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
                                 CornerRadius="{ThemeResource ControlCornerRadius}"
+                                MinHeight="64"
                                 Padding="16,12">
                             <StackPanel Spacing="4">
-                                <Grid>
+                                <Grid ColumnSpacing="24">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
@@ -320,10 +417,43 @@
                                         <TextBlock x:Uid="FreOverlay_SessionDescription"
                                                    FontSize="12" Foreground="#99FFFFFF"
                                                    TextWrapping="Wrap" />
-                                        <TextBlock x:Uid="FreOverlay_SessionHint"
-                                                   x:Name="SessionManagementHint"
-                                                   FontSize="12" Foreground="#99FFFFFF"
-                                                   TextWrapping="Wrap" Margin="0,4,0,0" />
+                                        <!--  Hint row: monochrome info glyph
+                                              (Segoe Fluent Icons) + text.
+                                              Previously the icon was an emoji
+                                              embedded in every locale string
+                                              ("ℹ "), which Windows renders via
+                                              the color emoji font. The icon
+                                              now lives in XAML so it stays
+                                              monochrome and consistent with
+                                              the rest of the FRE chrome.  -->
+                                        <!--  Two-column Grid (NOT a horizontal
+                                              StackPanel) so the wrapping
+                                              TextBlock is constrained to the
+                                              remaining width — a horizontal
+                                              StackPanel measures its children
+                                              with infinite width and the long
+                                              localized hint would overflow
+                                              the card instead of wrapping.  -->
+                                        <Grid x:Name="SessionManagementHintRow"
+                                              Margin="0,4,0,0"
+                                              ColumnSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon Grid.Column="0"
+                                                      Glyph="&#xE946;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="12"
+                                                      Foreground="#99FFFFFF"
+                                                      VerticalAlignment="Top"
+                                                      Margin="0,2,0,0" />
+                                            <TextBlock Grid.Column="1"
+                                                       x:Uid="FreOverlay_SessionHint"
+                                                       x:Name="SessionManagementHint"
+                                                       FontSize="12" Foreground="#99FFFFFF"
+                                                       TextWrapping="Wrap" />
+                                        </Grid>
                                     </StackPanel>
                                     <ToggleSwitch x:Name="SessionManagementToggle"
                                                   Grid.Column="1"
@@ -344,8 +474,9 @@
                                 BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
                                 BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
                                 CornerRadius="{ThemeResource ControlCornerRadius}"
+                                MinHeight="64"
                                 Padding="16,12">
-                            <Grid>
+                            <Grid ColumnSpacing="24">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -366,16 +497,85 @@
                     </StackPanel>
                 </ScrollViewer>
 
+                <!--  "Saving / installing in progress" overlay. Sits in
+                      the same Grid cell as SettingsFormScroller and is
+                      rendered after it, so it z-stacks on top. While
+                      visible:
+                        - The opaque-ish Background blocks pointer input
+                          to the form below.
+                        - SettingsFormScroller.IsEnabled is also set to
+                          false in code, which blocks keyboard input
+                          (overlays don't intercept keyboard on their
+                          own — focus would still tab into the form).
+                        - The centered ProgressRing + "Setting up..."
+                          label gives the user an unmissable signal that
+                          a long-running operation is happening.
+                      Collapsed when idle so it doesn't intercept input
+                      or paint pixels.  -->
+                <Border x:Name="SavingOverlay"
+                        Grid.Row="1"
+                        Background="#CC1E1E1E"
+                        Visibility="Collapsed">
+                    <!--  Background is the same RGB as RootGrid (#FF1E1E1E
+                          on line 31) with 80 % alpha, by design: the
+                          overlay reads as "FRE dims itself" rather than
+                          an independent panel. Keep these two in sync
+                          if the FRE backdrop ever changes — extracting
+                          both into shared SolidColorBrush resources is
+                          left for a broader FRE theming pass.  -->
+                    <StackPanel Orientation="Vertical"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="16">
+                        <mux:ProgressRing x:Name="SavingProgressRing"
+                                          Width="48" Height="48"
+                                          IsTabStop="True"
+                                          IsActive="False" />
+                        <TextBlock x:Name="SavingStatusText"
+                                   FontFamily="Segoe UI Variable Text, Segoe UI"
+                                   FontSize="14"
+                                   Foreground="White"
+                                   HorizontalAlignment="Center"
+                                   AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
+                </Border>
+
                 <!--  Bottom: Error text + Save Button  -->
                 <Grid Grid.Row="2">
-                    <TextBlock x:Name="ErrorText"
-                               HorizontalAlignment="Left" VerticalAlignment="Center"
-                               Foreground="#FFFF6B6B" FontSize="13"
-                               TextWrapping="Wrap" MaxWidth="400"
-                               Visibility="Collapsed"
-                               AutomationProperties.LiveSetting="Assertive" />
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <!--  Single prioritized error: message + a manual-fix
+                          hyperlink line. Only the highest-priority problem is
+                          shown at a time (see FreOverlay::_ShowProblem), so the
+                          bottom row stays compact.  -->
+                    <StackPanel x:Name="ErrorPanel"
+                                Grid.Column="0"
+                                HorizontalAlignment="Left" VerticalAlignment="Center"
+                                MaxWidth="440" Spacing="2"
+                                Visibility="Collapsed">
+                        <TextBlock x:Name="ErrorText"
+                                   Foreground="#FFFF6B6B" FontSize="13"
+                                   TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Assertive" />
+                        <TextBlock FontSize="12" TextWrapping="Wrap">
+                            <Hyperlink x:Name="ErrorHelpLink"
+                                       NavigateUri="https://aka.ms/intelligent-terminal-dependency"
+                                       Foreground="#FF99EBFF">
+                                <Run x:Name="ErrorHelpRun" Text="" />
+                            </Hyperlink>
+                        </TextBlock>
+                    </StackPanel>
+                    <!--  Save button. Disabled while a save/install is
+                          in progress; the SavingOverlay above the form
+                          carries the spinner + status text. Label
+                          stays "Save" (via x:Uid) — no in-button text
+                          swap is needed since the overlay communicates
+                          the in-progress state.  -->
                     <Button x:Uid="FreOverlay_SaveButton"
                             x:Name="SaveButton"
+                            Grid.Column="1"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             Width="120" Height="32"
                             Style="{ThemeResource AccentButtonStyle}"

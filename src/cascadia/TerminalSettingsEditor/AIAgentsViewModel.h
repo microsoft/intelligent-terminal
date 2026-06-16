@@ -126,9 +126,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool IsCopilotCliDetected() const noexcept { return _copilotCliDetected; }
         bool IsClaudeCliDetected() const noexcept { return _claudeCliDetected; }
         bool IsGeminiCliDetected() const noexcept { return _geminiCliDetected; }
+        bool IsCodexCliDetected() const noexcept { return _codexCliDetected; }
         bool IsAnyAgentCliDetected() const noexcept
         {
-            return _copilotCliDetected || _claudeCliDetected || _geminiCliDetected;
+            return _copilotCliDetected || _claudeCliDetected || _geminiCliDetected || _codexCliDetected;
         }
         // Per-CLI "row visible" flags — true when the CLI has any wt-agent-hooks
         // state on disk (marketplace registered OR plugin installed). The
@@ -137,14 +138,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool ShowCopilotHookRow() const noexcept { return _showCopilotHookRow; }
         bool ShowClaudeHookRow() const noexcept { return _showClaudeHookRow; }
         bool ShowGeminiHookRow() const noexcept { return _showGeminiHookRow; }
+        bool ShowCodexHookRow() const noexcept { return _showCodexHookRow; }
         // Detail text shown under the CLI name when state isn't fully
         // installed. Empty for fully-installed CLIs (subtitle is hidden in XAML).
         winrt::hstring CopilotHooksSubtitle() const { return _copilotHooksSubtitle; }
         winrt::hstring ClaudeHooksSubtitle() const { return _claudeHooksSubtitle; }
         winrt::hstring GeminiHooksSubtitle() const { return _geminiHooksSubtitle; }
+        winrt::hstring CodexHooksSubtitle() const { return _codexHooksSubtitle; }
         bool ShowCopilotHooksSubtitle() const noexcept { return !_copilotHooksSubtitle.empty(); }
         bool ShowClaudeHooksSubtitle() const noexcept { return !_claudeHooksSubtitle.empty(); }
         bool ShowGeminiHooksSubtitle() const noexcept { return !_geminiHooksSubtitle.empty(); }
+        bool ShowCodexHooksSubtitle() const noexcept { return !_codexHooksSubtitle.empty(); }
         bool CanInstallAgentHooks() const noexcept
         {
             return IsAnyAgentCliDetected() && !IsAgentSessionHooksPolicyLocked();
@@ -158,6 +162,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void RemoveCopilotHooks();
         void RemoveClaudeHooks();
         void RemoveGeminiHooks();
+        void RemoveCodexHooks();
 
     private:
         Model::GlobalAppSettings _GlobalSettings;
@@ -212,15 +217,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _copilotCliDetected{ false };
         bool _claudeCliDetected{ false };
         bool _geminiCliDetected{ false };
+        bool _codexCliDetected{ false };
         // Row visibility — true when the CLI has any wt-agent-hooks state
         // on disk (marketplace registered OR plugin installed).
         bool _showCopilotHookRow{ false };
         bool _showClaudeHookRow{ false };
         bool _showGeminiHookRow{ false };
+        bool _showCodexHookRow{ false };
         // Subtitle text per CLI; empty for fully-installed CLIs.
         winrt::hstring _copilotHooksSubtitle;
         winrt::hstring _claudeHooksSubtitle;
         winrt::hstring _geminiHooksSubtitle;
+        winrt::hstring _codexHooksSubtitle;
         bool _installingAgentHooks{ false };
         bool _refreshingAgentHooks{ false };
         winrt::hstring _agentHooksInstallSummary;

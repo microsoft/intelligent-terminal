@@ -163,11 +163,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Agent panelində istifadə olunan agenti seçin. Uyğun olan istənilən ACP agent avtomatik aşkar ediləcək.</value>
+    <value>Agent panelində istifadə olunan və ACP dəstəkləyən agenti seçin.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Bu agent Node.js və NPX tələb edir, əgər hələ quraşdırılmayıbsa avtomatik quraşdırılacaq.</value>
+    <value>Bu agent Node.js və NPX tələb edir, əgər hələ quraşdırılmayıbsa avtomatik quraşdırılacaq.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -185,7 +185,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Bunu aktivləşdirmək agentləriniz arasında sessiyaları izləmək üçün inteqrasiya hooks quraşdıracaq.</value>
+    <value>Bunu aktivləşdirmək agentləriniz arasında sessiyaları izləmək üçün inteqrasiya hooks quraşdıracaq.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -220,13 +220,49 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Qurulur...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot quraşdırıla bilmədi. Şəbəkənizi yoxlayın və yenidən cəhd edin.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ {0} quraşdırılması Windows Paket Meneceri siyasəti tərəfindən bloklandı. İdarə olunan cihazdasınızsa, IT administratorunuzla əlaqə saxlayın.</value>
+    <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js quraşdırıla bilmədi. Şəbəkənizi yoxlayın və yenidən cəhd edin.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ {0} quraşdırıla bilmədi (xəta kodu {1}). Təfərrüatlar üçün jurnala baxın və ya {0} paketini əl ilə quraşdırın.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ {0} quraşdırıla bilmədi. Təfərrüatlar üçün jurnala baxın və ya {0} paketini əl ilə quraşdırın.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0} quraşdırıcısı xəta bildirdi (kod {1}). Təfərrüatlar üçün jurnalı yoxlayın və ya {0} paketini əl ilə quraşdırın.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ {0} quraşdırılarkən Windows Paket Menecerinə qoşulmaq mümkün olmadı. İnternet bağlantınızı yoxlayın (VPN, proksi və ya təhlükəsizlik divarı onu bloklaya bilər) və yenidən cəhd edin.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Bu sistemdə {0} üçün uyğun quraşdırıcı mövcud deyil (OS versiyası və ya arxitektura dəstəklənməyə bilər). {0} paketini əl ilə quraşdırın.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} Windows Paket Meneceri kataloqunda tapılmadı. winget mənbələrini yeniləməyi sınayın və ya {0} paketini əl ilə quraşdırın.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0} quraşdırılması 20 dəqiqədən çox çəkdi. Intelligent Terminal gözləməyi dayandırdı, lakin quraşdırıcı hələ də arxa planda işləyə bilər. Task Manager-i yoxlayın və ya sonra yenidən cəhd edin.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows Paket Meneceri (winget) quraşdırılmayıb və ya əlçatan deyil. Əvvəlcə onu quraşdırın, sonra yenidən cəhd edin.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Açıq</value>
@@ -303,5 +339,27 @@
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal-ə qabığınıza daxil olmaq və səhvləri avtomatik aşkarlamaq icazəsi verin.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Shell inteqrasiyasını quraşdırmaq alınmadı. Xəta aşkarlanması söndürülüb. Onu yenidən aktivləşdirib təkrar cəhd edə bilərsiniz və ya onsuz davam etmək üçün saxlaya bilərsiniz.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Session hooks quraşdırmaq alınmadı. Sessiya idarəetməsi söndürülüb. Onu yenidən aktivləşdirib təkrar cəhd edə bilərsiniz və ya onsuz davam etmək üçün saxlaya bilərsiniz.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Bunu necə əl ilə düzəltməyi öyrənin</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Bunu aktivləşdirmək əmr xətalarını aşkar etmək üçün shell inteqrasiyası quraşdıracaq. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Daha çox öyrənin</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>PowerShell icra siyasəti skriptləri bloklayır.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell icra siyasəti skriptləri bloklayır. Xəta aşkarlanması söndürüldü.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

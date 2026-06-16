@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. per mostrar/amagar el tauler d'agent • C
 # ── Estat de la connexió ────────────────────────────────────────────────────────
 connection.starting: "S'està iniciant l'agent..."
 connection.reconnecting: "S'està reconnectant..."
+connection.connecting_activity: "S'està connectant a l'agent…"
+connection.lost: "S'ha perdut la connexió amb l'agent. Escriviu /restart per tornar-vos a connectar."  # {Locked="/restart"}
 
 # ── Missatges del sistema (src/app.rs) ────────────────────────────────────────
 system.cancelled: "Cancel·lat."
 system.no_prompt_in_flight: "No hi ha cap indicació en curs."
 system.authentication_failed: "L'autenticació ha fallat"
 system.command_copied_retry: "Ordre copiada — executeu-la en un altre terminal i premeu Enter per tornar-ho a provar"  # {Locked="Enter"}
+system.stopped_max_tokens: "La resposta s'ha tallat en arribar al límit de sortida del model."
+system.stopped_max_turn_requests: "L'agent s'ha aturat en arribar al seu límit de sol·licituds per a aquest torn."
+system.stopped_refusal: "L'agent ha rebutjat continuar amb aquesta sol·licitud."
+system.agent_busy: "L’agent està ocupat en aquesta pestanya — espereu que acabi la indicació actual."
+system.resuming_session: "S’està reprenent la sessió %{session_id}..."
+system.unknown_command: "Ordre desconeguda \"%{command}\" — s’ha enviat com a indicació. Escriviu /help per veure la llista."
+system.busy_use_stop: "Espereu que acabi la indicació actual, o feu /stop primer."
+system.cannot_focus_session: "No es pot enfocar la sessió %{session_id}: sembla activa, però encara no hi ha cap GUID de subfinestra vinculat. Torneu-ho a provar d’aquí a un moment."
+system.cannot_resume_no_load_session: "No es pot reprendre al panell d’agent: %{agent} no ha anunciat la capacitat ACP `loadSession`. Premeu Enter (sense Shift) per reprendre-la en un panell de terminal nou."
+system.cannot_resume_no_resume_flag: "No es pot reprendre la sessió de %{agent}: aquest agent no té cap marca d’estil `--resume`. Premeu Shift+Enter per provar de reprendre-la dins del panell d’agent mitjançant ACP."
+system.cannot_resume_unknown_agent: "No es pot reprendre la sessió %{session_id}: l’agent d’origen és desconegut per a aquesta compilació."
+system.cannot_resume_phantom_via_flag: "No es pot reprendre la sessió de %{agent} %{session_id}: es va iniciar però no va acumular cap conversa, de manera que %{agent} rebutjaria la represa. S’elimina la fila."
+system.cannot_resume_phantom_via_load: "No es pot reprendre la sessió de %{agent} %{session_id}: es va iniciar però no va acumular cap conversa, de manera que %{agent} rebutjaria la càrrega. S’elimina la fila."
+system.fallback.this_agent: "aquest agent"
+system.fallback.connected_agent: "l’agent connectat"
 
 # ── Sortida de CLI en temps d'execució (src/main.rs) ────────────────────────────────────
 output.no_windows: "No s'han trobat finestres."
@@ -171,3 +188,24 @@ time.hour_singular: "fa %{count} hora"
 time.hours_other: "fa %{count} hores"
 time.day_singular: "fa %{count} dia"
 time.days_other: "fa %{count} dies"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Mostra aquesta llista d'ordres"
+commands.clear.summary: "Esborra l'historial de desplaçament del xat (manté la sessió)"
+commands.new.summary: "Inicia una sessió ACP nova (descarta l'historial)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnostica el terminal actiu i suggereix una correcció (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Reinicia l'agent"
+commands.stop.summary: "Cancel·la la sol·licitud en curs"
+commands.sessions.summary: "Obre el selector de sessions històriques (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Execució de recomanacions (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "L’opció %{choice} ha fallat: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Trieu el model per a aquest tauler (/model <id> per canviar directament)"  # {Locked="/model","<id>"}
+model_picker.title: "Seleccioneu el model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "L’agent connectat no ha anunciat cap model seleccionable."
+system.model_set: "El model d’aquest tauler s’ha establert a %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model desconegut %{model} — escriviu /model per veure la llista disponible."  # {Locked="%{model}","/model"}

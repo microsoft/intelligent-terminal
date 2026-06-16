@@ -33,6 +33,13 @@ namespace SettingsModelUnitTests
     class ColorSchemeTests;
 };
 
+// Forward declaration so we can declare the test-hook signature below
+// without pulling in AgentPolicy.h from this widely-included header.
+namespace Microsoft::Terminal::Settings::Model::AgentPolicy
+{
+    struct PolicySnapshot;
+};
+
 namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 {
     struct GlobalAppSettings : GlobalAppSettingsT<GlobalAppSettings>, IInheritable<GlobalAppSettings>
@@ -94,6 +101,16 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         bool IsCustomAgentPolicyLocked() const;
         bool IsAutoFixPolicyLocked() const;
         bool IsAgentSessionHooksPolicyLocked() const;
+
+        // ── Test-only seam ──────────────────────────────────────────────
+        // Replace the SettingsModel DLL's cached AgentPolicy snapshot
+        // with a test-controlled value. Compiled into SettingsModel.dll
+        // so writes target the same `s_snapshot` that
+        // EffectiveAcpAgent / EffectiveDelegateAgent read. Pair every
+        // call with _TestHookResetAgentPolicy() in test cleanup.
+        // NOT for production use.
+        static void _TestHookSetAgentPolicy(std::shared_ptr<const ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot> snap);
+        static void _TestHookResetAgentPolicy();
 
         INHERITABLE_SETTING(Model::GlobalAppSettings, hstring, UnparsedDefaultProfile, L"");
 

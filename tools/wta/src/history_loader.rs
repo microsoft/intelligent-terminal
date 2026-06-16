@@ -2,7 +2,7 @@
 //
 // Discover historical CLI agent sessions by scanning each CLI's on-disk
 // log/state layout. Used to seed the AgentSessionRegistry with `Historical`
-// entries on App startup so users can resume past sessions from F2.
+// entries on App startup so users can resume past sessions from session management view.
 //
 // Layouts (verified 2026-05):
 //   Copilot:  ~/.copilot/session-state/<UUID>/{workspace.yaml,events.jsonl}
@@ -36,6 +36,20 @@
 //               exchanging a turn leaves these on disk — Enter on
 //               the row would launch `gemini --resume <id>` and
 //               dead-end on a similar "no session" rejection.
+//
+//   Codex:    ~/.codex/sessions/YYYY/MM/DD/rollout-<iso-ts>-<UUID>.jsonl
+//             - session id   = first JSONL line `session_meta` payload.id
+//             - cwd          = `session_meta` payload.cwd
+//             - title        = first `event_msg` payload.user_message,
+//                              else first `response_item` role=user content
+//                              (skipping synthetic `<environment_context>`
+//                              prefixes injected by the CLI)
+//             - last_activity= `session_meta` payload.timestamp (fallback file mtime)
+//             - skip "phantom" sessions whose jsonl contains only the
+//               `session_meta` header and/or synthetic
+//               `<environment_context>` response_items (no real user
+//               turn). `codex resume <id>` would reject these as having
+//               no conversation to resume.
 //
 // (Note: per-subagent JSONL files may live in nested `<UUID>/` subdirs of
 // `chats/`. Top-level Gemini sessions are flat files named `session-*.jsonl`.
@@ -71,6 +85,7 @@ pub fn load_all() -> Vec<AgentSession> {
     out.extend(take_n(load_copilot(&home), MAX_PER_CLI));
     out.extend(take_n(load_claude(&home),  MAX_PER_CLI));
     out.extend(take_n(load_gemini(&home),  MAX_PER_CLI));
+    out.extend(take_n(load_codex(&home),  MAX_PER_CLI));
     // Stamp `origin: AgentPane` on rows whose session id was recorded in
     // the local agent-pane index. Loaded once and applied as a join so the
     // per-CLI scanners stay agnostic of how the index is shaped or where
@@ -112,7 +127,8 @@ pub fn lookup_title_for_session_in(
         CliSource::Copilot => copilot_title_for_key(home, key),
         CliSource::Claude  => claude_title_for_key(home, key),
         CliSource::Gemini  => gemini_title_for_key(home, key),
-        _ => None,
+        CliSource::Codex   => codex_title_for_key(home, key),
+        CliSource::Unknown(_) => None,
     }
 }
 
@@ -230,6 +246,7 @@ pub(crate) fn key_is_resumable_on_disk_in(
     use crate::agent_sessions::CliSource;
     match cli {
         CliSource::Claude  => claude_key_is_resumable_on_disk_in(home, key),
+        CliSource::Codex   => codex_key_is_resumable_on_disk_in(home, key),
         CliSource::Copilot => copilot_key_is_resumable_on_disk_in(home, key),
         CliSource::Gemini  => gemini_key_is_resumable_on_disk_in(home, key),
         CliSource::Unknown(_) => true,
@@ -274,6 +291,7 @@ pub(crate) fn key_has_definite_resumable_content_in(
     use crate::agent_sessions::CliSource;
     match cli {
         CliSource::Claude  => claude_key_has_definite_resumable_content_in(home, key),
+        CliSource::Codex   => codex_key_has_definite_resumable_content_in(home, key),
         CliSource::Copilot => copilot_key_has_definite_resumable_content_in(home, key),
         CliSource::Gemini  => gemini_key_has_definite_resumable_content_in(home, key),
         CliSource::Unknown(_) => true,
@@ -410,6 +428,22 @@ pub(crate) fn gemini_jsonl_has_real_content(path: &Path) -> bool {
     false
 }
 
+// ─── Codex per-key helpers ──────────────────────────────────────────────
+
+fn codex_key_is_resumable_on_disk_in(home: &Path, id: &str) -> bool {
+    match find_codex_rollout_by_id(home, id) {
+        None => true,
+        Some(path) => codex_session_has_real_content(&path),
+    }
+}
+
+fn codex_key_has_definite_resumable_content_in(home: &Path, id: &str) -> bool {
+    match find_codex_rollout_by_id(home, id) {
+        None => false,
+        Some(path) => codex_session_has_real_content(&path),
+    }
+}
+
 // ─── Copilot ────────────────────────────────────────────────────────────
 
 fn load_copilot(home: &Path) -> Vec<AgentSession> {
@@ -434,7 +468,7 @@ fn load_copilot(home: &Path) -> Vec<AgentSession> {
         // process eagerly creates `~/.copilot/session-state/<UUID>/workspace.yaml`
         // even before the user types anything. If the user never interacts,
         // no `events.jsonl` is ever written. These dirs would otherwise
-        // appear at the very top of F2 after each WT restart (most-recent
+        // appear at the very top of session management view after each WT restart (most-recent
         // last_activity), masking real historical sessions. Treat the
         // existence of a non-empty `events.jsonl` as the marker for "user
         // actually did something here".
@@ -517,7 +551,7 @@ fn load_claude(home: &Path) -> Vec<AgentSession> {
             // `claude --resume <id>` rejects it with
             // `No conversation found with session ID: <id>`. Mirror the
             // Copilot ghost-session filter so these rows never appear in
-            // the F2 view, where Enter would dead-end with that error.
+            // the session management view, where Enter would dead-end with that error.
             if !claude_session_has_real_content(&path) { continue; }
             let last_activity = path.metadata().and_then(|m| m.modified()).ok()
                 .unwrap_or(SystemTime::UNIX_EPOCH);
@@ -575,7 +609,7 @@ fn load_gemini(home: &Path) -> Vec<AgentSession> {
             // Drop phantom Gemini sessions: opening `gemini` and
             // exiting without exchanging a turn leaves a JSONL on
             // disk containing only the session header line(s) —
-            // pressing Enter on the row in F2 would launch
+            // pressing Enter on the row in session management view would launch
             // `gemini --resume <id>` which Gemini rejects (and the
             // synthetic title `gemini <8-char>` from `short_id`
             // exposes the lack of content anyway). Mirrors the
@@ -627,6 +661,309 @@ fn is_gemini_session_file(p: &Path) -> bool {
     let Some(name) = p.file_name().and_then(|n| n.to_str()) else { return false; };
     if !name.starts_with("session-") { return false; }
     name.ends_with(".jsonl")
+}
+
+// ─── Codex ──────────────────────────────────────────────────────────────
+
+fn load_codex(home: &Path) -> Vec<AgentSession> {
+    let root = home.join(".codex").join("sessions");
+    let mut out: Vec<AgentSession> = Vec::new();
+    let Ok(years) = fs::read_dir(&root) else { return out };
+    for y in years.flatten() {
+        let Ok(months) = fs::read_dir(y.path()) else { continue };
+        for m in months.flatten() {
+            let Ok(days) = fs::read_dir(m.path()) else { continue };
+            for d in days.flatten() {
+                let Ok(files) = fs::read_dir(d.path()) else { continue };
+                for f in files.flatten() {
+                    let path = f.path();
+                    let Some(name) = path.file_name().and_then(|s| s.to_str()) else { continue };
+                    if !name.starts_with("rollout-") || !name.ends_with(".jsonl") { continue; }
+                    if !codex_session_has_real_content(&path) { continue; }
+                    let Some(meta) = read_codex_session_meta(&path) else { continue; };
+                    let title = codex_title_from_file(&path)
+                        .unwrap_or_else(|| short_id(&meta.id, "codex"));
+                    let last_activity_at = meta.timestamp
+                        .or_else(|| fs::metadata(&path).and_then(|m| m.modified()).ok())
+                        .unwrap_or_else(SystemTime::now);
+                    out.push(AgentSession {
+                        key:               meta.id,
+                        cli_source:        CliSource::Codex,
+                        pane_session_id:   None,
+                        window_id:         None,
+                        tab_id:            None,
+                        title,
+                        cwd:               meta.cwd,
+                        started_at:        last_activity_at,
+                        last_activity_at,
+                        status:            AgentStatus::Historical,
+                        last_error:        None,
+                        current_tool:      None,
+                        attention_reason:  None,
+                        log_path:          Some(path),
+                        origin:            crate::agent_sessions::SessionOrigin::default(),
+                    });
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+    out
+}
+
+struct CodexSessionMeta {
+    id:        String,
+    cwd:       PathBuf,
+    timestamp: Option<SystemTime>,
+}
+
+fn read_codex_session_meta(path: &Path) -> Option<CodexSessionMeta> {
+    use std::io::BufRead;
+    let f = fs::File::open(path).ok()?;
+    let mut reader = std::io::BufReader::new(f);
+    let mut line = String::new();
+    reader.read_line(&mut line).ok()?;
+    let v: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+    if v.get("type")?.as_str()? != "session_meta" { return None; }
+    let payload = v.get("payload")?;
+    let ts_str = payload.get("timestamp").and_then(|s| s.as_str());
+    Some(CodexSessionMeta {
+        id:        payload.get("id")?.as_str()?.to_string(),
+        cwd:       PathBuf::from(payload.get("cwd")?.as_str()?),
+        timestamp: ts_str.and_then(parse_iso_to_system_time),
+    })
+}
+
+fn codex_session_has_real_content(path: &Path) -> bool {
+    let Some(lines) = stream_jsonl_lines(path, CLASSIFY_SCAN_BYTES_CAP) else {
+        return true; // conservative on IO error
+    };
+    for line in lines {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        let ty = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
+        match ty {
+            "event_msg" => {
+                let pty = v.get("payload")
+                    .and_then(|p| p.get("type"))
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("");
+                if matches!(pty, "user_message" | "agent_message") { return true; }
+            }
+            "response_item" => {
+                let Some(payload) = v.get("payload") else { continue };
+                let role = payload.get("role").and_then(|s| s.as_str()).unwrap_or("");
+                if role == "assistant" { return true; }
+                if role == "user" {
+                    let text = payload.get("content")
+                        .and_then(|c| c.get(0))
+                        .and_then(|c0| c0.get("text"))
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("");
+                    if !text.starts_with("<environment_context>") { return true; }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn codex_title_from_file(path: &Path) -> Option<String> {
+    let lines = stream_jsonl_lines(path, CLASSIFY_SCAN_BYTES_CAP)?;
+    for line in lines {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        let ty = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
+        match ty {
+            "event_msg" => {
+                let Some(payload) = v.get("payload") else { continue };
+                let pty = payload.get("type").and_then(|s| s.as_str()).unwrap_or("");
+                if pty == "user_message" {
+                    let msg = payload.get("message").and_then(|s| s.as_str()).unwrap_or("");
+                    let title = first_nonblank_line(msg);
+                    if !title.is_empty() { return Some(title); }
+                }
+            }
+            "response_item" => {
+                let Some(payload) = v.get("payload") else { continue };
+                let role = payload.get("role").and_then(|s| s.as_str()).unwrap_or("");
+                if role == "user" {
+                    let text = payload.get("content")
+                        .and_then(|c| c.get(0))
+                        .and_then(|c0| c0.get("text"))
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("");
+                    if !text.starts_with("<environment_context>") {
+                        let title = first_nonblank_line(text);
+                        if !title.is_empty() { return Some(title); }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn first_nonblank_line(raw: &str) -> String {
+    raw.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string()
+}
+
+pub fn codex_title_for_key(home: &Path, key: &str) -> Option<String> {
+    let path = find_codex_rollout_by_id(home, key)?;
+    codex_title_from_file(&path)
+}
+
+/// Locate the rollout file for a given session UUID.
+///
+/// Defensive walking: only an unreadable ROOT (`~/.codex/sessions`) returns
+/// None. Subtree errors (an unreadable year / month / day directory)
+/// `continue` so the search proceeds across siblings — same contract as
+/// `load_codex`.
+///
+/// The filename suffix `<id>.jsonl` is a fast pre-filter; we still verify
+/// `payload.id == id` to guard against renamed files or UUID-prefix
+/// collisions.
+fn find_codex_rollout_by_id(home: &Path, id: &str) -> Option<PathBuf> {
+    let root = home.join(".codex").join("sessions");
+    let Ok(years) = fs::read_dir(&root) else { return None };
+    for y in years.flatten() {
+        let Ok(months) = fs::read_dir(y.path()) else { continue };
+        for m in months.flatten() {
+            let Ok(days) = fs::read_dir(m.path()) else { continue };
+            for d in days.flatten() {
+                let Ok(files) = fs::read_dir(d.path()) else { continue };
+                for f in files.flatten() {
+                    let p = f.path();
+                    let Some(name) = p.file_name().and_then(|s| s.to_str()) else { continue };
+                    if !(name.starts_with("rollout-") && name.ends_with(&format!("-{}.jsonl", id))) {
+                        continue;
+                    }
+                    if let Some(meta) = read_codex_session_meta(&p) {
+                        if meta.id == id {
+                            return Some(p);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Parse a subset of ISO 8601 timestamps into `SystemTime`.
+///
+/// Handles the UTC shapes Codex `session_meta` emits
+/// (`YYYY-MM-DDTHH:MM:SSZ` and `YYYY-MM-DDTHH:MM:SS.fffZ`) plus the
+/// numeric offset variants (`±HH:MM`), e.g. `2026-05-27T10:53:09+08:00`.
+/// Returns `None` for any out-of-range / overflowing / malformed input
+/// (never panics).
+fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
+    let s = s.trim();
+    
+    // Detect and parse timezone offset (+HH:MM or -HH:MM, or Z for UTC)
+    let offset_seconds = if s.ends_with('Z') {
+        0
+    } else if s.len() >= 25 {
+        // Check if last 6 characters match ±HH:MM pattern
+        let offset_part = s.get(s.len()-6..)?;
+        if let Some(sign_idx) = offset_part.rfind(|c| c == '+' || c == '-') {
+            if sign_idx == 0 {
+                // Parse HH:MM
+                let hm = offset_part.get(1..)?;
+                if hm.len() == 5 && hm.chars().nth(2) == Some(':') {
+                    let hh: i32 = hm.get(..2)?.parse().ok()?;
+                    let mm: i32 = hm.get(3..)?.parse().ok()?;
+                    // Reject out-of-range offsets (e.g. `+99:99`) so they
+                    // don't silently skew the timestamp.
+                    if !(0..=23).contains(&hh) || !(0..=59).contains(&mm) {
+                        return None;
+                    }
+                    let total_seconds = hh * 3600 + mm * 60;
+                    if offset_part.starts_with('-') { -total_seconds } else { total_seconds }
+                } else {
+                    return None;
+                }
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+    
+    // Determine the core portion to parse (strip Z or offset)
+    let core = if s.ends_with('Z') {
+        s.strip_suffix('Z')?
+    } else if offset_seconds != 0 && s.len() >= 6 {
+        s.get(..s.len()-6)?
+    } else {
+        s.get(..19)?
+    };
+    
+    // Split at 'T' → date + time
+    let (date_part, time_part) = core.split_once('T')?;
+    let mut date_iter = date_part.split('-');
+    let year: u64 = date_iter.next()?.parse().ok()?;
+    let month: u64 = date_iter.next()?.parse().ok()?;
+    let day: u64 = date_iter.next()?.parse().ok()?;
+    let time_no_frac = time_part.split('.').next().unwrap_or(time_part);
+    let mut time_iter = time_no_frac.split(':');
+    let hour: u64 = time_iter.next()?.parse().ok()?;
+    let min: u64 = time_iter.next()?.parse().ok()?;
+    let sec: u64 = time_iter.next()?.parse().ok()?;
+
+    // Pre-1970 underflow check, and bound the year so the day/seconds
+    // arithmetic below cannot overflow u64 (the documented subset of
+    // ISO 8601 only needs 4-digit years anyway).
+    if year < 1970 || year > 9999 {
+        return None;
+    }
+
+    // Validate hour/min/sec bounds
+    if hour > 23 || min > 59 || sec > 59 {
+        return None;
+    }
+
+    // Convert to Unix timestamp (simplified — no leap seconds).
+    // Days from year 0 to start of `year`, then add months+day.
+    fn days_before_year(y: u64) -> u64 {
+        let y = y - 1;
+        365 * y + y / 4 - y / 100 + y / 400
+    }
+    fn is_leap(y: u64) -> bool {
+        y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
+    }
+    let days_in_month: [u64; 12] = [31, if is_leap(year) { 29 } else { 28 },
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    
+    // Validate month bounds
+    if month < 1 || month > 12 {
+        return None;
+    }
+    
+    // Validate day bounds
+    let days_in_current_month = days_in_month[(month - 1) as usize];
+    if day < 1 || day > days_in_current_month {
+        return None;
+    }
+    
+    let mut total_days = days_before_year(year) - days_before_year(1970);
+    for i in 0..(month - 1) as usize {
+        total_days += days_in_month[i];
+    }
+    total_days += day - 1;
+    let mut secs = (total_days * 86400 + hour * 3600 + min * 60 + sec) as i64;
+    // Subtract offset to convert from local time to UTC
+    secs -= offset_seconds as i64;
+    
+    if secs < 0 {
+        return None;
+    }
+    // `checked_add` so malformed / far-future timestamps fail closed
+    // (return `None`) instead of panicking on overflow.
+    SystemTime::UNIX_EPOCH.checked_add(std::time::Duration::from_secs(secs as u64))
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -963,7 +1300,7 @@ fn read_cwd_from_claude_jsonl(path: &Path) -> Option<PathBuf> {
 /// only `permission-mode`, `file-history-snapshot`, `last-prompt`, and
 /// meta/slash-command user records is rejected with
 /// `No conversation found with session ID: <id>`. Filtering those
-/// "phantom" JSONL files out of the loader prevents Enter on an F2 row
+/// "phantom" JSONL files out of the loader prevents Enter on a session management row
 /// from dead-ending in that error.
 ///
 /// Streams the JSONL line-by-line (bounded by [`CLASSIFY_SCAN_BYTES_CAP`])
@@ -1082,7 +1419,7 @@ mod tests {
         let text = "summary: hello\nsummary_count: 0\n";
         assert_eq!(parse_simple_yaml(text, "summary").as_deref(),       Some("hello"));
         assert_eq!(parse_simple_yaml(text, "summary_count").as_deref(), Some("0"));
-        // Querying a non-existent prefix must not partial-match a longer key.
+        // Querying a nonexistent prefix must not partial-match a longer key.
         assert_eq!(parse_simple_yaml(text, "summa"), None);
     }
 
@@ -1244,13 +1581,13 @@ mod tests {
 
     #[test]
     fn copilot_loader_skips_ephemeral_session_with_no_events() {
-        // Reproduces the "ghost session at top of F2" bug: every time WT
+        // Reproduces the "ghost session at top of session management view" bug: every time WT
         // (or wta itself) spawns a Copilot CLI process — e.g. as the
         // back-end for an agent pane or for a `?prompt` delegate — that
         // process eagerly creates `~/.copilot/session-state/<UUID>/workspace.yaml`
         // (171 bytes of stub metadata) before the user types anything.
         // If the user never interacts, no `events.jsonl` is ever written.
-        // These dirs would otherwise dominate the top of F2 (most-recent
+        // These dirs would otherwise dominate the top of session management view (most-recent
         // last_activity) on the next WT restart. Loader must skip them.
         let home = tmp_root("copilot-ghost");
         let base = home.join(".copilot").join("session-state");
@@ -1362,7 +1699,7 @@ mod tests {
         // caveat, the slash-command echo + its captured stdout, and a
         // last-prompt footer. `claude --resume <id>` rejects these with
         // `No conversation found with session ID: <id>`, so the row
-        // would dead-end on Enter in the F2 session-management view.
+        // would dead-end on Enter in the session management view.
         // Loader must skip them; only the real session should appear.
         let home = tmp_root("claude-phantom");
         let projects = home.join(".claude").join("projects");
@@ -1430,7 +1767,7 @@ mod tests {
         // (TITLE_TAIL_BYTES = 64 KB) could be entirely consumed by a
         // single such record, never reaching the first real
         // user/assistant message — misclassifying a genuinely
-        // resumable session as a phantom and pruning it from F2.
+        // resumable session as a phantom and pruning it from session management view.
         //
         // The streaming refactor (`stream_jsonl_lines` capped at
         // `CLASSIFY_SCAN_BYTES_CAP`) reads line-by-line and
@@ -1477,7 +1814,7 @@ mod tests {
         // between `read_dir` and the classify scan), the classifier
         // must return `true` so the caller keeps the row. Returning
         // `false` would let transient I/O failures silently drop
-        // real Claude / Gemini sessions out of F2.
+        // real Claude / Gemini sessions out of session management view.
         //
         // We exercise the I/O-error branch by pointing at paths
         // that don't exist — `fs::File::open` fails the same way it
@@ -1505,7 +1842,7 @@ mod tests {
         // in-memory rows / test fixtures aren't blocked preemptively.
         use crate::agent_sessions::CliSource;
         let home = tmp_root("resumable-missing-all-clis");
-        for cli in [CliSource::Claude, CliSource::Copilot, CliSource::Gemini] {
+        for cli in [CliSource::Claude, CliSource::Codex, CliSource::Copilot, CliSource::Gemini] {
             assert!(
                 key_is_resumable_on_disk_in(&home, &cli, "no-such-id"),
                 "{:?} should defer to CLI when on-disk artefact is missing",
@@ -1643,10 +1980,10 @@ mod tests {
         // common shape is ACP-launched `claude` that the user exits
         // without typing — Claude writes no JSONL at all). This is
         // exactly the path the lenient probe gets wrong, leaving the
-        // row stuck Ended in F2.
+        // row stuck Ended in session management view.
         use crate::agent_sessions::CliSource;
         let home = tmp_root("strict-probe-missing");
-        for cli in [CliSource::Claude, CliSource::Copilot, CliSource::Gemini] {
+        for cli in [CliSource::Claude, CliSource::Codex, CliSource::Copilot, CliSource::Gemini] {
             assert!(
                 !key_has_definite_resumable_content_in(&home, &cli, "no-such-id"),
                 "{:?} strict probe must report phantom when artefact is missing",
@@ -1791,7 +2128,7 @@ mod tests {
         // opening `gemini` and exiting immediately leaves a JSONL
         // on disk containing only the session header line (228 bytes)
         // — or sometimes two duplicate header lines (456 bytes). The
-        // loader used to surface these in F2 with the synthetic title
+        // loader used to surface these in session management view with the synthetic title
         // `gemini <8-char>` (because `first_user_text_jsonl` returned
         // None), and Enter on them would launch
         // `gemini --resume <id>` and dead-end.
@@ -1874,5 +2211,263 @@ mod tests {
         assert!(v[0].last_activity_at >= v[1].last_activity_at);
         assert!(v[1].last_activity_at >= v[2].last_activity_at);
         let _ = fs::remove_dir_all(&home);
+    }
+
+    // ─── Codex tests ────────────────────────────────────────────────────
+
+    fn codex_session_path(home: &Path, yyyy: &str, mm: &str, dd: &str, iso: &str, id: &str) -> PathBuf {
+        let dir = home.join(".codex").join("sessions").join(yyyy).join(mm).join(dd);
+        fs::create_dir_all(&dir).unwrap();
+        dir.join(format!("rollout-{}-{}.jsonl", iso, id))
+    }
+
+    fn codex_meta_line(id: &str, ts: &str, cwd: &str) -> String {
+        format!(
+            "{{\"timestamp\":\"{ts}\",\"type\":\"session_meta\",\
+\"payload\":{{\"id\":\"{id}\",\"timestamp\":\"{ts}\",\"cwd\":\"{cwd}\",\
+\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\"source\":\"cli\"}}}}\n")
+    }
+
+    fn codex_user_msg_line(ts: &str, text: &str) -> String {
+        format!(
+            "{{\"timestamp\":\"{ts}\",\"type\":\"event_msg\",\
+\"payload\":{{\"type\":\"user_message\",\"message\":\"{text}\"}}}}\n")
+    }
+
+    #[test]
+    fn load_codex_returns_one_row_per_real_rollout_file() {
+        let home = tmp_root("load-codex-basic");
+        let id = "11111111-2222-3333-4444-555555555555";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T10-30-00", id);
+        let body = codex_meta_line(id, "2026-05-28T10:30:00Z", "C:/work/proj")
+            + &codex_user_msg_line("2026-05-28T10:30:05Z", "summarize this repo");
+        write_file(&path, &body);
+        let rows = load_codex(&home);
+        assert_eq!(rows.len(), 1, "expected one row, got {:?}", rows);
+        let row = &rows[0];
+        assert_eq!(row.cli_source, crate::agent_sessions::CliSource::Codex);
+        assert_eq!(row.key, id, "key must be the rollout UUID");
+        assert_eq!(row.cwd, PathBuf::from("C:/work/proj"));
+        assert!(row.title.contains("summarize this repo"));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn load_codex_skips_phantom_meta_only_files() {
+        let home = tmp_root("load-codex-phantom");
+        let id = "deadbeef-2222-3333-4444-555555555555";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T11-00-00", id);
+        write_file(&path, &codex_meta_line(id, "2026-05-28T11:00:00Z", "C:/x"));
+        assert_eq!(load_codex(&home).len(), 0, "phantom (meta-only) must be filtered out");
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn load_codex_skips_phantom_meta_plus_env_context_only() {
+        let home = tmp_root("load-codex-env-only");
+        let id = "deadbeef-3333-3333-3333-333333333333";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T11-30-00", id);
+        let env_line = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"<environment_context>cwd=C:/x</environment_context>\"}}]}}}}\n");
+        write_file(&path, &(codex_meta_line(id, "2026-05-28T11:30:00Z", "C:/x") + &env_line));
+        assert_eq!(load_codex(&home).len(), 0,
+                   "meta + environment_context wrapper alone must be classified phantom");
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn load_codex_orders_newest_first_by_payload_timestamp() {
+        let home = tmp_root("load-codex-order");
+        for (i, ts) in [
+            (0u32, "2026-05-28T10:00:00Z"),
+            (1u32, "2026-05-28T10:05:00Z"),
+            (2u32, "2026-05-28T10:10:00Z"),
+        ] {
+            let id = format!("aaaaaaaa-{:04}-3333-4444-555555555555", i);
+            let iso = ts.replace(':', "-").trim_end_matches('Z').to_string();
+            let path = codex_session_path(&home, "2026", "05", "28", &iso, &id);
+            write_file(&path,
+                &(codex_meta_line(&id, ts, "C:/x")
+                  + &codex_user_msg_line(ts, &format!("prompt {i}"))));
+        }
+        let rows = load_codex(&home);
+        assert_eq!(rows.len(), 3);
+        assert!(rows[0].title.contains("prompt 2"),
+                "newest first; got titles {:?}",
+                rows.iter().map(|r| &r.title).collect::<Vec<_>>());
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_session_has_real_content_is_conservative_on_io_error() {
+        let nowhere = PathBuf::from("Z:/definitely/does/not/exist.jsonl");
+        assert!(codex_session_has_real_content(&nowhere),
+                "must default to true when the file can't be opened");
+    }
+
+    #[test]
+    fn codex_session_has_real_content_detects_user_message() {
+        let home = tmp_root("codex-scan-user");
+        let id = "abcd0001-2222-3333-4444-555555555555";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T12-00-00", id);
+        write_file(&path,
+            &(codex_meta_line(id, "2026-05-28T12:00:00Z", "C:/x")
+              + &codex_user_msg_line("2026-05-28T12:00:05Z", "hi")));
+        assert!(codex_session_has_real_content(&path));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_session_has_real_content_detects_agent_message() {
+        let home = tmp_root("codex-scan-agent");
+        let id = "abcd0002-2222-3333-4444-555555555555";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T12-30-00", id);
+        let agent_line = "{\"type\":\"event_msg\",\"payload\":{\"type\":\"agent_message\",\"message\":\"ok\"}}\n";
+        write_file(&path,
+            &(codex_meta_line(id, "2026-05-28T12:30:00Z", "C:/x") + agent_line));
+        assert!(codex_session_has_real_content(&path));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_title_falls_back_to_response_item_user_skipping_env_context() {
+        let home = tmp_root("codex-title-fallback");
+        let id = "abcdef00-3333-3333-3333-333333333333";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T13-00-00", id);
+        let env = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"<environment_context>cwd=C:/x</environment_context>\"}}]}}}}\n");
+        let real = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"refactor the parser\"}}]}}}}\n");
+        write_file(&path, &(codex_meta_line(id, "2026-05-28T13:00:00Z", "C:/x") + &env + &real));
+        let rows = load_codex(&home);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].title.contains("refactor the parser"),
+                "got title: {:?}", rows[0].title);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_key_resumable_returns_true_when_artefact_missing() {
+        use crate::agent_sessions::CliSource;
+        let home = tmp_root("codex-resumable-missing");
+        // Lenient probe: missing on-disk artefact defers to CLI (true)
+        // so fresh in-memory rows aren't blocked preemptively.
+        assert!(key_is_resumable_on_disk_in(&home, &CliSource::Codex, "no-such-id"));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_key_resumable_returns_false_for_meta_only_jsonl() {
+        use crate::agent_sessions::CliSource;
+        let home = tmp_root("codex-resumable-phantom");
+        let id = "ffffffff-2222-3333-4444-555555555555";
+        // Build the meta-only file inline. The path shape is:
+        //   home/.codex/sessions/2026/05/28/rollout-2026-05-28T10-00-00-<id>.jsonl
+        let dir = home.join(".codex").join("sessions").join("2026").join("05").join("28");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("rollout-2026-05-28T10-00-00-{}.jsonl", id));
+        let meta = format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"timestamp\":\"2026-05-28T10:00:00Z\",\"cwd\":\"C:/x\",\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\"source\":\"cli\"}}}}\n");
+        fs::write(&path, meta).unwrap();
+        assert!(!key_is_resumable_on_disk_in(&home, &CliSource::Codex, id));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_key_resumable_returns_true_for_jsonl_with_user_message() {
+        use crate::agent_sessions::CliSource;
+        let home = tmp_root("codex-resumable-real");
+        let id = "abcdef00-2222-3333-4444-555555555555";
+        let dir = home.join(".codex").join("sessions").join("2026").join("05").join("28");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("rollout-2026-05-28T10-30-00-{}.jsonl", id));
+        let content = format!(
+            "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"timestamp\":\"2026-05-28T10:30:00Z\",\"cwd\":\"C:/x\",\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\"source\":\"cli\"}}}}\n\
+{{\"type\":\"event_msg\",\"payload\":{{\"type\":\"user_message\",\"message\":\"hi\"}}}}\n");
+        fs::write(&path, content).unwrap();
+        assert!(key_is_resumable_on_disk_in(&home, &CliSource::Codex, id));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_strict_probe_returns_false_when_artefact_missing() {
+        use crate::agent_sessions::CliSource;
+        let home = tmp_root("codex-strict-missing");
+        assert!(!key_has_definite_resumable_content_in(&home, &CliSource::Codex, "no-id"));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_title_for_key_finds_user_message() {
+        let home = tmp_root("codex-title-by-key");
+        let dir = home.join(".codex").join("sessions").join("2026").join("05").join("28");
+        fs::create_dir_all(&dir).unwrap();
+        let id = "cafebabe-1111-2222-3333-444444444444";
+        let path = dir.join(format!("rollout-2026-05-28T12-00-00-{}.jsonl", id));
+        write_file(&path,
+            &format!("{{\"timestamp\":\"2026-05-28T12:00:00Z\",\"type\":\"session_meta\",\
+\"payload\":{{\"id\":\"{id}\",\"timestamp\":\"2026-05-28T12:00:00Z\",\
+\"cwd\":\"C:/x\",\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\"source\":\"cli\"}}}}\n\
+{{\"timestamp\":\"2026-05-28T12:00:05Z\",\"type\":\"event_msg\",\
+\"payload\":{{\"type\":\"user_message\",\"message\":\"refactor the parser\"}}}}\n"));
+        assert_eq!(codex_title_for_key(&home, id).as_deref(), Some("refactor the parser"));
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn codex_title_for_key_returns_none_for_unknown_id() {
+        let home = tmp_root("codex-title-missing");
+        assert_eq!(codex_title_for_key(&home, "no-such-id"), None);
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn parse_iso_handles_positive_offset() {
+        // 2026-05-27T10:53:09+08:00 is 2026-05-27T02:53:09Z
+        let t1 = parse_iso_to_system_time("2026-05-27T10:53:09+08:00").unwrap();
+        let t2 = parse_iso_to_system_time("2026-05-27T02:53:09Z").unwrap();
+        assert_eq!(t1, t2);
+    }
+
+    #[test]
+    fn parse_iso_handles_negative_offset() {
+        // 2026-05-27T02:53:09-05:00 is 2026-05-27T07:53:09Z
+        let t1 = parse_iso_to_system_time("2026-05-27T02:53:09-05:00").unwrap();
+        let t2 = parse_iso_to_system_time("2026-05-27T07:53:09Z").unwrap();
+        assert_eq!(t1, t2);
+    }
+
+    #[test]
+    fn parse_iso_rejects_pre_1970_years() {
+        assert!(parse_iso_to_system_time("1969-12-31T23:59:59Z").is_none());
+    }
+
+    #[test]
+    fn parse_iso_rejects_invalid_month() {
+        assert!(parse_iso_to_system_time("2026-13-01T00:00:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-00-01T00:00:00Z").is_none());
+    }
+
+    #[test]
+    fn parse_iso_rejects_invalid_day_for_month() {
+        assert!(parse_iso_to_system_time("2026-02-30T00:00:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-05-32T00:00:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-04-31T00:00:00Z").is_none()); // April has 30
+    }
+
+    #[test]
+    fn parse_iso_rejects_invalid_time_components() {
+        assert!(parse_iso_to_system_time("2026-05-28T25:30:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-05-28T10:60:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-05-28T10:30:60Z").is_none());
+    }
+
+    #[test]
+    fn parse_iso_accepts_february_29_leap_year() {
+        // 2024 IS a leap year; 2023 is not.
+        assert!(parse_iso_to_system_time("2024-02-29T00:00:00Z").is_some());
+        assert!(parse_iso_to_system_time("2023-02-29T00:00:00Z").is_none());
     }
 }

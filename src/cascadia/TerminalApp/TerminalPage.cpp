@@ -308,36 +308,66 @@ namespace winrt::TerminalApp::implementation
             _agentSettingsSnapshotInitialized = true;
         }
 
-        // Auto-suggest toggle hot-reload: when the effective auto-fix
-        // value changes between settings reloads, push the new value
-        // to WTA over the protocol. Tracks `EffectiveAutoFixEnabled`
-        // (not the raw user pref) so GPO Forced/Blocked transitions
-        // also propagate. WTA's `autofix_enabled` flag would
-        // otherwise stay pinned to whatever `--no-autofix` value it
-        // was launched with.
+        // Shell-integration reconcile (silent, background).
+        //
+        // Fires on first-load AND whenever EffectiveAutoErrorDetectionEnabled
+        // changes between settings reloads. This handles two cases that
+        // the explicit FRE/Settings-Save install paths miss:
+        //
+        //   1. Toggle-OFF: previously a no-op, leaving our $PROFILE block
+        //      in place. We now call UninstallForTarget to strip it.
+        //   2. Roaming/sync: a synced settings.json arriving on a fresh
+        //      machine never triggered an install because no user action
+        //      ran. First-load reconcile installs based on an explicit
+        //      setting value (sync delivers one). When no explicit value
+        //      exists (truly fresh user), first-load is a no-op and the
+        //      FRE / Settings Save flow remains the consent path.
+        //
+        // Install/Uninstall are both idempotent — when the on-disk state
+        // already matches the desired state they return alreadyInstalled
+        // and do no I/O beyond a read. Safe to call every reload.
         {
-            const bool currentAutoFix = _settings.GlobalSettings().EffectiveAutoFixEnabled();
-            if (!_autoFixEnabledSnapshotInitialized)
+            const bool currentDetection = _settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled();
+            const bool hasExplicit = _settings.GlobalSettings().HasAutoErrorDetectionEnabled();
+            const bool isFirstLoad = !_autoErrorDetectionSnapshotInitialized;
+            // First load gating:
+            //   - explicit value present (true or false, e.g. roaming-synced settings.json,
+            //     or local user has already saved) -> reconcile, which installs or removes
+            //     to match the user's expressed intent.
+            //   - no explicit value (fresh user, default true) -> do NOT install just because
+            //     the default is true. The FRE / Settings Save flow is the explicit consent
+            //     path for first-time PowerShell profile mutation.
+            // Subsequent reloads: fire on any change (so explicit toggle in Settings works
+            // even when transitioning back to the default value) AND on the false->true
+            // transition of explicit-ness (covers a user/sync adding the explicit key while
+            // the effective value happens to match the previously-defaulted value).
+            const bool effectiveChanged = (_lastAutoErrorDetectionEnabled != currentDetection);
+            const bool explicitTurnedOn = (!_lastAutoErrorDetectionHasExplicit && hasExplicit);
+            const bool shouldReconcile = isFirstLoad
+                                             ? hasExplicit
+                                             : (effectiveChanged || explicitTurnedOn);
+            _lastAutoErrorDetectionEnabled = currentDetection;
+            _lastAutoErrorDetectionHasExplicit = hasExplicit;
+            _autoErrorDetectionSnapshotInitialized = true;
+            if (shouldReconcile)
             {
-                _lastAutoFixEnabled = currentAutoFix;
-                _autoFixEnabledSnapshotInitialized = true;
-            }
-            else if (_lastAutoFixEnabled != currentAutoFix)
-            {
-                _lastAutoFixEnabled = currentAutoFix;
-                Json::Value evt;
-                evt["type"] = "event";
-                evt["method"] = "autofix_enabled_changed";
-                Json::Value params;
-                params["enabled"] = currentAutoFix;
-                evt["params"] = params;
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "";
-                ProtocolVtSequenceReceived.raise(
-                    *this,
-                    winrt::to_hstring(Json::writeString(wb, evt)));
+                // Publish latest desired state BEFORE spawning the
+                // coroutine so the eventual locked re-read picks it up.
+                _shellIntegrationDesiredEnabled.store(currentDetection, std::memory_order_release);
+                _ReconcileShellIntegration();
             }
         }
+
+        // Hot-reload of runtime agent config (autofix gate, acp-model,
+        // delegate agent/model). When any of these change between settings
+        // reloads we push a single consolidated `agent_config_changed`
+        // event to the running wta-helper(s) so they update in place,
+        // WITHOUT tearing down and restarting the agent pane. This is the
+        // unified dispatch for every hot-updatable agent setting — adding a
+        // new one means adding a field to AgentRuntimeConfigSnapshot, not a
+        // bespoke diff/emit block here. (Agent *identity* changes still go
+        // through _RebuildAgentStack in _RefreshUIForSettingsReload.)
+        _EmitAgentRuntimeConfigIfChanged();
 
         // Make sure to call SetCommands before _RefreshUIForSettingsReload.
         // SetCommands will make sure the KeyChordText of Commands is updated, which needs
@@ -1365,12 +1395,98 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b)
     {
+        // Only the agent-CLI *identity* (which binary + agent-id) forces a
+        // master respawn. acp-model and the delegate-* fields are hot-updated
+        // over the protocol by _EmitAgentRuntimeConfigIfChanged and must NOT
+        // trigger a teardown/rebuild here — that was the bug where changing
+        // the delegate agent restarted the whole agent pane connection.
         return a.acpAgent != b.acpAgent ||
-               a.acpModel != b.acpModel ||
-               a.acpCustomCommand != b.acpCustomCommand ||
-               a.delegateAgent != b.delegateAgent ||
-               a.delegateModel != b.delegateModel ||
-               a.delegateCustomCommand != b.delegateCustomCommand;
+               a.acpCustomCommand != b.acpCustomCommand;
+    }
+
+    TerminalPage::AgentRuntimeConfigSnapshot TerminalPage::_CaptureAgentRuntimeConfig() const
+    {
+        const auto& globals = _settings.GlobalSettings();
+        return AgentRuntimeConfigSnapshot{
+            std::wstring{ globals.AcpModel() },
+            std::wstring{ _ResolveEffectiveDelegateAgent(globals) },
+            std::wstring{ globals.DelegateModel() },
+            globals.EffectiveAutoFixEnabled(),
+        };
+    }
+
+    // Hot-propagate runtime agent config to the running wta-helper(s) over
+    // the protocol event channel. Unlike agent *identity* changes (which
+    // require a master respawn via _RebuildAgentStack), these take effect
+    // without tearing down the agent pane. A single consolidated
+    // `agent_config_changed` event carries only the fields that changed:
+    //   - autofix_enabled : the auto-suggest gate (was its own event)
+    //   - acp_model        : the main ACP agent's model override
+    //   - delegate_agent + delegate_model : the delegate-tab agent identity;
+    //     both travel together so the helper can rebuild its delegate
+    //     runtime table in one shot.
+    void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
+    {
+        const auto current = _CaptureAgentRuntimeConfig();
+
+        // First call just seeds the baseline — there's no running helper to
+        // notify yet, and on first load the helper picks these values up
+        // from its spawn cmdline.
+        if (!_agentRuntimeConfigInitialized)
+        {
+            _lastAgentRuntimeConfig = current;
+            _agentRuntimeConfigInitialized = true;
+            return;
+        }
+
+        const auto& last = _lastAgentRuntimeConfig;
+        const bool autofixChanged = last.autofixEnabled != current.autofixEnabled;
+        const bool acpModelChanged = last.acpModel != current.acpModel;
+        const bool delegateChanged = last.delegateAgent != current.delegateAgent ||
+                                     last.delegateModel != current.delegateModel;
+
+        if (!autofixChanged && !acpModelChanged && !delegateChanged)
+        {
+            return;
+        }
+
+        Json::Value params{ Json::objectValue };
+        if (autofixChanged)
+        {
+            params["autofix_enabled"] = current.autofixEnabled;
+        }
+        if (acpModelChanged)
+        {
+            params["acp_model"] = winrt::to_string(current.acpModel);
+        }
+        if (delegateChanged)
+        {
+            params["delegate_agent"] = winrt::to_string(current.delegateAgent);
+            params["delegate_model"] = winrt::to_string(current.delegateModel);
+        }
+
+        _agentPaneLog("emitting agent_config_changed (hot settings update)");
+        _RaiseProtocolEvent("agent_config_changed", params);
+
+        _lastAgentRuntimeConfig = current;
+    }
+
+    // Single source of the wta protocol-event wire shape. Wraps `params` in a
+    // `{type:"event", method, params}` envelope, serializes it compactly, and
+    // raises it on ProtocolVtSequenceReceived (which fans out to the agent
+    // helper(s) over the COM event bus).
+    void TerminalPage::_RaiseProtocolEvent(std::string_view method, const Json::Value& params)
+    {
+        Json::Value evt{ Json::objectValue };
+        evt["type"] = "event";
+        evt["method"] = std::string{ method };
+        evt["params"] = params;
+
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        ProtocolVtSequenceReceived.raise(
+            *this,
+            winrt::to_hstring(Json::writeString(wb, evt)));
     }
 
     // Close the agent pane in a specific tab, if it has one.
@@ -1379,7 +1495,7 @@ namespace winrt::TerminalApp::implementation
     // ordinary conpty children of TermControl — the standard pane teardown
     // path (Pane::Close → ConptyConnection::Close → conpty pipes closed →
     // helper exits) is enough. Each tab has at most one agent pane.
-    void TerminalPage::_TeardownAgentPane(const winrt::com_ptr<Tab>& tab)
+    void TerminalPage::_TeardownAgentPane(const winrt::com_ptr<Tab>& tab, bool suppressMasterRestart)
     {
         if (!tab)
         {
@@ -1387,6 +1503,16 @@ namespace winrt::TerminalApp::implementation
         }
         if (const auto pane = tab->FindAgentPane())
         {
+            if (suppressMasterRestart)
+            {
+                // Closing the pane kills its conpty child → the wta-helper
+                // exits → its master pipe goes EOF → master emits
+                // `restart_agent_pane`. Record a mark so the resulting
+                // event is recognized as a deliberate teardown and skipped
+                // by `OnAgentPaneRestartRequested` rather than respawning a
+                // pane we just intentionally closed.
+                _agentPaneRestartSuppression[tab->StableId()] = std::chrono::steady_clock::now();
+            }
             _agentPaneLog("_TeardownAgentPane: closing agent pane on tab");
             pane->Close();
         }
@@ -1475,17 +1601,9 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        Json::Value tabEvt;
-        tabEvt["type"] = "event";
-        tabEvt["method"] = "reset_tab_session";
         Json::Value tabParams;
         tabParams["tab_id"] = winrt::to_string(tabId);
-        tabEvt["params"] = tabParams;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        ProtocolVtSequenceReceived.raise(
-            *this,
-            winrt::to_hstring(Json::writeString(wb, tabEvt)));
+        _RaiseProtocolEvent("reset_tab_session", tabParams);
     }
 
     // Tells wta that a tab has been destroyed so it can drop the per-tab
@@ -1497,18 +1615,66 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        Json::Value tabEvt;
-        tabEvt["type"] = "event";
-        tabEvt["method"] = "tab_closed";
         Json::Value tabParams;
         tabParams["tab_id"] = winrt::to_string(tabId);
         tabParams["window_id"] = std::to_string(_WindowProperties.WindowId());
-        tabEvt["params"] = tabParams;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        ProtocolVtSequenceReceived.raise(
-            *this,
-            winrt::to_hstring(Json::writeString(wb, tabEvt)));
+        _RaiseProtocolEvent("tab_closed", tabParams);
+    }
+
+    // Explicitly emit `connection_state:closed` for every terminal leaf
+    // under `rootPane`. Needed because UI-initiated pane/tab close goes
+    // through `ControlCore::_closeConnection` which revokes the
+    // `ConnectionStateChanged` listener BEFORE the connection transitions
+    // to Closed — so the normal `TermControl::ConnectionStateChanged ->
+    // ProtocolVtSequenceReceived` bridge installed in
+    // `_RegisterTerminalEvents` never fires for these paths. Without an
+    // explicit emit, wta's session-list rows bound to those pane GUIDs
+    // stay stuck at their last live status (Idle / Working /
+    // "waiting for input") forever.
+    //
+    // Process-initiated close (agent typed `/exit`, conpty closes
+    // naturally) still goes through the normal bridge because the
+    // connection's own state machine drives the transition before the
+    // revoker runs.
+    //
+    // Must be called BEFORE the destructive op (`pane->Close()`,
+    // `tab.Shutdown()`) — once content is destroyed,
+    // `GetTerminalControl()` returns null and the SessionId is
+    // unresolvable.
+    void TerminalPage::_NotifyPanesClosing(const std::shared_ptr<Pane>& rootPane)
+    {
+        if (!rootPane)
+        {
+            return;
+        }
+        rootPane->WalkTree([this](const std::shared_ptr<Pane>& p) -> void {
+            if (!p)
+            {
+                return;
+            }
+            const auto control = p->GetTerminalControl();
+            if (!control)
+            {
+                return;
+            }
+            const auto paneIdStr = _FindSessionIdForControl(control);
+            if (paneIdStr.empty())
+            {
+                return;
+            }
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "connection_state";
+            Json::Value params;
+            params["pane_id"] = paneIdStr;
+            params["state"] = "closed";
+            evt["params"] = params;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            ProtocolVtSequenceReceived.raise(
+                *this,
+                winrt::to_hstring(Json::writeString(wb, evt)));
+        });
     }
 
     // Tells wta that the focused tab changed so it can re-project per-tab
@@ -1524,18 +1690,10 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        Json::Value tabEvt;
-        tabEvt["type"] = "event";
-        tabEvt["method"] = "tab_changed";
         Json::Value tabParams;
         tabParams["tab_id"] = winrt::to_string(tabId);
         tabParams["window_id"] = std::to_string(_WindowProperties.WindowId());
-        tabEvt["params"] = tabParams;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        ProtocolVtSequenceReceived.raise(
-            *this,
-            winrt::to_hstring(Json::writeString(wb, tabEvt)));
+        _RaiseProtocolEvent("tab_changed", tabParams);
     }
 
     // C++ → wta request for changing per-tab agent-pane UI state. The target
@@ -1546,9 +1704,6 @@ namespace winrt::TerminalApp::implementation
                                                 std::optional<std::string_view> view,
                                                 std::optional<bool> paneOpen)
     {
-        Json::Value evt;
-        evt["type"] = "event";
-        evt["method"] = "set_agent_state";
         Json::Value params;
         params["window_id"] = std::to_string(_WindowProperties.WindowId());
 
@@ -1572,13 +1727,8 @@ namespace winrt::TerminalApp::implementation
             params["pane_open"] = *paneOpen;
             logSuffix += " pane_open=" + std::string{ *paneOpen ? "true" : "false" };
         }
-        evt["params"] = params;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
         _agentPaneLog(std::string{ "requesting set_agent_state:" } + logSuffix);
-        ProtocolVtSequenceReceived.raise(
-            *this,
-            winrt::to_hstring(Json::writeString(wb, evt)));
+        _RaiseProtocolEvent("set_agent_state", params);
     }
 
     // Builds the per-process flag/value pairs that wta-master inherits
@@ -1811,7 +1961,7 @@ namespace winrt::TerminalApp::implementation
         // Plan-C: bundle the resume request with helper spawn. Caller
         // (currently `OnResumeInNewAgentTabRequested` via the pending-
         // load-session map in `OnAgentStateChanged`) sets these when the
-        // F2 Enter-on-Historical/Ended-row path needs the freshly-spawned
+        // session management Enter-on-Historical/Ended-row path needs the freshly-spawned
         // helper to immediately ACP `session/load` instead of creating a
         // fresh session. Helper-side flag handling lives in main.rs
         // (`--initial-load-session-id` + `--initial-load-cwd`).
@@ -2169,17 +2319,9 @@ namespace winrt::TerminalApp::implementation
             // "Ask the agent for a fix": open/focus the pane so the user
             // watches the analysis, then fire the LLM call. No auto-inject.
             openAgentPaneForReview();
-            Json::Value evt;
-            evt["type"] = "event";
-            evt["method"] = "autofix_execute_from_detected";
             Json::Value params;
             params["pane_id"] = winrt::to_string(paneId);
-            evt["params"] = params;
-            Json::StreamWriterBuilder wb;
-            wb["indentation"] = "";
-            ProtocolVtSequenceReceived.raise(
-                *this,
-                winrt::to_hstring(Json::writeString(wb, evt)));
+            _RaiseProtocolEvent("autofix_execute_from_detected", params);
             break;
         }
         case AS::Review:
@@ -4267,7 +4409,7 @@ namespace winrt::TerminalApp::implementation
     //   - `tab_changed` (active tab swap; via `project_active_tab_state`
     //     in `switch_tab_session`).
     //   - `set_agent_state` (C++-originated request; wta echoes back).
-    //   - Esc out of Agents view, `/sessions` slash command,
+    //   - Esc out of agent session view, `/sessions` slash command,
     //     `load_session`, Ctrl+C×2 reset, and once at startup after
     //     `--initial-view`.
     //
@@ -4366,7 +4508,7 @@ namespace winrt::TerminalApp::implementation
                     // Plan-C: consume any pending load-session hint for
                     // this tab. Set by `OnResumeInNewAgentTabRequested`
                     // when the user pressed Enter on a Historical/Ended
-                    // row in F2 — the new helper boots straight into a
+                    // row in session management view — the new helper boots straight into a
                     // `session/load` of the requested session id instead
                     // of creating a fresh session. One-shot: the entry
                     // is moved out and erased here so a later
@@ -4525,6 +4667,85 @@ namespace winrt::TerminalApp::implementation
         // continuity. Tabs that had a pane but aren't active need to be
         // toggled open again by the user — same UX as _RebuildAgentStack.
         _OpenOrReuseAgentPane(false, L"RestartAgent");
+    }
+
+    // Inbound event from WTA: {method:"restart_agent_pane",
+    //                          params:{tab_id, session_id?, reason}}.
+    // Emitted by wta-master when a helper's master pipe disconnects — both
+    // genuine crash and clean exit take this path. We resolve the owning
+    // tab by StableId and re-warm a fresh helper, resuming `session_id` so
+    // the chat history survives. Deliberate teardowns (Ctrl+C×2, settings
+    // rebuild, /restart) also trip the master's emit, so we first consume
+    // any suppression mark and bail when present — that's how we tell a
+    // crash apart from an intentional close.
+    void TerminalPage::OnAgentPaneRestartRequested(hstring eventJson)
+    {
+        Json::Value evt;
+        Json::CharReaderBuilder rb;
+        std::istringstream ss(winrt::to_string(eventJson));
+        std::string errs;
+        if (!Json::parseFromStream(rb, ss, &evt, &errs))
+        {
+            return;
+        }
+        const auto& params = evt["params"];
+        if (!params.isObject())
+        {
+            return;
+        }
+        winrt::hstring tabId;
+        if (params.isMember("tab_id") && params["tab_id"].isString())
+        {
+            tabId = winrt::to_hstring(params["tab_id"].asString());
+        }
+        if (tabId.empty())
+        {
+            return;
+        }
+
+        // Suppression check (consume on read). A mark within the last few
+        // seconds means this tab's helper died because we deliberately tore
+        // the pane down — don't respawn it.
+        if (const auto it = _agentPaneRestartSuppression.find(tabId); it != _agentPaneRestartSuppression.end())
+        {
+            const auto age = std::chrono::steady_clock::now() - it->second;
+            _agentPaneRestartSuppression.erase(it);
+            if (age < std::chrono::seconds(5))
+            {
+                _agentPaneLog("OnAgentPaneRestartRequested: suppressed (deliberate teardown)");
+                return;
+            }
+        }
+
+        const auto ownerTab = _FindTabByStableId(tabId);
+        if (!ownerTab)
+        {
+            // Tab closed, or belongs to another window — the fan-out will
+            // reach the right page (or there's nothing left to recover).
+            return;
+        }
+
+        std::string sessionId;
+        if (params.isMember("session_id") && params["session_id"].isString())
+        {
+            sessionId = params["session_id"].asString();
+        }
+
+        // If a (wedged) pane is still present, restore it visible after the
+        // re-warm; otherwise a clean exit already removed it (closeOnExit),
+        // so keep the fresh helper stashed.
+        const bool wasOpen = ownerTab->FindAgentPane() != nullptr;
+
+        // Tear down any leftover dead/wedged pane first. Suppress so that
+        // killing a wedged helper here doesn't loop back into yet another
+        // restart event.
+        _TeardownAgentPane(ownerTab, /*suppressMasterRestart*/ true);
+
+        _agentPaneLog("OnAgentPaneRestartRequested: re-warming helper after disconnect");
+        _AutoCreateHiddenAgentPaneShared(ownerTab,
+                                         /*intoSessionsView*/ false,
+                                         /*autoStash*/ !wasOpen,
+                                         sessionId);
     }
 
     // Inbound event from WTA: {method:"set_agent_chip_target",
@@ -6538,13 +6759,15 @@ namespace winrt::TerminalApp::implementation
         return true;
     }
 
-    bool TerminalPage::_IsUriConsideredSomewhatSafe(const winrt::Windows::Foundation::Uri& parsedUri)
+    bool TerminalPage::_IsUriConsideredSomewhatSafe(const winrt::Windows::Foundation::Uri& parsedUri) const
     {
-        if (parsedUri.SchemeName() == L"http" || parsedUri.SchemeName() == L"https")
+        const auto& schemeName = parsedUri.SchemeName();
+
+        if (schemeName == L"http" || schemeName == L"https")
         {
             return true;
         }
-        if (parsedUri.SchemeName() == L"file")
+        if (schemeName == L"file")
         {
             static const auto pathext{ wil::TryGetEnvironmentVariableW<std::wstring>(L"PATHEXT") };
             const auto filename = parsedUri.Path();
@@ -6557,6 +6780,16 @@ namespace winrt::TerminalApp::implementation
             }
 
             return true;
+        }
+        if (const auto& safeSchemes = _settings.GlobalSettings().SafeUriSchemes())
+        {
+            for (const auto& scheme : safeSchemes)
+            {
+                if (til::equals_insensitive_ascii(schemeName, scheme))
+                {
+                    return true;
+                }
+            }
         }
 
         return false;
@@ -7053,9 +7286,6 @@ namespace winrt::TerminalApp::implementation
                             const auto newTabId = focusedTab->StableId();
                             if (!newTabId.empty() && newTabId != oldTabId)
                             {
-                                Json::Value evt;
-                                evt["type"] = "event";
-                                evt["method"] = "tab_renamed";
                                 Json::Value params;
                                 params["old_tab_id"] = winrt::to_string(oldTabId);
                                 params["new_tab_id"] = winrt::to_string(newTabId);
@@ -7065,14 +7295,10 @@ namespace winrt::TerminalApp::implementation
                                 // set_agent_state events from the new window
                                 // pass the per-tab window filter.
                                 params["window_id"] = std::to_string(_WindowProperties.WindowId());
-                                evt["params"] = params;
-                                Json::StreamWriterBuilder wb;
-                                wb["indentation"] = "";
-                                const auto payload = winrt::to_hstring(Json::writeString(wb, evt));
                                 _agentPaneLog(
                                     std::string{ "_MakeTerminalPane: emitting tab_renamed old=" } +
                                     winrt::to_string(oldTabId) + " new=" + winrt::to_string(newTabId));
-                                ProtocolVtSequenceReceived.raise(*this, payload);
+                                _RaiseProtocolEvent("tab_renamed", params);
                             }
                             else
                             {

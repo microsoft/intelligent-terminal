@@ -115,12 +115,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. 显示/隐藏智能体窗格 • Ctrl+Shif
 # ── 连接状态 ────────────────────────────────────────────────────────────
 connection.starting: "正在启动智能体..."
 connection.reconnecting: "正在重新连接..."
+connection.connecting_activity: "正在连接智能体…"
+connection.lost: "与智能体的连接已断开。键入 /restart 以重新连接。"  # {Locked="/restart"}
 
 # ── 系统消息 (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "已取消。"
 system.no_prompt_in_flight: "没有正在进行的提示。"
 system.authentication_failed: "身份验证失败"
 system.command_copied_retry: "命令已复制 — 在另一个终端中运行，然后按 Enter 重试"  # {Locked="Enter"}
+system.stopped_max_tokens: "达到模型的输出上限后，回复被截断。"
+system.stopped_max_turn_requests: "达到本轮的请求上限后，智能体已停止。"
+system.stopped_refusal: "智能体拒绝继续处理此请求。"
+system.agent_busy: "智能体正忙于此标签页 — 请等待当前提示完成。"
+system.resuming_session: "正在恢复会话 %{session_id}..."
+system.unknown_command: "未知命令 \"%{command}\" — 已作为提示发送。键入 /help 查看列表。"  # {Locked="/help"}
+system.busy_use_stop: "请等待当前提示完成，或先执行 /stop。"  # {Locked="/stop"}
+system.cannot_focus_session: "无法聚焦会话 %{session_id}：它看起来处于活动状态，但尚未绑定窗格 GUID。请稍后重试。"
+system.cannot_resume_no_load_session: "无法在智能体窗格中恢复：%{agent} 未公布 ACP `loadSession` 功能。请改按 Enter（不按 Shift）以在新的终端窗格中恢复。"  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "无法恢复 %{agent} 会话：此智能体没有 `--resume` 样式的标志。请按 Shift+Enter，改为尝试通过 ACP 在智能体窗格内恢复。"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "无法恢复会话 %{session_id}：此版本无法识别其源智能体。"
+system.cannot_resume_phantom_via_flag: "无法恢复 %{agent} 会话 %{session_id}：它已启动但从未积累任何对话，因此 %{agent} 本身会拒绝恢复。正在移除此行。"
+system.cannot_resume_phantom_via_load: "无法恢复 %{agent} 会话 %{session_id}：它已启动但从未积累任何对话，因此 %{agent} 会拒绝加载。正在移除此行。"
+system.fallback.this_agent: "此智能体"
+system.fallback.connected_agent: "已连接的智能体"
 
 # ── 运行时 CLI 输出 (src/main.rs) ────────────────────────────────────────
 output.no_windows: "未找到窗口。"
@@ -173,6 +190,17 @@ time.days_other: "%{count} 天前"
 commands.help.summary: "显示此命令列表"
 commands.clear.summary: "清除聊天记录（保留会话）"
 commands.new.summary: "启动新的 ACP 会话（清空历史记录）"
+commands.fix.summary: "诊断活动终端并建议修复方法（/fix <hint>）"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "重启智能体"
 commands.stop.summary: "取消进行中的提示"
 commands.sessions.summary: "打开历史会话选择器（Ctrl+Shift+/）"
+
+# ── 建议执行 (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "选项 %{choice} 执行失败：%{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "为此窗格选择模型（使用 /model <id> 可直接切换）"  # {Locked="/model","<id>"}
+model_picker.title: "选择模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "已连接的智能体未公布任何可选模型。"
+system.model_set: "此窗格的模型已设置为 %{model}。"  # {Locked="%{model}"}
+system.model_unknown: "未知模型 %{model} — 键入 /model 查看可用列表。"  # {Locked="%{model}","/model"}

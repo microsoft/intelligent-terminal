@@ -1,0 +1,123 @@
+<#
+.SYNOPSIS
+    Batch-resolve outdated Copilot review threads on a PR.
+
+.DESCRIPTION
+    After a review loop converges, the PR may still show old `isOutdated`
+    Copilot threads listed as open. They were addressed by later commits
+    but never explicitly resolved. This script finds them and resolves them
+    in bulk.
+
+    Only acts on threads where:
+      - isOutdated: true
+      - isResolved: false
+      - the first comment's author is copilot-pull-request-reviewer
+
+    Threads from human reviewers are never touched.
+
+.PARAMETER Owner
+    Repository owner (org or user). Defaults to the current repo's owner
+    (resolved via `gh repo view`).
+
+.PARAMETER Repo
+    Repository name. Defaults to the current repo's name.
+
+.PARAMETER PrNumber
+    The pull request number.
+
+.EXAMPLE
+    pwsh 10-cleanup-outdated.ps1 -PrNumber 122
+
+.EXAMPLE
+    pwsh 10-cleanup-outdated.ps1 -PrNumber 122 -DryRun
+#>
+[CmdletBinding()]
+param(
+    [string]$Owner,
+    [string]$Repo,
+
+    [Parameter(Mandatory = $true)]
+    [int]$PrNumber,
+
+    # Print what would be resolved without making any GraphQL
+    # mutation. Uses an explicit switch (not the PowerShell
+    # SupportsShouldProcess / -WhatIf machinery) so the helper's
+    # internal `2>` redirect doesn't inherit a WhatIfPreference and
+    # print cosmetic "Performing the operation Output to File" noise.
+    [switch]$DryRun
+)
+
+$ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/_lib.ps1"
+
+$coords = Resolve-RepoCoords -Owner $Owner -Repo $Repo
+$Owner = $coords.Owner
+$Repo  = $coords.Repo
+
+$query = @'
+query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100, after: $after) {
+        pageInfo {
+          endCursor
+          hasNextPage
+        }
+        nodes {
+          id
+          isResolved
+          isOutdated
+          comments(first: 1) {
+            nodes { author { login } }
+          }
+        }
+      }
+    }
+  }
+}
+'@
+
+$all = @()
+$after = $null
+do {
+    $ghArgs = @('-f', "query=$query", '-f', "owner=$Owner", '-f', "repo=$Repo", '-F', "pr=$PrNumber")
+    if ($after) { $ghArgs += @('-f', "after=$after") }
+
+    $data = Invoke-GhGraphQL -GhArgs $ghArgs -Context "list outdated threads for $Owner/$Repo PR #$PrNumber"
+    $page = $data.data.repository.pullRequest.reviewThreads
+    $all += $page.nodes
+    $after = $page.pageInfo.endCursor
+} while ($page.pageInfo.hasNextPage)
+
+$threads = $all
+
+$targets = @($threads | Where-Object {
+    $_.isOutdated -and
+    -not $_.isResolved -and
+    $_.comments.nodes[0].author.login -eq 'copilot-pull-request-reviewer'
+})
+
+if ($targets.Count -eq 0) {
+    Write-Output 'No outdated Copilot threads to clean up.'
+    return
+}
+
+Write-Output "Found $($targets.Count) outdated Copilot thread(s) to resolve."
+
+$resolveMutation = @'
+mutation($tid: ID!) {
+  resolveReviewThread(input: { threadId: $tid }) {
+    thread { isResolved }
+  }
+}
+'@
+
+foreach ($t in $targets) {
+    if ($DryRun) {
+        Write-Output "Would resolve $($t.id) (DryRun)"
+    } else {
+        $resolveArgs = @('-f', "query=$resolveMutation", '-f', "tid=$($t.id)")
+        Invoke-GhGraphQL -GhArgs $resolveArgs -Context "resolve outdated thread $($t.id)" | Out-Null
+        Write-Output "Resolved $($t.id)"
+    }
+}

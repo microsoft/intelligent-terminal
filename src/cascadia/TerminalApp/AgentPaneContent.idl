@@ -20,7 +20,7 @@ namespace TerminalApp
         void UpdateAgentStatus(String name, String version, String model, String state);
 
         // Toggle the bar's "agent name + version" header into a "Agent sessions"
-        // label (and hide the agent logo) while wta's session-management view is
+        // label (and hide the agent logo) while wta's session management view is
         // active. Driven by TerminalPage whenever the wta view changes.
         void SetSessionsView(Boolean active);
 

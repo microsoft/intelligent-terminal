@@ -74,6 +74,7 @@ commands.help_close_hint: "  Esc        إغلاق هذه المساعدة"  # {
 commands.help.summary: "إظهار قائمة الأوامر هذه"
 commands.clear.summary: "مسح سجل تمرير الدردشة (مع الاحتفاظ بالجلسة)"
 commands.new.summary: "بدء جلسة ACP جديدة (حذف السجل)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "إعادة تشغيل عامل الذكاء الاصطناعي"
 commands.stop.summary: "إلغاء الأمر قيد التنفيذ"
 commands.sessions.summary: "فتح منتقي الجلسات التاريخية (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -130,12 +131,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. لإظهار/إخفاء لوحة عامل 
 # ── حالة الاتصال ────────────────────────────────────────────────────────
 connection.starting: "جارٍ تشغيل عامل الذكاء الاصطناعي..."
 connection.reconnecting: "جارٍ إعادة الاتصال..."
+connection.connecting_activity: "جارٍ الاتصال بعامل الذكاء الاصطناعي…"
+connection.lost: "فُقد الاتصال بعامل الذكاء الاصطناعي. اكتب /restart لإعادة الاتصال."  # {Locked="/restart"}
 
 # ── رسائل النظام (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "تم الإلغاء."
 system.no_prompt_in_flight: "لا يوجد أمر قيد التنفيذ."
 system.authentication_failed: "فشلت المصادقة"
 system.command_copied_retry: "تم نسخ الأمر — شغّله في طرفية أخرى، ثم اضغط Enter لإعادة المحاولة"  # {Locked="Enter"}
+system.stopped_max_tokens: "تم اقتطاع الرد بعد بلوغ حد إخراج النموذج."
+system.stopped_max_turn_requests: "توقف الوكيل بعد بلوغ حد الطلبات لهذه الجولة."
+system.stopped_refusal: "رفض الوكيل متابعة هذا الطلب."
+system.agent_busy: "العامل مشغول في علامة التبويب هذه — انتظر حتى ينتهي الطلب الحالي."
+system.resuming_session: "جارٍ استئناف الجلسة %{session_id}..."
+system.unknown_command: "أمر غير معروف \"%{command}\" — تم إرساله كطلب. اكتب /help لعرض القائمة."  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "انتظر حتى ينتهي الطلب الحالي، أو استخدم /stop أولًا."  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "يتعذر التركيز على الجلسة %{session_id}: تبدو نشطة، لكن لم يتم ربط GUID للوحة بعد. حاول مرة أخرى بعد قليل."
+system.cannot_resume_no_load_session: "يتعذر الاستئناف في لوحة العامل: لم يعلن %{agent} عن إمكانية ACP `loadSession`. اضغط Enter (من دون Shift) للاستئناف في لوحة طرفية جديدة بدلًا من ذلك."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "يتعذر استئناف جلسة %{agent}: لا يحتوي هذا العامل على علامة بنمط `--resume`. اضغط Shift+Enter لمحاولة الاستئناف داخل لوحة العامل عبر ACP بدلًا من ذلك."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "يتعذر استئناف الجلسة %{session_id}: عامل المصدر غير معروف لهذا الإصدار من WTA."
+system.cannot_resume_phantom_via_flag: "يتعذر استئناف جلسة %{agent} %{session_id}: بدأت لكنها لم تجمع أي محادثة، لذلك سيرفض %{agent} نفسه الاستئناف. تتم إزالة الصف."
+system.cannot_resume_phantom_via_load: "يتعذر استئناف جلسة %{agent} %{session_id}: بدأت لكنها لم تجمع أي محادثة، لذلك سيرفض %{agent} التحميل. تتم إزالة الصف."
+system.fallback.this_agent: "هذا العامل"
+system.fallback.connected_agent: "العامل المتصل"
 
 # ── مخرجات CLI في وقت التشغيل (src/main.rs) ────────────────────────────────────────
 output.no_windows: "لم يتم العثور على نوافذ."
@@ -181,3 +199,13 @@ time.hour_singular: "منذ ساعة واحدة"
 time.hours_other: "منذ %{count} ساعة"
 time.day_singular: "منذ يوم واحد"
 time.days_other: "منذ %{count} يومًا"
+
+# ── تنفيذ التوصية (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "فشل الاختيار %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "اختر النموذج لهذه اللوحة (/model <id> للتبديل مباشرةً)"  # {Locked="/model","<id>"}
+model_picker.title: "اختر النموذج (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "لم يُعلن عامل الذكاء الاصطناعي المتصل عن أي نماذج قابلة للاختيار."
+system.model_set: "تم تعيين نموذج هذه اللوحة إلى %{model}."  # {Locked="%{model}"}
+system.model_unknown: "نموذج غير معروف %{model} — اكتب /model لعرض القائمة المتاحة."  # {Locked="%{model}","/model"}

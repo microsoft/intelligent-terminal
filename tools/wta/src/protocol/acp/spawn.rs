@@ -77,6 +77,31 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
 
+    // Give the agent CLI a PATH rebuilt from the Windows registry. Windows
+    // Terminal — and thus this wta-master / wta child — snapshots its
+    // environment at start, so an agent CLI installed mid-session (e.g. the
+    // FRE winget-installing `copilot` while WT is already running) is invisible
+    // to our inherited PATH. That makes `cmd /c copilot` (or a bare spawn) fail
+    // with "is not recognized", which the master reports as an immediate
+    // ACP-initialize failure. Setting the child's PATH here fixes resolution
+    // for both the `cmd /c` and direct-spawn cases without requiring a full WT
+    // restart. (Recent Rust resolves the program name against the child env's
+    // PATH when one is provided.)
+    if let Some(path) = crate::agent_check::spawn_path() {
+        cmd.env("PATH", path);
+    }
+
+    // Tell the agent CLI's hook scripts (`send-event.ps1`, inherited via the
+    // CLI → node → powershell process chain) where to write their diagnostic
+    // trace. PowerShell can't resolve our package-private log dir on its own
+    // (it only sees the un-redirected `%LOCALAPPDATA%`, and doesn't know the
+    // package family name), so we hand it the already-resolved path. The hook
+    // falls back to bare `%LOCALAPPDATA%\IntelligentTerminal\logs` when this
+    // is unset (unpackaged dev runs, or an older wta that didn't set it).
+    // Versioned dir (`logs\<pkgver>\`) via the shared resolver so the hooks'
+    // `hook-trace.log` lands alongside this build's Rust + C++ logs.
+    cmd.env("WTA_HOOK_LOG_DIR", crate::logging::log_dir());
+
     // Forward the user's locale to the agent process via standard POSIX
     // environment variables. Many agent CLIs (and the large language models
     // they speak to) honor `LANG` / `LC_ALL` to choose their response

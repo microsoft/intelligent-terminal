@@ -25,6 +25,7 @@
   - [Command Palette](#command-palette)
 - [Data & Privacy](#data--privacy)
 - [Building the Code](#building-the-code)
+- [FAQ](./doc/faq.md)
 - [Feedback](#feedback)
 - [Contributing](#contributing)
 - [Code of Conduct](#code-of-conduct)
@@ -39,16 +40,18 @@
 
 Intelligent Terminal is an experimental fork of [Windows Terminal](https://github.com/microsoft/terminal) with native agent integration.
 
-[GitHub Copilot](https://github.com/features/copilot/cli/) is the default agent CLI, but it works with any [Agent Client Protocol (ACP)-compatible](https://agentclientprotocol.com/get-started/agents) agent CLI. All you need is to install your preferred agent CLI on your PC, and Intelligent Terminal should detect it.
+Intelligent Terminal works with any [Agent Client Protocol (ACP)-compatible](https://agentclientprotocol.com/get-started/agents) agent CLI. All you need is to install your preferred agent CLI on your PC. If you don't have a preferred agent, we'll get you setup with [GitHub Copilot CLI](https://github.com/features/copilot/cli/).
 
-Everything else about Intelligent Terminal is the same as Windows Terminal: tabs, profiles, themes, settings, shells, and keyboard shortcuts all work the way you expect.
+Intelligent Terminal takes all the features you love in Windows Terminal such as:  tabs, profiles, themes, settings, shells, and keyboard shortcuts, which all work the way you expect.
+
+Read the [announcement blog post](https://devblogs.microsoft.com/commandline/announcing-intelligent-terminal-version-0-1/) for more details.
 
 ---
 
 ## Installing and running Intelligent Terminal
 
 > [!NOTE]
-> Intelligent Terminal requires Windows 10 version 22H2 or later, or Windows 11. You also need a supported agent CLI and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
+> Intelligent Terminal requires Windows 10 2004 (19041) or later. You also need a supported agent CLI and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
 
 ### Microsoft Store (recommended)
 
@@ -79,13 +82,20 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (Copilot/Claude/Codex/Gemini). If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
 3. If you aren't already authenticated, the agent pane walks you through sign-in.
-4. Start asking questions. The agent has context on your shell output, no copy-pasting needed.
+4. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed.
+
+> [!TIP]
+> If you see "running scripts is disabled on this system" or an `UnauthorizedAccess` error in PowerShell, your execution policy is blocking your profile and Intelligent Terminal can't initialize shell integration. Run:
+> ```powershell
+> Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+> ```
+> If you run into any other issues or dependency errors, see [installing-dependencies.md](./doc/installing-dependencies.md).
 
 ---
 
 ## Keyboard Shortcuts
 
-All shortcuts are customizable through terminal settings.
+All shortcuts are customizable through Intelligent Terminal settings.
 
 | Shortcut | Action |
 |----------|--------|
@@ -94,12 +104,13 @@ All shortcuts are customizable through terminal settings.
 | <kbd>Ctrl+Alt+.</kbd> | Open agent pane with error context |
 | <kbd>Ctrl+Shift+/</kbd> | Open agent management |
 | <kbd>Alt+Shift+/</kbd> | Open Command Palette in prompt mode |
+| <kbd>Alt+Shift+B</kbd> | Open an interactive delegate-agent tab with no startup prompt |
 
 ---
 
 ## Configuration
 
-Everything is configurable through terminal settings, under "Agent" settings.
+Everything is configurable through Intelligent Terminal settings, under "Agent" settings.
 
 | Setting | Options |
 |---------|---------|
@@ -119,7 +130,7 @@ Everything is configurable through terminal settings, under "Agent" settings.
   <img src="./images/intelligent-terminal-status-bar.png" alt="Screenshot of the agent status bar at the bottom of the terminal window">
 </p>
 
-The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle and the error detection icon, which lights up when a fixable error is detected. On the right: the agent management icon that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents.
+The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle (hotkey: <kbd>Ctrl+Shift+.</kbd>) and the error detection icon (hotkey: <kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected. On the right: the agent management icon (hotkey: <kbd>Ctrl+Shift+/</kbd>) that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents.
 
 ### Agent Pane
 
@@ -128,6 +139,12 @@ The agent status bar sits at the bottom of the window and gives you quick access
 </p>
 
 A context-aware, docked pane with your agent CLI of choice. The pane has context on your shell output across all your shells. Toggle with <kbd>Ctrl+Shift+.</kbd>, switch focus with <kbd>Ctrl+Shift+I</kbd>. If the agent needs to do multiple or complex tasks, it spins up background tasks in new tabs so your active shell stays focused.
+
+<p align="center">
+  <img src="./images/intelligent-terminal-agent-focus.png" alt="Screenshot of the agent pane with focus, showing multiple panes">
+</p>
+
+When you have multiple panes active, a small "Agent" indicator will appear on the pane that your agent has "focus" on.
 
 ### Agent Management
 
@@ -200,6 +217,20 @@ Building Intelligent Terminal is the same as building Windows Terminal. See the 
 ## Feedback
 
 Intelligent Terminal is in an experimental stage. If you have a feature request or find a bug, [submit an issue](https://github.com/microsoft/intelligent-terminal/issues) on the GitHub repository.
+
+### Collecting Logs
+
+To help us investigate bugs, please collect and attach diagnostic logs when filing an issue:
+
+1. Open Command Palette with <kbd>Ctrl+Shift+P</kbd>
+2. Search for **Report a bug (collect logs)**
+
+<p align="center">
+  <img src="./images/intelligent-terminal-collect-logs.png" alt="Screenshot of Command Palette showing 'Report a bug (collect logs)' command">
+</p>
+
+3. A ZIP file containing your error logs will be generated and opened in File Explorer
+4. Attach the ZIP to your issue so we can investigate with full context
 
 Intelligent Terminal ships as a separate app and installs next to your existing Windows Terminal. If you don't want agents in your terminal, nothing changes for you. With this model, we can learn, experiment, and iterate with you, the community, on what this evolution might look like without breaking your existing Windows Terminal flows.
 

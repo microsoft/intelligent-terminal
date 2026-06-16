@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. for at vise/skjule agentpanelet • Ctrl+S
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Starter agenten..."
 connection.reconnecting: "Genopretter forbindelse..."
+connection.connecting_activity: "Opretter forbindelse til agenten…"
+connection.lost: "Forbindelsen til agenten gik tabt. Skriv /restart for at oprette forbindelse igen."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Annulleret."
 system.no_prompt_in_flight: "Ingen forespørgsel i gang."
 system.authentication_failed: "Godkendelse mislykkedes"
 system.command_copied_retry: "Kommando kopieret — kør den i en anden terminal, og tryk derefter Enter for at prøve igen"  # {Locked="Enter"}
+system.stopped_max_tokens: "Svaret blev afkortet, da modellens outputgrænse blev nået."
+system.stopped_max_turn_requests: "Agenten stoppede, da dens anmodningsgrænse for denne tur blev nået."
+system.stopped_refusal: "Agenten afviste at fortsætte med denne anmodning."
+system.agent_busy: "Agenten er optaget på denne fane — vent på, at den aktuelle prompt afsluttes."
+system.resuming_session: "Genoptager session %{session_id}..."
+system.unknown_command: "Ukendt kommando \"%{command}\" — sendt som prompt. Skriv /help for at se listen."
+system.busy_use_stop: "Vent på, at den aktuelle prompt afsluttes, eller brug /stop først."
+system.cannot_focus_session: "Kan ikke fokusere på session %{session_id}: den ser ud til at være aktiv, men der er endnu ikke knyttet nogen rude-GUID. Prøv igen om et øjeblik."
+system.cannot_resume_no_load_session: "Kan ikke genoptage i agentrude: %{agent} annoncerede ikke ACP `loadSession`-funktionen. Tryk på Enter (uden Shift) for i stedet at genoptage i en ny terminalrude."
+system.cannot_resume_no_resume_flag: "Kan ikke genoptage %{agent}-session: denne agent har ikke noget `--resume`-lignende flag. Tryk på Shift+Enter for i stedet at prøve at genoptage inde i agentruden via ACP."
+system.cannot_resume_unknown_agent: "Kan ikke genoptage session %{session_id}: kildeagenten er ukendt for dette build."
+system.cannot_resume_phantom_via_flag: "Kan ikke genoptage %{agent}-session %{session_id}: den blev startet, men der blev aldrig opbygget nogen samtale, så %{agent} ville selv afvise genoptagelsen. Fjerner rækken."
+system.cannot_resume_phantom_via_load: "Kan ikke genoptage %{agent}-session %{session_id}: den blev startet, men der blev aldrig opbygget nogen samtale, så %{agent} ville afvise indlæsningen. Fjerner rækken."
+system.fallback.this_agent: "denne agent"
+system.fallback.connected_agent: "den tilsluttede agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Ingen vinduer fundet."
@@ -171,3 +188,24 @@ time.hour_singular: "%{count} time siden"
 time.hours_other: "%{count} timer siden"
 time.day_singular: "%{count} dag siden"
 time.days_other: "%{count} dage siden"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Vis denne kommandoliste"
+commands.clear.summary: "Ryd chattens rullehistorik (bevarer sessionen)"
+commands.new.summary: "Start en ny ACP-session (sletter historik)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnosticér den aktive terminal, og foreslå en rettelse (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Genstart agent"
+commands.stop.summary: "Annuller den igangværende prompt"
+commands.sessions.summary: "Åbn vælgeren for historiske sessioner (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Udførelse af anbefaling (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Valg %{choice} mislykkedes: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Vælg modellen til denne panel (/model <id> for at skifte direkte)"  # {Locked="/model","<id>"}
+model_picker.title: "Vælg model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Den tilsluttede agent annoncerede ingen modeller, der kan vælges."
+system.model_set: "Modellen til denne panel er angivet til %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Ukendt model %{model} — skriv /model for at se den tilgængelige liste."  # {Locked="%{model}","/model"}

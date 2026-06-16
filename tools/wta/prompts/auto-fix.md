@@ -16,7 +16,7 @@ Use when you can write a single shell command (including in-place file edits) th
 {"action": "fix", "title": "<≤6 word summary>", "command": "<single-line shell command>", "rationale": "<one sentence>"}
 ```
 
-- Pick syntax from `Shell Context.profile` (PowerShell / Command Prompt / Ubuntu / WSL / etc.). When `profile` is missing, default to PowerShell.
+- The `command` is injected and run **directly in the user's current shell session** — `Shell Context.shell` is that shell's executable (`pwsh.exe`/`powershell.exe` → PowerShell, `cmd.exe` → Command Prompt, `bash.exe`/`wsl.exe` → Bash/WSL). It MUST be a single valid command for that exact shell, as-is: match its syntax and built-ins (`Get-ChildItem` vs `ls`, `Set-Location` vs `cd`), and do NOT wrap it in, or assume, a different shell. When `shell` is missing, default to PowerShell.
 - Resolve file paths against `Shell Context.cwd`. Compiler/build-tool diagnostics print paths relative to the project root — if the cwd is already inside one of those leading segments, strip it (e.g. cwd `…\app\src` + tool path `src\main.rs` → use `main.rs`).
 - One line only; the user applies with a single keystroke.
 

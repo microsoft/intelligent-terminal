@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. para mostrar/ocultar o painel do agente �
 # ── Estado da conexão ────────────────────────────────────────────────────────────
 connection.starting: "Iniciando agente..."
 connection.reconnecting: "Reconectando..."
+connection.connecting_activity: "Conectando ao agente…"
+connection.lost: "A conexão com o agente foi perdida. Digite /restart para reconectar."  # {Locked="/restart"}
 
 # ── Mensagens do sistema (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Cancelado."
 system.no_prompt_in_flight: "Nenhum prompt em andamento."
 system.authentication_failed: "Falha na autenticação"
 system.command_copied_retry: "Comando copiado — execute-o em outro terminal e pressione Enter para tentar novamente"  # {Locked="Enter"}
+system.stopped_max_tokens: "A resposta foi cortada após atingir o limite de saída do modelo."
+system.stopped_max_turn_requests: "O agente parou após atingir o limite de solicitações para esta vez."
+system.stopped_refusal: "O agente recusou-se a continuar com esta solicitação."
+system.agent_busy: "O agente está ocupado nesta guia — aguarde o término do prompt atual."
+system.resuming_session: "Retomando a sessão %{session_id}..."
+system.unknown_command: "Comando desconhecido \"%{command}\" — enviado como prompt. Digite /help para ver a lista."
+system.busy_use_stop: "Aguarde o término do prompt atual ou use /stop primeiro."
+system.cannot_focus_session: "Não é possível focar a sessão %{session_id}: ela parece ativa, mas nenhum GUID de painel foi associado ainda. Tente novamente em instantes."
+system.cannot_resume_no_load_session: "Não é possível retomar no painel do agente: %{agent} não anunciou a funcionalidade ACP `loadSession`. Pressione Enter (sem Shift) para retomar em um novo painel do terminal."
+system.cannot_resume_no_resume_flag: "Não é possível retomar a sessão de %{agent}: este agente não tem um sinalizador do tipo `--resume`. Pressione Shift+Enter para tentar retomar dentro do painel do agente via ACP."
+system.cannot_resume_unknown_agent: "Não é possível retomar a sessão %{session_id}: o agente de origem é desconhecido para esta compilação."
+system.cannot_resume_phantom_via_flag: "Não é possível retomar a sessão de %{agent} %{session_id}: ela foi iniciada, mas nunca acumulou conversa, então o próprio %{agent} rejeitaria a retomada. Removendo a linha."
+system.cannot_resume_phantom_via_load: "Não é possível retomar a sessão de %{agent} %{session_id}: ela foi iniciada, mas nunca acumulou conversa, então %{agent} rejeitaria o carregamento. Removendo a linha."
+system.fallback.this_agent: "este agente"
+system.fallback.connected_agent: "o agente conectado"
 
 # ── Saída da CLI em tempo de execução (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nenhuma janela encontrada."
@@ -178,6 +195,17 @@ time.days_other: "há %{count} dias"
 commands.help.summary: "Mostrar esta lista de comandos"
 commands.clear.summary: "Limpar o histórico do chat (mantém a sessão)"
 commands.new.summary: "Iniciar uma nova sessão ACP (descarta o histórico)"
+commands.fix.summary: "Diagnosticar o terminal ativo e sugerir uma correção (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Reiniciar agente"
 commands.stop.summary: "Cancelar o prompt em andamento"
 commands.sessions.summary: "Abrir o seletor de sessões anteriores (Ctrl+Shift+/)"
+
+# ── Execução de recomendação (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Falha na opção %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Escolha o modelo para este painel (/model <id> para trocar diretamente)"  # {Locked="/model","<id>"}
+model_picker.title: "Selecionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "O agente conectado não anunciou nenhum modelo selecionável."
+system.model_set: "Modelo para este painel definido como %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Modelo desconhecido %{model} — digite /model para ver a lista disponível."  # {Locked="%{model}","/model"}

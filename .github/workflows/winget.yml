@@ -5,7 +5,7 @@ on:
     types: [published]
 
 env:
-  REGEX: 'Microsoft\.WindowsTerminal(?:Preview)?_([\d.]+)_8wekyb3d8bbwe\.msixbundle$'
+  REGEX: 'Microsoft\.IntelligentTerminal_([\d.]+)_8wekyb3d8bbwe\.msixbundle$'
   # winget-create will read the following environment variable to access the GitHub token needed for submitting a PR
   # See https://aka.ms/winget-create-token
   WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
@@ -13,15 +13,22 @@ env:
 jobs:
   publish:
     runs-on: windows-latest # Action can only run on Windows
+    if: ${{ !github.event.release.prerelease }} # Only publish stable releases to WinGet
     steps:
-      - name: Publish Windows Terminal ${{ github.event.release.prerelease && 'Preview' || 'Stable' }}
+      - name: Publish Intelligent Terminal
         run: |
           $assets = '${{ toJSON(github.event.release.assets) }}' | ConvertFrom-Json
-          $wingetRelevantAsset = $assets | Where-Object { $_.name -like '*.msixbundle' } | Select-Object -First 1
           $regex = [Regex]::New($env:REGEX)
+          $wingetRelevantAsset = $assets | Where-Object { $regex.IsMatch($_.name) } | Select-Object -First 1
+
+          if (-not $wingetRelevantAsset) {
+            Write-Error "No release asset matched '$env:REGEX'; nothing to publish to WinGet."
+            exit 1
+          }
+
           $version = $regex.Match($wingetRelevantAsset.name).Groups[1].Value
 
-          $wingetPackage = "Microsoft.WindowsTerminal${{ github.event.release.prerelease && '.Preview' || '' }}"
+          $wingetPackage = "Microsoft.IntelligentTerminal"
 
           & curl.exe -JLO https://aka.ms/wingetcreate/latest
           & .\wingetcreate.exe update $wingetPackage -s -v $version -u $wingetRelevantAsset.browser_download_url

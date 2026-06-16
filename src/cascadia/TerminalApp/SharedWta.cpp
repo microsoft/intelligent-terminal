@@ -8,6 +8,7 @@
 #include <string>
 
 #include "../WinRTUtils/inc/WtExeUtils.h"
+#include "../inc/WtaProcess.h"
 
 namespace winrt::TerminalApp::implementation
 {
@@ -259,6 +260,21 @@ namespace winrt::TerminalApp::implementation
         // CreateProcessW and AssignProcessToJobObject would leak wta
         // (no job → no KILL_ON_JOB_CLOSE containment).
         DWORD creationFlags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED;
+
+        // Refresh the current process's PATH from the Windows registry
+        // so the master (which inherits our env) sees PATH entries added
+        // after Terminal launched (e.g. WinGet\Links after FRE installs
+        // copilot). Using RefreshProcessPath + lpEnvironment=nullptr
+        // preserves all process-only variables (WT_COM_CLSID, etc.)
+        // that regenerate() would drop.
+        try
+        {
+            ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
 
         std::wstring mutableCmdLine{ commandline };
         if (!CreateProcessW(

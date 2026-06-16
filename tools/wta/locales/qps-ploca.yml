@@ -57,7 +57,7 @@ chat.turn_executed: "[!!_→ executed: %{title}_!!]"
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "[!!_Ask anything, / for commands.._!!]"  # {Locked="/"}
 input.placeholder.connecting: "[!!_connecting..._!!]"
-input.placeholder.disconnected: "[!!_disconnect_!!]"
+input.placeholder.disconnected: "[!!_disconnected_!!]"
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -119,12 +119,29 @@ layout.welcome_hint: "[!!_  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Shift
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "[!!_Starting agent..._!!]"
 connection.reconnecting: "[!!_Reconnecting..._!!]"
+connection.connecting_activity: "[!!_Connecting to agent…_!!]"
+connection.lost: "[!!_Connection to the agent was lost. Type /restart to reconnect._!!]"  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "[!!_Cancelled._!!]"
 system.no_prompt_in_flight: "[!!_No prompt in flight._!!]"
 system.authentication_failed: "[!!_Authentication failed_!!]"
 system.command_copied_retry: "[!!_Command copied — run it in another terminal, then press Enter to retry_!!]"  # {Locked="Enter"}
+system.stopped_max_tokens: "[!!_The response was cut off after reaching the model's output limit._!!]"
+system.stopped_max_turn_requests: "[!!_The agent stopped after reaching its request limit for this turn._!!]"
+system.stopped_refusal: "[!!_The agent declined to continue with this request._!!]"
+system.agent_busy: "[!!_Agent is busy on this tab — wait for the current prompt to finish._!!]"
+system.resuming_session: "[!!_Resuming session %{session_id}..._!!]"
+system.unknown_command: "[!!_Unknown command \"%{command}\" — sent as prompt. Type /help for the list._!!]"  # {Locked="/help"}
+system.busy_use_stop: "[!!_Wait for the current prompt to finish, or /stop first._!!]"  # {Locked="/stop"}
+system.cannot_focus_session: "[!!_Cannot focus session %{session_id}: it appears live but no pane GUID is bound yet. Try again in a moment._!!]"
+system.cannot_resume_no_load_session: "[!!_Cannot resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability. Press Enter (without Shift) to resume in a new terminal pane instead._!!]"  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "[!!_Cannot resume %{agent} session: this agent has no `--resume`-style flag. Press Shift+Enter to try resuming inside the agent pane via ACP instead._!!]"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "[!!_Cannot resume session %{session_id}: its source agent is unknown to this build._!!]"
+system.cannot_resume_phantom_via_flag: "[!!_Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} itself would reject the resume. Removing the row._!!]"
+system.cannot_resume_phantom_via_load: "[!!_Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row._!!]"
+system.fallback.this_agent: "[!!_this agent_!!]"
+system.fallback.connected_agent: "[!!_the connected agent_!!]"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "[!!_No windows found._!!]"
@@ -176,6 +193,17 @@ time.days_other: "[!!_%{count} days ago_!!]"
 commands.help.summary: "[!!_Show this command list_!!]"
 commands.clear.summary: "[!!_Clear the chat scrollback (keeps session)_!!]"
 commands.new.summary: "[!!_Start a fresh ACP session (drops history)_!!]"
+commands.fix.summary: "[!!_Diagnose the active terminal and suggest a fix (/fix <hint>)_!!]"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "[!!_Restart agent_!!]"
 commands.stop.summary: "[!!_Cancel the in-flight prompt_!!]"
 commands.sessions.summary: "[!!_Open the historical sessions picker (Ctrl+Shift+/)_!!]"
+
+# ── Recommendation execution (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "[!!_Choice %{choice} failed: %{error}_!!]"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "[!!_Pick the model for this pane (/model <id> to switch directly)_!!]"  # {Locked="/model","<id>"}
+model_picker.title: "[!!_Select model (↑ ↓ • Enter • Esc)_!!]"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "[!!_The connected agent did not advertise any selectable models._!!]"
+system.model_set: "[!!_Model for this pane set to %{model}._!!]"  # {Locked="%{model}"}
+system.model_unknown: "[!!_Unknown model %{model} — type /model to see the available list._!!]"  # {Locked="%{model}","/model"}

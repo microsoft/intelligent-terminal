@@ -147,9 +147,10 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     if !truncated {
         let selected_idx = app.current_tab().selected_completed_turn_idx;
+        let pane_focused = app.pane_focused;
         for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
             let is_selected = selected_idx == Some(idx);
-            let mut turn_lines = build_completed_turn_lines(turn, is_selected, wrap_width);
+            let mut turn_lines = build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
             reversed_lines.extend(turn_lines.drain(..).rev());
             if reversed_lines.len() >= requested_lines {
                 truncated = true;
@@ -164,10 +165,10 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     {
         let mut welcome_lines = vec![
             Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
                 Span::styled(
                     t!("chat.welcome_title").into_owned(),
-                    Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
                 ),
             ]),
         ];
@@ -217,19 +218,27 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 fn build_completed_turn_lines<'a>(
     turn: &'a crate::app::CompletedTurn,
     is_selected: bool,
+    pane_focused: bool,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
     let chevron = if turn.expanded { "▼ " } else { "▶ " };
-    // Selected row uses the SELECTED theme (reverse video) to make the
-    // current Tab target visible. Unselected rows render in the standard
-    // dim USER_PROMPT style — same as before this feature existed.
-    let prompt_style = if is_selected {
+    // Selected row highlights the current Tab target. When the pane is focused
+    // it's the live, active selection (bright SELECTED bar); when the pane is
+    // unfocused the selection is preserved but muted (SELECTED_INACTIVE), so
+    // it reads as "not active" and matches the hidden caret. Unselected rows
+    // render in the standard dim USER_PROMPT style.
+    let selected_style = if pane_focused {
         theme::SELECTED
+    } else {
+        theme::SELECTED_INACTIVE
+    };
+    let prompt_style = if is_selected {
+        selected_style
     } else {
         theme::USER_PROMPT
     };
     let chevron_style = if is_selected {
-        theme::SELECTED
+        selected_style
     } else {
         theme::DIM
     };
@@ -279,6 +288,17 @@ fn build_completed_turn_lines<'a>(
 }
 
 fn build_activity_line(app: &App) -> Option<Line<'static>> {
+    // While the helper is still establishing its connection to the agent,
+    // show an animated "Connecting to agent…" line (F7). The handshake
+    // (pipe connect → ACP init → session/new) can take tens of seconds on a
+    // cold start; without an animated indicator the pane looked frozen. Uses
+    // the app-level `activity_frame`, which is advanced on Tick while the
+    // state is `Connecting` (see handle_event). Takes precedence over the
+    // turn spinner because no turn can be in flight before we're connected.
+    if matches!(app.state, crate::app::ConnectionState::Connecting(_)) {
+        let label = t!("connection.connecting_activity").into_owned();
+        return Some(Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize)));
+    }
     let tab = app.current_tab();
     if tab.turn.spinner_label().is_none() || pending_render_text(tab).is_some() {
         return None;
@@ -376,13 +396,29 @@ fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
-    let Some(text) = pending_render_text(app.current_tab()) else {
+    let tab = app.current_tab();
+    let Some(text) = pending_render_text(tab) else {
         return Vec::new();
+    };
+    // Typewriter smoothing: only reveal the first `reveal_chars` characters of
+    // the streaming text. The reveal cursor is advanced toward the full length
+    // by the `RevealTick` animation (`App::advance_reveal`), turning the
+    // upstream ~90-char-every-~100ms bursts into a smooth character flow. The
+    // full text is always in `turn.buffer()`, and finalize commits it in full,
+    // so this never drops or delays the final content.
+    let revealed: Cow<'_, str> = {
+        let total = text.chars().count();
+        let shown = tab.reveal_chars.min(total);
+        if shown >= total {
+            text
+        } else {
+            Cow::Owned(text.chars().take(shown).collect())
+        }
     };
     let mut lines = Vec::new();
     push_dot_prefixed_lines(
         &mut lines,
-        &text,
+        &revealed,
         wrap_width,
         theme::DOT_AGENT,
         theme::AGENT_TEXT,
@@ -482,7 +518,7 @@ fn build_message_lines<'a>(
                 Span::raw("  "),
                 Span::styled(
                     t!("chat.welcome_disclaimer").into_owned(),
-                    Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
                 ),
             ]));
         }

@@ -163,11 +163,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>এজেন্ট পেনে ব্যবহৃত এজেন্ট বেছে নিন। যেকোনো সামঞ্জস্যপূর্ণ ACP এজেন্ট স্বয়ংক্রিয়ভাবে শনাক্ত হবে।</value>
+    <value>এজেন্ট পেনে ব্যবহৃত এবং ACP সমর্থন করে এমন এজেন্ট বেছে নিন।</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ এই এজেন্টের জন্য Node.js এবং NPX প্রয়োজন, যা ইতিমধ্যে উপস্থিত না থাকলে স্বয়ংক্রিয়ভাবে ইনস্টল করা হবে।</value>
+    <value>এই এজেন্টের জন্য Node.js এবং NPX প্রয়োজন, যা ইতিমধ্যে উপস্থিত না থাকলে স্বয়ংক্রিয়ভাবে ইনস্টল করা হবে।</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -185,7 +185,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ এটি সক্ষম করলে আপনার এজেন্টগুলোর মধ্যে সেশন ট্র্যাক করতে ইন্টিগ্রেশন hooks ইনস্টল হবে।</value>
+    <value>এটি সক্ষম করলে আপনার এজেন্টগুলোর মধ্যে সেশন ট্র্যাক করতে ইন্টিগ্রেশন hooks ইনস্টল হবে।</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -220,14 +220,62 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>সেট আপ হচ্ছে...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ GitHub Copilot ইনস্টল করতে ব্যর্থ। আপনার নেটওয়ার্ক পরীক্ষা করুন এবং পুনরায় চেষ্টা করুন।</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Windows Package Manager পলিসির কারণে {0} ইনস্টলেশন ব্লক করা হয়েছে। আপনি যদি পরিচালিত ডিভাইসে থাকেন, আপনার IT অ্যাডমিনের সঙ্গে যোগাযোগ করুন।</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy (group policy disabled the operation).</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Node.js ইনস্টল করতে ব্যর্থ। আপনার নেটওয়ার্ক পরীক্ষা করুন এবং পুনরায় চেষ্টা করুন।</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ {0} ইনস্টল করা যায়নি (ত্রুটি কোড {1})। বিস্তারিত জানতে লগ দেখুন, অথবা {0} ম্যানুয়ালি ইনস্টল করুন।</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194". Shown for failure causes we don't have a more specific message for.</comment>
   </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ {0} ইনস্টল করা যায়নি। বিস্তারিত জানতে লগ দেখুন, অথবা {0} ম্যানুয়ালি ইনস্টল করুন।</value>
+    <comment>FRE setup error fallback used when no actionable error code is available (e.g. the catalog connect/search failed before an installer ever ran). {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ {0} ইনস্টলার একটি ত্রুটি রিপোর্ট করেছে (কোড {1})। বিস্তারিত জানতে লগ পরীক্ষা করুন, অথবা {0} ম্যানুয়ালি ইনস্টল করুন।</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603). Shown when winget reached the install phase but the installer itself failed.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ {0} ইনস্টল করার সময় Windows Package Manager-এ পৌঁছানো যায়নি। আপনার ইন্টারনেট সংযোগ পরীক্ষা করুন (VPN, proxy, বা firewall এটি ব্লক করতে পারে) এবং আবার চেষ্টা করুন।</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name (FreOverlay_PackageDisplayName_Copilot or _Node). Shown when winget couldn't reach its catalog or the package download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ এই সিস্টেমে {0}-এর জন্য কোনো সামঞ্জস্যপূর্ণ ইনস্টলার উপলভ্য নেই (OS সংস্করণ বা আর্কিটেকচার সমর্থিত নাও হতে পারে)। {0} ম্যানুয়ালি ইনস্টল করুন।</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). Shown when winget returned NoApplicableInstallers — the manifest exists but no installer entry matches this OS/arch/scope.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ Windows Package Manager ক্যাটালগে {0} পাওয়া যায়নি। winget উৎসগুলি রিফ্রেশ করার চেষ্টা করুন, অথবা {0} ম্যানুয়ালি ইনস্টল করুন।</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice). Shown when no manifest with the requested package ID was returned from the catalog search.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ {0} ইনস্টল করতে 20 মিনিটের বেশি সময় লেগেছে। Intelligent Terminal অপেক্ষা করা বন্ধ করেছে, কিন্তু ইনস্টলারটি এখনও ব্যাকগ্রাউন্ডে চলতে পারে। Task Manager পরীক্ষা করুন, অথবা পরে আবার চেষ্টা করুন।</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name. Shown when our 20-minute hard timeout expired before the install completed.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ session hooks ইনস্টল করতে ব্যর্থ। সেশন ব্যবস্থাপনা বন্ধ করা হয়েছে। আপনি এটি পুনরায় সক্রিয় করে আবার চেষ্টা করতে পারেন, অথবা এটি ছাড়া চালিয়ে যেতে সংরক্ষণ করুন।</value>
+    <comment>{Locked="hooks"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ শেল ইন্টিগ্রেশন ইনস্টল করতে ব্যর্থ। ত্রুটি শনাক্তকরণ বন্ধ করা হয়েছে। আপনি এটি পুনরায় সক্রিয় করে আবার চেষ্টা করতে পারেন, অথবা এটি ছাড়া চালিয়ে যেতে সংরক্ষণ করুন।</value>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ PowerShell এক্সিকিউশন পলিসি স্ক্রিপ্ট ব্লক করছে। ত্রুটি শনাক্তকরণ বন্ধ করা হয়েছে।</value>
+    <comment>{Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Windows Package Manager (winget) ইনস্টল করা নেই বা উপলভ্য নয়। প্রথমে এটি ইনস্টল করুন, তারপর আবার চেষ্টা করুন।</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  </data>
+
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>চালু</value>
   </data>
@@ -303,5 +351,18 @@
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Intelligent Terminal-কে আপনার শেল অ্যাক্সেস করতে এবং স্বয়ংক্রিয়ভাবে ত্রুটি সনাক্ত করতে অনুমতি দিন।</value>
+  </data>
+  <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>কীভাবে এটি ম্যানুয়ালি ঠিক করবেন তা শিখুন</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>এটি সক্ষম করলে কমান্ডের ব্যর্থতা শনাক্ত করতে shell ইন্টিগ্রেশন ইনস্টল হবে। </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>আরও জানুন</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>PowerShell এক্সিকিউশন পলিসি স্ক্রিপ্ট ব্লক করছে।</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
 </root>

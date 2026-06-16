@@ -164,11 +164,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>בחר את הסוכן המשמש בחלונית הסוכן. כל סוכן תואם ACP יזוהה אוטומטית.</value>
+    <value>בחר את הסוכן המשמש בחלונית הסוכן ותומך ב-ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ סוכן זה דורש Node.js ו-NPX, אשר יותקנו אוטומטית אם אינם קיימים.</value>
+    <value>סוכן זה דורש Node.js ו-NPX, אשר יותקנו אוטומטית אם אינם קיימים.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -186,7 +186,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ הפעלת אפשרות זו תתקין hooks לאינטגרציה למעקב אחר הפעלות בכל הסוכנים שלך.</value>
+    <value>הפעלת אפשרות זו תתקין hooks לאינטגרציה למעקב אחר הפעלות בכל הסוכנים שלך.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -221,13 +221,49 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>מגדיר...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ התקנת GitHub Copilot נכשלה. בדוק את הרשת שלך ונסה שוב.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ התקנת {0} נחסמה על-ידי מדיניות של מנהל החבילות של Windows. אם אתה במכשיר מנוהל, פנה למנהל ה-IT שלך.</value>
+    <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ התקנת Node.js נכשלה. בדוק את הרשת שלך ונסה שוב.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ לא ניתן היה להתקין את {0} (קוד שגיאה {1}). עיין ביומן לקבלת פרטים, או התקן את {0} באופן ידני.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ לא ניתן היה להתקין את {0}. עיין ביומן לקבלת פרטים, או התקן את {0} באופן ידני.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ מתקין {0} דיווח על שגיאה (קוד {1}). בדוק את היומן לקבלת פרטים, או התקן את {0} באופן ידני.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ לא ניתן היה להגיע למנהל החבילות של Windows בזמן התקנת {0}. בדוק את החיבור שלך לאינטרנט (VPN, proxy או חומת אש עשויים לחסום אותו) ונסה שוב.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ אין מתקין תואם עבור {0} במערכת זו (ייתכן שגרסת מערכת ההפעלה או הארכיטקטורה אינן נתמכות). התקן את {0} באופן ידני.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} לא נמצא בקטלוג של מנהל החבילות של Windows. נסה לרענן את מקורות winget, או התקן את {0} באופן ידני.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ התקנת {0} ארכה יותר מ-20 דקות. Intelligent Terminal הפסיק להמתין, אך ייתכן שהמתקין עדיין פועל ברקע. בדוק את Task Manager, או נסה שוב מאוחר יותר.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ מנהל החבילות של Windows (winget) אינו מותקן או אינו זמין. התקן אותו תחילה ולאחר מכן נסה שוב.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>פעיל</value>
@@ -304,5 +340,27 @@
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>העניק ל-Intelligent Terminal הרשאה לגשת למעטפת שלך ולזהות שגיאות באופן אוטומטי.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ התקנת שילוב מעטפת נכשלה. זיהוי שגיאות כובה. באפשרותך להפעיל מחדש ולנסות שוב, או לשמור כדי להמשיך בלעדיו.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ התקנת hooks של הפעלה נכשלה. ניהול ההפעלות כובה. באפשרותך להפעיל מחדש ולנסות שוב, או לשמור כדי להמשיך בלעדיו.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>למד כיצד לתקן זאת באופן ידני</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>הפעלת אפשרות זו תתקין אינטגרציית shell לזיהוי כשלים בפקודות. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>למד עוד</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>מדיניות הביצוע של PowerShell חוסמת סקריפטים.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ מדיניות הביצוע של PowerShell חוסמת סקריפטים. זיהוי שגיאות כובה.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

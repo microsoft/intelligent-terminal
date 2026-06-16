@@ -163,11 +163,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Izberite agenta, ki se uporablja v podoknu agenta. Vsak združljiv agent ACP bo zaznan samodejno.</value>
+    <value>Izberite agenta, ki se uporablja v podoknu agenta in podpira ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Ta agent zahteva Node.js in NPX, ki bosta samodejno nameščena, če še nista prisotna.</value>
+    <value>Ta agent zahteva Node.js in NPX, ki bosta samodejno nameščena, če še nista prisotna.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -185,7 +185,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Omogočanje te možnosti bo namestilo integracijske hooks za sledenje sejam med vašimi agenti.</value>
+    <value>Omogočanje te možnosti bo namestilo integracijske hooks za sledenje sejam med vašimi agenti.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -220,14 +220,51 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Nastavljanje...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Namestitev GitHub Copilot ni uspela. Preverite omrežno povezavo in poskusite znova.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Namestitev {0} je blokiral pravilnik Upravitelja paketov za Windows. Če uporabljate upravljano napravo, se obrnite na skrbnika za IT.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Namestitev Node.js ni uspela. Preverite omrežno povezavo in poskusite znova.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Ni bilo mogoče namestiti {0} (koda napake {1}). Za podrobnosti preverite dnevnik ali namestite {0} ročno.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Ni bilo mogoče namestiti {0}. Za podrobnosti preverite dnevnik ali namestite {0} ročno.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ Namestitveni program za {0} je sporočil napako (koda {1}). Za podrobnosti preverite dnevnik ali namestite {0} ročno.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Med nameščanjem {0} ni bilo mogoče vzpostaviti stika z Upraviteljem paketov za Windows. Preverite internetno povezavo (VPN, posredniški strežnik ali požarni zid jo morda blokira) in poskusite znova.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ V tem sistemu ni na voljo združljivega namestitvenega programa za {0} (različica OS ali arhitektura morda ni podprta). Namestite {0} ročno.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} ni bilo mogoče najti v katalogu Upravitelja paketov za Windows. Poskusite osvežiti vire winget ali namestite {0} ročno.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Namestitev {0} je trajala dlje kot 20 minut. Intelligent Terminal je nehal čakati, vendar se namestitveni program morda še vedno izvaja v ozadju. Preverite Task Manager ali poskusite znova pozneje.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Upravitelj paketov za Windows (winget) ni nameščen ali ni na voljo. Najprej ga namestite, nato poskusite znova.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  </data>
+
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Vklopljeno</value>
   </data>
@@ -303,5 +340,27 @@
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Dovolite aplikaciji Intelligent Terminal dostop do lupine in samodejno zaznavanje napak.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Namestitev integracije lupine ni uspela. Zaznavanje napak je bilo izklopljeno. Lahko ga znova omogočite in poskusite znova ali shranite, da nadaljujete brez njega.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Namestitev session hooks ni uspela. Upravljanje sej je bilo izklopljeno. Lahko ga znova omogočite in poskusite znova ali shranite, da nadaljujete brez njega.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Naučite se, kako to popraviti ročno</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Omogočanje te možnosti bo namestilo integracijo lupine za zaznavanje napak ukazov. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Več informacij</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>Pravilnik o izvajanju PowerShell blokira skripte.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ Pravilnik o izvajanju PowerShell blokira skripte. Zaznavanje napak izklopljeno.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

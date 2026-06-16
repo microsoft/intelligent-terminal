@@ -8,9 +8,11 @@
 // timestamp format, log path, and error-handling semantics stay in lock-
 // step.
 //
-// Output: `%LOCALAPPDATA%\IntelligentTerminal\logs\wta-agent-pane.log`,
-// one ISO8601 UTC line per call with millisecond precision so timestamps
-// correlate with `wta-main_*.log` down to the millisecond.
+// Output: the per-version WTA log directory + `terminal-agent-pane.log`, one
+// ISO8601 UTC line per call with millisecond precision so timestamps correlate
+// with `wta-main_*.log` down to the millisecond. The directory is resolved by
+// `_intelligentTerminalLogDir()` below (the per-version `logs\<pkgver>\` folder)
+// to match wta's Rust per-version logging.
 //
 // Header-only `inline` so each translation unit that includes this picks
 // up its own copy of the symbol without ODR conflicts.
@@ -27,22 +29,27 @@
 #include <string>
 #include <system_error>
 
+#include "../inc/IntelligentTerminalPaths.h"
+
 namespace winrt::TerminalApp::implementation
 {
+    // The per-version WTA log directory (`logs\<pkgver>\`), resolved by the
+    // shared `IntelligentTerminal::LogDirVersioned()` so this logger, the Rust
+    // processes, and the PowerShell hooks all write into the same per-version
+    // folder. (The bug-report-zip action uses `LogDir()` — the root — so it can
+    // archive every version at once.)
+    inline std::filesystem::path _intelligentTerminalLogDir()
+    {
+        return ::IntelligentTerminal::LogDirVersioned();
+    }
+
     inline void _agentPaneLog(const std::string& msg)
     {
-        wchar_t localAppData[MAX_PATH];
-        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0)
+        std::filesystem::path logDir = _intelligentTerminalLogDir();
+        if (logDir.empty())
         {
             return;
         }
-        // Build a `filesystem::path` from the raw wstring. `std::ofstream`'s
-        // wstring overload is a MSVC extension; the standard ctor only
-        // accepts `const char*`, `std::string`, and `std::filesystem::path`.
-        // Going via `path` keeps the code portable.
-        std::filesystem::path logDir{ std::wstring(localAppData) };
-        logDir /= L"IntelligentTerminal";
-        logDir /= L"logs";
 
         // No-throw overload — this is a diagnostic logger; we never want
         // a filesystem hiccup (race with a concurrent rmdir, permission
@@ -55,7 +62,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        const auto logPath = logDir / L"wta-agent-pane.log";
+        const auto logPath = logDir / L"terminal-agent-pane.log";
         std::ofstream f{ logPath, std::ios::app };
         if (!f)
         {

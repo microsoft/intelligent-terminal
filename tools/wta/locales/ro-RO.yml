@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. afișare/ascundere panou agent • Ctrl+Sh
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Se pornește agentul..."
 connection.reconnecting: "Reconectare..."
+connection.connecting_activity: "Se conectează la agent…"
+connection.lost: "Conexiunea la agent s-a pierdut. Tastați /restart pentru reconectare."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Anulat."
 system.no_prompt_in_flight: "Nicio solicitare în curs."
 system.authentication_failed: "Autentificarea a eșuat"
 system.command_copied_retry: "Comandă copiată — rulați-o într-un alt terminal, apoi apăsați Enter pentru a reîncerca"  # {Locked="Enter"}
+system.stopped_max_tokens: "Răspunsul a fost întrerupt după atingerea limitei de ieșire a modelului."
+system.stopped_max_turn_requests: "Agentul s-a oprit după atingerea limitei de solicitări pentru această tură."
+system.stopped_refusal: "Agentul a refuzat să continue cu această solicitare."
+system.agent_busy: "Agentul este ocupat în această filă — așteptați finalizarea solicitării curente."
+system.resuming_session: "Se reia sesiunea %{session_id}..."
+system.unknown_command: "Comandă necunoscută \"%{command}\" — trimisă ca solicitare. Tastați /help pentru listă."  # {Locked="/help"}
+system.busy_use_stop: "Așteptați finalizarea solicitării curente sau folosiți mai întâi /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Nu se poate focaliza sesiunea %{session_id}: pare activă, dar încă nu este legat niciun GUID de panou. Încercați din nou în câteva momente."
+system.cannot_resume_no_load_session: "Nu se poate relua în panoul agentului: %{agent} nu a anunțat capacitatea ACP `loadSession`. Apăsați Enter (fără Shift) pentru a relua în schimb într-un panou de terminal nou."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Nu se poate relua sesiunea %{agent}: acest agent nu are un semnalizator de tip `--resume`. Apăsați Shift+Enter pentru a încerca reluarea în panoul agentului prin ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Nu se poate relua sesiunea %{session_id}: agentul său sursă este necunoscut acestei compilări WTA."
+system.cannot_resume_phantom_via_flag: "Nu se poate relua sesiunea %{agent} %{session_id}: a fost pornită, dar nu a acumulat nicio conversație, așa că %{agent} însuși ar respinge reluarea. Se elimină rândul."
+system.cannot_resume_phantom_via_load: "Nu se poate relua sesiunea %{agent} %{session_id}: a fost pornită, dar nu a acumulat nicio conversație, așa că %{agent} ar respinge încărcarea. Se elimină rândul."
+system.fallback.this_agent: "acest agent"
+system.fallback.connected_agent: "agentul conectat"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nu au fost găsite ferestre."
@@ -170,3 +187,24 @@ time.hour_singular: "acum %{count} oră"
 time.hours_other: "acum %{count} de ore"
 time.day_singular: "acum %{count} zi"
 time.days_other: "acum %{count} de zile"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Afișați această listă de comenzi"
+commands.clear.summary: "Goliți istoricul derulant al chatului (păstrează sesiunea)"
+commands.new.summary: "Porniți o sesiune ACP nouă (elimină istoricul)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnosticați terminalul activ și sugerați o remediere (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Reporniți agentul"
+commands.stop.summary: "Anulați promptul în curs"
+commands.sessions.summary: "Deschideți selectorul sesiunilor istorice (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Executarea recomandării (src/coordinator.rs) ────────────────────────────
+system.choice_execution_failed: "Alegerea %{choice} a eșuat: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Alegeți modelul pentru acest panou (/model <id> pentru a comuta direct)"  # {Locked="/model","<id>"}
+model_picker.title: "Selectați modelul (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Agentul conectat nu a anunțat niciun model selectabil."
+system.model_set: "Modelul pentru acest panou a fost setat la %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Model necunoscut %{model} — tastați /model pentru a vedea lista disponibilă."  # {Locked="%{model}","/model"}

@@ -74,6 +74,7 @@ commands.help_close_hint: "  Esc        סגור עזרה זו"  # {Locked="Esc"
 commands.help.summary: "הצג את רשימת הפקודות הזו"
 commands.clear.summary: "נקה את היסטוריית הגלילה של הצ׳אט (משאיר את ההפעלה)"
 commands.new.summary: "התחל הפעלת ACP חדשה (מוחק היסטוריה)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "הפעל מחדש את הסוכן"
 commands.stop.summary: "בטל את הבקשה שמתבצעת"
 commands.sessions.summary: "פתח את בורר ההפעלות ההיסטוריות (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -130,12 +131,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. להצגה/הסתרה של חלונית ה
 # ── מצב חיבור ────────────────────────────────────────────────────────
 connection.starting: "מפעיל את הסוכן..."
 connection.reconnecting: "מתחבר מחדש..."
+connection.connecting_activity: "מתחבר לסוכן…"
+connection.lost: "החיבור לסוכן אבד. הקלד /restart כדי להתחבר מחדש."  # {Locked="/restart"}
 
 # ── הודעות מערכת (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "בוטל."
 system.no_prompt_in_flight: "אין בקשה בתהליך."
 system.authentication_failed: "האימות נכשל"
 system.command_copied_retry: "הפקודה הועתקה — הפעל אותה במסוף אחר, ואז לחץ Enter לניסיון חוזר"  # {Locked="Enter"}
+system.stopped_max_tokens: "התגובה נקטעה לאחר שהגיעה למגבלת הפלט של המודל."
+system.stopped_max_turn_requests: "הסוכן נעצר לאחר שהגיע למגבלת הבקשות שלו לתור זה."
+system.stopped_refusal: "הסוכן סירב להמשיך בבקשה זו."
+system.agent_busy: "הסוכן עסוק בכרטיסיה זו — המתן עד שההנחיה הנוכחית תסתיים."
+system.resuming_session: "מחדש את ההפעלה %{session_id}..."
+system.unknown_command: "פקודה לא ידועה \"%{command}\" — נשלחה כהנחיה. הקלד /help לקבלת הרשימה."  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "המתן עד שההנחיה הנוכחית תסתיים, או הפעל תחילה /stop."  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "לא ניתן להתמקד בהפעלה %{session_id}: היא נראית פעילה, אך עדיין לא משויך GUID של חלונית. נסה שוב בעוד רגע."
+system.cannot_resume_no_load_session: "לא ניתן לחדש בחלונית הסוכן: %{agent} לא פרסם את יכולת ACP `loadSession`. הקש Enter (ללא Shift) כדי לחדש בחלונית מסוף חדשה במקום זאת."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "לא ניתן לחדש את ההפעלה של %{agent}: לסוכן זה אין דגל בסגנון `--resume`. הקש Shift+Enter כדי לנסות לחדש בתוך חלונית הסוכן דרך ACP במקום זאת."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "לא ניתן לחדש את ההפעלה %{session_id}: סוכן המקור שלה אינו מוכר לבנייה זו של WTA."
+system.cannot_resume_phantom_via_flag: "לא ניתן לחדש את ההפעלה %{agent} %{session_id}: היא הופעלה אך מעולם לא צברה שיחה כלשהי, ולכן %{agent} עצמו ידחה את החידוש. מסיר את השורה."
+system.cannot_resume_phantom_via_load: "לא ניתן לחדש את ההפעלה %{agent} %{session_id}: היא הופעלה אך מעולם לא צברה שיחה כלשהי, ולכן %{agent} ידחה את הטעינה. מסיר את השורה."
+system.fallback.this_agent: "סוכן זה"
+system.fallback.connected_agent: "הסוכן המחובר"
 
 # ── פלט CLI בזמן ריצה (src/main.rs) ────────────────────────────────────────
 output.no_windows: "לא נמצאו חלונות."
@@ -181,3 +199,13 @@ time.hour_singular: "לפני שעה אחת"
 time.hours_other: "לפני %{count} שעות"
 time.day_singular: "לפני יום אחד"
 time.days_other: "לפני %{count} ימים"
+
+# ── ביצוע המלצה (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "הבחירה %{choice} נכשלה: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "בחר את המודל עבור חלונית זו (/model <id> למעבר ישיר)"  # {Locked="/model","<id>"}
+model_picker.title: "בחר מודל (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "הסוכן המחובר לא פרסם מודלים הניתנים לבחירה."
+system.model_set: "המודל עבור חלונית זו הוגדר ל-%{model}."  # {Locked="%{model}"}
+system.model_unknown: "מודל לא ידוע %{model} — הקלד /model כדי לראות את הרשימה הזמינה."  # {Locked="%{model}","/model"}

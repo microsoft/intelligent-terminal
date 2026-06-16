@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. agente k'itita rikuchiy/pakay • Ctrl+Shi
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agente qallarichkan..."
 connection.reconnecting: "Watiqmanta t'inkichkan..."
+connection.connecting_activity: "Agente-man t'inkichkan…"
+connection.lost: "Agente-man t'inkiy chinkarun. Watiqmanta t'inkinapaq /restart qillqay."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Chinkachisqa."
 system.no_prompt_in_flight: "Mana tapukuy purichkanchu."
 system.authentication_failed: "Yaykuy mana allinchu"
 system.command_copied_retry: "Kamachiy apasqa — huk terminal nisqapi purichiy, chaymanta Enter nit'iy watiqmanta qallarinapaq"  # {Locked="Enter"}
+system.stopped_max_tokens: "Kutichiyqa kuchurqakun modelopa lluqsiynin sayaynin chayasqan qhipata."
+system.stopped_max_turn_requests: "Agenteqa sayarqan kay kutipi mañakuy sayaynin chayasqan qhipata."
+system.stopped_refusal: "Agenteqa kay mañakuyta qatiyta mana munarqanchu."
+system.agent_busy: "Kay tab nisqapi Agent llamk'achkan — kunan prompt tukukunankama suyay."
+system.resuming_session: "Sesión %{session_id} kutichispa..."
+system.unknown_command: "Mana riqsisqa kamachiy \"%{command}\" — prompt hina apachisqa. Lista rikunaykipaq /help qillqay."  # {Locked="/help"} — slash-command name.
+system.busy_use_stop: "Kunan prompt tukukunankama suyay, utaq ñawpaqta /stop ruway."  # {Locked="/stop"} — slash-command name.
+system.cannot_focus_session: "Sesión %{session_id} nisqaman mana enfoque ruwayta atikunchu: live hina rikukun, ichaqa manaraq pane GUID watasqachu. Huk ratumanta wakmanta kallpachakuy."
+system.cannot_resume_no_load_session: "agent pane ukupi mana kutichiyta atikunchu: %{agent} mana ACP `loadSession` atiyninta willarqachu. Chaypa rantinpi musuq terminal pane ukupi kutichinapaq Enter (Shift mana) ñit'iy."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} sesión mana kutichiyta atikunchu: kay agent mana `--resume` hina flag nisqayuqchu. Chaypa rantinpi ACP nisqawan agent pane ukupi kutichiyta yachanapaq Shift+Enter ñit'iy."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_unknown_agent: "Sesión %{session_id} mana kutichiyta atikunchu: paqarimuq agent kay WTA build nisqapaq mana riqsisqachu."
+system.cannot_resume_phantom_via_flag: "%{agent} sesión %{session_id} mana kutichiyta atikunchu: qallarirqan, ichaqa mana ima rimaytapas huñurqanchu; chayrayku %{agent} kikinqa resume nisqata mana chaskinqachu. Filata hurquchkan."
+system.cannot_resume_phantom_via_load: "%{agent} sesión %{session_id} mana kutichiyta atikunchu: qallarirqan, ichaqa mana ima rimaytapas huñurqanchu; chayrayku %{agent} load nisqata mana chaskinqachu. Filata hurquchkan."
+system.fallback.this_agent: "kay agent"
+system.fallback.connected_agent: "tinkisqa agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Mana ventana tarikusqachu."
@@ -170,3 +187,24 @@ time.hour_singular: "%{count} hora ñawpaq"
 time.hours_other: "%{count} hora ñawpaq"
 time.day_singular: "%{count} p'unchaw ñawpaq"
 time.days_other: "%{count} p'unchaw ñawpaq"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Restart agent"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Recomendación ruwariy (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "Akllay %{choice} pantarun: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Kay k'itipaq modelo akllay (/model <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/model","<id>"}
+model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."
+system.model_set: "Kay k'itipaq modelo %{model} nisqaman churasqa."  # {Locked="%{model}"}
+system.model_unknown: "Mana riqsisqa modelo %{model} — akllana lista rikunaykipaq /model qillqay."  # {Locked="%{model}","/model"}

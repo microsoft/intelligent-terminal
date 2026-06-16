@@ -1,4 +1,6 @@
+use super::failure::{classify_anyhow, AgentFailure, HandshakeStage};
 use super::prompt;
+use super::soft_stop::SoftStopReason;
 use acp::Agent as _;
 use agent_client_protocol as acp;
 use anyhow::Result;
@@ -130,6 +132,19 @@ pub enum MasterExtRequest {
     SessionFocus {
         request_id: u64,
         sid: acp::SessionId,
+    },
+    /// Hot-swap the ACP model on this helper's live session(s) via
+    /// `set_session_model`, without restarting anything. Two callers:
+    /// * settings hot-reload (`acpModel` changed) and the per-pane `/model`
+    ///   picker, both in `App`.
+    ///
+    /// `session_id == Some` targets exactly that session (a per-pane `/model`
+    /// pick, or a global settings change pushed per-pane to each of this
+    /// helper's tabs); `session_id == None` fans out to every session this
+    /// helper owns.
+    SetSessionModel {
+        session_id: Option<acp::SessionId>,
+        model: String,
     },
 }
 
@@ -385,11 +400,12 @@ impl PromptTimingState {
             prompt.submitted_at_unix_s,
             "prompt_received",
             &format!(
-                "queue_delay={} preview={:?}",
+                "queue_delay={}",
                 format_elapsed(Some(prompt.submitted_at_unix_s), Some(now)),
-                preview
             ),
         );
+        // User prompt preview — trace only.
+        acp_trace_content(&format!("turn {} preview={:?}", prompt.id, preview));
     }
 
     fn mark_context_ready(&self, session_id: &str, prompt_len: usize) {
@@ -565,12 +581,13 @@ impl PromptTimingState {
                 let submitted_at_unix_s = active.submitted_at_unix_s;
                 let title_preview = title.map(prompt_preview).unwrap_or_default();
                 let details = format!(
-                    "title={:?} since_prompt_sent={}",
-                    title_preview,
+                    "since_prompt_sent={}",
                     format_elapsed(active.prompt_sent_at_unix_s, Some(now))
                 );
                 drop(guard);
                 prompt_timing_log(turn_id, submitted_at_unix_s, "first_tool_call", &details);
+                // Tool-call title is agent-generated content — trace only.
+                acp_trace_content(&format!("turn {turn_id} first_tool_call title={title_preview:?}"));
             }
         }
     }
@@ -586,8 +603,7 @@ impl PromptTimingState {
             let turn_id = active.id;
             let submitted_at_unix_s = active.submitted_at_unix_s;
             let details = format!(
-                "description={:?} since_prompt_sent={}",
-                prompt_preview(description),
+                "since_prompt_sent={}",
                 format_elapsed(active.prompt_sent_at_unix_s, Some(now))
             );
             drop(guard);
@@ -597,6 +613,11 @@ impl PromptTimingState {
                 "permission_requested",
                 &details,
             );
+            // Permission description is agent-generated content — trace only.
+            acp_trace_content(&format!(
+                "turn {turn_id} permission_requested description={:?}",
+                prompt_preview(description)
+            ));
         }
     }
 
@@ -733,7 +754,6 @@ impl PromptTimingState {
                 format_elapsed(Some(active_prompt.submitted_at_unix_s), Some(now))
             ),
             format!("event_count={}", active_prompt.event_count),
-            format!("preview={:?}", active_prompt.preview),
         ];
 
         if let Some(error) = error {
@@ -746,6 +766,11 @@ impl PromptTimingState {
             "prompt_complete",
             &details.join(" "),
         );
+        // User prompt preview — trace only.
+        acp_trace_content(&format!(
+            "turn {} complete preview={:?}",
+            active_prompt.id, active_prompt.preview
+        ));
 
         // Telemetry: emit the prompt-complete signal with aggregate metrics.
         // Use the monotonic `Instant` (captured alongside `prompt_sent_at_unix_s`
@@ -784,8 +809,9 @@ fn requested_model_id(program: &str, args: &[&str]) -> Option<String> {
     crate::agent_registry::extract_model_from_args(args, profile).map(str::to_string)
 }
 
-async fn complete_prompt_request<T, E: std::fmt::Display>(
-    result: std::result::Result<T, E>,
+async fn complete_prompt_request<T>(
+    result: std::result::Result<T, acp::Error>,
+    soft_stop: Option<SoftStopReason>,
     prompt_timing: &PromptTimingState,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     session_id: String,
@@ -814,10 +840,21 @@ async fn complete_prompt_request<T, E: std::fmt::Display>(
             //
             // Once Copilot honors the spec, this delay can be removed.
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            let _ = event_tx.send(AppEvent::AgentMessageEnd { session_id });
+            let _ = event_tx.send(AppEvent::AgentMessageEnd {
+                session_id: session_id.clone(),
+            });
+            // A successful turn can still end on a soft stop (truncation /
+            // request-budget / refusal). It is NOT a connection failure — the
+            // session stays Connected — so it rides its own event and only
+            // appends an informational line AFTER `AgentMessageEnd` has flushed
+            // the agent's streamed content.
+            if let Some(reason) = soft_stop {
+                let _ = event_tx.send(AppEvent::AgentSoftStop { session_id, reason });
+            }
         }
         Err(e) => {
             let error_message = e.to_string();
+            let failure = AgentFailure::from_acp_error(&e);
             let timing_note = prompt_timing.complete(&session_id, false, Some(&error_message));
             if let Some(note) = timing_note {
                 let _ = event_tx.send(AppEvent::TimingMetric {
@@ -827,6 +864,7 @@ async fn complete_prompt_request<T, E: std::fmt::Display>(
             }
             let _ = event_tx.send(AppEvent::AgentError {
                 session_id: Some(session_id),
+                failure,
                 message: format!("prompt error: {}", error_message),
             });
         }
@@ -891,13 +929,12 @@ fn truncate_for_prompt(text: &str, max_chars: usize) -> String {
 fn format_pane_context_summary(pane_context: Option<&PaneContext>) -> String {
     match pane_context {
         Some(context) => format!(
-            "pane_id={:?} tab_id={:?} window_id={:?} source_pane_id={:?} effective_source_pane_id={:?} cwd={:?}",
+            "pane_id={:?} tab_id={:?} window_id={:?} source_pane_id={:?} effective_source_pane_id={:?}",
             context.pane_id,
             context.tab_id,
             context.window_id,
             context.source_pane_id,
             context.effective_source_pane_id(),
-            context.cwd
         ),
         None => "none".to_string(),
     }
@@ -1056,6 +1093,66 @@ async fn resolve_active_pane_cwd(
         .map(std::path::PathBuf::from)
 }
 
+/// Best-effort canonical shell executable for a pid — e.g. `pwsh.exe`,
+/// `powershell.exe`, `cmd.exe`, `bash.exe`, `wsl.exe`. Unlike the WT profile
+/// *name* (which the user can rename), this is the actual running process, so
+/// the agent can reliably pick shell syntax. Returns the file name only;
+/// `None` on any failure (or off Windows).
+#[cfg(windows)]
+fn process_image_name(pid: u32) -> Option<String> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    if pid == 0 {
+        return None;
+    }
+    // SAFETY: a standard Win32 handle dance. The handle from OpenProcess is
+    // closed on every return path; the buffer is sized up front and the
+    // written length comes back in `size`.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return None;
+        }
+        // Not MAX_PATH: QueryFullProcessImageNameW can return paths longer than
+        // 260 for processes under long roots (WindowsApps installs, `\\?\`
+        // extended paths). Use the extended-length max so a valid pid never
+        // silently drops the `shell` field. Heap-allocated to keep it off the
+        // (smaller) task stack.
+        let mut size: u32 = 32768;
+        let mut buf = vec![0u16; size as usize];
+        let ok =
+            QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut size);
+        CloseHandle(handle);
+        if ok == 0 || size == 0 {
+            return None;
+        }
+        let full = String::from_utf16_lossy(&buf[..size as usize]);
+        full.rsplit(['\\', '/'])
+            .next()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    }
+}
+
+#[cfg(not(windows))]
+fn process_image_name(_pid: u32) -> Option<String> {
+    None
+}
+
+/// Resolve the canonical shell exe from an active-pane JSON object's `pid`
+/// field (already present in `get_active_pane`/`get_panes` responses). The
+/// agent gets this as the `shell` field — the sole shell-type signal, since
+/// the WT profile *name* (which the user can rename) is no longer shipped.
+fn shell_from_active(active: &serde_json::Value) -> Option<String> {
+    active
+        .get("pid")
+        .and_then(|v| v.as_u64())
+        .and_then(|pid| process_image_name(pid as u32))
+}
+
 async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String> {
     // WT's GetActivePane already resolves the agent pane to the user's working
     // pane (the "source"), so a single active-pane query gives us the right
@@ -1081,22 +1178,17 @@ async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String>
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-    // Shell profile (e.g. "PowerShell", "Command Prompt", "Ubuntu") is
-    // load-bearing for the planner: any `send` action it emits has to
-    // match the active pane's shell syntax (`Get-ChildItem` vs `ls`,
-    // `Set-Location` vs `cd`, etc.). Without this the agent has to
-    // guess from the buffer's prompt prefix, which silently fails on
-    // renamed or unusual profiles.
-    let target_profile = active
-        .get("profile")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
+    // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) from the pane's pid.
+    // Load-bearing for the planner: any `send` action it emits has to match the
+    // active pane's shell syntax (`Get-ChildItem` vs `ls`, `Set-Location` vs
+    // `cd`, etc.). We use the real process rather than the WT profile name,
+    // which the user can rename.
+    let target_shell = shell_from_active(&active);
 
     tracing::debug!(
         target: "acp.terminal_context",
         target_pane_id = %target_pane_id,
-        profile = ?target_profile,
+        shell = ?target_shell,
         "terminal_context_target_resolved"
     );
 
@@ -1112,7 +1204,7 @@ async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String>
         "activeTarget": target_pane_id,
         "window_title": target_window_title,
         "cwd": target_cwd,
-        "profile": target_profile,
+        "shell": target_shell,
         "locale": user_locale_tag(),
         "buffer": buffer,
     }))
@@ -1140,9 +1232,14 @@ async fn build_prompt_text(
     shell_mgr: &ShellManager,
     wt_connected: bool,
     pane_context: Option<&PaneContext>,
-) -> (String, String, String) {
+) -> (String, String, String, Option<String>) {
     let total_started = std::time::Instant::now();
     let mut runtime_sections = Vec::new();
+    // Working pane resolved from the active pane for a manual `/fix` (one with
+    // no explicit `source_pane_id`). Plumbed back to the App so it can fill
+    // `AutofixContext.target_pane_id` — empty otherwise (auto-fix carries its
+    // failing pane explicitly; planner turns let the agent fill `Send.parent`).
+    let mut resolved_fix_pane: Option<String> = None;
 
     let template_started = std::time::Instant::now();
     let planner_template = if is_autofix {
@@ -1210,42 +1307,71 @@ async fn build_prompt_text(
         // header so the agent can choose PowerShell vs bash vs cmd syntax for
         // any file-edit fix it suggests.
         if wt_connected {
-            if let Some(source_pane_id) =
-                pane_context.and_then(|ctx| ctx.effective_source_pane_id())
-            {
+            // Resolve the active pane once: it supplies the shell-context
+            // header and — for a manual `/fix`, which carries no explicit
+            // `source_pane_id` — doubles as the source-pane resolver. WT's
+            // GetActivePane already maps the agent pane to the user's working
+            // pane, so this is the same target the error-triggered path gets
+            // from its notification.
+            let active = shell_mgr.wt_get_active_pane().await.ok();
+
+            // Shell context — best-effort. The canonical shell exe (from the
+            // pane's pid) tells the agent which syntax the fix command must use.
+            if let Some(active) = active.as_ref() {
+                let cwd = active
+                    .get("cwd")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                // Canonical shell exe from the pane's pid — see `shell_from_active`.
+                let shell = shell_from_active(active);
+                let json = serde_json::to_string(&serde_json::json!({
+                    "shell": shell,
+                    "cwd": cwd,
+                    "locale": user_locale_tag(),
+                }))
+                .unwrap_or_else(|_| "{}".to_string());
+                runtime_sections.push(format!("### Shell Context\n```json\n{}\n```", json));
+            }
+
+            // Explicit source pane (error-triggered autofix) wins; otherwise
+            // fall back to the resolved active working pane (`/fix`). An
+            // active pane that is itself an agent pane is skipped — there's
+            // no terminal output to read there.
+            let explicit_source = pane_context.and_then(|ctx| ctx.source_pane_id.clone());
+            let source_pane_id = explicit_source.clone().or_else(|| {
+                active.as_ref().and_then(|a| {
+                    let is_agent = a
+                        .get("is_agent_pane")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    if is_agent {
+                        None
+                    } else {
+                        json_str_or_num(a.get("session_id"))
+                    }
+                })
+            });
+            // When we resolved the pane ourselves (manual `/fix`, no explicit
+            // source), remember it so the App can fill `target_pane_id` — that
+            // is the pane the eventual fix command is sent to.
+            if explicit_source.is_none() {
+                resolved_fix_pane = source_pane_id.clone();
+            }
+
+            if let Some(source_pane_id) = source_pane_id {
                 tracing::debug!(
                     target: "acp.terminal_context",
-                    source_pane_id,
+                    source_pane_id = %source_pane_id,
+                    // The shell type shipped in `### Shell Context` above; log it
+                    // here too so a `/fix` run shows what the agent received.
+                    shell = ?active.as_ref().and_then(shell_from_active),
                     mode = "autofix",
                     "terminal_context_target_resolved"
                 );
-
-                // Shell context — best-effort. WT returns the profile name
-                // (e.g. "PowerShell", "Command Prompt", "Ubuntu") which is a
-                // strong signal even when the user has renamed the profile.
-                if let Ok(active) = shell_mgr.wt_get_active_pane().await {
-                    let profile = active
-                        .get("profile")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let cwd = active
-                        .get("cwd")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let json = serde_json::to_string(&serde_json::json!({
-                        "profile": profile,
-                        "cwd": cwd,
-                        "locale": user_locale_tag(),
-                    }))
-                    .unwrap_or_else(|_| "{}".to_string());
-                    runtime_sections.push(format!("### Shell Context\n```json\n{}\n```", json));
-                }
-
                 if let Some(content) = read_pane_last_message(
                     shell_mgr,
-                    source_pane_id,
+                    &source_pane_id,
                     30,
                     ACTIVE_PANE_CONTEXT_MAX_CHARS,
                 )
@@ -1274,7 +1400,15 @@ async fn build_prompt_text(
             .join("\n\n")
     };
     let prompt = if is_autofix {
-        prompt_body
+        // Autofix prompts historically ignored `user_text` — the template +
+        // terminal output was the whole prompt. Now a non-empty `user_text` is
+        // appended as a `## User Request`: a manual `/fix <hint>` passes the
+        // hint here, and the error-triggered path passes its failure summary.
+        if user_text.trim().is_empty() {
+            prompt_body
+        } else {
+            format!("{}\n\n## User Request\n{}", prompt_body, user_text)
+        }
     } else if prompt_body.is_empty() {
         format!("## User Request\n{}", user_text)
     } else {
@@ -1296,11 +1430,20 @@ async fn build_prompt_text(
         prompt,
         planner_template.source_label,
         planner_template.display_name,
+        resolved_fix_pane,
     )
 }
 
 fn acp_log(msg: &str) {
     tracing::debug!(target: "acp", "{}", msg);
+}
+
+/// Log potentially-sensitive content (user prompt / agent message text,
+/// previews, full ACP payloads) at **trace only**, so it never lands in
+/// shipping (`info`) or default-troubleshooting (`debug`) logs. Enable with
+/// `WTA_LOG=trace` when a human is deliberately deep-debugging.
+fn acp_trace_content(msg: &str) {
+    tracing::trace!(target: "acp.content", "{}", msg);
 }
 
 fn acp_log_built_prompt(
@@ -1316,7 +1459,9 @@ fn acp_log_built_prompt(
         prompt_source,
         "planner_prompt_begin"
     );
-    tracing::debug!(target: "acp", "planner_prompt_text:\n{}", prompt_text);
+    // Full assembled prompt = user text + captured terminal buffer + cwd.
+    // Sensitive — trace only.
+    acp_trace_content(&format!("planner_prompt_text:\n{}", prompt_text));
     tracing::debug!(target: "acp", "planner_prompt_end");
 }
 
@@ -1351,10 +1496,13 @@ fn log_turn_trace(
         kind = %kind,
         include_template,
         prompt_len = prompt_text.len(),
-        body_head = %head,
-        body_tail = %tail,
         "turn_sent"
     );
+    // The prompt body snippets carry user text / template content — trace only.
+    acp_trace_content(&format!(
+        "turn {turn} body_head={head:?} body_tail={tail:?}",
+        turn = prompt_id
+    ));
 }
 
 /// Take `max_chars` from either end of `text` and inline newlines as
@@ -1522,8 +1670,10 @@ impl acp::Client for WtaClient {
         &self,
         args: acp::RequestPermissionRequest,
     ) -> acp::Result<acp::RequestPermissionResponse> {
-        acp_log(&format!(
-            "request_permission: {:?}",
+        acp_log("request_permission received");
+        // Tool-call title is agent-generated content — trace only.
+        acp_trace_content(&format!(
+            "request_permission title: {:?}",
             args.tool_call.fields.title
         ));
         let session_id = args.session_id.0.to_string();
@@ -1580,11 +1730,15 @@ impl acp::Client for WtaClient {
     }
 
     async fn session_notification(&self, args: acp::SessionNotification) -> acp::Result<()> {
-        acp_log(&format!("session_notification: {:?}", args.update));
+        let kind = session_update_kind(&args.update);
+        acp_log(&format!("session_notification: kind={}", kind));
+        // The full update carries agent message/thought text, tool-call
+        // content, plan bodies, and replayed user-message chunks — trace only.
+        acp_trace_content(&format!("session_notification update: {:?}", args.update));
         let sid = args.session_id.0.to_string();
         self.state
             .prompt_timing
-            .observe_session_update(&sid, session_update_kind(&args.update));
+            .observe_session_update(&sid, kind);
         match args.update {
             acp::SessionUpdate::UserMessageChunk(chunk) => {
                 // Replayed historical user prompt from `session/load`.
@@ -1686,7 +1840,12 @@ impl acp::Client for WtaClient {
         args: acp::CreateTerminalRequest,
     ) -> acp::Result<acp::CreateTerminalResponse> {
         acp_log(&format!(
-            "create_terminal called: cmd={} args={:?}",
+            "create_terminal called: arg_count={}",
+            args.args.len()
+        ));
+        // Agent-requested command line can carry user/file content — trace only.
+        acp_trace_content(&format!(
+            "create_terminal cmd={} args={:?}",
             args.command, args.args
         ));
         let env: Vec<(String, String)> = args
@@ -1847,38 +2006,146 @@ impl acp::Client for WtaClient {
 /// See doc/specs/Multi-window-agent-pane.md for the helper+master
 /// architecture, and `tools/wta/src/master/mod.rs` for the peer.
 
+/// Process-wide owner tab StableId for this helper, seeded once at
+/// startup from `--owner-tab-id`. A helper process owns exactly one WT
+/// tab for its lifetime, so a `OnceLock` is the right shape: set once in
+/// `main()`, read by [`inject_wta_pane_meta`] on every `session/new` /
+/// `session/load` so master can record `owner_tab_id` on the routing
+/// entry and address `restart_agent_pane` recovery events by StableId.
+static HELPER_OWNER_TAB_ID: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// Seed the process-wide owner tab StableId. Idempotent — only the first
+/// call wins (subsequent calls are ignored), matching the "one tab per
+/// helper for its whole life" invariant. Empty/blank ids are stored as
+/// `None`.
+pub fn set_helper_owner_tab_id(owner_tab_id: Option<&str>) {
+    let normalized = owner_tab_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let _ = HELPER_OWNER_TAB_ID.set(normalized);
+}
+
+fn helper_owner_tab_id() -> Option<String> {
+    HELPER_OWNER_TAB_ID.get().cloned().flatten()
+}
+
 /// Inject `_meta.wta.pane_session_id = $WT_SESSION` (lowercased, no
-/// braces) into an outbound ACP `session/new` or `session/load`
-/// request, when this helper is running inside a Windows Terminal pane.
+/// braces) and `_meta.wta.owner_tab_id = <this helper's StableId>` into
+/// an outbound ACP `session/new` or `session/load` request, when this
+/// helper is running inside a Windows Terminal pane.
 ///
 /// Used by the helper-over-master path to tell `wta-master` which WT
-/// pane owns the session it's about to create or rehydrate. Master
-/// records this in `SessionRegistry`, surfaces it via `session/list`
-/// `_meta.wta.pane_session_id`, and broadcasts it via
-/// `intellterm.wta/session_added` notifications. Other helpers
-/// listening on those broadcasts use it to populate `alive_mirror`
-/// pane bindings so cross-helper Focus actions (F2 Enter on a row
-/// owned by a sibling helper) have a real WT pane GUID to target.
+/// pane owns the session it's about to create or rehydrate (so focus /
+/// session-list resolution works) and which WT tab owns it (so master
+/// can drive `restart_agent_pane` recovery). Master records both in
+/// `SessionRegistry` / its per-helper recovery map.
 ///
-/// No-op when `WT_SESSION` is unset/empty (e.g. when running outside
-/// a WT pane in tests).
+/// No-op for whichever fields are unavailable: `pane_session_id` when
+/// `WT_SESSION` is unset/empty (e.g. running outside a WT pane in
+/// tests), `owner_tab_id` when `--owner-tab-id` wasn't supplied.
 fn inject_wta_pane_meta(meta: &mut Option<acp::Meta>) {
     let wt_session = std::env::var("WT_SESSION").unwrap_or_default();
-    if wt_session.is_empty() {
-        return;
-    }
-    let normalized = wt_session
-        .trim_matches(|c| c == '{' || c == '}')
-        .to_ascii_lowercase();
-    if normalized.is_empty() {
+    let pane_session_id = {
+        let normalized = wt_session
+            .trim_matches(|c| c == '{' || c == '}')
+            .to_ascii_lowercase();
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized)
+        }
+    };
+    let owner_tab_id = helper_owner_tab_id();
+    if pane_session_id.is_none() && owner_tab_id.is_none() {
         return;
     }
     crate::session_registry::inject_wta_meta(
         meta,
         &crate::session_registry::WtaMeta {
-            pane_session_id: Some(normalized),
+            pane_session_id,
+            owner_tab_id,
             ..Default::default()
         },
+    );
+}
+
+fn elapsed_ms_since(start: std::time::Instant) -> f64 {
+    start.elapsed().as_secs_f64() * 1000.0
+}
+
+fn acp_result_failure_fields<T>(result: &acp::Result<T>) -> (&'static str, i32) {
+    match result {
+        Ok(_) => ("", 0),
+        Err(e) => ("AcpError", e.code.into()),
+    }
+}
+
+fn timeout_result_failure_fields<T>(
+    result: &std::result::Result<acp::Result<T>, tokio::time::error::Elapsed>,
+) -> (&'static str, i32) {
+    match result {
+        Ok(inner) => acp_result_failure_fields(inner),
+        Err(_) => ("Timeout", 0),
+    }
+}
+
+fn log_acp_initialize_timeout_result(
+    route: &str,
+    started: std::time::Instant,
+    result: &std::result::Result<
+        acp::Result<acp::InitializeResponse>,
+        tokio::time::error::Elapsed,
+    >,
+) {
+    let (failure_kind, acp_error_code) = timeout_result_failure_fields(result);
+    crate::telemetry::log_acp_initialize_complete(
+        elapsed_ms_since(started),
+        matches!(result, Ok(Ok(_))),
+        route,
+        failure_kind,
+        acp_error_code,
+    );
+}
+
+fn log_acp_new_session_result(
+    route: &str,
+    started: std::time::Instant,
+    result: &acp::Result<acp::NewSessionResponse>,
+) {
+    let session_id = result.as_ref().ok().map(|resp| resp.session_id.to_string());
+    let (failure_kind, acp_error_code) = acp_result_failure_fields(result);
+    crate::telemetry::log_acp_new_session_complete(
+        session_id.as_deref(),
+        elapsed_ms_since(started),
+        result.is_ok(),
+        route,
+        failure_kind,
+        acp_error_code,
+    );
+}
+
+fn log_acp_new_session_timeout_result(
+    route: &str,
+    started: std::time::Instant,
+    result: &std::result::Result<
+        acp::Result<acp::NewSessionResponse>,
+        tokio::time::error::Elapsed,
+    >,
+) {
+    let session_id = result
+        .as_ref()
+        .ok()
+        .and_then(|inner| inner.as_ref().ok())
+        .map(|resp| resp.session_id.to_string());
+    let (failure_kind, acp_error_code) = timeout_result_failure_fields(result);
+    crate::telemetry::log_acp_new_session_complete(
+        session_id.as_deref(),
+        elapsed_ms_since(started),
+        matches!(result, Ok(Ok(_))),
+        route,
+        failure_kind,
+        acp_error_code,
     );
 }
 
@@ -1886,7 +2153,7 @@ fn inject_wta_pane_meta(meta: &mut Option<acp::Meta>) {
 /// `load_session_rx` arm of `run_acp_client_over_pipe`.
 ///
 /// Two cases:
-///   * `old_sid = Some` (mid-life F2 load failure): restore the prior
+///   * `old_sid = Some` (mid-life session management load failure): restore the prior
 ///     binding so the pane keeps a usable session. The user sees a
 ///     `TabError` and their existing session is still alive.
 ///   * `old_sid = None` (boot-time load failure with no bootstrap):
@@ -1904,7 +2171,7 @@ async fn handle_load_failure(
     error_message: String,
 ) {
     if let Some(old) = old_sid {
-        // Mid-life F2 load failure path: restore prior binding.
+        // Mid-life session management load failure path: restore prior binding.
         let mut g = tab_to_session.lock().await;
         g.insert(tab_id.clone(), old.clone());
         drop(g);
@@ -1925,13 +2192,11 @@ async fn handle_load_failure(
     });
     let mut new_req = acp::NewSessionRequest::new(cwd);
     inject_wta_pane_meta(&mut new_req.meta);
-    let fallback = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        conn.new_session(new_req),
-    )
-    .await;
+    let fallback_started = std::time::Instant::now();
+    let fallback = conn.new_session(new_req).await;
+    log_acp_new_session_result("HelperPipeFallback", fallback_started, &fallback);
     match fallback {
-        Ok(Ok(resp)) => {
+        Ok(resp) => {
             let new_sid = resp.session_id.clone();
             tracing::info!(
                 target: "acp_load_session",
@@ -1944,7 +2209,7 @@ async fn handle_load_failure(
                 g.insert(tab_id.clone(), new_sid.clone());
             }
             // Index the fallback session as an agent-pane origin so
-            // F2 can show it as a Historical row on next cold start
+            // session management view can show it as a Historical row on next cold start
             // (it is now a real, persistent session).
             let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
             let pane_for_index = if pane_session_id.is_empty() {
@@ -1975,7 +2240,7 @@ async fn handle_load_failure(
                 current_model_id,
             });
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             tracing::error!(
                 target: "acp_load_session",
                 tab = %tab_id,
@@ -1985,17 +2250,6 @@ async fn handle_load_failure(
             let _ = event_tx.send(AppEvent::TabError {
                 tab_id,
                 message: format!("Fallback new_session also failed: {}", e),
-            });
-        }
-        Err(_) => {
-            tracing::error!(
-                target: "acp_load_session",
-                tab = %tab_id,
-                "boot-time load fallback new_session timed out after 30s"
-            );
-            let _ = event_tx.send(AppEvent::TabError {
-                tab_id,
-                message: "Fallback new_session timed out after 30s.".to_string(),
             });
         }
     }
@@ -2065,16 +2319,16 @@ pub async fn run_acp_client_over_pipe(
         loop {
             match tokio::net::windows::named_pipe::ClientOptions::new().open(&pipe_name) {
                 Ok(pipe) => {
-                    if attempt > 0 {
-                        tracing::info!(
-                            target: "helper",
-                            step = "pipe_connect",
-                            pipe = %pipe_name,
-                            attempts = attempt + 1,
-                            "master pipe connected after retry"
-                        );
-                    }
-                    startup_probe.log(&format!("master pipe connected (attempt {})", attempt + 1));
+                    // Always log the connect milestone at info (not just on
+                    // retry) so a clean helper→master connect is visible in
+                    // release logs, not only failures/retries.
+                    tracing::info!(
+                        target: "helper",
+                        step = "pipe_connect",
+                        pipe = %pipe_name,
+                        attempts = attempt + 1,
+                        "master pipe connected"
+                    );
                     break pipe;
                 }
                 Err(e) => {
@@ -2134,14 +2388,36 @@ pub async fn run_acp_client_over_pipe(
     startup_probe.log("ACP client connection created (over pipe)");
 
     let io_probe = startup_probe.clone();
+    let io_event_tx = event_tx.clone();
     tokio::task::spawn_local(async move {
         io_probe.log("ACP handle_io task started (over pipe)");
-        if let Err(e) = handle_io.await {
-            io_probe.log(&format!("ACP handle_io failed: {:#}", e));
-            eprintln!("helper ACP I/O failed: {:#}", e);
-        } else {
-            io_probe.log("ACP handle_io completed (over pipe)");
+        // The I/O loop only ends when the pipe to wta-master is gone. Crucially,
+        // a *killed* master resolves this as **Ok(())** (clean EOF on the pipe),
+        // not Err — confirmed from a real trace where `taskkill` on wta-master
+        // produced "ACP handle_io completed", after which the UI sat on
+        // `Connected` until the next prompt failed with "server shut down
+        // unexpectedly". So BOTH arms must signal connection loss; keying only on
+        // Err (the original F3 fix) would miss the common case.
+        match handle_io.await {
+            Err(e) => {
+                tracing::warn!(target: "helper", error = %format!("{:#}", e), "ACP I/O loop to master failed");
+            }
+            Ok(()) => {
+                io_probe.log("ACP handle_io completed (over pipe)");
+                tracing::warn!(target: "helper", "ACP I/O loop to master ended — pipe closed (master gone)");
+            }
         }
+        // Either way the transport is dead. Emit an AgentError so the state
+        // machine leaves `Connected`, the user sees a clear "connection lost —
+        // /restart" line, and autofix stops firing into a dead transport (F3).
+        // `session_id: None` → current (only) tab. A near-simultaneous in-flight
+        // prompt error is collapsed by the AgentError handler's dedup. On normal
+        // shutdown the helper process is being torn down, so this event is moot.
+        let _ = io_event_tx.send(AppEvent::AgentError {
+            session_id: None,
+            failure: AgentFailure::TransportLost,
+            message: t!("connection.lost").into_owned(),
+        });
     });
 
     // Initialize — same as the child-process path. We use a 60s timeout
@@ -2151,6 +2427,7 @@ pub async fn run_acp_client_over_pipe(
     // are fast because master just re-forwards.
     let _ = event_tx.send(AppEvent::ConnectionStage("Initializing ACP...".to_string()));
     startup_probe.log("Initializing ACP (over pipe)");
+    let init_started = std::time::Instant::now();
     let init_request = {
         let mut req = acp::InitializeRequest::new(acp::ProtocolVersion::V1)
             .client_capabilities(acp::ClientCapabilities::new().terminal(true))
@@ -2179,15 +2456,39 @@ pub async fn run_acp_client_over_pipe(
         req
     };
     let init_future = conn.initialize(init_request);
-    let init_resp = tokio::time::timeout(std::time::Duration::from_secs(60), init_future)
-        .await
+    let init_result =
+        tokio::time::timeout(std::time::Duration::from_secs(60), init_future).await;
+    log_acp_initialize_timeout_result("HelperPipe", init_started, &init_result);
+    let init_resp = init_result
         .map_err(|_| {
+            tracing::error!(
+                target: "helper",
+                step = "acp_initialize",
+                pipe = %pipe_name,
+                "ACP initialize over master pipe timed out after 60s — wta-master did not respond"
+            );
             anyhow::anyhow!(
                 "ACP initialize over master pipe timed out after 60s — \
              wta-master did not respond"
             )
         })?
-        .map_err(|e| anyhow::anyhow!("initialize over master pipe failed: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(
+                target: "helper",
+                step = "acp_initialize",
+                pipe = %pipe_name,
+                error = %e,
+                "ACP initialize over master pipe failed"
+            );
+            anyhow::anyhow!("initialize over master pipe failed: {}", e)
+        })?;
+    // Connection milestone at info so a clean handshake is visible in release.
+    tracing::info!(
+        target: "helper",
+        step = "acp_initialize",
+        pipe = %pipe_name,
+        "ACP initialized over master pipe"
+    );
     startup_probe.log(&format!(
         "Agent init response received (over pipe): {:?}",
         init_resp
@@ -2206,7 +2507,7 @@ pub async fn run_acp_client_over_pipe(
     // The call is fire-and-forget: if list_sessions fails (e.g. an
     // older master without `unstable_session_list`) the alive mirror
     // just stays empty and `alive_loaded` stays false, which keeps
-    // F2 routing on the legacy path.
+    // session management routing on the legacy path.
     match conn.list_sessions(acp::ListSessionsRequest::new()).await {
         Ok(resp) => {
             let items: Vec<crate::session_registry::SessionInfo> = resp
@@ -2242,9 +2543,9 @@ pub async fn run_acp_client_over_pipe(
     // helper was spawned with `--initial-load-session-id`, in which case
     // we skip the bootstrap entirely and let the boot-time `load_session`
     // (queued by main.rs as an `AppEvent::WtEvent`) be the helper's
-    // first session. Skipping the bootstrap avoids the F2 duplicate-row
+    // first session. Skipping the bootstrap avoids the session management duplicate-row
     // bug: master used to register both the bootstrap and the loaded
-    // sid (both bound to the same WT pane) and the F2 view showed two
+    // sid (both bound to the same WT pane) and the session management view showed two
     // Live rows for the same agent pane.
     let cwd = std::env::current_dir().unwrap_or_default();
     let (session_id, available_models, current_model_id, has_bootstrap) =
@@ -2277,16 +2578,21 @@ pub async fn run_acp_client_over_pipe(
             startup_probe.log("Creating session (over pipe)");
             let mut new_session_req = acp::NewSessionRequest::new(cwd.clone());
             inject_wta_pane_meta(&mut new_session_req.meta);
-            let session_future = conn.new_session(new_session_req);
-            let session =
-                tokio::time::timeout(std::time::Duration::from_secs(30), session_future)
-                    .await
-                    .map_err(|_| {
-                        anyhow::anyhow!("new_session over master pipe timed out after 30s")
-                    })?
-                    .map_err(|e| {
-                        anyhow::anyhow!("new_session over master pipe failed: {}", e)
-                    })?;
+            let new_session_started = std::time::Instant::now();
+            let new_session_result = conn.new_session(new_session_req).await;
+            log_acp_new_session_result(
+                "HelperPipeStartup",
+                new_session_started,
+                &new_session_result,
+            );
+            let session = new_session_result.map_err(|e| {
+                // Attach the typed classification so an auth error
+                // (or any ACP code) survives the `?`-collapse into
+                // `anyhow` and can be recovered by `classify_anyhow`
+                // downcast at the receiver (main.rs).
+                anyhow::Error::new(AgentFailure::from_acp_error(&e))
+                    .context(format!("new_session over master pipe failed: {e}"))
+            })?;
 
             let session_id = session.session_id.clone();
             startup_probe.log(&format!("Session created (over pipe): {}", session_id));
@@ -2409,9 +2715,9 @@ pub async fn run_acp_client_over_pipe(
     let conn = Arc::new(conn);
 
     // Periodic 5s tick that fans out an AppEvent::SessionsChanged to
-    // force a refetch in any open F2 view. Belt-and-suspenders against
+    // force a refetch in any open session management view. Belt-and-suspenders against
     // missed `intellterm.wta/sessions/changed` broadcasts. Cheap:
-    // refetch only fires for tabs whose snapshot.is_some() (i.e. F2 is
+    // refetch only fires for tabs whose snapshot.is_some() (i.e. session management view is
     // currently open).
     let mut periodic_refetch = tokio::time::interval(std::time::Duration::from_secs(5));
     periodic_refetch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -2451,7 +2757,7 @@ pub async fn run_acp_client_over_pipe(
                 });
             }
             Some(req) = master_ext_rx.recv() => {
-                dispatch_master_ext_request(req, &conn, &event_tx);
+                dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
             }
             Some(req) = restart_rx.recv() => {
                 // Helper can't restart the agent CLI in-process — master owns
@@ -2543,14 +2849,19 @@ pub async fn run_acp_client_over_pipe(
                     // has the row but no pane GUID to feed wtcli focus-pane.
                     let mut new_session_req = acp::NewSessionRequest::new(cwd);
                     inject_wta_pane_meta(&mut new_session_req.meta);
-                    let new_session = match conn_for_new
-                        .new_session(new_session_req)
-                        .await
-                    {
+                    let new_session_started = std::time::Instant::now();
+                    let new_session_result = conn_for_new.new_session(new_session_req).await;
+                    log_acp_new_session_result(
+                        "HelperPipeNewSessionForTab",
+                        new_session_started,
+                        &new_session_result,
+                    );
+                    let new_session = match new_session_result {
                         Ok(s) => s,
                         Err(e) => {
                             let _ = event_tx_for_new.send(AppEvent::AgentError {
                                 session_id: None,
+                                failure: AgentFailure::from_acp_error(&e),
                                 message: format!("/new failed for tab {}: {}", req.tab_id, e),
                             });
                             return;
@@ -2645,7 +2956,7 @@ pub async fn run_acp_client_over_pipe(
                     // about to rehydrate, so the registry row for the
                     // resumed sid carries `pane_session_id = <this
                     // pane's GUID>` and cross-helper Focus actions
-                    // (F2 Enter on the resumed row in a sibling
+                    // (session management Enter on the resumed row in a sibling
                     // window's tab) can resolve to a real WT pane to
                     // focus. Without this the row appears live but
                     // pane_session_id stays None, and the focus
@@ -2880,6 +3191,7 @@ pub async fn run_acp_client(
                 ));
                 let _ = event_tx.send(AppEvent::AgentError {
                     session_id: None,
+                    failure: classify_anyhow(&e, HandshakeStage::Initialize),
                     message: format!("{:#}", e),
                 });
                 // Don't break — a transient failure (e.g. agent crashed
@@ -3037,23 +3349,22 @@ async fn run_inner(
     // process without orphaning the old one.
     let (kill_req_tx, kill_req_rx) = tokio::sync::oneshot::channel::<()>();
     let mut kill_req_tx = Some(kill_req_tx);
-    let child_probe = startup_probe.clone();
     tokio::task::spawn_local(async move {
         let mut kill_req_rx = kill_req_rx;
         tokio::select! {
             _ = &mut kill_req_rx => {
                 if let Err(e) = child.kill().await {
-                    child_probe.log(&format!("Agent kill failed: {}", e));
+                    tracing::warn!(target: "acp", error = %e, "agent kill failed (restart)");
                 } else {
-                    child_probe.log("Agent process killed (restart)");
+                    tracing::info!(target: "acp", "agent process killed (restart)");
                 }
                 // Reap to avoid zombies on Unix; on Windows it's a no-op.
                 let _ = child.wait().await;
             }
             status = child.wait() => {
                 match status {
-                    Ok(s) => child_probe.log(&format!("Agent process exited: {}", s)),
-                    Err(e) => child_probe.log(&format!("Agent wait failed: {}", e)),
+                    Ok(s) => tracing::info!(target: "acp", ?s, "agent process exited"),
+                    Err(e) => tracing::warn!(target: "acp", error = %e, "agent wait failed"),
                 }
             }
         }
@@ -3078,8 +3389,9 @@ async fn run_inner(
     tokio::task::spawn_local(async move {
         io_probe.log("ACP handle_io task started");
         if let Err(e) = handle_io.await {
-            io_probe.log(&format!("ACP handle_io failed: {:#}", e));
-            eprintln!("ACP I/O error: {:#}", e);
+            // I/O loop ending with an error means the ACP connection to the
+            // agent CLI is dead — connection-fatal, log at warn (ships).
+            tracing::warn!(target: "acp", error = %format!("{:#}", e), "ACP I/O loop failed");
         } else {
             io_probe.log("ACP handle_io completed");
         }
@@ -3089,6 +3401,7 @@ async fn run_inner(
     // fail fast instead of hanging forever.
     let _ = event_tx.send(AppEvent::ConnectionStage("Initializing ACP...".to_string()));
     startup_probe.log("Initializing ACP");
+    let init_started = std::time::Instant::now();
     let init_future = conn.initialize(
         acp::InitializeRequest::new(acp::ProtocolVersion::V1)
             .client_capabilities(acp::ClientCapabilities::new().terminal(true))
@@ -3104,22 +3417,31 @@ async fn run_inner(
     let agent_label: String = adapter_package
         .clone()
         .unwrap_or_else(|| raw_program.to_string());
-    let init_resp = tokio::time::timeout(
-        std::time::Duration::from_secs(init_timeout_secs),
-        init_future,
-    )
-    .await
-    .map_err(|_| {
-        anyhow::anyhow!(
-            "ACP initialize timed out after {} s — '{}' did not respond. \
-             First-run npx adapters download ~5MB; check network. \
-             Built-in ACP agents: copilot, claude (via @zed-industries/claude-code-acp), \
-             codex (via @zed-industries/codex-acp), gemini.",
-            init_timeout_secs,
-            agent_label
-        )
-    })?
-    .map_err(|e| anyhow::anyhow!("initialize failed: {}", e))?;
+    let init_result =
+        tokio::time::timeout(std::time::Duration::from_secs(init_timeout_secs), init_future).await;
+    log_acp_initialize_timeout_result("DirectAgent", init_started, &init_result);
+    let init_resp = init_result
+        .map_err(|_| {
+            tracing::error!(
+                target: "acp",
+                step = "acp_initialize",
+                timeout_secs = init_timeout_secs,
+                agent = %agent_label,
+                "ACP initialize timed out — agent CLI did not respond"
+            );
+            anyhow::anyhow!(
+                "ACP initialize timed out after {} s — '{}' did not respond. \
+                 First-run npx adapters download ~5MB; check network. \
+                 Built-in ACP agents: copilot, claude (via @zed-industries/claude-code-acp), \
+                 codex (via @zed-industries/codex-acp), gemini.",
+                init_timeout_secs,
+                agent_label
+            )
+        })?
+        .map_err(|e| {
+            tracing::error!(target: "acp", step = "acp_initialize", error = %e, "ACP initialize failed");
+            anyhow::anyhow!("initialize failed: {}", e)
+        })?;
 
     // Log the agent's initialize response for debugging
     startup_probe.log(&format!("Agent init response received: {:?}", init_resp));
@@ -3130,10 +3452,12 @@ async fn run_inner(
     let cwd = active_pane_cwd
         .clone()
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    startup_probe.log(&format!("Using session cwd={}", cwd.display()));
+    let session_started = std::time::Instant::now();
     let session_future = conn.new_session(acp::NewSessionRequest::new(cwd));
-    let session = tokio::time::timeout(std::time::Duration::from_secs(15), session_future)
-        .await
+    let session_result = tokio::time::timeout(std::time::Duration::from_secs(15), session_future)
+        .await;
+    log_acp_new_session_timeout_result("DirectAgentStartup", session_started, &session_result);
+    let session = session_result
         .map_err(|_| anyhow::anyhow!("new_session timed out after 15 s"))?
         .map_err(|e| anyhow::anyhow!("new_session failed: {}", e))?;
 
@@ -3291,7 +3615,7 @@ async fn run_inner(
             // /restart: priority over other arms via `biased;` so a
             // queued prompt can't sneak in front of a kill request.
             Some(req) = master_ext_rx.recv() => {
-                dispatch_master_ext_request(req, &conn, &event_tx);
+                dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
             }
             Some(req) = restart_rx.recv() => {
                 tracing::info!(target: "acp_restart", "restart requested, new_agent={:?}", req.agent_cmd);
@@ -3367,14 +3691,20 @@ async fn run_inner(
                             .await;
                     }
 
-                    let new_session = match conn_for_new
-                        .new_session(acp::NewSessionRequest::new(cwd))
-                        .await
-                    {
+                    let new_session_started = std::time::Instant::now();
+                    let new_session_result =
+                        conn_for_new.new_session(acp::NewSessionRequest::new(cwd)).await;
+                    log_acp_new_session_result(
+                        "DirectAgentNewSessionForTab",
+                        new_session_started,
+                        &new_session_result,
+                    );
+                    let new_session = match new_session_result {
                         Ok(s) => s,
                         Err(e) => {
                             let _ = event_tx_for_new.send(AppEvent::AgentError {
                                 session_id: None,
+                                failure: AgentFailure::from_acp_error(&e),
                                 message: format!("/new failed for tab {}: {}", req.tab_id, e),
                             });
                             return;
@@ -3658,26 +3988,86 @@ fn dispatch_master_ext_request(
     req: MasterExtRequest,
     conn: &Arc<acp::ClientSideConnection>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
+    tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::SessionId>>>,
 ) {
     let conn = Arc::clone(conn);
     let event_tx = event_tx.clone();
+    let tab_to_session = Arc::clone(tab_to_session);
     tokio::task::spawn_local(async move {
         match req {
             MasterExtRequest::SessionsList { request_id } => {
                 let wire = crate::session_registry::build_sessions_list_request();
-                let sessions = match conn.ext_method(wire).await {
-                    Ok(resp) => crate::session_registry::parse_sessions_list_response(&resp.0)
-                        .map(|r| r.sessions)
-                        .unwrap_or_default(),
-                    Err(err) => {
-                        tracing::warn!(target: "agents_view", request_id, error = ?err, "sessions/list ext-request failed");
-                        Vec::new()
+                // Bound the wait so a single dropped RPC response can't
+                // permanently strand the tab's `refetch_in_flight=true`.
+                //
+                // Root cause is in agent-client-protocol@0.10's
+                // `RpcConnection::handle_io`: `read_line` is *not*
+                // cancellation-safe, but it's polled in a
+                // `select_biased!` whose outgoing arm has priority. When
+                // a concurrent outgoing message preempts an in-progress
+                // `read_line`, BufReader bytes already pulled off the
+                // pipe vanish; the next read starts mid-message, JSON
+                // parse fails, and the pending response future for the
+                // request whose response was being read never resolves.
+                // From our side `conn.ext_method(...)` then awaits
+                // forever.
+                //
+                // Without this timeout the failure mode is: helper opens
+                // /sessions, fires `sessions/list`, response gets
+                // truncated → `refetch_in_flight` stuck `true` → every
+                // subsequent `sessions/changed` broadcast and 5s tick
+                // hits `if refetch_in_flight { dirty=true; return; }`
+                // and never refetches → the tab's row activity / status
+                // is frozen until the user toggles /sessions off and
+                // on (which calls `close_agents_view_for_tab` and
+                // resets the gate).
+                //
+                // 8s > the 5s periodic tick so a healthy in-flight
+                // request never gets cancelled spuriously; under the
+                // bug the worst-case visible staleness becomes
+                // ~timeout + tick ≈ 13s instead of "until next manual
+                // toggle".
+                //
+                // The proper fix lives upstream — ACP 0.12 rewrote
+                // `handle_io` into separate incoming/outgoing actors,
+                // which is cancellation-safe by construction. Until we
+                // upgrade, this timeout is the guardrail.
+                const SESSIONS_LIST_TIMEOUT: std::time::Duration =
+                    std::time::Duration::from_secs(8);
+                let result =
+                    tokio::time::timeout(SESSIONS_LIST_TIMEOUT, conn.ext_method(wire)).await;
+                match result {
+                    Ok(Ok(resp)) => {
+                        let sessions =
+                            crate::session_registry::parse_sessions_list_response(&resp.0)
+                                .map(|r| r.sessions)
+                                .unwrap_or_default();
+                        let _ = event_tx.send(AppEvent::AgentsSnapshotLoaded {
+                            request_id,
+                            sessions,
+                        });
                     }
-                };
-                let _ = event_tx.send(AppEvent::AgentsSnapshotLoaded {
-                    request_id,
-                    sessions,
-                });
+                    Ok(Err(err)) => {
+                        tracing::warn!(
+                            target: "agents_view",
+                            request_id,
+                            error = ?err,
+                            "sessions/list ext-request failed"
+                        );
+                        let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
+                    }
+                    Err(_elapsed) => {
+                        tracing::warn!(
+                            target: "agents_view",
+                            request_id,
+                            timeout_secs = SESSIONS_LIST_TIMEOUT.as_secs(),
+                            "sessions/list timed out — likely ACP-0.10 \
+                             cancellation-safety bug; unblocking refetch_in_flight \
+                             so 5s tick can retry"
+                        );
+                        let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
+                    }
+                }
             }
             MasterExtRequest::SessionResumeDispatched { request_id, sid } => {
                 let wire = crate::session_registry::build_session_resume_dispatched_request(&sid);
@@ -3704,6 +4094,59 @@ fn dispatch_master_ext_request(
                     }
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
+            }
+            MasterExtRequest::SetSessionModel { session_id, model } => {
+                // Apply to the targeted session, or to every live session
+                // this helper owns when no target is given (normally just the
+                // one bound to its owner tab). Best-effort: a failure on one
+                // session is logged, not fatal — the next prompt still works
+                // on the previously-selected model.
+                let sessions: Vec<acp::SessionId> = {
+                    let g = tab_to_session.lock().await;
+                    match &session_id {
+                        Some(target) => {
+                            g.values().filter(|s| *s == target).cloned().collect()
+                        }
+                        None => g.values().cloned().collect(),
+                    }
+                };
+                // A targeted update that matches no live session is a silent
+                // no-op the UI can't see — surface it so a stale session id
+                // (e.g. a race with `/new`) is diagnosable instead of the UI
+                // claiming the model changed when nothing happened.
+                if let Some(target) = &session_id {
+                    if sessions.is_empty() {
+                        tracing::warn!(
+                            target: "acp",
+                            session_id = %target.0,
+                            model = %model,
+                            "set_session_model targeted an unknown/stale session; no live session updated"
+                        );
+                    }
+                }
+                for sid in sessions {
+                    match conn
+                        .set_session_model(acp::SetSessionModelRequest::new(
+                            sid.clone(),
+                            model.clone(),
+                        ))
+                        .await
+                    {
+                        Ok(_) => tracing::info!(
+                            target: "acp",
+                            session_id = %sid.0,
+                            model = %model,
+                            "acp-model hot-applied to live session"
+                        ),
+                        Err(err) => tracing::warn!(
+                            target: "acp",
+                            session_id = %sid.0,
+                            model = %model,
+                            error = ?err,
+                            "set_session_model hot-update failed"
+                        ),
+                    }
+                }
             }
         }
     });
@@ -3794,14 +4237,21 @@ async fn dispatch_prompt_body(
                 .and_then(|c| c.cwd.clone())
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-            let new_session = match conn_task
+            let new_session_started = std::time::Instant::now();
+            let new_session_result = conn_task
                 .new_session(acp::NewSessionRequest::new(cwd))
-                .await
-            {
+                .await;
+            log_acp_new_session_result(
+                "LazyCreateOnFirstPrompt",
+                new_session_started,
+                &new_session_result,
+            );
+            let new_session = match new_session_result {
                 Ok(s) => s,
                 Err(e) => {
                     let _ = event_tx_task.send(AppEvent::AgentError {
                         session_id: None,
+                        failure: AgentFailure::from_acp_error(&e),
                         message: format!("new_session failed for tab {}: {}", tab_key_task, e),
                     });
                     in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
@@ -3861,7 +4311,7 @@ async fn dispatch_prompt_body(
         .await;
 
     prompt_timing_task.activate(&prompt_session_id_str, &prompt);
-    let (text, prompt_source, prompt_name) = build_prompt_text(
+    let (text, prompt_source, prompt_name, resolved_fix_pane) = build_prompt_text(
         prompt.id,
         prompt.submitted_at_unix_s,
         &prompt.text,
@@ -3872,6 +4322,19 @@ async fn dispatch_prompt_body(
         prompt.pane_context.as_ref(),
     )
     .await;
+    // A manual `/fix` resolved its working pane in build_prompt_text (it had no
+    // explicit source pane). Plumb it back so the App fills the turn's
+    // `target_pane_id`; the host fills `Send.parent` from it at execute time.
+    if let Some(pane_id) = resolved_fix_pane {
+        let _ = event_tx_task.send(AppEvent::AutofixTargetResolved {
+            tab_id: prompt
+                .pane_context
+                .as_ref()
+                .and_then(|c| c.tab_id.clone()),
+            prompt_id: prompt.id,
+            pane_id,
+        });
+    }
     let _ = event_tx_task.send(AppEvent::PromptTemplateLoaded { name: prompt_name });
     prompt_timing_task.mark_context_ready(&prompt_session_id_str, text.len());
     acp_log_built_prompt(
@@ -3924,8 +4387,16 @@ async fn dispatch_prompt_body(
 
     let cancelled = tokio::select! {
         result = &mut prompt_fut => {
+            // Peek the successful turn's stop_reason (the response is consumed
+            // by `complete_prompt_request`). A soft stop is not an error; the
+            // Err arm is classified separately by `from_acp_error`.
+            let soft_stop = result
+                .as_ref()
+                .ok()
+                .and_then(|resp| SoftStopReason::from_stop_reason(resp.stop_reason));
             complete_prompt_request(
                 result,
+                soft_stop,
                 &prompt_timing_task,
                 &event_tx_task,
                 prompt_session_id_str.clone(),
@@ -3964,11 +4435,29 @@ async fn dispatch_prompt_body(
 #[cfg(test)]
 mod tests {
     use super::{
-        complete_prompt_request, inject_wta_pane_meta, requested_model_id,
-        summarize_agent_identity, user_locale_tag, PromptTimingState,
+        complete_prompt_request, inject_wta_pane_meta, requested_model_id, shell_from_active,
+        summarize_agent_identity, user_locale_tag, PromptTimingState, SoftStopReason,
     };
+    use super::acp;
     use crate::app::AppEvent;
     use tokio::sync::mpsc;
+
+    /// `shell_from_active` resolves our own pid to a real exe name (the test
+    /// binary). Proves the pid → image-name path works end to end on Windows;
+    /// a missing/zero pid yields `None`.
+    #[cfg(windows)]
+    #[test]
+    fn shell_from_active_resolves_pid() {
+        let me = serde_json::json!({ "pid": std::process::id() });
+        let name = shell_from_active(&me).expect("own pid should resolve");
+        assert!(
+            name.to_ascii_lowercase().ends_with(".exe"),
+            "expected an .exe image name, got {name:?}"
+        );
+
+        assert_eq!(shell_from_active(&serde_json::json!({ "pid": 0 })), None);
+        assert_eq!(shell_from_active(&serde_json::json!({})), None);
+    }
 
     /// Helper-only: round-trip a `_meta` blob through `inject_wta_pane_meta`
     /// and report the `pane_session_id` that the master would see in
@@ -4031,7 +4520,7 @@ mod tests {
     /// `session/load` path must inject `_meta.wta.pane_session_id`
     /// alongside the request so master's `SessionInfo.pane_session_id`
     /// for the resumed sid points at THIS pane's GUID. Without the
-    /// binding the row in a sibling window's F2 list appears live but
+    /// binding the row in a sibling window's session management list appears live but
     /// `decide_enter_action` returns `NotResumable { LiveWithoutPane }`
     /// and the user sees "Cannot focus session …: it appears live but
     /// no pane GUID is bound yet."
@@ -4122,7 +4611,8 @@ mod tests {
         let prompt_timing = PromptTimingState::default();
 
         complete_prompt_request(
-            Ok::<(), &str>(()),
+            Ok::<(), acp::Error>(()),
+            None,
             &prompt_timing,
             &event_tx,
             "test-session".to_string(),
@@ -4140,12 +4630,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn soft_stop_emits_message_end_then_soft_stop() {
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let prompt_timing = PromptTimingState::default();
+
+        complete_prompt_request(
+            Ok::<(), acp::Error>(()),
+            Some(SoftStopReason::Refusal),
+            &prompt_timing,
+            &event_tx,
+            "test-session".to_string(),
+        )
+        .await;
+
+        // Order matters: the turn-closing AgentMessageEnd must land first so the
+        // soft-stop notice appends after the agent's streamed content.
+        match event_rx.try_recv() {
+            Ok(AppEvent::AgentMessageEnd { session_id }) => {
+                assert_eq!(session_id, "test-session");
+            }
+            Ok(_) => panic!("expected AgentMessageEnd first"),
+            Err(err) => panic!("expected AgentMessageEnd first, got channel error: {err}"),
+        }
+        match event_rx.try_recv() {
+            Ok(AppEvent::AgentSoftStop { session_id, reason }) => {
+                assert_eq!(session_id, "test-session");
+                assert_eq!(reason, SoftStopReason::Refusal);
+            }
+            Ok(_) => panic!("expected AgentSoftStop second"),
+            Err(err) => panic!("expected AgentSoftStop second, got channel error: {err}"),
+        }
+        assert!(event_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
     async fn failed_prompt_completion_emits_error_only() {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         let prompt_timing = PromptTimingState::default();
 
         complete_prompt_request(
-            Err::<(), _>("boom"),
+            Err::<(), acp::Error>(acp::Error::new(-32603, "boom")),
+            None,
             &prompt_timing,
             &event_tx,
             "test-session".to_string(),
@@ -4155,10 +4680,18 @@ mod tests {
         match event_rx.try_recv() {
             Ok(AppEvent::AgentError {
                 session_id,
+                failure,
                 message,
             }) => {
                 assert_eq!(session_id.as_deref(), Some("test-session"));
                 assert_eq!(message, "prompt error: boom");
+                assert_eq!(
+                    failure,
+                    crate::protocol::acp::failure::AgentFailure::Protocol {
+                        code: -32603,
+                        message: "boom".to_string(),
+                    }
+                );
             }
             Ok(_) => panic!("expected AgentError"),
             Err(err) => panic!("expected AgentError, got channel error: {err}"),

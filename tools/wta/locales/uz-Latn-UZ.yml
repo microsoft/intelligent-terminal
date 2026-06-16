@@ -74,6 +74,7 @@ commands.help_close_hint: "  Esc        Bu yordamni yopish"  # {Locked="Esc"}
 commands.help.summary: "Bu buyruqlar roʻyxatini koʻrsat"
 commands.clear.summary: "Chat aylantirish tarixini tozalash (seansni saqlaydi)"
 commands.new.summary: "Yangi ACP seansini boshlash (tarixni oʻchiradi)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Agentni qayta ishga tushiring"
 commands.stop.summary: "Bajarilayotgan soʻrovni bekor qilish"
 commands.sessions.summary: "Tarixiy seanslar tanlagichini ochish (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -130,12 +131,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. agent panelini koʻrsatish/yashirish • C
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agent ishga tushirilmoqda..."
 connection.reconnecting: "Qayta ulanilmoqda..."
+connection.connecting_activity: "Agentga ulanilmoqda…"
+connection.lost: "Agent bilan ulanish uzildi. Qayta ulanish uchun /restart deb yozing."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Bekor qilindi."
 system.no_prompt_in_flight: "Bajarilayotgan soʻrov yoʻq."
 system.authentication_failed: "Autentifikatsiya amalga oshmadi"
 system.command_copied_retry: "Buyruq nusxalandi — boshqa terminalda bajaring, keyin qayta sinash uchun Enter bosing"  # {Locked="Enter"}
+system.stopped_max_tokens: "Javob model chiqish chegarasiga yetgach uzib qo'yildi."
+system.stopped_max_turn_requests: "Agent ushbu navbat uchun so'rov chegarasiga yetgach to'xtadi."
+system.stopped_refusal: "Agent ushbu so'rovni davom ettirishdan bosh tortdi."
+system.agent_busy: "Agent bu varaqda band — joriy soʻrov tugashini kuting."
+system.resuming_session: "%{session_id} seansi davom ettirilmoqda..."
+system.unknown_command: "Nomaʼlum buyruq \"%{command}\" — soʻrov sifatida yuborildi. Roʻyxat uchun /help yozing."  # {Locked="/help"}
+system.busy_use_stop: "Joriy soʻrov tugashini kuting yoki avval /stop ishlating."  # {Locked="/stop"}
+system.cannot_focus_session: "%{session_id} seansiga fokuslab boʻlmadi: u jonli ko‘rinadi, lekin hali hech qanday panel GUID’i bogʻlanmagan. Birozdan keyin qayta urinib koʻring."
+system.cannot_resume_no_load_session: "Agent panelida davom ettirib boʻlmadi: %{agent} ACP `loadSession` imkoniyatini eʼlon qilmagan. Buning oʻrniga yangi terminal panelida davom ettirish uchun Enter (Shift bosmasdan) bosing."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "%{agent} seansini davom ettirib boʻlmadi: bu agentda `--resume` uslubidagi bayroq yoʻq. ACP orqali agent panelida davom ettirib koʻrish uchun Shift+Enter bosing."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "%{session_id} seansini davom ettirib boʻlmadi: uning manba agenti ushbu WTA tuzilmasiga nomaʼlum."
+system.cannot_resume_phantom_via_flag: "%{agent} %{session_id} seansini davom ettirib boʻlmadi: u boshlangan, lekin hech qanday suhbat yigʻilmagan, shuning uchun %{agent} oʻzi davom ettirishni rad etadi. Qator olib tashlanmoqda."
+system.cannot_resume_phantom_via_load: "%{agent} %{session_id} seansini davom ettirib boʻlmadi: u boshlangan, lekin hech qanday suhbat yigʻilmagan, shuning uchun %{agent} yuklashni rad etadi. Qator olib tashlanmoqda."
+system.fallback.this_agent: "bu agent"
+system.fallback.connected_agent: "ulangan agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Oynalar topilmadi."
@@ -181,3 +199,13 @@ time.hour_singular: "%{count} soat oldin"
 time.hours_other: "%{count} soat oldin"
 time.day_singular: "%{count} kun oldin"
 time.days_other: "%{count} kun oldin"
+
+# ── Tavsiyani bajarish (src/coordinator.rs) ─────────────────────────────────
+system.choice_execution_failed: "%{choice} tanlovi bajarilmadi: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Bu panel uchun modelni tanlang (toʻgʻridan-toʻgʻri almashtirish uchun /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "Modelni tanlang (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Ulangan agent hech qanday tanlanadigan modelni eʼlon qilmadi."
+system.model_set: "Bu panel uchun model %{model} ga oʻrnatildi."  # {Locked="%{model}"}
+system.model_unknown: "Nomaʼlum model %{model} — mavjud roʻyxatni koʻrish uchun /model yozing."  # {Locked="%{model}","/model"}

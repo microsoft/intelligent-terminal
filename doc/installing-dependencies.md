@@ -20,30 +20,18 @@ on its own, including:
   resolution guidance or from a GitHub issue. Each dependency has its own
   section with a stable anchor so it can be linked to directly.
 
-> [!NOTE]
-> **What Intelligent Terminal installs for you, and what it doesn't:**
-> Intelligent Terminal supports four agent CLIs — **GitHub Copilot**,
-> **Claude Code**, **OpenAI Codex**, and **Gemini**. The first-run
-> experience (FRE) installs **GitHub Copilot** on your behalf because it
-> is the default agent. For Claude Code, Codex, and Gemini, **you must
-> install the agent CLI yourself** before selecting it in the FRE —
-> Intelligent Terminal does not ship or install those CLIs. **Claude
-> Code** and **OpenAI Codex** additionally need an ACP (Agent Control
-> Protocol) wrapper so Intelligent Terminal can talk to them; the wrapper
-> is fetched on demand via `npx` at run time, so its only prerequisite is
-> Node.js. Copilot and Gemini speak ACP
-> natively and need no wrapper.
-
 ## Table of contents
 
 1. [WinGet (Windows Package Manager)](#1-winget-windows-package-manager)
 2. [Node.js LTS — shared prerequisite](#2-nodejs-lts--shared-prerequisite)
-3. [GitHub Copilot CLI](#3-github-copilot-cli)
-4. [Claude Code (bring your own)](#4-claude-code-bring-your-own)
-5. [OpenAI Codex (bring your own)](#5-openai-codex-bring-your-own)
-6. [Gemini CLI (bring your own)](#6-gemini-cli-bring-your-own)
-7. [Signing in to your agent](#7-signing-in-to-your-agent)
-8. [PowerShell shell integration](#8-powershell-shell-integration)
+3. [Agent CLIs](#agent-clis) — install and sign in to an agent
+   - 3.1 [GitHub Copilot CLI](#31-github-copilot-cli) (installed by the FRE)
+   - 3.2 [Claude Code (bring your own)](#32-claude-code-bring-your-own)
+   - 3.3 [OpenAI Codex (bring your own)](#33-openai-codex-bring-your-own)
+   - 3.4 [Gemini CLI (bring your own)](#34-gemini-cli-bring-your-own)
+   - 3.5 [Signing in to your agent](#35-signing-in-to-your-agent)
+   - 3.6 [Agent hooks for session management](#36-agent-hooks-for-session-management)
+4. [PowerShell shell integration](#4-powershell-shell-integration)
 
 ---
 
@@ -132,14 +120,37 @@ finishes, close and reopen your terminal so `PATH` picks up `node.exe`,
 
 ---
 
-## 3. GitHub Copilot CLI
+## Agent CLIs
+
+Intelligent Terminal supports four agents out of the box — **GitHub
+Copilot**, **Claude Code**, **OpenAI Codex**, and **Gemini**. The
+first-run experience installs **GitHub Copilot** (the default) for you;
+the other three are **bring-your-own** — install the CLI yourself
+(sub-sections below) before selecting it in the FRE.
+
+Intelligent Terminal talks to all four through the
+[**Agent Control Protocol (ACP)**](https://agentclientprotocol.com/get-started/agents).
+**Copilot** and **Gemini** speak ACP natively, so no extra layer is
+required. **Claude Code** and **OpenAI Codex** do not speak ACP directly
+— Intelligent Terminal launches them through an `npx` wrapper that is
+fetched on demand at run time, so its only prerequisite is Node.js.
+
+> [!NOTE]
+> **Bringing your own ACP agent.** Any CLI that speaks ACP can also be
+> wired up from **Settings → AI Agents → Add custom agent**. Custom
+> agents work in the agent pane today, but **session management** (the
+> multi-session sidebar in the agent pane) is not yet supported for
+> custom agents — only the four built-in agents above get the full
+> session experience.
+
+### 3.1 GitHub Copilot CLI
 
 **Why you need it:** GitHub Copilot is the **default agent** in Intelligent
 Terminal and the only agent the first-run experience installs on your
 behalf. It powers the agent pane, the `?<prompt>` command-palette
 delegation, and the auto-fix workflow.
 
-### Installed automatically by the first-run experience
+#### Installed automatically by the first-run experience
 
 When you complete the FRE with Copilot selected, Intelligent Terminal
 installs the Copilot CLI for you (skipped if it is already on `PATH`):
@@ -153,7 +164,7 @@ winget install --id GitHub.Copilot --exact --silent `
 
 Copilot speaks ACP natively, so no wrapper is required.
 
-### Install manually (only if you are not using the FRE)
+#### Install manually (only if you are not using the FRE)
 
 If the FRE did not install Copilot CLI for you, run the `winget` command
 above, then verify:
@@ -167,25 +178,25 @@ install directory is added to `PATH`.
 
 > [!IMPORTANT]
 > After installing, you must sign in before the agent will respond. See
-> [Section 7 — Signing in to your agent](#7-signing-in-to-your-agent).
+> [Section 3.5 — Signing in to your agent](#35-signing-in-to-your-agent).
 
 ---
 
-## 4. Claude Code (bring your own)
+### 3.2 Claude Code (bring your own)
 
 **Status:** Supported, but **not installed by Intelligent Terminal**. You
 must install Anthropic's Claude Code CLI yourself before selecting Claude
 in the FRE. Intelligent Terminal launches Claude through the
 `@zed-industries/claude-code-acp` npx wrapper.
 
-### Step 4.1 — Install Node.js
+#### Step 3.2.1 — Install Node.js
 
 Complete [Section 2 — Node.js LTS](#2-nodejs-lts--shared-prerequisite)
 first. Claude Code is an npm package and cannot run without Node.js. If you
 have not yet installed Node.js, the FRE will install it for you the first
 time you select Claude.
 
-### Step 4.2 — Install the Claude Code CLI
+#### Step 3.2.2 — Install the Claude Code CLI
 
 ```powershell
 npm install -g @anthropic-ai/claude-code
@@ -197,7 +208,7 @@ Verify:
 claude --version
 ```
 
-### Step 4.3 — ACP wrapper (no install action required)
+#### Step 3.2.3 — ACP wrapper (no install action required)
 
 Claude Code does not speak the Agent Control Protocol (ACP) directly, so
 Intelligent Terminal launches it through the
@@ -209,30 +220,30 @@ npx -y @zed-industries/claude-code-acp
 ```
 
 You do **not** need to install anything for this — the only prerequisite
-is a working Node.js + `npx` (which you already installed in Step 4.1).
+is a working Node.js + `npx` (which you already installed in Step 3.2.1).
 The first launch may take a few seconds while `npx` downloads the wrapper.
 
 > [!IMPORTANT]
 > After installing, you must sign in before the agent will respond. See
-> [Section 7 — Signing in to your agent](#7-signing-in-to-your-agent).
+> [Section 3.5 — Signing in to your agent](#35-signing-in-to-your-agent).
 
 ---
 
-## 5. OpenAI Codex (bring your own)
+### 3.3 OpenAI Codex (bring your own)
 
 **Status:** Supported, but **not installed by Intelligent Terminal**. You
 must install OpenAI's Codex CLI yourself before selecting Codex in the FRE.
 Intelligent Terminal launches Codex through the
 `@zed-industries/codex-acp` npx wrapper.
 
-### Step 5.1 — Install Node.js
+#### Step 3.3.1 — Install Node.js
 
 Complete [Section 2 — Node.js LTS](#2-nodejs-lts--shared-prerequisite)
 first. Codex is an npm package and cannot run without Node.js. If you have
 not yet installed Node.js, the FRE will install it for you the first time
 you select Codex.
 
-### Step 5.2 — Install the Codex CLI
+#### Step 3.3.2 — Install the Codex CLI
 
 ```powershell
 npm install -g @openai/codex
@@ -244,7 +255,7 @@ Verify:
 codex --version
 ```
 
-### Step 5.3 — ACP wrapper (no install action required)
+#### Step 3.3.3 — ACP wrapper (no install action required)
 
 Codex does not speak the Agent Control Protocol (ACP) directly, so
 Intelligent Terminal launches it through the
@@ -256,16 +267,16 @@ npx -y @zed-industries/codex-acp
 ```
 
 You do **not** need to install anything for this — the only prerequisite
-is a working Node.js + `npx` (which you already installed in Step 5.1).
+is a working Node.js + `npx` (which you already installed in Step 3.3.1).
 The first launch may take a few seconds while `npx` downloads the wrapper.
 
 > [!IMPORTANT]
 > After installing, you must sign in before the agent will respond. See
-> [Section 7 — Signing in to your agent](#7-signing-in-to-your-agent).
+> [Section 3.5 — Signing in to your agent](#35-signing-in-to-your-agent).
 
 ---
 
-## 6. Gemini CLI (bring your own)
+### 3.4 Gemini CLI (bring your own)
 
 **Status:** Supported, but **not installed by Intelligent Terminal**. You
 must install Google's Gemini CLI yourself before selecting Gemini in the
@@ -273,12 +284,12 @@ FRE. Gemini speaks the Agent Control Protocol (ACP) natively, so no
 wrapper is required at runtime, but the CLI itself is still distributed as
 an npm package.
 
-### Step 6.1 — Install Node.js
+#### Step 3.4.1 — Install Node.js
 
 Complete [Section 2 — Node.js LTS](#2-nodejs-lts--shared-prerequisite)
 first.
 
-### Step 6.2 — Install the Gemini CLI
+#### Step 3.4.2 — Install the Gemini CLI
 
 ```powershell
 npm install -g @google/gemini-cli
@@ -294,11 +305,11 @@ Gemini speaks ACP natively, so no wrapper is required.
 
 > [!IMPORTANT]
 > Gemini requires you to sign in with your Google account before it will
-> respond. See [Section 7 — Signing in to your agent](#7-signing-in-to-your-agent).
+> respond. See [Section 3.5 — Signing in to your agent](#35-signing-in-to-your-agent).
 
 ---
 
-## 7. Signing in to your agent
+### 3.5 Signing in to your agent
 
 Installing an agent's CLI is not enough — you must also sign in before
 Intelligent Terminal can talk to it. Pick the row for the agent you
@@ -316,7 +327,120 @@ up the new credentials.
 
 ---
 
-## 8. PowerShell shell integration
+### 3.6 Agent hooks for session management
+
+**Why you need it:** Intelligent Terminal's **session management** feature
+— the multi-session sidebar in the agent pane that lets you switch between
+parallel conversations on the same tab — is powered by a small bundle of
+**agent hooks** (`wt-agent-hooks`) that the agent CLI loads as a plugin /
+extension. The first-run experience installs these hooks for you the
+first time you save the FRE with **Session management** enabled.
+
+You only need to follow this section if:
+
+- The FRE reported that hooks installation failed (for example because
+  the agent CLI was not yet on `PATH`, or your network blocked the agent
+  CLI's plugin store).
+- You installed the agent CLI **after** completing the FRE and now want
+  to enable session management.
+
+#### Step 3.6.1 — Make sure the agent CLI is installed and on PATH
+
+The hooks are registered through the agent CLI's own plugin / extension
+system, so the CLI itself must be installed first. Complete the matching
+sub-section above before continuing:
+
+- **GitHub Copilot** → [Section 3.1](#31-github-copilot-cli)
+- **Claude Code** → [Section 3.2](#32-claude-code-bring-your-own)
+- **OpenAI Codex** → [Section 3.3](#33-openai-codex-bring-your-own)
+- **Gemini CLI** → [Section 3.4](#34-gemini-cli-bring-your-own)
+
+Verify the CLI you intend to use prints a version number, then close and
+reopen your terminal so any new install directory is on `PATH`.
+
+#### Step 3.6.2 — Run `wta hooks install`
+
+Intelligent Terminal ships a `wta hooks install` command that runs the
+same installer the FRE uses. Open a **new** Intelligent Terminal window
+(so `wta` and the agent CLI both pick up the current `PATH`) and run
+**one** of the following — whichever matches the agent you selected in
+the FRE:
+
+```powershell
+wta hooks install --cli copilot
+wta hooks install --cli claude
+wta hooks install --cli codex
+wta hooks install --cli gemini
+```
+
+Or install for every agent CLI that is currently on `PATH` in one go:
+
+```powershell
+wta hooks install
+```
+
+Under the hood this runs each agent CLI's native plugin / extension
+command against the `wt-agent-hooks` bundle shipped inside the
+Intelligent Terminal package:
+
+| Agent          | Native commands invoked by `wta hooks install`                                                                              |
+|----------------|-----------------------------------------------------------------------------------------------------------------------------|
+| GitHub Copilot | `copilot plugin marketplace add <bundle>\copilot` then `copilot plugin install wt-agent-hooks@wt-local`                     |
+| Claude Code    | `claude plugin marketplace add <bundle>\claude` then `claude plugin install wt-agent-hooks@wt-local`                        |
+| OpenAI Codex   | `codex plugin marketplace add <bundle>\codex` then `codex plugin add wt-agent-hooks@wt-local` *(note: `add`, not `install`)* |
+| Gemini CLI     | `gemini extensions install <bundle>\gemini-extension --consent --skip-settings` *(with `GEMINI_CLI_TRUST_WORKSPACE=true` to bypass Gemini's folder-trust prompt)* |
+
+You do not need to run these directly — `wta hooks install` is the
+supported entry point and handles bundle staging, idempotency, and
+diagnostic logging for you.
+
+> [!IMPORTANT]
+> **Codex needs a one-time `/hooks` trust step.** After
+> `wta hooks install --cli codex` succeeds, hook events will not fire
+> until you launch Codex once and run the `/hooks` slash command to
+> trust the `wt-agent-hooks` plugin. This is a Codex security
+> requirement that no external installer can satisfy on your behalf;
+> the other three CLIs do not need this step.
+
+#### Step 3.6.3 — Verify the install and re-enable session management
+
+Check the status report to confirm each agent CLI is wired up:
+
+```powershell
+wta hooks status
+```
+
+You should see `installed` for the agent you selected. Then, back in
+**Settings → AI Agents**, turn **Session management** back on (the FRE
+turns it off when hooks installation fails so you can save and continue
+without it) and restart Intelligent Terminal once.
+
+> [!TIP]
+> If `wta hooks install` still fails, diagnostics are written to
+> `wta-install-hooks.log` under the Intelligent Terminal package's log
+> directory:
+>
+> ```text
+> %LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\Local\IntelligentTerminal\logs\<version>\wta-install-hooks.log
+> ```
+>
+> The most common causes of failure are: the agent CLI was not on
+> `PATH` when `wta` ran (open a fresh window and retry), or the agent
+> CLI has not been signed in yet (see
+> [Section 3.5](#35-signing-in-to-your-agent)). The log identifies
+> which step failed and prints the exit code from the underlying
+> `plugin install` / `plugin add` / `extensions install` invocation.
+
+> [!WARNING]
+> If your organization disables agent session hooks through Group
+> Policy, the **Session management** toggle in the FRE and in
+> **Settings → AI Agents** is locked off and the FRE will not run the
+> hooks installer for you. Contact your IT administrator if you
+> believe this is in error.
+
+---
+
+## 4. PowerShell shell integration
 
 **Why you need it:** Shell integration teaches PowerShell to emit
 **OSC 133** marks after every prompt. Intelligent Terminal uses these marks
@@ -346,7 +470,7 @@ $PROFILE.CurrentUserCurrentHost
 The only step you may need to perform by hand is adjusting the PowerShell
 execution policy so the profile is allowed to run.
 
-### Step 8.1 — Set the PowerShell execution policy
+### Step 4.1 — Set the PowerShell execution policy
 
 Shell-integration scripts are PowerShell `.ps1` files loaded from your
 profile. PowerShell will refuse to run them under the default `Restricted`
@@ -356,6 +480,12 @@ to **at least** `RemoteSigned`:
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 ```
+
+> [!IMPORTANT]
+> Make sure to run this command in **both** hosts:
+>
+> - **PowerShell 7+** (`pwsh.exe`)
+> - **Windows PowerShell 5.1** (`powershell.exe`)
 
 `RemoteSigned` allows local scripts (such as your profile) to run while
 still requiring a signature on scripts downloaded from the internet, which
@@ -385,7 +515,7 @@ is the recommended Microsoft default for developer machines.
 > shows `Restricted` or `AllSigned` for your scope after running the
 > command above.
 
-### Step 8.2 — Enable auto-error detection and auto-error fix
+### Step 4.2 — Enable auto-error detection and auto-error fix
 
 Once the execution policy is set, open **Settings → AI Agents** inside
 Intelligent Terminal and turn on **Auto-error detection** (and, optionally,

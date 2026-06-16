@@ -119,12 +119,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. agendipaneeli kuvamiseks/peitmiseks • Ct
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agendi käivitamine..."
 connection.reconnecting: "Taasühendamine..."
+connection.connecting_activity: "Agendiga ühenduse loomine…"
+connection.lost: "Ühendus agendiga katkes. Uuesti ühendamiseks tippige /restart."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Tühistatud."
 system.no_prompt_in_flight: "Aktiivset päringut pole."
 system.authentication_failed: "Autentimine nurjus"
 system.command_copied_retry: "Käsk kopeeritud — käivitage see teises terminalis ja vajutage seejärel Enter uuesti proovimiseks"  # {Locked="Enter"}
+system.stopped_max_tokens: "Vastus katkestati pärast mudeli väljundpiiri saavutamist."
+system.stopped_max_turn_requests: "Agent peatus pärast selle vooru päringupiiri saavutamist."
+system.stopped_refusal: "Agent keeldus selle päringuga jätkamast."
+system.agent_busy: "Agent on sellel vahekaardil hõivatud — oodake, kuni praegune viip lõpeb."
+system.resuming_session: "Seansi %{session_id} jätkamine..."
+system.unknown_command: "Tundmatu käsk \"%{command}\" — saadeti viibana. Loendi jaoks tippige /help."  # {Locked="/help"}
+system.busy_use_stop: "Oodake, kuni praegune viip lõpeb, või kasutage esmalt /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Seanssi %{session_id} ei saa fookusesse võtta: see näib olevat aktiivne, kuid ühtegi paani GUID-i pole veel seotud. Proovige hetke pärast uuesti."
+system.cannot_resume_no_load_session: "Agendipaanil ei saa jätkata: %{agent} ei reklaaminud ACP `loadSession` võimekust. Vajutage Enter (ilma Shiftita), et jätkata selle asemel uuel terminalipaanil."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "%{agent} seanssi ei saa jätkata: sellel agendil pole `--resume`-stiilis lippu. Vajutage Shift+Enter, et proovida jätkamist agendipaani sees ACP kaudu."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Seanssi %{session_id} ei saa jätkata: selle lähteagent on sellele WTA järgule tundmatu."
+system.cannot_resume_phantom_via_flag: "%{agent} seanssi %{session_id} ei saa jätkata: see käivitati, kuid vestlust ei kogunenud, seega lükkaks %{agent} ise jätkamise tagasi. Rida eemaldatakse."
+system.cannot_resume_phantom_via_load: "%{agent} seanssi %{session_id} ei saa jätkata: see käivitati, kuid vestlust ei kogunenud, seega lükkaks %{agent} laadimise tagasi. Rida eemaldatakse."
+system.fallback.this_agent: "see agent"
+system.fallback.connected_agent: "ühendatud agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Aknaid ei leitud."
@@ -171,3 +188,24 @@ time.hour_singular: "%{count} tund tagasi"
 time.hours_other: "%{count} tundi tagasi"
 time.day_singular: "%{count} päev tagasi"
 time.days_other: "%{count} päeva tagasi"
+
+# ── Slash-command summaries (src/commands.rs) ─────────────────────────────
+# Command names (/help, /clear, etc.) stay English; descriptions translate.
+# {Locked="ACP","Ctrl+Shift+/"} - protocol name and shortcut, do not translate
+commands.help.summary: "Show this command list"
+commands.clear.summary: "Clear the chat scrollback (keeps session)"
+commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.restart.summary: "Restart agent"
+commands.stop.summary: "Cancel the in-flight prompt"
+commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+
+# ── Soovituse täitmine (src/coordinator.rs) ─────────────────────────────────
+system.choice_execution_failed: "Valik %{choice} nurjus: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Valige selle paani mudel (/model <id> otse vahetamiseks)"  # {Locked="/model","<id>"}
+model_picker.title: "Valige mudel (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Ühendatud agent ei reklaaminud ühtegi valitavat mudelit."
+system.model_set: "Selle paani mudeliks määrati %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Tundmatu mudel %{model} — tippige /model saadaolevate mudelite loendi nägemiseks."  # {Locked="%{model}","/model"}

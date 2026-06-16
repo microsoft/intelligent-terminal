@@ -192,7 +192,7 @@ pub fn spawn_wtcli_async(args: &[String]) {
 /// Why this exists: wtcli's split-pane subcommand passes `background=true` to
 /// the COM `SplitPane` call (see `src/tools/wtcli/main.cpp:446`), which leaves
 /// focus on the splitting pane. For interactive paths like resuming a history
-/// session from the F2 list, we want the new pane focused. Rather than
+/// session from the session management list, we want the new pane focused. Rather than
 /// rebuild the C++ binary every dev cycle, we issue an explicit FocusPane
 /// after the split returns the new pane's GUID.
 ///

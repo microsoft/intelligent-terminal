@@ -1,7 +1,5 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use crossterm::queue;
-use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
 use ratatui::backend::CrosstermBackend;
 use ratatui::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -27,6 +25,20 @@ struct DeferredAcpParams {
     master_ext_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::MasterExtRequest>>,
     shell_mgr: Arc<crate::shell::ShellManager>,
     wt_connected: bool,
+    /// Pipe-mode marker. When `Some`, [`App::try_start_acp`] reconnects
+    /// via [`run_acp_client_over_pipe`] instead of the direct
+    /// [`run_acp_client`] path. Pre-stashed at boot in helper mode
+    /// (main.rs) so that a post-FRE-login reconnect goes back through
+    /// wta-master — without this, the reconnected helper would spawn
+    /// its own copilot CLI subprocess directly, master would never see
+    /// it, and ext-methods like `intellterm.wta/sessions/list` would
+    /// fail with "Method not found" (the ACP SDK forwards unknown
+    /// extensions to the agent with a `_` prefix, and the agent CLI
+    /// doesn't know about master-side extensions).
+    master_pipe_name: Option<String>,
+    /// Owner tab id for pipe-mode reconnect (mirrors the original
+    /// `--owner-tab-id` CLI arg). Unused in direct mode.
+    owner_tab_id: Option<String>,
 }
 
 mod turn_state;
@@ -35,9 +47,9 @@ use autofix::*;
 
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
-// ─── MVP F2 origin filter ────────────────────────────────────────────────────
+// ─── MVP sessions origin filter ────────────────────────────────────────────────────
 //
-// The session-management view (F2 / `/sessions`) currently ships in MVP
+// The session management view (`/sessions`) currently ships in MVP
 // mode: it only surfaces shell-pane sessions (the user manually ran
 // `copilot` / `claude` / `gemini` in a regular shell). Agent-pane
 // sessions (Class A — created by WTA on behalf of an Intelligent
@@ -47,23 +59,23 @@ pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, Tu
 //
 // To bring agent-pane sessions back into the picker once the manage UX
 // is ready, flip this constant to `OriginFilter::All` and delete the
-// `WTA_F2_SHOW_AGENT_PANE` env override below. No other call sites
+// `WTA_SESSIONS_SHOW_AGENT_PANE` env override below. No other call sites
 // need to change — all consumers go through
-// `App::f2_origin_filter`.
-const MVP_F2_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
+// `App::sessions_origin_filter`.
+const MVP_SESSIONS_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
     crate::agent_sessions::OriginFilter::ShellOnly;
 
-/// Resolve the F2 / `/sessions` origin filter for this process.
+/// Resolve the `/sessions` origin filter for this process.
 ///
-/// Defaults to [`MVP_F2_ORIGIN_FILTER`]. The `WTA_F2_SHOW_AGENT_PANE`
+/// Defaults to [`MVP_SESSIONS_ORIGIN_FILTER`]. The `WTA_SESSIONS_SHOW_AGENT_PANE`
 /// env var (set to `1` / `true`) flips a single helper to
 /// `OriginFilter::All` for debugging — matches the existing
 /// `WTA_LOG_AGENT_EVENT` / `WTA_SOURCE_*` convention. Each helper is
 /// a separate process so the override only affects the pane that
 /// launched with the env var set; the rest of the Terminal keeps the
 /// MVP default.
-pub fn resolve_f2_origin_filter() -> crate::agent_sessions::OriginFilter {
-    match std::env::var("WTA_F2_SHOW_AGENT_PANE")
+pub fn resolve_sessions_origin_filter() -> crate::agent_sessions::OriginFilter {
+    match std::env::var("WTA_SESSIONS_SHOW_AGENT_PANE")
         .ok()
         .as_deref()
         .map(str::trim)
@@ -71,11 +83,11 @@ pub fn resolve_f2_origin_filter() -> crate::agent_sessions::OriginFilter {
         Some("1") | Some("true") | Some("TRUE") | Some("True") | Some("yes") => {
             crate::agent_sessions::OriginFilter::All
         }
-        _ => MVP_F2_ORIGIN_FILTER,
+        _ => MVP_SESSIONS_ORIGIN_FILTER,
     }
 }
 
-use crate::commands::{self, CommandKind, CommandSpec, ParsedCommand};
+use crate::commands::{self, CommandKind, CommandSpec, ParseOutcome, ParsedCommand};
 use crate::coordinator::{
     parse_autofix_response, parse_recommendation_set, recommended_choice_index,
     validate_recommendation_set_for_coordinator_target, AutofixDecision, RecommendationChoice,
@@ -227,6 +239,36 @@ impl PreflightResult {
     pub fn all_passed(&self) -> bool {
         self.cli_status == CheckStatus::Passed
             && matches!(self.auth_status, CheckStatus::Passed | CheckStatus::Skipped)
+    }
+
+    /// Synthesize a `Passed` preflight result for a custom or unknown agent
+    /// id. We deliberately do **not** run an out-of-band PATH check for these
+    /// — the user-supplied command can be anything (`.cmd`, `.ps1`,
+    /// `node script.js`, an alias) and any guess we make disagrees with what
+    /// the spawner actually does. Real spawn failures surface via the
+    /// `ConnectionFailed` → `ConnectionState::Failed` lifecycle, which is the
+    /// authoritative error path.
+    ///
+    /// Returning `cli_status=Passed` keeps the TUI out of Setup mode so the
+    /// chat input stays responsive. The display name is derived from the
+    /// canonical id (`custom:<name>` → `<name>`) so the UI never collapses
+    /// to the generic `DEFAULT_PROFILE` "Agent" label.
+    pub fn passed_for_custom_agent(canonical_id: &str) -> Self {
+        let display_name = canonical_id
+            .strip_prefix("custom:")
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| canonical_id.to_string());
+        Self {
+            agent_id: canonical_id.to_string(),
+            display_name,
+            cli_status: CheckStatus::Passed,
+            cli_path: None,
+            auth_status: CheckStatus::Skipped,
+            install_hint: String::new(),
+            install_url: String::new(),
+            auth_hint: String::new(),
+        }
     }
 }
 
@@ -493,7 +535,7 @@ where
     // session row owns. The reducer then no-ops, AND the synthetic
     // key gates the event out of the master publish path (see
     // `key_is_synthetic` below), so master never learns the row is
-    // now waiting for input. Net effect: the F2 row stays at
+    // now waiting for input. Net effect: the session management row stays at
     // `Working` ("Active") from the prior `tool.starting` and never
     // flips to `Attention` ("Waiting for input").
     //
@@ -576,7 +618,7 @@ where
     // bookkeeping (so `is_agent_pane(pane_id)` works for the OSC 133;A
     // handler) but DO NOT publish these to master — master only ever
     // learns about real ACP sessions via `new_session`/`load_session`,
-    // and feeding it synthetic rows produces duplicate F2 entries that
+    // and feeding it synthetic rows produces duplicate session management entries that
     // shadow the real session (one with the real sid, one with `pane:`
     // key, both pointing at the same agent — see PR B debug session log
     // around 2026-05-28T00:30 for the user-visible repro).
@@ -681,7 +723,7 @@ where
     // row is now Ended for a managed CLI (Claude/Copilot/Gemini) whose
     // on-disk artefacts contain no resumable content, drop it from the
     // registry now. Without this, the user who opens `<cli>` and exits
-    // without typing a real prompt is left with an Ended row in F2
+    // without typing a real prompt is left with an Ended row in session management view
     // whose Enter would launch `<cli> --resume <id>` — and the CLI
     // itself would then reject the request (`No conversation found`
     // for Claude, `No session, task, or name matched` for Copilot,
@@ -952,7 +994,7 @@ pub struct AcpModelInfo {
 
 /// Test-visible record of a wtcli command the App fired through the
 /// `wt_channel::spawn_*` helpers. Captured under `cfg(test)` so we can
-/// assert the F2 Agents view dispatches the right shape of command
+/// assert the agent session view dispatches the right shape of command
 /// without needing a live wtcli to verify against.
 #[cfg(test)]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -988,6 +1030,13 @@ pub struct DispatchedCommand {
 pub enum AppEvent {
     Key(KeyEvent),
     Tick,
+    /// High-frequency (~30Hz) reveal animation tick. Drives the typewriter
+    /// smoothing of the streaming agent response (advances `reveal_chars`).
+    /// Separate from `Tick` so we can run the reveal at 30fps without
+    /// quadrupling the spinner's full-frame flush rate: a `RevealTick` only
+    /// forces a redraw when there is unrevealed pending text on the current
+    /// tab (`has_reveal_backlog`).
+    RevealTick,
     Resize(u16, u16), // terminal resize (handled by ratatui)
     /// XAML focus on our hosting TermControl changed — true when the agent
     /// pane gained focus, false when it lost focus. Sourced from xterm
@@ -1016,7 +1065,7 @@ pub enum AppEvent {
         /// ACP-advertised current model id (NewSessionResponse.models.current_model_id).
         current_model_id: Option<String>,
         /// Whether the agent advertised the `loadSession` capability in
-        /// the initialize response. Used by the session-management
+        /// the initialize response. Used by the session management
         /// view's Shift+Enter handler to short-circuit with a clear
         /// error before opening a new tab when the agent can't
         /// rehydrate ACP sessions.
@@ -1050,12 +1099,34 @@ pub enum AppEvent {
     PromptTemplateLoaded {
         name: String,
     },
+    /// The working pane a manual `/fix` resolved to, plumbed back from the ACP
+    /// client task so the App can fill `AutofixContext.target_pane_id` on the
+    /// in-flight turn. The host fills `Send.parent` from it at execute time —
+    /// the agent never echoes a pane id for autofix turns. Routed by
+    /// `prompt_id` so a superseded turn (a newer `/fix`) is left untouched.
+    AutofixTargetResolved {
+        tab_id: Option<String>,
+        prompt_id: u64,
+        pane_id: String,
+    },
     /// Errors raised before a session exists carry None for `session_id`
     /// and route to the active tab; in-flight failures route to the
-    /// session's tab.
+    /// session's tab. `failure` is the typed classification that drives
+    /// recovery (sign-in / `/restart` / show-and-stay); `message` is the
+    /// human-readable line to display.
     AgentError {
         session_id: Option<String>,
+        failure: crate::protocol::acp::failure::AgentFailure,
         message: String,
+    },
+    /// A turn that completed successfully at the protocol level but ended on a
+    /// soft stop (output-token limit, request budget, or refusal). NOT a
+    /// connection failure — the session stays `Connected`; this only appends an
+    /// informational line to the session's chat. Emitted *after*
+    /// `AgentMessageEnd` so the notice follows the agent's streamed content.
+    AgentSoftStop {
+        session_id: String,
+        reason: crate::protocol::acp::soft_stop::SoftStopReason,
     },
     /// Same-tab single-flight guard rejection. The user submitted a new
     /// prompt while the previous one is still in flight on the same tab.
@@ -1174,7 +1245,7 @@ pub enum AppEvent {
     /// Initial bootstrap of the alive-session mirror from master, in
     /// response to the helper's startup `session/list` request. The
     /// payload replaces any existing entries and flips `alive_loaded`
-    /// to true so F2 routing logic can start trusting `alive.lookup()`
+    /// to true so session management routing logic can start trusting `alive.lookup()`
     /// misses as "session is gone". See
     /// `crate::session_registry::apply_snapshot`.
     AliveSnapshotLoaded(Vec<crate::session_registry::SessionInfo>),
@@ -1208,6 +1279,25 @@ pub enum AppEvent {
     AgentsSnapshotLoaded {
         request_id: u64,
         sessions: Vec<crate::session_registry::SessionInfo>,
+    },
+    /// `sessions/list` RPC failed or timed out — unblock the tab's
+    /// `refetch_in_flight` gate without overwriting the existing
+    /// snapshot, so the 5s periodic tick / next `SessionsChanged`
+    /// broadcast can retry. Emitted by `dispatch_master_ext_request`'s
+    /// `SessionsList` arm when `conn.ext_method(...)` returns Err or
+    /// `tokio::time::timeout` elapses. The timeout path is a
+    /// workaround for a `agent-client-protocol@0.10` cancellation-
+    /// safety bug in `RpcConnection::handle_io`: when
+    /// `select_biased!`'s outgoing arm preempts an in-progress
+    /// `read_line`, BufReader bytes already pulled off the pipe are
+    /// silently dropped, the next read returns a frame starting
+    /// mid-message, JSON parse fails, and the matching
+    /// `pending_responses` entry never resolves — so the
+    /// `ext_method` future would otherwise wait forever, keeping
+    /// `refetch_in_flight=true` permanently for the affected tab.
+    /// See the GH issue for upgrading to 0.12.
+    AgentsSnapshotFailed {
+        request_id: u64,
     },
     MasterMutationCompleted {
         request_id: u64,
@@ -1315,6 +1405,13 @@ pub struct TabSession {
     // back to the spinner label derived from `turn` when None.
     pub progress_status: Option<String>,
     pub activity_frame: usize,
+    /// Typewriter reveal cursor: how many characters of the *user-visible*
+    /// streaming text are currently shown. The full text lives in
+    /// `turn.buffer()`; the renderer only emits the first `reveal_chars`
+    /// chars of it. Advanced toward the full length by `RevealTick`
+    /// (`advance_reveal`), reset to 0 when a new turn starts streaming, and
+    /// made irrelevant on finalize (the committed message renders in full).
+    pub reveal_chars: usize,
     pub timing_note: Option<String>,
     pub selection_visible_pending: bool,
 
@@ -1363,7 +1460,23 @@ pub struct TabSession {
     #[allow(dead_code)]
     pub session_id: Option<String>,
 
-    // Agents picker view (F2 / `/sessions`) — per-tab so each WT tab keeps
+    /// Per-pane ACP model override, set by the `/model` picker. `None` means
+    /// "follow the global `acpModel` setting"; `Some(id)` pins this pane to a
+    /// specific model and survives `/new` (re-applied to fresh sessions in the
+    /// `SessionAttached` handler via `effective_model_for_tab`). It is a
+    /// transient per-pane tweak: a global `acpModel` settings change is
+    /// authoritative and clears it (see `apply_global_acp_model`). In-memory
+    /// only — not persisted across pane close / Terminal restart. See
+    /// `App::commit_model_pick`.
+    pub model_override: Option<String>,
+    /// True while the `/model` picker modal is up for this tab. Drives both
+    /// the key-event intercept in `handle_key` and the popup render.
+    pub model_picker_open: bool,
+    /// Highlighted row in the open model picker — an index into the agent's
+    /// advertised `App::available_models`. Clamped on open.
+    pub model_picker_selected: usize,
+
+    // agent session view (`/sessions`) — per-tab so each WT tab keeps
     // its own open/closed state and selected row across tab switches.
     pub current_view: View,
     pub agents_list_state: ratatui::widgets::ListState,
@@ -1389,13 +1502,18 @@ impl TabSession {
         self.chat_scroll.offset = 0;
     }
 
-    /// Whether the input box is the arrow-key navigational focus target.
-    /// False when the user is browsing a completed turn or a recommendation
-    /// card is showing — in both cases ↑↓ navigate elsewhere. UI indicators
-    /// that should track "is the input cell live" (e.g. the placeholder
-    /// caret cell) gate on this together with the pane's XAML focus.
+    /// Whether the input box is the live, enterable caret target. False when
+    /// the user is browsing a completed turn, a recommendation card is
+    /// showing, or a permission card is up — in all three the input is not
+    /// enterable (`handle_key` routes keys to that surface and returns early),
+    /// so ↑↓ navigate it instead. UI indicators that track "is the input cell
+    /// live" (e.g. the painted caret cell) gate on this together with the
+    /// pane's XAML focus, so a non-enterable state reads the same as lost
+    /// focus.
     pub fn input_has_nav_focus(&self) -> bool {
-        self.selected_completed_turn_idx.is_none() && self.turn.recommendations().is_none()
+        self.selected_completed_turn_idx.is_none()
+            && self.turn.recommendations().is_none()
+            && self.permission.is_empty()
     }
 
     pub fn clear_recommendations(&mut self) {
@@ -1825,25 +1943,25 @@ pub struct App {
     /// + selected row) lives per-tab on `TabSession`.
     pub agent_sessions: crate::agent_sessions::AgentSessionRegistry,
     /// Tracks the lazy load of historical sessions. Flipped to Loading
-    /// on first session-management-view open; flipped to Loaded when
+    /// on first session management-view open; flipped to Loaded when
     /// `HistoricalSessionsLoaded` arrives. The agents_view reads this to
     /// render a "Loading..." row instead of an empty list during the
     /// scan.
     pub history_load_state: HistoryLoadState,
     /// Whether the connected ACP agent advertised the `loadSession`
     /// capability in its initialize response. Used by the
-    /// session-management view's Shift+Enter handler to short-circuit
+    /// session management view's Shift+Enter handler to short-circuit
     /// with a clear error before opening a new tab when the agent
     /// can't rehydrate ACP sessions. Set on `AgentConnected`.
     pub agent_supports_load_session: bool,
-    /// Origin filter for the F2 / `/sessions` picker. Captured once at
-    /// `App::new` time via [`resolve_f2_origin_filter`] so the value is
+    /// Origin filter for the `/sessions` picker. Captured once at
+    /// `App::new` time via [`resolve_sessions_origin_filter`] so the value is
     /// stable for the lifetime of this helper process. Read by
     /// [`Self::agents_rows_for_tab`] (the cursor / Enter source of
     /// truth), the post-history-scan auto-select, the Delete clamp,
     /// and the `agents_view::render` call in `ui/layout.rs`. See
-    /// [`MVP_F2_ORIGIN_FILTER`] for the gate to flip when un-MVP.
-    pub f2_origin_filter: crate::agent_sessions::OriginFilter,
+    /// [`MVP_SESSIONS_ORIGIN_FILTER`] for the gate to flip when un-MVP.
+    pub sessions_origin_filter: crate::agent_sessions::OriginFilter,
     // Onboarding: signals main.rs to install agent hook plugins on demand.
     install_request_tx: Option<mpsc::UnboundedSender<()>>,
     /// Posts `AppEvent::AgentSessionEvent` from background callbacks
@@ -1855,7 +1973,23 @@ pub struct App {
     agent_event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
     /// Helper-mode fire-and-forget publisher for `intellterm.wta/session_hook`.
     session_hook_tx: Option<mpsc::UnboundedSender<crate::agent_sessions::SessionEvent>>,
-    /// Test-only: last command issued via the F2 Agents view's Enter
+    /// Hot-updatable delegate config, shared with the recommendation
+    /// executor (`run_recommendation_executor`). Rebuilt in place on an
+    /// `agent_config_changed` settings event so the configured delegate
+    /// agent/model can change without restarting the agent pane. None in
+    /// tests / manual runs where no executor is wired.
+    delegate_agents:
+        Option<Arc<std::sync::Mutex<Vec<crate::coordinator::DelegateAgentRuntime>>>>,
+    /// The helper's own `--agent` cmdline. Needed to re-derive the delegate
+    /// runtime commandline when only the delegate agent/model change.
+    delegate_base_agent_cmd: String,
+    /// The configured ACP model override (the `--acp-model` setting). Seeded
+    /// from the spawn cmdline and updated on `agent_config_changed`. Re-applied
+    /// to every freshly-created session (via `SessionAttached`) so `/new` and
+    /// lazy-first-prompt sessions stay on the configured model, not just the
+    /// bootstrap one. None = "agent default" (no override).
+    acp_model: Option<String>,
+    /// Test-only: last command issued via the agent session view's Enter
     /// dispatch (`dispatch_resume` / focus). Used by unit tests in
     /// place of a live wtcli; not compiled into release builds.
     #[cfg(test)]
@@ -1886,7 +2020,7 @@ pub struct App {
     /// recorded deadline.
     pub transient_hint: Option<(String, std::time::Instant)>,
     /// Mirror of master's authoritative live-session set, pushed via
-    /// ACP `intellterm.wta/session_*` ext-notifications. F2 Enter
+    /// ACP `intellterm.wta/session_*` ext-notifications. session management Enter
     /// routing reads this to decide Focus vs Resume without an extra
     /// IPC round-trip. Wired into B-6 (subscribe) and B-10 (consult);
     /// here we just hold the mirror so the rest of the helper can
@@ -1906,7 +2040,7 @@ pub struct App {
 /// a stale arm doesn't bite the next time they want to clear input.
 pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from_millis(1500);
 
-/// Top-level UI view selector. Toggled with F2.
+/// Top-level UI view selector. Toggled with Ctrl+Shift+/.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum View {
     Chat,
@@ -1939,8 +2073,8 @@ pub struct AgentsViewState {
 ///
 /// Doing that eagerly on every wta spawn (including every model
 /// switch, which kills the old wta and starts a new one) is wasted
-/// work — the data is only consumed by the Agents view (F2). We
-/// defer the scan to the first F2 press and cache the result for
+/// work — the data is only consumed by the agent session view. We
+/// defer the scan to the first Ctrl+Shift+/ press and cache the result for
 /// the rest of this wta's lifetime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HistoryLoadState {
@@ -1952,6 +2086,22 @@ pub enum HistoryLoadState {
 impl Default for HistoryLoadState {
     fn default() -> Self {
         HistoryLoadState::NotStarted
+    }
+}
+
+/// Reverse of `CliSource::from_agent_id` — yields the lowercase CLI id
+/// used by the command-synthesis template and dispatch routing.
+/// Returns `None` for `CliSource::Unknown(_)` so each call-site retains
+/// its current Unknown-handling semantics (display fallback / bool
+/// false / early return — they differ).
+pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'static str> {
+    use crate::agent_sessions::CliSource;
+    match src {
+        CliSource::Claude  => Some("claude"),
+        CliSource::Codex   => Some("codex"),
+        CliSource::Copilot => Some("copilot"),
+        CliSource::Gemini  => Some("gemini"),
+        CliSource::Unknown(_) => None,
     }
 }
 
@@ -2054,10 +2204,13 @@ impl App {
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
             history_load_state: HistoryLoadState::NotStarted,
             agent_supports_load_session: false,
-            f2_origin_filter: resolve_f2_origin_filter(),
+            sessions_origin_filter: resolve_sessions_origin_filter(),
             install_request_tx: None,
             agent_event_tx: None,
             session_hook_tx: None,
+            delegate_agents: None,
+            delegate_base_agent_cmd: String::new(),
+            acp_model: None,
             #[cfg(test)]
             last_dispatched_command: None,
             source_session_id: None,
@@ -2103,11 +2256,79 @@ impl App {
             master_ext_rx: Some(master_ext_rx),
             shell_mgr,
             wt_connected,
+            master_pipe_name: None,
+            owner_tab_id: None,
+        });
+    }
+
+    /// Stash pipe-mode launch parameters on App so that a post-FRE-login
+    /// reconnect via [`Self::try_start_acp`] goes back through
+    /// [`run_acp_client_over_pipe`] (talking to wta-master) instead of
+    /// the direct [`run_acp_client`] path (which would spawn its own
+    /// copilot CLI subprocess and bypass master entirely).
+    ///
+    /// The bug this guards against: in helper mode (`--connect-master`),
+    /// the initial `run_acp_client_over_pipe` task fails immediately with
+    /// `Authentication required` if the user is in FRE / not yet logged
+    /// in. The helper falls into the setup screen, the user logs in, and
+    /// `LoginComplete` fires `try_start_acp`. Without this pre-stash,
+    /// `LoginComplete` finds `deferred_acp.is_none()` and synthesizes a
+    /// direct-mode `DeferredAcpParams`, then `try_start_acp` calls
+    /// `run_acp_client` — bypassing master. The resulting helper:
+    ///   * never registers with master (no `HelperId` in master log),
+    ///   * gets `Method not found` for every `intellterm.wta/...`
+    ///     ext-request (the ACP SDK forwards them to the agent CLI
+    ///     prefixed with `_`, and the agent doesn't know them),
+    ///   * has `session_hook` events that go nowhere (the channel's
+    ///     receiver was already consumed by the dead pipe-mode task).
+    ///
+    /// All `_rx` fields are seeded `None`; `try_start_acp` creates fresh
+    /// channels on reconnect and re-binds the `_tx` halves on App, plus
+    /// re-creates the `session_hook` channel and re-binds
+    /// `self.session_hook_tx`.
+    pub fn set_master_pipe_acp_params(
+        &mut self,
+        pipe_name: String,
+        agent_cmd: String,
+        acp_model: Option<String>,
+        owner_tab_id: Option<String>,
+        shell_mgr: Arc<crate::shell::ShellManager>,
+        wt_connected: bool,
+    ) {
+        self.deferred_acp = Some(DeferredAcpParams {
+            agent_cmd,
+            acp_model,
+            prompt_rx: None,
+            cancel_rx: None,
+            new_session_rx: None,
+            load_session_rx: None,
+            drop_session_rx: None,
+            rename_session_rx: None,
+            restart_rx: None,
+            master_ext_rx: None,
+            shell_mgr,
+            wt_connected,
+            master_pipe_name: Some(pipe_name),
+            owner_tab_id,
         });
     }
 
     /// Try to start the ACP client if login just completed.
     /// Creates fresh channels if previous ones were consumed by a failed attempt.
+    ///
+    /// **Pipe-mode branch.** When `deferred_acp.master_pipe_name.is_some()`
+    /// (set at boot by [`Self::set_master_pipe_acp_params`] in helper
+    /// mode), we route the reconnect through
+    /// [`run_acp_client_over_pipe`] so the rebuilt helper talks to the
+    /// shared wta-master singleton — same as the cold-boot helper path.
+    /// We also rebuild the `session_hook` channel and re-bind the `_tx`
+    /// half on `self.session_hook_tx`, because the original receiver was
+    /// consumed (and dropped) by the dead initial pipe-mode task.
+    ///
+    /// **Direct-mode branch.** When `master_pipe_name.is_none()` we keep
+    /// the legacy behavior: spawn [`run_acp_client`], which runs its own
+    /// agent CLI subprocess. This is the FRE path for non-helper
+    /// invocations (`wta` launched without `--connect-master`).
     pub fn try_start_acp(&mut self) {
         if !self.pending_acp_start {
             return;
@@ -2164,31 +2385,103 @@ impl App {
                 params.restart_rx.take(),
                 params.master_ext_rx.take(),
             ) {
-                // Resolve the agent executable path (bare "copilot" may not
-                // be on PATH in packaged apps — use WinGet Links fallback).
-                let agent_cmd = resolve_agent_cmd(&params.agent_cmd);
                 let acp_model = params.acp_model.clone();
-                let owner_tab_id = self.tab_id.clone();
                 let event_tx = tx.clone();
                 let shell_mgr = Arc::clone(&params.shell_mgr);
                 let wt_connected = params.wt_connected;
+                let pipe_name_opt = params.master_pipe_name.clone();
+                let owner_tab_opt = params.owner_tab_id.clone();
+                // Per-tab agent identity for the multi-agent master: declare
+                // which agent this reconnecting helper wants. Derived from the
+                // configured agent_cmd — the master reconstructs the command
+                // from the id and never executes a string off the pipe.
+                let agent_cmd_opt = Some(params.agent_cmd.clone()).filter(|s| !s.trim().is_empty());
+                let agent_id_opt = agent_cmd_opt
+                    .as_deref()
+                    .map(|c| crate::agent_registry::resolve_agent_id_from_cmd(c).to_string());
 
-                tokio::task::spawn_local(crate::protocol::acp::client::run_acp_client(
-                    agent_cmd,
-                    acp_model,
-                    owner_tab_id,
-                    event_tx,
-                    prompt_rx,
-                    cancel_rx,
-                    new_session_rx,
-                    load_session_rx,
-                    drop_session_rx,
-                    rename_session_rx,
-                    restart_rx,
-                    master_ext_rx,
-                    shell_mgr,
-                    wt_connected,
-                ));
+                if let Some(pipe_name) = pipe_name_opt {
+                    // Pipe-mode reconnect (helper after FRE login).
+                    // Rebuild the session_hook channel — the original
+                    // rx was consumed and dropped with the dead initial
+                    // task, leaving `self.session_hook_tx` pointing at a
+                    // closed channel (every `publish_session_hook` call
+                    // logs "channel closed"). Reinstall a live tx so
+                    // hooks reach master again, and hand the matching
+                    // rx to the new pipe-mode task.
+                    let (shtx, shrx) = mpsc::unbounded_channel();
+                    self.session_hook_tx = Some(shtx);
+                    tracing::info!(
+                        target: "acp",
+                        pipe = %pipe_name,
+                        "try_start_acp: reconnecting via master pipe"
+                    );
+                    let event_tx_for_pipe = event_tx.clone();
+                    tokio::task::spawn_local(async move {
+                        if let Err(e) =
+                            crate::protocol::acp::client::run_acp_client_over_pipe(
+                                pipe_name,
+                                acp_model,
+                                agent_cmd_opt,
+                                agent_id_opt,
+                                owner_tab_opt,
+                                None, // initial_load_session_id: already handled by the dead initial task
+                                event_tx_for_pipe.clone(),
+                                prompt_rx,
+                                cancel_rx,
+                                new_session_rx,
+                                load_session_rx,
+                                drop_session_rx,
+                                rename_session_rx,
+                                restart_rx,
+                                shrx,
+                                master_ext_rx,
+                                shell_mgr,
+                                wt_connected,
+                            )
+                            .await
+                        {
+                            tracing::error!(
+                                target: "helper",
+                                error = %e,
+                                "run_acp_client_over_pipe failed on reconnect"
+                            );
+                            let failure = crate::protocol::acp::failure::classify_anyhow(
+                                &e,
+                                crate::protocol::acp::failure::HandshakeStage::Initialize,
+                            );
+                            let _ = event_tx_for_pipe.send(AppEvent::AgentError {
+                                session_id: None,
+                                failure,
+                                message: format!(
+                                    "helper ACP transport failed on reconnect: {e:#}"
+                                ),
+                            });
+                        }
+                    });
+                } else {
+                    // Direct-mode reconnect (non-helper FRE path).
+                    // Resolve the agent executable path (bare "copilot" may not
+                    // be on PATH in packaged apps — use WinGet Links fallback).
+                    let agent_cmd = resolve_agent_cmd(&params.agent_cmd);
+                    let owner_tab_id = self.tab_id.clone();
+                    tokio::task::spawn_local(crate::protocol::acp::client::run_acp_client(
+                        agent_cmd,
+                        acp_model,
+                        owner_tab_id,
+                        event_tx,
+                        prompt_rx,
+                        cancel_rx,
+                        new_session_rx,
+                        load_session_rx,
+                        drop_session_rx,
+                        rename_session_rx,
+                        restart_rx,
+                        master_ext_rx,
+                        shell_mgr,
+                        wt_connected,
+                    ));
+                }
             }
         }
     }
@@ -2215,6 +2508,241 @@ impl App {
         self.session_hook_tx = Some(tx);
     }
 
+    /// Seed the hot-updatable runtime agent config: the delegate runtime
+    /// table shared with the recommendation executor, the helper's own
+    /// agent cmdline (used to re-derive the delegate commandline on partial
+    /// updates), and the configured acp-model override.
+    pub fn set_runtime_agent_config(
+        &mut self,
+        delegate_agents: Arc<std::sync::Mutex<Vec<crate::coordinator::DelegateAgentRuntime>>>,
+        base_agent_cmd: String,
+        acp_model: Option<String>,
+    ) {
+        self.delegate_agents = Some(delegate_agents);
+        self.delegate_base_agent_cmd = base_agent_cmd;
+        self.acp_model = acp_model.filter(|s| !s.trim().is_empty());
+    }
+
+    /// Low-level: ask the ACP client task to apply `model` via
+    /// `set_session_model`. `session_id == Some` targets exactly that live
+    /// session (the per-pane `/model` pick); `None` fans out to every session
+    /// this helper owns. No-op on an empty/whitespace model — an empty
+    /// override means "agent default", which `set_session_model` can't
+    /// express.
+    fn send_session_model(&self, session_id: Option<String>, model: String) {
+        if model.trim().is_empty() {
+            return;
+        }
+        let _ = self.master_request_tx.send(
+            crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
+                session_id: session_id.map(agent_client_protocol::SessionId::new),
+                model,
+            },
+        );
+    }
+
+    /// The model a given tab should run on: its explicit per-pane override
+    /// (set via `/model`) wins, else the global `acpModel`. `None` means no
+    /// opinion — leave the session on the agent's default.
+    fn effective_model_for_tab(&self, tab_key: &str) -> Option<String> {
+        self.tab_sessions
+            .get(tab_key)
+            .and_then(|t| t.model_override.clone())
+            .or_else(|| self.acp_model.clone())
+            .filter(|s| !s.trim().is_empty())
+    }
+
+    /// Push the global `acpModel` to *every* tab's live session. A global
+    /// settings change is authoritative — it overrides per-pane `/model`
+    /// picks too (see `apply_global_acp_model`, which clears the overrides
+    /// first), so this no longer skips overridden tabs.
+    fn send_acp_model_update(&self) {
+        let Some(model) = self.acp_model.as_ref().filter(|s| !s.trim().is_empty()) else {
+            return;
+        };
+        for tab in self.tab_sessions.values() {
+            if let Some(sid) = tab.session_id.clone() {
+                self.send_session_model(Some(sid), model.clone());
+            }
+        }
+    }
+
+    /// Apply a global `acpModel` settings change. This is authoritative over
+    /// per-pane `/model` picks: it
+    ///   1. clears every tab's local override (so all panes — now and on
+    ///      their next `/new` session — follow the new global model),
+    ///   2. points the shared current-model display at the new value so the
+    ///      title bar / settings dropdown / `/model` row update on every pane,
+    ///   3. pushes the model to every live session, and
+    ///   4. republishes agent status.
+    /// An empty value means "agent default": overrides still clear and the
+    /// sessions fall back on their next attach, but we send nothing (the
+    /// default can't be expressed as `set_session_model`).
+    fn apply_global_acp_model(&mut self, new_model: Option<String>) {
+        self.acp_model = new_model.filter(|s| !s.trim().is_empty());
+        for tab in self.tab_sessions.values_mut() {
+            tab.model_override = None;
+        }
+        if self.acp_model.is_some() {
+            self.current_model_id = self.acp_model.clone();
+        }
+        self.send_acp_model_update();
+        self.publish_agent_status();
+    }
+
+    // ── /model picker ───────────────────────────────────────────────────
+
+    /// True while the model picker modal is up for the active tab.
+    fn model_picker_visible(&self) -> bool {
+        self.current_tab().model_picker_open
+    }
+
+    /// `/model [id]` — switch this pane's model. With an argument, match it
+    /// against the agent's advertised list and apply directly; bare `/model`
+    /// opens the interactive picker.
+    fn cmd_model(&mut self, arg: String) {
+        let arg = arg.trim().to_string();
+        if self.available_models.is_empty() {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("system.no_models").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
+        if arg.is_empty() {
+            self.open_model_picker();
+            return;
+        }
+        // Direct switch: exact id first, then case-insensitive id/name.
+        let matched = self
+            .available_models
+            .iter()
+            .find(|m| m.id == arg)
+            .or_else(|| {
+                self.available_models
+                    .iter()
+                    .find(|m| m.id.eq_ignore_ascii_case(&arg) || m.name.eq_ignore_ascii_case(&arg))
+            })
+            .map(|m| m.id.clone());
+        match matched {
+            Some(id) => self.apply_model_pick(id),
+            None => {
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(
+                    t!("system.model_unknown", model = arg.as_str()).into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
+        }
+    }
+
+    /// Open the picker on the active tab, pre-selecting the model the pane is
+    /// currently effectively on (so Enter is a confirm and arrows move
+    /// relative to "here"). Mirrors `current_model_display`'s precedence:
+    /// per-pane override, then the agent's reported `current_model_id`, then
+    /// the global `acpModel` (so a pane following the global value preselects
+    /// it before the agent reports `current_model_id`).
+    fn open_model_picker(&mut self) {
+        if self.available_models.is_empty() {
+            return;
+        }
+        let current = self
+            .current_tab()
+            .model_override
+            .clone()
+            .or_else(|| self.current_model_id.clone())
+            .or_else(|| self.acp_model.clone());
+        let selected = current
+            .and_then(|cur| self.available_models.iter().position(|m| m.id == cur))
+            .unwrap_or(0);
+        let tab = self.current_tab_mut();
+        tab.model_picker_open = true;
+        tab.model_picker_selected = selected;
+    }
+
+    fn close_model_picker(&mut self) {
+        self.current_tab_mut().model_picker_open = false;
+    }
+
+    fn model_picker_up(&mut self) {
+        let tab = self.current_tab_mut();
+        if tab.model_picker_selected > 0 {
+            tab.model_picker_selected -= 1;
+        }
+    }
+
+    fn model_picker_down(&mut self) {
+        // `saturating_sub` keeps this safe if the model list is empty while
+        // the picker is somehow open (len 0 -> last index clamps to 0).
+        let last = self.available_models.len().saturating_sub(1);
+        let tab = self.current_tab_mut();
+        if tab.model_picker_selected < last {
+            tab.model_picker_selected += 1;
+        }
+    }
+
+    /// Commit the highlighted row in the open picker.
+    fn commit_model_pick(&mut self) {
+        let idx = self.current_tab().model_picker_selected;
+        let id = self.available_models.get(idx).map(|m| m.id.clone());
+        self.close_model_picker();
+        if let Some(id) = id {
+            self.apply_model_pick(id);
+        }
+    }
+
+    /// Pin the active pane to `model_id`: record the per-pane override, mirror
+    /// it into the status projection (title bar / settings dropdown), and
+    /// hot-apply it to the tab's live session. Shared by the picker (Enter)
+    /// and `/model <id>`. If no session is live yet, the override is stored
+    /// and `SessionAttached` applies it via `effective_model_for_tab`.
+    fn apply_model_pick(&mut self, model_id: String) {
+        let name = self
+            .available_models
+            .iter()
+            .find(|m| m.id == model_id)
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| model_id.clone());
+        let session_id = {
+            let tab = self.current_tab_mut();
+            tab.model_override = Some(model_id.clone());
+            tab.messages.push(ChatMessage::System(
+                t!("system.model_set", model = name.as_str()).into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            tab.session_id.clone()
+        };
+        self.current_model_id = Some(model_id.clone());
+        if let Some(sid) = session_id {
+            self.send_session_model(Some(sid), model_id);
+        }
+        self.publish_agent_status();
+    }
+
+    /// Rebuild the shared delegate runtime table from a settings change.
+    /// `delegate_agent` / `delegate_model` are the new effective values
+    /// (empty string = unset → fall back to deriving from the base agent
+    /// cmd). No-op when no executor is wired (tests / manual runs).
+    fn apply_delegate_config(&self, delegate_agent: &str, delegate_model: &str) {
+        let Some(shared) = &self.delegate_agents else {
+            return;
+        };
+        // Treat whitespace-only values as unset so the fallback-to-derived
+        // path kicks in (matches the acp_model handling in handle_event).
+        let runtimes = crate::coordinator::default_delegate_agent_runtimes(
+            Some(delegate_agent).filter(|s| !s.trim().is_empty()),
+            Some(self.delegate_base_agent_cmd.as_str()),
+            Some(delegate_model).filter(|s| !s.trim().is_empty()),
+        );
+        *shared.lock().unwrap() = runtimes;
+        tracing::info!(
+            target: "autofix",
+            delegate_agent,
+            delegate_model,
+            "delegate config hot-updated from settings change"
+        );
+    }
+
     fn publish_session_hook(&self, event: crate::agent_sessions::SessionEvent) {
         if let Some(tx) = &self.session_hook_tx {
             if let Err(err) = tx.send(event) {
@@ -2236,7 +2764,7 @@ impl App {
         }
     }
 
-    /// Filter to apply to the F2 session-management view based on which
+    /// Filter to apply to the session management view based on which
     /// agent CLI the WTA agent pane is currently driving. Returns
     /// `Some(CliSource::*)` when `current_agent_id` resolves to a tracked
     /// CLI (copilot / claude / gemini) so only matching rows are listed.
@@ -2313,21 +2841,14 @@ impl App {
             decide_enter_action, liveness_from_status, EnterAction, NotResumableReason, RowSnapshot,
         };
         // Ambient: load_session capability is set during ACP init;
-        // resume-flag support is a per-CLI profile constant (false for
-        // Codex today; true for Claude/Copilot/Gemini).
-        let cli_supports_resume_flag = match s.cli_source {
-            crate::agent_sessions::CliSource::Unknown(_) => false,
-            ref known => {
-                let id = match known {
-                    crate::agent_sessions::CliSource::Claude => "claude",
-                    crate::agent_sessions::CliSource::Copilot => "copilot",
-                    crate::agent_sessions::CliSource::Gemini => "gemini",
-                    crate::agent_sessions::CliSource::Unknown(_) => unreachable!(),
-                };
-                !crate::agent_registry::lookup_profile_by_id(id)
-                    .resume_flag
-                    .is_empty()
-            }
+        // resume-flag support is a per-CLI profile constant — true for
+        // Claude / Codex / Copilot / Gemini (all four CLIs accept some
+        // form of `--resume`/`resume <id>` re-attach surface).
+        let cli_supports_resume_flag = match known_cli_id(&s.cli_source) {
+            Some(id) => !crate::agent_registry::lookup_profile_by_id(id)
+                .resume_flag
+                .is_empty(),
+            None => false,
         };
         let row = RowSnapshot {
             origin: s.origin.clone(),
@@ -2370,43 +2891,40 @@ impl App {
             EnterAction::NotResumable { reason } => {
                 // Surface a user-visible system message scoped to the
                 // current tab so the user can read it from the
-                // Agents view (which is rendered in-tab).
-                let cli_id = match s.cli_source {
-                    crate::agent_sessions::CliSource::Claude => "claude",
-                    crate::agent_sessions::CliSource::Copilot => "copilot",
-                    crate::agent_sessions::CliSource::Gemini => "gemini",
-                    crate::agent_sessions::CliSource::Unknown(_) => "this CLI",
+                // agent session view (which is rendered in-tab).
+                let agent_display: String = match known_cli_id(&s.cli_source) {
+                    Some(id) => crate::agent_registry::lookup_profile_by_id(id)
+                        .display_name
+                        .to_string(),
+                    None => t!("system.fallback.this_agent").into_owned(),
                 };
                 let msg = match reason {
-                    NotResumableReason::LiveWithoutPane => format!(
-                        "Cannot focus session {}: it appears live but no \
-                         pane GUID is bound yet. Try again in a moment.",
-                        s.key
-                    ),
-                    NotResumableReason::LoadSessionNotSupported => {
-                        let agent = if self.agent_name.is_empty() {
-                            "the connected agent"
-                        } else {
-                            self.agent_name.as_str()
-                        };
-                        format!(
-                            "Cannot resume in agent pane: {} did not advertise \
-                             the ACP `loadSession` capability. Press Enter \
-                             (without Shift) to resume in a new terminal pane instead.",
-                            agent
-                        )
+                    NotResumableReason::LiveWithoutPane => {
+                        t!("system.cannot_focus_session", session_id = s.key.as_str())
+                            .into_owned()
                     }
-                    NotResumableReason::CliHasNoResumeFlag => format!(
-                        "Cannot resume {} session: this CLI has no \
-                         `--resume`-style flag. Press Shift+Enter to try \
-                         resuming inside the agent pane via ACP instead.",
-                        cli_id
-                    ),
-                    NotResumableReason::UnknownCli => format!(
-                        "Cannot resume session {}: its source CLI is unknown \
-                         to this WTA build.",
-                        s.key
-                    ),
+                    NotResumableReason::LoadSessionNotSupported => {
+                        let agent: String = if self.agent_name.is_empty() {
+                            t!("system.fallback.connected_agent").into_owned()
+                        } else {
+                            self.agent_name.clone()
+                        };
+                        t!(
+                            "system.cannot_resume_no_load_session",
+                            agent = agent.as_str()
+                        )
+                        .into_owned()
+                    }
+                    NotResumableReason::CliHasNoResumeFlag => t!(
+                        "system.cannot_resume_no_resume_flag",
+                        agent = agent_display.as_str()
+                    )
+                    .into_owned(),
+                    NotResumableReason::UnknownCli => t!(
+                        "system.cannot_resume_unknown_agent",
+                        session_id = s.key.as_str()
+                    )
+                    .into_owned(),
                 };
                 tracing::warn!(
                     target: "agents_view",
@@ -2429,7 +2947,7 @@ impl App {
         }
     }
 
-    /// Enter handler for the F2 Agents view. For live rows (Idle / Working
+    /// Enter handler for the agent session view. For live rows (Idle / Working
     /// / Attention / Error), focus the underlying WT pane. For terminal-
     /// state rows (Ended / Historical), spawn a new pane that runs the
     /// CLI's `--resume <session_id>` flow via [`Self::dispatch_resume`].
@@ -2499,7 +3017,7 @@ impl App {
     /// Open a new WT tab whose primary pane runs `<cli> <resume_flag>
     /// <session_key>` to rehydrate a Historical/Ended agent session from
     /// the CLI's on-disk session store. Silent no-op for CLIs without a
-    /// resume flag (Codex today) or unknown CLI sources.
+    /// resume flag or unknown CLI sources.
     ///
     /// Flow:
     ///   1. Apply `ResumeDispatched` synchronously so a rapid second Enter
@@ -2519,11 +3037,9 @@ impl App {
     ///      (Gemini), allowing a later `PaneClosed` to transition the
     ///      row back to Ended.
     fn dispatch_resume(&mut self, s: &crate::agent_sessions::AgentSession) {
-        let cli_id = match s.cli_source {
-            crate::agent_sessions::CliSource::Claude => "claude",
-            crate::agent_sessions::CliSource::Copilot => "copilot",
-            crate::agent_sessions::CliSource::Gemini => "gemini",
-            crate::agent_sessions::CliSource::Unknown(_) => {
+        let cli_id = match known_cli_id(&s.cli_source) {
+            Some(id) => id,
+            None => {
                 tracing::debug!(
                     target: "agents_view",
                     key = %s.key,
@@ -2561,11 +3077,12 @@ impl App {
                 "dispatch_resume: refusing to resume phantom session (no on-disk content); pruning row",
             );
             let short_key: String = s.key.chars().take(8).collect();
-            let msg = format!(
-                "Cannot resume {} session {}: it was started but never accumulated any \
-                 conversation, so {} itself would reject the resume. Removing the row.",
-                cli_id, short_key, cli_id
-            );
+            let msg = t!(
+                "system.cannot_resume_phantom_via_flag",
+                agent = profile.display_name,
+                session_id = short_key.as_str()
+            )
+            .into_owned();
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::System(msg));
             tab.scroll_to_bottom();
@@ -2602,18 +3119,45 @@ impl App {
         // npm-installed CLIs (`copilot.cmd`, `claude.cmd`, `gemini.cmd`)
         // need cmd.exe's PATHEXT resolution to launch from a bare name
         // (`CreateProcess` returns 0x80070002 for `.cmd` shims).
-        let cwd_string = s.cwd.to_string_lossy().to_string();
-        let launch_commandline = format!("cmd /c {}", commandline);
+        //
+        // Loading banner (issue #135): the agent CLIs take 1–3s of
+        // Node.js cold-start + JSONL history parse before they paint
+        // anything, so the new tab was blank with no feedback. Prepend
+        // a blinking ANSI banner (`SGR 1;36;5` = bold cyan slow-blink)
+        // so the user sees immediate animated feedback in the new
+        // pane while the CLI cold-starts. The CLI's alt-screen TUI
+        // takes over once it boots and overwrites this line cleanly,
+        // so the banner leaves no residue on success. On CLI launch
+        // failure the banner stays put together with cmd.exe's error
+        // message — that's a feature, not a bug (the short id helps
+        // the user file a useful report). The trailing `\x1b[0m`
+        // reset guarantees any post-failure output isn't tinted /
+        // blinking.
+        let raw_cwd_string = s.cwd.to_string_lossy().to_string();
+        // Drop stale cwd so wtcli falls back to the profile default
+        // rather than failing CreateProcessW with ERROR_DIRECTORY.
+        let valid_cwd = crate::cwd_util::validate_starting_directory(&s.cwd);
+        if valid_cwd.is_none() && !raw_cwd_string.is_empty() {
+            tracing::warn!(
+                target: "agents_view",
+                key = %key,
+                "dispatch_resume: stored cwd is no longer a valid directory; falling back to profile default",
+            );
+        }
+        let short_key: String = key.chars().take(8).collect();
+        let launch_commandline = format!(
+            "cmd /c echo \x1b[2;37mResuming {} session {}...\x1b[0m && {}",
+            cli_id, short_key, commandline
+        );
         let mut argv = vec![
             "new-tab".to_string(),
             "-c".to_string(),
             launch_commandline.clone(),
         ];
-        if !cwd_string.is_empty() {
+        if let Some(ref cwd) = valid_cwd {
             argv.push("-d".to_string());
-            argv.push(cwd_string.clone());
+            argv.push(cwd.clone());
         }
-
         // Optimistic state flip: bump Historical/Ended -> Idle so a rapid
         // second Enter on the same row sees a non-terminal status and
         // skips this branch (idempotent: ResumeDispatched no-ops on live
@@ -2649,7 +3193,6 @@ impl App {
             cli = %cli_id,
             commandline = %commandline,
             launch_commandline = %launch_commandline,
-            cwd = %cwd_string,
             "dispatch_resume: new-tab scheduled",
         );
 
@@ -2708,17 +3251,16 @@ impl App {
         // keep the session management view focused so the user can
         // press plain Enter to fall back to the split-pane resume path.
         if !self.agent_supports_load_session {
-            let agent = if self.agent_name.is_empty() {
-                "the connected agent"
+            let agent: String = if self.agent_name.is_empty() {
+                t!("system.fallback.connected_agent").into_owned()
             } else {
-                self.agent_name.as_str()
+                self.agent_name.clone()
             };
-            let msg = format!(
-                "Cannot resume in agent pane: {} did not advertise the ACP \
-                 `loadSession` capability. Press Enter (without Shift) to \
-                 resume in a new terminal pane instead.",
-                agent
-            );
+            let msg = t!(
+                "system.cannot_resume_no_load_session",
+                agent = agent.as_str()
+            )
+            .into_owned();
             tracing::warn!(
                 target: "agents_view",
                 key = %s.key,
@@ -2757,17 +3299,18 @@ impl App {
                 "dispatch_resume_in_agent_pane: refusing to load phantom session; pruning row",
             );
             let short_key: String = s.key.chars().take(8).collect();
-            let cli_id = match s.cli_source {
-                crate::agent_sessions::CliSource::Claude => "claude",
-                crate::agent_sessions::CliSource::Copilot => "copilot",
-                crate::agent_sessions::CliSource::Gemini => "gemini",
-                crate::agent_sessions::CliSource::Unknown(_) => "this CLI",
+            let agent_display: String = match known_cli_id(&s.cli_source) {
+                Some(id) => crate::agent_registry::lookup_profile_by_id(id)
+                    .display_name
+                    .to_string(),
+                None => t!("system.fallback.this_agent").into_owned(),
             };
-            let msg = format!(
-                "Cannot resume {} session {}: it was started but never accumulated any \
-                 conversation, so {} would reject the load. Removing the row.",
-                cli_id, short_key, cli_id
-            );
+            let msg = t!(
+                "system.cannot_resume_phantom_via_load",
+                agent = agent_display.as_str(),
+                session_id = short_key.as_str()
+            )
+            .into_owned();
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::System(msg));
             tab.scroll_to_bottom();
@@ -2788,7 +3331,16 @@ impl App {
         }
 
         let key = s.key.clone();
-        let cwd_string = s.cwd.to_string_lossy().to_string();
+        let raw_cwd_string = s.cwd.to_string_lossy().to_string();
+        let valid_cwd = crate::cwd_util::validate_starting_directory(&s.cwd);
+        if valid_cwd.is_none() && !raw_cwd_string.is_empty() {
+            tracing::warn!(
+                target: "agents_view",
+                key = %key,
+                "dispatch_resume_in_agent_pane: stored cwd is no longer a valid directory; omitting from resume_in_new_agent_tab event",
+            );
+        }
+        let cwd_string = valid_cwd.unwrap_or_default();
 
         // Mirror dispatch_resume's optimistic state flip so a rapid
         // double press doesn't double-dispatch.
@@ -2797,40 +3349,44 @@ impl App {
         self.publish_session_hook(resume_event);
         self.dispatch_session_resume_dispatched_rpc(&key);
 
+        let mut params = serde_json::Map::new();
+        params.insert("session_id".to_string(), serde_json::Value::String(key.clone()));
+        if !cwd_string.is_empty() {
+            params.insert("cwd".to_string(), serde_json::Value::String(cwd_string.clone()));
+        }
         let evt = serde_json::json!({
             "type": "event",
             "method": "resume_in_new_agent_tab",
-            "params": {
-                "session_id": key,
-                "cwd": cwd_string,
-            }
+            "params": params,
         });
         send_wt_protocol_event(evt.to_string());
 
         tracing::info!(
             target: "agents_view",
             key = %s.key,
-            cwd = %cwd_string,
             "dispatch_resume_in_agent_pane: resume_in_new_agent_tab event published",
         );
 
         #[cfg(test)]
         {
+            let mut argv = vec![
+                "resume_in_new_agent_tab".to_string(),
+                "--session-id".to_string(),
+                s.key.clone(),
+            ];
+            if !cwd_string.is_empty() {
+                argv.push("--cwd".to_string());
+                argv.push(cwd_string);
+            }
             self.last_dispatched_command = Some(DispatchedCommand {
                 kind: DispatchedCommandKind::ResumeInAgentPane,
                 session_id: Some(s.key.clone()),
-                argv: vec![
-                    "resume_in_new_agent_tab".to_string(),
-                    "--session-id".to_string(),
-                    s.key.clone(),
-                    "--cwd".to_string(),
-                    cwd_string,
-                ],
+                argv,
             });
         }
     }
 
-    /// Test-only accessor for the most recent F2 Agents-view dispatch.
+    /// Test-only accessor for the most recent agent session view dispatch.
     #[cfg(test)]
     pub fn last_dispatched_command_for_test(&self) -> Option<DispatchedCommand> {
         self.last_dispatched_command.clone()
@@ -2968,6 +3524,41 @@ impl App {
         }
     }
 
+    /// Counterpart to [`Self::handle_agents_snapshot_loaded`] for the
+    /// failure / timeout path. Clears `refetch_in_flight` so the 5s
+    /// periodic tick (or the next `sessions/changed` broadcast) can
+    /// retry, but leaves `snapshot` untouched so the rendered rows
+    /// stay on the last good data instead of flashing empty.
+    ///
+    /// Drives the `dirty` trailing-refetch the same way the success
+    /// path does: if pushes coalesced while this RPC was in flight,
+    /// schedule one follow-up immediately rather than wait 5s.
+    fn handle_agents_snapshot_failed(&mut self, request_id: u64) {
+        let tabs: Vec<String> = self
+            .tab_sessions
+            .iter()
+            .filter_map(|(id, tab)| {
+                (tab.agents_view.latest_request_id == Some(request_id)).then(|| id.clone())
+            })
+            .collect();
+        for tab_id in tabs {
+            let needs_trailing = {
+                let tab = self.tab_mut(&tab_id);
+                if tab.agents_view.snapshot.is_none() {
+                    false
+                } else {
+                    tab.agents_view.refetch_in_flight = false;
+                    let dirty = tab.agents_view.dirty;
+                    tab.agents_view.dirty = false;
+                    dirty
+                }
+            };
+            if needs_trailing {
+                self.schedule_agents_refetch_for_tab(&tab_id);
+            }
+        }
+    }
+
     fn restore_agents_selection(&mut self, tab_id: &str, old_selected: usize) {
         let rows = self.agents_rows_for_tab(tab_id);
         let tab = self.tab_mut(tab_id);
@@ -3001,7 +3592,7 @@ impl App {
 
     fn agents_rows_for_tab(&self, tab_id: &str) -> Vec<crate::agent_sessions::AgentSession> {
         let filter = self.current_cli_filter();
-        let origin = self.f2_origin_filter;
+        let origin = self.sessions_origin_filter;
         if let Some(snapshot) = self
             .tab_sessions
             .get(tab_id)
@@ -3092,10 +3683,10 @@ impl App {
     ///
     /// Called eagerly from `run_acp_app` right after `set_event_tx` so the
     /// scan starts overlapping with ACP startup and is usually done by the
-    /// time the user first opens the Agents view. Also called defensively
-    /// from the F2 / `/sessions` toggle in case startup raced ahead of
+    /// time the user first opens the agent session view. Also called defensively
+    /// from the `/sessions` toggle in case startup raced ahead of
     /// `set_event_tx` (Setup/FRE mode — `event_tx` not yet wired, so the
-    /// eager call early-returns and the F2 press picks it up).
+    /// eager call early-returns and the Ctrl+Shift+/ press picks it up).
     ///
     /// Pre-eager-load this was strictly lazy because each wta restart
     /// (model switch, new agent pane) re-pays the ~10s scan. The eager
@@ -3106,7 +3697,7 @@ impl App {
             return;
         }
         let Some(tx) = self.event_tx.clone() else {
-            // No event channel yet — Setup mode at startup. The first F2
+            // No event channel yet — Setup mode at startup. The first Ctrl+Shift+/
             // press post-FRE will retry. Safe to leave state as NotStarted.
             return;
         };
@@ -3186,7 +3777,8 @@ impl App {
                         if let Some(stderr) = stderr {
                             let reader = std::io::BufReader::new(stderr);
                             for line in reader.lines().map_while(Result::ok) {
-                                tracing::debug!("login stderr: {}", line);
+                                // Raw auth-flow output carries the device code — trace only.
+                                tracing::trace!(target: "login.content", "login stderr: {}", line);
                                 if line.contains("enter code") {
                                     if let Some(code) = line.split("enter code ").nth(1) {
                                         let code = code.trim_end_matches('.');
@@ -3212,7 +3804,8 @@ impl App {
                     if let Some(stdout) = stdout {
                         let reader = std::io::BufReader::new(stdout);
                         for line in reader.lines().map_while(Result::ok) {
-                            tracing::debug!("login stdout: {}", line);
+                            // Raw auth-flow output carries the device code — trace only.
+                            tracing::trace!(target: "login.content", "login stdout: {}", line);
                             if line.contains("enter code") {
                                 if let Some(code) = line.split("enter code ").nth(1) {
                                     let code = code.trim_end_matches('.');
@@ -3703,47 +4296,24 @@ impl App {
         let total_started = std::time::Instant::now();
 
         let mut frame = terminal.get_frame();
-        let area = frame.area();
 
         let render_started = std::time::Instant::now();
         ui::render(&mut frame, self);
         ui_trace::log_slow("ui_render", render_started.elapsed(), || self.trace_state());
 
-        // Wrap the whole frame in a synchronized-update boundary (CSI ? 2026
-        // h/l, supported by Windows Terminal). Without it, every cursor
-        // call in the ratatui-crossterm backend (`hide_cursor`,
-        // `show_cursor`, `set_cursor_position` — all `execute!`-based, see
-        // ratatui-crossterm lib.rs:288/292/303) flushes stdout on its own,
-        // so WT can render partial states between them — most visibly the
-        // brief cursor-hidden window during the shimmer redraw, which the
-        // eye reads as the inputbox cursor blinking at ~8Hz. Inside a sync
-        // block WT freezes rendering until End and paints the final state
-        // in a single frame.
-        queue!(terminal.backend_mut(), BeginSynchronizedUpdate)?;
-
+        // The text caret is painted as an inverse buffer cell by `ui::input`
+        // in every state, so the OS cursor is always hidden. With no
+        // `show_cursor`/`set_cursor_position` interleaved after the content
+        // flush, there's no partial-frame tearing to hide — hence no need for
+        // a synchronized-update (CSI ? 2026) wrapper around the frame (which
+        // was also the prime suspect for frames being held until the next
+        // redraw on an unfocused pane).
         let flush_started = std::time::Instant::now();
+        terminal.hide_cursor()?;
         terminal.flush()?;
         ui_trace::log_slow("terminal_flush", flush_started.elapsed(), || {
             self.trace_state()
         });
-
-        let cursor_started = std::time::Instant::now();
-        if let Some(position) = ui::input_cursor_position(self, area) {
-            // Order matters: position first, then show. Showing first would
-            // briefly reveal the cursor wherever the flush left it (typically
-            // the last redrawn cell on the chat side) before the move lands.
-            // (Inside the sync block this is academic — WT won't render
-            // either intermediate — but the ordering also documents intent.)
-            terminal.set_cursor_position(position)?;
-            terminal.show_cursor()?;
-        } else {
-            terminal.hide_cursor()?;
-        }
-        ui_trace::log_slow("terminal_cursor", cursor_started.elapsed(), || {
-            self.trace_state()
-        });
-
-        queue!(terminal.backend_mut(), EndSynchronizedUpdate)?;
 
         terminal.swap_buffers();
 
@@ -3777,7 +4347,9 @@ impl App {
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
+            AppEvent::AutofixTargetResolved { .. } => "autofix_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
+            AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
             AppEvent::AgentBusy { .. } => "agent_busy",
             AppEvent::TabRenamed { .. } => "tab_renamed",
             AppEvent::ExecutionInfo(_) => "execution_info",
@@ -3805,7 +4377,9 @@ impl App {
             AppEvent::AliveJoinUpgrade(_) => "alive_join_upgrade",
             AppEvent::SessionsChanged => "sessions_changed",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
+            AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
+            AppEvent::RevealTick => "reveal_tick",
         }
     }
 
@@ -3847,6 +4421,11 @@ impl App {
                 if self.mode == AppMode::Setup
                     || self.mode == AppMode::Auth
                     || self.history_load_state == HistoryLoadState::Loading
+                    // Keep the connecting indicator animating during the
+                    // pipe-connect → ACP init → session/new handshake so a cold
+                    // start (which can run tens of seconds) doesn't look frozen
+                    // (F7). Without this the chat sat static with no progress.
+                    || matches!(self.state, ConnectionState::Connecting(_))
                 {
                     self.activity_frame = self.activity_frame.wrapping_add(1);
                 }
@@ -3864,6 +4443,9 @@ impl App {
             AppEvent::Resize(w, h) => {
                 self.terminal_cols = w;
                 self.terminal_rows = h;
+            }
+            AppEvent::RevealTick => {
+                self.advance_reveal();
             }
             AppEvent::FocusChanged(focused) => {
                 self.pane_focused = focused;
@@ -3980,6 +4562,18 @@ impl App {
                 if current_model_id.is_some() {
                     self.current_model_id = current_model_id;
                 }
+                // Keep freshly-created sessions on the effective model for
+                // this tab — its per-pane `/model` override if set, else the
+                // global acp-model. A resumed (loaded) session keeps whatever
+                // model it was saved with; only fresh `/new` and lazy-first-
+                // prompt sessions adopt the override. This is what makes a
+                // local `/model` pick survive `/new`. The bootstrap session is
+                // already model-applied by the client at startup.
+                if !is_load_target {
+                    if let Some(model) = self.effective_model_for_tab(&tab_id) {
+                        self.send_session_model(Some(session_id.clone()), model);
+                    }
+                }
                 self.publish_agent_status();
             }
             AppEvent::TabError { tab_id, message } => {
@@ -4006,12 +4600,17 @@ impl App {
             AppEvent::PromptTemplateLoaded { name } => {
                 self.prompt_name = Some(name);
             }
+            AppEvent::AutofixTargetResolved {
+                tab_id,
+                prompt_id,
+                pane_id,
+            } => {
+                self.apply_autofix_target_resolved(tab_id, prompt_id, pane_id);
+            }
             AppEvent::AgentBusy { tab_id } => {
                 let tab = self.tab_mut(&tab_id);
-                tab.messages.push(ChatMessage::System(
-                    "Agent is busy on this tab — wait for the current prompt to finish."
-                        .to_string(),
-                ));
+                tab.messages
+                    .push(ChatMessage::System(t!("system.agent_busy").into_owned()));
                 tab.scroll_to_bottom();
             }
             AppEvent::TabRenamed {
@@ -4023,18 +4622,29 @@ impl App {
             }
             AppEvent::AgentError {
                 session_id,
+                failure,
                 message,
             } => {
-                // Optimistic-connect fallback: if we have stashed auth info
-                // and the error is auth-related, show the auth screen instead
-                // of a dead error state.
-                let lower = message.to_lowercase();
-                let is_auth_error = lower.contains("authentication required")
-                    || lower.contains("not logged in")
-                    || lower.contains("unauthorized")
-                    || lower.contains("401")
-                    || lower.contains("apikey is missing")
-                    || lower.contains("api key");
+                // Classification is typed (`AgentFailure`), done once at the
+                // helper boundary where the `acp::Error` code / transport
+                // signal is still available. No substring matching here — the
+                // discriminant decides the recovery path. `message` is only the
+                // human-readable line to display.
+                tracing::info!(
+                    target: "failure",
+                    class = failure.class(),
+                    session_id = ?session_id,
+                    "agent failure"
+                );
+
+                // A user-initiated cancel surfaced as an error is not a
+                // failure — the turn already ended via the cancel path, so
+                // show nothing and leave the state untouched.
+                if failure.is_cancelled() {
+                    return;
+                }
+
+                let is_auth_error = failure.is_auth();
                 if is_auth_error && !self.preflight_setup_active {
                     tracing::info!("AgentError auth fallback: showing setup screen");
                     // Use current_agent_id — set at preflight or agent selection time.
@@ -4094,8 +4704,46 @@ impl App {
                     tab.activity_frame = 0;
                     tab.timing_note = None;
                     tab.turn = TurnState::Idle;
-                    tab.messages.push(ChatMessage::Error(message));
+                    // Suppress only an *identical* consecutive error, not any
+                    // trailing error. When the master/agent dies, two errors can
+                    // arrive: the raw transport error (returned as-is) and the
+                    // `handle_io` watchdog's connection.lost ("/restart") line.
+                    // Those are different messages and BOTH should show — the raw
+                    // one says what broke, the connection.lost one says how to
+                    // recover. Collapsing every consecutive error (the previous
+                    // behavior) could hide the /restart hint behind an unrelated
+                    // or in-flight error. Dedup only true duplicates so the same
+                    // line never stacks.
+                    let is_duplicate = matches!(
+                        tab.messages.last(),
+                        Some(ChatMessage::Error(prev)) if prev == &message
+                    );
+                    if !is_duplicate {
+                        tab.messages.push(ChatMessage::Error(message));
+                    }
                 }
+            }
+            AppEvent::AgentSoftStop { session_id, reason } => {
+                use crate::protocol::acp::soft_stop::SoftStopReason;
+                // A soft stop is an *outcome*, not a connection failure — the
+                // session stays Connected and the turn already closed via
+                // AgentMessageEnd. We only append an informational line so the
+                // user knows why the reply ended (truncation / budget / refusal)
+                // instead of silently trailing off.
+                tracing::info!(
+                    target: "soft_stop",
+                    class = reason.class(),
+                    session_id = %session_id,
+                    "agent turn ended on a soft stop"
+                );
+                let msg = match reason {
+                    SoftStopReason::MaxTokens => t!("system.stopped_max_tokens"),
+                    SoftStopReason::MaxTurnRequests => t!("system.stopped_max_turn_requests"),
+                    SoftStopReason::Refusal => t!("system.stopped_refusal"),
+                };
+                let tab = self.session_tab_mut(&session_id);
+                tab.messages.push(ChatMessage::System(msg.into_owned()));
+                tab.scroll_to_bottom();
             }
             AppEvent::ExecutionInfo(message) => {
                 self.push_execution_info(message);
@@ -4373,18 +5021,18 @@ impl App {
                     }
                 }
 
-                // If the user is already on the Agents view (e.g. they were
+                // If the user is already on the agent session view (e.g. they were
                 // dropped there by --initial-view sessions, or they pressed
-                // F2 / Ctrl+Shift+/ before the scan finished) and nothing
+                // Ctrl+Shift+/ before the scan finished) and nothing
                 // is selected yet, seed selection on row 0 so Enter
-                // activates immediately. Mirrors the F2 enter-Agents path.
+                // activates immediately. Mirrors the session management enter-Agents path.
                 if self.current_tab().current_view == View::Agents
                     && self.current_tab().agents_list_state.selected().is_none()
                     && !self
                         .agent_sessions
                         .iter_sorted_with_filters(
                             self.current_cli_filter().as_ref(),
-                            self.f2_origin_filter,
+                            self.sessions_origin_filter,
                         )
                         .is_empty()
                 {
@@ -4437,7 +5085,7 @@ impl App {
                 // tells us it's alive. Without this, only the bootstrap
                 // `AliveSnapshotLoaded` join would upgrade rows — every
                 // subsequent `session_added` broadcast would land only
-                // in the mirror and the F2 row would stay Historical.
+                // in the mirror and the session management row would stay Historical.
                 self.agent_sessions
                     .apply_alive_session_join([(sid.0.as_ref(), info.pane_session_id.as_deref())]);
                 let reg = std::sync::Arc::clone(&self.alive);
@@ -4452,8 +5100,9 @@ impl App {
                     "alive session removed by master"
                 );
                 // Mirror PaneClosed's reducer for this sid synchronously,
-                // before the async mirror update lands. Otherwise, the F2
-                // row stays stuck on Live until the next bootstrap, since
+                // before the async mirror update lands. Otherwise, the
+                // session management row stays stuck on Live until the next
+                // bootstrap, since
                 // `apply_alive_pane_snapshot` is only called at startup
                 // and `AliveSessionRemoved` had no path into the reducer
                 // (the bug rubber-duck Finding 2 surfaced post-B-12).
@@ -4485,6 +5134,9 @@ impl App {
             } => {
                 self.handle_agents_snapshot_loaded(request_id, sessions);
             }
+            AppEvent::AgentsSnapshotFailed { request_id } => {
+                self.handle_agents_snapshot_failed(request_id);
+            }
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
@@ -4498,7 +5150,7 @@ impl App {
                 tracing::debug!(target: "autofix", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
 
                 // Hook bridge events: fire-and-forget into the agent registry
-                // so the F2 Agents view stays current. Unrelated to autofix /
+                // so the agent session view stays current. Unrelated to autofix /
                 // tab routing; runs before the same-pane skip because we want
                 // to record events from our own pane too.
                 if method == "agent_event" {
@@ -4569,22 +5221,58 @@ impl App {
                     return;
                 }
 
-                if method == "autofix_enabled_changed" {
-                    // C++ pushes this when the user toggles "Auto-suggest
-                    // fixes" in settings while WTA is already running.
-                    // Without it the flag would stay pinned to whatever
-                    // `--no-autofix` value WTA was launched with.
-                    let enabled = params
-                        .get("enabled")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    tracing::info!(
-                        target: "autofix",
-                        old = self.autofix_enabled,
-                        new = enabled,
-                        "autofix_enabled hot-reloaded from settings change",
-                    );
-                    self.autofix_enabled = enabled;
+                if method == "agent_config_changed" {
+                    // C++ pushes this when the user changes a hot-updatable
+                    // agent setting (auto-suggest gate, acp-model, delegate
+                    // agent/model) while WTA is already running. Unified
+                    // dispatch: each field is optional and only present when
+                    // it actually changed, so we apply exactly what's set
+                    // — all in place, with NO agent-pane teardown/restart.
+                    // (Agent *identity* changes go through a master respawn
+                    // on the C++ side, not this event.)
+                    if let Some(enabled) =
+                        params.get("autofix_enabled").and_then(|v| v.as_bool())
+                    {
+                        tracing::info!(
+                            target: "autofix",
+                            old = self.autofix_enabled,
+                            new = enabled,
+                            "autofix_enabled hot-reloaded from settings change",
+                        );
+                        self.autofix_enabled = enabled;
+                    }
+
+                    // delegate_agent + delegate_model travel together so the
+                    // delegate runtime table can be rebuilt in one shot.
+                    if params.get("delegate_agent").is_some()
+                        || params.get("delegate_model").is_some()
+                    {
+                        let delegate_agent = params
+                            .get("delegate_agent")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let delegate_model = params
+                            .get("delegate_model")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        self.apply_delegate_config(delegate_agent, delegate_model);
+                    }
+
+                    // acp-model: a global settings change is authoritative. It
+                    // overrides every pane's local `/model` pick, redirects the
+                    // shared current-model display, hot-swaps the model on all
+                    // live sessions, and republishes status — so every pane
+                    // visibly follows the new model (see apply_global_acp_model).
+                    // Storing it also keeps future sessions (/new, lazy-first-
+                    // prompt) on the new model via the SessionAttached re-apply.
+                    if let Some(raw) = params.get("acp_model").and_then(|v| v.as_str()) {
+                        tracing::info!(
+                            target: "autofix",
+                            model = raw,
+                            "acp-model hot-update requested from settings change",
+                        );
+                        self.apply_global_acp_model(Some(raw.to_string()));
+                    }
                     return;
                 }
 
@@ -4739,7 +5427,6 @@ impl App {
                         target: "acp_load_session",
                         tab_id,
                         session_id,
-                        cwd = ?cwd,
                         "inbound load_session event from WT"
                     );
                     if tab_id.is_empty() || session_id.is_empty() {
@@ -4789,10 +5476,13 @@ impl App {
                         // close it).
                         tab.loading_session = true;
                         tab.loading_target_session_id = Some(session_id.to_string());
-                        tab.messages.push(ChatMessage::System(format!(
-                            "Resuming session {}...",
-                            session_id
-                        )));
+                        tab.messages.push(ChatMessage::System(
+                            t!(
+                                "system.resuming_session",
+                                session_id = session_id
+                            )
+                            .into_owned(),
+                        ));
                         tab.scroll_to_bottom();
                     }
                     // If the load_session target IS the active tab, push the
@@ -4968,7 +5658,7 @@ impl App {
                 // (Idle/Working/...) when the underlying pane dies. The
                 // hook-bridge path (`agent.session.end` → `SessionStopped`)
                 // handles Claude/Copilot, but Gemini has no end-of-session
-                // hook, so without this wire a Gemini row spawned via F2
+                // hook, so without this wire a Gemini row spawned via session management view
                 // resume stays Idle forever after the user types `/exit`.
                 //
                 // Both event variants are no-ops in the registry when
@@ -4976,6 +5666,13 @@ impl App {
                 // safe to apply unconditionally for non-own panes.
                 if method == "connection_state" {
                     let state = params.get("state").and_then(|v| v.as_str()).unwrap_or("");
+                    tracing::info!(
+                        target: "helper_wt_event",
+                        pane_id = %pane_id,
+                        state,
+                        self_pane = ?self.pane_id,
+                        "helper observed WT connection_state event"
+                    );
                     match state {
                         "closed" => {
                             // Capture the key BEFORE PaneClosed clears
@@ -4989,6 +5686,12 @@ impl App {
                             };
                             self.agent_sessions.apply(event.clone());
                             self.publish_session_hook(event);
+                            tracing::info!(
+                                target: "helper_wt_event",
+                                pane_id = %pane_id,
+                                key_before = ?key_before,
+                                "helper applied PaneClosed locally + published to master"
+                            );
                             if let Some(k) = key_before {
                                 crate::app::prune_phantom_session_if_ended(
                                     &mut self.agent_sessions,
@@ -5054,7 +5757,7 @@ impl App {
                     // ANY bound session and demoted the row to Ended
                     // even though the agent CLI was happily still
                     // streaming notifications — the user sees this as
-                    // "F2 Enter on a Live row spawned a new pane
+                    // "session management Enter on a Live row spawned a new pane
                     // instead of focusing the existing one" because
                     // the row demoted between snapshot and Enter.
                     //
@@ -5428,6 +6131,8 @@ impl App {
                             master_ext_rx: None,
                             shell_mgr: Arc::clone(&self.shell_mgr),
                             wt_connected: self.wt_connected,
+                            master_pipe_name: None,
+                            owner_tab_id: None,
                         });
                     }
                     self.pending_acp_start = true;
@@ -5448,9 +6153,14 @@ impl App {
     fn event_requires_redraw(&self, event: &AppEvent) -> bool {
         match event {
             AppEvent::Tick => self.has_activity_indicator() || self.show_notification_banner,
+            // The reveal animation only needs a frame while there is still
+            // unrevealed pending text on the *visible* tab. When the reveal
+            // has caught up (or nothing is streaming) this is a cheap no-op
+            // tick that doesn't redraw — so idle/no-backlog costs nothing.
+            AppEvent::RevealTick => self.has_reveal_backlog(),
             AppEvent::AgentMessageChunk { .. } => true,
             AppEvent::DebugPipeMessage(_) => self.show_debug_panel,
-            // History only affects the Agents view; chat doesn't read it.
+            // History only affects the agent session view; chat doesn't read it.
             // A redraw is cheap enough that we don't bother gating on which
             // view is showing — pay the one frame.
             AppEvent::HistoricalSessionsLoaded(_) => true,
@@ -5458,8 +6168,57 @@ impl App {
         }
     }
 
+    /// Number of *user-visible* characters in a tab's streaming buffer, i.e.
+    /// the length of what the renderer would show in full. `None` when the
+    /// tab is not streaming visible prose.
+    fn tab_visible_stream_len(tab: &TabSession) -> Option<usize> {
+        let buf = tab.turn.buffer()?;
+        crate::ui::chat::user_visible_stream_text(buf).map(|t| t.chars().count())
+    }
+
+    /// True iff the current (visible) tab has streaming text that the reveal
+    /// cursor hasn't caught up to yet. Used to gate `RevealTick` redraws.
+    fn has_reveal_backlog(&self) -> bool {
+        let tab = self.current_tab();
+        matches!(Self::tab_visible_stream_len(tab), Some(len) if tab.reveal_chars < len)
+    }
+
+    /// Advance the typewriter reveal cursor on every streaming tab. The step
+    /// is *adaptive*: it grows with the backlog so the reveal can never fall
+    /// permanently behind a fast model — any backlog is drained within
+    /// `REVEAL_CATCHUP_FRAMES` ticks. Combined with the fact that finalize
+    /// commits the message in full (un-gated), this guarantees the smoothing
+    /// never increases the total time for the response to appear: it only
+    /// redistributes *when* characters show up within the streaming window.
+    fn advance_reveal(&mut self) {
+        // ~30fps tick. `REVEAL_MIN_STEP` is the floor so a slow trickle still
+        // animates; the `backlog / REVEAL_CATCHUP_FRAMES` term speeds up to
+        // match (and overtake) arrival, capping the visible lag at roughly
+        // `REVEAL_CATCHUP_FRAMES` ticks (~130ms).
+        const REVEAL_MIN_STEP: usize = 3;
+        const REVEAL_CATCHUP_FRAMES: usize = 4;
+        for tab in self.tab_sessions.values_mut() {
+            let Some(len) = Self::tab_visible_stream_len(tab) else {
+                continue;
+            };
+            if tab.reveal_chars >= len {
+                // Clamp down if the visible text shrank (e.g. a fenced JSON
+                // block replaced the streamed prose).
+                tab.reveal_chars = len;
+                continue;
+            }
+            let backlog = len - tab.reveal_chars;
+            let step = REVEAL_MIN_STEP.max(backlog / REVEAL_CATCHUP_FRAMES);
+            tab.reveal_chars = (tab.reveal_chars + step).min(len);
+        }
+    }
+
     fn handle_key(&mut self, key: KeyEvent) {
-        tracing::info!(
+        // Per-keystroke and carries the raw `KeyCode` (the typed character for
+        // `Char` keys) — the user's prompt can be reconstructed from this
+        // stream. Trace only so it never persists in shipping (info) or
+        // default-debug logs.
+        tracing::trace!(
             target: "input",
             code = ?key.code,
             modifiers = ?key.modifiers,
@@ -5608,7 +6367,7 @@ impl App {
             return;
         }
 
-        // Agents view (F2): list navigation + Enter to focus pane + Delete
+        // agent session view: list navigation + Enter to focus pane + Delete
         // to evict an Ended/Historical row. Captures all input while open
         // — including Esc which closes the view. View open-state and the
         // selection cursor are per-tab on `TabSession` so each WT tab
@@ -5672,7 +6431,7 @@ impl App {
                                     .agent_sessions
                                     .iter_sorted_with_filters(
                                         self.current_cli_filter().as_ref(),
-                                        self.f2_origin_filter,
+                                        self.sessions_origin_filter,
                                     )
                                     .len();
                                 let tab = self.current_tab_mut();
@@ -5750,6 +6509,20 @@ impl App {
                         }
                     }
                 }
+                _ => {}
+            }
+            return;
+        }
+
+        // Model picker modal (`/model`): while it's up, arrows move the
+        // highlight, Enter commits the pick, Esc dismisses. Swallow every
+        // other key so nothing leaks into the input box behind the modal.
+        if self.model_picker_visible() {
+            match key.code {
+                KeyCode::Up => self.model_picker_up(),
+                KeyCode::Down => self.model_picker_down(),
+                KeyCode::Enter => self.commit_model_pick(),
+                KeyCode::Esc => self.close_model_picker(),
                 _ => {}
             }
             return;
@@ -5987,21 +6760,11 @@ impl App {
                 self.current_tab_mut().accept_command_popup_completion();
             }
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                self.current_tab_mut().insert_input_char('\n');
-            }
-            KeyCode::Enter if self.command_popup_visible() => {
-                // Popup is showing — Enter runs the highlighted command
-                // (/, /h, /he etc. → /help) instead of committing the
-                // raw text as a prompt. Esc dismisses if the user
-                // doesn't want any command.
-                if let Some(spec) = self.current_tab().selected_command_spec() {
-                    let parsed = ParsedCommand {
-                        kind: spec.kind,
-                        spec,
-                        rest: String::new(),
-                    };
-                    self.current_tab_mut().clear_input();
-                    self.handle_slash_command(parsed);
+                // Input editing only acts when the input is the live caret
+                // target. While a recommendation/permission card or a past
+                // turn is highlighted the input is locked (see Char below).
+                if self.current_tab().input_has_nav_focus() {
+                    self.current_tab_mut().insert_input_char('\n');
                 }
             }
             KeyCode::Enter
@@ -6014,42 +6777,17 @@ impl App {
                 self.current_tab_mut().toggle_selected_completed_turn();
             }
             KeyCode::Enter => {
+                // Slash-command intercept (popup selection, known command, or
+                // unknown-command warning). Runs before the prompt path so
+                // commands like /stop work even mid-flight, and /help / /clear
+                // work even when the agent isn't Connected. Returns true when
+                // the keystroke was consumed; an unknown command only warns and
+                // falls through so the raw line still goes to the agent.
+                if self.try_handle_slash_on_enter() {
+                    return;
+                }
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
-                // Slash-command intercept. Runs before the prompt path so
-                // commands like /stop work even mid-flight, and /help / /clear
-                // / /exit work even when the agent isn't Connected.
-                //
-                // `//literal` falls through to the prompt path (parse() returns
-                // None), and the leading `/` is left intact — the agent sees
-                // exactly what the user typed.
-                if !self.current_tab().input.is_empty() {
-                    if let Some(cmd) = commands::parse(&self.current_tab().input) {
-                        self.current_tab_mut().clear_input();
-                        self.handle_slash_command(cmd);
-                        return;
-                    } else if self.current_tab().input.trim_start().starts_with('/')
-                        && !self.current_tab().input.trim_start().starts_with("//")
-                    {
-                        // Looks like an attempted command but the name isn't
-                        // registered: warn the user but still send the line as
-                        // a prompt so they don't lose what they typed.
-                        let unknown = self
-                            .current_tab()
-                            .input
-                            .trim_start()
-                            .split_whitespace()
-                            .next()
-                            .unwrap_or("/")
-                            .to_string();
-                        let tab = self.current_tab_mut();
-                        tab.messages.push(ChatMessage::System(format!(
-                            "Unknown command \"{}\" — sent as prompt. Type /help for the list.",
-                            unknown
-                        )));
-                        // Fall through to the prompt path below.
-                    }
-                }
                 if self.current_tab().input.is_empty()
                     && self.state == ConnectionState::Connected
                     && self.current_tab().turn.recommendations().is_some()
@@ -6092,10 +6830,8 @@ impl App {
                     // too, but bouncing here keeps the user's input intact.
                     if !self.current_tab().turn.accepts_new_prompt() {
                         let tab = self.current_tab_mut();
-                        tab.messages.push(ChatMessage::System(
-                            "Agent is busy on this tab — wait for the current prompt to finish."
-                                .to_string(),
-                        ));
+                        tab.messages
+                            .push(ChatMessage::System(t!("system.agent_busy").into_owned()));
                         tab.scroll_to_bottom();
                         return;
                     }
@@ -6144,13 +6880,19 @@ impl App {
                 }
             }
             KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.current_tab_mut().delete_word_before_cursor();
+                if self.current_tab().input_has_nav_focus() {
+                    self.current_tab_mut().delete_word_before_cursor();
+                }
             }
             KeyCode::Backspace => {
-                self.current_tab_mut().delete_before_cursor();
+                if self.current_tab().input_has_nav_focus() {
+                    self.current_tab_mut().delete_before_cursor();
+                }
             }
             KeyCode::Delete => {
-                self.current_tab_mut().delete_at_cursor();
+                if self.current_tab().input_has_nav_focus() {
+                    self.current_tab_mut().delete_at_cursor();
+                }
             }
             KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.current_tab_mut().move_cursor_word_left();
@@ -6177,7 +6919,15 @@ impl App {
                 self.current_tab_mut().chat_scroll.by(-10);
             }
             KeyCode::Char(c) => {
-                self.current_tab_mut().insert_input_char(c);
+                // Only type into the input when it is the live caret target.
+                // When a recommendation/permission card or a past turn is
+                // highlighted the input is locked: keystrokes are ignored so
+                // the buffer can't fill invisibly (no caret) and strand the
+                // user (a non-empty buffer disables Tab/↑ history nav). Press
+                // Esc, or Tab/Shift+Tab back past the ends, to return focus.
+                if self.current_tab().input_has_nav_focus() {
+                    self.current_tab_mut().insert_input_char(c);
+                }
             }
             _ => {}
         }
@@ -6242,12 +6992,115 @@ impl App {
             Some(crate::ui::PopupState {
                 candidates: &tab.command_popup_candidates,
                 selected: tab.command_popup_selected,
+                current_model: self.current_model_display(),
             })
         }
     }
 
+    /// Display label for the active pane's effective model — its per-pane
+    /// `/model` override if set, else the global `current_model_id` — using
+    /// the agent's friendly name when known and falling back to the raw id.
+    /// `None` when no model is known yet (nothing to append).
+    fn current_model_display(&self) -> Option<String> {
+        let id = self
+            .current_tab()
+            .model_override
+            .clone()
+            // Prefer the per-pane override, then the agent's reported active
+            // model, and finally the global `acpModel` setting as a hint for
+            // the window before the agent reports `current_model_id` (or when
+            // only the global override is in effect). Empty acp_model means
+            // "agent default" and contributes nothing.
+            .or_else(|| self.current_model_id.clone())
+            .or_else(|| self.acp_model.clone())
+            .filter(|s| !s.trim().is_empty())?;
+        let name = self
+            .available_models
+            .iter()
+            .find(|m| m.id == id)
+            .map(|m| m.name.clone())
+            .unwrap_or(id);
+        Some(name)
+    }
+
     fn command_popup_visible(&self) -> bool {
         self.current_tab().command_popup_visible()
+    }
+
+    /// Per-frame state for the `/model` picker modal, or `None` when it's not
+    /// open on the active tab. Sources the list from the agent's advertised
+    /// `available_models` and marks the pane's currently-effective model.
+    pub fn model_popup_state(&self) -> Option<crate::ui::ModelPopupState<'_>> {
+        let tab = self.current_tab();
+        if !tab.model_picker_open || self.available_models.is_empty() {
+            return None;
+        }
+        // Same precedence as `current_model_display`: override → agent's
+        // reported model → global `acpModel`, so the picker marks the pane's
+        // effective model even before the agent reports `current_model_id`.
+        let current_id = tab
+            .model_override
+            .as_deref()
+            .or(self.current_model_id.as_deref())
+            .or(self.acp_model.as_deref());
+        Some(crate::ui::ModelPopupState {
+            models: &self.available_models,
+            selected: tab.model_picker_selected,
+            current_id,
+        })
+    }
+
+    /// Handle Enter for the slash-command system. Centralizes all three
+    /// intents in one place so the giant `handle_key` match has a single
+    /// guard instead of an inline block plus a separate popup arm:
+    ///
+    /// 1. Autocomplete popup open → run the highlighted command.
+    /// 2. No popup → [`commands::classify`] the committed line:
+    ///    - known command → dispatch it,
+    ///    - unknown `/foo` → warn but leave the input for the prompt path,
+    ///    - plain prompt → do nothing.
+    ///
+    /// Returns `true` when the keystroke is fully consumed (a command ran or
+    /// the popup swallowed Enter); `false` means the caller should continue to
+    /// the normal prompt-submission path with the input intact.
+    fn try_handle_slash_on_enter(&mut self) -> bool {
+        // 1. Popup open: Enter commits the highlighted command (`/`, `/h`,
+        //    `/he` → /help) and never submits the raw text as a prompt, so
+        //    this arm is always consumed even if there is no selection.
+        if self.command_popup_visible() {
+            if let Some(spec) = self.current_tab().selected_command_spec() {
+                let parsed = ParsedCommand {
+                    kind: spec.kind,
+                    spec,
+                    rest: String::new(),
+                };
+                self.current_tab_mut().clear_input();
+                self.handle_slash_command(parsed);
+            }
+            return true;
+        }
+
+        // 2. No popup: classify the committed line.
+        if self.current_tab().input.is_empty() {
+            return false;
+        }
+        match commands::classify(&self.current_tab().input) {
+            ParseOutcome::Command(cmd) => {
+                self.current_tab_mut().clear_input();
+                self.handle_slash_command(cmd);
+                true
+            }
+            ParseOutcome::Unknown(name) => {
+                // Warn but fall through: the raw line (leading `/` intact) is
+                // still sent so the user doesn't lose what they typed.
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(
+                    t!("system.unknown_command", command = name.as_str()).into_owned(),
+                ));
+                false
+            }
+            ParseOutcome::NotCommand => false,
+        }
     }
 
     /// Dispatch a parsed slash-command. The Enter handler is responsible
@@ -6261,107 +7114,253 @@ impl App {
             "dispatch"
         );
 
+        // Thin dispatch: each arm's logic lives in a `cmd_*` method so a
+        // single command can be read and unit-tested in isolation. `in_flight`
+        // is computed once here and threaded to the commands that branch on it.
         match cmd.kind {
-            CommandKind::Help => {
-                self.help_overlay_visible = !self.help_overlay_visible;
-            }
-            CommandKind::Clear => {
-                let tab = self.current_tab_mut();
-                tab.clear_chat_history();
-                tab.completed_turns.clear();
-                tab.selected_completed_turn_idx = None;
-                tab.scroll_to_bottom();
-            }
-            CommandKind::Stop => {
-                if in_flight {
-                    let session_id = self.current_tab().session_id.clone();
-                    if let Some(sid) = session_id.clone() {
-                        let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
-                    }
-                    if let Some(sid) = session_id {
-                        self.turn_cancel(&sid);
-                    }
-                    let tab = self.current_tab_mut();
-                    tab.messages
-                        .push(ChatMessage::System(t!("system.cancelled").into_owned()));
-                    tab.scroll_to_bottom();
-                } else {
-                    let tab = self.current_tab_mut();
-                    tab.messages.push(ChatMessage::System(
-                        t!("system.no_prompt_in_flight").into_owned(),
-                    ));
-                    tab.scroll_to_bottom();
-                }
-            }
-            CommandKind::New => {
-                if in_flight {
-                    let tab = self.current_tab_mut();
-                    tab.messages.push(ChatMessage::System(
-                        "Wait for the current prompt to finish, or /stop first.".to_string(),
-                    ));
-                    tab.scroll_to_bottom();
-                    return;
-                }
-                let tab_id = self
-                    .tab_id
-                    .clone()
-                    .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-                let _ = self
-                    .new_session_tx
-                    .send(NewSessionForTab { tab_id, cwd: None });
-                let tab = self.current_tab_mut();
-                tab.clear_chat_history();
-                tab.completed_turns.clear();
-                tab.selected_completed_turn_idx = None;
-                tab.session_id = None;
-                tab.scroll_to_bottom();
-            }
-            CommandKind::Sessions => {
-                // Mirror the F2 keybinding's open path: jump straight to
-                // the Agents picker and seed a selection so Enter/Up/Down
-                // are immediately useful. Esc / F2 still close the view.
-                // Per-tab — only flips the active tab's view state.
-                let tab_id = self.active_tab_key().to_string();
-                self.open_agents_view_for_tab(tab_id);
-                // F2 path also kicks the lazy history scan here. Without this,
-                // /sessions left the registry empty and rendered a blank view
-                // forever (state stuck at NotStarted, no Loading row, no rows).
-                self.ensure_history_loaded();
-                self.project_active_tab_state();
-            }
-            CommandKind::Restart => {
-                // Behavior depends on which transport this App is running on:
-                //
-                // * Standalone mode: the ACP client owns the agent CLI child.
-                //   `restart_tx` triggers an in-process tear-down + respawn;
-                //   subsequent prompts get a fresh session on each tab. The
-                //   `Connecting("Restarting agent...")` state lasts until the
-                //   new `initialize` round-trip lands.
-                //
-                // * Helper mode: master owns the agent CLI lifetime, so a
-                //   single helper cannot restart it in-process. The helper's
-                //   `restart_rx` arm asks the C++ side to force-restart the
-                //   whole agent stack (`restart_agent_stack` SendEvent →
-                //   TerminalPage tears down every agent pane,
-                //   `SharedWta::Restart` respawns master on the same stable
-                //   pipe name, then the active tab's pane is re-opened). The
-                //   user briefly sees the agent pane flash closed and reopen
-                //   with a clean session. The `Connecting("Restarting...")`
-                //   state set below is short-lived — this helper process is
-                //   on its way out as part of the pane teardown.
-                self.state = ConnectionState::Connecting("Restarting agent...".to_string());
-                self.session_to_tab.clear();
-                self.session_id.clear();
-                for (_, tab) in self.tab_sessions.iter_mut() {
-                    tab.clear_chat_history();
-                    tab.completed_turns.clear();
-                    tab.selected_completed_turn_idx = None;
-                    tab.session_id = None;
-                }
-                let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
-                self.publish_agent_status();
-            }
+            CommandKind::Help => self.cmd_help(),
+            CommandKind::Clear => self.cmd_clear(),
+            CommandKind::Stop => self.cmd_stop(in_flight),
+            CommandKind::New => self.cmd_new(in_flight),
+            CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
+            CommandKind::Sessions => self.cmd_sessions(),
+            CommandKind::Restart => self.cmd_restart(),
+            CommandKind::Model => self.cmd_model(cmd.rest),
         }
+    }
+
+    /// `/help` — toggle the help overlay.
+    fn cmd_help(&mut self) {
+        self.help_overlay_visible = !self.help_overlay_visible;
+    }
+
+    /// `/clear` — wipe the active tab's chat history and completed turns.
+    fn cmd_clear(&mut self) {
+        let tab = self.current_tab_mut();
+        tab.clear_chat_history();
+        tab.completed_turns.clear();
+        tab.selected_completed_turn_idx = None;
+        tab.scroll_to_bottom();
+    }
+
+    /// `/stop` — cancel the in-flight turn, or note that there is nothing to
+    /// stop. `in_flight` is the active tab's turn state, captured by the
+    /// dispatcher before any mutation.
+    fn cmd_stop(&mut self, in_flight: bool) {
+        if in_flight {
+            let session_id = self.current_tab().session_id.clone();
+            if let Some(sid) = session_id.clone() {
+                let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
+            }
+            if let Some(sid) = session_id {
+                self.turn_cancel(&sid);
+            }
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("system.cancelled").into_owned()));
+            tab.scroll_to_bottom();
+        } else {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("system.no_prompt_in_flight").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+        }
+    }
+
+    /// `/new` — start a fresh session on the active tab. Refuses while a turn
+    /// is in flight (the user should `/stop` first).
+    fn cmd_new(&mut self, in_flight: bool) {
+        if in_flight {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("system.busy_use_stop").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        let tab_id = self
+            .tab_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        let _ = self
+            .new_session_tx
+            .send(NewSessionForTab { tab_id, cwd: None });
+        let tab = self.current_tab_mut();
+        tab.clear_chat_history();
+        tab.completed_turns.clear();
+        tab.selected_completed_turn_idx = None;
+        tab.session_id = None;
+        tab.scroll_to_bottom();
+    }
+
+    /// `/fix [hint]` — run the auto-fix prompt on demand against the active
+    /// terminal pane. Reuses the error-triggered autofix pipeline
+    /// (`PromptSubmission::is_autofix`): the agent receives the `auto-fix.md`
+    /// template plus the working pane's recent output, and any `hint` typed
+    /// after `/fix` is appended as an extra steer.
+    ///
+    /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):
+    /// there is no failing-pane notification, so (1) the source pane is
+    /// resolved in the ACP client task — `PaneContext.source_pane_id` is left
+    /// `None` and `build_prompt_text` falls back to WT's active pane, which
+    /// GetActivePane maps from the agent pane to the user's working pane; and
+    /// (2) `target_pane_id` starts empty and is late-bound once the client task
+    /// resolves that working pane (`AppEvent::AutofixTargetResolved` →
+    /// `apply_autofix_target_resolved`), so `turn_execute_card` fills
+    /// `Send.parent` with a real pane. The bottom-bar Pending pill is *not*
+    /// armed — that UI is tied to a specific failing pane, and a command typed
+    /// into the agent pane surfaces its result there directly.
+    ///
+    /// Refuses while a turn is in flight; the user should `/stop` first.
+    fn cmd_fix(&mut self, in_flight: bool, hint: String) {
+        if in_flight {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("system.busy_use_stop").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
+
+        let target_tab_id = self
+            .tab_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+
+        // Bump generation so any stale in-flight autofix response is dropped,
+        // and clear a leftover suggestion — mirrors `maybe_trigger_autofix`.
+        let generation = {
+            let tab = self.tab_mut(&target_tab_id);
+            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
+            tab.autofix.suggested_pane_id = None;
+            tab.autofix.generation
+        };
+
+        let pane_context = PaneContext {
+            pane_id: self.pane_id.clone(),
+            tab_id: Some(target_tab_id.clone()),
+            window_id: self.window_id.clone(),
+            cwd: None,
+            // None → the client task resolves the active working pane itself.
+            source_pane_id: None,
+        };
+
+        let hint = hint.trim().to_string();
+        let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context));
+        let submitted = SubmittedPrompt {
+            id: prompt.id,
+            text: prompt.text.clone(),
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            autofix: Some(AutofixContext {
+                // Placeholder — the working pane isn't known synchronously here.
+                // The ACP client task resolves it and `apply_autofix_target_resolved`
+                // late-binds it (matched by prompt id) before the card surfaces,
+                // so `turn_execute_card` fills `Send.parent` with a real pane.
+                target_pane_id: String::new(),
+                generation,
+            }),
+        };
+        tracing::info!(
+            target: "slash_cmd",
+            tab_id = %target_tab_id,
+            generation,
+            has_hint = !hint.is_empty(),
+            "dispatching /fix",
+        );
+        self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
+        let _ = self.prompt_tx.send(prompt);
+    }
+
+    /// Late-bind a manual `/fix`'s target pane. The working pane is resolved
+    /// in the ACP client task (it isn't known when `cmd_fix` submits) and
+    /// plumbed back via [`AppEvent::AutofixTargetResolved`]. We patch the
+    /// matching in-flight turn's `AutofixContext.target_pane_id` so that
+    /// `turn_execute_card` fills `Send.parent` with a real pane — without it,
+    /// the host's send has no destination ("SendInput failed: no parent").
+    ///
+    /// Routed by `prompt_id`: a superseded turn (the user fired a newer `/fix`)
+    /// won't match, so a stale resolution is dropped. The event is emitted
+    /// before the agent responds, so the patch lands while the turn is still
+    /// `Submitted` — well before the fix card surfaces or the user executes it.
+    fn apply_autofix_target_resolved(
+        &mut self,
+        tab_id: Option<String>,
+        prompt_id: u64,
+        pane_id: String,
+    ) {
+        if pane_id.is_empty() {
+            return;
+        }
+        let key = tab_id.unwrap_or_else(|| self.active_tab_key().to_string());
+        let Some(tab) = self.tab_sessions.get_mut(&key) else {
+            return;
+        };
+        let Some(prompt) = tab.turn.prompt_mut() else {
+            return;
+        };
+        if prompt.id != prompt_id {
+            return;
+        }
+        let Some(autofix) = prompt.autofix.as_mut() else {
+            return;
+        };
+        autofix.target_pane_id = pane_id.clone();
+        tracing::info!(
+            target: "slash_cmd",
+            tab = %key,
+            prompt_id,
+            pane = %pane_id,
+            "bound /fix target pane",
+        );
+    }
+
+    /// `/sessions` — open the Agents picker for the active tab.
+    fn cmd_sessions(&mut self) {
+        // Mirror the Ctrl+Shift+/ keybinding's open path: jump straight to
+        // the Agents picker and seed a selection so Enter/Up/Down
+        // are immediately useful. Esc / Ctrl+Shift+/ still close the view.
+        // Per-tab — only flips the active tab's view state.
+        let tab_id = self.active_tab_key().to_string();
+        self.open_agents_view_for_tab(tab_id);
+        // session management path also kicks the lazy history scan here. Without this,
+        // /sessions left the registry empty and rendered a blank view
+        // forever (state stuck at NotStarted, no Loading row, no rows).
+        self.ensure_history_loaded();
+        self.project_active_tab_state();
+    }
+
+    /// `/restart` — reset the agent CLI subprocess. Behavior depends on which
+    /// transport this App is running on:
+    ///
+    /// * Standalone mode: the ACP client owns the agent CLI child.
+    ///   `restart_tx` triggers an in-process tear-down + respawn;
+    ///   subsequent prompts get a fresh session on each tab. The
+    ///   `Connecting("Restarting agent...")` state lasts until the
+    ///   new `initialize` round-trip lands.
+    ///
+    /// * Helper mode: master owns the agent CLI lifetime, so a
+    ///   single helper cannot restart it in-process. The helper's
+    ///   `restart_rx` arm asks the C++ side to force-restart the
+    ///   whole agent stack (`restart_agent_stack` SendEvent →
+    ///   TerminalPage tears down every agent pane,
+    ///   `SharedWta::Restart` respawns master on the same stable
+    ///   pipe name, then the active tab's pane is re-opened). The
+    ///   user briefly sees the agent pane flash closed and reopen
+    ///   with a clean session. The `Connecting("Restarting...")`
+    ///   state set below is short-lived — this helper process is
+    ///   on its way out as part of the pane teardown.
+    fn cmd_restart(&mut self) {
+        self.state = ConnectionState::Connecting("Restarting agent...".to_string());
+        self.session_to_tab.clear();
+        self.session_id.clear();
+        for (_, tab) in self.tab_sessions.iter_mut() {
+            tab.clear_chat_history();
+            tab.completed_turns.clear();
+            tab.selected_completed_turn_idx = None;
+            tab.session_id = None;
+        }
+        let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
+        self.publish_agent_status();
     }
 
     /// Width of the main area (chat / recs / perm / input) — matches the
@@ -7056,6 +8055,8 @@ impl App {
                     prompt,
                     buf: text.to_string(),
                 };
+                // New turn: restart the typewriter reveal from the top.
+                tab.reveal_chars = 0;
                 true
             }
             // Thought chunk while Submitted: enter Streaming with empty buf.
@@ -7069,6 +8070,7 @@ impl App {
                     prompt,
                     buf: String::new(),
                 };
+                tab.reveal_chars = 0;
                 false
             }
             // Streaming → Streaming, append message chunks only.
@@ -7191,7 +8193,13 @@ impl App {
         let target_tab = self.tab_for_session(session_id);
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
-        let autofix_pane = prompt.autofix.as_ref().map(|a| a.target_pane_id.clone());
+        // Empty `target_pane_id` (manual `/fix`) is not a real pane — filter
+        // it out so an empty-response turn doesn't emit a bottom-bar event.
+        let autofix_pane = prompt
+            .autofix
+            .as_ref()
+            .map(|a| a.target_pane_id.clone())
+            .filter(|s| !s.is_empty());
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Empty,
@@ -7576,20 +8584,26 @@ impl App {
         recommendations: RecommendationSet,
         phase_name: &str,
     ) {
-        let pane_id = self
+        let target_pane_id = self
             .session_tab(session_id)
             .turn
             .prompt()
             .and_then(|p| p.autofix.as_ref())
             .map(|a| a.target_pane_id.clone());
-        let Some(pane_id) = pane_id else {
+        // Defensive: only autofix turns surface a fix card here.
+        let Some(target_pane_id) = target_pane_id else {
             return;
         };
+        // An empty `target_pane_id` is a manually-invoked `/fix` with no
+        // concrete failing pane. Still surface the card below, but skip the
+        // bottom-bar / suggested-pane side effects — they key off a real
+        // failing pane (the Review pill, the Ctrl+Alt+. hotkey target).
+        let bar_pane = (!target_pane_id.is_empty()).then_some(target_pane_id);
         self.log_selection_phase_for(
             session_id,
             phase_name,
             &format!(
-                "pane={pane_id} title={:?}",
+                "pane={bar_pane:?} title={:?}",
                 recommendations.choices.first().map(|c| &c.title)
             ),
         );
@@ -7599,13 +8613,15 @@ impl App {
         // pane is closed, Idle when it's already open). The recommendation
         // card still lives in the turn below so the user can act on it
         // inside the pane — autofix no longer auto-executes.
-        {
-            let autofix = &mut self.tab_mut(&target_tab).autofix;
-            autofix.suggested_pane_id = Some(pane_id.clone());
-            autofix.pane_id = None;
-            autofix.armed_at = None;
+        if let Some(pane_id) = bar_pane.as_ref() {
+            {
+                let autofix = &mut self.tab_mut(&target_tab).autofix;
+                autofix.suggested_pane_id = Some(pane_id.clone());
+                autofix.pane_id = None;
+                autofix.armed_at = None;
+            }
+            self.emit_autofix_state_result(&target_tab, pane_id);
         }
-        self.emit_autofix_state_result(&target_tab, &pane_id);
         let rec_idx = recommended_choice_index(&recommendations);
         let summary = format_recommendations_for_chat(&recommendations);
         let turn_prompt_label = t!("chat.autofix_prompt_label").into_owned();
@@ -7647,20 +8663,25 @@ impl App {
         explanation: String,
         phase_name: &str,
     ) {
-        let pane_id = self
+        let target_pane_id = self
             .session_tab(session_id)
             .turn
             .prompt()
             .and_then(|p| p.autofix.as_ref())
             .map(|a| a.target_pane_id.clone());
-        let Some(pane_id) = pane_id else {
+        // Defensive: only autofix turns surface an explain answer here.
+        let Some(target_pane_id) = target_pane_id else {
             return;
         };
+        // Empty `target_pane_id` = a manually-invoked `/fix` with no concrete
+        // failing pane: surface the explanation, but skip the bottom-bar /
+        // suggested-pane side effects below.
+        let bar_pane = (!target_pane_id.is_empty()).then_some(target_pane_id);
         self.log_selection_phase_for(
             session_id,
             phase_name,
             &format!(
-                "pane={pane_id} title={title:?} chars={}",
+                "pane={bar_pane:?} title={title:?} chars={}",
                 explanation.chars().count()
             ),
         );
@@ -7689,13 +8710,15 @@ impl App {
         // Explanation lives in the chat above; mark the tab as having a
         // result pending review and surface the bar (Review when the pane
         // is closed, Idle when already open).
-        {
-            let tab = self.session_tab_mut(session_id);
-            tab.autofix.suggested_pane_id = Some(pane_id.clone());
-            tab.autofix.pane_id = None;
-            tab.autofix.armed_at = None;
+        if let Some(pane_id) = bar_pane.as_ref() {
+            {
+                let tab = self.session_tab_mut(session_id);
+                tab.autofix.suggested_pane_id = Some(pane_id.clone());
+                tab.autofix.pane_id = None;
+                tab.autofix.armed_at = None;
+            }
+            self.emit_autofix_state_result(&target_tab, pane_id);
         }
-        self.emit_autofix_state_result(&target_tab, &pane_id);
 
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
@@ -7953,7 +8976,7 @@ impl App {
     ///   - `set_agent_state` handler end — echoes C++'s request back so C++
     ///     mirrors it (the round-trip the new architecture is built on).
     ///   - `load_session` after the per-tab mutation.
-    ///   - Esc out of Agents view, `/sessions` slash command, Ctrl+C×2
+    ///   - Esc out of agent session view, `/sessions` slash command, Ctrl+C×2
     ///     multi-tab reset.
     ///   - Once at startup (after `--initial-view` has been applied) so
     ///     the bar and the agent-pane-open flag both pick up the spawn
@@ -8179,23 +9202,17 @@ fn set_welcome_shown_in_state() {
     let _ = std::fs::write(&path, &updated);
 }
 
-/// Find the packaged app's state.json.
+/// Find the packaged WT app's state.json.
+///
+/// Delegates to `runtime_paths::wt_state_json_path`, which:
+/// - prefers `GetCurrentPackageFamilyName` when wta itself is packaged
+///   (production: dev-sideload **or** store family — both resolve correctly), and
+/// - falls back to scanning the `Packages` subdirectory under
+///   `%LOCALAPPDATA%` (or `%APPDATA%` when `%LOCALAPPDATA%` is unset)
+///   for either known WT family prefix when wta is unpackaged (dev tree
+///   launched by packaged WT via `TerminalPage::_DetectWtaPath`).
 fn find_state_json() -> Option<std::path::PathBuf> {
-    let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
-    let packages_dir = std::path::Path::new(&local_app_data).join("Packages");
-    if let Ok(entries) = std::fs::read_dir(&packages_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if name_str.starts_with("IntelligentTerminal_") {
-                let candidate = entry.path().join("LocalState").join("state.json");
-                if candidate.exists() {
-                    return Some(candidate);
-                }
-            }
-        }
-    }
-    None
+    crate::runtime_paths::wt_state_json_path()
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -8301,13 +9318,58 @@ fn prev_word_boundary(input: &str, cursor_pos: usize) -> usize {
     i
 }
 
+// Slash-command behavior tests live in their own file. Declared as a child
+// of `app` (not the crate root) so they can reach `App`'s private dispatch
+// methods, and `#[path]` keeps the file flat in `src/` like the rest.
+#[cfg(test)]
+#[path = "slash_command_tests.rs"]
+mod slash_command_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
 
+    /// Custom-agent preflight regression: when the user's `acpAgent` is a
+    /// `custom:*` id, the preflight must NOT gate the TUI into Setup mode.
+    /// Previously `check_agent("custom:foo")` walked PATH for a literal
+    /// `custom:foo.exe`, always failed, and dropped the TUI into Setup with
+    /// the misleading `DEFAULT_PROFILE` "Agent" display name — blocking
+    /// `/restart` and other chat input until a re-save lifecycle-raced the
+    /// preflight failure.
+    #[test]
+    fn passed_for_custom_agent_never_triggers_setup_mode() {
+        let r = PreflightResult::passed_for_custom_agent("custom:foo");
+        // Identity preserved on the canonical id (downstream retry/auth
+        // paths still see `custom:foo`, not the bare exe name).
+        assert_eq!(r.agent_id, "custom:foo");
+        // Display name comes from the canonical id stripped of the
+        // `custom:` prefix — never the generic `DEFAULT_PROFILE` "Agent".
+        assert_eq!(r.display_name, "foo");
+        // `all_passed()` must return true so the PreflightComplete handler
+        // does NOT enter `AppMode::Setup` ("Agent not installed" banner).
+        assert!(r.all_passed());
+        assert_eq!(r.cli_status, CheckStatus::Passed);
+        assert!(matches!(r.auth_status, CheckStatus::Skipped));
+    }
+
+    /// Defensive: a bare `custom:` (empty name) or a non-`custom:` unknown id
+    /// must not produce an empty display name. Falls back to the canonical id.
+    #[test]
+    fn passed_for_custom_agent_falls_back_when_no_custom_suffix() {
+        let r = PreflightResult::passed_for_custom_agent("custom:");
+        assert_eq!(r.display_name, "custom:");
+        assert!(r.all_passed());
+
+        let r2 = PreflightResult::passed_for_custom_agent("some-unknown-id");
+        assert_eq!(r2.display_name, "some-unknown-id");
+        assert!(r2.all_passed());
+    }
+
     // Helper to create an App for testing (avoids needing real channels for simple state tests).
-    fn test_app() -> App {
+    // `pub(super)` so the sibling `slash_command_tests` module (see the
+    // `#[path]` mod in app.rs) can reuse it instead of duplicating App::new.
+    pub(super) fn test_app() -> App {
         let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
         let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
         let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -8510,7 +9572,7 @@ mod tests {
     fn session_info_to_agent_session_preserves_live_agent_pane_session_fields() {
         // Regression: master's new_session/load_session handlers stamp
         // status=Idle, cli_source=<resolved>, origin=AgentPane on the
-        // SessionInfo so helper-side F2 routing sees a Live row. Without
+        // SessionInfo so helper-side session management routing sees a Live row. Without
         // this stamping the row would land with all fields None, the
         // converter would map status=None -> AgentStatus::Historical (its
         // documented default), and Enter would fall through to the resume
@@ -8624,7 +9686,7 @@ mod tests {
 
     #[test]
     fn helper_agent_event_without_agent_session_id_does_not_publish_synthetic_to_master() {
-        // Regression for the user-reported duplicate F2 row:
+        // Regression for the user-reported duplicate session management row:
         //   "system32  Error                          29 minutes ago"
         //   "Agent pane session b832a8d3: system32  Active · copilot"
         //
@@ -8632,8 +9694,9 @@ mod tests {
         // hook, race, or hook from a workspace shell pane that doesn't
         // own an ACP session), the helper used to synthesize a
         // `pane:<guid>` placeholder, apply it locally, AND publish it to
-        // master. Master then surfaced the placeholder as a separate F2
-        // row alongside the real session, both pointing at the same
+        // master. Master then surfaced the placeholder as a separate
+        // session management row alongside the real session, both pointing
+        // at the same
         // underlying pane — hence the duplicate.
         //
         // Fix: keep the synthetic placeholder local for helper
@@ -9844,7 +10907,129 @@ mod tests {
         assert!(master_rx.try_recv().is_err(), "closed UI must not refetch");
     }
 
-    /// MVP F2 origin filter: with `ShellOnly`, agent-pane rows must
+    // ─── /model per-pane override ───────────────────────────────────────────
+
+    fn model_info(id: &str) -> AcpModelInfo {
+        AcpModelInfo {
+            id: id.to_string(),
+            name: id.to_uppercase(),
+            description: None,
+        }
+    }
+
+    /// `/model <id>` records a per-pane override and hot-applies it to *that*
+    /// tab's live session (a targeted `SetSessionModel`, not a fan-out).
+    #[test]
+    fn model_pick_overrides_and_applies_to_live_session() {
+        use crate::protocol::acp::client::MasterExtRequest;
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.available_models = vec![model_info("gpt-5.5"), model_info("gpt-5.4")];
+        app.current_tab_mut().session_id = Some("sid-1".into());
+
+        app.cmd_model("gpt-5.4".into());
+
+        assert_eq!(
+            app.current_tab().model_override.as_deref(),
+            Some("gpt-5.4"),
+            "the pane records its per-pane override"
+        );
+        match master_rx
+            .try_recv()
+            .expect("a live session gets set_session_model")
+        {
+            MasterExtRequest::SetSessionModel { session_id, model } => {
+                assert_eq!(model, "gpt-5.4");
+                assert_eq!(
+                    session_id.expect("targets just this session").0.to_string(),
+                    "sid-1"
+                );
+            }
+            other => panic!("expected SetSessionModel, got {other:?}"),
+        }
+    }
+
+    /// A global `acpModel` settings change is authoritative: it overrides a
+    /// pane's local `/model` pick — clearing the override, redirecting the
+    /// shared current model, and pushing the new model to the pane's session.
+    #[test]
+    fn global_settings_change_overrides_local_pick() {
+        use crate::protocol::acp::client::MasterExtRequest;
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.available_models = vec![model_info("local"), model_info("globalv2")];
+        app.current_tab_mut().session_id = Some("sid-1".into());
+
+        // Pane pins a local model first.
+        app.cmd_model("local".into());
+        let _ = master_rx.try_recv(); // drain the pick's own apply
+        assert_eq!(app.current_tab().model_override.as_deref(), Some("local"));
+
+        // Global settings change to a different model — authoritative.
+        app.apply_global_acp_model(Some("globalv2".into()));
+
+        assert_eq!(
+            app.current_tab().model_override,
+            None,
+            "a global change clears the per-pane override"
+        );
+        assert_eq!(
+            app.current_model_id.as_deref(),
+            Some("globalv2"),
+            "the shared current model follows the new global value"
+        );
+        match master_rx
+            .try_recv()
+            .expect("the previously-overridden pane still gets the new global model")
+        {
+            MasterExtRequest::SetSessionModel { session_id, model } => {
+                assert_eq!(model, "globalv2");
+                assert_eq!(session_id.unwrap().0.to_string(), "sid-1");
+            }
+            other => panic!("expected SetSessionModel, got {other:?}"),
+        }
+    }
+
+    /// A pane with no local pick follows the global `acpModel` on hot-reload.
+    #[test]
+    fn non_overridden_pane_follows_global_model() {
+        use crate::protocol::acp::client::MasterExtRequest;
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.current_tab_mut().session_id = Some("sid-1".into());
+        app.acp_model = Some("global".into());
+
+        app.send_acp_model_update();
+
+        match master_rx
+            .try_recv()
+            .expect("non-overridden pane follows global")
+        {
+            MasterExtRequest::SetSessionModel { session_id, model } => {
+                assert_eq!(model, "global");
+                assert_eq!(session_id.unwrap().0.to_string(), "sid-1");
+            }
+            other => panic!("expected SetSessionModel, got {other:?}"),
+        }
+    }
+
+    /// `/model` with an unrecognized argument warns and changes nothing.
+    #[test]
+    fn model_pick_rejects_unknown_model() {
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.available_models = vec![model_info("known")];
+        app.current_tab_mut().session_id = Some("sid-1".into());
+
+        app.cmd_model("nope".into());
+
+        assert!(
+            app.current_tab().model_override.is_none(),
+            "an unknown model must not set an override"
+        );
+        assert!(
+            master_rx.try_recv().is_err(),
+            "an unknown model must not emit a set_session_model"
+        );
+    }
+
+    /// MVP sessions origin filter: with `ShellOnly`, agent-pane rows must
     /// be hidden from `agents_rows_for_tab` (the cursor / Enter
     /// dispatch source of truth) — *not just* from `agents_view::render`.
     /// A bug where render filtered but `agents_rows_for_tab` didn't
@@ -9853,7 +11038,7 @@ mod tests {
     fn shell_only_filter_hides_agent_pane_rows_from_cursor_model() {
         use crate::agent_sessions::{OriginFilter, SessionOrigin};
         let mut app = test_app();
-        app.f2_origin_filter = OriginFilter::ShellOnly;
+        app.sessions_origin_filter = OriginFilter::ShellOnly;
         // Snapshot path: master pushed two rows — one tagged
         // AgentPane (Class A, hidden under ShellOnly), one tagged
         // Unknown (Class B, visible).
@@ -9871,12 +11056,12 @@ mod tests {
 
         // Flip to All — both rows must reappear so the un-MVP toggle
         // brings agent-pane rows back without any other code change.
-        app.f2_origin_filter = OriginFilter::All;
+        app.sessions_origin_filter = OriginFilter::All;
         let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
         assert_eq!(rows.len(), 2);
 
         // AgentPaneOnly is the inverse — only Class A surfaces.
-        app.f2_origin_filter = OriginFilter::AgentPaneOnly;
+        app.sessions_origin_filter = OriginFilter::AgentPaneOnly;
         let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].key, "class-a");
@@ -9891,7 +11076,7 @@ mod tests {
         use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
         use std::path::PathBuf;
         let mut app = test_app();
-        app.f2_origin_filter = OriginFilter::ShellOnly;
+        app.sessions_origin_filter = OriginFilter::ShellOnly;
         // No snapshot primed — `agents_rows_for_tab` goes through
         // `iter_sorted_with_filters` on the registry.
         app.agent_sessions.apply(SessionEvent::SessionStarted {
@@ -9915,35 +11100,35 @@ mod tests {
         assert_eq!(rows[0].key, "shell-key");
     }
 
-    /// `resolve_f2_origin_filter` reads the `WTA_F2_SHOW_AGENT_PANE`
+    /// `resolve_sessions_origin_filter` reads the `WTA_SESSIONS_SHOW_AGENT_PANE`
     /// env var. With it unset (or 0/false) the MVP default
     /// (`ShellOnly`) wins; with it set to a truthy value we flip to
     /// `All` so a single debug helper can see everything without a
     /// rebuild.
     ///
     /// Env vars are process-global, so this test serializes via the
-    /// `WTA_F2_SHOW_AGENT_PANE_TEST_LOCK` mutex shared with any other
+    /// `WTA_SESSIONS_SHOW_AGENT_PANE_TEST_LOCK` mutex shared with any other
     /// future test that touches the same var.
     #[test]
-    fn resolve_f2_origin_filter_respects_env_override() {
+    fn resolve_sessions_origin_filter_respects_env_override() {
         use crate::agent_sessions::OriginFilter;
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
-        std::env::remove_var("WTA_F2_SHOW_AGENT_PANE");
-        assert_eq!(crate::app::resolve_f2_origin_filter(), MVP_F2_ORIGIN_FILTER);
-        assert_eq!(MVP_F2_ORIGIN_FILTER, OriginFilter::ShellOnly);
+        std::env::remove_var("WTA_SESSIONS_SHOW_AGENT_PANE");
+        assert_eq!(crate::app::resolve_sessions_origin_filter(), MVP_SESSIONS_ORIGIN_FILTER);
+        assert_eq!(MVP_SESSIONS_ORIGIN_FILTER, OriginFilter::ShellOnly);
 
-        std::env::set_var("WTA_F2_SHOW_AGENT_PANE", "1");
-        assert_eq!(crate::app::resolve_f2_origin_filter(), OriginFilter::All);
+        std::env::set_var("WTA_SESSIONS_SHOW_AGENT_PANE", "1");
+        assert_eq!(crate::app::resolve_sessions_origin_filter(), OriginFilter::All);
 
-        std::env::set_var("WTA_F2_SHOW_AGENT_PANE", "true");
-        assert_eq!(crate::app::resolve_f2_origin_filter(), OriginFilter::All);
+        std::env::set_var("WTA_SESSIONS_SHOW_AGENT_PANE", "true");
+        assert_eq!(crate::app::resolve_sessions_origin_filter(), OriginFilter::All);
 
-        std::env::set_var("WTA_F2_SHOW_AGENT_PANE", "0");
-        assert_eq!(crate::app::resolve_f2_origin_filter(), MVP_F2_ORIGIN_FILTER);
+        std::env::set_var("WTA_SESSIONS_SHOW_AGENT_PANE", "0");
+        assert_eq!(crate::app::resolve_sessions_origin_filter(), MVP_SESSIONS_ORIGIN_FILTER);
 
-        std::env::remove_var("WTA_F2_SHOW_AGENT_PANE");
+        std::env::remove_var("WTA_SESSIONS_SHOW_AGENT_PANE");
     }
 
     #[test]
@@ -10027,6 +11212,147 @@ mod tests {
         );
     }
 
+    /// Failure / timeout path must unblock `refetch_in_flight` so the
+    /// next `SessionsChanged` (from a broadcast or the 5s tick) can
+    /// retry, while keeping the existing snapshot rendered. Without
+    /// this, an `ext_method` future that never resolves (the ACP-0.10
+    /// cancellation-safety bug) would freeze the view forever.
+    #[test]
+    fn agents_snapshot_failed_unblocks_refetch_without_dropping_snapshot() {
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+        let first_req = match master_rx.try_recv().unwrap() {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+                request_id
+            }
+            other => panic!("expected SessionsList, got {other:?}"),
+        };
+        // Land a real snapshot first so we can assert it is preserved
+        // across the subsequent failure.
+        app.handle_event(AppEvent::AgentsSnapshotLoaded {
+            request_id: first_req,
+            sessions: vec![session_info_for_test("a"), session_info_for_test("b")],
+        });
+        assert!(!app.current_tab().agents_view.refetch_in_flight);
+        let before_len = app
+            .current_tab()
+            .agents_view
+            .snapshot
+            .as_ref()
+            .map(|v| v.len())
+            .unwrap_or(0);
+        assert_eq!(before_len, 2);
+
+        // Kick a second refetch and report it as failed.
+        app.handle_event(AppEvent::SessionsChanged);
+        let second_req = match master_rx.try_recv().expect("second refetch sent") {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+                request_id
+            }
+            other => panic!("expected SessionsList, got {other:?}"),
+        };
+        assert!(app.current_tab().agents_view.refetch_in_flight);
+        app.handle_event(AppEvent::AgentsSnapshotFailed {
+            request_id: second_req,
+        });
+
+        // refetch_in_flight must clear; snapshot must NOT be wiped.
+        assert!(
+            !app.current_tab().agents_view.refetch_in_flight,
+            "failure path must unblock the gate"
+        );
+        let after_len = app
+            .current_tab()
+            .agents_view
+            .snapshot
+            .as_ref()
+            .map(|v| v.len())
+            .unwrap_or(0);
+        assert_eq!(
+            after_len, 2,
+            "failure path must not overwrite the existing snapshot"
+        );
+        assert!(
+            master_rx.try_recv().is_err(),
+            "no spurious immediate retry without dirty coalescing"
+        );
+    }
+
+    /// If pushes arrive while the in-flight `sessions/list` is doomed
+    /// to fail, the trailing-refetch behaviour must still fire on
+    /// `AgentsSnapshotFailed` — otherwise the user would have to wait
+    /// for the next 5s tick after every failure even when state has
+    /// already changed since the request went out.
+    #[test]
+    fn agents_snapshot_failed_fires_dirty_trailing_refetch() {
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+        let req_id = match master_rx.try_recv().unwrap() {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+                request_id
+            }
+            other => panic!("expected SessionsList, got {other:?}"),
+        };
+        // While the request is in-flight, more pushes arrive and
+        // coalesce into `dirty=true`.
+        for _ in 0..5 {
+            app.handle_event(AppEvent::SessionsChanged);
+        }
+        assert!(app.current_tab().agents_view.dirty);
+        assert!(
+            master_rx.try_recv().is_err(),
+            "additional pushes must coalesce while in flight"
+        );
+
+        app.handle_event(AppEvent::AgentsSnapshotFailed { request_id: req_id });
+        match master_rx
+            .try_recv()
+            .expect("dirty trailing refetch after failure")
+        {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { .. } => {}
+            other => panic!("expected SessionsList, got {other:?}"),
+        }
+        assert!(app.current_tab().agents_view.refetch_in_flight);
+        assert!(!app.current_tab().agents_view.dirty);
+    }
+
+    /// `AgentsSnapshotFailed` for a stale `request_id` (e.g. arrives
+    /// after the tab was closed and reopened) must be a no-op — it
+    /// must not clobber a fresh in-flight refetch's
+    /// `refetch_in_flight=true` flag.
+    #[test]
+    fn agents_snapshot_failed_ignores_stale_request_id() {
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+        let _stale = match master_rx.try_recv().unwrap() {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+                request_id
+            }
+            other => panic!("expected SessionsList, got {other:?}"),
+        };
+        // Resolve the first request, then kick another so latest_request_id
+        // moves on.
+        app.handle_event(AppEvent::AgentsSnapshotLoaded {
+            request_id: _stale,
+            sessions: vec![session_info_for_test("a")],
+        });
+        app.handle_event(AppEvent::SessionsChanged);
+        let _fresh = match master_rx.try_recv().unwrap() {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+                request_id
+            }
+            other => panic!("expected SessionsList, got {other:?}"),
+        };
+        assert!(app.current_tab().agents_view.refetch_in_flight);
+
+        // A stale failure must NOT touch the fresh in-flight state.
+        app.handle_event(AppEvent::AgentsSnapshotFailed { request_id: _stale });
+        assert!(
+            app.current_tab().agents_view.refetch_in_flight,
+            "stale failure must not clear the fresh in-flight gate"
+        );
+    }
+
     fn session_info_for_test(id: &str) -> crate::session_registry::SessionInfo {
         let mut info = crate::session_registry::SessionInfo::new(
             agent_client_protocol::SessionId::new(id),
@@ -10039,7 +11365,7 @@ mod tests {
         info
     }
 
-    // ─── F2 Agents view: Enter / Delete dispatch ───────────────────────────
+    // ─── agent session view: Enter / Delete dispatch ───────────────────────────
     //
     // Originally added in commit `e4723510e` ("Enter/Delete actions on Agents
     // view (M4.4-M4.6)") and lost in the post-#29 merge that stubbed out
@@ -10074,13 +11400,18 @@ mod tests {
     fn enter_on_history_row_dispatches_new_tab_with_resume() {
         use crate::agent_sessions::{CliSource, SessionEvent};
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        use std::path::PathBuf;
+        // Use a real existing directory so cwd_util::validate_starting_directory
+        // accepts it. A missing path would (correctly) be dropped from
+        // the argv — that behaviour is covered by
+        // `enter_on_history_row_with_missing_cwd_omits_d_flag` below.
+        let real_cwd = std::env::temp_dir();
+        let real_cwd_str = real_cwd.to_string_lossy().to_string();
         let mut app = test_app();
         app.agent_sessions.apply(SessionEvent::SessionStarted {
             key: "abc-123".into(),
             cli_source: CliSource::Claude,
             pane_session_id: "p".into(),
-            cwd: PathBuf::from("/work/proj"),
+            cwd: real_cwd.clone(),
             title: "t".into(),
         });
         app.agent_sessions.apply(SessionEvent::SessionStopped {
@@ -10108,10 +11439,24 @@ mod tests {
         );
         // The CLI invocation is still wrapped in `cmd /c` so .cmd shims
         // resolve via PATHEXT, but the legacy `cd /d` prefix is gone —
-        // cwd is threaded through wtcli's `-d` flag now.
+        // cwd is threaded through wtcli's `-d` flag now. Issue #135:
+        // a muted "Resuming … session …" banner is prepended so the
+        // user sees immediate feedback while the CLI cold-starts; the
+        // CLI's alt-screen TUI overwrites it on success. (Previously
+        // SGR 1;36;5 — bold + cyan + slow-blink — was used, but the
+        // blink + bold were too noisy. Now SGR 2;37 = dim + white, a
+        // low-contrast tone similar to the cwd line in a typical
+        // Copilot-CLI shell prompt.)
         assert!(
-            argv.contains("cmd /c claude --resume abc-123"),
-            "argv: {}",
+            argv.contains(
+                "cmd /c echo \x1b[2;37mResuming claude session abc-123...\x1b[0m"
+            ),
+            "expected dim-white Resuming banner echo; argv: {:?}",
+            argv
+        );
+        assert!(
+            argv.contains("&& claude --resume abc-123"),
+            "expected resume command chained after banner; argv: {}",
             argv
         );
         assert!(
@@ -10122,9 +11467,69 @@ mod tests {
         // Resume is keyed off the session's project cwd — the new tab's
         // primary pane must start in that directory so the CLI's session
         // store lookup (`~/.claude/projects/<encoded-cwd>/...`) succeeds.
+        let expected = format!("-d {}", real_cwd_str);
         assert!(
-            argv.contains("-d /work/proj"),
-            "expected -d <cwd>; argv: {}",
+            argv.contains(&expected),
+            "expected `{}` in argv: {}",
+            expected,
+            argv
+        );
+    }
+
+    /// When the stored cwd no longer exists on disk (e.g. user deleted
+    /// the project), `dispatch_resume` must omit `-d <cwd>` entirely so
+    /// wtcli falls back to the profile's startingDirectory. Without
+    /// this guard, `CreateProcessW` would fail with `ERROR_DIRECTORY`
+    /// and produce a visibly-broken pane.
+    #[test]
+    fn enter_on_history_row_with_missing_cwd_omits_d_flag() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use std::path::PathBuf;
+        let missing = {
+            let mut p = std::env::temp_dir();
+            p.push(format!(
+                "wta-missing-cwd-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0)
+            ));
+            p
+        };
+        assert!(!missing.exists());
+        let mut app = test_app();
+        app.agent_sessions.apply(SessionEvent::SessionStarted {
+            key: "abc-stale".into(),
+            cli_source: CliSource::Claude,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from(&missing),
+            title: "t".into(),
+        });
+        app.agent_sessions.apply(SessionEvent::SessionStopped {
+            key: "abc-stale".into(),
+            reason: "user_exit".into(),
+        });
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_list_state.select(Some(0));
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        let cmd = app
+            .last_dispatched_command_for_test()
+            .expect("a command was dispatched");
+        assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
+        let argv = cmd.argv.join(" ");
+        assert!(argv.contains("new-tab"), "argv: {}", argv);
+        // The stale cwd must NOT have leaked through as `-d`.
+        assert!(
+            !argv.contains("-d "),
+            "argv must omit -d when cwd is missing: {}",
+            argv
+        );
+        assert!(
+            !argv.contains(&missing.to_string_lossy().to_string()),
+            "argv must not embed the stale cwd: {}",
             argv
         );
     }
@@ -10139,7 +11544,11 @@ mod tests {
         // regression-checked.
         use crate::agent_sessions::{CliSource, SessionEvent};
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        use std::path::PathBuf;
+        // Use a real existing directory so cwd_util::validate_starting_directory
+        // accepts it. A missing cwd would (correctly) be omitted —
+        // covered by `shift_enter_on_history_row_with_missing_cwd_omits_cwd`.
+        let real_cwd = std::env::temp_dir();
+        let real_cwd_str = real_cwd.to_string_lossy().to_string();
         let mut app = test_app();
         // Capability gate: dispatch is only attempted when the agent
         // advertised loadSession. Without this, the handler
@@ -10149,7 +11558,7 @@ mod tests {
             key: "abc-123".into(),
             cli_source: CliSource::Claude,
             pane_session_id: "p".into(),
-            cwd: PathBuf::from("/work/proj"),
+            cwd: real_cwd.clone(),
             title: "t".into(),
         });
         app.agent_sessions.apply(SessionEvent::SessionStopped {
@@ -10169,7 +11578,76 @@ mod tests {
         let argv = cmd.argv.join(" ");
         assert!(argv.contains("resume_in_new_agent_tab"), "argv: {}", argv);
         assert!(argv.contains("--session-id abc-123"), "argv: {}", argv);
-        assert!(argv.contains("--cwd /work/proj"), "argv: {}", argv);
+        let expected = format!("--cwd {}", real_cwd_str);
+        assert!(
+            argv.contains(&expected),
+            "expected `{}` in argv: {}",
+            expected,
+            argv
+        );
+    }
+
+    /// Shift+Enter mirror of `enter_on_history_row_with_missing_cwd_omits_d_flag`:
+    /// when the stored cwd no longer exists, the resume-in-agent-pane
+    /// path must omit the `cwd` field from the emitted
+    /// `resume_in_new_agent_tab` event so WT's `_OpenNewTab` falls back
+    /// to the profile's startingDirectory (otherwise the new tab opens
+    /// with a broken connection).
+    #[test]
+    fn shift_enter_on_history_row_with_missing_cwd_omits_cwd() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use std::path::PathBuf;
+        let missing = {
+            let mut p = std::env::temp_dir();
+            p.push(format!(
+                "wta-missing-shift-cwd-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0)
+            ));
+            p
+        };
+        assert!(!missing.exists());
+        let mut app = test_app();
+        app.agent_supports_load_session = true;
+        app.agent_sessions.apply(SessionEvent::SessionStarted {
+            key: "abc-stale".into(),
+            cli_source: CliSource::Claude,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from(&missing),
+            title: "t".into(),
+        });
+        app.agent_sessions.apply(SessionEvent::SessionStopped {
+            key: "abc-stale".into(),
+            reason: "user_exit".into(),
+        });
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_list_state.select(Some(0));
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+
+        let cmd = app
+            .last_dispatched_command_for_test()
+            .expect("a command was dispatched");
+        assert_eq!(cmd.kind, DispatchedCommandKind::ResumeInAgentPane);
+        let argv = cmd.argv.join(" ");
+        assert!(argv.contains("resume_in_new_agent_tab"), "argv: {}", argv);
+        // Fallback contract: the --cwd flag (and any value) must be
+        // omitted entirely so the consumer uses its default. A
+        // regression that sent `--cwd ""` would slip past a
+        // string-contains check, hence the explicit flag assertion.
+        assert!(
+            !cmd.argv.iter().any(|a| a == "--cwd"),
+            "argv must omit --cwd when cwd is missing: {:?}",
+            cmd.argv
+        );
+        assert!(
+            !argv.contains(&missing.to_string_lossy().to_string()),
+            "argv must not embed the stale cwd: {}",
+            argv
+        );
     }
 
     #[test]
@@ -10269,10 +11747,10 @@ mod tests {
         use std::path::PathBuf;
         let mut app = test_app();
         // This test exercises the Class A (AgentPane) Enter routing,
-        // which the MVP F2 filter hides. Opt out so the row is
+        // which the MVP sessions filter hides. Opt out so the row is
         // visible to the cursor; the dispatch logic under test is
         // unchanged by the filter.
-        app.f2_origin_filter = OriginFilter::All;
+        app.sessions_origin_filter = OriginFilter::All;
         app.agent_supports_load_session = true;
         app.agent_sessions.apply(SessionEvent::SessionStarted {
             key: "abc-class-a".into(),
@@ -10313,7 +11791,7 @@ mod tests {
         // for the OriginFilter::All rationale — the MVP filter hides
         // Class A rows from the cursor model; this test exercises the
         // routing logic that fires when they ARE visible.
-        app.f2_origin_filter = OriginFilter::All;
+        app.sessions_origin_filter = OriginFilter::All;
         app.agent_supports_load_session = true;
         app.agent_sessions.apply(SessionEvent::SessionStarted {
             key: "abc-class-a-shift".into(),
@@ -10357,9 +11835,9 @@ mod tests {
         use std::path::PathBuf;
         let mut app = test_app();
         // Same rationale as the Class A dead-row tests above:
-        // MVP F2 filter hides AgentPane rows, this test verifies the
+        // MVP sessions filter hides AgentPane rows, this test verifies the
         // dispatch logic for when they are visible.
-        app.f2_origin_filter = OriginFilter::All;
+        app.sessions_origin_filter = OriginFilter::All;
         app.agent_sessions.apply(SessionEvent::SessionStarted {
             key: "live-class-a".into(),
             cli_source: CliSource::Claude,
@@ -10382,8 +11860,8 @@ mod tests {
     }
 
     /// Class B (Unknown origin) + plain Enter on a Live row preserves
-    /// the legacy focus behavior — this exercises the most common F2
-    /// path (user-started `copilot` in a normal pane via hooks).
+    /// the legacy focus behavior — this exercises the most common
+    /// session management path (user-started `copilot` in a normal pane via hooks).
     #[test]
     fn enter_on_class_b_live_row_focuses() {
         use crate::agent_sessions::{CliSource, SessionEvent};
@@ -10555,7 +12033,7 @@ mod tests {
     fn prune_phantom_session_keeps_ended_row_when_resumable() {
         // Symmetric to the per-CLI drop tests: if the on-disk
         // artefact has real content, the prune is a no-op so the user
-        // can resume via Enter in F2.
+        // can resume via Enter in session management view.
         use crate::agent_sessions::CliSource;
         let mut reg = make_ended_session(CliSource::Claude, "real-id");
         crate::app::prune_phantom_session_if_ended_with(&mut reg, "real-id", |_cli, _k| true);
@@ -10647,7 +12125,7 @@ mod tests {
         // session id (it only flushes when there's content). With
         // the previous lenient probe ("missing artefact → defer to
         // CLI → resumable=true"), the post-`SessionStopped` prune
-        // believed the row was real and left it Ended in F2. Pressing
+        // believed the row was real and left it Ended in session management view. Pressing
         // Enter then launched `claude --resume <id>` and dead-ended
         // on `No conversation found with session ID: <id>`.
         //
@@ -10809,7 +12287,7 @@ mod tests {
     #[test]
     fn closing_other_tab_preserves_per_tab_view_when_tab_changed_follows() {
         // Reproduces the user-reported bug:
-        //   tab1 has the session list (Agents view) open. User opens
+        //   tab1 has the session list (agent session view) open. User opens
         //   tab2, then closes tab2. Focus returns to tab1, the agent
         //   pane is still visible, but the session list has vanished
         //   — the user has to press the shortcut again to bring it
@@ -10848,7 +12326,7 @@ mod tests {
             });
         }
 
-        // (1) tab1 active, Agents view, selection at row 2.
+        // (1) tab1 active, agent session view, selection at row 2.
         let tab1 = "tab1-stable-id";
         let tab2 = "tab2-stable-id";
         app.tab_id = Some(tab1.into());
@@ -10926,6 +12404,168 @@ mod tests {
         assert!(
             !app.tab_mut("test-tab").turn.is_idle(),
             "autofix prompt should be in-flight on the target tab"
+        );
+    }
+
+    /// F3: a transport death (helper `handle_io` watchdog) moves the UI out of
+    /// `Connected`, and its connection.lost ("/restart") line must survive even
+    /// when a different error (e.g. the in-flight prompt failure, "returned as
+    /// is") is already shown — only identical consecutive errors collapse, so
+    /// the recovery hint is never hidden.
+    #[test]
+    fn transport_loss_surfaces_restart_hint_even_behind_another_error() {
+        let lost = t!("connection.lost").into_owned();
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        // In-flight prompt fails first (raw), then the watchdog's connection.lost.
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::Protocol {
+                code: -32603,
+                message: "pipe closed".to_string(),
+            },
+            message: "prompt error: pipe closed".to_string(),
+        });
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
+            message: lost.clone(),
+        });
+        assert!(
+            matches!(app.state, ConnectionState::Failed(_)),
+            "a transport loss must move the UI out of Connected (F3)"
+        );
+        assert!(
+            app.current_tab()
+                .messages
+                .iter()
+                .any(|m| matches!(m, ChatMessage::Error(s) if *s == lost)),
+            "the connection.lost /restart hint must be shown, not hidden behind the raw error"
+        );
+        // An identical connection.lost arriving again must not stack a duplicate.
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
+            message: lost.clone(),
+        });
+        let n = app
+            .current_tab()
+            .messages
+            .iter()
+            .filter(|m| matches!(m, ChatMessage::Error(s) if *s == lost))
+            .count();
+        assert_eq!(n, 1, "identical connection.lost must not duplicate");
+    }
+
+    /// Auth failures must reach the sign-in screen, not get flattened to a dead
+    /// `connection.lost`. Classification is typed (`AgentFailure::AuthRequired`),
+    /// done once at the helper boundary, so the handler routes purely on the
+    /// discriminant — no substring matching of the message text.
+    #[test]
+    fn auth_error_routes_to_signin_not_connection_lost() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+                message: "authentication required".to_string(),
+            },
+            message: "new_session over master pipe failed: authentication required"
+                .to_string(),
+        });
+        assert_eq!(
+            app.mode,
+            AppMode::Setup,
+            "an auth failure must route to the sign-in screen"
+        );
+        assert!(
+            !matches!(app.state, ConnectionState::Failed(_)),
+            "an auth failure must not become a Failed connection-lost state"
+        );
+    }
+
+    /// A soft stop is an *outcome*, not a connection failure: the handler must
+    /// append an informational System line carrying the localized reason text,
+    /// while leaving the connection `Connected` and never routing to the
+    /// sign-in screen. This is what keeps soft stops off the `AgentFailure`
+    /// axis — the gap the client-level emit test cannot cover.
+    #[test]
+    fn soft_stop_appends_system_line_without_changing_state() {
+        use crate::protocol::acp::soft_stop::SoftStopReason;
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+
+        app.handle_event(AppEvent::AgentSoftStop {
+            session_id: "0".to_string(),
+            reason: SoftStopReason::Refusal,
+        });
+
+        let expected = t!("system.stopped_refusal").into_owned();
+        assert!(
+            app.current_tab()
+                .messages
+                .iter()
+                .any(|m| matches!(m, ChatMessage::System(s) if *s == expected)),
+            "a soft stop must append its localized System line"
+        );
+        assert!(
+            matches!(app.state, ConnectionState::Connected),
+            "a soft stop must not change the connection state"
+        );
+        assert_ne!(
+            app.mode,
+            AppMode::Setup,
+            "a soft stop is not a failure — it must never route to sign-in"
+        );
+        assert!(
+            !app.current_tab()
+                .messages
+                .iter()
+                .any(|m| matches!(m, ChatMessage::Error(_))),
+            "a soft stop must not surface an Error line"
+        );
+    }
+
+    /// Each `SoftStopReason` must resolve to its own distinct localized line so
+    /// the user can tell truncation from a request-budget stop from a refusal.
+    #[test]
+    fn soft_stop_reasons_map_to_distinct_localized_lines() {
+        use crate::protocol::acp::soft_stop::SoftStopReason;
+        for (reason, key) in [
+            (SoftStopReason::MaxTokens, "system.stopped_max_tokens"),
+            (
+                SoftStopReason::MaxTurnRequests,
+                "system.stopped_max_turn_requests",
+            ),
+            (SoftStopReason::Refusal, "system.stopped_refusal"),
+        ] {
+            let mut app = test_app();
+            app.handle_event(AppEvent::AgentSoftStop {
+                session_id: "0".to_string(),
+                reason,
+            });
+            let expected = t!(key).into_owned();
+            assert!(
+                app.current_tab()
+                    .messages
+                    .iter()
+                    .any(|m| matches!(m, ChatMessage::System(s) if *s == expected)),
+                "reason {reason:?} must render the {key} line"
+            );
+        }
+    }
+
+    /// F7: while `Connecting`, the activity frame must keep advancing on Tick so
+    /// the indicator animates and a cold start doesn't look frozen.
+    #[test]
+    fn connecting_state_advances_activity_frame_on_tick() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connecting("Initializing ACP...".to_string());
+        let before = app.activity_frame;
+        app.handle_event(AppEvent::Tick);
+        assert_ne!(
+            app.activity_frame, before,
+            "the connecting indicator must keep animating (F7)"
         );
     }
 
@@ -11335,7 +12975,7 @@ mod tests {
     /// signal we get when the user `/exit`s a resumed Gemini pane is
     /// WT-native `connection_state: closed`. Without bridging that into a
     /// `SessionEvent::PaneClosed`, the row stays stuck at Idle/Working
-    /// forever in the F2 list.
+    /// forever in the session management list.
     #[test]
     fn connection_state_closed_transitions_agent_row_to_ended() {
         use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
@@ -11498,6 +13138,58 @@ mod tests {
             }),
         };
         app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
+    }
+
+    /// Submit a manual-`/fix`-style autofix turn: an autofix context whose
+    /// `target_pane_id` is empty (the App doesn't know the working pane until
+    /// the client task resolves it and plumbs it back).
+    fn submit_fix_prompt(app: &mut App, id: u64) {
+        let gen = {
+            let tab = app.tab_mut(DEFAULT_TAB_ID);
+            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
+            tab.autofix.generation
+        };
+        let prompt = SubmittedPrompt {
+            id,
+            text: String::new(),
+            submitted_at_unix_s: 0.0,
+            autofix: Some(AutofixContext {
+                target_pane_id: String::new(),
+                generation: gen,
+            }),
+        };
+        app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
+    }
+
+    fn fix_target_pane(app: &App) -> String {
+        app.current_tab()
+            .turn
+            .prompt()
+            .unwrap()
+            .autofix
+            .as_ref()
+            .unwrap()
+            .target_pane_id
+            .clone()
+    }
+
+    #[test]
+    fn fix_target_pane_is_late_bound_by_prompt_id() {
+        let mut app = test_app();
+        submit_fix_prompt(&mut app, 42);
+        assert_eq!(fix_target_pane(&app), "", "starts unbound");
+
+        // A resolution for a different prompt id (a superseded /fix) is ignored.
+        app.apply_autofix_target_resolved(Some(DEFAULT_TAB_ID.into()), 7, "pane-X".into());
+        assert_eq!(fix_target_pane(&app), "", "stale prompt_id must not patch");
+
+        // An empty pane id is a no-op.
+        app.apply_autofix_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, String::new());
+        assert_eq!(fix_target_pane(&app), "", "empty pane id is ignored");
+
+        // The matching prompt id binds the resolved working pane.
+        app.apply_autofix_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, "pane-7".into());
+        assert_eq!(fix_target_pane(&app), "pane-7", "matching id binds the pane");
     }
 
     #[test]
@@ -12054,6 +13746,52 @@ mod tests {
     }
 
     #[test]
+    fn typing_is_ignored_while_a_past_turn_is_selected() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: "old prompt".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        // Highlight the past turn, as Tab would.
+        app.current_tab_mut().selected_completed_turn_idx = Some(0);
+        assert!(!app.current_tab().input_has_nav_focus());
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+
+        assert!(
+            app.current_tab().input.is_empty(),
+            "typing must be ignored while a past turn is highlighted (input locked)",
+        );
+        assert_eq!(
+            app.current_tab().selected_completed_turn_idx,
+            Some(0),
+            "selection must survive the keystroke so Tab/↑ history nav keeps working",
+        );
+    }
+
+    #[test]
+    fn typing_returns_to_input_after_clearing_selection() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: "old prompt".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        app.current_tab_mut().selected_completed_turn_idx = Some(0);
+
+        // Esc backs out of history nav, then typing lands in the input again.
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+        app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "x");
+    }
+
+    #[test]
     fn up_down_does_not_scroll_chat_when_command_popup_visible() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut app = test_app();
@@ -12263,5 +14001,20 @@ mod tests {
             app.tab_mut(DEFAULT_TAB_ID).last_emitted_chip_override,
             None,
         );
+    }
+
+    #[test]
+    fn known_cli_id_returns_some_for_all_first_party_clis() {
+        use crate::agent_sessions::CliSource;
+        assert_eq!(known_cli_id(&CliSource::Claude),  Some("claude"));
+        assert_eq!(known_cli_id(&CliSource::Codex),   Some("codex"));
+        assert_eq!(known_cli_id(&CliSource::Copilot), Some("copilot"));
+        assert_eq!(known_cli_id(&CliSource::Gemini),  Some("gemini"));
+    }
+
+    #[test]
+    fn known_cli_id_returns_none_for_unknown_variant() {
+        use crate::agent_sessions::CliSource;
+        assert_eq!(known_cli_id(&CliSource::Unknown("anything".to_string())), None);
     }
 }

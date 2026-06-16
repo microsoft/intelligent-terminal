@@ -496,23 +496,47 @@
     <value>Avisos de Terceiros</value>
     <comment>A hyperlink name for the Terminal's third-party notices</comment>
   </data>
-  <data name="QuitDialog.CloseButtonText" xml:space="preserve">
+  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve">
     <value>Cancelar</value>
   </data>
-  <data name="QuitDialog.PrimaryButtonText" xml:space="preserve">
-    <value>Fechar tudo</value>
-  </data>
-  <data name="QuitDialog.Title" xml:space="preserve">
+  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve">
     <value>Deseja fechar todas as janelas?</value>
   </data>
-  <data name="CloseAllDialog.CloseButtonText" xml:space="preserve">
-    <value>Cancelar</value>
-  </data>
-  <data name="CloseAllDialog.PrimaryButtonText" xml:space="preserve">
+  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve">
     <value>Fechar tudo</value>
   </data>
-  <data name="CloseAllDialog.Title" xml:space="preserve">
+  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve">
     <value>Deseja fechar todas as guias?</value>
+  </data>
+  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve">
+    <value>Fechar tudo</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve">
+    <value>Deseja fechar esta guia?</value>
+  </data>
+  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve">
+    <value>Fechar guia</value>
+  </data>
+  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve">
+    <value>Deseja fechar este painel?</value>
+  </data>
+  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve">
+    <value>Fechar painel</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve">
+    <value>Deseja fechar estas guias?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve">
+    <value>Fechar guias</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve">
+    <value>Deseja fechar estes painéis?</value>
+  </data>
+  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve">
+    <value>Fechar painéis</value>
+  </data>
+  <data name="DontAskAgainCheckBox.Content" xml:space="preserve">
+    <value>Não me pergunte novamente</value>
   </data>
   <data name="CloseReadOnlyDialog.CloseButtonText" xml:space="preserve">
     <value>Cancelar</value>
@@ -745,6 +769,14 @@
     <value>Windows</value>
     <comment>This is displayed as a label for the context menu item that holds the submenu of available windows.</comment>
   </data>
+  <data name="NotificationMessage_TabActivity" xml:space="preserve">
+    <value>Atividade na aba "{0}"</value>
+    <comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment>
+  </data>
+  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">
+    <value>Atividade na aba "{0}" (janela "{1}")</value>
+    <comment>{0} is the tab title, {1} is the window name. Shown as the body of a desktop notification when tab activity is detected and the window has a name.</comment>
+  </data>
   <data name="DropPathTabRun.Text" xml:space="preserve">
     <value>Abrir uma nova guia no diretório inicial fornecido</value>
   </data>
@@ -881,10 +913,10 @@
     <value>Se definido, o comando será acrescentado ao comando padrão do perfil em vez de substituí-lo.</value>
   </data>
   <data name="RestartConnectionText" xml:space="preserve">
-    <value>Reiniciar conexão</value>
+    <value>Reiniciar sessão</value>
   </data>
   <data name="RestartConnectionToolTip" xml:space="preserve">
-    <value>Reiniciar a conexão do painel ativo</value>
+    <value>Reinicie a sessão no painel ativo</value>
   </data>
   <data name="SnippetPaneTitle.Text" xml:space="preserve">
     <value>Trechos</value>
@@ -929,45 +961,6 @@
   <data name="InvalidRegex" xml:space="preserve">
     <value>Foi encontrada uma expressão regular inválida.</value>
   </data>
-  <data name="ConfirmCloseDialog_Cancel" xml:space="preserve">
-    <value>Cancelar</value>
-  </data>
-  <data name="ConfirmCloseDialog_CloseAllTitle" xml:space="preserve">
-    <value>Deseja fechar todas as janelas?</value>
-  </data>
-  <data name="ConfirmCloseDialog_CloseAllPrimary" xml:space="preserve">
-    <value>Fechar tudo</value>
-  </data>
-  <data name="ConfirmCloseDialog_WindowTitle" xml:space="preserve">
-    <value>Deseja fechar todas as guias?</value>
-  </data>
-  <data name="ConfirmCloseDialog_WindowPrimary" xml:space="preserve">
-    <value>Fechar tudo</value>
-  </data>
-  <data name="ConfirmCloseDialog_TabTitle" xml:space="preserve">
-    <value>Deseja fechar esta guia?</value>
-  </data>
-  <data name="ConfirmCloseDialog_TabPrimary" xml:space="preserve">
-    <value>Fechar guia</value>
-  </data>
-  <data name="ConfirmCloseDialog_PaneTitle" xml:space="preserve">
-    <value>Deseja fechar este painel?</value>
-  </data>
-  <data name="ConfirmCloseDialog_PanePrimary" xml:space="preserve">
-    <value>Fechar painel</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultipleTabsTitle" xml:space="preserve">
-    <value>Deseja fechar estas guias?</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultipleTabsPrimary" xml:space="preserve">
-    <value>Fechar guias</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultiplePanesTitle" xml:space="preserve">
-    <value>Deseja fechar estes painéis?</value>
-  </data>
-  <data name="ConfirmCloseDialog_MultiplePanesPrimary" xml:space="preserve">
-    <value>Fechar painéis</value>
-  </data>
   <data name="CommandPaletteModeAnnouncement_AgentForegroundMode" xml:space="preserve">
     <value>Modo de solicitação ao agente</value>
   </data>
@@ -980,32 +973,26 @@
   <data name="CmdPalAgentBackgroundPrompt" xml:space="preserve">
     <value>Executar tarefa do agente em segundo plano...</value>
   </data>
-  <data name="NotificationMessage_TabActivity" xml:space="preserve">
-    <value>Atividade na guia "{0}"</value>
-  </data>
-  <data name="NotificationMessage_TabActivityInWindow" xml:space="preserve">
-    <value>Atividade na guia "{0}" (janela "{1}")</value>
-  </data>
   <data name="InitShellIntegrationSuccessTitle" xml:space="preserve">
     <value>Integração de shell inicializada</value>
   </data>
   <data name="InitShellIntegrationSuccessMessage" xml:space="preserve">
-    <value>A integração de shell foi configurada. Reinicie sua sessão do PowerShell ou abra uma nova guia para que as alterações entrem em vigor.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>A integração de shell foi configurada. Ela só terá efeito em novas sessões de shell (PowerShell, bash ou WSL bash).</value>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredTitle" xml:space="preserve">
     <value>Integração de shell já configurada</value>
   </data>
   <data name="InitShellIntegrationAlreadyConfiguredMessage" xml:space="preserve">
-    <value>A integração de shell já está configurada no seu perfil do PowerShell.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>A integração de shell já está configurada para os shells detectados no seu sistema (PowerShell, bash ou WSL bash).</value>
+    <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve">
     <value>Erro de integração de shell</value>
   </data>
   <data name="InitShellIntegrationErrorMessage" xml:space="preserve">
-    <value>Falha ao inicializar a integração de shell. Não foi possível determinar o caminho do seu perfil do PowerShell. Verifique se o shell de destino está instalado.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Falha ao inicializar a integração de shell. Examine os detalhes abaixo e tente novamente.</value>
+    <comment>Body of the error dialog shown when the shell-integration install fails for one or more shells. The actual per-shell error message (e.g. "bash: Profile directory not writable") is appended by the caller as a separate paragraph below this sentence.</comment>
   </data>
   <data name="AgentNotConfiguredTitle" xml:space="preserve">
     <value>O agente de IA não está disponível</value>
@@ -1056,11 +1043,11 @@
     <value>Agente</value>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Escolha o agente usado no painel do agente. Qualquer agente ACP compatível será detectado.</value>
+    <value>Escolha o agente usado no painel do agente compatível com ACP.</value>
     <comment>{Locked="ACP"}</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Este agente requer Node.js e NPX, que serão instalados automaticamente se ainda não estiverem presentes.</value>
+    <value>Este agente requer Node.js e NPX, que serão instalados automaticamente se ainda não estiverem presentes.</value>
     <comment>{Locked="Node.js","NPX"}</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -1078,7 +1065,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Habilitar isso instalará hooks de integração para rastrear sessões nos seus agentes.</value>
+    <value>Habilitar isso instalará hooks de integração para rastrear sessões nos seus agentes.</value>
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -1112,13 +1099,60 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Configurando...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Falha ao instalar o GitHub Copilot. Verifique sua conexão de rede e tente novamente.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ A instalação de {0} foi bloqueada por uma política do Gerenciador de Pacotes do Windows. Se você estiver em um dispositivo gerenciado, entre em contato com seu administrador de TI.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Falha ao instalar o Node.js. Verifique sua conexão de rede e tente novamente.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Não foi possível instalar {0} (código de erro {1}). Confira o log para obter detalhes ou instale {0} manualmente.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+  </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Não foi possível instalar {0}. Confira o log para obter detalhes ou instale {0} manualmente.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ O instalador de {0} relatou um erro (código {1}). Confira o log para obter detalhes ou instale {0} manualmente.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Não foi possível acessar o Gerenciador de Pacotes do Windows ao instalar {0}. Verifique sua conexão com a Internet (VPN, proxy ou firewall podem estar bloqueando) e tente novamente.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Nenhum instalador compatível para {0} está disponível neste sistema (talvez a versão do sistema operacional ou a arquitetura não tenha suporte). Instale {0} manualmente.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} não foi encontrado no catálogo do Gerenciador de Pacotes do Windows. Tente atualizar as fontes do winget ou instale {0} manualmente.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ A instalação de {0} levou mais de 20 minutos. Intelligent Terminal parou de aguardar, mas o instalador ainda pode estar em execução em segundo plano. Verifique Task Manager ou tente novamente mais tarde.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ O Gerenciador de Pacotes do Windows (winget) não está instalado ou não está disponível. Instale-o primeiro e tente novamente.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Falha ao instalar os hooks de sessão. O gerenciamento de sessões foi desativado. Você pode reativá-lo e tentar novamente, ou salvar para continuar sem ele.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Falha ao instalar a integração do shell. A detecção de erros foi desativada. Você pode reativá-la e tentar novamente, ou salvar para continuar sem ela.</value>
+  </data>
+  <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Saiba como corrigir isso manualmente</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Ativado</value>
@@ -1207,5 +1241,19 @@
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Permita que o Intelligent Terminal acesse o shell e detecte erros automaticamente.</value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Habilitar isso instalará a integração de shell para detectar falhas de comando. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Saiba mais</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>A política de execução do PowerShell está bloqueando scripts.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ A política de execução do PowerShell está bloqueando scripts. Detecção de erros desativada.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

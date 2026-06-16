@@ -74,6 +74,7 @@ commands.help_close_hint: "  Esc        Bu köməyi bağla"  # {Locked="Esc"}
 commands.help.summary: "Bu əmr siyahısını göstər"
 commands.clear.summary: "Söhbət sürüşmə tarixçəsini təmizlə (sessiyanı saxlayır)"
 commands.new.summary: "Təzə ACP sessiyası başlat (tarixçəni silir)"  # {Locked="ACP"}
+commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Agenti yenidən başlat"
 commands.stop.summary: "İcra olunan sorğunu ləğv et"
 commands.sessions.summary: "Tarixi sessiyalar seçicisini aç (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -130,12 +131,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. agent panelini göstər/gizlə • Ctrl+Sh
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "Agent başladılır..."
 connection.reconnecting: "Yenidən qoşulur..."
+connection.connecting_activity: "Agentə qoşulur…"
+connection.lost: "Agentlə bağlantı itdi. Yenidən qoşulmaq üçün /restart yazın."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "Ləğv edildi."
 system.no_prompt_in_flight: "İcra olunan sorğu yoxdur."
 system.authentication_failed: "Kimlik doğrulaması uğursuz oldu"
 system.command_copied_retry: "Əmr kopyalandı — başqa terminalda icra edin, sonra yenidən sınamaq üçün Enter basın"  # {Locked="Enter"}
+system.stopped_max_tokens: "Cavab modelin çıxış həddinə çatdıqdan sonra kəsildi."
+system.stopped_max_turn_requests: "Agent bu növbə üçün sorğu həddinə çatdıqdan sonra dayandı."
+system.stopped_refusal: "Agent bu sorğunu davam etdirməkdən imtina etdi."
+system.agent_busy: "Agent bu tabda məşğuldur — cari sorğunun tamamlanmasını gözləyin."
+system.resuming_session: "Sessiya %{session_id} bərpa olunur..."
+system.unknown_command: "Naməlum əmr \"%{command}\" — sorğu kimi göndərildi. Siyahı üçün /help yazın."  # {Locked="/help"}
+system.busy_use_stop: "Cari sorğunun tamamlanmasını gözləyin və ya əvvəlcə /stop istifadə edin."  # {Locked="/stop"}
+system.cannot_focus_session: "Sessiya %{session_id} fokuslana bilmir: canlı görünür, amma hələ heç bir panel GUID-i bağlanmayıb. Bir az sonra yenidən cəhd edin."
+system.cannot_resume_no_load_session: "Agent panelində bərpa etmək mümkün deyil: %{agent} ACP `loadSession` imkanını elan etməyib. Bunun əvəzinə yeni terminal panelində bərpa etmək üçün Enter (Shift olmadan) basın."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "%{agent} sessiyasını bərpa etmək mümkün deyil: bu agentdə `--resume` üslublu bayraq yoxdur. Əvəzində ACP vasitəsilə agent panelində bərpa etməyi sınamaq üçün Shift+Enter basın."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Sessiya %{session_id} bərpa edilə bilmir: onun mənbə agenti bu WTA quruluşuna məlum deyil."
+system.cannot_resume_phantom_via_flag: "%{agent} sessiyası %{session_id} bərpa edilə bilmir: o başladılıb, amma heç bir söhbət toplanmayıb, buna görə %{agent} özü bərpanı rədd edəcək. Sətir silinir."
+system.cannot_resume_phantom_via_load: "%{agent} sessiyası %{session_id} bərpa edilə bilmir: o başladılıb, amma heç bir söhbət toplanmayıb, buna görə %{agent} yükləməni rədd edəcək. Sətir silinir."
+system.fallback.this_agent: "bu agent"
+system.fallback.connected_agent: "qoşulmuş agent"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Pəncərə tapılmadı."
@@ -181,3 +199,13 @@ time.hour_singular: "%{count} saat əvvəl"
 time.hours_other: "%{count} saat əvvəl"
 time.day_singular: "%{count} gün əvvəl"
 time.days_other: "%{count} gün əvvəl"
+
+# ── Tövsiyənin icrası (src/coordinator.rs) ──────────────────────────────────
+system.choice_execution_failed: "Seçim %{choice} uğursuz oldu: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Bu panel üçün modeli seçin (birbaşa keçmək üçün /model <id>)"  # {Locked="/model","<id>"}
+model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Qoşulmuş agent heç bir seçilə bilən model elan etmədi."
+system.model_set: "Bu panel üçün model %{model} olaraq təyin edildi."  # {Locked="%{model}"}
+system.model_unknown: "Naməlum model %{model} — əlçatan siyahını görmək üçün /model yazın."  # {Locked="%{model}","/model"}

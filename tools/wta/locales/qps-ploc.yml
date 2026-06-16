@@ -59,7 +59,7 @@ chat.turn_executed: "[→ éẋéçûţéð: %{title}!!]"
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "[Àśķ åñÿţĥïñğ, / ƒöŕ çöḿḿåñďś..!!!! !!!!]"  # {Locked="/"}
 input.placeholder.connecting: "[çöññéçţïñğ...!!]"
-input.placeholder.disconnected: "[ďïśçöññéçţ!!]"
+input.placeholder.disconnected: "[ďïśçöññéçţéď!!]"
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -121,12 +121,29 @@ layout.welcome_hint: "[(Ctrl+Shift+. ţö śĥöŵ/ĥïďé åğéñţ ṗåñé
 # ── Connection state ────────────────────────────────────────────────────────
 connection.starting: "[Ŝţåŕţïñğ åğéñţ...!!]"
 connection.reconnecting: "[Ŕéçöññéçţïñğ...!!]"
+connection.connecting_activity: "[Çöññéçţïñğ ţö åğéñţ…!!]"
+connection.lost: "[Çöññéçţïöñ ţö ţĥé åğéñţ ŵåś ĺöśţ. Ţýṗé /restart ţö ŕéçöññéçţ.!!]"  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.cancelled: "[Çåñçéĺĺéď.!!]"
 system.no_prompt_in_flight: "[Ñö ṗŕöḿṗţ ïñ ƒĺïğĥţ.!!!! !!!!]"
 system.authentication_failed: "[Àûţĥéñţïçåţïöñ ƒåïĺéď!!!! !!!!]"
 system.command_copied_retry: "[Çöḿḿåñď çöṗïéď — ŕûñ ïţ ïñ åñöţĥéŕ ţéŕḿïñåĺ, ţĥéñ ṗŕéśś Enter ţö ŕéţŕÿ!!!! !!!! !!!! !!!! !!!!]"  # {Locked="Enter"}
+system.stopped_max_tokens: "[Ţĥé ŕéśṗöñśé ŵåś çûţ öƒƒ åƒţéŕ ŕéåçĥïñǧ ţĥé ḿöďéĺ'ś öûţṗûţ ĺïḿïţ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
+system.stopped_max_turn_requests: "[Ţĥé åǧéñţ śţöṗṗéď åƒţéŕ ŕéåçĥïñǧ ïţś ŕéqûéśţ ĺïḿïţ ƒöŕ ţĥïś ţûŕñ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
+system.stopped_refusal: "[Ţĥé åǧéñţ ďéçĺïñéď ţö çöñţïñûé ŵïţĥ ţĥïś ŕéqûéśţ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
+system.agent_busy: "[Àğéñţ ïś ƀûśÿ öñ ţĥïś ţåƀ — ŵåïţ ƒöŕ ţĥé çûŕŕéñţ ṗŕöḿṗţ ţö ƒïñïśĥ.!!!! !!!! !!!! !!!! !!!!]"
+system.resuming_session: "[Ŕéśûḿïñğ śéśśïöñ %{session_id}...!!!! !!!!]"
+system.unknown_command: "[Ûñķñöŵñ çöḿḿåñď \"%{command}\" — śéñţ åś ṗŕöḿṗţ. Ţÿṗé /help ƒöŕ ţĥé ĺïśţ.!!!! !!!! !!!! !!!! !!!!]"  # {Locked="/help"}
+system.busy_use_stop: "[Ŵåïţ ƒöŕ ţĥé çûŕŕéñţ ṗŕöḿṗţ ţö ƒïñïśĥ, öŕ /stop ƒïŕśţ.!!!! !!!! !!!! !!!!]"  # {Locked="/stop"}
+system.cannot_focus_session: "[Çåññöţ ƒöçûś śéśśïöñ %{session_id}: ïţ åṗṗéåŕś ĺïṽé ƀûţ ñö ṗåñé ĞÛÎĎ ïś ƀöûñď ÿéţ. Ţŕÿ åğåïñ ïñ å ḿöḿéñţ.!!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
+system.cannot_resume_no_load_session: "[Çåññöţ ŕéśûḿé ïñ åğéñţ ṗåñé: %{agent} ďïď ñöţ åďṽéŕţïśé ţĥé ACP `loadSession` çåṗåƀïĺïţÿ. Ṗŕéśś Enter (ŵïţĥöûţ Shift) ţö ŕéśûḿé ïñ å ñéŵ ţéŕḿïñåĺ ṗåñé ïñśţéåď.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ: ţĥïś åğéñţ ĥåś ñö `--resume`-śţÿĺé ƒĺåğ. Ṗŕéśś Shift+Enter ţö ţŕÿ ŕéśûḿïñğ ïñśïďé ţĥé åğéñţ ṗåñé ṽïå ACP ïñśţéåď.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "[Çåññöţ ŕéśûḿé śéśśïöñ %{session_id}: ïţś śöûŕçé åğéñţ ïś ûñķñöŵñ ţö ţĥïś ƀûïĺď.!!!! !!!! !!!! !!!! !!!!]"
+system.cannot_resume_phantom_via_flag: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ %{session_id}: ïţ ŵåś śţåŕţéď ƀûţ ñéṽéŕ åççûḿûĺåţéď åñÿ çöñṽéŕśåţïöñ, śö %{agent} ïţśéĺƒ ŵöûĺď ŕéĵéçţ ţĥé ŕéśûḿé. Ŕéḿöṽïñğ ţĥé ŕöŵ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
+system.cannot_resume_phantom_via_load: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ %{session_id}: ïţ ŵåś śţåŕţéď ƀûţ ñéṽéŕ åççûḿûĺåţéď åñÿ çöñṽéŕśåţïöñ, śö %{agent} ŵöûĺď ŕéĵéçţ ţĥé ĺöåď. Ŕéḿöṽïñğ ţĥé ŕöŵ.!!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
+system.fallback.this_agent: "[ţĥïś åğéñţ!!]"
+system.fallback.connected_agent: "[ţĥé çöññéçţéď åğéñţ!!!! !!!!]"
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "[Ñö ŵïñďöŵś ƒöûñď.!!]"
@@ -179,6 +196,17 @@ time.days_other: "%{count} days ago"
 commands.help.summary: "[Śĥöŵ ţĥïś çöɱɱåñð ĺïśţ]"
 commands.clear.summary: "[Çĺéåŕ ţĥé çĥåţ śçŕöĺĺɓåçķ (ķéépś śéśśïöñ)]"
 commands.new.summary: "[Śţåŕţ å ƒŕéśĥ ACP śéśśïöñ (ðŕöpś ĥïśţöŕý)]"
+commands.fix.summary: "[Ďïåğñöśé ţĥé åçţïṽé ţéŕɱïñåĺ åñď śûğğéśţ å ƒïẋ (/fix <hint>)!!!! !!!! !!!!]"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "[Ŕéśţåŕţ åğéñţ]"
 commands.stop.summary: "[Çåñçéĺ ţĥé ïñ-ƒĺïğĥţ pŕöɱpţ]"
 commands.sessions.summary: "[Öpéñ ţĥé ĥïśţöŕïçåĺ śéśśïöñś pïçķéŕ (Ctrl+Shift+/)]"
+
+# ── Recommendation execution (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "[Çĥöïçé %{choice} ƒåïĺéď: %{error}!!!! !!!!]"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "[Ṗïçķ ţĥé ḿöďéĺ ƒöŕ ţĥïś ṗåñé (/model <id> ţö śŵïţçĥ ďïŕéçţĺÿ)!!!! !!!! !!!! !!!!]"  # {Locked="/model","<id>"}
+model_picker.title: "[Ŝéĺéçţ ḿöďéĺ (↑ ↓ • Enter • Esc)!!!! !!!!]"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ śéĺéçţåƀĺé ḿöďéĺś.!!!! !!!! !!!! !!!!]"
+system.model_set: "[Ḿöďéĺ ƒöŕ ţĥïś ṗåñé śéţ ţö %{model}.!!!! !!!! !!!!]"  # {Locked="%{model}"}
+system.model_unknown: "[Ûñķñöŵñ ḿöďéĺ %{model} — ţÿṗé /model ţö śéé ţĥé åṽåïĺåƀĺé ĺïśţ.!!!! !!!! !!!! !!!!]"  # {Locked="%{model}","/model"}

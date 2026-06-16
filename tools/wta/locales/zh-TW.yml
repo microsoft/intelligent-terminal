@@ -115,12 +115,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. 顯示/隱藏智能體窗格 • Ctrl+Shif
 # ── 連線狀態 ────────────────────────────────────────────────────────────
 connection.starting: "正在啟動智能體..."
 connection.reconnecting: "正在重新連線..."
+connection.connecting_activity: "正在連線到智能體…"
+connection.lost: "與智能體的連線已中斷。輸入 /restart 以重新連線。"  # {Locked="/restart"}
 
 # ── 系統訊息 (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "已取消。"
 system.no_prompt_in_flight: "沒有進行中的提示。"
 system.authentication_failed: "驗證失敗"
 system.command_copied_retry: "命令已複製 — 在另一個終端機中執行，然後按 Enter 重試"  # {Locked="Enter"}
+system.stopped_max_tokens: "達到模型的輸出上限後，回覆遭到截斷。"
+system.stopped_max_turn_requests: "達到本回合的要求上限後，智能體已停止。"
+system.stopped_refusal: "智能體拒絕繼續處理此要求。"
+system.agent_busy: "智能體正在此索引標籤上忙碌 — 請等待目前提示完成。"
+system.resuming_session: "正在恢復工作階段 %{session_id}..."
+system.unknown_command: "未知命令 \"%{command}\" — 已作為提示傳送。輸入 /help 查看清單。"  # {Locked="/help"}
+system.busy_use_stop: "請等待目前提示完成，或先執行 /stop。"  # {Locked="/stop"}
+system.cannot_focus_session: "無法聚焦工作階段 %{session_id}：它似乎處於即時狀態，但尚未繫結窗格 GUID。請稍後再試。"
+system.cannot_resume_no_load_session: "無法在智能體窗格中恢復：%{agent} 未公布 ACP `loadSession` 功能。請改按 Enter（不按 Shift）以在新的終端機窗格中恢復。"  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "無法恢復 %{agent} 工作階段：此智能體沒有 `--resume` 樣式旗標。請按 Shift+Enter，改為嘗試透過 ACP 在智能體窗格內恢復。"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "無法恢復工作階段 %{session_id}：此版本無法識別其來源智能體。"
+system.cannot_resume_phantom_via_flag: "無法恢復 %{agent} 工作階段 %{session_id}：它已啟動但從未累積任何對話，因此 %{agent} 本身會拒絕恢復。正在移除此列。"
+system.cannot_resume_phantom_via_load: "無法恢復 %{agent} 工作階段 %{session_id}：它已啟動但從未累積任何對話，因此 %{agent} 會拒絕載入。正在移除此列。"
+system.fallback.this_agent: "此智能體"
+system.fallback.connected_agent: "已連線的智能體"
 
 # ── 執行階段 CLI 輸出 (src/main.rs) ────────────────────────────────────────
 output.no_windows: "找不到視窗。"
@@ -173,6 +190,17 @@ time.days_other: "%{count} 天前"
 commands.help.summary: "顯示此命令清單"
 commands.clear.summary: "清除聊天記錄（保留工作階段）"
 commands.new.summary: "啟動新的 ACP 工作階段（清空歷史記錄）"
+commands.fix.summary: "診斷作用中的終端機並建議修正方式（/fix <hint>）"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "重新啟動智能體"
 commands.stop.summary: "取消進行中的提示"
 commands.sessions.summary: "開啟歷史工作階段選擇器（Ctrl+Shift+/）"
+
+# ── 建議執行 (src/coordinator.rs) ───────────────────────────
+system.choice_execution_failed: "選項 %{choice} 執行失敗：%{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "為此窗格選擇模型（使用 /model <id> 可直接切換）"  # {Locked="/model","<id>"}
+model_picker.title: "選擇模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "已連線的智能體未公布任何可選取的模型。"
+system.model_set: "此窗格的模型已設定為 %{model}。"  # {Locked="%{model}"}
+system.model_unknown: "未知模型 %{model} — 輸入 /model 查看可用清單。"  # {Locked="%{model}","/model"}

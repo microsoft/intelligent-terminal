@@ -1553,6 +1553,10 @@
     <value>Finestra di Flash</value>
     <comment>An option to choose from for the "bell style" setting. When selected, a visual notification is used to notify the user. In this case, the window is flashed.</comment>
   </data>
+  <data name="Profile_BellStyleNotification.Content" xml:space="preserve">
+    <value>Notifica desktop</value>
+    <comment>An option to choose from for the "bell style" setting. When selected, a Windows desktop notification (toast) is sent to notify the user.</comment>
+  </data>
   <data name="ColorScheme_AddNewButton.Text" xml:space="preserve">
     <value>Aggiungi nuovo</value>
     <comment>Button label that creates a new color scheme.</comment>
@@ -2197,6 +2201,26 @@
     <value>Avvisa in caso di chiusura di più schede</value>
     <comment>Header for a control to toggle whether to show a confirm dialog box when closing the application with multiple tabs open.</comment>
   </data>
+  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve">
+    <value>Avvisa in caso di chiusura</value>
+    <comment>Header for a dropdown controlling when to show a confirmation dialog before closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve">
+    <value>Controlla quando viene visualizzata una finestra di dialogo di conferma prima di chiudere schede o finestre. "Sempre" visualizza la finestra di dialogo quando si chiude un riquadro.</value>
+    <comment>Help text associated with Globals_ConfirmOnClose. "Always" refers to Globals_ConfirmOnCloseAlways.Content.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve">
+    <value>Mai</value>
+    <comment>Option associated with Globals_ConfirmOnClose. "Never" means that the system will never display a warning when closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve">
+    <value>Sempre</value>
+    <comment>Option associated with Globals_ConfirmOnClose. "Always" means that the system will always display a warning when closing.</comment>
+  </data>
+  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve">
+    <value>Più schede o pannelli</value>
+    <comment>Option associated with Globals_ConfirmOnClose. The system will display a warning when multiple tabs or panes are present.</comment>
+  </data>
   <data name="Globals_InputServiceWarning.Header" xml:space="preserve">
     <value>Avvisa quando il servizio "Tastiera virtuale e pannello per la grafia" è disabilitato</value>
   </data>
@@ -2370,8 +2394,8 @@
     <comment>Accessible name for a control allowing the user to select the icon from a list of built in icons.</comment>
   </data>
   <data name="Nav_NewTabMenu.Content" xml:space="preserve">
-    <value>Menu Nuova scheda</value>
-    <comment>Header for the "new tab menu" menu item. This navigates to a page that lets you see and modify settings related to the app's new tab menu (i.e. profile ordering, nested folders, dividers, etc.)</comment>
+    <value>Menu a discesa</value>
+    <comment>Header for the "dropdown menu" menu item (formerly "new tab menu"). This navigates to a page that lets you see and modify settings related to the app's dropdown menu (i.e. profile ordering, nested folders, dividers, etc.)</comment>
   </data>
   <data name="NewTabMenuEntry_Separator.Text" xml:space="preserve">
     <value>&lt;Separator&gt;</value>
@@ -2795,13 +2819,7 @@
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Monitora le sessioni tra agenti. Necessario per la gestione delle sessioni degli agenti.</value><comment>Description for the Agent Hooks install section.</comment></data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Installa hook</value></data>
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>Aggiorna</value></data>
-  <data name="Globals_ConfirmOnClose.Header" xml:space="preserve"><value>Avvisa in caso di chiusura</value></data>
-  <data name="Globals_ConfirmOnClose.HelpText" xml:space="preserve"><value>Controlla quando viene visualizzata una finestra di conferma prima di chiudere schede o finestre. "Sempre" mostra la finestra di dialogo anche quando si chiude un solo riquadro.</value></data>
-  <data name="Globals_ConfirmOnCloseNever.Content" xml:space="preserve"><value>Mai</value></data>
-  <data name="Globals_ConfirmOnCloseAlways.Content" xml:space="preserve"><value>Sempre</value></data>
-  <data name="Globals_ConfirmOnCloseAutomatic.Content" xml:space="preserve"><value>Più schede o riquadri</value></data>
-  <data name="Profile_BellStyleNotification.Content" xml:space="preserve"><value>Notifica desktop</value></data>
-  <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://aka.ms/intelligentterminal/portable-mode</value><comment>{Locked}</comment></data>
+  <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://go.microsoft.com/fwlink/?linkid=2229086</value><comment>{Locked}</comment></data>
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>Questa impostazione è gestita dalla tua organizzazione.</value>
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
@@ -2821,6 +2839,14 @@
   <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
     <value>Rimozione degli hooks Gemini...</value>
     <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  </data>
+  <data name="AIAgents_HooksRemovingCodexSummary" xml:space="preserve">
+    <value>Rimozione degli hooks Codex...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
+  </data>
+  <data name="AIAgents_CodexTrustHint.Text" xml:space="preserve">
+    <value>Dopo l'installazione, esegui /hooks in Codex e approva per considerare attendibili i nuovi gestori di eventi.</value>
+    <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
   </data>
   <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
     <value>Operazione non riuscita: impossibile trovare wta.exe</value>

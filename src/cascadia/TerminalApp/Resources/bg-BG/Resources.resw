@@ -163,11 +163,11 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Изберете агента, използван в панела на агента. Всеки съвместим ACP агент ще бъде открит автоматично.</value>
+    <value>Изберете агента, използван в панела на агента, който поддържа ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ℹ Този агент изисква Node.js и NPX, които ще бъдат инсталирани автоматично, ако все още не са налични.</value>
+    <value>Този агент изисква Node.js и NPX, които ще бъдат инсталирани автоматично, ако все още не са налични.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
@@ -185,7 +185,7 @@
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ℹ Активирането на тази функция ще инсталира интеграционни hooks за проследяване на сесии във вашите агенти.</value>
+    <value>Активирането на тази функция ще инсталира интеграционни hooks за проследяване на сесии във вашите агенти.</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
@@ -220,14 +220,51 @@
   <data name="FreOverlay_SettingUp" xml:space="preserve">
     <value>Настройване...</value>
   </data>
-  <data name="FreOverlay_InstallErrorCopilot" xml:space="preserve">
-    <value>⚠ Неуспешно инсталиране на GitHub Copilot. Проверете мрежовата връзка и опитайте отново.</value>
-    <comment>{Locked="GitHub Copilot"}</comment>
+  <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
+    <value>⚠ Инсталирането на {0} е блокирано от правила на Диспечера на пакети на Windows. Ако използвате управлявано устройство, свържете се с ИТ администратора.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
-  <data name="FreOverlay_InstallErrorNode" xml:space="preserve">
-    <value>⚠ Неуспешно инсталиране на Node.js. Проверете мрежовата връзка и опитайте отново.</value>
-    <comment>{Locked="Node.js"}</comment>
+  <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
+    <value>⚠ Неуспешно инсталиране на {0} (код на грешка {1}). Вижте регистрационния файл за подробности или инсталирайте {0} ръчно.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
+  <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
+    <value>⚠ Неуспешно инсталиране на {0}. Вижте регистрационния файл за подробности или инсталирайте {0} ръчно.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
+    <value>⚠ Инсталаторът на {0} съобщи за грешка (код {1}). Вижте регистрационния файл за подробности или инсталирайте {0} ръчно.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Network" xml:space="preserve">
+    <value>⚠ Неуспешна връзка с Диспечера на пакети на Windows при инсталиране на {0}. Проверете интернет връзката (VPN, прокси или защитна стена може да я блокира) и опитайте отново.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+  </data>
+  <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
+    <value>⚠ Няма съвместим инсталатор за {0} на тази система (версията на ОС или архитектурата може да не се поддържат). Инсталирайте {0} ръчно.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
+    <value>⚠ {0} не беше намерен в каталога на Диспечера на пакети на Windows. Опитайте да обновите източниците на winget или инсталирайте {0} ръчно.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+  </data>
+  <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
+    <value>⚠ Инсталирането на {0} отне повече от 20 минути. Intelligent Terminal спря да чака, но инсталаторът може все още да работи във фонов режим. Проверете Task Manager или опитайте отново по-късно.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
+    <value>⚠ Диспечерът на пакети на Windows (winget) не е инсталиран или не е наличен. Първо го инсталирайте, след което опитайте отново.</value>
+    <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
+    <value>GitHub Copilot</value>
+    <comment>{Locked="GitHub Copilot"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Copilot CLI prerequisite.</comment>
+  </data>
+  <data name="FreOverlay_PackageDisplayName_Node" xml:space="preserve">
+    <value>Node.js (LTS)</value>
+    <comment>{Locked="Node.js","LTS"} Product display name substituted into the FreOverlay_InstallError_* templates when reporting a winget install failure for the Node.js prerequisite.</comment>
+  </data>
+
   <data name="FreOverlay_ToggleOn" xml:space="preserve">
     <value>Вкл.</value>
   </data>
@@ -303,5 +340,27 @@
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
     <value>Разрешете на Intelligent Terminal достъп до вашата обвивка и автоматично откриване на грешки.</value>
+  </data>
+<data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
+    <value>⚠ Неуспешно инсталиране на интеграция с обвивката. Откриването на грешки е изключено. Можете да го включите отново и да опитате пак, или да запазите, за да продължите без него.</value>
+  </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
+    <value>⚠ Неуспешно инсталиране на session hooks. Управлението на сесиите е изключено. Можете да го включите отново и да опитате пак, или да запазите, за да продължите без него.</value>
+    <comment>{Locked="hooks"}</comment>
+  </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
+    <value>Научете как да поправите това ръчно</value>
+    <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Активирането на тази функция ще инсталира интеграция на shell за откриване на неуспешни команди. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Научете повече</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+    <value>Правилата за изпълнение на PowerShell блокират скриптовете.</value>
+    <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
+  </data>
+  <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
+    <value>⚠ Правилата за изпълнение на PowerShell блокират скриптовете. Откриването на грешки е изключено.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
 </root>

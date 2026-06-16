@@ -71,6 +71,7 @@ commands.help_close_hint: "  Esc        Закрити цю довідку"  # {
 commands.help.summary: "Показати цей список команд"
 commands.clear.summary: "Очистити історію чату (сеанс зберігається)"
 commands.new.summary: "Розпочати новий сеанс ACP (історію буде скинуто)"  # {Locked="ACP"}
+commands.fix.summary: "Діагностувати активний термінал і запропонувати виправлення (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Перезапустити агента"
 commands.stop.summary: "Скасувати поточний запит"
 commands.sessions.summary: "Відкрити вибір історичних сеансів (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -126,12 +127,29 @@ layout.welcome_hint: "  (Ctrl+Shift+. — показати/сховати пан
 # ── Стан підключення ────────────────────────────────────────────────────────────
 connection.starting: "Запуск агента..."
 connection.reconnecting: "Перепідключення..."
+connection.connecting_activity: "Підключення до агента…"
+connection.lost: "Підключення до агента втрачено. Введіть /restart, щоб підключитися знову."  # {Locked="/restart"}
 
 # ── Системні повідомлення (src/app.rs) ────────────────────────────────────────────────
 system.cancelled: "Скасовано."
 system.no_prompt_in_flight: "Немає активного запиту."
 system.authentication_failed: "Помилка автентифікації"
 system.command_copied_retry: "Команду скопійовано — виконайте її в іншому терміналі, потім натисніть Enter для повтору"  # {Locked="Enter"}
+system.stopped_max_tokens: "Відповідь було обрізано після досягнення ліміту виводу моделі."
+system.stopped_max_turn_requests: "Агент зупинився після досягнення ліміту запитів для цього ходу."
+system.stopped_refusal: "Агент відмовився продовжувати цей запит."
+system.agent_busy: "Агент зайнятий на цій вкладці — дочекайтеся завершення поточного запиту."
+system.resuming_session: "Відновлення сеансу %{session_id}..."
+system.unknown_command: "Невідома команда \"%{command}\" — надіслано як запит. Введіть /help, щоб переглянути список."  # {Locked="/help"}
+system.busy_use_stop: "Дочекайтеся завершення поточного запиту або спочатку скористайтеся /stop."  # {Locked="/stop"}
+system.cannot_focus_session: "Не вдається сфокусувати сеанс %{session_id}: він виглядає активним, але GUID панелі ще не прив’язано. Спробуйте ще раз за мить."
+system.cannot_resume_no_load_session: "Не вдається відновити в панелі агента: %{agent} не оголосив можливість ACP `loadSession`. Натисніть Enter (без Shift), щоб натомість відновити в новій панелі термінала."  # {Locked="ACP","loadSession","Enter","Shift"}
+system.cannot_resume_no_resume_flag: "Не вдається відновити сеанс %{agent}: цей агент не має прапорця в стилі `--resume`. Натисніть Shift+Enter, щоб спробувати відновити всередині панелі агента через ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_unknown_agent: "Не вдається відновити сеанс %{session_id}: його вихідний агент невідомий цій збірці WTA."
+system.cannot_resume_phantom_via_flag: "Не вдається відновити сеанс %{agent} %{session_id}: його було запущено, але в ньому не накопичилося жодної розмови, тому сам %{agent} відхилив би відновлення. Рядок видаляється."
+system.cannot_resume_phantom_via_load: "Не вдається відновити сеанс %{agent} %{session_id}: його було запущено, але в ньому не накопичилося жодної розмови, тому %{agent} відхилив би завантаження. Рядок видаляється."
+system.fallback.this_agent: "цей агент"
+system.fallback.connected_agent: "підключений агент"
 
 # ── Вивід CLI під час виконання (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Вікна не знайдено."
@@ -181,3 +199,13 @@ time.hour_singular: "1 годину тому"
 time.hours_other: "%{count} годин тому"
 time.day_singular: "1 день тому"
 time.days_other: "%{count} днів тому"
+
+# ── Виконання рекомендації (src/coordinator.rs) ─────────────────────────────
+system.choice_execution_failed: "Не вдалося виконати вибір %{choice}: %{error}"
+
+# ── Model picker (/model) ───────────────────────────────────────────────────
+commands.model.summary: "Виберіть модель для цієї панелі (/model <id> для прямого перемикання)"  # {Locked="/model","<id>"}
+model_picker.title: "Виберіть модель (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+system.no_models: "Підключений агент не оголосив жодної моделі, яку можна вибрати."
+system.model_set: "Модель для цієї панелі встановлено на %{model}."  # {Locked="%{model}"}
+system.model_unknown: "Невідома модель %{model} — введіть /model, щоб переглянути доступний список."  # {Locked="%{model}","/model"}

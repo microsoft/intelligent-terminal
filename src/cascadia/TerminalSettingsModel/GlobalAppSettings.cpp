@@ -103,6 +103,14 @@ winrt::com_ptr<GlobalAppSettings> GlobalAppSettings::Copy() const
             globals->_DisabledProfileSources->Append(src);
         }
     }
+    if (_SafeUriSchemes)
+    {
+        globals->_SafeUriSchemes = winrt::single_threaded_vector<hstring>();
+        for (const auto& src : *_SafeUriSchemes)
+        {
+            globals->_SafeUriSchemes->Append(src);
+        }
+    }
 
     for (const auto& parent : _parents)
     {
@@ -643,4 +651,19 @@ bool GlobalAppSettings::IsAutoFixPolicyLocked() const
 bool GlobalAppSettings::IsAgentSessionHooksPolicyLocked() const
 {
     return AgentPolicy::GetAgentSessionHooksPolicy() == AgentPolicy::PolicyState::Blocked;
+}
+
+// ── Test-only hooks ─────────────────────────────────────────────────
+// Defined here so the body executes inside SettingsModel.dll, which
+// guarantees we patch the same AgentPolicy::s_snapshot that
+// EffectiveAcpAgent / EffectiveDelegateAgent read.
+
+void GlobalAppSettings::_TestHookSetAgentPolicy(std::shared_ptr<const AgentPolicy::PolicySnapshot> snap)
+{
+    AgentPolicy::SetSnapshotForTest(std::move(snap));
+}
+
+void GlobalAppSettings::_TestHookResetAgentPolicy()
+{
+    AgentPolicy::ResetForTest();
 }
