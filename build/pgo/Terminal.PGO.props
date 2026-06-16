@@ -15,10 +15,12 @@
     <PGOPackageName>Microsoft.Internal.Windows.Terminal.PGODatabase</PGOPackageName>
 
     <!-- Mandatory.  Major version number of the PGO database which should match the version of the product.  This can be hard-coded or obtained from other sources in build system. -->
-    <PGOPackageVersionMajor>$(VersionMajor)</PGOPackageVersionMajor>
+    <!-- Hardcoded to upstream Windows Terminal version since IntelligentTerminal shares the same C++ code
+         and the PGO profiling data is valid. Our product version (0.1) has no PGO database. -->
+    <PGOPackageVersionMajor>1</PGOPackageVersionMajor>
 
     <!-- Mandatory.  Minor version number of the PGO database which should match the version of the product.  This can be hard-coded or obtained from other sources in build system. -->
-    <PGOPackageVersionMinor>$(VersionMinor)</PGOPackageVersionMinor>
+    <PGOPackageVersionMinor>26</PGOPackageVersionMinor>
 
     <!-- Mandatory, defaults to 0.  Patch version number of the PGO database which should match the version of the product.  This can be hard-coded or obtained from other sources in build system. -->
     <PGOPackageVersionPatch>0</PGOPackageVersionPatch>
