@@ -2583,7 +2583,7 @@ mod tests {
 
     // ── Agent selection / security policy ───────────────────────────
     //
-    // `resolve_agent_selection` is the single chokepoint that decides
+    // `resolve_agent_selection` is the single choke point that decides
     // what the master will spawn for a helper. Extracting it as a pure
     // function lets us exercise the full policy — id reconstruction,
     // GPO allowlist, fallback, and the "never trust a command off the
@@ -2592,7 +2592,7 @@ mod tests {
 
     const DEFAULT_CMD: &str = "copilot --acp --stdio";
 
-    fn allowset(ids: &[&str]) -> std::collections::HashSet<String> {
+    fn allow_set(ids: &[&str]) -> std::collections::HashSet<String> {
         ids.iter().map(|s| s.to_string()).collect()
     }
 
@@ -2636,7 +2636,7 @@ mod tests {
 
     #[test]
     fn id_is_case_insensitive() {
-        let (cmd, id) = resolve(Some(&allowset(&["gemini"])), Some("GeMiNi"), None);
+        let (cmd, id) = resolve(Some(&allow_set(&["gemini"])), Some("GeMiNi"), None);
         assert_eq!(cmd, "gemini --experimental-acp");
         assert_eq!(id.as_deref(), Some("gemini"));
     }
@@ -2664,7 +2664,7 @@ mod tests {
 
     #[test]
     fn gpo_allowlist_blocks_known_but_unlisted_ids() {
-        let allowed = allowset(&["gemini"]);
+        let allowed = allow_set(&["gemini"]);
         // gemini is listed ⇒ honored.
         let (cmd, _) = resolve(Some(&allowed), Some("gemini"), None);
         assert_eq!(cmd, "gemini --experimental-acp");
