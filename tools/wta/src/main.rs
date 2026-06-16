@@ -596,6 +596,10 @@ async fn main() -> Result<()> {
     // the master is job-killed (KILL_ON_JOB_CLOSE) and won't observe these, so
     // its routine teardown stays a known blind spot.
     logging::install_ctrl_handler();
+    // Record panics to disk (+ a synchronous wta-panic.log backstop) so a
+    // panic isn't a silent death — stderr is invisible for a ConPTY helper /
+    // CREATE_NO_WINDOW master. Chains the default hook; semantics unchanged.
+    logging::install_panic_hook();
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "=== wta starting ===");
 
     let locale = cli

@@ -265,6 +265,76 @@ pub fn install_ctrl_handler() {
     }
 }
 
+/// Install a panic hook that records the panic to disk, then chains to the
+/// previous hook.
+///
+/// A Rust panic otherwise writes only to stderr — invisible for a ConPTY-
+/// hosted helper or a `CREATE_NO_WINDOW` master — and the non-blocking
+/// appender's buffered tail is lost when a *fatal* panic kills the process
+/// before the background worker drains it. So a panic is a "died for no
+/// logged reason" blind spot. This closes it WITHOUT changing panic semantics
+/// (it chains the previous hook, so unwind/abort and backtraces are
+/// unchanged):
+///   * a `tracing::error!` so the panic correlates in the normal log (this
+///     drains fine for a *recovered* panic, e.g. behind a `catch_unwind`), and
+///   * a synchronous append to `wta-panic.log`, independent of the async
+///     appender, so the record reaches disk even when a fatal panic kills us.
+///
+/// It deliberately does NOT call [`shutdown_flush`]: that drops the appender
+/// guard and would permanently kill logging after a recoverable panic. The
+/// synchronous file write is the durable path instead.
+pub fn install_panic_hook() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // Same payload extraction the rest of the codebase uses.
+        let msg = info
+            .payload()
+            .downcast_ref::<&'static str>()
+            .copied()
+            .or_else(|| info.payload().downcast_ref::<String>().map(|s| s.as_str()))
+            .unwrap_or("<non-string panic payload>");
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let thread_name = std::thread::current()
+            .name()
+            .unwrap_or("<unnamed>")
+            .to_string();
+
+        tracing::error!(
+            target: "panic",
+            message = %msg,
+            location = %location,
+            thread = %thread_name,
+            "thread panicked"
+        );
+
+        // Guaranteed-on-disk backstop: a fatal main-thread panic unwinds past
+        // main() without reaching any `shutdown_flush`, so the appender's
+        // buffered tail (incl. the error above) can be lost. A synchronous
+        // append here does not depend on the appender being alive.
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_dir().join("wta-panic.log"))
+        {
+            use std::io::Write;
+            let _ = writeln!(
+                f,
+                "[{millis}ms] pid={} thread={thread_name} panicked at {location}: {msg}",
+                std::process::id()
+            );
+        }
+
+        prev(info);
+    }));
+}
+
 /// Filesystem upkeep run once per process at logging init, before our own
 /// appender opens.
 ///
