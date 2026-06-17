@@ -227,3 +227,9 @@ model_picker.title: "ជ្រើសរើសម៉ូដែល (↑ ↓ • Ent
 system.no_models: "AI អេជេន្ត់ដែលបានភ្ជាប់មិនបានប្រកាសម៉ូដែលណាមួយដែលអាចជ្រើសរើសបានទេ។"
 system.model_set: "ម៉ូដែលសម្រាប់ផ្តាំងនេះត្រូវបានកំណត់ទៅ %{model}។"  # {Locked="%{model}"}
 system.model_unknown: "មិនស្គាល់ម៉ូដែល %{model} — វាយ /model ដើម្បីមើលបញ្ជីដែលមាន។"  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."

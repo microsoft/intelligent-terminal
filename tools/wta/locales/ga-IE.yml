@@ -208,3 +208,9 @@ model_picker.title: "Roghnaigh samhail (↑ ↓ • Enter • Esc)"  # {Locked="
 system.no_models: "Níor fhógair an gníomhaire ceangailte aon tsamhail in-roghnaithe."
 system.model_set: "Samhail an phána seo socraithe go %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Samhail anaithnid %{model} — clóscríobh /model chun an liosta atá ar fáil a fheiceáil."  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."

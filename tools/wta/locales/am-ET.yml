@@ -208,3 +208,9 @@ model_picker.title: "ሞዴል ይምረጡ (↑ ↓ • Enter • Esc)"  # {Loc
 system.no_models: "የተገናኘው ኤጅንት ምንም ሊመረጥ የሚችል ሞዴል አላስታወቀም።"
 system.model_set: "የዚህ ፓነል ሞዴል ወደ %{model} ተቀናብሯል።"  # {Locked="%{model}"}
 system.model_unknown: "ያልታወቀ ሞዴል %{model} — የሚገኘውን ዝርዝር ለማየት /model ይተይቡ።"  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."

@@ -45,6 +45,16 @@ pub enum CommandKind {
     /// the life of the pane but is reset by a global `acpModel` settings
     /// change — see `App::apply_global_acp_model`.
     Model,
+    /// Switch the AI agent running in *this* pane to a different CLI.
+    ///
+    /// `/switch-agent <name>` restarts the agent process using the named
+    /// agent (e.g. `claude`, `copilot`, `gemini`, `codex`).  The current
+    /// session is dropped and a fresh one is started with the new agent.
+    /// Other tabs are not affected — each tab manages its own agent pane
+    /// independently, so multiple agents can run simultaneously across tabs.
+    ///
+    /// Bare `/switch-agent` (no argument) lists the available agents.
+    SwitchAgent,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -122,6 +132,14 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.model.summary",
         // `/model <id>` switches directly; bare `/model` opens the picker.
         kind: CommandKind::Model,
+        takes_args: true,
+    },
+    CommandSpec {
+        name: "switch-agent",
+        summary_key: "commands.switch_agent.summary",
+        // `/switch-agent <name>` switches directly; bare `/switch-agent`
+        // lists the available agents.
+        kind: CommandKind::SwitchAgent,
         takes_args: true,
     },
 ];

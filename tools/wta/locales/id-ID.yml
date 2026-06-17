@@ -209,3 +209,9 @@ model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","
 system.no_models: "Agen yang terhubung tidak mengiklankan model apa pun yang dapat dipilih."
 system.model_set: "Model untuk panel ini diatur ke %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model tidak dikenal %{model} — ketik /model untuk melihat daftar yang tersedia."  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."

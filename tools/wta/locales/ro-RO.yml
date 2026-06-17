@@ -208,3 +208,9 @@ model_picker.title: "Selectați modelul (↑ ↓ • Enter • Esc)"  # {Locked=
 system.no_models: "Agentul conectat nu a anunțat niciun model selectabil."
 system.model_set: "Modelul pentru acest panou a fost setat la %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model necunoscut %{model} — tastați /model pentru a vedea lista disponibilă."  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."

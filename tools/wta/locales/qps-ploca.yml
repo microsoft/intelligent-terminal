@@ -207,3 +207,9 @@ model_picker.title: "[!!_Select model (↑ ↓ • Enter • Esc)_!!]"  # {Locke
 system.no_models: "[!!_The connected agent did not advertise any selectable models._!!]"
 system.model_set: "[!!_Model for this pane set to %{model}._!!]"  # {Locked="%{model}"}
 system.model_unknown: "[!!_Unknown model %{model} — type /model to see the available list._!!]"  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."

@@ -93,6 +93,7 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"  # {Locked="/switch-agent","<name>"}
 
 # ── Model picker (src/ui/model_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
@@ -103,6 +104,14 @@ system.no_models: "The connected agent did not advertise any selectable models."
 system.model_set: "Model for this pane set to %{model}."
 # {model} is the unrecognized text the user typed after /model.
 system.model_unknown: "Unknown model %{model} — type /model to see the available list."
+# /switch-agent messages. {agents} is a comma-separated list of known agent ids.
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."  # {Locked="/switch-agent","<name>"}
+# {agent} is the unrecognized name the user typed after /switch-agent.
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+# {agent} is the display name of the agent being switched to (e.g. "Claude").
+system.switch_agent_switching: "Switching to %{agent}..."
+# Confirmation shown in chat after the switch is initiated.
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key

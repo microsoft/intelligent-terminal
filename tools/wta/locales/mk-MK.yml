@@ -209,3 +209,9 @@ model_picker.title: "Изберете модел (↑ ↓ • Enter • Esc)"  #
 system.no_models: "Поврзаниот агент не објави ниту еден модел што може да се избере."
 system.model_set: "Моделот за овој панел е поставен на %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Непознат модел %{model} — внесете /model за да ја видите достапната листа."  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."

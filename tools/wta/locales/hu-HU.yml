@@ -208,3 +208,9 @@ model_picker.title: "Modell kiválasztása (↑ ↓ • Enter • Esc)"  # {Lock
 system.no_models: "A csatlakoztatott ügynök nem hirdetett meg kiválasztható modelleket."
 system.model_set: "A panel modellje erre állítva: %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Ismeretlen modell: %{model} — írja be a /model parancsot az elérhető lista megtekintéséhez."  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."

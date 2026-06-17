@@ -7155,6 +7155,7 @@ impl App {
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Model => self.cmd_model(cmd.rest),
+            CommandKind::SwitchAgent => self.cmd_switch_agent(cmd.rest),
         }
     }
 
@@ -7389,6 +7390,82 @@ impl App {
             tab.session_id = None;
         }
         let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
+        self.publish_agent_status();
+    }
+
+    /// `/switch-agent [name]` — restart this pane using a different agent CLI.
+    ///
+    /// With an argument, validates the name against [`KNOWN_AGENTS`] and
+    /// initiates a restart with that agent's command. Bare `/switch-agent`
+    /// (no argument) prints the available agent names.
+    ///
+    /// Other tabs are unaffected — each tab runs its own independent agent
+    /// pane, so Tab 1 can run Claude while Tab 2 runs Gemini simultaneously.
+    fn cmd_switch_agent(&mut self, arg: String) {
+        let arg = arg.trim().to_string();
+        if arg.is_empty() {
+            // No argument: list the available agents.
+            let names: Vec<&str> = crate::agent_registry::KNOWN_AGENTS
+                .iter()
+                .map(|p| p.id)
+                .collect();
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("system.switch_agent_list", agents = names.join(", ").as_str()).into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+
+        // Validate against the known agent registry (case-insensitive).
+        let profile = crate::agent_registry::KNOWN_AGENTS
+            .iter()
+            .find(|p| p.id.eq_ignore_ascii_case(&arg));
+
+        let profile = match profile {
+            Some(p) => p,
+            None => {
+                let names: Vec<&str> = crate::agent_registry::KNOWN_AGENTS
+                    .iter()
+                    .map(|p| p.id)
+                    .collect();
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(
+                    t!(
+                        "system.switch_agent_unknown",
+                        agent = arg.as_str(),
+                        agents = names.join(", ").as_str()
+                    )
+                    .into_owned(),
+                ));
+                tab.scroll_to_bottom();
+                return;
+            }
+        };
+
+        let new_cmd = self.build_agent_cmd(profile.id);
+        let display = profile.display_name;
+        self.state = ConnectionState::Connecting(
+            t!("system.switch_agent_switching", agent = display).into_owned(),
+        );
+        self.session_to_tab.clear();
+        self.session_id.clear();
+        for (_, tab) in self.tab_sessions.iter_mut() {
+            tab.clear_chat_history();
+            tab.completed_turns.clear();
+            tab.selected_completed_turn_idx = None;
+            tab.session_id = None;
+        }
+        {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("system.switch_agent_switched", agent = display).into_owned(),
+            ));
+            tab.scroll_to_bottom();
+        }
+        let _ = self.restart_tx.send(RestartRequest {
+            agent_cmd: Some(new_cmd),
+        });
         self.publish_agent_status();
     }
 

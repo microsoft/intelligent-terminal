@@ -273,3 +273,112 @@ fn slash_model_direct_switch_sets_override() {
         "a direct /model <id> switch must not leave the picker open"
     );
 }
+
+// ---- /switch-agent ----
+
+#[test]
+fn slash_switch_agent_no_arg_lists_agents() {
+    let mut app = test_app();
+    // Bare /switch-agent: no agent name provided. Should emit a system message
+    // listing available agents and NOT trigger a restart. We verify no restart
+    // by checking session_id is unchanged (restart clears it).
+    app.session_id = "pre-existing-sid".to_string();
+    run_slash(&mut app, "switch-agent");
+
+    assert_eq!(
+        app.current_tab().messages.len(),
+        1,
+        "bare /switch-agent must emit exactly one system message"
+    );
+    assert!(
+        matches!(app.current_tab().messages.last(), Some(ChatMessage::System(_))),
+        "bare /switch-agent must emit a System message"
+    );
+    // session_id must be unchanged — no restart was triggered.
+    assert_eq!(
+        app.session_id, "pre-existing-sid",
+        "bare /switch-agent must not clear the session id (no restart)"
+    );
+}
+
+#[test]
+fn slash_switch_agent_unknown_agent_emits_error() {
+    let mut app = test_app();
+    app.session_id = "pre-existing-sid".to_string();
+    run_slash_args(&mut app, "switch-agent", "does-not-exist");
+
+    assert_eq!(
+        app.current_tab().messages.len(),
+        1,
+        "/switch-agent <unknown> must emit exactly one error message"
+    );
+    assert!(
+        matches!(app.current_tab().messages.last(), Some(ChatMessage::System(_))),
+        "/switch-agent <unknown> must emit a System message"
+    );
+    // session_id must be unchanged — no restart was triggered for unknown agent.
+    assert_eq!(
+        app.session_id, "pre-existing-sid",
+        "/switch-agent <unknown> must not clear session id (no restart)"
+    );
+}
+
+#[test]
+fn slash_switch_agent_known_agent_triggers_restart() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+
+    // "claude" is a known agent in the registry.
+    run_slash_args(&mut app, "switch-agent", "claude");
+
+    assert!(
+        matches!(app.state, ConnectionState::Connecting(_)),
+        "/switch-agent claude must transition to Connecting state"
+    );
+    assert!(
+        app.session_id.is_empty(),
+        "/switch-agent must clear the process-level session id"
+    );
+    assert_eq!(
+        app.current_tab().session_id,
+        None,
+        "/switch-agent must drop the tab session so a fresh one is created"
+    );
+    // A confirmation message must appear in chat.
+    assert!(
+        !app.current_tab().messages.is_empty(),
+        "/switch-agent must emit a confirmation message"
+    );
+    assert!(
+        matches!(app.current_tab().messages.last(), Some(ChatMessage::System(_))),
+        "/switch-agent must emit a System confirmation message"
+    );
+}
+
+#[test]
+fn slash_switch_agent_case_insensitive() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+
+    run_slash_args(&mut app, "switch-agent", "CLAUDE");
+
+    assert!(
+        matches!(app.state, ConnectionState::Connecting(_)),
+        "/switch-agent CLAUDE (uppercase) must be accepted case-insensitively"
+    );
+}
+
+#[test]
+fn slash_switch_agent_all_known_agents_accepted() {
+    // Every agent in the registry must be accepted by /switch-agent.
+    for profile in crate::agent_registry::KNOWN_AGENTS {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        run_slash_args(&mut app, "switch-agent", profile.id);
+        assert!(
+            matches!(app.state, ConnectionState::Connecting(_)),
+            "/switch-agent {} must be accepted (id is in KNOWN_AGENTS)",
+            profile.id
+        );
+    }
+}

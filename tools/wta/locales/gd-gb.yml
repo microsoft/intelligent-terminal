@@ -208,3 +208,9 @@ model_picker.title: "Tagh modail (↑ ↓ • Enter • Esc)"  # {Locked="↑","
 system.no_models: "Cha do dh'ainmich an t-àidseant ceangailte modail sam bith a ghabhas taghadh."
 system.model_set: "Chaidh modail a' phana seo a shuidheachadh gu %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Modail neo-aithnichte %{model} — sgrìobh /model gus an liosta a tha ri làimh fhaicinn."  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."

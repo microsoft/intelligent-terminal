@@ -210,3 +210,9 @@ model_picker.title: "मोडेल छान्नुहोस् (↑ ↓ •
 system.no_models: "जोडिएको agent ले कुनै पनि छान्न मिल्ने मोडेल घोषणा गरेन।"
 system.model_set: "यो पेनका लागि मोडेल %{model} मा सेट गरियो।"  # {Locked="%{model}"}
 system.model_unknown: "अज्ञात मोडेल %{model} — उपलब्ध सूची हेर्न /model टाइप गर्नुहोस्।"  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."

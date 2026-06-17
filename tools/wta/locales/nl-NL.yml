@@ -209,3 +209,9 @@ model_picker.title: "Model selecteren (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "De verbonden agent heeft geen selecteerbare modellen aangekondigd."
 system.model_set: "Model voor dit deelvenster ingesteld op %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Onbekend model %{model} — typ /model om de beschikbare lijst te zien."  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."

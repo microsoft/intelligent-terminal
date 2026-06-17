@@ -208,3 +208,9 @@ model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked
 system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."
 system.model_set: "Kua whakaritea te tauira mō tēnei papa ki %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Tauira kāore e mōhiotia %{model} — patohia /model kia kite i te rārangi e wātea ana."  # {Locked="%{model}","/model"}
+
+commands.switch_agent.summary: "Switch this pane to a different AI agent (/switch-agent <name>)"
+system.switch_agent_list: "Available agents: %{agents}. Use /switch-agent <name> to switch."
+system.switch_agent_unknown: "Unknown agent \"%{agent}\". Available agents: %{agents}."
+system.switch_agent_switching: "Switching to %{agent}..."
+system.switch_agent_switched: "Switching this pane to %{agent}. Starting a new session."
