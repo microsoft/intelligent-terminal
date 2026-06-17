@@ -36,6 +36,7 @@ namespace TerminalAppUnitTests
         TEST_CLASS(BoundedDispatchQueueTests);
 
         TEST_METHOD(InactiveByDefaultRejectsPush);
+        TEST_METHOD(ClampsZeroCapacityToOne);
         TEST_METHOD(PreservesFifoOrder);
         TEST_METHOD(DropsOldestWhenFullAndCountsDrops);
         TEST_METHOD(SetInactiveGatesPushButKeepsBacklog);
@@ -61,6 +62,23 @@ namespace TerminalAppUnitTests
         q.set_active(true);
         VERIFY_IS_TRUE(q.try_push("x"));
         VERIFY_ARE_EQUAL(size_t{ 1 }, q.size());
+    }
+
+    // A zero capacity must be clamped to 1 — otherwise try_push would pop_front()
+    // an empty deque (undefined behavior) on the very first overflow.
+    void BoundedDispatchQueueTests::ClampsZeroCapacityToOne()
+    {
+        BoundedDispatchQueue<std::string> q{ 0 };
+        q.set_active(true);
+
+        VERIFY_IS_TRUE(q.try_push("a"));
+        VERIFY_IS_TRUE(q.try_push("b")); // would be UB if maxItems stayed 0
+        VERIFY_ARE_EQUAL(size_t{ 1 }, q.size());
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, q.dropped_count());
+
+        std::string out;
+        VERIFY_IS_TRUE(q.wait_pop(out));
+        VERIFY_ARE_EQUAL(std::string{ "b" }, out, L"newest survives, oldest evicted");
     }
 
     // Items come out in the exact order they went in.
@@ -142,8 +160,10 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(q.wait_pop(out), L"wait_pop must return false once stopped");
     }
 
-    // A queue can be reused after stop(): re-activating clears the stop, drops
-    // are gone, and the previous backlog stays dropped.
+    // A queue can be reused after stop(): re-activating clears the stop and
+    // re-enables pushes. The backlog that stop() dropped stays gone. (Note:
+    // set_active(true) does NOT reset dropped_count(); it isn't exercised here
+    // because no overflow drop occurs in this test.)
     void BoundedDispatchQueueTests::ReactivateAfterStopAcceptsAgain()
     {
         BoundedDispatchQueue<std::string> q{ 10 };

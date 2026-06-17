@@ -446,9 +446,12 @@ void TerminalProtocolComServer::_workerLoop()
 
         if (FAILED(sink->OnEvent(eventBstr.get())))
         {
-            // Client disconnected — clear our sink. Subsequent iterations see a
-            // null ref and idle until the instance is torn down (the client's
-            // COM ref release drives ~TerminalProtocolComServer -> _stopWorker).
+            // Client disconnected. Clear our sink AND close the queue gate so
+            // producers stop enqueuing (and we stop popping/dropping) work for a
+            // dead subscriber — that churn would otherwise continue until COM
+            // rundown destroys the instance. The now-idle worker parks in
+            // wait_pop until _stopWorker tears it down on Unsubscribe/destruction.
+            _deliveryQueue.set_active(false);
             std::lock_guard lock{ _callbackMutex };
             _sinkRef.Reset();
         }
@@ -972,8 +975,20 @@ try
     // Spin up this subscriber's dedicated delivery thread so OnEvent never runs
     // on the producer thread (no-op if already running from a prior Subscribe).
     // set_active() opens the queue's subscribe-gate and clears any prior stop.
+    // It must precede _startWorkerIfNeeded so a re-subscribed instance clears the
+    // stop flag before the fresh worker starts (else wait_pop returns false at
+    // once); if thread creation throws, roll the gate back so producers don't
+    // enqueue undeliverable work for a subscriber with no worker.
     _deliveryQueue.set_active(true);
-    _startWorkerIfNeeded();
+    try
+    {
+        _startWorkerIfNeeded();
+    }
+    catch (...)
+    {
+        _deliveryQueue.set_active(false);
+        throw;
+    }
 
     // Ensure page events are wired up (one-time global init).
     _ensurePageEventsRegistered();

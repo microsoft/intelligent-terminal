@@ -46,7 +46,7 @@ namespace Microsoft::Terminal
     {
     public:
         explicit BoundedDispatchQueue(size_t maxItems) noexcept :
-            _maxItems{ maxItems }
+            _maxItems{ maxItems > 0 ? maxItems : 1 } // clamp: 0 would pop_front() an empty deque (UB)
         {
         }
 
