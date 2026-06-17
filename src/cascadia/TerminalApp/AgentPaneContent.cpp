@@ -22,6 +22,7 @@ using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Media;
 using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
+namespace MUXC = winrt::Microsoft::UI::Xaml::Controls;
 
 namespace winrt::TerminalApp::implementation
 {
@@ -79,11 +80,32 @@ namespace winrt::TerminalApp::implementation
     // Build + show a flyout of GPO-allowed agents anchored on the chip.
     // Picking one raises `AgentSwitchRequested` with that agent's id; the
     // page turns it into a per-tab override and rebuilds this tab's pane.
-    // The currently-running agent (matched by display name from the last
-    // `agent_status`) is check-marked.
+    // The currently-running agent is identified by id (stable) via a
+    // case-insensitive reverse-lookup of `_agentName` in the registry.
     void AgentPaneContent::_showAgentPicker()
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+
+        // Resolve the current agent's stable id from the last-reported name.
+        // Comparing by id (not display name) avoids false misses caused by
+        // localization or casing differences.
+        winrt::hstring currentAgentId{};
+        if (!_agentName.empty())
+        {
+            for (const auto& a : Reg::FilteredAcpAgents())
+            {
+                const std::wstring_view dn{ a.displayName };
+                if (dn.size() == _agentName.size() &&
+                    std::equal(dn.begin(), dn.end(), _agentName.begin(),
+                               [](wchar_t x, wchar_t y) {
+                                   return std::towlower(x) == std::towlower(y);
+                               }))
+                {
+                    currentAgentId = winrt::hstring{ a.id };
+                    break;
+                }
+            }
+        }
 
         MenuFlyout flyout{};
         for (const auto& agent : Reg::FilteredAcpAgents())
@@ -99,15 +121,13 @@ namespace winrt::TerminalApp::implementation
             {
                 continue;
             }
-            MenuFlyoutItem item{};
+            // RadioMenuFlyoutItem conveys the selected state via UIA
+            // IsChecked semantics (accessible to screen readers), unlike a
+            // plain MenuFlyoutItem whose Accept icon is purely visual.
+            MUXC::RadioMenuFlyoutItem item{};
+            item.GroupName(L"agents");
             item.Text(displayName);
-            // Mark the agent that's currently driving this pane. `_agentName`
-            // is the live name from the last `agent_status` (e.g. "Claude"),
-            // which matches the registry display names.
-            if (!_agentName.empty() && _agentName == displayName)
-            {
-                item.Icon(SymbolIcon{ Symbol::Accept });
-            }
+            item.IsChecked(!currentAgentId.empty() && currentAgentId == agentId);
             item.Click([weak = get_weak(), agentId](const winrt::Windows::Foundation::IInspectable& /*s*/,
                                                     const winrt::Windows::UI::Xaml::RoutedEventArgs& /*a*/) {
                 if (const auto self = weak.get())
@@ -115,7 +135,7 @@ namespace winrt::TerminalApp::implementation
                     self->AgentSwitchRequested.raise(*self, agentId);
                 }
             });
-            flyout.Items().Append(item);
+            flyout.Items().Append(item.as<MenuFlyoutItemBase>());
         }
         flyout.ShowAt(AgentBarButton());
     }

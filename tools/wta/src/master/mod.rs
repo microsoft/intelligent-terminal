@@ -194,6 +194,16 @@ struct MasterStateInner {
     /// other awaits the same `AgentCli`), while helpers for *different*
     /// agents spawn in parallel — we hold the outer `Mutex` only long
     /// enough to get/insert the `OnceCell`, never across the spawn.
+    ///
+    /// **Pool eviction policy:** agents are kept warm for the lifetime of
+    /// the master process (no idle-timeout eviction). The expected pool
+    /// cardinality is small — one entry per distinct agent-id selected by
+    /// any tab in the window — so the memory/process overhead is bounded
+    /// by the number of GPO-allowed agents (typically 1–3). An agent that
+    /// crashes is reaped and removed by `reap_agent`; its slot is refilled
+    /// lazily on the next helper request. Idle-timeout eviction would save
+    /// a background process at the cost of cold-start latency for the next
+    /// tab switch; that trade-off favors warm agents for a terminal app.
     pub(crate) agents:
         Mutex<HashMap<AgentCmdKey, Arc<tokio::sync::OnceCell<Arc<AgentCli>>>>>,
     /// Fallback agent command line + id for helpers that don't declare
@@ -1971,8 +1981,13 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
 
 /// Normalize the host-supplied `--allowed-agent-ids` argv into the
 /// allowlist [`resolve_agent_selection`] consumes: trim + lowercase each
-/// entry, drop blanks, then collapse an empty result to `None` ("no
-/// allowlist supplied; accept any known id") rather than `Some(empty_set)`.
+/// entry, drop blanks, drop unknown/custom ids (the allowlist is
+/// "known ids only" — unknown/custom entries would be silently inert
+/// because [`resolve_agent_selection`] additionally requires
+/// [`agent_registry::is_known_id`], so keeping them just misleads
+/// debugging of policy issues), then collapse an empty result to `None`
+/// ("no allowlist supplied; accept any known id") rather than
+/// `Some(empty_set)`.
 ///
 /// The collapse is load-bearing: with clap `value_delimiter = ','` an
 /// empty `--allowed-agent-ids ""` parses to `[""]` — a non-empty argv
@@ -1984,6 +1999,7 @@ fn normalize_allowed_agent_ids(raw: &[String]) -> Option<std::collections::HashS
         .iter()
         .map(|s| s.trim().to_ascii_lowercase())
         .filter(|s| !s.is_empty())
+        .filter(|s| crate::agent_registry::is_known_id(s))
         .collect();
     if set.is_empty() {
         None
@@ -3680,7 +3696,7 @@ mod tests {
             "all-whitespace entries"
         );
 
-        // Real ids survive — trimmed + lowercased, blanks dropped.
+        // Real known ids survive — trimmed + lowercased, blanks dropped.
         let set = normalize_allowed_agent_ids(&[
             "  Gemini ".to_string(),
             String::new(),
@@ -3688,6 +3704,22 @@ mod tests {
         ])
         .expect("non-empty allowlist");
         assert_eq!(set, allow_set(&["gemini", "copilot"]));
+
+        // Unknown/custom ids are silently dropped: they can never be honored
+        // by resolve_agent_selection (which requires is_known_id), so keeping
+        // them would produce an inert allowlist that misleads policy debugging.
+        assert_eq!(
+            normalize_allowed_agent_ids(&["custom:mything".to_string(), "unknown".to_string()]),
+            None,
+            "all-unknown entries collapse to no-allowlist, not block-all"
+        );
+        // Unknown ids mixed with a real id: only the real id survives.
+        let mixed = normalize_allowed_agent_ids(&[
+            "custom:mything".to_string(),
+            "claude".to_string(),
+        ])
+        .expect("one real id survives");
+        assert_eq!(mixed, allow_set(&["claude"]));
 
         // End-to-end: a surviving allowlist still blocks a known-but-unlisted
         // id, while an empty one (→ None) honors any known id.
