@@ -1185,6 +1185,7 @@ async fn dispatch_load_session_binds_and_emits_attached_then_note() {
                 },
                 &h.conn,
                 &tab_to_session,
+                &TemplateMemo::default(),
                 &cancel_signals,
                 &h.event_tx,
                 false,
@@ -1220,6 +1221,68 @@ async fn dispatch_load_session_binds_and_emits_attached_then_note() {
         .await;
 }
 
+/// Resuming a session into a tab that already holds one must drop the
+/// replaced session's `TemplateMemo` entry, so the per-session ledger stays
+/// bounded across repeated resumes (regression guard for the unbounded-growth
+/// leak in `dispatch_load_session`).
+#[tokio::test]
+async fn dispatch_load_session_forgets_replaced_session_template_memo() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+            let mut event_rx = h.event_rx;
+
+            // The tab already holds "old-sess", and the memo carries a ledger
+            // entry for it (as it would after a prior prompt turn).
+            let old = acp::SessionId::new("old-sess");
+            tab_to_session
+                .lock()
+                .await
+                .insert("t1".to_string(), old.clone());
+            let template_memo = TemplateMemo::default();
+            template_memo
+                .0
+                .lock()
+                .await
+                .insert("old-sess".to_string(), super::TemplateKind::Planner);
+
+            dispatch_load_session(
+                LoadSessionForTab {
+                    tab_id: "t1".to_string(),
+                    session_id: "hist-sess-7".to_string(),
+                    cwd: None,
+                },
+                &h.conn,
+                &tab_to_session,
+                &template_memo,
+                &cancel_signals,
+                &h.event_tx,
+                false,
+                false,
+                std::time::Duration::from_secs(5),
+            );
+
+            // Drain to the terminal SessionAttached (proves the replace path,
+            // including the forget, has run).
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::SessionAttached { tab_id, .. })) => {
+                    assert_eq!(tab_id, "t1");
+                }
+                _ => panic!("expected SessionAttached"),
+            }
+
+            assert!(
+                !template_memo.0.lock().await.contains_key("old-sess"),
+                "replaced session's template-memo entry must be forgotten"
+            );
+        })
+        .await;
+}
+
 /// `dispatch_load_session` failure with the direct-path strategy
 /// (`use_load_failure_handler = false`): a `load_session` error surfaces a
 /// `TabError` routed to the target tab and leaves it unbound.
@@ -1243,6 +1306,7 @@ async fn dispatch_load_session_failure_inline_emits_tab_error() {
                 },
                 &h.conn,
                 &tab_to_session,
+                &TemplateMemo::default(),
                 &cancel_signals,
                 &h.event_tx,
                 false,
@@ -1297,6 +1361,7 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
                 },
                 &h.conn,
                 &tab_to_session,
+                &TemplateMemo::default(),
                 &cancel_signals,
                 &h.event_tx,
                 false,
@@ -1346,6 +1411,7 @@ async fn dispatch_load_session_timeout_emits_tab_error() {
                 },
                 &h.conn,
                 &tab_to_session,
+                &TemplateMemo::default(),
                 &cancel_signals,
                 &h.event_tx,
                 false,

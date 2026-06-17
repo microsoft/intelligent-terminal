@@ -2483,6 +2483,7 @@ pub async fn run_acp_client_over_pipe(
                     req,
                     &conn,
                     &tab_to_session,
+                    &template_memo,
                     &cancel_signals,
                     &event_tx,
                     true,
@@ -2692,6 +2693,18 @@ fn dispatch_master_ext_request(
     });
 }
 
+/// Render a timeout `Duration` for user-facing messages without losing
+/// precision: whole-second durations render as `Ns`, everything else as the
+/// exact millisecond count `Nms` (e.g. `1500ms`, not a truncated `1s`).
+fn format_timeout_human(timeout: std::time::Duration) -> String {
+    let ms = timeout.as_millis();
+    if ms != 0 && ms % 1000 == 0 {
+        format!("{}s", ms / 1000)
+    } else {
+        format!("{ms}ms")
+    }
+}
+
 /// Resume a historical agent session for a tab via ACP `session/load`
 /// (the session-management Enter/Shift+Enter resume path). Cancels and
 /// drops any existing binding, calls `load_session` under a timeout, and
@@ -2700,6 +2713,9 @@ fn dispatch_master_ext_request(
 ///
 /// `inject_pane_meta` injects WT_SESSION into the request meta so master
 /// records `pane_session_id` on the resumed row.
+/// `template_memo` is the per-session template-shipping ledger; the replaced
+/// session's entry is forgotten so the map stays bounded (mirrors
+/// `dispatch_new_session` / `dispatch_drop_session`).
 /// `use_load_failure_handler` selects the richer [`handle_load_failure`]
 /// (restore prior binding / boot-time fallback `new_session`); when
 /// `false`, a load failure instead surfaces a plain `TabError`.
@@ -2710,6 +2726,7 @@ fn dispatch_load_session(
     req: LoadSessionForTab,
     conn: &Arc<acp::ClientSideConnection>,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::SessionId>>>,
+    template_memo: &TemplateMemo,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     inject_pane_meta: bool,
@@ -2727,6 +2744,7 @@ fn dispatch_load_session(
     );
     let conn = Arc::clone(conn);
     let tab_to_session = Arc::clone(tab_to_session);
+    let template_memo = template_memo.clone();
     let cancel_signals = Arc::clone(cancel_signals);
     let event_tx = event_tx.clone();
     tokio::task::spawn_local(async move {
@@ -2746,6 +2764,9 @@ fn dispatch_load_session(
 
         if let Some(ref old) = old_sid {
             let old_str = old.to_string();
+            // Drop the replaced session's template-shipping ledger entry so
+            // the per-session map doesn't grow unboundedly across resumes.
+            template_memo.forget(&old_str).await;
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
             }
@@ -2837,11 +2858,7 @@ fn dispatch_load_session(
                     session_id = %req.session_id,
                     "load_session timed out"
                 );
-                let human_timeout = if timeout.as_secs() >= 1 {
-                    format!("{}s", timeout.as_secs())
-                } else {
-                    format!("{}ms", timeout.as_millis())
-                };
+                let human_timeout = format_timeout_human(timeout);
                 let message = format!(
                     "Resume timed out after {human_timeout} — the agent \
                      did not respond to `session/load`."
@@ -3405,12 +3422,32 @@ async fn dispatch_prompt_body(
 #[cfg(test)]
 mod tests {
     use super::{
-        acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta, shell_from_active,
-        timeout_result_failure_fields, user_locale_tag, PromptTimingState, SoftStopReason,
+        acp_result_failure_fields, complete_prompt_request, format_timeout_human,
+        inject_wta_pane_meta, shell_from_active, timeout_result_failure_fields, user_locale_tag,
+        PromptTimingState, SoftStopReason,
     };
     use super::acp;
     use crate::app::AppEvent;
     use tokio::sync::mpsc;
+
+    /// `format_timeout_human` renders whole-second durations as `Ns` and
+    /// every other duration as the exact millisecond count `Nms`, never
+    /// truncating sub-second precision (the bug: 1500ms → "1s").
+    #[test]
+    fn format_timeout_human_is_exact() {
+        use std::time::Duration;
+        // Whole seconds collapse to `Ns`.
+        assert_eq!(format_timeout_human(Duration::from_secs(60)), "60s");
+        assert_eq!(format_timeout_human(Duration::from_millis(1000)), "1s");
+        assert_eq!(format_timeout_human(Duration::from_secs(5)), "5s");
+        // Sub-second and fractional-second values keep full ms precision.
+        assert_eq!(format_timeout_human(Duration::from_millis(1500)), "1500ms");
+        assert_eq!(format_timeout_human(Duration::from_millis(500)), "500ms");
+        assert_eq!(format_timeout_human(Duration::from_millis(50)), "50ms");
+        assert_eq!(format_timeout_human(Duration::from_millis(2500)), "2500ms");
+        // Zero is a degenerate but well-defined `0ms`, not `0s`.
+        assert_eq!(format_timeout_human(Duration::from_millis(0)), "0ms");
+    }
 
     /// `shell_from_active` resolves our own pid to a real exe name (the test
     /// binary). Proves the pid → image-name path works end to end on Windows;
