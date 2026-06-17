@@ -758,9 +758,13 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Automatic error detection</value>
     <comment>Title for the master toggle (Expander header) that lets the terminal observe the shell and detect failed commands. The Automatic error suggestion setting is nested under this one.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
-    <value>Give Intelligent Terminal permission to access your shell and automatically detect errors. Available in PowerShell and Windows PowerShell.</value>
-    <comment>{Locked="PowerShell","Windows PowerShell"} "Intelligent Terminal" is the product name. Caption under the automatic-error-detection title.</comment>
+  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
+    <value>Give Intelligent Terminal permission to access your shell and automatically detect errors. Available in PowerShell, bash, and WSL bash. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} "Intelligent Terminal" is the product name — localize it to this locale's product name (do not keep it in English). Caption under the automatic-error-detection title; the trailing space separates this prefix from the inline "AIAgents_AutoErrorDetectionCaptionLink" hyperlink that follows.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+    <value>See all supported shells</value>
+    <comment>Inline hyperlink text that follows AIAgents_AutoErrorDetectionCaptionPrefix; opens the documentation listing every shell that supports automatic error detection.</comment>
   </data>
   <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
     <value>Automatic error suggestion</value>
