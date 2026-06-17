@@ -1646,7 +1646,7 @@ namespace winrt::TerminalApp::implementation
             // thread BEFORE resuming on a background thread —
             // _settings.AllProfiles() is an observable vector and
             // iterating it concurrently with a settings reload is unsafe.
-            const auto wslDistros = ShellIntegrationSweep::SnapshotWslDistroNames(_settings);
+            const auto wslCommandlines = ShellIntegrationSweep::SnapshotWslCommandlines(_settings);
             const auto shellPresence = ShellIntegrationSweep::SnapshotShellPresence(_settings);
 
             co_await winrt::resume_background();
@@ -1656,7 +1656,7 @@ namespace winrt::TerminalApp::implementation
             // RunInstall reports a skipped shell as
             // success-already-installed so the FRE failure verdict
             // (below) doesn't flag a missing shell as a failure.
-            const auto results = ShellIntegrationSweep::RunInstall(shellPresence, wslDistros);
+            const auto results = ShellIntegrationSweep::RunInstall(shellPresence, wslCommandlines);
             const auto& pwsh7Result = results.pwsh;
             const auto& windowsPsResult = results.windowsPowerShell;
             const auto& bashResult = results.bash;
