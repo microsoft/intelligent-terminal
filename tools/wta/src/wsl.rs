@@ -48,7 +48,9 @@ where
         return Vec::new();
     }
     let mut rows = crate::history_loader::load_all_in(tmp.path());
-    let loc = SessionLocation::Wsl { distro: distro.to_string() };
+    let loc = SessionLocation::Wsl {
+        distro: distro.to_string(),
+    };
     for r in &mut rows {
         r.location = loc.clone();
     }
@@ -122,10 +124,7 @@ fn extract_tar_stream(tar_bytes: &[u8], dest: &Path) -> std::io::Result<()> {
 /// Spawn `cmd`, capture stdout, but give up (kill the child) after
 /// `timeout`. std-only: a reader thread drains stdout while the main
 /// thread waits on an mpsc with a deadline.
-fn run_capture_with_timeout(
-    mut cmd: std::process::Command,
-    timeout: Duration,
-) -> Option<Vec<u8>> {
+fn run_capture_with_timeout(mut cmd: std::process::Command, timeout: Duration) -> Option<Vec<u8>> {
     use std::io::Read;
     use std::sync::mpsc;
     cmd.stdin(std::process::Stdio::null())
@@ -175,7 +174,6 @@ impl Drop for ScopedTempDir {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
-
 
 /// Strips NULs/CR, trims, drops the `*` default marker and blank lines.
 pub(crate) fn parse_running_distros(utf16le: &[u8]) -> Vec<String> {
@@ -295,7 +293,9 @@ mod tests {
         assert_eq!(rows.len(), 1, "expected one Copilot row");
         assert_eq!(
             rows[0].location,
-            SessionLocation::Wsl { distro: "Ubuntu".to_string() }
+            SessionLocation::Wsl {
+                distro: "Ubuntu".to_string()
+            }
         );
         assert_eq!(rows[0].title, "hello wsl");
     }
