@@ -118,11 +118,19 @@ HRESULT TerminalProtocolComServer::s_StopListening()
 
 TerminalProtocolComServer::~TerminalProtocolComServer()
 {
-    // Signal the delivery worker to exit; do NOT join. The detached worker owns
-    // its own reference to the shared _DeliveryState and never touches `this`,
-    // so the object can be destroyed immediately without waiting on a slow
-    // OnEvent (and without risking a re-entrancy deadlock). The worker frees the
-    // state when it returns.
+    // Remove this instance from the global fan-out set FIRST. This preserves the
+    // global lock order: s_NotifyEventToComClients takes s_instancesMutex before
+    // _enqueueEvent takes _deliveryMutex, so destruction must not take
+    // _deliveryMutex before _removeInstance takes s_instancesMutex.
+    //
+    // Once removed, no new fan-out can enqueue into this instance. Then signal
+    // the delivery worker to exit; do NOT join. The detached worker owns its own
+    // reference to the shared _DeliveryState and never touches `this`, so the
+    // object can be destroyed immediately without waiting on a slow OnEvent (and
+    // without risking a re-entrancy deadlock). The worker frees the state when it
+    // returns.
+    _removeInstance();
+
     std::shared_ptr<_DeliveryState> d;
     {
         std::lock_guard lock{ _deliveryMutex };
@@ -132,7 +140,6 @@ TerminalProtocolComServer::~TerminalProtocolComServer()
     {
         d->queue.stop();
     }
-    _removeInstance();
 }
 
 void TerminalProtocolComServer::_addInstance()
