@@ -881,7 +881,7 @@ async fn main() -> Result<()> {
                 Err(anyhow::anyhow!(
                     "wta has no standalone agent mode: it runs as a Windows \
                      Terminal agent pane (launched by WT with --connect-master) \
-                     or via a subcommand (delegate, mcp, hooks, …)"
+                     or via a subcommand (delegate, hooks, sessions, …)"
                 ))
             }
         }

@@ -3910,8 +3910,9 @@ mod tests {
             !prompt.contains("### Supported Delegate Agents"),
             "autofix prompt is not the planner prompt"
         );
+        let user_request = format!("## User Request\n{}", "fix the build");
         assert!(
-            prompt.contains("## User Request\nfix the build"),
+            prompt.contains(&user_request),
             "a non-empty autofix hint is appended"
         );
         assert!(fix_pane.is_none(), "no wt channel → nothing to resolve");
@@ -3946,7 +3947,8 @@ mod tests {
             !prompt.contains(planner.content.trim()),
             "include_template=false must omit the template body"
         );
-        assert!(prompt.contains("## User Request\nhi"));
+        let user_request = format!("## User Request\n{}", "hi");
+        assert!(prompt.contains(&user_request));
     }
 
     /// A manual `/fix` (autofix, no explicit `source_pane_id`) resolves the
