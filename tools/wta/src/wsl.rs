@@ -10,7 +10,181 @@
 //! Running distros only: touching a *stopped* distro's filesystem
 //! auto-boots its VM (multi-second stall, GH#9541), so we never do it.
 
-/// Decode the UTF-16LE output of `wsl -l --running -q` into distro names.
+use crate::agent_sessions::{AgentSession, SessionLocation};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+/// Timeout for the per-distro fetch spawn. Bounds a wedged distro / 9P
+/// stall so the history scan can't hang.
+#[allow(dead_code)] // Wired into load_all by the gate task.
+const WSL_FETCH_TIMEOUT: Duration = Duration::from_secs(20);
+/// Timeout for the (cheap) `wsl -l --running -q` enumeration spawn.
+#[allow(dead_code)] // Wired into load_all by the gate task.
+const WSL_LIST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Scan one distro into rows, with the spawn + extract boundaries
+/// injected so unit tests run without `wsl.exe` / `tar.exe`.
+///
+/// `fetch_tar(distro) -> Option<tar bytes>`; `extract(bytes, dest)`
+/// materializes a `$HOME`-mirror at `dest`.
+pub(crate) fn scan_distro_with<F, E>(distro: &str, fetch_tar: F, extract: E) -> Vec<AgentSession>
+where
+    F: FnOnce(&str) -> Option<Vec<u8>>,
+    E: FnOnce(&[u8], &Path) -> std::io::Result<()>,
+{
+    let Some(tar_bytes) = fetch_tar(distro) else {
+        return Vec::new();
+    };
+    if tar_bytes.is_empty() {
+        return Vec::new();
+    }
+    let tmp = match ScopedTempDir::new() {
+        Ok(t) => t,
+        Err(err) => {
+            tracing::warn!(target: "wsl", distro, %err, "temp dir create failed");
+            return Vec::new();
+        }
+    };
+    if let Err(err) = extract(&tar_bytes, tmp.path()) {
+        tracing::warn!(target: "wsl", distro, %err, "tar extract failed");
+        return Vec::new();
+    }
+    let mut rows = crate::history_loader::load_all_in(tmp.path());
+    let loc = SessionLocation::Wsl { distro: distro.to_string() };
+    for r in &mut rows {
+        r.location = loc.clone();
+    }
+    rows
+}
+
+/// Enumerate running distros and scan each, using the real spawn/extract.
+#[allow(dead_code)] // Wired into load_all by the gate task.
+pub fn scan_running_distros() -> Vec<AgentSession> {
+    let mut out = Vec::new();
+    for distro in running_distros() {
+        let rows = scan_distro_with(&distro, fetch_distro_tar, extract_tar_stream);
+        tracing::info!(target: "wsl", distro = %distro, rows = rows.len(), "scanned distro");
+        out.extend(rows);
+    }
+    out
+}
+
+/// `wsl -l --running -q` -> distro names. Empty on any failure (no WSL,
+/// nothing running, timeout).
+#[allow(dead_code)] // Wired into load_all by the gate task.
+pub(crate) fn running_distros() -> Vec<String> {
+    let mut cmd = std::process::Command::new("wsl.exe");
+    cmd.args(["-l", "--running", "-q"]);
+    match run_capture_with_timeout(cmd, WSL_LIST_TIMEOUT) {
+        Some(bytes) => parse_running_distros(&bytes),
+        None => Vec::new(),
+    }
+}
+
+/// Production fetch: run the bash pipeline inside `distro`, capture the
+/// tar stream from stdout. Base64-wraps the script so neither wsl.exe's
+/// command-line re-parse nor bash quoting can mangle it.
+#[allow(dead_code)] // Wired into load_all by the gate task.
+fn fetch_distro_tar(distro: &str) -> Option<Vec<u8>> {
+    let script = build_fetch_script(crate::history_loader::MAX_PER_CLI);
+    let b64 = crate::osc52::base64_encode(script.as_bytes());
+    let inner = format!("echo {b64} | base64 -d | bash");
+    let mut cmd = std::process::Command::new("wsl.exe");
+    cmd.args(["-d", distro, "--", "bash", "-c", &inner]);
+    let bytes = run_capture_with_timeout(cmd, WSL_FETCH_TIMEOUT)?;
+    (!bytes.is_empty()).then_some(bytes)
+}
+
+/// Production extract: pipe the tar stream into the in-box Windows
+/// `tar.exe` (bsdtar) extracting into `dest`. mtimes are preserved.
+#[allow(dead_code)] // Wired into load_all by the gate task.
+fn extract_tar_stream(tar_bytes: &[u8], dest: &Path) -> std::io::Result<()> {
+    use std::io::Write;
+    let tar_exe = std::env::var_os("SystemRoot")
+        .map(|r| Path::new(&r).join("System32").join("tar.exe"))
+        .unwrap_or_else(|| PathBuf::from("tar.exe"));
+    let mut child = std::process::Command::new(tar_exe)
+        .args(["-xf", "-", "-C"])
+        .arg(dest)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "tar.exe: no stdin"))?
+        .write_all(tar_bytes)?;
+    let status = child.wait()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("tar.exe exited with {status}"),
+        ))
+    }
+}
+
+/// Spawn `cmd`, capture stdout, but give up (kill the child) after
+/// `timeout`. std-only: a reader thread drains stdout while the main
+/// thread waits on an mpsc with a deadline.
+#[allow(dead_code)] // Wired into load_all by the gate task.
+fn run_capture_with_timeout(
+    mut cmd: std::process::Command,
+    timeout: Duration,
+) -> Option<Vec<u8>> {
+    use std::io::Read;
+    use std::sync::mpsc;
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    let mut child = cmd.spawn().ok()?;
+    let mut stdout = child.stdout.take()?;
+    let (tx, rx) = mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        let _ = tx.send(buf);
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(buf) => {
+            let _ = child.wait();
+            let _ = reader.join();
+            Some(buf)
+        }
+        Err(_) => {
+            // Timed out: kill the child so the reader hits EOF and exits.
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = reader.join();
+            None
+        }
+    }
+}
+
+/// A temp directory removed on drop. Used as the extraction target for a
+/// distro's `$HOME`-mirror. Names are uniquified with a v4 UUID.
+struct ScopedTempDir(PathBuf);
+
+impl ScopedTempDir {
+    fn new() -> std::io::Result<Self> {
+        let p = std::env::temp_dir().join(format!("wta-wsl-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&p)?;
+        Ok(Self(p))
+    }
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for ScopedTempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+
 /// Strips NULs/CR, trims, drops the `*` default marker and blank lines.
 #[allow(dead_code)] // Called by `running_distros()` in the scan-orchestration task.
 pub(crate) fn parse_running_distros(utf16le: &[u8]) -> Vec<String> {
@@ -105,5 +279,41 @@ mod tests {
         assert!(script.contains("CAP=50"));
         // archive is produced relative to $HOME on stdout
         assert!(script.contains("tar -cf - -C \"$HOME\""));
+    }
+
+    #[test]
+    fn scan_distro_stamps_rows_with_wsl_location() {
+        // Fake fetch: any non-empty bytes (real bytes are a tar; the fake
+        // extractor ignores them and writes a known layout instead).
+        let fetch = |_distro: &str| Some(vec![1u8, 2, 3]);
+        // Fake extract: materialize one Copilot session under <dest>.
+        let extract = |_bytes: &[u8], dest: &std::path::Path| -> std::io::Result<()> {
+            let dir = dest
+                .join(".copilot")
+                .join("session-state")
+                .join("11111111-2222-3333-4444-555555555555");
+            std::fs::create_dir_all(&dir)?;
+            std::fs::write(
+                dir.join("workspace.yaml"),
+                "id: 11111111-2222-3333-4444-555555555555\ncwd: /home/u/proj\nsummary: hello wsl\n",
+            )?;
+            std::fs::write(dir.join("events.jsonl"), "{\"type\":\"user\"}\n")?;
+            Ok(())
+        };
+
+        let rows = scan_distro_with("Ubuntu", fetch, extract);
+        assert_eq!(rows.len(), 1, "expected one Copilot row");
+        assert_eq!(
+            rows[0].location,
+            SessionLocation::Wsl { distro: "Ubuntu".to_string() }
+        );
+        assert_eq!(rows[0].title, "hello wsl");
+    }
+
+    #[test]
+    fn scan_distro_empty_fetch_yields_no_rows() {
+        let fetch = |_d: &str| None;
+        let extract = |_b: &[u8], _d: &std::path::Path| Ok(());
+        assert!(scan_distro_with("Ubuntu", fetch, extract).is_empty());
     }
 }

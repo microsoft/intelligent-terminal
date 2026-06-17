@@ -68,7 +68,7 @@ use std::time::SystemTime;
 
 use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionOrigin};
 
-const MAX_PER_CLI: usize = 50;
+pub(crate) const MAX_PER_CLI: usize = 50;
 const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 
 /// Upper bound on bytes read by the `*_has_real_content` classifiers
@@ -84,23 +84,32 @@ const CLASSIFY_SCAN_BYTES_CAP: u64 = 8 * 1024 * 1024;
 
 pub fn load_all() -> Vec<AgentSession> {
     let mut out = Vec::new();
-    let Some(home) = home_dir() else { return out };
-    out.extend(take_n(load_copilot(&home), MAX_PER_CLI));
-    out.extend(take_n(load_claude(&home),  MAX_PER_CLI));
-    out.extend(take_n(load_gemini(&home),  MAX_PER_CLI));
-    out.extend(take_n(load_codex(&home),  MAX_PER_CLI));
-    // Stamp `origin: AgentPane` on rows whose session id was recorded in
-    // the local agent-pane index. Loaded once and applied as a join so the
-    // per-CLI scanners stay agnostic of how the index is shaped or where
-    // it lives.
-    let agent_pane_keys = crate::agent_pane_origin::load_default_set();
-    if !agent_pane_keys.is_empty() {
-        for s in out.iter_mut() {
-            if agent_pane_keys.contains(&s.key) {
-                s.origin = SessionOrigin::AgentPane;
+    if let Some(home) = home_dir() {
+        out.extend(load_all_in(&home));
+        // Stamp `origin: AgentPane` on host rows recorded in the local
+        // agent-pane index (host-only; WSL rows are never agent-pane).
+        let agent_pane_keys = crate::agent_pane_origin::load_default_set();
+        if !agent_pane_keys.is_empty() {
+            for s in out.iter_mut() {
+                if agent_pane_keys.contains(&s.key) {
+                    s.origin = SessionOrigin::AgentPane;
+                }
             }
         }
     }
+    out
+}
+
+/// Run the four per-CLI scanners against a specific `home` (the real
+/// user profile for host rows, or a temp `$HOME`-mirror extracted from a
+/// WSL distro). Caps each CLI at [`MAX_PER_CLI`]. Does **not** apply the
+/// agent-pane origin join — that is host-only and lives in [`load_all`].
+pub(crate) fn load_all_in(home: &Path) -> Vec<AgentSession> {
+    let mut out = Vec::new();
+    out.extend(take_n(load_copilot(home), MAX_PER_CLI));
+    out.extend(take_n(load_claude(home), MAX_PER_CLI));
+    out.extend(take_n(load_gemini(home), MAX_PER_CLI));
+    out.extend(take_n(load_codex(home), MAX_PER_CLI));
     out
 }
 
