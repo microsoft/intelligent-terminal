@@ -1972,11 +1972,11 @@ namespace winrt::TerminalApp::implementation
         const auto weak = get_weak();
         const auto dispatcher = Dispatcher();
 
-        // Snapshot WSL distros AND which non-WSL shells the user has
+        // Snapshot WSL profile commandlines AND which non-WSL shells the user has
         // profiles for, on the UI thread BEFORE we go background.
         // _settings.AllProfiles() is an observable vector; iterating it
         // concurrently with a settings reload would be unsafe.
-        const auto wslDistros = ShellIntegrationSweep::SnapshotWslDistroNames(_settings);
+        const auto wslCommandlines = ShellIntegrationSweep::SnapshotWslCommandlines(_settings);
         const auto shellPresence = ShellIntegrationSweep::SnapshotShellPresence(_settings);
 
         co_await winrt::resume_background();
@@ -2018,7 +2018,7 @@ namespace winrt::TerminalApp::implementation
                 // Skipped shells are reported as success-already-installed
                 // so the all-installed / any-failure UI verdict below
                 // doesn't flag a missing shell as a failure.
-                const auto results = ShellIntegrationSweep::RunInstall(shellPresence, wslDistros);
+                const auto results = ShellIntegrationSweep::RunInstall(shellPresence, wslCommandlines);
 
                 // Aggregate verdict across ALL four flavors (pwsh, WinPS,
                 // bash, every WSL distro). The earlier two-flavor version
@@ -2166,11 +2166,11 @@ namespace winrt::TerminalApp::implementation
     {
         auto weak = get_weak();
 
-        // Snapshot WSL distros AND non-WSL shell presence on the UI
+        // Snapshot WSL profile commandlines AND non-WSL shell presence on the UI
         // thread BEFORE going background. _settings.AllProfiles() is
         // an observable vector and must not be iterated concurrently
         // with a settings reload.
-        const auto wslDistros = ShellIntegrationSweep::SnapshotWslDistroNames(_settings);
+        const auto wslCommandlines = ShellIntegrationSweep::SnapshotWslCommandlines(_settings);
         const auto shellPresence = ShellIntegrationSweep::SnapshotShellPresence(_settings);
 
         co_await winrt::resume_background();
@@ -2196,7 +2196,7 @@ namespace winrt::TerminalApp::implementation
             // profile for. A user keeping only "Developer PowerShell
             // for VS" (which uses Windows PowerShell) and no pwsh
             // profile must not get pwsh integration written.
-            (void)ShellIntegrationSweep::RunInstall(shellPresence, wslDistros);
+            (void)ShellIntegrationSweep::RunInstall(shellPresence, wslCommandlines);
         }
         else
         {
@@ -2210,12 +2210,12 @@ namespace winrt::TerminalApp::implementation
             // next reconcile after re-adding the X profile sweeps
             // it.
             //
-            // WSL is similarly bounded by `wslDistros`: WT profile
+            // WSL is similarly bounded by `wslCommandlines`: WT profile
             // deletion != WSL distro removal (the user may still
             // use the distro via `wsl.exe` directly), and tracking
             // previously-installed distros across settings reloads
             // would add complexity for a rare edge case.
-            ShellIntegrationSweep::RunUninstall(shellPresence, wslDistros);
+            ShellIntegrationSweep::RunUninstall(shellPresence, wslCommandlines);
         }
     }
 
