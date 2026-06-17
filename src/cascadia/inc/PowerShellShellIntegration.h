@@ -129,7 +129,13 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
 
         inline bool PolicyNameBlocksUnsignedScripts(std::wstring_view name) noexcept
         {
-            return name == L"restricted" || name == L"allsigned";
+            // Allow-list: only these three policies permit unsigned local
+            // scripts (like our shell-integration profile) to execute.
+            // Everything else — including the empty string returned when
+            // QueryExecutionPolicy fails in packaged-app context — is
+            // treated as blocking so FRE surfaces the actionable EP error
+            // instead of silently writing a profile that will never load.
+            return !(name == L"remotesigned" || name == L"unrestricted" || name == L"bypass");
         }
 
         // Body-line recognizer for orphan-marker recovery — matches the
