@@ -34,6 +34,7 @@ mod test_support;
 mod theme;
 mod ui;
 mod ui_trace;
+mod wsl;
 
 use acp::Agent as _;
 use agent_client_protocol as acp;
