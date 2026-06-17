@@ -16,10 +16,8 @@ use std::time::Duration;
 
 /// Timeout for the per-distro fetch spawn. Bounds a wedged distro / 9P
 /// stall so the history scan can't hang.
-#[allow(dead_code)] // Wired into load_all by the gate task.
 const WSL_FETCH_TIMEOUT: Duration = Duration::from_secs(20);
 /// Timeout for the (cheap) `wsl -l --running -q` enumeration spawn.
-#[allow(dead_code)] // Wired into load_all by the gate task.
 const WSL_LIST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Scan one distro into rows, with the spawn + extract boundaries
@@ -58,7 +56,6 @@ where
 }
 
 /// Enumerate running distros and scan each, using the real spawn/extract.
-#[allow(dead_code)] // Wired into load_all by the gate task.
 pub fn scan_running_distros() -> Vec<AgentSession> {
     let mut out = Vec::new();
     for distro in running_distros() {
@@ -71,7 +68,6 @@ pub fn scan_running_distros() -> Vec<AgentSession> {
 
 /// `wsl -l --running -q` -> distro names. Empty on any failure (no WSL,
 /// nothing running, timeout).
-#[allow(dead_code)] // Wired into load_all by the gate task.
 pub(crate) fn running_distros() -> Vec<String> {
     let mut cmd = std::process::Command::new("wsl.exe");
     cmd.args(["-l", "--running", "-q"]);
@@ -84,7 +80,6 @@ pub(crate) fn running_distros() -> Vec<String> {
 /// Production fetch: run the bash pipeline inside `distro`, capture the
 /// tar stream from stdout. Base64-wraps the script so neither wsl.exe's
 /// command-line re-parse nor bash quoting can mangle it.
-#[allow(dead_code)] // Wired into load_all by the gate task.
 fn fetch_distro_tar(distro: &str) -> Option<Vec<u8>> {
     let script = build_fetch_script(crate::history_loader::MAX_PER_CLI);
     let b64 = crate::osc52::base64_encode(script.as_bytes());
@@ -97,7 +92,6 @@ fn fetch_distro_tar(distro: &str) -> Option<Vec<u8>> {
 
 /// Production extract: pipe the tar stream into the in-box Windows
 /// `tar.exe` (bsdtar) extracting into `dest`. mtimes are preserved.
-#[allow(dead_code)] // Wired into load_all by the gate task.
 fn extract_tar_stream(tar_bytes: &[u8], dest: &Path) -> std::io::Result<()> {
     use std::io::Write;
     let tar_exe = std::env::var_os("SystemRoot")
@@ -128,7 +122,6 @@ fn extract_tar_stream(tar_bytes: &[u8], dest: &Path) -> std::io::Result<()> {
 /// Spawn `cmd`, capture stdout, but give up (kill the child) after
 /// `timeout`. std-only: a reader thread drains stdout while the main
 /// thread waits on an mpsc with a deadline.
-#[allow(dead_code)] // Wired into load_all by the gate task.
 fn run_capture_with_timeout(
     mut cmd: std::process::Command,
     timeout: Duration,
@@ -185,7 +178,6 @@ impl Drop for ScopedTempDir {
 
 
 /// Strips NULs/CR, trims, drops the `*` default marker and blank lines.
-#[allow(dead_code)] // Called by `running_distros()` in the scan-orchestration task.
 pub(crate) fn parse_running_distros(utf16le: &[u8]) -> Vec<String> {
     let u16s: Vec<u16> = utf16le
         .chunks_exact(2)
@@ -211,7 +203,6 @@ pub(crate) fn parse_running_distros(utf16le: &[u8]) -> Vec<String> {
 /// * Copilot — rank session dirs by `events.jsonl` mtime, emit each dir's
 ///   `events.jsonl` + `workspace.yaml`.
 /// * Claude/Codex/Gemini — rank the session `.jsonl` files by mtime.
-#[allow(dead_code)] // Invoked by the production fetch in the scan-orchestration task.
 fn build_fetch_script(cap: usize) -> String {
     format!(
         r#"set -eu

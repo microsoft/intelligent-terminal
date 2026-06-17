@@ -82,6 +82,17 @@ const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 /// case (treated as phantom — conservative but safe).
 const CLASSIFY_SCAN_BYTES_CAP: u64 = 8 * 1024 * 1024;
 
+/// Whether to scan WSL distros for historical sessions. Single
+/// chokepoint + env kill-switch (`WTA_WSL_SESSIONS=0|false|no`).
+/// Defaults to **enabled**. A future `wslSessions` setting will pass a
+/// flag that overrides this same function — no other call site changes.
+pub(crate) fn wsl_sessions_enabled() -> bool {
+    match std::env::var("WTA_WSL_SESSIONS").ok().as_deref() {
+        Some("0") | Some("false") | Some("FALSE") | Some("no") | Some("NO") => false,
+        _ => true,
+    }
+}
+
 pub fn load_all() -> Vec<AgentSession> {
     let mut out = Vec::new();
     if let Some(home) = home_dir() {
@@ -96,6 +107,9 @@ pub fn load_all() -> Vec<AgentSession> {
                 }
             }
         }
+    }
+    if wsl_sessions_enabled() {
+        out.extend(crate::wsl::scan_running_distros());
     }
     out
 }
@@ -2664,5 +2678,21 @@ mod tests {
         // 2024 IS a leap year; 2023 is not.
         assert!(parse_iso_to_system_time("2024-02-29T00:00:00Z").is_some());
         assert!(parse_iso_to_system_time("2023-02-29T00:00:00Z").is_none());
+    }
+
+    static WSL_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn wsl_gate_defaults_on_and_honors_env() {
+        let _g = WSL_ENV_LOCK.lock().unwrap();
+        std::env::remove_var("WTA_WSL_SESSIONS");
+        assert!(wsl_sessions_enabled(), "default must be enabled");
+        std::env::set_var("WTA_WSL_SESSIONS", "0");
+        assert!(!wsl_sessions_enabled());
+        std::env::set_var("WTA_WSL_SESSIONS", "false");
+        assert!(!wsl_sessions_enabled());
+        std::env::set_var("WTA_WSL_SESSIONS", "1");
+        assert!(wsl_sessions_enabled());
+        std::env::remove_var("WTA_WSL_SESSIONS");
     }
 }
