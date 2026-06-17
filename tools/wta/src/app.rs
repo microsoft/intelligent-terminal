@@ -5175,6 +5175,14 @@ impl App {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
             }
+            AppEvent::CommandOutputReady {
+                session_id,
+                pane_id,
+                command,
+                output,
+            } => {
+                self.handle_command_output_ready(session_id, pane_id, command, output);
+            }
             AppEvent::WtEvent {
                 method,
                 pane_id,
@@ -7155,6 +7163,7 @@ impl App {
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Model => self.cmd_model(cmd.rest),
+            CommandKind::Explain => self.cmd_explain(in_flight, cmd.rest),
         }
     }
 
@@ -7295,6 +7304,57 @@ impl App {
             generation,
             has_hint = !hint.is_empty(),
             "dispatching /fix",
+        );
+        self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
+        let _ = self.prompt_tx.send(prompt);
+    }
+
+    /// `/explain [hint]` — explain the current terminal output to the user.
+    ///
+    /// Submits the pane context to the agent with an explain prompt. Any text
+    /// after `/explain` is passed as extra context. Refuses while a turn is
+    /// in flight; the user should `/stop` first.
+    fn cmd_explain(&mut self, in_flight: bool, hint: String) {
+        if in_flight {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("system.busy_use_stop").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
+
+        let target_tab_id = self
+            .tab_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+
+        let hint = hint.trim().to_string();
+        let explain_prompt = if hint.is_empty() {
+            "Please explain what is happening in the terminal output above. What does it mean and what should I do next?".to_string()
+        } else {
+            format!("Please explain: {hint}")
+        };
+
+        let pane_context = PaneContext {
+            pane_id: self.pane_id.clone(),
+            tab_id: Some(target_tab_id.clone()),
+            window_id: self.window_id.clone(),
+            cwd: None,
+            source_pane_id: None,
+        };
+
+        let prompt = PromptSubmission::new(explain_prompt.clone(), Some(pane_context));
+        let submitted = SubmittedPrompt {
+            id: prompt.id,
+            text: explain_prompt,
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            autofix: None,
+        };
+        tracing::info!(
+            target: "slash_cmd",
+            tab_id = %target_tab_id,
+            has_hint = !hint.is_empty(),
+            "dispatching /explain",
         );
         self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
         let _ = self.prompt_tx.send(prompt);
@@ -13460,6 +13520,66 @@ mod tests {
         };
         assert_eq!(perm.allow_index(), Some(0));
         assert_eq!(perm.reject_index(), Some(1));
+    }
+
+    /// Regression (issue #189): while the agent has queued a permission request
+    /// but `AgentMessageEnd` has not yet arrived (turn is
+    /// `Surfaced{end_pending:true}`), the thinking/activity indicator must
+    /// remain visible. Previously `spinner_label()` returned `None` for any
+    /// `Surfaced` variant, making the pane look frozen between the eager surface
+    /// and the permission card appearing.
+    #[test]
+    fn thinking_indicator_visible_while_permission_pending_and_end_pending() {
+        let mut app = test_app();
+
+        // Put the tab in `Surfaced{end_pending:true}` — the state that exists
+        // between an eager surface (recommendation / chat turn visible) and the
+        // `AgentMessageEnd` event that releases the UI gate. A permission
+        // request can arrive in this window.
+        let prompt = SubmittedPrompt {
+            id: 1,
+            text: "test".into(),
+            submitted_at_unix_s: 0.0,
+            autofix: None,
+        };
+        app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
+            prompt,
+            outcome: TurnOutcome::Empty,
+            end_pending: true,
+        };
+
+        // The spinner must be active while end_pending=true.
+        assert!(
+            app.current_tab().turn.spinner_label().is_some(),
+            "spinner_label must be Some while Surfaced{{end_pending:true}} (issue #189)"
+        );
+        assert!(
+            app.has_activity_indicator(),
+            "has_activity_indicator must be true while Surfaced{{end_pending:true}} (issue #189)"
+        );
+
+        // Simulate the PermissionRequest arriving in this window.
+        app.tab_mut(DEFAULT_TAB_ID)
+            .permission
+            .push_back(PermissionState {
+                description: "Allow tool X?".into(),
+                options: vec![
+                    PermOption { id: "allow-once".into(), name: "Allow".into(), kind: "AllowOnce".into() },
+                    PermOption { id: "reject-once".into(), name: "Deny".into(), kind: "RejectOnce".into() },
+                ],
+                selected: 0,
+                responder: None,
+            });
+
+        // With a queued permission AND end_pending=true the spinner must still be on.
+        assert!(
+            app.current_tab().turn.spinner_label().is_some(),
+            "spinner_label must remain Some after PermissionRequest queued while end_pending=true"
+        );
+        assert!(
+            app.has_activity_indicator(),
+            "has_activity_indicator must remain true after PermissionRequest queued"
+        );
     }
 
     /// Tool-call card: when the mock proposes a command (a `ToolCall`
