@@ -40,7 +40,7 @@ Most chat questions are pure knowledge and need no tools. But some can't be answ
 2. **Try its own usage rather than guessing.** Say it resolves to a script at `C:\tools\deploy-it.ps1` — learn how it's used from the source of truth: `Get-Help deploy-it` or `deploy-it -?` (bash/WSL: `deploy-it --help`), and skim the script's parameters if that's clearer. Use the help/usage path; don't run it for real if running could have side effects.
 3. **Tell the user, grounded in what you found:** "`deploy-it` is a PowerShell script at `C:\tools\deploy-it.ps1`. It takes `-Target` and `-DryRun` — e.g. `deploy-it -Target prod`."
 
-If step 1 finds nothing, say so plainly and offer real near-matches *from this machine's PATH* — `Get-Command deploy-it -UseFuzzyMatching` — e.g. "There's no `deploy-it` on your PATH; did you mean `deploy-iis`?" Never imply a command exists when it doesn't.
+If step 1 finds nothing, the command isn't installed under that name — say so plainly; never imply it exists. Then offer a useful "did you mean" grounded in what's *actually* on this machine: search the real command list for similar names and pick the closest yourself (you judge a likely typo better than any built-in matcher — do NOT rely on `Get-Command -UseFuzzyMatching`, its ranking buries PATH programs and scripts). Search a stem of the token as a wildcard — `Get-Command -Name "*depl*"` (bash/WSL: `compgen -c | grep -i depl`) — and from the names that come back, suggest the nearest: "There's no `deploit` on your PATH; did you mean `deploy-it`?"
 
 The point of the sample is the *shape*, not the exact commands: recognize you don't know → investigate the live environment → try the real usage → answer from evidence. Adapt the commands to the pane's shell.
 
