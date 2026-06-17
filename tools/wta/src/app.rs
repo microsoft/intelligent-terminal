@@ -3151,7 +3151,7 @@ impl App {
                 Some(cwd) => format!("wsl -d \"{distro}\" --cd \"{cwd}\" -- {resume_invocation}"),
                 None => format!("wsl -d \"{distro}\" -- {resume_invocation}"),
             },
-            crate::agent_sessions::SessionLocation::Host => resume_invocation.clone(),
+            crate::agent_sessions::SessionLocation::Host => resume_invocation,
         };
 
         // Per-CLI session stores are keyed by an encoding of the *current*
@@ -7993,12 +7993,13 @@ impl App {
 }
 
 /// Return the cwd to hand to `wsl --cd` — only when it's an absolute
-/// Linux path (starts with `/`). A Windows path or empty cwd yields
-/// `None`, so WSL falls back to the distro's `$HOME`.
+/// Linux path (starts with `/`). A Windows path, empty cwd, or a path
+/// containing a double-quote (which would break the quoted `--cd "…"`
+/// argument) yields `None`, so WSL falls back to the distro's `$HOME`.
 fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
     let s = cwd.to_string_lossy();
     let s = s.trim();
-    s.starts_with('/').then(|| s.to_string())
+    (s.starts_with('/') && !s.contains('"')).then(|| s.to_string())
 }
 
 // ─────────────────────────────────────────────────────────────────────────
