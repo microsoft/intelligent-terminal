@@ -191,6 +191,7 @@ commands.help.summary: "이 명령 목록 표시"
 commands.clear.summary: "채팅 스크롤백 지우기(세션 유지)"
 commands.new.summary: "새 ACP 세션 시작(기록 삭제)"
 commands.fix.summary: "활성 터미널을 진단하고 수정 방법 제안 (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "에이전트 다시 시작"
 commands.stop.summary: "진행 중인 프롬프트 취소"
 commands.sessions.summary: "기록된 세션 선택기 열기(Ctrl+Shift+/)"

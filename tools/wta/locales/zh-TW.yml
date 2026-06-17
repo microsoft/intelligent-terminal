@@ -191,6 +191,7 @@ commands.help.summary: "顯示此命令清單"
 commands.clear.summary: "清除聊天記錄（保留工作階段）"
 commands.new.summary: "啟動新的 ACP 工作階段（清空歷史記錄）"
 commands.fix.summary: "診斷作用中的終端機並建議修正方式（/fix <hint>）"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "重新啟動智能體"
 commands.stop.summary: "取消進行中的提示"
 commands.sessions.summary: "開啟歷史工作階段選擇器（Ctrl+Shift+/）"

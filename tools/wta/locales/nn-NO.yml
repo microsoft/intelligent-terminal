@@ -196,6 +196,7 @@ commands.help.summary: "Vis denne kommandolista"
 commands.clear.summary: "Tøm rulleloggen for chatten (beheld økta)"
 commands.new.summary: "Start ei ny ACP-økt (forkastar historikk)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnostiser den aktive terminalen og føreslå ei løysing (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Start agenten på nytt"
 commands.stop.summary: "Avbryt den pågåande førespurnaden"
 commands.sessions.summary: "Opne veljaren for historiske økter (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

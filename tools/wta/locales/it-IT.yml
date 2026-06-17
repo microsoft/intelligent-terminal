@@ -196,6 +196,7 @@ commands.help.summary: "Mostra questo elenco di comandi"
 commands.clear.summary: "Cancella la cronologia chat (mantiene la sessione)"
 commands.new.summary: "Avvia una nuova sessione ACP (cancella la cronologia)"
 commands.fix.summary: "Diagnostica il terminale attivo e suggerisci una correzione (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Riavvia agente"
 commands.stop.summary: "Annulla la richiesta in corso"
 commands.sessions.summary: "Apri il selettore delle sessioni storiche (Ctrl+Shift+/)"

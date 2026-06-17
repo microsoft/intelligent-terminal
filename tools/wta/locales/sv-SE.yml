@@ -196,6 +196,7 @@ commands.help.summary: "Visa den här kommandolistan"
 commands.clear.summary: "Rensa chattens rullningshistorik (behåller sessionen)"
 commands.new.summary: "Starta en ny ACP-session (slänger historiken)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnostisera den aktiva terminalen och föreslå en korrigering (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Starta om agenten"
 commands.stop.summary: "Avbryt den pågående prompten"
 commands.sessions.summary: "Öppna väljaren för historiska sessioner (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

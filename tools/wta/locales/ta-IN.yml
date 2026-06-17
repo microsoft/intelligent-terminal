@@ -75,6 +75,7 @@ commands.help.summary: "இந்த கட்டளைப் பட்டிய
 commands.clear.summary: "அரட்டை ஸ்க்ரோல்பேக்கை அழி (அமர்வை வைத்திருக்கும்)"
 commands.new.summary: "புதிய ACP அமர்வைத் தொடங்கு (வரலாற்றை கைவிடும்)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "முகவரை மறுதொடக்கம் செய்"
 commands.stop.summary: "செயலில் உள்ள prompt-ஐ ரத்துசெய்"
 commands.sessions.summary: "வரலாற்று அமர்வுகள் தேர்வியைத் திற (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

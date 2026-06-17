@@ -1346,6 +1346,16 @@ pub enum AppEvent {
     MasterMutationCompleted {
         request_id: u64,
     },
+    /// Terminal command output is ready for the agent to explain. Emitted by
+    /// the `/explain` slash command flow once the pane context (captured
+    /// command + output) has been resolved. Routes to `handle_command_output_ready`
+    /// for final prompt assembly and submission.
+    CommandOutputReady {
+        session_id: String,
+        pane_id: String,
+        command: String,
+        output: String,
+    },
 }
 
 // --- Per-tab session storage ---
@@ -4414,6 +4424,7 @@ impl App {
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
+            AppEvent::CommandOutputReady { .. } => "command_output_ready",
         }
     }
 
@@ -7356,6 +7367,37 @@ impl App {
             has_hint = !hint.is_empty(),
             "dispatching /explain",
         );
+        self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
+        let _ = self.prompt_tx.send(prompt);
+    }
+
+    /// Handle resolved command output for the `/explain` flow. Called from
+    /// the `CommandOutputReady` event when the pane context (captured command
+    /// and output) arrives from the ACP client task. Assembles the final
+    /// explain prompt with the concrete command/output context included and
+    /// submits it to the agent.
+    fn handle_command_output_ready(
+        &mut self,
+        session_id: String,
+        _pane_id: String,
+        command: String,
+        output: String,
+    ) {
+        let target_tab_id = self.tab_for_session(&session_id);
+        let text = if command.is_empty() {
+            format!("Please explain the following terminal output:\n{output}")
+        } else {
+            format!(
+                "Please explain the following command and its output:\nCommand: {command}\nOutput:\n{output}"
+            )
+        };
+        let prompt = PromptSubmission::new(text.clone(), None);
+        let submitted = SubmittedPrompt {
+            id: prompt.id,
+            text,
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            autofix: None,
+        };
         self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
         let _ = self.prompt_tx.send(prompt);
     }

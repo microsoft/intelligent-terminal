@@ -72,6 +72,7 @@ commands.help.summary: "Pokaż tę listę poleceń"
 commands.clear.summary: "Wyczyść historię czatu (zachowuje sesję)"
 commands.new.summary: "Rozpocznij nową sesję ACP (usuwa historię)"  # {Locked="ACP"}
 commands.fix.summary: "Zdiagnozuj aktywny terminal i zasugeruj poprawkę (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Uruchom ponownie agenta"
 commands.stop.summary: "Anuluj trwający monit"
 commands.sessions.summary: "Otwórz wybór historycznych sesji (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

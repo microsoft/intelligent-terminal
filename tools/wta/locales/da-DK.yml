@@ -196,6 +196,7 @@ commands.help.summary: "Vis denne kommandoliste"
 commands.clear.summary: "Ryd chattens rullehistorik (bevarer sessionen)"
 commands.new.summary: "Start en ny ACP-session (sletter historik)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnosticér den aktive terminal, og foreslå en rettelse (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Genstart agent"
 commands.stop.summary: "Annuller den igangværende prompt"
 commands.sessions.summary: "Åbn vælgeren for historiske sessioner (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

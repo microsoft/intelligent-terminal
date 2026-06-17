@@ -195,6 +195,7 @@ commands.help.summary: "A parancslista megjelenítése"
 commands.clear.summary: "A csevegés görgetési előzményeinek törlése (a munkamenet megmarad)"
 commands.new.summary: "Új ACP-munkamenet indítása (előzmények eldobása)"  # {Locked="ACP"}
 commands.fix.summary: "Az aktív terminál diagnosztizálása és javítás javaslata (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Ügynök újraindítása"
 commands.stop.summary: "Folyamatban lévő prompt megszakítása"
 commands.sessions.summary: "Előzménybeli munkamenetek választójának megnyitása (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
