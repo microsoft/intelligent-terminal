@@ -1232,6 +1232,47 @@ fn user_locale_tag() -> String {
     rust_i18n::locale().to_string()
 }
 
+/// Resolve an `@`-mention token to a WT pane `session_id`.
+///
+/// `token` is the raw text after the `@` sigil (e.g. `"1"`, `"build"`).
+/// `pane_list` is the `list_panes` JSON response for the current tab.
+///
+/// Resolution rules (first match wins):
+/// 1. If `token` is a non-zero unsigned integer N, return the N-th pane
+///    (1-based) from the `panes` array.
+/// 2. Otherwise case-insensitively prefix-match the `title` field of each
+///    pane entry; return the first match's `session_id`.
+///
+/// Returns `None` when WT is unavailable, no pane list was fetched, or the
+/// token matches nothing.
+fn resolve_at_pane_ref(token: &str, pane_list: Option<&serde_json::Value>) -> Option<String> {
+    let list = pane_list?;
+    let panes = list.get("panes")?.as_array()?;
+
+    // Numeric index (1-based)?
+    if let Ok(idx) = token.parse::<usize>() {
+        if idx > 0 {
+            return panes
+                .get(idx - 1)
+                .and_then(|p| json_str_or_num(p.get("session_id")));
+        }
+    }
+
+    // Title prefix match (case-insensitive).
+    let needle = token.to_ascii_lowercase();
+    for pane in panes {
+        let title = pane
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !title.is_empty() && title.starts_with(&needle) {
+            return json_str_or_num(pane.get("session_id"));
+        }
+    }
+    None
+}
+
 async fn build_prompt_text(
     prompt_id: u64,
     submitted_at_unix_s: f64,
@@ -1389,6 +1430,72 @@ async fn build_prompt_text(
                     runtime_sections.push(format!("### Terminal Output\n```\n{}\n```", content));
                 }
             }
+        }
+    }
+
+    // @pane-ref context injection.
+    //
+    // The user may have typed tokens like `@1` or `@build` in their message.
+    // These are stored in `PaneContext::at_pane_refs` by the UI layer.  Here
+    // we resolve each token to a real pane id (by 1-based index or title
+    // prefix match against the current tab's pane list) and append that
+    // pane's recent output as an extra `### Pane Context` section.  This
+    // works for both planner and autofix prompts, though autofix prompts
+    // rarely carry @-refs in practice.
+    if wt_connected {
+        let at_refs = pane_context
+            .map(|c| c.at_pane_refs.clone())
+            .unwrap_or_default();
+        if !at_refs.is_empty() {
+            let tab_id = pane_context.and_then(|c| c.tab_id.as_deref()).unwrap_or("");
+            let at_ctx_started = std::time::Instant::now();
+            let pane_list = if tab_id.is_empty() {
+                None
+            } else {
+                shell_mgr.wt_list_panes(tab_id).await.ok()
+            };
+            for at_ref in &at_refs {
+                let token = at_ref.trim_start_matches('@');
+                // Resolve to a pane id: first try numeric index, then title prefix.
+                let resolved_pane_id = resolve_at_pane_ref(token, pane_list.as_ref());
+                if let Some(pane_id) = resolved_pane_id {
+                    tracing::debug!(
+                        target: "acp.terminal_context",
+                        at_ref = %at_ref,
+                        pane_id = %pane_id,
+                        "at_ref_pane_resolved"
+                    );
+                    if let Some(content) = read_pane_last_message(
+                        shell_mgr,
+                        &pane_id,
+                        30,
+                        ACTIVE_PANE_CONTEXT_MAX_CHARS,
+                    )
+                    .await
+                    {
+                        runtime_sections.push(format!(
+                            "### Pane Context ({})\n```\n{}\n```",
+                            at_ref, content
+                        ));
+                    }
+                } else {
+                    tracing::debug!(
+                        target: "acp.terminal_context",
+                        at_ref = %at_ref,
+                        "at_ref_pane_unresolved"
+                    );
+                }
+            }
+            prompt_timing_log(
+                prompt_id,
+                submitted_at_unix_s,
+                "at_pane_refs_ready",
+                &format!(
+                    "refs={} dt={:.3}s",
+                    at_refs.len(),
+                    at_ctx_started.elapsed().as_secs_f64()
+                ),
+            );
         }
     }
 
@@ -4762,6 +4869,67 @@ mod tests {
         assert_eq!(super::json_str_or_num(Some(&null)), None);
         assert_eq!(super::json_str_or_num(Some(&arr)), None);
         assert_eq!(super::json_str_or_num(None), None);
+    }
+
+    #[test]
+    fn resolve_at_pane_ref_by_index() {
+        use serde_json::json;
+        let list = json!({
+            "panes": [
+                { "session_id": "pane-aaa", "title": "PowerShell" },
+                { "session_id": "pane-bbb", "title": "Build" },
+                { "session_id": "pane-ccc", "title": "Test" },
+            ]
+        });
+        assert_eq!(
+            super::resolve_at_pane_ref("1", Some(&list)).as_deref(),
+            Some("pane-aaa")
+        );
+        assert_eq!(
+            super::resolve_at_pane_ref("2", Some(&list)).as_deref(),
+            Some("pane-bbb")
+        );
+        assert_eq!(
+            super::resolve_at_pane_ref("3", Some(&list)).as_deref(),
+            Some("pane-ccc")
+        );
+        // Out of range.
+        assert_eq!(super::resolve_at_pane_ref("4", Some(&list)), None);
+        // Index 0 is explicitly rejected (1-based).
+        assert_eq!(super::resolve_at_pane_ref("0", Some(&list)), None);
+    }
+
+    #[test]
+    fn resolve_at_pane_ref_by_title_prefix() {
+        use serde_json::json;
+        let list = json!({
+            "panes": [
+                { "session_id": "pane-aaa", "title": "PowerShell" },
+                { "session_id": "pane-bbb", "title": "Build" },
+            ]
+        });
+        // Exact match.
+        assert_eq!(
+            super::resolve_at_pane_ref("Build", Some(&list)).as_deref(),
+            Some("pane-bbb")
+        );
+        // Case-insensitive prefix.
+        assert_eq!(
+            super::resolve_at_pane_ref("build", Some(&list)).as_deref(),
+            Some("pane-bbb")
+        );
+        assert_eq!(
+            super::resolve_at_pane_ref("pow", Some(&list)).as_deref(),
+            Some("pane-aaa")
+        );
+        // No match.
+        assert_eq!(super::resolve_at_pane_ref("xyz", Some(&list)), None);
+    }
+
+    #[test]
+    fn resolve_at_pane_ref_no_list() {
+        assert_eq!(super::resolve_at_pane_ref("1", None), None);
+        assert_eq!(super::resolve_at_pane_ref("build", None), None);
     }
 
     /// Test the helper's mirror of master's session-broadcast feed.

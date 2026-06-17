@@ -6880,12 +6880,17 @@ impl App {
                         .session_id
                         .clone()
                         .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+                    // Extract @pane-ref tokens before building context so the
+                    // ACP client task can resolve them to pane ids and inject
+                    // the corresponding pane output into the prompt body.
+                    let at_pane_refs = crate::pane_context::extract_at_refs(&text);
                     let pane_context = PaneContext {
                         pane_id: self.pane_id.clone(),
                         tab_id: self.tab_id.clone(),
                         window_id: self.window_id.clone(),
                         cwd: None,
                         source_pane_id: None,
+                        at_pane_refs,
                     };
                     let prompt = PromptSubmission::new(text.clone(), Some(pane_context));
                     prompt_timing_log(
@@ -7272,6 +7277,7 @@ impl App {
             cwd: None,
             // None → the client task resolves the active working pane itself.
             source_pane_id: None,
+            at_pane_refs: Vec::new(),
         };
 
         let hint = hint.trim().to_string();
