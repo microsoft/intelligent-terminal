@@ -2831,6 +2831,7 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
+ "strsim",
  "sys-locale",
  "textwrap",
  "tokio",

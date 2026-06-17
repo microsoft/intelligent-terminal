@@ -30,10 +30,27 @@ Use when an auto-fix would be wrong, ambiguous, or destructive: tool not install
 
 `explanation` (Markdown) must include: what the error means, why no auto-fix, and concrete next steps (commands in backticks; bullet the alternatives when multiple are plausible).
 
+### Command not found
+
+When the failure is an unrecognized / not-found command (in any language), never imply the command exists or fall back to generic "check the spelling / use `help`" advice. Be honest that it isn't on the user's machine.
+
+- If a `### Near Matches` section is present, it lists real commands that **do** exist on this machine (resolved from the live PATH), closest first. Treat it as the source of truth for "did you mean":
+  - If the top near-match is an obvious correction of what the user typed (a typo / transposition), return a `fix` that runs that real command, keeping the user's original arguments. Name the correction in the `rationale`.
+  - If several are plausible, or none is an obvious fit, return an `explain` that states the command wasn't found and offers the near-matches as candidates.
+- If there is **no** `### Near Matches` section, the command genuinely has no close match on PATH — return an `explain` that says so plainly (it may be a tool that isn't installed, or a name the user misremembered).
+
 ### Examples
 
 ```json
 {"action": "fix", "title": "Fix: dotnet test", "command": "dotnet test", "rationale": "Typo: 'dotent' should be 'dotnet'."}
+```
+
+```json
+{"action": "fix", "title": "Run deploy-it", "command": "deploy-it -Target prod", "rationale": "No 'deploit' on PATH; nearest match is the local script 'deploy-it'."}
+```
+
+```json
+{"action": "explain", "title": "No such command: frobnicate", "explanation": "`frobnicate` isn't recognized — there's no command by that name on your PATH, and nothing close to it.\n\n**Why no auto-fix:** there's no obvious intended command to run.\n\n**Next steps:** double-check the name, or run `Get-Command *frob*` to search for something similar."}
 ```
 
 ```json

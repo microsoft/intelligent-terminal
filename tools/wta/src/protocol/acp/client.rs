@@ -1387,6 +1387,42 @@ async fn build_prompt_text(
                 .await
                 {
                     runtime_sections.push(format!("### Terminal Output\n```\n{}\n```", content));
+
+                    // issue #287: when the failing command doesn't resolve on
+                    // the user's machine, surface local PATH near-matches so
+                    // the agent can suggest the script/program they likely
+                    // mistyped (PowerShell only in v1). The existence gate is
+                    // locale-independent — it asks the shell, never matches the
+                    // localized error text — and the enumerate cost is only
+                    // paid on a genuine not-found.
+                    if let Some(shell_exe) = active.as_ref().and_then(shell_from_active) {
+                        if crate::command_recall::is_powershell(&shell_exe) {
+                            if let Some(token) =
+                                crate::command_recall::extract_command_token(&content)
+                            {
+                                if let Some(matches) =
+                                    crate::command_recall::powershell_near_matches(
+                                        &shell_exe, &token,
+                                    )
+                                    .await
+                                {
+                                    tracing::debug!(
+                                        target: "acp.terminal_context",
+                                        token = %token,
+                                        matches = ?matches,
+                                        mode = "autofix",
+                                        "near_matches_resolved"
+                                    );
+                                    runtime_sections.push(format!(
+                                        "### Near Matches\n`{}` was not found on PATH. \
+                                         Closest commands that DO exist on this machine: {}",
+                                        token,
+                                        matches.join(", ")
+                                    ));
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

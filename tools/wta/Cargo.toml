@@ -44,3 +44,7 @@ which = "7"
 uuid = { version = "1", features = ["v4"] }
 rust-i18n = "3"
 sys-locale = "0.3"
+# Damerau-Levenshtein string distance for autofix "did you mean" near-matches
+# (issue #287). Already in the lockfile as a transitive dep of clap, so
+# promoting it to a direct dep does not change the resolved graph.
+strsim = "0.11"
