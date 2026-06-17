@@ -113,16 +113,15 @@ fn extract_tar_stream(tar_bytes: &[u8], dest: &Path) -> std::io::Result<()> {
     child
         .stdin
         .take()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "tar.exe: no stdin"))?
+        .ok_or_else(|| std::io::Error::other("tar.exe: no stdin"))?
         .write_all(tar_bytes)?;
     let status = child.wait()?;
     if status.success() {
         Ok(())
     } else {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("tar.exe exited with {status}"),
-        ))
+        Err(std::io::Error::other(format!(
+            "tar.exe exited with {status}"
+        )))
     }
 }
 
