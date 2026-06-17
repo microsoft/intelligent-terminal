@@ -284,6 +284,26 @@
                          Text="{x:Bind Profile.DragDropDelimiter, Mode=TwoWay}" />
             </local:SettingContainer>
 
+            <!--  Per-profile agent pane agent override  -->
+            <local:SettingContainer x:Name="AcpAgent"
+                                    x:Uid="Profile_AcpAgent"
+                                    ClearSettingValue="{x:Bind Profile.ClearAcpAgent}"
+                                    HasSettingValue="{x:Bind Profile.HasAcpAgent, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.AcpAgentOverrideSource, Mode=OneWay}">
+                <TextBox Style="{StaticResource TextBoxSettingStyle}"
+                         Text="{x:Bind Profile.AcpAgent, Mode=TwoWay}" />
+            </local:SettingContainer>
+
+            <!--  Per-profile command palette agent override  -->
+            <local:SettingContainer x:Name="DelegateAgent"
+                                    x:Uid="Profile_DelegateAgent"
+                                    ClearSettingValue="{x:Bind Profile.ClearDelegateAgent}"
+                                    HasSettingValue="{x:Bind Profile.HasDelegateAgent, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.DelegateAgentOverrideSource, Mode=OneWay}">
+                <TextBox Style="{StaticResource TextBoxSettingStyle}"
+                         Text="{x:Bind Profile.DelegateAgent, Mode=TwoWay}" />
+            </local:SettingContainer>
+
         </StackPanel>
     </Grid>
 </Page>

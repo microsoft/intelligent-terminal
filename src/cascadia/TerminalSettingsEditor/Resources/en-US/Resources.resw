@@ -2977,4 +2977,20 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Hooks installation failed. Check %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log for details.</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
+  <data name="Profile_AcpAgent.Header" xml:space="preserve">
+    <value>Agent pane agent</value>
+    <comment>Header for the per-profile setting that overrides which AI agent powers the agent pane for this profile. Overrides the global agent setting.</comment>
+  </data>
+  <data name="Profile_AcpAgent.HelpText" xml:space="preserve">
+    <value>Override the global agent pane agent for this profile. Leave empty to use the global setting.</value>
+    <comment>Supplementary description for the per-profile agent pane agent override setting.</comment>
+  </data>
+  <data name="Profile_DelegateAgent.Header" xml:space="preserve">
+    <value>Command palette agent</value>
+    <comment>Header for the per-profile setting that overrides which AI agent handles command palette / on-demand requests for this profile.</comment>
+  </data>
+  <data name="Profile_DelegateAgent.HelpText" xml:space="preserve">
+    <value>Override the global command palette agent for this profile. Leave empty to use the global setting.</value>
+    <comment>Supplementary description for the per-profile command palette agent override setting.</comment>
+  </data>
 </root>
