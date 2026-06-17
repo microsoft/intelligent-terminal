@@ -2404,7 +2404,7 @@ mod tests {
 
     #[test]
     fn agent_session_to_session_info_preserves_fields_for_historical_row() {
-        use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionOrigin};
+        use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin};
         let s = AgentSession {
             key: "hist-sid".to_string(),
             cli_source: CliSource::Copilot,
@@ -2421,6 +2421,7 @@ mod tests {
             attention_reason: None,
             log_path: None,
             origin: SessionOrigin::AgentPane,
+            location: SessionLocation::Host,
         };
         let info = agent_session_to_session_info(&s);
         assert_eq!(info.session_id.0.as_ref(), "hist-sid");
@@ -2435,7 +2436,7 @@ mod tests {
 
     #[test]
     fn agent_session_to_session_info_drops_empty_title() {
-        use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionOrigin};
+        use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin};
         let s = AgentSession {
             key: "x".to_string(),
             cli_source: CliSource::Claude,
@@ -2452,6 +2453,7 @@ mod tests {
             attention_reason: None,
             log_path: None,
             origin: SessionOrigin::Unknown,
+            location: SessionLocation::Host,
         };
         let info = agent_session_to_session_info(&s);
         assert_eq!(info.title, None, "empty title should map to None, not Some(\"\")");

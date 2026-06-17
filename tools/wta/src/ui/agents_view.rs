@@ -886,6 +886,7 @@ mod tests {
             attention_reason: None,
             log_path:         None,
             origin:           SessionOrigin::default(),
+            location:         crate::agent_sessions::SessionLocation::Host,
         };
         assert_eq!(cli_suffix_for(&s, true),  "· codex");
         assert_eq!(cli_suffix_for(&s, false), String::new());

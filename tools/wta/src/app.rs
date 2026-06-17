@@ -2175,6 +2175,7 @@ pub(crate) fn session_info_to_agent_session(
         attention_reason: info.attention_reason.clone(),
         log_path: None,
         origin,
+        location: crate::agent_sessions::SessionLocation::Host,
     }
 }
 
