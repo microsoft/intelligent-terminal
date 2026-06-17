@@ -127,7 +127,7 @@ TerminalProtocolComServer::~TerminalProtocolComServer()
     // the delivery worker to exit; do NOT join. The detached worker owns its own
     // reference to the shared _DeliveryState and never touches `this`, so the
     // object can be destroyed immediately without waiting on a slow OnEvent (and
-    // without risking a re-entrancy deadlock). The worker frees the state when it
+    // without risking a re-entry deadlock). The worker frees the state when it
     // returns.
     _removeInstance();
 
