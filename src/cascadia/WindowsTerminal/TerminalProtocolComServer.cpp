@@ -397,54 +397,71 @@ void TerminalProtocolComServer::_runDeliveryWorker(std::shared_ptr<_DeliveryStat
     // (UI/STA or COM MTA) thread. MTA init is required so Resolve hands back a
     // proxy valid on this thread. The worker owns `state`; when wait_pop returns
     // false (stop()) the loop exits and the last reference is released here.
-    auto coInit = wil::CoInitializeEx(COINIT_MULTITHREADED);
-
-    std::string eventJson;
-    while (state->queue.wait_pop(eventJson))
+    //
+    // This worker is DETACHED: an exception escaping the thread function would
+    // call std::terminate and crash the whole process. Everything therefore runs
+    // under a catch-all — a per-event catch drops one bad event and keeps the
+    // worker alive; the outer catch handles a CoInitializeEx / wait_pop failure
+    // by exiting cleanly.
+    try
     {
-        ComPtr<IAgileReference> ref;
-        {
-            std::lock_guard lock{ state->mutex };
-            ref = state->sinkRef;
-        }
-        if (!ref)
-        {
-            // Not subscribed (yet / anymore) — drop and keep waiting.
-            continue;
-        }
+        auto coInit = wil::CoInitializeEx(COINIT_MULTITHREADED);
 
-        wil::unique_bstr eventBstr{ ::SysAllocString(winrt::to_hstring(eventJson).c_str()) };
-        if (!eventBstr)
+        std::string eventJson;
+        while (state->queue.wait_pop(eventJson))
         {
-            // OOM allocating the payload — skip rather than call OnEvent with a
-            // null BSTR, which would break the JSON-string event contract.
-            continue;
-        }
+            try
+            {
+                ComPtr<IAgileReference> ref;
+                {
+                    std::lock_guard lock{ state->mutex };
+                    ref = state->sinkRef;
+                }
+                if (!ref)
+                {
+                    // Not subscribed (yet / anymore) — drop and keep waiting.
+                    continue;
+                }
 
-        // Resolve the agile reference to a sink proxy valid on THIS thread,
-        // then call it — the cross-apartment-safe callback path.
-        ComPtr<ITerminalProtocolEventSink> sink;
-        if (FAILED(ref->Resolve(IID_PPV_ARGS(&sink))) || !sink)
-        {
-            // The sink can no longer be resolved — treat as a disconnect (same
-            // as an OnEvent failure): close the gate and clear the sink so
-            // producers stop enqueuing and we stop churning for a dead client.
-            state->queue.set_active(false);
-            std::lock_guard lock{ state->mutex };
-            state->sinkRef.Reset();
-            continue;
-        }
+                wil::unique_bstr eventBstr{ ::SysAllocString(winrt::to_hstring(eventJson).c_str()) };
+                if (!eventBstr)
+                {
+                    // OOM allocating the payload — skip rather than call OnEvent
+                    // with a null BSTR, which would break the event contract.
+                    continue;
+                }
 
-        if (FAILED(sink->OnEvent(eventBstr.get())))
-        {
-            // Client disconnected — close the gate and clear the sink so
-            // producers stop enqueuing (and we stop popping/dropping) work for a
-            // dead subscriber. The now-idle worker parks in wait_pop until the
-            // instance's teardown calls stop().
-            state->queue.set_active(false);
-            std::lock_guard lock{ state->mutex };
-            state->sinkRef.Reset();
+                // Resolve the agile reference to a sink proxy valid on THIS
+                // thread, then call it (cross-apartment-safe callback path).
+                // Short-circuit so OnEvent is never called on a null sink.
+                ComPtr<ITerminalProtocolEventSink> sink;
+                if (FAILED(ref->Resolve(IID_PPV_ARGS(&sink))) || !sink || FAILED(sink->OnEvent(eventBstr.get())))
+                {
+                    // The sink can no longer be resolved, or the client
+                    // disconnected — treat as a disconnect: close the gate and
+                    // clear the sink so producers stop enqueuing (and we stop
+                    // churning) for a dead client. BUT only if this is STILL the
+                    // sink we just used: a concurrent re-Subscribe may have
+                    // swapped in a new sink while this delivery (using the old
+                    // `ref`) was in flight, and we must not clobber it.
+                    std::lock_guard lock{ state->mutex };
+                    if (state->sinkRef.Get() == ref.Get())
+                    {
+                        state->sinkRef.Reset();
+                        state->queue.set_active(false);
+                    }
+                }
+            }
+            catch (...)
+            {
+                // Never let an exception escape a detached worker. Drop this
+                // event and keep delivering.
+            }
         }
+    }
+    catch (...)
+    {
+        // CoInitializeEx / wait_pop failure — exit the worker without crashing.
     }
 }
 
