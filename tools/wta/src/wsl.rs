@@ -26,6 +26,50 @@ pub(crate) fn parse_running_distros(utf16le: &[u8]) -> Vec<String> {
         .collect()
 }
 
+/// Build the bash pipeline (run inside the distro) that ranks the newest
+/// `cap` sessions per CLI by mtime and streams exactly their files as a
+/// `tar` archive on stdout, relative to `$HOME`.
+///
+/// Assumes GNU coreutils/findutils (`find -printf`) — the default on
+/// Ubuntu/Debian/Fedora/etc. BusyBox-only distros (Alpine) are a known
+/// MVP gap (their `find` lacks `-printf`); they simply yield no rows.
+///
+/// Per CLI:
+/// * Copilot — rank session dirs by `events.jsonl` mtime, emit each dir's
+///   `events.jsonl` + `workspace.yaml`.
+/// * Claude/Codex/Gemini — rank the session `.jsonl` files by mtime.
+#[allow(dead_code)] // Invoked by the production fetch in the scan-orchestration task.
+fn build_fetch_script(cap: usize) -> String {
+    format!(
+        r#"set -eu
+cd "$HOME" 2>/dev/null || exit 0
+CAP={cap}
+list="$(mktemp)"
+{{
+  # Copilot: rank session dirs by events.jsonl mtime; emit dir's two files.
+  find .copilot/session-state -mindepth 2 -maxdepth 2 -name events.jsonl \
+       -printf '%T@\t%h\n' 2>/dev/null \
+    | sort -rn | head -n "$CAP" | cut -f2- \
+    | while IFS= read -r d; do
+        [ -f "$d/events.jsonl" ] && printf '%s\n' "$d/events.jsonl"
+        [ -f "$d/workspace.yaml" ] && printf '%s\n' "$d/workspace.yaml"
+      done
+  # Claude: project JSONLs.
+  find .claude/projects -type f -name '*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
+    | sort -rn | head -n "$CAP" | cut -f2-
+  # Codex: rollout JSONLs (nested YYYY/MM/DD).
+  find .codex/sessions -type f -name 'rollout-*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
+    | sort -rn | head -n "$CAP" | cut -f2-
+  # Gemini: chat session JSONLs.
+  find .gemini/tmp -type f -name 'session-*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
+    | sort -rn | head -n "$CAP" | cut -f2-
+}} > "$list"
+[ -s "$list" ] || exit 0
+tar -cf - -C "$HOME" -T "$list" 2>/dev/null
+"#
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,5 +89,21 @@ mod tests {
     fn parse_running_distros_empty_when_nothing_running() {
         assert!(parse_running_distros(&utf16le("\r\n")).is_empty());
         assert!(parse_running_distros(&[]).is_empty());
+    }
+
+    #[test]
+    fn fetch_script_ranks_four_clis_and_tars_relative_to_home() {
+        let script = build_fetch_script(50);
+        // cd into $HOME and bail cleanly if it doesn't exist
+        assert!(script.contains("cd \"$HOME\""));
+        // all four CLI roots are scanned
+        assert!(script.contains(".copilot/session-state"));
+        assert!(script.contains(".claude/projects"));
+        assert!(script.contains(".codex/sessions"));
+        assert!(script.contains(".gemini/tmp"));
+        // cap is threaded into the head limit
+        assert!(script.contains("CAP=50"));
+        // archive is produced relative to $HOME on stdout
+        assert!(script.contains("tar -cf - -C \"$HOME\""));
     }
 }

@@ -12,7 +12,7 @@ const B64: &[u8; 64] =
 
 /// Standard base64 (RFC 4648) — implemented inline so this module doesn't
 /// pull in the `base64` crate just for clipboard plumbing.
-fn base64_encode(input: &[u8]) -> String {
+pub(crate) fn base64_encode(input: &[u8]) -> String {
     let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
     let mut i = 0;
     while i + 3 <= input.len() {
